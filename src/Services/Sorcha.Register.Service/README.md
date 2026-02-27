@@ -788,5 +788,5 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 ---
 
 **Last Updated**: 2025-11-23
-**Maintained By**: Sorcha Platform Team
+**Maintained By**: Sorcha Contributors
 **Status**: ✅ Production Ready (100% Complete)

@@ -15,8 +15,8 @@
 │   ├── MemPool.cs                              (Transaction queue)
 │   └── SingularConsensus.cs                    (Consensus stub)
 ├── ValidatorCore/
-│   ├── ISiccarValidator.cs                     (Validator interface)
-│   ├── ISiccarConsensus.cs                     (Consensus interface)
+│   ├── ISorchaValidator.cs                     (Validator interface)
+│   ├── ISorchaConsensus.cs                     (Consensus interface)
 │   └── IMemPool.cs                             (MemPool interface)
 └── ValidatorTests/
     └── RuleBasedValidatorTests.cs
@@ -26,7 +26,7 @@
 
 - **Total Lines**: ~788 C# code across all modules
 - **Main Classes**: 5 (RulesBasedValidator, DocketBuilder, MemPool, Genesys, SingularConsensus)
-- **Key Interfaces**: 3 (ISiccarValidator, ISiccarConsensus, IMemPool)
+- **Key Interfaces**: 3 (ISorchaValidator, ISorchaConsensus, IMemPool)
 - **Framework**: .NET 9.0 with ASP.NET Core
 
 ## Data Models Summary
@@ -361,7 +361,7 @@ Check SingularConsensus logs - currently should be empty since it does nothing.
 
 ## Additional Resources
 
-- Full Analysis: `./siccarv3-validator-service-analysis.md` (1035 lines)
+- Full Analysis: `./alpha-validator-service-analysis.md` (1035 lines, alpha reference)
 - Design Recommendations: `./SORCHA-VALIDATOR-DESIGN-RECOMMENDATIONS.md`
-- GitHub: https://github.com/StuartF303/SICCARV3
+- GitHub: https://github.com/sorcha-platform/sorcha
 

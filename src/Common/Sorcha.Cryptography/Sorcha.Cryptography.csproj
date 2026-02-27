@@ -1,46 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Target framework -->
-    <TargetFramework>net10.0</TargetFramework>
-
-    <!-- Language and nullable -->
-    <LangVersion>13</LangVersion>
-    <Nullable>enable</Nullable>
-
-    <!-- Package info -->
     <PackageId>Sorcha.Cryptography</PackageId>
     <Version>2.0.0</Version>
-    <Authors>Sorcha Development Team</Authors>
-    <Company>Wallet.Services (Scotland) Ltd</Company>
+    <Description>Multi-algorithm cryptography: ED25519, P-256, RSA-4096, BLS threshold signatures, post-quantum (ML-KEM/ML-DSA), zero-knowledge proofs, SD-JWT, HD wallet support (BIP32/39/44), Merkle trees, and encoding utilities</Description>
+    <PackageTags>sorcha;cryptography;ed25519;ecdsa;rsa;bls;post-quantum;zero-knowledge;sd-jwt;wallet</PackageTags>
     <Product>Sorcha.Cryptography</Product>
-    <Description>Standalone cryptography library for the Sorcha platform, providing key management, digital signatures, encryption, and encoding utilities.</Description>
-    <PackageTags>cryptography;Sorcha;ed25519;ecdsa;rsa;encryption;signing</PackageTags>
-    <RepositoryUrl>https://github.com/StuartF303/Sorcha</RepositoryUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-
-    <!-- Documentation -->
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn><!-- Suppress missing XML doc warnings initially -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
 
     <!-- Build -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
-
-    <!-- Source link -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Minimal dependencies -->
-    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    <PackageReference Include="HeroSD-JWT" Version="1.1.7" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
-    <PackageReference Include="Nethermind.MclBindings" Version="1.0.5" />
-    <PackageReference Include="Sodium.Core" Version="1.4.0" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.102" PrivateAssets="All" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="HeroSD-JWT" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Nethermind.MclBindings" />
+    <PackageReference Include="Sodium.Core" />
   </ItemGroup>
 </Project>

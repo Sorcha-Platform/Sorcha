@@ -2287,7 +2287,7 @@ The following items are explicitly out of scope for this specification:
 
 ### Import Source
 - **Original Specification:** [alpha Register Service](../archive/import-alpha-register-20251113/alpha-register-service.md)
-- **Source Repository:** https://github.com/StuartF303/alphaV3.git
+- **Source Repository:** https://github.com/sorcha-platform/sorcha
 - **Import Date:** 2025-11-13
 
 ## Version History

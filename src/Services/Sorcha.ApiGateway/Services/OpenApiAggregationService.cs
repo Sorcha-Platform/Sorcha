@@ -327,7 +327,7 @@ public class OpenApiAggregationService
                     - **Scalar Documentation**: `http://localhost:8080/scalar`
                     - **Health Check**: `http://localhost:8080/api/health`
                     - **Dashboard**: `http://localhost:8080/api/dashboard`
-                    - **GitHub**: https://github.com/siccar-platform/sorcha
+                    - **GitHub**: https://github.com/sorcha-platform/sorcha
 
                     ## Version Information
 
@@ -342,8 +342,8 @@ public class OpenApiAggregationService
                     """,
                 ["contact"] = new JsonObject
                 {
-                    ["name"] = "Sorcha Platform Team",
-                    ["url"] = "https://github.com/siccar-platform/sorcha"
+                    ["name"] = "Sorcha Contributors",
+                    ["url"] = "https://github.com/sorcha-platform/sorcha"
                 },
                 ["license"] = new JsonObject
                 {

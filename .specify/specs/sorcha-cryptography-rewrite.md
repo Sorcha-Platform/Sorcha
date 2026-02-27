@@ -744,7 +744,7 @@ public class CryptoResult<T>
   <PackageId>Sorcha.Cryptography</PackageId>
   <Version>2.0.0</Version>
   <Authors>Sorcha Development Team</Authors>
-  <Company>Wallet.Services (Scotland) Ltd</Company>
+  <Company>Sorcha Contributors</Company>
   <Product>Sorcha.Cryptography</Product>
   <Description>Standalone cryptography library for the Sorcha platform, providing key management, digital signatures, encryption, and encoding utilities.</Description>
   <PackageTags>cryptography;Sorcha;ed25519;ecdsa;rsa;encryption;signing</PackageTags>

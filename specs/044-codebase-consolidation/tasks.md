@@ -61,7 +61,7 @@
 
 ### Implementation for User Story 2
 
-- [x] T009 [P] [US2] Create OpenAPI extensions in `src/Common/Sorcha.ServiceDefaults/OpenApiExtensions.cs` — define `AddSorchaOpenApi(string title, string description)` with standard document transformer (contact: Sorcha Platform Team, license: MIT, version: 1.0.0) and `MapSorchaOpenApiUi(string title, ScalarTheme theme = Purple)` for Scalar UI mapping in development — include XML `<summary>` documentation on `AddSorchaOpenApi()` and `MapSorchaOpenApiUi()` methods
+- [x] T009 [P] [US2] Create OpenAPI extensions in `src/Common/Sorcha.ServiceDefaults/OpenApiExtensions.cs` — define `AddSorchaOpenApi(string title, string description)` with standard document transformer (contact: Sorcha Contributors, license: MIT, version: 1.0.0) and `MapSorchaOpenApiUi(string title, ScalarTheme theme = Purple)` for Scalar UI mapping in development — include XML `<summary>` documentation on `AddSorchaOpenApi()` and `MapSorchaOpenApiUi()` methods
 - [x] T010 [P] [US2] Create CORS extensions in `src/Common/Sorcha.ServiceDefaults/CorsExtensions.cs` — define `AddSorchaCors()` with AllowAnyOrigin/AllowAnyMethod/AllowAnyHeader default policy — include XML `<summary>` documentation on `AddSorchaCors()` method
 - [x] T011 [US2] Update Blueprint Service pipeline in `src/Services/Sorcha.Blueprint.Service/Program.cs` — use `AddSorchaOpenApi()`, `MapSorchaOpenApiUi()`, `AddSorchaCors()`, remove inline OpenAPI/CORS blocks
 - [x] T012 [P] [US2] Update Register Service pipeline in `src/Services/Sorcha.Register.Service/Program.cs` — use shared OpenAPI/Scalar/CORS helpers, remove inline blocks

@@ -13,8 +13,8 @@
 Implement hash provider supporting SHA-2 family (SHA-256, SHA-384, SHA-512) and Blake2b variants. This component provides cryptographic hashing for data integrity, signatures, and key derivation.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-6](../specs/siccar-cryptography-rewrite.md#fr-6-hash-functions)
-- [Current WalletUtils Hashing](../../src/Common/SiccarPlatformCryptography/WalletUtils.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-6](../specs/sorcha-cryptography-rewrite.md#fr-6-hash-functions)
+- [Current WalletUtils Hashing](../../src/Common/Sorcha.Cryptography/WalletUtils.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)

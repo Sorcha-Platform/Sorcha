@@ -18,10 +18,10 @@ Configure NuGet package with proper metadata, versioning, and dependencies.
 <PropertyGroup>
   <PackageId>Sorcha.TransactionHandler</PackageId>
   <Version>2.0.0</Version>
-  <Authors>Siccar Development Team</Authors>
-  <Description>Transaction and payload management library for the Siccar distributed ledger platform. Provides transaction building, signing, verification, and multi-recipient payload encryption.</Description>
-  <PackageTags>siccar;blockchain;transaction;payload;distributed-ledger;encryption</PackageTags>
-  <RepositoryUrl>https://github.com/StuartF303/SICCARV3</RepositoryUrl>
+  <Authors>Sorcha Contributors</Authors>
+  <Description>Transaction and payload management library for the Sorcha distributed ledger platform. Provides transaction building, signing, verification, and multi-recipient payload encryption.</Description>
+  <PackageTags>sorcha;blockchain;transaction;payload;distributed-ledger;encryption</PackageTags>
+  <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageIcon>icon.png</PackageIcon>
   <PackageReadmeFile>README.md</PackageReadmeFile>

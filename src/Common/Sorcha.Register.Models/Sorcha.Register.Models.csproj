@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Sorcha.Register.Models</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Domain models for the distributed ledger register</Description>
+    <PackageTags>sorcha;register;models;ledger</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

@@ -37,8 +37,8 @@ public static class OpenApiExtensions
                 {
                     document.Info.Contact = new() { };
                 }
-                document.Info.Contact.Name = "Sorcha Platform Team";
-                document.Info.Contact.Url = new Uri("https://github.com/siccar-platform/sorcha");
+                document.Info.Contact.Name = "Sorcha Contributors";
+                document.Info.Contact.Url = new Uri("https://github.com/sorcha-platform/sorcha");
 
                 if (document.Info.License == null)
                 {

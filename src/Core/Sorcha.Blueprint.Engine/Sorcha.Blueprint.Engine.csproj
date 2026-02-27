@@ -20,11 +20,11 @@
 
   <ItemGroup>
     <!-- NuGet Packages for JSON processing -->
-    <PackageReference Include="JsonSchema.Net" Version="8.0.5" />
-    <PackageReference Include="JsonLogic" Version="5.5.0" />
-    <PackageReference Include="JsonPath.Net" Version="2.2.0" />
-    <PackageReference Include="JsonE.Net" Version="2.5.1" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.2" />
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="JsonLogic" />
+    <PackageReference Include="JsonPath.Net" />
+    <PackageReference Include="JsonE.Net" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
   </ItemGroup>
 
 </Project>

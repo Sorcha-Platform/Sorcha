@@ -15,7 +15,7 @@ info:
     Action execution requires delegation token for decrypt authorization.
   version: 2.0.0
   contact:
-    name: Sorcha Platform Team
+    name: Sorcha Contributors
 
 servers:
   - url: https://api.sorcha.dev/blueprints

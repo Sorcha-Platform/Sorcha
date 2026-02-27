@@ -199,9 +199,9 @@ See `.github/workflows/nuget-publish.yml` for pipeline configuration.
 
 - [ ] TX-016: Migration guide from embedded transactions
 - [ ] TX-017: Additional code examples and tutorials
-- [ ] TX-018: Integration with SICCARV3 services
+- [ ] TX-018: Integration with Sorcha services
 - [ ] TX-019: Comprehensive regression testing
 
 ## Support
 
-For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/StuartF303/SICCARV3).
+For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/sorcha-platform/sorcha).

@@ -11,7 +11,7 @@ This document provides an overview of the implementation tasks required to build
 
 ## Background
 
-The Register Service has been specified based on the proven architecture from Siccar V3, modernized for the Sorcha platform with:
+The Register Service has been specified based on the proven architecture from the Sorcha AI Development spike, modernized for the Sorcha platform with:
 - .NET Aspire orchestration instead of Dapr
 - .NET 10 with C# 13
 - Sorcha 4-layer architecture alignment
@@ -416,7 +416,7 @@ The Register Service has been specified based on the proven architecture from Si
   - Configuration management
   - Scaling guide
 
-- [ ] REG-052: Migration guide from Siccar
+- [ ] REG-052: Migration guide from legacy platform
   - Migration strategy
   - Data migration tools
   - Compatibility notes
@@ -443,7 +443,7 @@ The Register Service has been specified based on the proven architecture from Si
 ## Detailed Task Files
 
 Individual detailed task files are available in the import archive:
-- `.specify/archive/import-siccar-register-20251113/REG-*.md`
+- `.specify/archive/import-register-20251113/REG-*.md`
 
 These files contain detailed acceptance criteria, implementation guidance, and testing requirements for each task.
 
@@ -502,7 +502,7 @@ These files contain detailed acceptance criteria, implementation guidance, and t
 - API documentation complete with examples
 - Architecture diagrams created
 - Deployment guide available
-- Migration guide from Siccar
+- Migration guide from legacy platform
 
 ## Risks and Mitigations
 
@@ -528,8 +528,8 @@ These files contain detailed acceptance criteria, implementation guidance, and t
 ## Related Documents
 
 - [Sorcha Register Service Specification](../specs/sorcha-register-service.md)
-- [Imported Siccar Specification](../archive/import-siccar-register-20251113/siccar-register-service.md)
-- [Import Overview](../archive/import-siccar-register-20251113/REGISTER-OVERVIEW.md)
+- [Imported Specification](../archive/import-register-20251113/register-service.md)
+- [Import Overview](../archive/import-register-20251113/REGISTER-OVERVIEW.md)
 - [Sorcha Constitution](../constitution.md)
 - [Sorcha Architecture](../../docs/architecture.md)
 

@@ -460,4 +460,4 @@ For issues, questions, or contributions:
 ---
 
 **Last Updated**: 2025-11-22
-**Maintained By**: Sorcha Platform Team
+**Maintained By**: Sorcha Contributors

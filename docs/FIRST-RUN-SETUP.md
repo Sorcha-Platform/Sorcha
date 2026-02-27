@@ -39,7 +39,7 @@ This guide covers the first-time setup of the Sorcha platform. The setup wizard 
 
 ```powershell
 # Clone the repository
-git clone https://github.com/StuartF303/Sorcha.git
+git clone https://github.com/sorcha-platform/sorcha.git
 cd Sorcha
 
 # Run the setup wizard
@@ -50,7 +50,7 @@ cd Sorcha
 
 ```bash
 # Clone the repository
-git clone https://github.com/StuartF303/Sorcha.git
+git clone https://github.com/sorcha-platform/sorcha.git
 cd Sorcha
 
 # Make scripts executable
@@ -352,5 +352,5 @@ For production deployments, update these values:
 
 ---
 
-**Document Owner:** Sorcha Platform Team
+**Document Owner:** Sorcha Contributors
 **Last Review:** 2026-01-31

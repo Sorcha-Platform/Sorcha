@@ -17,7 +17,7 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/StuartF303/Sorcha.git
+git clone https://github.com/sorcha-platform/sorcha.git
 cd Sorcha
 ```
 

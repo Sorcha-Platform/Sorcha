@@ -2,7 +2,7 @@
 
 **Document Version**: 1.0
 **Created**: 2025-11-23
-**Author**: Sorcha Platform Team
+**Author**: Sorcha Contributors
 **Status**: Active
 
 ---
@@ -737,7 +737,7 @@ connection.on('TransactionConfirmed', (transactionId, status) => { /* ... */ });
 4. **Implement OData Queries**: For advanced analytics and reporting
 5. **Use Multi-Tenancy**: Organization structure for enterprise deployments
 
-### 12.3 For Sorcha Platform Team
+### 12.3 For Sorcha Contributors
 
 1. **Maintain API Versioning**: `/v1/`, `/v2/` for future compatibility
 2. **Provide Migration Tools**: Scripts to convert Beta clients to Current

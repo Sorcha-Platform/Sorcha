@@ -11,16 +11,16 @@
   "scripts": {},
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/StuartF303/Sorcha.git"
+    "url": "git+https://github.com/sorcha-platform/sorcha.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/StuartF303/Sorcha/issues"
+    "url": "https://github.com/sorcha-platform/sorcha/issues"
   },
-  "homepage": "https://github.com/StuartF303/Sorcha#readme",
+  "homepage": "https://github.com/sorcha-platform/sorcha#readme",
   "devDependencies": {
     "@playwright/test": "^1.58.1",
     "@types/node": "^25.2.0"

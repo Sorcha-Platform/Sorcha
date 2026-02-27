@@ -13,7 +13,7 @@ info:
 
   contact:
     name: Sorcha Development Team
-    url: https://github.com/StuartF303/Sorcha
+    url: https://github.com/sorcha-platform/sorcha
 
 servers:
   - url: https://localhost:7001

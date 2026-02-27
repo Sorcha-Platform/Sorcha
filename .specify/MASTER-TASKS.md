@@ -1,8 +1,8 @@
 # Sorcha Platform - Master Task List
 
-**Version:** 5.9 - UPDATED
-**Last Updated:** 2026-02-26
-**Status:** Active - UI & CLI Modernization Complete
+**Version:** 6.0
+**Last Updated:** 2026-02-27
+**Status:** Active - Production Packaging & CI/CD
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
 ---
@@ -11,10 +11,72 @@
 
 This document consolidates all tasks across the Sorcha platform into a single, prioritized list organized by implementation phase. Tasks are tracked by priority, status, and estimated effort.
 
-**Total Tasks:** 360 (across all phases, including production readiness, blueprint validation, validator service, orchestration, CLI, UI modernization, and research)
-**Completed:** 215 (60%)
-**In Progress:** 0 (0%)
-**Not Started:** 145 (40%)
+**Total Tasks:** 386 (across all phases, including production readiness, blueprint validation, validator service, orchestration, CLI, UI modernization, packaging, and research)
+**Completed:** 215 (56%)
+**In Progress:** 8 (2%)
+**Not Started:** 163 (42%)
+
+---
+
+## P0 — Production Packaging & Version Control
+
+> **Priority:** P0 (Production Readiness)
+> **Status:** 🚧 In Progress
+> **Design Doc:** [docs/plans/2026-02-27-shared-library-nuget-design.md](../docs/plans/2026-02-27-shared-library-nuget-design.md)
+
+Establish production-grade NuGet packaging, Central Package Management, automated CI/CD, and code quality standards across the entire codebase.
+
+### Phase A: Shared Libraries (src/Common/) — 🚧 IN PROGRESS
+
+| # | Task | Status |
+|---|------|--------|
+| A1 | Create Directory.Build.props for Common libraries (shared metadata) | ✅ |
+| A2 | Create Directory.Packages.props (CPM for all 69 projects, 127 packages) | ✅ |
+| A3 | Update all 80 .csproj files to use CPM (remove inline Version attributes) | ✅ |
+| A4 | Add NuGet PackageId/Version/Description to all 15 Common libraries (v2.0.0) | ✅ |
+| A5 | Standardize LanguageVersion to C# 13 across Common libraries | ✅ |
+| A6 | Remove old GitHub Actions (main-ci-cd, pr-validation, release, docker-build-push, azure-deploy) | ✅ |
+| A7 | Create nuget-ci.yml (PR build & test) | ✅ |
+| A8 | Create nuget-publish.yml (auto minor version bump & publish to nuget.org) | ✅ |
+| A9 | Create claude-review-issues.yml (review feedback → GitHub issues) | ✅ |
+| A10 | Update codeql.yml branch references to master | ✅ |
+| A11 | Purge all legacy branding from source code, docs, specs | 🚧 |
+| A12 | Code quality review across all 15 Common libraries | 📋 |
+| A13 | Fill test gaps (Storage.EFCore, Storage.MongoDB, Tenant.Models, Wallet.Core) | 📋 |
+| A14 | Run dotnet list package --outdated, update Directory.Packages.props | 📋 |
+| A15 | Validation: build, test, pack all 15 libraries | 📋 |
+| A16 | Update git remote to sorcha-platform/sorcha | 📋 |
+
+### Phase B: Core Libraries (src/Core/) — 📋 NOT STARTED
+
+| # | Task | Status |
+|---|------|--------|
+| B1 | Add Directory.Build.props for Core libraries (NuGet metadata, build settings) | 📋 |
+| B2 | Add NuGet PackageId/Version to Core libraries (Blueprint.Engine, Blueprint.Fluent, Register.Core, Register.Storage.*) | 📋 |
+| B3 | Code quality review across Core libraries | 📋 |
+| B4 | Fill test gaps in Core libraries | 📋 |
+| B5 | Add nuget-publish.yml path triggers for src/Core/** | 📋 |
+
+### Phase C: Services (src/Services/) — 📋 NOT STARTED
+
+| # | Task | Status |
+|---|------|--------|
+| C1 | Add Directory.Build.props for Services (shared build settings, Docker metadata) | 📋 |
+| C2 | Standardize service project structure and naming | 📋 |
+| C3 | Code quality review across all 7 services | 📋 |
+| C4 | Create docker-ci.yml (PR Docker build validation) | 📋 |
+| C5 | Create docker-publish.yml (auto Docker image build & push on merge) | 📋 |
+| C6 | Service-level integration test improvements | 📋 |
+
+### Phase D: Applications (src/Apps/) — 📋 NOT STARTED
+
+| # | Task | Status |
+|---|------|--------|
+| D1 | Add Directory.Build.props for Apps (shared build settings) | 📋 |
+| D2 | Code quality review across all applications | 📋 |
+| D3 | Standardize app project configuration | 📋 |
+| D4 | Create app-specific CI workflows (CLI publish, UI deploy) | 📋 |
+| D5 | E2E test pipeline integration (Playwright in CI) | 📋 |
 
 ---
 
@@ -43,6 +105,7 @@ All transactions MUST go through the Validator Service mempool before being seal
 
 | Date | Summary |
 |------|---------|
+| 2026-02-27 | **Production Packaging & CI/CD** (Phase A: Shared Libraries): Central Package Management (Directory.Packages.props with 127 packages across 69 projects), Directory.Build.props for Common libraries (shared NuGet metadata, SourceLink, deterministic builds), all 15 Common libraries packaged as NuGet v2.0.0 with independent minor versioning. GitHub Actions overhaul: removed 6 old workflows, created nuget-ci.yml (PR build & test), nuget-publish.yml (auto minor bump & publish), claude-review-issues.yml (review feedback → GitHub issues). Complete branding purge across all source, docs, and specs. Code quality review across all 15 libraries. Phases B-D (Core, Services, Apps) scoped for follow-on work. |
 | 2026-02-26 | **043-UI-CLI-Modernization** (66 tasks, 11 phases): UI polish and CLI expansion. Phase 1-3: Setup + UserPreferences backend (OtpNet, i18n) + Activity Log (EventEntity, EventService, EventHub SignalR, ActivityLogPanel with bell icon, 49 endpoint/service tests). Phase 4 (US2): Sidebar — consolidated ADMINISTRATION section, mini drawer with OpenMiniOnHover. Phase 5 (US3): StatusFooter with 30s health polling, MainLayout integration, 9 bunit tests. Phase 6 (US4): Wallet management — WalletList view toggle, default wallet star, QR dialog, PQC algorithm support in CreateWallet, WalletPreferenceService migration to server-side (14 tests). Phase 7 (US5): Dashboard wizard — conditional wizard/KPI on Home.razor, auto-set default wallet. Phase 8 (US6): Validator dashboard — ValidatorPanel with 3s polling, throughput visualization, register table (16 tests). Phase 9 (US7): Settings — TOTP 2FA backend (TotpConfiguration entity, TotpService, setup/verify/disable/status endpoints, rate limiting, loginToken flow), ThemeService (dark mode, OS detection), LocalizationService (JSON i18n, fr/de/es translations), TimeFormatService, TotpClientService, Settings.razor with 6 tabs, push notification service worker + subscription endpoints (TOTP endpoint tests, CLI command tests). Phase 10 (US8): CLI commands — BlueprintCommands, ParticipantCommands, CredentialCommands, ValidatorCommands, AdminCommands (all with Refit + Spectre.Console), CLI command tests. Phase 11: Polish — build fix, test verification, documentation. |
 | 2026-02-26 | **041-Auth-Integration** (38 tasks, 8 phases): Authentication & authorization integration across all services. Phase 1-2: Setup + Foundational — TokenClaimConstants, configurable ServiceAuthClient scopes, Validator Service JWT auth + authorization policies. Phase 3 (US1): Service-to-service auth — verified client credentials flow, service token acquisition logging. Phase 4 (US2): User authentication — endpoint audit across all services, RequireAuthorization/AllowAnonymous coverage, anonymous endpoint verification. Phase 5 (US3): Delegation token flow — IDelegationTokenClient/DelegationTokenClient for on-behalf-of user flows, RequireDelegatedAuthority policy on Blueprint/Wallet/Register. Phase 6 (US4): Authorization policies — renamed Administrator→RequireAdministrator in Blueprint, PeerAuthInterceptor gRPC interceptor for JWT validation on peer connections, authenticated peer reputation bonus (+15 quality score). Phase 7 (US5): Token introspection & revocation — ITokenRevocationStore in JwtAuthenticationExtensions OnTokenValidated event, ITokenIntrospectionClient for /api/auth/token/introspect. Phase 8: Polish — AUTHENTICATION-SETUP.md docs update, security audit logging, mTLS config scaffolding, existing test suite fix (TestAdminAuthHandler for WebApplicationFactory tests). Tests: 39 new auth integration tests, 15 validator auth policy tests, 6 delegation client tests, 6 revocation tests. |
 | 2026-02-25 | **040-Quantum-Safe-Crypto** (74 tasks, 10 phases): Post-quantum cryptography with CNSA 2.0 compliance. Phase 1-2: Setup + Foundational — PqcSignatureProvider (ML-DSA-65 via BouncyCastle), PqcEncapsulationProvider (ML-KEM-768), HybridSignature model, Bech32m address encoding, CryptoPolicy model, key material zeroization. Phase 3 (US1): Hybrid signing — classical+PQC dual signatures with CryptoModule extension. Phase 4 (US2): Per-register crypto policy governance — CryptoPolicyService, policy enforcement in Validator, Control TX updates. Phase 5 (US7): SLH-DSA-128s hash-based signatures — stateless fallback for lattice concerns. Phase 6 (US3): ws2-prefixed Bech32m wallet addresses for PQC keys. Phase 7 (US4): ML-KEM-768 payload encryption — quantum-safe KEM + AES-256-GCM hybrid, encapsulate/decapsulate endpoints. Phase 8 (US5): BLS12-381 threshold signatures — distributed docket validation with Shamir secret sharing (t-of-n). Phase 9 (US6): Zero-knowledge register verification — Pedersen commitments on secp256k1 with Schnorr proofs for inclusion, OR proofs for range [0, 2^n). Phase 10: Polish — performance benchmarks, document sizes, YARP routes for all PQC endpoints. Tests: 270+ new tests across 8 test projects. Algorithm support: ML-DSA-65, ML-KEM-768, SLH-DSA-128s, BLS12-381, secp256k1 ZK proofs. |

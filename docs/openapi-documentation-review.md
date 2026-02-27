@@ -246,7 +246,7 @@ info:
     ...
 
   contact:
-    name: Sorcha Platform Team
+    name: Sorcha Contributors
     url: https://sorcha.io
   license:
     name: MIT

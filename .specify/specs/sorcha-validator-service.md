@@ -1319,7 +1319,7 @@ _logger.LogInformation(
 ## Appendix B: References
 
 - `/docs/validator-service-design.md` - Design specification
-- `/docs/siccarv3-validator-service-analysis.md` - alpha analysis
+- `/docs/alpha-validator-service-analysis.md` - Alpha Validator analysis
 - `/docs/architecture.md` - Sorcha architecture
 - `/docs/blueprint-schema.md` - Blueprint data format
 - `/.specify/UNIFIED-DESIGN-SUMMARY.md` - Unified design

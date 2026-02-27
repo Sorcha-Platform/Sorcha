@@ -19,18 +19,18 @@ Configure NuGet package generation with proper metadata, versioning, icon, READM
   <!-- Package metadata -->
   <PackageId>Sorcha.Cryptography</PackageId>
   <Version>2.0.0</Version>
-  <Authors>Siccar Development Team</Authors>
-  <Company>Wallet.Services (Scotland) Ltd</Company>
+  <Authors>Sorcha Contributors</Authors>
+  <Company>Sorcha Contributors</Company>
   <Product>Sorcha.Cryptography</Product>
-  <Description>Standalone cryptography library for the Siccar platform, providing key management, digital signatures, encryption, and encoding utilities for ED25519, NIST P-256, and RSA-4096.</Description>
-  <Copyright>Copyright © 2025 Wallet.Services (Scotland) Ltd</Copyright>
+  <Description>Standalone cryptography library for the Sorcha platform, providing key management, digital signatures, encryption, and encoding utilities for ED25519, NIST P-256, and RSA-4096.</Description>
+  <Copyright>Copyright © 2025 Sorcha Contributors</Copyright>
 
   <!-- Package tags -->
-  <PackageTags>cryptography;siccar;blockchain;ed25519;ecdsa;rsa;encryption;signing;wallet;bip39</PackageTags>
+  <PackageTags>cryptography;sorcha;blockchain;ed25519;ecdsa;rsa;encryption;signing;wallet;bip39</PackageTags>
 
   <!-- URLs -->
-  <RepositoryUrl>https://github.com/StuartF303/SICCARV3</RepositoryUrl>
-  <PackageProjectUrl>https://github.com/StuartF303/SICCARV3</PackageProjectUrl>
+  <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/sorcha-platform/sorcha</PackageProjectUrl>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
   <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 
@@ -65,9 +65,9 @@ Create `RELEASE_NOTES.md`:
 # Sorcha.Cryptography v2.0.0
 
 ## Breaking Changes
-- Complete rewrite of SiccarPlatformCryptography
+- Complete rewrite of legacy cryptography library
 - New API with async/await support
-- Renamed namespaces from `SiccarPlatformCryptography` to `Sorcha.Cryptography`
+- Renamed namespaces to `Sorcha.Cryptography`
 
 ## New Features
 - ✅ ED25519, NIST P-256, and RSA-4096 support

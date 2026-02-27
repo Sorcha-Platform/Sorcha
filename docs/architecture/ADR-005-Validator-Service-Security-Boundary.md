@@ -188,7 +188,7 @@ src/
 ## References
 
 - [Validator Service Design](../validator-service-design.md)
-- [SiccaV3 Validator Analysis](../siccarv3-validator-service-analysis.md)
+- [Alpha Validator Analysis](../alpha-validator-service-analysis.md)
 - [Unified Design Summary](../../.specify/UNIFIED-DESIGN-SUMMARY.md)
 - [Register Service Phase 1-2 Completion](../register-service-phase1-2-completion.md)
 

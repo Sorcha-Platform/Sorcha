@@ -1,0 +1,89 @@
+name: Claude Review — Create Issues
+
+on:
+  workflow_run:
+    workflows: ["Claude Code Review"]
+    types: [completed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  create-issues:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get PR comments from Claude review
+        id: get-comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the PR number from the workflow run
+          PR_NUMBER=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }} --jq '.pull_requests[0].number // empty')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR associated with this workflow run"
+            echo "has_comments=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # Get comments from Claude (bot comments on the PR)
+          COMMENTS=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '[.[] | select(.user.login == "github-actions[bot]" or (.body | test("claude|review"; "i"))) | {body: .body, created_at: .created_at}]')
+
+          if [ "$COMMENTS" = "[]" ] || [ -z "$COMMENTS" ]; then
+            echo "No Claude review comments found"
+            echo "has_comments=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_comments=true" >> "$GITHUB_OUTPUT"
+          echo "$COMMENTS" > /tmp/claude-comments.json
+
+      - name: Create issues from actionable comments
+        if: steps.get-comments.outputs.has_comments == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ steps.get-comments.outputs.pr_number }}
+
+          # Parse comments and create issues for actionable items
+          cat /tmp/claude-comments.json | jq -r '.[].body' | while IFS= read -r COMMENT; do
+            # Skip empty or non-actionable comments
+            if [ -z "$COMMENT" ] || echo "$COMMENT" | grep -qiP '(looks good|no issues|approved|lgtm)'; then
+              continue
+            fi
+
+            # Create a title from the first meaningful line
+            TITLE="Claude Review: PR #${PR_NUMBER} — $(echo "$COMMENT" | head -c 80)"
+
+            # Check for existing open issue with similar title
+            EXISTING=$(gh issue list --state open --label claude-review --search "PR #${PR_NUMBER}" --json number --jq 'length')
+
+            if [ "$EXISTING" -gt "0" ]; then
+              echo "Issue already exists for PR #${PR_NUMBER}, skipping"
+              continue
+            fi
+
+            # Create the issue
+            gh issue create \
+              --title "$TITLE" \
+              --label "claude-review" \
+              --body "## Source
+
+          From Claude code review on PR #${PR_NUMBER}
+
+          ## Review Comment
+
+          ${COMMENT}
+
+          ---
+          *Auto-created from Claude code review workflow*"
+
+            echo "Created issue for PR #${PR_NUMBER}"
+          done

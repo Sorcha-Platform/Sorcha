@@ -110,8 +110,8 @@ builder.Services.AddOpenApi(options =>
         
         document.Info.Contact = new() 
         { 
-            Name = "Sorcha Platform Team",
-            Url = new Uri("https://github.com/siccar-platform/sorcha")
+            Name = "Sorcha Contributors",
+            Url = new Uri("https://github.com/sorcha-platform/sorcha")
         };
         
         document.Info.License = new() 

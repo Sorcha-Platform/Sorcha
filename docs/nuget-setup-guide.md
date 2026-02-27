@@ -32,7 +32,7 @@ This guide walks you through setting up automatic NuGet package publishing for S
 
 ## Step 3: Add API Key to GitHub Secrets
 
-1. Go to your GitHub repository: `https://github.com/StuartF303/Sorcha`
+1. Go to your GitHub repository: `https://github.com/sorcha-platform/sorcha`
 2. Click **Settings** (you need admin access)
 3. In the left sidebar, expand **Secrets and variables** and click **Actions**
 4. Click **New repository secret**

@@ -39,7 +39,7 @@ Currently all 7 services duplicate identical builder registrations and middlewar
 
 **Acceptance Scenarios**:
 
-1. **Given** shared OpenAPI/Scalar configuration exists, **When** a service registers with a title and description, **Then** contact info (Sorcha Platform Team), license (MIT), and Scalar theme are applied automatically.
+1. **Given** shared OpenAPI/Scalar configuration exists, **When** a service registers with a title and description, **Then** contact info (Sorcha Contributors), license (MIT), and Scalar theme are applied automatically.
 2. **Given** shared CORS configuration exists, **When** a service opts in, **Then** the standard AllowAnyOrigin/Method/Header policy is applied without per-service boilerplate.
 3. **Given** a standard middleware pipeline helper exists, **When** a service calls it, **Then** MapDefaultEndpoints, UseSerilogLogging, UseApiSecurityHeaders, UseHttpsEnforcement, UseInputValidation are applied in the correct order.
 4. **Given** the Tenant Service currently calls `UseRateLimiter()` twice, **When** the pipeline is consolidated, **Then** the duplicate call is removed.

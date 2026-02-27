@@ -331,5 +331,5 @@ Host=host.docker.internal;Port=5432;Database=sorcha_tenant;...
 
 **Document Version:** 1.0
 **Last Updated:** 2025-12-13
-**Owner:** Sorcha Platform Team
+**Owner:** Sorcha Contributors
 **Status:** ✅ Bootstrap seeding complete and verified

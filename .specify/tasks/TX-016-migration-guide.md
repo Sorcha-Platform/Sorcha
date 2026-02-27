@@ -20,7 +20,7 @@ Create migration guide for transitioning from embedded transaction classes to So
 ### 2. Dependency Changes
 ```xml
 <!-- Remove embedded transaction classes -->
-<!-- They were in SiccarPlatformCryptography -->
+<!-- They were in Sorcha.Cryptography (legacy) -->
 
 <!-- Add new packages -->
 <PackageReference Include="Sorcha.Cryptography" Version="2.0.0" />

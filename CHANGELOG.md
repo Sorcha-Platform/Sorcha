@@ -123,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - .gitignore and .gitattributes for repository hygiene
 
 ### Changed
-- Migrated from SiccarV3 architecture
+- Built from the Sorcha AI Development spike
 - Modernized to .NET 10 from .NET 8/9
 - Simplified microservices to focus on core blueprint execution
 - Adopted minimal API pattern for REST endpoints

@@ -13,8 +13,8 @@
 Implement symmetric encryption and decryption supporting multiple algorithms (AES-128/256, AES-GCM, ChaCha20-Poly1305, XChaCha20-Poly1305). This component handles bulk data encryption used by payload management.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-5](../specs/siccar-cryptography-rewrite.md#fr-5-symmetric-encryption)
-- [Current WalletUtils Encrypt/Decrypt](../../src/Common/SiccarPlatformCryptography/WalletUtils.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-5](../specs/sorcha-cryptography-rewrite.md#fr-5-symmetric-encryption)
+- [Current WalletUtils Encrypt/Decrypt](../../src/Common/Sorcha.Cryptography/WalletUtils.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)

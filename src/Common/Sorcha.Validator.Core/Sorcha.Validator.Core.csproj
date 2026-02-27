@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>13</LangVersion>
+    <PackageId>Sorcha.Validator.Core</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Enclave-safe validation and consensus logic</Description>
+    <PackageTags>sorcha;validator;consensus;validation</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="FluentValidation" />
   </ItemGroup>
 
 </Project>

@@ -133,7 +133,7 @@ public class OpenApiExtensionsTests : IAsyncLifetime
 
         // Assert
         var contactName = doc.GetProperty("info").GetProperty("contact").GetProperty("name").GetString();
-        contactName.Should().Be("Sorcha Platform Team");
+        contactName.Should().Be("Sorcha Contributors");
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class OpenApiExtensionsTests : IAsyncLifetime
 
         // Assert
         var contactUrl = doc.GetProperty("info").GetProperty("contact").GetProperty("url").GetString();
-        contactUrl.Should().Be("https://github.com/siccar-platform/sorcha");
+        contactUrl.Should().Be("https://github.com/sorcha-platform/sorcha");
     }
 
     [Fact]

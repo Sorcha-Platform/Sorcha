@@ -1076,7 +1076,7 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 **Version**: 1.1.0
 **Last Updated**: 2025-12-24
-**Maintained By**: Sorcha Platform Team
+**Maintained By**: Sorcha Contributors
 **Status**: ✅ Core Complete (70% - Tests and Polish Pending)
 **Tasks Completed**: 63/91 (Phase 1-3)
 **Lines of Code**: ~5,700 (production), 0 (tests)

@@ -1,20 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <PackageId>Sorcha.Blueprint.Models</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Domain models with JSON-LD for blueprint workflow definitions</Description>
+    <PackageTags>sorcha;blueprint;models;json-ld;workflow</PackageTags>
     <RootNamespace>Sorcha.Blueprint.Models</RootNamespace>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- CS1591: Suppress missing XML doc warnings for internal types; public API is documented -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="12.1.1" />
-    <PackageReference Include="JsonLogic" Version="5.5.0" />
-    <PackageReference Include="JsonSchema.Net" Version="8.0.5" />
-    <PackageReference Include="JsonSchema.Net.Generation" Version="6.0.0" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="JsonLogic" />
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="JsonSchema.Net.Generation" />
   </ItemGroup>
 
   <ItemGroup>

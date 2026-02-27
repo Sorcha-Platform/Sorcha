@@ -1726,7 +1726,7 @@ public class ValidatorOrchestratorTests : IClassFixture<WebApplicationFactory<Pr
 
 ## Appendix B: Related Documentation
 
-- `siccarv3-validator-service-analysis.md` - SiccaV3 Validator analysis
+- `alpha-validator-service-analysis.md` - Alpha Validator analysis
 - `SORCHA-VALIDATOR-DESIGN-RECOMMENDATIONS.md` - Design recommendations
 - `VALIDATOR-SERVICE-QUICK-REFERENCE.md` - Developer quick reference
 - `/docs/architecture.md` - Overall Sorcha architecture

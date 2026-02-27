@@ -23,11 +23,11 @@ Create the new `Sorcha.TransactionHandler` library project with proper configura
     <!-- Package info -->
     <PackageId>Sorcha.TransactionHandler</PackageId>
     <Version>2.0.0</Version>
-    <Authors>Siccar Development Team</Authors>
-    <Company>Wallet.Services (Scotland) Ltd</Company>
-    <Description>Transaction and payload management library for the Siccar platform</Description>
-    <PackageTags>siccar;blockchain;transaction;payload;distributed-ledger</PackageTags>
-    <RepositoryUrl>https://github.com/StuartF303/SICCARV3</RepositoryUrl>
+    <Authors>Sorcha Contributors</Authors>
+    <Company>Sorcha Contributors</Company>
+    <Description>Transaction and payload management library for the Sorcha platform</Description>
+    <PackageTags>sorcha;blockchain;transaction;payload;distributed-ledger</PackageTags>
+    <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <!-- Documentation -->
@@ -71,7 +71,7 @@ src/Common/Sorcha.TransactionHandler/
 - [ ] All folders created
 - [ ] Project builds without errors
 - [ ] XML documentation enabled
-- [ ] Added to SICCARV3.sln
+- [ ] Added to Sorcha.sln
 
 ---
 

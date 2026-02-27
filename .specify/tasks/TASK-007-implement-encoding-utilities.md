@@ -13,8 +13,8 @@
 Implement encoding and decoding utilities for Base58, Bech32, hexadecimal, and variable-length integer encoding. These utilities are essential for wallet address formatting, key encoding, and binary data serialization.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-7, FR-8](../specs/siccar-cryptography-rewrite.md#fr-7-wallet-address-encoding)
-- [Current WalletUtils Encoding](../../src/Common/SiccarPlatformCryptography/WalletUtils.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-7, FR-8](../specs/sorcha-cryptography-rewrite.md#fr-7-wallet-address-encoding)
+- [Current WalletUtils Encoding](../../src/Common/Sorcha.Cryptography/WalletUtils.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)
@@ -197,7 +197,7 @@ public static class Base58Utilities
 ### Bech32 Implementation
 
 **Bech32 Format:**
-- Human-readable part (HRP): "ws1" for Siccar wallets
+- Human-readable part (HRP): "ws1" for Sorcha wallets
 - Separator: "1"
 - Data part: Base32 encoded data
 - Checksum: 6 characters

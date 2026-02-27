@@ -299,7 +299,8 @@
       "Bash(net start:*)",
       "Bash(POSTGRES_PORT=5433 docker-compose up:*)",
       "Bash(do git show HEAD~1:\"$script\")",
-      "Skill(docker)"
+      "Skill(docker)",
+      "Bash(do dotnet:*)"
     ],
     "deny": [],
     "ask": []

@@ -189,14 +189,14 @@ Stub implementation provided for wallet service integration.
 - **Sorcha.WalletService:** Wallet management library (new)
 
 #### SDK
-- **SiccarApplicationClient:** Client SDK for application development
-- **Siccar.SDK.Fluent:** Fluent API for simplified SDK usage
+- **Sorcha.ServiceClients:** Client SDK for application development
+- **Sorcha.Blueprint.Fluent:** Fluent API for simplified SDK usage
 
 #### UI Components
 - **AdminUI:** Administration interface (Blazor-based)
   - AdminUI.Server: Backend API
   - AdminUI.Client: Frontend application
-- **siccarcmd:** Command-line interface tool
+- **Sorcha CLI:** Command-line interface tool
 
 ### Infrastructure Components
 
@@ -224,12 +224,12 @@ Stub implementation provided for wallet service integration.
 ### Scenario 1: Enterprise Integration
 **Actor:** Enterprise Developer
 
-**Goal:** Integrate SORCHA into existing enterprise applications
+**Goal:** Integrate Sorcha into existing enterprise applications
 
 **Steps:**
-1. Install and configure SORCHA services
+1. Install and configure Sorcha services
 2. Configure identity provider integration (Azure AD)
-3. Use SiccarApplicationClient SDK to integrate with application
+3. Use Sorcha.ServiceClients SDK to integrate with application
 4. Create tenant and provision wallets
 5. Define blueprints for business processes
 6. Submit and track transactions

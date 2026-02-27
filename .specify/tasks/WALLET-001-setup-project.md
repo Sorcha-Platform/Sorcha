@@ -73,11 +73,11 @@ tests/
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Sorcha.WalletService</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Sorcha Platform Team</Authors>
+    <Authors>Sorcha Contributors</Authors>
     <Company>Sorcha</Company>
     <Description>Wallet management library for Sorcha distributed ledger platform</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/StuartF303/Sorcha</RepositoryUrl>
+    <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,7 +5,7 @@
 
 ## Summary
 
-This document provides an overview of all tasks required to complete the Sorcha.Cryptography library rewrite. The rewrite will transform the existing SiccarPlatformCryptography into a clean, standalone, reusable cryptography library.
+This document provides an overview of all tasks required to complete the Sorcha.Cryptography library rewrite. The rewrite will transform the existing cryptography code into a clean, standalone, reusable Sorcha.Cryptography library.
 
 ## Task Dependencies
 
@@ -29,7 +29,7 @@ TASK-001 (Project Setup)
     ├── TASK-017 (XML Documentation)
     ├── TASK-018 (NuGet Package Configuration)
     ├── TASK-019 (Migration Guide)
-    └── TASK-020 (Integration with SICCARV3)
+    └── TASK-020 (Integration with Sorcha)
 ```
 
 ## Task List
@@ -115,11 +115,11 @@ TASK-001 (Project Setup)
 | TASK-021 | Update WalletService to use new library | High | 12 | Not Started | - |
 | TASK-022 | Update TenantService to use new library | High | 8 | Not Started | - |
 | TASK-023 | Update Register Service to use new library | Medium | 6 | Not Started | - |
-| TASK-024 | Deprecate SiccarPlatformCryptography | High | 4 | Not Started | - |
+| TASK-024 | Deprecate legacy cryptography library | High | 4 | Not Started | - |
 | TASK-025 | Regression Testing | Critical | 16 | Not Started | - |
 
 **Deliverables:**
-- All SICCARV3 services using new library
+- All Sorcha services using new library
 - Old library deprecated
 - All tests passing
 - Performance validated
@@ -167,7 +167,7 @@ The critical path tasks that must be completed in sequence:
 |------|--------|-------------|------------|-------|
 | Cryptographic bugs in core operations | Critical | Low | Test vectors, security audit, peer review | Dev Team |
 | Performance regression vs old library | High | Medium | Benchmarks, profiling, optimization | Dev Team |
-| Breaking changes affect SICCAR services | High | Medium | Compatibility layer, phased migration | Architecture |
+| Breaking changes affect Sorcha services | High | Medium | Compatibility layer, phased migration | Architecture |
 | Incomplete test coverage | Medium | Medium | Coverage enforcement, TDD approach | QA |
 | Security vulnerabilities discovered | Critical | Low | Security audit, external review | Security |
 
@@ -191,7 +191,7 @@ Each phase must meet these criteria before proceeding:
 - [ ] All documentation complete
 - [ ] NuGet package builds successfully
 - [ ] Integration tests passing
-- [ ] No regressions in SICCAR platform
+- [ ] No regressions in Sorcha platform
 - [ ] Security audit approved
 
 ## Success Metrics
@@ -199,7 +199,7 @@ Each phase must meet these criteria before proceeding:
 - **Code Quality:** >90% test coverage, zero critical bugs
 - **Performance:** Meets or exceeds targets in spec NFR-2
 - **Security:** Passes security audit and timing attack tests
-- **Usability:** Successfully integrated in SICCARV3 with no breaking changes
+- **Usability:** Successfully integrated in Sorcha with no breaking changes
 - **Documentation:** Complete API docs and migration guide
 - **Adoption:** NuGet package published and used by external project (goal)
 
@@ -222,6 +222,6 @@ Each phase must meet these criteria before proceeding:
 
 **Document Control**
 - **Created:** 2025-11-12
-- **Owner:** SICCARV3 Architecture Team
+- **Owner:** Sorcha Architecture Team
 - **Review Frequency:** Weekly during implementation
 - **Next Review:** TBD after project kickoff

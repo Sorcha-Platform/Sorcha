@@ -5,7 +5,7 @@
 
 ## Summary
 
-This document provides an overview of all tasks required to complete the Sorcha.TransactionHandler library. The library will handle transaction creation, signing, verification, multi-recipient payload management, and serialization for the SICCAR distributed ledger platform.
+This document provides an overview of all tasks required to complete the Sorcha.TransactionHandler library. The library will handle transaction creation, signing, verification, multi-recipient payload management, and serialization for the Sorcha distributed ledger platform.
 
 ### 🎉 Implementation Status
 
@@ -31,7 +31,7 @@ This document provides an overview of all tasks required to complete the Sorcha.
 🔜 **Remaining:**
 - TX-016: Migration Guide (documentation)
 - TX-017: Code Examples (documentation)
-- TX-018: SICCARV3 Service Integration
+- TX-018: Sorcha Service Integration
 - TX-019: Comprehensive Regression Testing
 
 ## Task Dependencies
@@ -54,7 +54,7 @@ TX-001 (Project Setup)
     ├── TX-015 (NuGet Package Configuration)
     ├── TX-016 (Migration Guide)
     ├── TX-017 (Code Examples)
-    ├── TX-018 (Integrate with SICCARV3)
+    ├── TX-018 (Integrate with Sorcha)
     └── TX-019 (Regression Testing)
 ```
 
@@ -135,11 +135,11 @@ TX-001 (Project Setup)
 
 | ID | Task | Priority | Est. Hours | Status | Assignee |
 |----|------|----------|------------|--------|----------|
-| TX-018 | Integrate with SICCARV3 Services | High | 16 | Not Started | - |
+| TX-018 | Integrate with Sorcha Services | High | 16 | Not Started | - |
 | TX-019 | Comprehensive Regression Testing | Critical | 12 | Not Started | - |
 
 **Deliverables:**
-- All SICCARV3 services using new library
+- All Sorcha services using new library
 - All tests passing
 - Performance validated
 
@@ -202,7 +202,7 @@ The critical path tasks that must be completed in sequence:
 ### Integration
 - ✅ Depends on Sorcha.Cryptography v2.0
 - ✅ Clean separation of concerns
-- ✅ Easy to integrate with SICCARV3 services
+- ✅ Easy to integrate with Sorcha services
 
 ## Risk Register
 
@@ -233,14 +233,14 @@ Each phase must meet these criteria before proceeding:
 - [x] All documentation complete (XML docs generated)
 - [x] NuGet package builds successfully
 - [x] Integration tests passing
-- [ ] No regressions in SICCAR platform (pending TX-018, TX-019)
+- [ ] No regressions in Sorcha platform (pending TX-018, TX-019)
 
 ## Success Metrics
 
 - **Code Quality:** >90% test coverage, zero critical bugs
 - **Performance:** Meets or exceeds targets in spec NFR-1
 - **Compatibility:** Reads all v1-v4 transactions correctly
-- **Usability:** Successfully integrated in SICCARV3
+- **Usability:** Successfully integrated in Sorcha
 - **Documentation:** Complete API docs and migration guide
 - **Adoption:** NuGet package published
 
@@ -264,6 +264,6 @@ Each phase must meet these criteria before proceeding:
 
 **Document Control**
 - **Created:** 2025-11-12
-- **Owner:** SICCARV3 Architecture Team
+- **Owner:** Sorcha Architecture Team
 - **Review Frequency:** Weekly during implementation
 - **Next Review:** TBD after project kickoff

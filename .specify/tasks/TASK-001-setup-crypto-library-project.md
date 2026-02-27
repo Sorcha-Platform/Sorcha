@@ -66,11 +66,11 @@ Create the new `Sorcha.Cryptography` library project with proper configuration, 
     <PackageId>Sorcha.Cryptography</PackageId>
     <Version>2.0.0</Version>
     <Authors>Sorcha Development Team</Authors>
-    <Company>Wallet.Services (Scotland) Ltd</Company>
+    <Company>Sorcha Contributors</Company>
     <Product>Sorcha.Cryptography</Product>
     <Description>Standalone cryptography library for the Sorcha platform</Description>
     <PackageTags>cryptography;Sorcha;ed25519;ecdsa;rsa;encryption;signing</PackageTags>
-    <RepositoryUrl>https://github.com/StuartF303/SORCHA</RepositoryUrl>
+    <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <!-- Documentation -->

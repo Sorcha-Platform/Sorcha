@@ -13,8 +13,8 @@
 Implement the Key Manager component responsible for generating, recovering, and managing cryptographic keys with BIP39-compatible mnemonic recovery phrases. This component provides the user-facing key management functionality.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-2](../specs/siccar-cryptography-rewrite.md#fr-2-mnemonic-recovery-phrase)
-- [Current KeyManager Implementation](../../src/Common/SiccarPlatformCryptography/KeyManager.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-2](../specs/sorcha-cryptography-rewrite.md#fr-2-mnemonic-recovery-phrase)
+- [Current KeyManager Implementation](../../src/Common/Sorcha.Cryptography/KeyManager.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)
@@ -183,7 +183,7 @@ byte checksum = (byte)(hash[0] >> 4);
 ```csharp
 var argon2 = new Argon2id(Encoding.UTF8.GetBytes(mnemonic))
 {
-    Salt = Encoding.UTF8.GetBytes("siccar-wallet-seed" + password),
+    Salt = Encoding.UTF8.GetBytes("sorcha-wallet-seed" + password),
     DegreeOfParallelism = 1,
     MemorySize = 262144, // 256 MB
     Iterations = 4

@@ -13,8 +13,8 @@
 Implement wallet utilities for converting between public keys, wallet addresses, and WIF (Wallet Import Format) private keys. These utilities bridge cryptographic keys and user-friendly wallet addresses.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-7, FR-8](../specs/siccar-cryptography-rewrite.md#fr-7-wallet-address-encoding)
-- [Current WalletUtils](../../src/Common/SiccarPlatformCryptography/WalletUtils.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-7, FR-8](../specs/sorcha-cryptography-rewrite.md#fr-7-wallet-address-encoding)
+- [Current WalletUtils](../../src/Common/Sorcha.Cryptography/WalletUtils.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)
@@ -60,10 +60,10 @@ public interface IWalletUtilities
 
 ### Wallet Address Format
 
-**Siccar Wallet Address Structure:**
+**Sorcha Wallet Address Structure:**
 ```
 Bech32 Format: ws1<encoded_data>
-- HRP: "ws1" (Wallet Siccar version 1)
+- HRP: "ws1" (Wallet Sorcha version 1)
 - Network byte: 1 byte (ED25519=0x00, NISTP256=0x01, RSA4096=0x02)
 - Public key: Variable length
 - Checksum: Bech32 checksum (6 chars)
@@ -331,7 +331,7 @@ string senderWallet = walletUtils.PublicKeyToWallet(publicKey.Value, network);
 
 **Address Format Rationale:**
 - Bech32: Error-detecting, case-insensitive, QR-friendly
-- "ws1" HRP: Identifies Siccar wallets version 1
+- "ws1" HRP: Identifies Sorcha wallets version 1
 - Network byte: Identifies key algorithm type
 
 **Security Considerations:**

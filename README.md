@@ -263,8 +263,8 @@ Sorcha/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/StuartF303/Sorcha.git
-   cd Sorcha
+   git clone https://github.com/sorcha-platform/sorcha.git
+   cd sorcha
    ```
 
 2. **Start all services with Docker Compose** ⭐ **RECOMMENDED**
@@ -1014,7 +1014,7 @@ Full documentation is available in the [docs](docs/) directory:
 
 ## Acknowledgments
 
-This project is inspired by and modernizes concepts from the [SiccarV3](https://github.com/stuartf303/siccarv3) project.
+This project is inspired by and modernizes concepts from the Sorcha AI Development spike.
 
 ---
 

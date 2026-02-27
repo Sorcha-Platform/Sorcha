@@ -318,8 +318,8 @@ info:
     ## Client Libraries
     ## Support & Resources
   contact:
-    name: Sorcha Platform Team
-    url: https://github.com/siccar-platform/sorcha
+    name: Sorcha Contributors
+    url: https://github.com/sorcha-platform/sorcha
   license:
     name: MIT License
     url: https://opensource.org/licenses/MIT

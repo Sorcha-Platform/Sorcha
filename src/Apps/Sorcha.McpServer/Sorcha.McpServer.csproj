@@ -10,28 +10,28 @@
 
   <ItemGroup>
     <!-- MCP SDK -->
-    <PackageReference Include="ModelContextProtocol" Version="0.7.0-preview.1" />
+    <PackageReference Include="ModelContextProtocol" />
 
     <!-- Hosting and DI -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
 
     <!-- Input Validation -->
-    <PackageReference Include="FluentValidation" Version="12.1.1" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
 
     <!-- JWT Token Handling -->
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
 
     <!-- Rate Limiting -->
-    <PackageReference Include="System.Threading.RateLimiting" Version="10.0.2" />
+    <PackageReference Include="System.Threading.RateLimiting" />
 
     <!-- Schema and Logic Processing -->
-    <PackageReference Include="JsonSchema.Net" Version="8.0.5" />
-    <PackageReference Include="JsonLogic.Net" Version="1.1.11" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="JsonLogic.Net" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <ItemGroup>

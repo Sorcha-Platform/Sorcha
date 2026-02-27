@@ -13,8 +13,8 @@
 Implement data compression utilities with file type detection to avoid compressing already-compressed data. Used by payload management to reduce transaction size.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-10](../specs/siccar-cryptography-rewrite.md#fr-10-compression)
-- [Current WalletUtils Compression](../../src/Common/SiccarPlatformCryptography/WalletUtils.cs)
+- [Sorcha.Cryptography Rewrite Spec - FR-10](../specs/sorcha-cryptography-rewrite.md#fr-10-compression)
+- [Current WalletUtils Compression](../../src/Common/Sorcha.Cryptography/WalletUtils.cs)
 
 **Dependencies:**
 - TASK-001 (Project setup)
@@ -129,7 +129,7 @@ namespace Sorcha.Cryptography.Utilities;
 
 public sealed class CompressionUtilities : ICompressionUtilities
 {
-    private const uint CompressionMagic = 0x534B4D50; // "SKMP" (Siccar Kompressed)
+    private const uint CompressionMagic = 0x534B4D50; // "SKMP" (Sorcha Kompressed)
 
     public (byte[] Data, bool WasCompressed) Compress(
         byte[] data,

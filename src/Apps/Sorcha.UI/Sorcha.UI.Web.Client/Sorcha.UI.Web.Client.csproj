@@ -12,14 +12,14 @@
 
   <ItemGroup>
     <!-- Client-side WASM packages -->
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.2" />
-    <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
-    <PackageReference Include="MudBlazor" Version="8.15.0" />
-    <PackageReference Include="Z.Blazor.Diagrams" Version="3.0.4" />
-    <PackageReference Include="JsonLogic" Version="5.5.0" />
-    <PackageReference Include="JsonSchema.Net" Version="8.0.5" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
+    <PackageReference Include="Blazored.LocalStorage" />
+    <PackageReference Include="MudBlazor" />
+    <PackageReference Include="Z.Blazor.Diagrams" />
+    <PackageReference Include="JsonLogic" />
+    <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
   </ItemGroup>
 
   <ItemGroup>

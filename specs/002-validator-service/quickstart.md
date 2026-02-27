@@ -37,7 +37,7 @@ This guide helps developers quickly set up, build, test, and contribute to the V
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/StuartF303/Sorcha.git
+git clone https://github.com/sorcha-platform/sorcha.git
 cd Sorcha
 git checkout 002-validator-service
 ```
