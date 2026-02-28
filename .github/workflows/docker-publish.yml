@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'src/Services/**'
+      - 'src/Apps/**'
       - 'src/Common/**'
       - 'src/Core/**'
       - 'docker-compose.yml'
@@ -32,7 +33,7 @@ jobs:
       - name: Detect changed services
         id: detect
         run: |
-          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway"]'
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web"]'
 
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all services"
@@ -52,7 +53,7 @@ jobs:
             exit 0
           fi
 
-          # Check individual services
+          # Check individual services and apps
           declare -A SERVICE_PATHS
           SERVICE_PATHS["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/"
           SERVICE_PATHS["wallet-service"]="src/Services/Sorcha.Wallet.Service/"
@@ -61,6 +62,8 @@ jobs:
           SERVICE_PATHS["peer-service"]="src/Services/Sorcha.Peer.Service/"
           SERVICE_PATHS["validator-service"]="src/Services/Sorcha.Validator.Service/"
           SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
+          SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
+          SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
 
           CHANGED="["
           FIRST=true
@@ -106,6 +109,8 @@ jobs:
           DOCKERFILES["peer-service"]="src/Services/Sorcha.Peer.Service/Dockerfile"
           DOCKERFILES["validator-service"]="src/Services/Sorcha.Validator.Service/Dockerfile"
           DOCKERFILES["api-gateway"]="src/Services/Sorcha.ApiGateway/Dockerfile"
+          DOCKERFILES["mcp-server"]="src/Apps/Sorcha.McpServer/Dockerfile"
+          DOCKERFILES["ui-web"]="src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile"
           echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx

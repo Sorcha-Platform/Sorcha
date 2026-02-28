@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'src/Services/**'
+      - 'src/Apps/**'
       - 'src/Common/**'
       - 'src/Core/**'
       - 'docker-compose.yml'
@@ -31,6 +32,10 @@ jobs:
             dockerfile: src/Services/Sorcha.Validator.Service/Dockerfile
           - service: api-gateway
             dockerfile: src/Services/Sorcha.ApiGateway/Dockerfile
+          - service: mcp-server
+            dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
+          - service: ui-web
+            dockerfile: src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile
 
     name: Build ${{ matrix.service }}
     steps:
