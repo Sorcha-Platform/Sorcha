@@ -6,11 +6,13 @@ using System.Text.Json;
 namespace Sorcha.Blueprint.Schemas;
 
 /// <summary>
-/// Repository for schemas from SchemaStore.org
+/// Repository for schemas from SchemaStore.org.
+/// Thread-safe: uses SemaphoreSlim for async-safe initialization.
 /// </summary>
 public class SchemaStoreRepository : ISchemaRepository
 {
     private readonly HttpClient _httpClient;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly List<SchemaDocument> _cachedSchemas = [];
     private bool _initialized = false;
     private DateTimeOffset _lastRefresh = DateTimeOffset.MinValue;
@@ -64,48 +66,70 @@ public class SchemaStoreRepository : ISchemaRepository
 
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        _initialized = false;
-        _cachedSchemas.Clear();
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            _initialized = false;
+            _cachedSchemas.Clear();
+        }
+        finally
+        {
+            _initLock.Release();
+        }
         await EnsureInitializedAsync(cancellationToken);
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        // Check if cache is still valid
+        // Fast path: cache is still valid
         if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < CacheExpiration)
         {
             return;
         }
 
+        await _initLock.WaitAsync(cancellationToken);
         try
         {
-            // Fetch the SchemaStore catalog
-            var catalogJson = await _httpClient.GetStringAsync(SchemaStoreCatalogUrl, cancellationToken);
-            var catalogDoc = JsonDocument.Parse(catalogJson);
-
-            _cachedSchemas.Clear();
-
-            // Parse the catalog
-            if (catalogDoc.RootElement.TryGetProperty("schemas", out var schemas))
+            // Double-check after acquiring the lock
+            if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < CacheExpiration)
             {
-                foreach (var schemaElement in schemas.EnumerateArray())
-                {
-                    var schemaDoc = ParseSchemaStoreEntry(schemaElement);
-                    if (schemaDoc != null)
-                    {
-                        _cachedSchemas.Add(schemaDoc);
-                    }
-                }
+                return;
             }
 
-            _initialized = true;
-            _lastRefresh = DateTimeOffset.UtcNow;
+            try
+            {
+                // Fetch the SchemaStore catalog
+                var catalogJson = await _httpClient.GetStringAsync(SchemaStoreCatalogUrl, cancellationToken);
+                var catalogDoc = JsonDocument.Parse(catalogJson);
+
+                _cachedSchemas.Clear();
+
+                // Parse the catalog
+                if (catalogDoc.RootElement.TryGetProperty("schemas", out var schemas))
+                {
+                    foreach (var schemaElement in schemas.EnumerateArray())
+                    {
+                        var schemaDoc = ParseSchemaStoreEntry(schemaElement);
+                        if (schemaDoc != null)
+                        {
+                            _cachedSchemas.Add(schemaDoc);
+                        }
+                    }
+                }
+
+                _initialized = true;
+                _lastRefresh = DateTimeOffset.UtcNow;
+            }
+            catch (HttpRequestException ex)
+            {
+                // Log error but don't fail - return empty results
+                Console.WriteLine($"Failed to fetch SchemaStore catalog: {ex.Message}");
+                _initialized = true; // Mark as initialized to prevent repeated failures
+            }
         }
-        catch (HttpRequestException ex)
+        finally
         {
-            // Log error but don't fail - return empty results
-            Console.WriteLine($"Failed to fetch SchemaStore catalog: {ex.Message}");
-            _initialized = true; // Mark as initialized to prevent repeated failures
+            _initLock.Release();
         }
     }
 
@@ -147,8 +171,9 @@ public class SchemaStoreRepository : ISchemaRepository
                 PropertyNames = []
             };
         }
-        catch
+        catch (JsonException)
         {
+            // Malformed JSON in SchemaStore catalog entry — skip this entry
             return null;
         }
     }

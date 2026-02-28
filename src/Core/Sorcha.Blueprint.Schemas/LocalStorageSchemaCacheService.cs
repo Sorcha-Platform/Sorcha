@@ -6,11 +6,13 @@ using Blazored.LocalStorage;
 namespace Sorcha.Blueprint.Schemas;
 
 /// <summary>
-/// LocalStorage-based implementation of schema caching
+/// LocalStorage-based implementation of schema caching.
+/// Thread-safe: uses SemaphoreSlim to prevent concurrent double-loading.
 /// </summary>
 public class LocalStorageSchemaCacheService : ISchemaCacheService
 {
     private readonly ILocalStorageService _localStorage;
+    private readonly SemaphoreSlim _loadLock = new(1, 1);
     private const string CacheKey = "sorcha:schema-cache";
     private static readonly TimeSpan DefaultCacheDuration = TimeSpan.FromDays(7); // 7 days default
 
@@ -123,34 +125,49 @@ public class LocalStorageSchemaCacheService : ISchemaCacheService
 
     private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
     {
+        // Fast path: already loaded
         if (_isLoaded)
         {
             return;
         }
 
+        await _loadLock.WaitAsync(cancellationToken);
         try
         {
-            var exists = await _localStorage.ContainKeyAsync(CacheKey, cancellationToken);
-            if (exists)
+            // Double-check after acquiring the lock to prevent double-loading
+            if (_isLoaded)
             {
-                _memoryCache = await _localStorage.GetItemAsync<SchemaCache>(CacheKey, cancellationToken);
+                return;
             }
 
-            if (_memoryCache == null)
+            try
             {
+                var exists = await _localStorage.ContainKeyAsync(CacheKey, cancellationToken);
+                if (exists)
+                {
+                    _memoryCache = await _localStorage.GetItemAsync<SchemaCache>(CacheKey, cancellationToken);
+                }
+
+                if (_memoryCache == null)
+                {
+                    _memoryCache = new SchemaCache();
+                }
+
+                // Automatically purge expired entries on load
+                _memoryCache.PurgeExpired();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading schema cache: {ex.Message}");
                 _memoryCache = new SchemaCache();
             }
 
-            // Automatically purge expired entries on load
-            _memoryCache.PurgeExpired();
+            _isLoaded = true;
         }
-        catch (Exception ex)
+        finally
         {
-            Console.WriteLine($"Error loading schema cache: {ex.Message}");
-            _memoryCache = new SchemaCache();
+            _loadLock.Release();
         }
-
-        _isLoaded = true;
     }
 
     private async Task SaveAsync(CancellationToken cancellationToken)

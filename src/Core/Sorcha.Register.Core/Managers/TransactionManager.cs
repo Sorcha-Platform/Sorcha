@@ -24,8 +24,21 @@ public class TransactionManager
     }
 
     /// <summary>
-    /// Stores a validated transaction in the register
+    /// Stores a validated transaction in the register.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>TOCTOU Warning:</strong> The fork-detection check (GetTransactionsByPrevTxIdAsync)
+    /// and the subsequent insert (InsertTransactionAsync) are not atomic. Under concurrent writes,
+    /// a second transaction referencing the same PrevTxId could pass the check before the first
+    /// insert completes, resulting in an undetected fork.
+    /// </para>
+    /// <para>
+    /// The storage layer should enforce uniqueness via a database constraint (e.g., a unique index
+    /// on (RegisterId, PrevTxId) for non-genesis transactions) to provide a definitive guard against
+    /// forks. The in-application check here serves as a fast-path rejection only.
+    /// </para>
+    /// </remarks>
     public async Task<TransactionModel> StoreTransactionAsync(
         TransactionModel transaction,
         CancellationToken cancellationToken = default)

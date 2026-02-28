@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http;
+using System.Text.Json;
+
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 
@@ -151,7 +154,9 @@ public class CredentialVerifier : ICredentialVerifier
             Type = credentialType,
             IssuerDid = issuerDid,
             VerifiedClaims = new Dictionary<string, object>(presentation.DisclosedClaims),
-            SignatureValid = true, // Deferred to service layer
+            // Fail-safe: signature is unverified until explicitly validated by the
+            // service layer which has access to issuer public keys.
+            SignatureValid = false,
             RevocationStatus = revocationStatus ?? "Active"
         };
 
@@ -196,9 +201,14 @@ public class CredentialVerifier : ICredentialVerifier
 
             return status;
         }
-        catch
+        catch (HttpRequestException)
         {
-            // Revocation check failed — apply policy
+            // Revocation check failed due to network error — apply policy
+            return ApplyRevocationUnavailablePolicy(credentialId, requirement, result);
+        }
+        catch (JsonException)
+        {
+            // Revocation check failed due to malformed response — apply policy
             return ApplyRevocationUnavailablePolicy(credentialId, requirement, result);
         }
     }

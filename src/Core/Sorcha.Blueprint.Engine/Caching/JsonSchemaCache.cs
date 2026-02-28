@@ -18,11 +18,12 @@ namespace Sorcha.Blueprint.Engine.Caching;
 /// Schema parsing (JsonSchema.FromText) is expensive — this cache ensures each unique schema
 /// is only parsed once and then reused for subsequent validations.
 /// </remarks>
-public class JsonSchemaCache
+public class JsonSchemaCache : IDisposable
 {
     private readonly IMemoryCache _cache;
     private readonly MemoryCacheEntryOptions _defaultOptions;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    private bool _disposed;
 
     public JsonSchemaCache(IMemoryCache cache)
     {
@@ -113,6 +114,26 @@ public class JsonSchemaCache
         }
 
         _locks.Clear();
+    }
+
+    /// <summary>
+    /// Disposes all per-key semaphores and the underlying MemoryCache.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        foreach (var semaphore in _locks.Values)
+        {
+            semaphore.Dispose();
+        }
+        _locks.Clear();
+
+        if (_cache is IDisposable disposableCache)
+        {
+            disposableCache.Dispose();
+        }
     }
 
     private static string ComputeHash(string schemaJson)

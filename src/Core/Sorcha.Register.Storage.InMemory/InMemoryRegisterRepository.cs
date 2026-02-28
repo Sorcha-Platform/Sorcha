@@ -62,10 +62,13 @@ public class InMemoryRegisterRepository : IRegisterRepository
     {
         register.UpdatedAt = DateTime.UtcNow;
 
-        if (!_registers.TryUpdate(register.Id, register, _registers[register.Id]))
-        {
-            throw new InvalidOperationException($"Failed to update register {register.Id}");
-        }
+        // Use AddOrUpdate to atomically replace the value, avoiding the TOCTOU race
+        // that occurred when reading _registers[register.Id] as the comparison value
+        // for TryUpdate — the entry could change between the read and the update.
+        _registers.AddOrUpdate(
+            register.Id,
+            _ => throw new InvalidOperationException($"Register {register.Id} does not exist"),
+            (_, _) => register);
 
         return Task.FromResult(register);
     }

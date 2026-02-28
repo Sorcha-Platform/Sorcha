@@ -177,6 +177,10 @@ public class ActionProcessor : IActionProcessor
         }
         catch (Exception ex)
         {
+            // WARNING: All exceptions are caught here and converted to error messages in the result.
+            // This includes unexpected failures (e.g., NullReferenceException, ObjectDisposedException)
+            // that may indicate bugs rather than business logic errors. If an ILogger is added to this
+            // class in the future, log at Error level with the full exception (ex) here.
             result.Success = false;
             result.Errors.Add($"Action processing error: {ex.Message}");
         }

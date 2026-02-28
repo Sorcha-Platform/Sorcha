@@ -17,6 +17,8 @@ public class DocketCacheWarmingService : IHostedService
     private readonly IVerifiedCache<Docket, ulong>? _docketCache;
     private readonly RegisterStorageConfiguration _configuration;
     private readonly ILogger<DocketCacheWarmingService> _logger;
+    private Task? _backgroundWarmingTask;
+    private CancellationTokenSource? _backgroundCts;
 
     /// <summary>
     /// Initializes a new instance of the DocketCacheWarmingService.
@@ -85,21 +87,28 @@ public class DocketCacheWarmingService : IHostedService
             }
             else
             {
-                // Start progressive warming in background
-                _ = Task.Run(async () =>
+                // Start progressive warming in background with linked cancellation
+                _backgroundCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var bgToken = _backgroundCts.Token;
+
+                _backgroundWarmingTask = Task.Run(async () =>
                 {
                     try
                     {
-                        await _docketCache.WarmCacheAsync(targetSequence, progress, CancellationToken.None);
+                        await _docketCache.WarmCacheAsync(targetSequence, progress, bgToken);
                         _logger.LogInformation(
                             "Progressive docket cache warming completed for {Count} dockets",
                             targetSequence);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogInformation("Progressive docket cache warming was cancelled");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Progressive docket cache warming failed");
                     }
-                }, CancellationToken.None);
+                }, bgToken);
 
                 _logger.LogInformation(
                     "Progressive docket cache warming started for {Count} dockets",
@@ -118,9 +127,29 @@ public class DocketCacheWarmingService : IHostedService
     }
 
     /// <inheritdoc/>
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Docket cache warming service stopping");
-        return Task.CompletedTask;
+
+        // Cancel the background warming task if running
+        if (_backgroundCts is not null)
+        {
+            await _backgroundCts.CancelAsync();
+
+            if (_backgroundWarmingTask is not null)
+            {
+                try
+                {
+                    // Wait for the background task to complete, but respect the stop timeout
+                    await _backgroundWarmingTask.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected — either our cancellation or the host's stop timeout
+                }
+            }
+
+            _backgroundCts.Dispose();
+        }
     }
 }

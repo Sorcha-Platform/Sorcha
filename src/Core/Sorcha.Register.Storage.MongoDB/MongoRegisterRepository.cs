@@ -25,7 +25,7 @@ namespace Sorcha.Register.Storage.MongoDB;
 public class MongoRegisterRepository : IRegisterRepository
 {
     private static readonly object ClassMapLock = new();
-    private static bool _classMapRegistered;
+    private static volatile bool _classMapRegistered;
 
     private readonly IMongoClient _client;
     private readonly IMongoCollection<RegisterEntity> _registers;
@@ -37,10 +37,18 @@ public class MongoRegisterRepository : IRegisterRepository
     private readonly IMongoCollection<MongoModels.MongoTransactionDocument>? _legacyMongoTransactions;
     private readonly IMongoCollection<Docket>? _legacyDockets;
 
+    // Lazy async index creation to avoid .GetAwaiter().GetResult() deadlock risk in constructor
+    private readonly SemaphoreSlim _indexInitLock = new(1, 1);
+    private bool _indexesCreated;
+
     /// <summary>
     /// Initializes a new instance of the MongoRegisterRepository.
     /// </summary>
+    /// <param name="client">The MongoDB client instance, provided by DI.</param>
+    /// <param name="options">MongoDB storage configuration.</param>
+    /// <param name="logger">Logger instance.</param>
     public MongoRegisterRepository(
+        IMongoClient client,
         IOptions<MongoRegisterStorageConfiguration> options,
         ILogger<MongoRegisterRepository> logger)
     {
@@ -51,7 +59,7 @@ public class MongoRegisterRepository : IRegisterRepository
         _config = options.Value;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _client = new MongoClient(_config.ConnectionString);
+        _client = client ?? throw new ArgumentNullException(nameof(client));
 
         // Registry database holds register metadata
         var registryDatabase = _client.GetDatabase(_config.DatabaseName);
@@ -65,10 +73,8 @@ public class MongoRegisterRepository : IRegisterRepository
             _legacyDockets = registryDatabase.GetCollection<Docket>(_config.DocketCollectionName);
         }
 
-        if (_config.CreateIndexesOnStartup)
-        {
-            CreateIndexesAsync().GetAwaiter().GetResult();
-        }
+        // Index creation is deferred to the first async operation via EnsureIndexesCreatedAsync()
+        // to avoid .GetAwaiter().GetResult() deadlock risk in constructor.
 
         _logger.LogInformation(
             "MongoRegisterRepository initialized. Mode: {Mode}, Registry: {DatabaseName}",
@@ -222,6 +228,27 @@ public class MongoRegisterRepository : IRegisterRepository
     }
 
     /// <summary>
+    /// Ensures indexes are created exactly once, lazily on the first async operation.
+    /// Uses a SemaphoreSlim for thread-safe one-time initialization.
+    /// </summary>
+    private async Task EnsureIndexesCreatedAsync()
+    {
+        if (_indexesCreated || !_config.CreateIndexesOnStartup) return;
+
+        await _indexInitLock.WaitAsync();
+        try
+        {
+            if (_indexesCreated) return;
+            await CreateIndexesAsync();
+            _indexesCreated = true;
+        }
+        finally
+        {
+            _indexInitLock.Release();
+        }
+    }
+
+    /// <summary>
     /// Creates indexes for optimal query performance.
     /// </summary>
     private async Task CreateIndexesAsync()
@@ -322,6 +349,7 @@ public class MongoRegisterRepository : IRegisterRepository
     /// <inheritdoc/>
     public async Task<bool> IsLocalRegisterAsync(string registerId, CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesCreatedAsync();
         var filter = Builders<RegisterEntity>.Filter.Eq(r => r.Id, registerId);
         var count = await _registers.CountDocumentsAsync(filter, new CountOptions { Limit = 1 }, cancellationToken);
         return count > 0;
@@ -330,6 +358,7 @@ public class MongoRegisterRepository : IRegisterRepository
     /// <inheritdoc/>
     public async Task<IEnumerable<RegisterEntity>> GetRegistersAsync(CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesCreatedAsync();
         return await _registers.Find(FilterDefinition<RegisterEntity>.Empty)
             .ToListAsync(cancellationToken);
     }
@@ -348,6 +377,7 @@ public class MongoRegisterRepository : IRegisterRepository
     /// <inheritdoc/>
     public async Task<RegisterEntity?> GetRegisterAsync(string registerId, CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesCreatedAsync();
         var filter = Builders<RegisterEntity>.Filter.Eq(r => r.Id, registerId);
         return await _registers.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
@@ -356,6 +386,7 @@ public class MongoRegisterRepository : IRegisterRepository
     public async Task<RegisterEntity> InsertRegisterAsync(RegisterEntity newRegister, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(newRegister);
+        await EnsureIndexesCreatedAsync();
 
         await _registers.InsertOneAsync(newRegister, new InsertOneOptions(), cancellationToken);
         _logger.LogDebug("Inserted register {RegisterId}", newRegister.Id);

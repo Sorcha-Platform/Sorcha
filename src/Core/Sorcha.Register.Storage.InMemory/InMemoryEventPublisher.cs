@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
 using Sorcha.Register.Core.Events;
 
 namespace Sorcha.Register.Storage.InMemory;
@@ -8,10 +9,11 @@ namespace Sorcha.Register.Storage.InMemory;
 /// <summary>
 /// In-memory implementation of IEventPublisher for testing.
 /// When an InMemoryEventSubscriber is provided, published events are dispatched to subscribers.
+/// Thread-safe: uses ConcurrentBag for concurrent publish access.
 /// </summary>
 public class InMemoryEventPublisher : IEventPublisher
 {
-    private readonly List<PublishedEvent> _publishedEvents = new();
+    private readonly ConcurrentBag<PublishedEvent> _publishedEvents = new();
     private readonly InMemoryEventSubscriber? _subscriber;
 
     public InMemoryEventPublisher() { }
@@ -44,7 +46,7 @@ public class InMemoryEventPublisher : IEventPublisher
     /// <summary>
     /// Gets all published events for testing verification
     /// </summary>
-    public IReadOnlyList<PublishedEvent> GetPublishedEvents() => _publishedEvents.AsReadOnly();
+    public IReadOnlyList<PublishedEvent> GetPublishedEvents() => _publishedEvents.ToList().AsReadOnly();
 
     /// <summary>
     /// Gets published events of a specific type
@@ -53,7 +55,8 @@ public class InMemoryEventPublisher : IEventPublisher
     {
         return _publishedEvents
             .Where(e => e.Event is TEvent)
-            .Select(e => (TEvent)e.Event);
+            .Select(e => (TEvent)e.Event)
+            .ToList();
     }
 
     /// <summary>

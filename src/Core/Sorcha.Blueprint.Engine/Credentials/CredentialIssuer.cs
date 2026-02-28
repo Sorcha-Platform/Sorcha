@@ -119,7 +119,9 @@ public class CredentialIssuer : ICredentialIssuer
         }
         catch (FormatException)
         {
-            // Default to 1 year if parsing fails
+            // WARNING: Failed to parse ISO 8601 duration, falling back to 365-day default.
+            // This may silently produce credentials with unintended lifetimes if the
+            // ExpiryDuration configuration value is malformed.
             return TimeSpan.FromDays(365);
         }
     }

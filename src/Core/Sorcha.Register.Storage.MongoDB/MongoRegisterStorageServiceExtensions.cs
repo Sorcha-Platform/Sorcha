@@ -4,6 +4,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using Sorcha.Register.Core.Storage;
 
 namespace Sorcha.Register.Storage.MongoDB;
@@ -28,6 +30,11 @@ public static class MongoRegisterStorageServiceExtensions
         services.Configure<MongoRegisterStorageConfiguration>(
             configuration.GetSection("RegisterStorage:MongoDB"));
 
+        services.TryAddSingleton<IMongoClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+            return new MongoClient(config.ConnectionString);
+        });
         services.TryAddSingleton<IRegisterRepository, MongoRegisterRepository>();
 
         return services;
@@ -46,6 +53,11 @@ public static class MongoRegisterStorageServiceExtensions
         ArgumentNullException.ThrowIfNull(configure);
 
         services.Configure(configure);
+        services.TryAddSingleton<IMongoClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+            return new MongoClient(config.ConnectionString);
+        });
         services.TryAddSingleton<IRegisterRepository, MongoRegisterRepository>();
 
         return services;
@@ -68,6 +80,11 @@ public static class MongoRegisterStorageServiceExtensions
         services.Configure<MongoRegisterStorageConfiguration>(
             configuration.GetSection("RegisterStorage:MongoDB"));
 
+        services.TryAddSingleton<IMongoClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+            return new MongoClient(config.ConnectionString);
+        });
         services.TryAddSingleton<IReadOnlyRegisterRepository, MongoRegisterRepository>();
 
         return services;
@@ -96,6 +113,11 @@ public static class MongoRegisterStorageServiceExtensions
             }
         });
 
+        services.TryAddSingleton<IMongoClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+            return new MongoClient(config.ConnectionString);
+        });
         services.TryAddSingleton<IRegisterRepository, MongoRegisterRepository>();
 
         return services;

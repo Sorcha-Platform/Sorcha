@@ -17,12 +17,13 @@ namespace Sorcha.Blueprint.Engine.Caching;
 /// Caches expressions by their hash and type to avoid re-parsing the same expression multiple times.
 /// Thread-safe for concurrent async access via per-key locking.
 /// </remarks>
-public class JsonLogicCache
+public class JsonLogicCache : IDisposable
 {
     private readonly IMemoryCache _cache;
     private readonly MemoryCacheEntryOptions _defaultOptions;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
     private readonly ConcurrentDictionary<string, ConcurrentBag<string>> _keysByHash = new();
+    private bool _disposed;
 
     public JsonLogicCache(IMemoryCache cache)
     {
@@ -173,6 +174,26 @@ public class JsonLogicCache
         var bytes = Encoding.UTF8.GetBytes(json);
         var hash = SHA256.HashData(bytes);
         return Convert.ToBase64String(hash);
+    }
+
+    /// <summary>
+    /// Disposes all per-key semaphores and the underlying MemoryCache.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        foreach (var semaphore in _locks.Values)
+        {
+            semaphore.Dispose();
+        }
+        _locks.Clear();
+
+        if (_cache is IDisposable disposableCache)
+        {
+            disposableCache.Dispose();
+        }
     }
 
     /// <summary>

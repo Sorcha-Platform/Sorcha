@@ -95,6 +95,14 @@ public class RedisStreamEventSubscriber : IEventSubscriber
         var positions = streamKeys.Select(_ => (RedisValue)">").ToArray();
         var lastPendingClaim = DateTime.UtcNow;
 
+        // Pre-build a lookup dictionary for O(1) stream key -> index resolution
+        // instead of O(n) Array.IndexOf on every iteration
+        var streamKeyIndex = new Dictionary<string, int>(streamKeys.Length);
+        for (var i = 0; i < streamKeys.Length; i++)
+        {
+            streamKeyIndex[streamKeys[i]] = i;
+        }
+
         _logger.LogInformation(
             "Starting event processing loop for {StreamCount} streams as consumer {Consumer}",
             streamKeys.Length, _consumerName);
@@ -105,7 +113,7 @@ public class RedisStreamEventSubscriber : IEventSubscriber
             {
                 // Read new messages from all subscribed streams
                 var results = await db.StreamReadGroupAsync(
-                    streamKeys.Select(k => new StreamPosition(k, positions[Array.IndexOf(streamKeys, k)])).ToArray(),
+                    streamKeys.Select(k => new StreamPosition(k, positions[streamKeyIndex[k]])).ToArray(),
                     _config.ConsumerGroup,
                     _consumerName,
                     _config.BatchSize);

@@ -12,7 +12,7 @@ namespace Sorcha.Blueprint.Schemas;
 public class BuiltInSchemaRepository : ISchemaRepository
 {
     private readonly List<SchemaDocument> _schemas = [];
-    private bool _initialized = false;
+    private volatile bool _initialized = false;
 
     public SchemaSource SourceType => SchemaSource.BuiltIn;
 
@@ -79,6 +79,8 @@ public class BuiltInSchemaRepository : ISchemaRepository
 
                 using var reader = new StreamReader(stream);
                 var jsonContent = reader.ReadToEnd();
+
+                // Parse JSON once and reuse for both metadata extraction and schema storage
                 var jsonDoc = JsonDocument.Parse(jsonContent);
 
                 // Extract metadata from the schema
@@ -100,6 +102,7 @@ public class BuiltInSchemaRepository : ISchemaRepository
                 // Determine category and tags based on the schema
                 var (category, tags) = DetermineMetadata(title, description, propertyNames);
 
+                // Reuse the already-parsed jsonDoc (do NOT dispose — SchemaDocument takes ownership)
                 _schemas.Add(new SchemaDocument
                 {
                     Metadata = new SchemaMetadata
@@ -114,7 +117,7 @@ public class BuiltInSchemaRepository : ISchemaRepository
                         Author = "Sorcha Contributors",
                         License = "MIT"
                     },
-                    Schema = JsonDocument.Parse(jsonContent),
+                    Schema = jsonDoc,
                     PropertyNames = propertyNames
                 });
             }

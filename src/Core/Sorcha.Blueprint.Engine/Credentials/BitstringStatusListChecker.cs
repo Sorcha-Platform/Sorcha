@@ -45,7 +45,7 @@ public class BitstringStatusListChecker : IRevocationChecker
         try
         {
             var response = await _httpClient.GetStringAsync(statusListUrl, cancellationToken);
-            var doc = JsonDocument.Parse(response);
+            using var doc = JsonDocument.Parse(response);
             var root = doc.RootElement;
 
             // Navigate W3C BitstringStatusListCredential envelope
@@ -90,9 +90,11 @@ public class BitstringStatusListChecker : IRevocationChecker
 
             return "Active";
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
-            return null; // Network/parse failure — caller applies policy
+            // Status check is optional — network or parse failures are non-fatal.
+            // The caller applies its own policy when null is returned.
+            return null;
         }
     }
 

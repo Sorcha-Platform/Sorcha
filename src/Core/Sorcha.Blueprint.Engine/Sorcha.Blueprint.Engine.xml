@@ -69,6 +69,11 @@
             Compute a hash for the expression
             </summary>
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Caching.JsonLogicCache.Dispose">
+            <summary>
+            Disposes all per-key semaphores and the underlying MemoryCache.
+            </summary>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Caching.JsonLogicCache.GetStatistics">
             <summary>
             Get cache statistics
@@ -133,6 +138,11 @@
         <member name="M:Sorcha.Blueprint.Engine.Caching.JsonSchemaCache.Clear">
             <summary>
             Clear the entire schema cache.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Caching.JsonSchemaCache.Dispose">
+            <summary>
+            Disposes all per-key semaphores and the underlying MemoryCache.
             </summary>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Credentials.BitstringStatusListChecker">

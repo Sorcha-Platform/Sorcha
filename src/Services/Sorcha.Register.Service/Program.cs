@@ -69,11 +69,18 @@ if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
     builder.Services.Configure<MongoRegisterStorageConfiguration>(
         builder.Configuration.GetSection("RegisterStorage:MongoDB"));
 
+    builder.Services.AddSingleton<IMongoClient>(sp =>
+    {
+        var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+        return new MongoClient(config.ConnectionString);
+    });
+
     builder.Services.AddSingleton<IRegisterRepository>(sp =>
     {
+        var client = sp.GetRequiredService<IMongoClient>();
         var options = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>();
         var logger = sp.GetRequiredService<ILogger<MongoRegisterRepository>>();
-        return new MongoRegisterRepository(options, logger);
+        return new MongoRegisterRepository(client, options, logger);
     });
 
     // Register the same instance as IReadOnlyRegisterRepository

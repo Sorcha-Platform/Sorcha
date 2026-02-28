@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -10,11 +11,13 @@ namespace Sorcha.Blueprint.Schemas;
 /// <summary>
 /// Repository that fetches schemas from the Blueprint Service API.
 /// Supports system schemas and custom organization schemas.
+/// Thread-safe: uses ConcurrentDictionary for ETag cache and lock for schema cache access.
 /// </summary>
 public class BlueprintServiceRepository : ISchemaRepository
 {
     private readonly HttpClient _httpClient;
-    private readonly Dictionary<string, string> _etagCache = new();
+    private readonly ConcurrentDictionary<string, string> _etagCache = new();
+    private readonly object _cacheLock = new();
     private List<SchemaDocument>? _cachedSchemas;
     private DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
@@ -30,10 +33,13 @@ public class BlueprintServiceRepository : ISchemaRepository
     /// <inheritdoc />
     public async Task<IEnumerable<SchemaDocument>> GetAllSchemasAsync(CancellationToken cancellationToken = default)
     {
-        // Return cached if still valid
-        if (_cachedSchemas != null && DateTimeOffset.UtcNow < _cacheExpiry)
+        // Return cached if still valid (read under lock for consistency)
+        lock (_cacheLock)
         {
-            return _cachedSchemas;
+            if (_cachedSchemas != null && DateTimeOffset.UtcNow < _cacheExpiry)
+            {
+                return _cachedSchemas;
+            }
         }
 
         try
@@ -44,17 +50,25 @@ public class BlueprintServiceRepository : ISchemaRepository
             // Fetch custom schemas (if authenticated)
             var customSchemas = await FetchCustomSchemasAsync(cancellationToken);
 
-            _cachedSchemas = systemSchemas.Concat(customSchemas).ToList();
-            _cacheExpiry = DateTimeOffset.UtcNow.Add(CacheDuration);
+            var result = systemSchemas.Concat(customSchemas).ToList();
 
-            return _cachedSchemas;
+            lock (_cacheLock)
+            {
+                _cachedSchemas = result;
+                _cacheExpiry = DateTimeOffset.UtcNow.Add(CacheDuration);
+            }
+
+            return result;
         }
         catch (HttpRequestException)
         {
             // If offline, return cached schemas even if expired
-            if (_cachedSchemas != null)
+            lock (_cacheLock)
             {
-                return _cachedSchemas;
+                if (_cachedSchemas != null)
+                {
+                    return _cachedSchemas;
+                }
             }
 
             return [];
@@ -197,8 +211,11 @@ public class BlueprintServiceRepository : ISchemaRepository
     /// <inheritdoc />
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        _cachedSchemas = null;
-        _cacheExpiry = DateTimeOffset.MinValue;
+        lock (_cacheLock)
+        {
+            _cachedSchemas = null;
+            _cacheExpiry = DateTimeOffset.MinValue;
+        }
         _etagCache.Clear();
 
         await GetAllSchemasAsync(cancellationToken);
@@ -230,8 +247,14 @@ public class BlueprintServiceRepository : ISchemaRepository
 
             return documents;
         }
-        catch
+        catch (HttpRequestException)
         {
+            // Network failure fetching system schemas — return empty to allow graceful degradation
+            return [];
+        }
+        catch (JsonException)
+        {
+            // Malformed response from Blueprint Service — return empty
             return [];
         }
     }
@@ -255,8 +278,14 @@ public class BlueprintServiceRepository : ISchemaRepository
 
             return result.Schemas.Select(ConvertToSchemaDocument);
         }
-        catch
+        catch (HttpRequestException)
         {
+            // Network failure fetching custom schemas — return empty to allow graceful degradation
+            return [];
+        }
+        catch (JsonException)
+        {
+            // Malformed response from Blueprint Service — return empty
             return [];
         }
     }
