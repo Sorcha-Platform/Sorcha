@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     paths:
       - 'src/Common/**'
+      - 'src/Core/**'
 
   workflow_dispatch:
     inputs:
@@ -33,13 +34,24 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all libraries"
-            CHANGED='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.ServiceClients","Sorcha.ServiceDefaults"]'
+            CHANGED='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.ServiceClients","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
           else
             CHANGED="["
             FIRST=true
             for dir in src/Common/*/; do
               LIB=$(basename "$dir")
               if git diff --name-only HEAD~1 HEAD | grep -q "src/Common/$LIB/"; then
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  CHANGED="$CHANGED,"
+                fi
+                CHANGED="$CHANGED\"$LIB\""
+              fi
+            done
+            for dir in src/Core/*/; do
+              LIB=$(basename "$dir")
+              if git diff --name-only HEAD~1 HEAD | grep -q "src/Core/$LIB/"; then
                 if [ "$FIRST" = true ]; then
                   FIRST=false
                 else
@@ -81,7 +93,17 @@ jobs:
       - name: Bump minor version
         id: version
         run: |
-          CSPROJ="src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj"
+          if [ -f "src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj" ]; then
+            CSPROJ="src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj"
+          elif [ -f "src/Core/${{ matrix.library }}/${{ matrix.library }}.csproj" ]; then
+            CSPROJ="src/Core/${{ matrix.library }}/${{ matrix.library }}.csproj"
+          else
+            echo "ERROR: Cannot find csproj for ${{ matrix.library }}"
+            exit 1
+          fi
+          echo "csproj_path=$CSPROJ" >> "$GITHUB_OUTPUT"
+          LIB_DIR=$(dirname "$CSPROJ")
+          echo "lib_dir=$LIB_DIR" >> "$GITHUB_OUTPUT"
           CURRENT=$(grep -oP '<Version>\K[^<]+' "$CSPROJ")
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
@@ -97,10 +119,10 @@ jobs:
       - name: Restore and Build
         run: |
           dotnet restore
-          dotnet build src/Common/${{ matrix.library }}/ --configuration Release --no-restore
+          dotnet build ${{ steps.version.outputs.lib_dir }}/ --configuration Release --no-restore
 
       - name: Pack
-        run: dotnet pack src/Common/${{ matrix.library }}/ --configuration Release --no-build -o ./nupkg
+        run: dotnet pack ${{ steps.version.outputs.lib_dir }}/ --configuration Release --no-build -o ./nupkg
 
       - name: Publish to NuGet.org
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
@@ -109,6 +131,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "src/Common/${{ matrix.library }}/${{ matrix.library }}.csproj"
+          git add "${{ steps.version.outputs.csproj_path }}"
           git commit -m "chore: bump ${{ matrix.library }} to ${{ steps.version.outputs.new_version }}" || true
           git push || true

@@ -25,7 +25,9 @@ jobs:
         run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
       - name: Pack NuGet packages (validation only)
-        run: dotnet pack src/Common/ --no-build --configuration Release -o ./nupkg
+        run: |
+          dotnet pack src/Common/ --no-build --configuration Release -o ./nupkg
+          dotnet pack src/Core/ --no-build --configuration Release -o ./nupkg
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
