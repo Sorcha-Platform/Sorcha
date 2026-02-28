@@ -4,7 +4,7 @@
 
 **Version:** 6.3
 **Last Updated:** 2026-02-28
-**Status:** Active - Production Packaging & CI/CD (Phase C complete)
+**Status:** Active - Production Packaging & CI/CD (Phase D complete)
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
 ---
@@ -14,8 +14,8 @@
 This document tracks **active work only**. Completed phases and historical updates have been archived.
 
 **Total Tasks:** 386 (across all phases)
-**Completed:** 240 (62%)
-**In Progress:** 8 (2%)
+**Completed:** 244 (63%)
+**In Progress:** 4 (1%)
 **Not Started:** 138 (36%)
 
 ---
@@ -201,14 +201,16 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 | C5 | Create docker-publish.yml (auto Docker image build & push on merge to Docker Hub) | ✅ |
 | C6 | Integration test improvements (Register.Service.IntegrationTests, remove stubs) | ✅ |
 
-### Phase D: Applications (src/Apps/) — 📋 NOT STARTED
+### Phase D: Applications (src/Apps/) — ✅ COMPLETE
+
+**Plan doc:** [docs/plans/2026-02-28-phase-d-code-quality-findings.md](../docs/plans/2026-02-28-phase-d-code-quality-findings.md)
 
 | # | Task | Status |
 |---|------|--------|
-| D1 | Add Directory.Build.props for Apps (shared build settings) | 📋 |
-| D2 | Code quality review across all applications | 📋 |
-| D3 | Standardize app project configuration | 📋 |
-| D4 | Create app-specific CI workflows (CLI publish, UI deploy) | 📋 |
+| D1 | Add Directory.Build.props for Apps (shared build settings) | ✅ |
+| D2 | Code quality review across all applications (31 bare catches, 7 #region files, 11 Console.WriteLine) | ✅ |
+| D3 | Standardize app project configuration (7 csproj, 2 Dockerfiles) | ✅ |
+| D4 | Add Apps to Docker CI/CD + CLI publish workflow | ✅ |
 | D5 | E2E test pipeline integration (Playwright in CI) | ✅ |
 
 ---
