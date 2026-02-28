@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Monitoring;
 using Sorcha.Peer.Service.Network;
 
@@ -26,6 +27,7 @@ public class PeerService : BackgroundService
     private readonly HealthMonitorService _healthMonitorService;
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerExchangeService _exchangeService;
+    private readonly TransactionDistributionService _distributionService;
     private PeerServiceStatus _status = PeerServiceStatus.Offline;
     private string _nodeId = string.Empty;
     private readonly object _statusLock = new();
@@ -74,7 +76,8 @@ public class PeerService : BackgroundService
         PeerDiscoveryService peerDiscoveryService,
         HealthMonitorService healthMonitorService,
         PeerConnectionPool connectionPool,
-        PeerExchangeService exchangeService)
+        PeerExchangeService exchangeService,
+        TransactionDistributionService distributionService)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
@@ -84,6 +87,7 @@ public class PeerService : BackgroundService
         _healthMonitorService = healthMonitorService ?? throw new ArgumentNullException(nameof(healthMonitorService));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _exchangeService = exchangeService ?? throw new ArgumentNullException(nameof(exchangeService));
+        _distributionService = distributionService ?? throw new ArgumentNullException(nameof(distributionService));
     }
 
     /// <summary>
@@ -315,14 +319,19 @@ public class PeerService : BackgroundService
     /// </summary>
     private async Task RunTransactionProcessingAsync(CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Transaction processing task started (placeholder)");
+        _logger.LogDebug("Transaction processing task started");
 
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                // TODO: Sprint 4 - Implement transaction processing
-                await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+                var processed = await _distributionService.ProcessQueueAsync(cancellationToken);
+                if (processed > 0)
+                {
+                    _logger.LogDebug("Processed {Count} queued transactions", processed);
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             }
             catch (OperationCanceledException)
             {

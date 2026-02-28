@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Sorcha.Peer.Service;
 using Sorcha.Peer.Service.Communication;
@@ -72,6 +73,19 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Add Redis for advertisement persistence
 builder.AddRedisClient("redis");
+
+// Add PeerDbContext with PostgreSQL (falls back to InMemory if no connection string)
+var peerDbConnectionString = builder.Configuration.GetConnectionString("PeerDb");
+if (!string.IsNullOrEmpty(peerDbConnectionString))
+{
+    builder.Services.AddDbContextFactory<Sorcha.Peer.Service.Data.PeerDbContext>(options =>
+        options.UseNpgsql(peerDbConnectionString));
+}
+else
+{
+    builder.Services.AddDbContextFactory<Sorcha.Peer.Service.Data.PeerDbContext>(options =>
+        options.UseInMemoryDatabase("PeerServiceDb"));
+}
 
 // Add services
 builder.Services.AddGrpc(options =>
