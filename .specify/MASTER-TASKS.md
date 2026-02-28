@@ -46,7 +46,7 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 | A10 | Update codeql.yml branch references to master | ✅ |
 | A11 | Purge all legacy branding from source code, docs, specs | ✅ |
 | A12 | Code quality review across all 15 Common libraries | ✅ (review complete, fixes below) |
-| A13 | Fill test gaps (Storage.EFCore, Storage.MongoDB, Storage.Redis, Tenant.Models, Wallet.Core) | 📋 |
+| A13 | Fill test gaps (Storage.EFCore, Storage.MongoDB, Storage.Redis, Tenant.Models, Wallet.Core) | ✅ |
 | A14 | Update Directory.Packages.props — safe minor/patch package updates | ✅ |
 | A15 | Validation: build, test, pack all 15 libraries | ✅ |
 | A16 | Update git remote to sorcha-platform/sorcha | ✅ |
