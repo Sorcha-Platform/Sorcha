@@ -23,6 +23,8 @@ public class RegisterSyncBackgroundService : BackgroundService
     private readonly IDbContextFactory<PeerDbContext>? _dbContextFactory;
     private readonly RegisterSyncConfiguration _syncConfig;
     private readonly ConcurrentDictionary<string, RegisterSubscription> _subscriptions = new();
+    private readonly ConcurrentDictionary<string, Task> _liveSubscriptionTasks = new();
+    private CancellationTokenSource? _serviceCts;
 
     public RegisterSyncBackgroundService(
         ILogger<RegisterSyncBackgroundService> logger,
@@ -39,6 +41,7 @@ public class RegisterSyncBackgroundService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("RegisterSyncBackgroundService starting");
+        _serviceCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
         // Load existing subscriptions from database
         await LoadSubscriptionsAsync(stoppingToken);
@@ -46,22 +49,37 @@ public class RegisterSyncBackgroundService : BackgroundService
         using var timer = new PeriodicTimer(
             TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes));
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await ProcessSubscriptionsAsync(stoppingToken);
-                await timer.WaitForNextTickAsync(stoppingToken);
+                try
+                {
+                    await ProcessSubscriptionsAsync(stoppingToken);
+                    await timer.WaitForNextTickAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in RegisterSyncBackgroundService loop");
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        }
+        finally
+        {
+            // Cancel and await all live subscription tasks
+            _serviceCts.Cancel();
+            var activeTasks = _liveSubscriptionTasks.Values.ToArray();
+            if (activeTasks.Length > 0)
             {
-                break;
+                _logger.LogInformation("Waiting for {Count} live subscription tasks to complete", activeTasks.Length);
+                await Task.WhenAll(activeTasks).ConfigureAwait(false);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in RegisterSyncBackgroundService loop");
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-            }
+            _serviceCts.Dispose();
         }
 
         _logger.LogInformation("RegisterSyncBackgroundService stopped");
@@ -105,6 +123,13 @@ public class RegisterSyncBackgroundService : BackgroundService
     {
         if (_subscriptions.TryRemove(registerId, out _))
         {
+            // Stop live subscription if running
+            if (_liveSubscriptionTasks.TryRemove(registerId, out var liveTask) && !liveTask.IsCompleted)
+            {
+                _logger.LogDebug("Waiting for live subscription task to stop for register {RegisterId}", registerId);
+                await liveTask.ConfigureAwait(false);
+            }
+
             await DeleteSubscriptionAsync(registerId, cancellationToken);
             _logger.LogInformation("Unsubscribed from register {RegisterId}", registerId);
         }
@@ -173,7 +198,7 @@ public class RegisterSyncBackgroundService : BackgroundService
             case RegisterSyncState.FullyReplicated:
             case RegisterSyncState.Active:
                 // Subscribe to live transactions (no-op if already streaming)
-                // The live subscription runs as a long-lived stream
+                EnsureLiveSubscription(subscription);
                 break;
 
             case RegisterSyncState.Error:
@@ -188,6 +213,49 @@ public class RegisterSyncBackgroundService : BackgroundService
                 }
                 break;
         }
+    }
+
+    /// <summary>
+    /// Ensures a live subscription task is running for the given register.
+    /// No-op if the task is already active.
+    /// </summary>
+    private void EnsureLiveSubscription(RegisterSubscription subscription)
+    {
+        var registerId = subscription.RegisterId;
+
+        // Check if there's already an active (non-completed) task
+        if (_liveSubscriptionTasks.TryGetValue(registerId, out var existingTask)
+            && !existingTask.IsCompleted)
+        {
+            return;
+        }
+
+        var token = _serviceCts?.Token ?? CancellationToken.None;
+        var task = Task.Run(async () =>
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Starting live subscription for register {RegisterId}",
+                    registerId);
+                await _replicationService.SubscribeToLiveTransactionsAsync(subscription, token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("Live subscription cancelled for register {RegisterId}", registerId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Live subscription failed for register {RegisterId}", registerId);
+                subscription.RecordSyncFailure($"Live subscription error: {ex.Message}");
+            }
+            finally
+            {
+                _liveSubscriptionTasks.TryRemove(registerId, out _);
+            }
+        }, token);
+
+        _liveSubscriptionTasks[registerId] = task;
     }
 
     private async Task LoadSubscriptionsAsync(CancellationToken cancellationToken)
