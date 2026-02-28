@@ -1,8 +1,8 @@
 # Sorcha Platform - Development Status Report
 
-**Date:** 2026-02-26
-**Version:** 3.5 (Updated after UI & CLI Modernization)
-**Overall Completion:** 98%
+**Date:** 2026-03-01
+**Version:** 4.0 (Updated after Phase E Feature Completion)
+**Overall Completion:** 100% MVD
 
 ---
 
@@ -14,16 +14,16 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
 - Wallet Service is 95% complete with full API implementation, JWT authentication, and EF Core persistence
 - Register Service is 100% complete with comprehensive testing, JWT authentication, and decentralized governance (234 tests)
-- **Peer Service 80% complete**: P2P topology, JWT auth, EF Core migrations, cache eviction, gRPC hardening
-- **Validator Service 95% complete**: Memory pool, docket building, consensus, gRPC peer communication, governance rights enforcement (620 tests)
-- **Tenant Service 85% complete**: 67 integration tests (61 passing, 91% pass rate)
+- **Peer Service 100% MVD**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions
+- **Validator Service 100% MVD**: Memory pool, docket building, consensus, gRPC, duplicate detection cross-check (620+ tests)
+- **Tenant Service 100% MVD**: Auth, orgs, service principals (includeInactive), user count stats
 - **AUTH-002 complete**: All services now have JWT Bearer authentication with authorization policies
 - **Quantum-Safe Cryptography 100% complete**: ML-DSA-65, ML-KEM-768, SLH-DSA-128s, BLS12-381 threshold signatures, ZK proofs (Pedersen commitments, range proofs), per-register crypto policy, ws2 Bech32m addresses (270+ new tests)
 - **UI Modernization 100% complete**: Comprehensive overhaul — admin panels, workflow management, cloud persistence, dashboard stats, wallet/transaction integration, template library, explorer enhancements, consistent ID truncation
 - **UI Register Management 100% complete**: Wallet selection wizard, search/filter, transaction query
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
-- Total actual completion: 98% (production-ready with authentication and database persistence)
+- Total actual completion: 100% MVD (all feature gaps closed, auth policies on all API routes)
 
 ---
 
@@ -36,9 +36,9 @@ For detailed implementation status, see the individual section files:
 | [Blueprint-Action Service](status/blueprint-service.md) | 100% | Full orchestration, SignalR, JWT auth |
 | [Wallet Service](status/wallet-service.md) | 95% | EF Core, API complete, HD wallets |
 | [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
-| [Peer Service](status/peer-service.md) | 80% | P2P topology, JWT auth, EF migrations |
-| [Validator Service](status/validator-service.md) | 95% | Consensus, memory pool, gRPC |
-| [Tenant Service](status/tenant-service.md) | 85% | Auth, orgs, service principals |
+| [Peer Service](status/peer-service.md) | 100% MVD | P2P, 7 gRPC RPCs, replication, live subs |
+| [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
+| [Tenant Service](status/tenant-service.md) | 100% MVD | Auth, orgs, principals, user stats |
 | [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
 | [Core Libraries & Infrastructure](status/core-libraries.md) | 95% | Engine, Crypto, Gateway |
 | **Sorcha.UI (Unified)** | 100% | Register management, designer, consumer pages |
@@ -56,12 +56,12 @@ For detailed implementation status, see the individual section files:
 | **Blueprint.Service** | 100% | Complete | None |
 | **Wallet.Service** | 95% | Nearly Complete | Azure Key Vault |
 | **Register.Service** | 100% | Complete | None |
-| **Peer.Service** | 80% | Functional | Tests, Polish |
-| **Validator.Service** | 95% | Nearly Complete | Enclave support |
-| **Tenant.Service** | 85% | Nearly Complete | 6 failing tests |
+| **Peer.Service** | 100% MVD | Complete | None (deferred: BLS threshold) |
+| **Validator.Service** | 100% MVD | Complete | None (deferred: enclave, fork detection) |
+| **Tenant.Service** | 100% MVD | Complete | None (deferred: Azure AD B2C) |
 | **Authentication (AUTH-002)** | 100% | Complete | None |
 | **Sorcha.Cryptography (PQC)** | 100% | Complete | None |
-| **ApiGateway** | 95% | Complete | Rate limiting |
+| **ApiGateway** | 100% MVD | Complete | None |
 | **Sorcha.UI (Unified)** | 100% | Complete | None |
 | **Sorcha.CLI** | 100% | Complete | None |
 | **CI/CD** | 95% | Complete | Prod validation |
@@ -74,7 +74,7 @@ For detailed implementation status, see the individual section files:
 | **Phase 2: Wallet Service** | 95% | Nearly Complete |
 | **Phase 3: Register Service** | 100% | Complete |
 | **Authentication Integration (AUTH-002)** | 100% | Complete |
-| **Overall Platform** | **98%** | **Production-Ready with Authentication** |
+| **Overall Platform** | **100% MVD** | **Feature Complete** |
 
 ### Test Coverage
 
