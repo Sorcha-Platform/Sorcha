@@ -13,7 +13,7 @@ namespace Sorcha.Cli.Tests.Commands;
 /// <summary>
 /// Integration tests for authentication commands.
 /// </summary>
-[Collection("AuthCommandsTests")]
+[Collection("CliEnvironment")]
 public class AuthCommandsTests : IDisposable
 {
     private readonly string _testConfigDir;

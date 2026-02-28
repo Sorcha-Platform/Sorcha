@@ -7,7 +7,7 @@ namespace Sorcha.Cli.Tests.Services;
 /// Collection to ensure ConfigurationService tests run sequentially
 /// (they share environment variables and file system state).
 /// </summary>
-[Collection("ConfigurationServiceTests")]
+[Collection("CliEnvironment")]
 public class ConfigurationServiceTests : IDisposable
 {
     private readonly string _testConfigDir;

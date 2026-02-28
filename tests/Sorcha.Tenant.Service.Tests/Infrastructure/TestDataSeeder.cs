@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Cryptography;
+using System.Text;
+
 using Microsoft.EntityFrameworkCore;
+
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 
@@ -85,13 +92,14 @@ public static class TestDataSeeder
 
         context.UserIdentities.AddRange(adminUser, memberUser, auditorUser);
 
-        // Create test service principal (note: in real implementation, ClientSecretEncrypted would be encrypted)
+        // Create test service principal with Argon2id-hashed secret
+        // ServiceAuthService.VerifyClientSecret expects salt(16) + hash(32) = 48 bytes
         var servicePrincipal = new ServicePrincipal
         {
             Id = Guid.NewGuid(),
             ServiceName = "test-service",
             ClientId = "test-client-id",
-            ClientSecretEncrypted = System.Text.Encoding.UTF8.GetBytes(BCrypt.Net.BCrypt.HashPassword("test-client-secret")),
+            ClientSecretEncrypted = CreateArgon2idHash("test-client-secret"),
             Status = ServicePrincipalStatus.Active,
             Scopes = new[] { "blueprints:read", "wallets:write" },
             CreatedAt = DateTimeOffset.UtcNow
@@ -100,5 +108,34 @@ public static class TestDataSeeder
         context.ServicePrincipals.Add(servicePrincipal);
 
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Creates an Argon2id hash matching the format used by ServiceAuthService.EncryptClientSecret.
+    /// Returns salt(16) + hash(32) = 48 bytes.
+    /// </summary>
+    private static byte[] CreateArgon2idHash(string secret)
+    {
+        var salt = new byte[16];
+        RandomNumberGenerator.Fill(salt);
+
+        var parameters = new Argon2Parameters.Builder(Argon2Parameters.Argon2id)
+            .WithSalt(salt)
+            .WithMemoryAsKB(65536)  // 64MB - matches ServiceAuthService
+            .WithIterations(3)
+            .WithParallelism(4)
+            .Build();
+
+        var generator = new Argon2BytesGenerator();
+        generator.Init(parameters);
+
+        var hash = new byte[32];
+        generator.GenerateBytes(Encoding.UTF8.GetBytes(secret), hash);
+
+        // Store as: salt(16) + hash(32) = 48 bytes
+        var result = new byte[48];
+        Buffer.BlockCopy(salt, 0, result, 0, 16);
+        Buffer.BlockCopy(hash, 0, result, 16, 32);
+        return result;
     }
 }

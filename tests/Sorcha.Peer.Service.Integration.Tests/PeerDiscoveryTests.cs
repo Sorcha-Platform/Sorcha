@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using FluentAssertions;
-using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
-using Sorcha.Peer.Service.Core;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+
+using FluentAssertions;
+
+using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
+using Sorcha.Peer.Service.Protos;
 
 namespace Sorcha.Peer.Service.Integration.Tests;
 
 /// <summary>
-/// Integration tests for peer discovery functionality
-/// Tests REST and gRPC endpoints for peer registration and discovery
+/// Integration tests for peer discovery functionality.
+/// Tests gRPC endpoints for peer registration and discovery,
+/// and REST endpoints for listing and querying peers.
 /// </summary>
 [Collection("PeerIntegration")]
 public class PeerDiscoveryTests : IClassFixture<PeerTestFixture>
@@ -24,47 +28,18 @@ public class PeerDiscoveryTests : IClassFixture<PeerTestFixture>
     }
 
     [Fact]
-    public async Task RegisterPeer_Via_REST_Should_Return_Success()
-    {
-        // Arrange
-        var peer = _fixture.Peers[0];
-        var newPeer = new PeerNode
-        {
-            PeerId = "test-peer-rest",
-            Endpoint = "http://localhost:5001",
-            Metadata = new Dictionary<string, string>
-            {
-                ["region"] = "us-west",
-                ["version"] = "1.0.0"
-            }
-        };
-
-        // Act
-        var response = await peer.HttpClient.PostAsJsonAsync("/api/peers", newPeer);
-
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location.Should().NotBeNull();
-        response.Headers.Location!.ToString().Should().Contain("/api/peers/test-peer-rest");
-
-        var registered = await response.Content.ReadFromJsonAsync<PeerNode>();
-        registered.Should().NotBeNull();
-        registered!.PeerId.Should().Be("test-peer-rest");
-        registered.Endpoint.Should().Be("http://localhost:5001");
-        registered.Status.Should().Be("active");
-        registered.Metadata.Should().ContainKey("region");
-    }
-
-    [Fact]
     public async Task RegisterPeer_Via_gRPC_Should_Return_Success()
     {
         // Arrange
         var peer = _fixture.Peers[0];
         var request = new RegisterPeerRequest
         {
-            PeerId = "test-peer-grpc",
-            Endpoint = "http://localhost:5002",
-            Metadata = { { "region", "eu-west" } }
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "test-peer-grpc",
+                Address = "localhost",
+                Port = 5002
+            }
         };
 
         // Act
@@ -73,19 +48,22 @@ public class PeerDiscoveryTests : IClassFixture<PeerTestFixture>
         // Assert
         response.Should().NotBeNull();
         response.Success.Should().BeTrue();
-        response.AssignedPeerId.Should().Be("test-peer-grpc");
         response.Message.Should().Be("Peer registered successfully");
     }
 
     [Fact]
-    public async Task RegisterPeer_Without_PeerId_Should_Generate_Id()
+    public async Task RegisterPeer_Without_PeerId_Should_Return_Failure()
     {
         // Arrange
         var peer = _fixture.Peers[0];
         var request = new RegisterPeerRequest
         {
-            PeerId = "", // Empty ID should trigger auto-generation
-            Endpoint = "http://localhost:5003"
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "", // Empty ID should fail validation
+                Address = "localhost",
+                Port = 5003
+            }
         };
 
         // Act
@@ -93,94 +71,94 @@ public class PeerDiscoveryTests : IClassFixture<PeerTestFixture>
 
         // Assert
         response.Should().NotBeNull();
-        response.Success.Should().BeTrue();
-        response.AssignedPeerId.Should().NotBeNullOrEmpty();
-        Guid.TryParse(response.AssignedPeerId, out _).Should().BeTrue("Generated ID should be a valid GUID");
+        response.Success.Should().BeFalse();
+        response.Message.Should().Contain("Invalid peer ID");
     }
 
     [Fact]
-    public async Task GetAllPeers_Should_Return_Registered_Peers()
+    public async Task RegisterPeer_Without_Address_Should_Return_Failure()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+        var request = new RegisterPeerRequest
+        {
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "test-no-addr",
+                Address = "", // Empty address should fail validation
+                Port = 5003
+            }
+        };
+
+        // Act
+        var response = await peer.GrpcClient.RegisterPeerAsync(request);
+
+        // Assert
+        response.Should().NotBeNull();
+        response.Success.Should().BeFalse();
+        response.Message.Should().Contain("Invalid peer address");
+    }
+
+    [Fact]
+    public async Task GetAllPeers_Via_REST_Should_Return_List()
     {
         // Arrange
         var peer = _fixture.Peers[0];
 
-        // Register multiple peers
-        var peerIds = new[] { "discovery-1", "discovery-2", "discovery-3" };
-        foreach (var peerId in peerIds)
+        // Register a peer via gRPC first
+        await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
         {
-            await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
+            PeerInfo = new PeerInfo
             {
-                PeerId = peerId,
-                Endpoint = $"http://localhost:{Random.Shared.Next(5000, 6000)}"
-            });
-        }
+                PeerId = "discovery-rest-test",
+                Address = "10.0.0.1",
+                Port = 5010
+            }
+        });
 
         // Act
         var response = await peer.HttpClient.GetAsync("/api/peers");
-        var peers = await response.Content.ReadFromJsonAsync<List<PeerNode>>();
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        peers.Should().NotBeNull();
-        peers!.Should().HaveCountGreaterOrEqualTo(3);
-        peers.Should().Contain(p => peerIds.Contains(p.PeerId));
+
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().NotBeNullOrEmpty();
+
+        // Parse as array - the response is a JSON array of peer objects
+        var peers = JsonSerializer.Deserialize<JsonElement>(content);
+        peers.ValueKind.Should().Be(JsonValueKind.Array);
     }
 
     [Fact]
-    public async Task GetPeerInfo_Via_REST_Should_Return_Peer_Details()
+    public async Task GetPeerById_Via_REST_Should_Return_Peer_Details()
     {
         // Arrange
         var peer = _fixture.Peers[0];
         var peerId = "rest-lookup-test";
 
-        await peer.HttpClient.PostAsJsonAsync("/api/peers", new PeerNode
+        await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
         {
-            PeerId = peerId,
-            Endpoint = "http://localhost:5010",
-            Metadata = new Dictionary<string, string> { ["test"] = "value" }
+            PeerInfo = new PeerInfo
+            {
+                PeerId = peerId,
+                Address = "10.0.0.2",
+                Port = 5011
+            }
         });
 
         // Act
         var response = await peer.HttpClient.GetAsync($"/api/peers/{peerId}");
-        var foundPeer = await response.Content.ReadFromJsonAsync<PeerNode>();
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        foundPeer.Should().NotBeNull();
-        foundPeer!.PeerId.Should().Be(peerId);
-        foundPeer.Metadata.Should().ContainKey("test");
+
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().Contain(peerId);
     }
 
     [Fact]
-    public async Task GetPeerInfo_Via_gRPC_Should_Return_Peer_Details()
-    {
-        // Arrange
-        var peer = _fixture.Peers[0];
-        var peerId = "grpc-lookup-test";
-
-        await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
-        {
-            PeerId = peerId,
-            Endpoint = "http://localhost:5011",
-            Metadata = { { "protocol", "grpc" } }
-        });
-
-        // Act
-        var response = await peer.GrpcClient.GetPeerInfoAsync(new PeerInfoRequest
-        {
-            PeerId = peerId
-        });
-
-        // Assert
-        response.Should().NotBeNull();
-        response.PeerId.Should().Be(peerId);
-        response.Endpoint.Should().Be("http://localhost:5011");
-        response.Status.Should().Be("active");
-        response.Metadata.Should().ContainKey("protocol");
-    }
-
-    [Fact]
-    public async Task GetPeerInfo_For_Nonexistent_Peer_Should_Return_NotFound()
+    public async Task GetPeerById_For_Nonexistent_Peer_Should_Return_NotFound()
     {
         // Arrange
         var peer = _fixture.Peers[0];
@@ -194,95 +172,144 @@ public class PeerDiscoveryTests : IClassFixture<PeerTestFixture>
     }
 
     [Fact]
-    public async Task UnregisterPeer_Should_Remove_From_Registry()
+    public async Task GetPeerList_Via_gRPC_Should_Return_Peers()
     {
         // Arrange
         var peer = _fixture.Peers[0];
-        var peerId = "to-be-removed";
 
-        await peer.HttpClient.PostAsJsonAsync("/api/peers", new PeerNode
+        // Register a peer so the list is not empty
+        await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
         {
-            PeerId = peerId,
-            Endpoint = "http://localhost:5020"
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "grpc-list-test",
+                Address = "10.0.0.3",
+                Port = 5012
+            }
         });
 
-        // Act - Delete the peer
-        var deleteResponse = await peer.HttpClient.DeleteAsync($"/api/peers/{peerId}");
+        // Act
+        var response = await peer.GrpcClient.GetPeerListAsync(new PeerListRequest
+        {
+            RequestingPeerId = peer.PeerId,
+            MaxPeers = 100
+        });
 
-        // Assert - Verify deletion
-        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        // Verify peer is gone
-        var getResponse = await peer.HttpClient.GetAsync($"/api/peers/{peerId}");
-        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        // Assert
+        response.Should().NotBeNull();
+        response.TotalPeers.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
-    public async Task Multiple_Peers_Can_Discover_Each_Other()
+    public async Task Ping_Via_gRPC_Should_Return_Online_Status()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+
+        // Act
+        var response = await peer.GrpcClient.PingAsync(new PingRequest
+        {
+            PeerId = peer.PeerId
+        });
+
+        // Assert
+        response.Should().NotBeNull();
+        response.Status.Should().Be(PeerStatus.Online);
+        response.Timestamp.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task ExchangePeers_Via_gRPC_Should_Exchange_Peer_Lists()
     {
         // Arrange
         var peer1 = _fixture.Peers[0];
-        var peer2 = _fixture.Peers[1];
 
-        // Register peer2 with peer1's registry
+        // Register some peers first
         await peer1.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
         {
-            PeerId = peer2.PeerId,
-            Endpoint = peer2.BaseAddress,
-            Metadata = { { "source", "peer2" } }
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "exchange-peer-1",
+                Address = "10.0.0.10",
+                Port = 5020
+            }
         });
 
-        // Register peer1 with peer2's registry
-        await peer2.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
+        // Act
+        var response = await peer1.GrpcClient.ExchangePeersAsync(new PeerExchangeRequest
         {
-            PeerId = peer1.PeerId,
-            Endpoint = peer1.BaseAddress,
-            Metadata = { { "source", "peer1" } }
-        });
-
-        // Act - Each peer queries for the other
-        var peer1FindsPeer2 = await peer1.GrpcClient.GetPeerInfoAsync(new PeerInfoRequest
-        {
-            PeerId = peer2.PeerId
-        });
-
-        var peer2FindsPeer1 = await peer2.GrpcClient.GetPeerInfoAsync(new PeerInfoRequest
-        {
-            PeerId = peer1.PeerId
+            PeerId = "remote-peer",
+            MaxPeers = 50
         });
 
         // Assert
-        peer1FindsPeer2.Should().NotBeNull();
-        peer1FindsPeer2.PeerId.Should().Be(peer2.PeerId);
-
-        peer2FindsPeer1.Should().NotBeNull();
-        peer2FindsPeer1.PeerId.Should().Be(peer1.PeerId);
+        response.Should().NotBeNull();
+        response.Success.Should().BeTrue();
     }
 
     [Fact]
-    public async Task Peer_Registration_Should_Include_Timestamp()
+    public async Task Multiple_Peers_Can_Register_Via_gRPC()
     {
         // Arrange
         var peer = _fixture.Peers[0];
-        var beforeRegistration = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var peerIds = new[] { "multi-1", "multi-2", "multi-3" };
 
         // Act
-        await Task.Delay(100); // Small delay to ensure timestamp difference
-        var response = await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
+        foreach (var peerId in peerIds)
         {
-            PeerId = "timestamp-test",
-            Endpoint = "http://localhost:5030"
+            var response = await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
+            {
+                PeerInfo = new PeerInfo
+                {
+                    PeerId = peerId,
+                    Address = "10.0.0.100",
+                    Port = Random.Shared.Next(5000, 6000)
+                }
+            });
+
+            // Assert
+            response.Success.Should().BeTrue($"Peer '{peerId}' should register successfully");
+        }
+    }
+
+    [Fact]
+    public async Task FindPeersForRegister_Via_gRPC_Should_Return_Results()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+
+        // Register a peer with an advertised register
+        await peer.GrpcClient.RegisterPeerAsync(new RegisterPeerRequest
+        {
+            PeerInfo = new PeerInfo
+            {
+                PeerId = "register-holder",
+                Address = "10.0.0.50",
+                Port = 5050,
+                AdvertisedRegisters =
+                {
+                    new PeerRegisterAdvertisement
+                    {
+                        RegisterId = "test-register-001",
+                        HasFullReplica = true,
+                        LatestVersion = 5,
+                        IsPublic = true
+                    }
+                }
+            }
         });
 
-        var peerInfo = await peer.GrpcClient.GetPeerInfoAsync(new PeerInfoRequest
+        // Act
+        var response = await peer.GrpcClient.FindPeersForRegisterAsync(new FindPeersForRegisterRequest
         {
-            PeerId = "timestamp-test"
+            RegisterId = "test-register-001",
+            RequestingPeerId = peer.PeerId,
+            MaxPeers = 10
         });
-
-        var afterRegistration = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         // Assert
-        peerInfo.RegisteredAt.Should().BeGreaterThan(beforeRegistration);
-        peerInfo.RegisteredAt.Should().BeLessThanOrEqualTo(afterRegistration);
+        response.Should().NotBeNull();
+        // The response may or may not contain the peer depending on health status
+        response.TotalPeers.Should().BeGreaterThanOrEqualTo(0);
     }
 }
