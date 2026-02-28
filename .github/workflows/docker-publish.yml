@@ -130,8 +130,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            sorcha/${{ matrix.service }}:latest
-            sorcha/${{ matrix.service }}:master
-            sorcha/${{ matrix.service }}:master-${{ github.sha }}
+            sorchadev/${{ matrix.service }}:latest
+            sorchadev/${{ matrix.service }}:master
+            sorchadev/${{ matrix.service }}:master-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

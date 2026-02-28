@@ -107,7 +107,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Blueprint.Service/Dockerfile
-    image: sorcha/blueprint-service:latest
+    image: sorchadev/blueprint-service:latest
     container_name: sorcha-blueprint-service
     restart: unless-stopped
     ports:
@@ -161,7 +161,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Wallet.Service/Dockerfile
-    image: sorcha/wallet-service:latest
+    image: sorchadev/wallet-service:latest
     container_name: sorcha-wallet-service
     restart: unless-stopped
     # No ports published - internal service only, accessed via API Gateway
@@ -207,7 +207,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Register.Service/Dockerfile
-    image: sorcha/register-service:latest
+    image: sorchadev/register-service:latest
     container_name: sorcha-register-service
     restart: unless-stopped
     ports:
@@ -268,7 +268,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Tenant.Service/Dockerfile
-    image: sorcha/tenant-service:latest
+    image: sorchadev/tenant-service:latest
     container_name: sorcha-tenant-service
     restart: unless-stopped
     ports:
@@ -314,7 +314,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Peer.Service/Dockerfile
-    image: sorcha/peer-service:latest
+    image: sorchadev/peer-service:latest
     container_name: sorcha-peer-service
     restart: unless-stopped
     ports:
@@ -364,7 +364,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.Validator.Service/Dockerfile
-    image: sorcha/validator-service:latest
+    image: sorchadev/validator-service:latest
     container_name: sorcha-validator-service
     restart: unless-stopped
     ports:
@@ -426,7 +426,7 @@ services:
     build:
       context: .
       dockerfile: src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile
-    image: sorcha/ui-web:latest
+    image: sorchadev/ui-web:latest
     container_name: sorcha-ui-web
     restart: unless-stopped
     ports:
@@ -457,7 +457,7 @@ services:
     build:
       context: .
       dockerfile: src/Services/Sorcha.ApiGateway/Dockerfile
-    image: sorcha/api-gateway:latest
+    image: sorchadev/api-gateway:latest
     container_name: sorcha-api-gateway
     restart: unless-stopped
     ports:
@@ -516,7 +516,7 @@ services:
     build:
       context: .
       dockerfile: src/Apps/Sorcha.McpServer/Dockerfile
-    image: sorcha/mcp-server:latest
+    image: sorchadev/mcp-server:latest
     container_name: sorcha-mcp-server
     profiles:
       - tools  # Only starts with --profile tools or docker-compose run
