@@ -80,7 +80,6 @@ public class TransactionPoolPoller : ITransactionPoolPoller
             .Build();
     }
 
-    #region Key Generation
 
     private string GetQueueKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:queue";
@@ -91,7 +90,6 @@ public class TransactionPoolPoller : ITransactionPoolPoller
     private string GetExpiryKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:expiry";
 
-    #endregion
 
     /// <inheritdoc/>
     public async Task<bool> SubmitTransactionAsync(

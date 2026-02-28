@@ -19,7 +19,6 @@ public class IdentityRepository : IIdentityRepository
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
-    #region UserIdentity Implementation
 
     public async Task<UserIdentity?> GetUserByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -77,9 +76,7 @@ public class IdentityRepository : IIdentityRepository
         }
     }
 
-    #endregion
 
-    #region PublicIdentity Implementation
 
     public async Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -117,9 +114,7 @@ public class IdentityRepository : IIdentityRepository
         }
     }
 
-    #endregion
 
-    #region ServicePrincipal Implementation
 
     public async Task<ServicePrincipal?> GetServicePrincipalByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -170,5 +165,4 @@ public class IdentityRepository : IIdentityRepository
         }
     }
 
-    #endregion
 }

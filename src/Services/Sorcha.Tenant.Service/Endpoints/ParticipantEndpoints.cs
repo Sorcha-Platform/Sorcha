@@ -243,7 +243,6 @@ public static class ParticipantEndpoints
         return app;
     }
 
-    #region Organization Participant Handlers
 
     private static async Task<Results<Created<ParticipantDetailResponse>, ValidationProblem, Conflict<string>>> CreateParticipant(
         Guid organizationId,
@@ -372,9 +371,7 @@ public static class ParticipantEndpoints
         return success ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
-    #endregion
 
-    #region Participant Publishing Handlers
 
     private static async Task<Results<Accepted<ParticipantPublishResult>, ValidationProblem, Conflict<string>>> PublishParticipantRecord(
         Guid organizationId,
@@ -512,9 +509,7 @@ public static class ParticipantEndpoints
         }
     }
 
-    #endregion
 
-    #region Wallet Link Handlers
 
     private static async Task<Results<Created<WalletLinkChallengeResponse>, NotFound<string>, Conflict<string>>> InitiateWalletLink(
         Guid organizationId,
@@ -638,9 +633,7 @@ public static class ParticipantEndpoints
         return success ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
-    #endregion
 
-    #region Global Participant Handlers
 
     private static async Task<Ok<ParticipantSearchResponse>> SearchParticipants(
         ParticipantSearchRequest request,
@@ -670,9 +663,7 @@ public static class ParticipantEndpoints
         return result != null ? TypedResults.Ok(result) : TypedResults.NotFound();
     }
 
-    #endregion
 
-    #region User Profile Handlers
 
     private static async Task<Ok<List<ParticipantDetailResponse>>> GetMyParticipantProfiles(
         IParticipantService participantService,
@@ -718,9 +709,7 @@ public static class ParticipantEndpoints
         }
     }
 
-    #endregion
 
-    #region Service-Internal Handlers
 
     private static async Task<Results<Ok<ParticipantDetailResponse>, NotFound>> GetParticipantByUser(
         Guid organizationId,
@@ -747,5 +736,4 @@ public static class ParticipantEndpoints
         return TypedResults.Ok(result);
     }
 
-    #endregion
 }

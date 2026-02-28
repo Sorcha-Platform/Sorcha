@@ -324,7 +324,6 @@ public class BadActorDetector : IBadActorDetector
         }
     }
 
-    #region Private Methods
 
     private void RecordIncident(BadActorIncident incident)
     {
@@ -433,7 +432,6 @@ public class BadActorDetector : IBadActorDetector
         return $"{registerId}:{validatorId}";
     }
 
-    #endregion
 }
 
 /// <summary>

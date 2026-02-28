@@ -19,7 +19,6 @@ public class ParticipantRepository : IParticipantRepository
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
-    #region ParticipantIdentity Implementation
 
     public async Task<ParticipantIdentity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -152,9 +151,7 @@ public class ParticipantRepository : IParticipantRepository
             .AnyAsync(p => p.UserId == userId && p.OrganizationId == organizationId, cancellationToken);
     }
 
-    #endregion
 
-    #region LinkedWalletAddress Implementation
 
     public async Task<LinkedWalletAddress?> GetWalletLinkByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -210,9 +207,7 @@ public class ParticipantRepository : IParticipantRepository
         return walletLink?.Participant;
     }
 
-    #endregion
 
-    #region WalletLinkChallenge Implementation
 
     public async Task<WalletLinkChallenge?> GetChallengeByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -261,9 +256,7 @@ public class ParticipantRepository : IParticipantRepository
         return expiredChallenges.Count;
     }
 
-    #endregion
 
-    #region ParticipantAuditEntry Implementation
 
     public async Task<ParticipantAuditEntry> CreateAuditEntryAsync(ParticipantAuditEntry entry, CancellationToken cancellationToken = default)
     {
@@ -292,5 +285,4 @@ public class ParticipantRepository : IParticipantRepository
         return (entries, totalCount);
     }
 
-    #endregion
 }

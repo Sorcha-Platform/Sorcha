@@ -79,7 +79,6 @@ public class GenesisConfigService : IGenesisConfigService
             .Build();
     }
 
-    #region Key Generation
 
     private string GetConfigKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:config";
@@ -90,7 +89,6 @@ public class GenesisConfigService : IGenesisConfigService
     private string GetLastCheckKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:lastcheck";
 
-    #endregion
 
     /// <inheritdoc/>
     public async Task<ConsensusConfig> GetConsensusConfigAsync(
@@ -256,7 +254,6 @@ public class GenesisConfigService : IGenesisConfigService
         }
     }
 
-    #region Private Methods
 
     private async Task<GenesisConfiguration?> GetFromRedisAsync(
         string registerId,
@@ -703,9 +700,7 @@ public class GenesisConfigService : IGenesisConfigService
         ConfigChanged?.Invoke(this, args);
     }
 
-    #endregion
 
-    #region Inner Classes
 
     private class LocalCacheEntry
     {
@@ -713,5 +708,4 @@ public class GenesisConfigService : IGenesisConfigService
         public required DateTimeOffset ExpiresAt { get; init; }
     }
 
-    #endregion
 }

@@ -11,7 +11,6 @@ namespace Sorcha.Tenant.Service.Services;
 /// </summary>
 public interface IParticipantService
 {
-    #region Registration Operations
 
     /// <summary>
     /// Registers a user as a participant in an organization (admin registration).
@@ -45,9 +44,7 @@ public interface IParticipantService
         string? ipAddress = null,
         CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region Query Operations
 
     /// <summary>
     /// Gets a participant by ID.
@@ -121,9 +118,7 @@ public interface IParticipantService
         Guid organizationId,
         CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region Update Operations
 
     /// <summary>
     /// Updates a participant's information.
@@ -183,9 +178,7 @@ public interface IParticipantService
         string? ipAddress = null,
         CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region Validation Operations
 
     /// <summary>
     /// Validates that a participant has signing capability (active linked wallet).
@@ -209,5 +202,4 @@ public interface IParticipantService
         Guid organizationId,
         CancellationToken cancellationToken = default);
 
-    #endregion
 }

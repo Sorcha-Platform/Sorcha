@@ -377,7 +377,6 @@ public class ControlDocketProcessor : IControlDocketProcessor
         }
     }
 
-    #region Control Action Type Detection
 
     private static bool IsControlAction(string actionId)
     {
@@ -413,9 +412,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
             or ControlActionType.ValidatorRemove;
     }
 
-    #endregion
 
-    #region Payload Parsing
 
     private ControlPayload ParseControlPayload(Transaction tx, ControlActionType actionType)
     {
@@ -459,9 +456,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
         };
     }
 
-    #endregion
 
-    #region Validation Methods
 
     private static List<string> ValidateValidatorRegistration(
         ControlTransaction controlTx,
@@ -740,9 +735,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
         return errors;
     }
 
-    #endregion
 
-    #region Action Application Methods
 
     private async Task<string> ApplyValidatorRegisterAsync(
         string registerId,
@@ -905,9 +898,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
         return $"Crypto policy updated to version {payload.Version} ({payload.EnforcementMode} mode, {payload.AcceptedSignatureAlgorithms.Length} accepted algorithms)";
     }
 
-    #endregion
 
-    #region Event Methods
 
     private void RaiseControlActionApplied(
         string registerId,
@@ -925,5 +916,4 @@ public class ControlDocketProcessor : IControlDocketProcessor
         });
     }
 
-    #endregion
 }

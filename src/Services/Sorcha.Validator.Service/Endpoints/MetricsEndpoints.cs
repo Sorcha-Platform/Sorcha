@@ -336,7 +336,6 @@ public static class MetricsEndpoints
     }
 }
 
-#region Response Models
 
 /// <summary>
 /// Aggregated metrics from all validator subsystems
@@ -555,4 +554,3 @@ public record ValidationEngineConfigSummary
     public bool EnableMetrics { get; init; }
 }
 
-#endregion

@@ -79,7 +79,6 @@ public class BlueprintCache : IBlueprintCache
             .Build();
     }
 
-    #region Key Generation
 
     private string GetBlueprintKey(string blueprintId) =>
         $"{_config.KeyPrefix}{blueprintId}";
@@ -87,7 +86,6 @@ public class BlueprintCache : IBlueprintCache
     private string GetRegisterIndexKey(string registerId) =>
         $"{_config.KeyPrefix}index:{registerId}";
 
-    #endregion
 
     /// <inheritdoc/>
     public async Task<BlueprintModel?> GetBlueprintAsync(
@@ -421,7 +419,6 @@ public class BlueprintCache : IBlueprintCache
         return cached;
     }
 
-    #region Private Methods
 
     private async Task<BlueprintModel?> GetFromRedisAsync(string blueprintId, CancellationToken ct)
     {
@@ -509,9 +506,7 @@ public class BlueprintCache : IBlueprintCache
         }
     }
 
-    #endregion
 
-    #region Inner Classes
 
     private class LocalCacheEntry
     {
@@ -519,5 +514,4 @@ public class BlueprintCache : IBlueprintCache
         public required DateTimeOffset ExpiresAt { get; init; }
     }
 
-    #endregion
 }

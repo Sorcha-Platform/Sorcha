@@ -102,7 +102,7 @@ public class ParticipantIndexService
                 record.ParticipantId, record.Version, registerId, record.Addresses.Count);
 
             // Write-through to Redis for multi-instance consistency
-            WriteToCacheAsync(registerId, published).ConfigureAwait(false);
+            _ = WriteToCacheAsync(registerId, published);
         }
         catch (Exception ex)
         {

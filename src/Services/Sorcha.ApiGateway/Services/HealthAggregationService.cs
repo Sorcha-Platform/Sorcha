@@ -182,8 +182,9 @@ public class HealthAggregationService
 
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Failed to get metrics for service");
             return null;
         }
     }

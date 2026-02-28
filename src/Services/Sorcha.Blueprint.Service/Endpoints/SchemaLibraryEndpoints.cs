@@ -217,6 +217,7 @@ public static class SchemaLibraryEndpoints
         string providerName,
         ISchemaIndexService indexService,
         SchemaIndexRefreshService refreshService,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         // Check if provider is in backoff
@@ -227,6 +228,7 @@ public static class SchemaLibraryEndpoints
 
         try
         {
+            var logger = loggerFactory.CreateLogger("SchemaLibraryEndpoints");
             // Fire and forget — run in background with independent cancellation
             _ = Task.Run(async () =>
             {
@@ -234,9 +236,9 @@ public static class SchemaLibraryEndpoints
                 {
                     await refreshService.RefreshProviderManuallyAsync(providerName, CancellationToken.None);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Logged inside refresh service
+                    logger?.LogError(ex, "Background refresh of provider {Provider} failed", providerName);
                 }
             }, CancellationToken.None);
 

@@ -463,8 +463,8 @@ public static class WalletEndpoints
                     request.PqcWalletAddress, transactionData, request.DerivationPath, request.IsPreHashed, cancellationToken);
                 await Task.WhenAll(classicalTask, pqcTask);
 
-                var (classicalSig, classicalPublicKey) = classicalTask.Result;
-                var (pqcSig, pqcPublicKey) = pqcTask.Result;
+                var (classicalSig, classicalPublicKey) = await classicalTask;
+                var (pqcSig, pqcPublicKey) = await pqcTask;
 
                 var hybrid = new HybridSignature
                 {

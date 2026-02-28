@@ -225,7 +225,6 @@ public class ExceptionResponseHandler : IExceptionResponseHandler
         };
     }
 
-    #region Private Methods
 
     private static string GenerateExceptionId()
     {
@@ -341,7 +340,6 @@ public class ExceptionResponseHandler : IExceptionResponseHandler
         }
     }
 
-    #endregion
 }
 
 /// <summary>

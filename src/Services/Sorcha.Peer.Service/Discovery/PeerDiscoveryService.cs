@@ -14,7 +14,7 @@ namespace Sorcha.Peer.Service.Discovery;
 /// <summary>
 /// Service for discovering and connecting to peers
 /// </summary>
-public class PeerDiscoveryService
+public class PeerDiscoveryService : IDisposable
 {
     private readonly ILogger<PeerDiscoveryService> _logger;
     private readonly PeerServiceConfiguration _configuration;
@@ -266,5 +266,12 @@ public class PeerDiscoveryService
         _logger.LogDebug("Healthy peers: {Count}/{Minimum}", healthyCount, minimum);
 
         return healthyCount >= minimum;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _discoveryLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

@@ -249,7 +249,6 @@ public class ConsensusFailureHandler : IConsensusFailureHandler
         };
     }
 
-    #region Private Methods
 
     private static int GetRetryCount(Docket docket)
     {
@@ -272,5 +271,4 @@ public class ConsensusFailureHandler : IConsensusFailureHandler
         return TimeSpan.FromMilliseconds(delay);
     }
 
-    #endregion
 }

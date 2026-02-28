@@ -247,7 +247,6 @@ public static class DocketSerializer
         ValidatorSignature = FromSignatureDto(dto.ValidatorSignature)
     };
 
-    #region DTOs for Serialization
 
     private record DocketDto
     {
@@ -300,5 +299,4 @@ public static class DocketSerializer
         public SignatureDto ValidatorSignature { get; init; } = new();
     }
 
-    #endregion
 }

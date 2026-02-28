@@ -50,7 +50,7 @@ public record StatusListBitUpdate(string ListId, int Index, bool Value, int Vers
 /// In-memory implementation of <see cref="IStatusListManager"/>.
 /// Production would persist to MongoDB or PostgreSQL.
 /// </summary>
-public class StatusListManager : IStatusListManager
+public class StatusListManager : IStatusListManager, IDisposable
 {
     private readonly ConcurrentDictionary<string, BitstringStatusList> _lists = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
@@ -152,5 +152,16 @@ public class StatusListManager : IStatusListManager
     {
         _lists.TryGetValue(listId, out var list);
         return Task.FromResult(list);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        foreach (var semaphore in _locks.Values)
+        {
+            semaphore.Dispose();
+        }
+        _locks.Clear();
+        GC.SuppressFinalize(this);
     }
 }

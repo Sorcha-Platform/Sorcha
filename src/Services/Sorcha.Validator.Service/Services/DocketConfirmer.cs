@@ -210,7 +210,6 @@ public class DocketConfirmer : IDocketConfirmer
         }
     }
 
-    #region Validation Methods
 
     private DocketConfirmationResult? ValidateDocketStructure(Docket docket)
     {
@@ -553,9 +552,7 @@ public class DocketConfirmer : IDocketConfirmer
         return await _walletService.SignDocketAsync(docketHashBytes, ct);
     }
 
-    #endregion
 
-    #region Helper Methods
 
     private static DocketConfirmationResult CreateRejection(
         DocketRejectionReason reason,
@@ -593,7 +590,6 @@ public class DocketConfirmer : IDocketConfirmer
             duration);
     }
 
-    #endregion
 
     /// <summary>
     /// Get confirmer statistics

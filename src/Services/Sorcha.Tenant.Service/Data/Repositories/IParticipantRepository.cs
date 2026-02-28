@@ -12,7 +12,6 @@ namespace Sorcha.Tenant.Service.Data.Repositories;
 /// </summary>
 public interface IParticipantRepository
 {
-    #region ParticipantIdentity Operations
 
     /// <summary>
     /// Gets a participant identity by ID.
@@ -66,9 +65,7 @@ public interface IParticipantRepository
     /// </summary>
     Task<bool> ExistsAsync(Guid userId, Guid organizationId, CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region LinkedWalletAddress Operations
 
     /// <summary>
     /// Gets a linked wallet address by ID.
@@ -106,9 +103,7 @@ public interface IParticipantRepository
     /// </summary>
     Task<ParticipantIdentity?> GetParticipantByWalletAddressAsync(string walletAddress, CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region WalletLinkChallenge Operations
 
     /// <summary>
     /// Gets a wallet link challenge by ID.
@@ -136,9 +131,7 @@ public interface IParticipantRepository
     /// </summary>
     Task<int> ExpirePendingChallengesAsync(CancellationToken cancellationToken = default);
 
-    #endregion
 
-    #region ParticipantAuditEntry Operations
 
     /// <summary>
     /// Creates an audit entry for a participant action.
@@ -154,5 +147,4 @@ public interface IParticipantRepository
         int pageSize = 50,
         CancellationToken cancellationToken = default);
 
-    #endregion
 }

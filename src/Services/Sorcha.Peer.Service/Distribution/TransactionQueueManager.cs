@@ -19,6 +19,8 @@ public class TransactionQueueManager : IDisposable
     private readonly ConcurrentQueue<QueuedTransaction> _queue;
     private readonly SqliteConnection? _dbConnection;
     private readonly SemaphoreSlim _dbLock = new(1, 1);
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private bool _initialized;
     private bool _disposed;
 
     public TransactionQueueManager(
@@ -41,7 +43,26 @@ public class TransactionQueueManager : IDisposable
 
             _dbConnection = new SqliteConnection($"Data Source={dbPath}");
             _dbConnection.Open();
-            InitializeDatabaseAsync().GetAwaiter().GetResult();
+        }
+    }
+
+    private async Task EnsureInitializedAsync()
+    {
+        if (_initialized)
+            return;
+
+        await _initLock.WaitAsync();
+        try
+        {
+            if (!_initialized)
+            {
+                await InitializeDatabaseAsync();
+                _initialized = true;
+            }
+        }
+        finally
+        {
+            _initLock.Release();
         }
     }
 
@@ -50,6 +71,8 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task<bool> EnqueueAsync(TransactionNotification transaction, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync();
+
         if (transaction == null)
             throw new ArgumentNullException(nameof(transaction));
 
@@ -104,6 +127,8 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task MarkAsProcessedAsync(string id, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync();
+
         _logger.LogDebug("Marked transaction {Id} as processed", id);
 
         if (_configuration.QueuePersistence)
@@ -117,6 +142,8 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task<bool> MarkAsFailedAsync(QueuedTransaction transaction, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync();
+
         if (transaction == null)
             return false;
 
@@ -166,6 +193,8 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task LoadFromDatabaseAsync(CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync();
+
         if (!_configuration.QueuePersistence || _dbConnection == null)
             return;
 
@@ -341,6 +370,7 @@ public class TransactionQueueManager : IDisposable
     {
         if (!_disposed)
         {
+            _initLock.Dispose();
             _dbLock.Dispose();
             _dbConnection?.Dispose();
             _disposed = true;

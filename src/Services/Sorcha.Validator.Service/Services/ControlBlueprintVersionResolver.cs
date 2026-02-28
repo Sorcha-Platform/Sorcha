@@ -269,7 +269,6 @@ public class ControlBlueprintVersionResolver : IControlBlueprintVersionResolver
         _cacheTimestamps.TryRemove(registerId, out _);
     }
 
-    #region Private Methods
 
     private bool TryGetCachedActiveVersion(string registerId, out ResolvedControlBlueprintVersion? cached)
     {
@@ -534,5 +533,4 @@ public class ControlBlueprintVersionResolver : IControlBlueprintVersionResolver
             registerId, previousVersion, newVersion, changeType);
     }
 
-    #endregion
 }

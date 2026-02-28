@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -40,7 +41,7 @@ public class ChatHub : Hub
 {
     private readonly IChatOrchestrationService _orchestration;
     private readonly ILogger<ChatHub> _logger;
-    private static readonly Dictionary<string, CancellationTokenSource> _cancellationTokens = new();
+    private static readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokens = new();
 
     public ChatHub(
         IChatOrchestrationService orchestration,
@@ -77,7 +78,7 @@ public class ChatHub : Hub
         if (_cancellationTokens.TryGetValue(connectionId, out var cts))
         {
             cts.Cancel();
-            _cancellationTokens.Remove(connectionId);
+            _cancellationTokens.TryRemove(connectionId, out _);
         }
 
         if (exception != null)
@@ -218,7 +219,7 @@ public class ChatHub : Hub
         }
         finally
         {
-            _cancellationTokens.Remove(Context.ConnectionId);
+            _cancellationTokens.TryRemove(Context.ConnectionId, out _);
         }
     }
 
@@ -297,7 +298,7 @@ public class ChatHub : Hub
             if (_cancellationTokens.TryGetValue(Context.ConnectionId, out var cts))
             {
                 cts.Cancel();
-                _cancellationTokens.Remove(Context.ConnectionId);
+                _cancellationTokens.TryRemove(Context.ConnectionId, out _);
             }
 
             await _orchestration.EndSessionAsync(sessionId);

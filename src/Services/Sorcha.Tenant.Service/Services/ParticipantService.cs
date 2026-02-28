@@ -28,7 +28,6 @@ public class ParticipantService : IParticipantService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    #region Registration Operations
 
     /// <inheritdoc />
     public async Task<ParticipantDetailResponse> RegisterAsync(
@@ -146,9 +145,7 @@ public class ParticipantService : IParticipantService
         return await MapToDetailResponseAsync(created, cancellationToken);
     }
 
-    #endregion
 
-    #region Query Operations
 
     /// <inheritdoc />
     public async Task<ParticipantDetailResponse?> GetByIdAsync(
@@ -279,9 +276,7 @@ public class ParticipantService : IParticipantService
         return await MapToDetailResponseAsync(participant, cancellationToken);
     }
 
-    #endregion
 
-    #region Update Operations
 
     /// <inheritdoc />
     public async Task<ParticipantDetailResponse?> UpdateAsync(
@@ -449,9 +444,7 @@ public class ParticipantService : IParticipantService
         return true;
     }
 
-    #endregion
 
-    #region Validation Operations
 
     /// <inheritdoc />
     public async Task<bool> ValidateSigningCapabilityAsync(
@@ -471,9 +464,7 @@ public class ParticipantService : IParticipantService
         return await _participantRepository.ExistsAsync(userId, organizationId, cancellationToken);
     }
 
-    #endregion
 
-    #region Private Helper Methods
 
     private async Task<ParticipantResponse> MapToResponseAsync(
         ParticipantIdentity participant,
@@ -558,5 +549,4 @@ public class ParticipantService : IParticipantService
         };
     }
 
-    #endregion
 }

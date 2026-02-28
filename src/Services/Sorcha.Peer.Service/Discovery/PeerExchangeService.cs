@@ -14,7 +14,7 @@ namespace Sorcha.Peer.Service.Discovery;
 /// Gossip-style peer exchange service. Periodically exchanges peer lists
 /// with connected peers to build a mesh topology beyond seed nodes.
 /// </summary>
-public class PeerExchangeService
+public class PeerExchangeService : IDisposable
 {
     private readonly ILogger<PeerExchangeService> _logger;
     private readonly PeerListManager _peerListManager;
@@ -248,5 +248,12 @@ public class PeerExchangeService
         };
 
         return peer;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _exchangeLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

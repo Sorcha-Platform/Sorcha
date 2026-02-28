@@ -78,7 +78,6 @@ public class ValidatorRegistry : IValidatorRegistry
             .Build();
     }
 
-    #region Key Generation
 
     private string GetValidatorsKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:list";
@@ -89,7 +88,6 @@ public class ValidatorRegistry : IValidatorRegistry
     private string GetOrderKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:order";
 
-    #endregion
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ValidatorInfo>> GetActiveValidatorsAsync(
@@ -585,7 +583,6 @@ public class ValidatorRegistry : IValidatorRegistry
         }
     }
 
-    #region Private Methods
 
     private async Task<List<ValidatorInfo>> GetValidatorsFromRedisAsync(
         string registerId,
@@ -739,7 +736,6 @@ public class ValidatorRegistry : IValidatorRegistry
         ValidatorListChanged?.Invoke(this, args);
     }
 
-    #endregion
 
     private class LocalCacheEntry
     {

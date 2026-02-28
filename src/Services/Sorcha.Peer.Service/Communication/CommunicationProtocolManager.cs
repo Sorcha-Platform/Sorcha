@@ -17,6 +17,7 @@ namespace Sorcha.Peer.Service.Communication;
 public class CommunicationProtocolManager
 {
     private readonly ILogger<CommunicationProtocolManager> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly CommunicationConfiguration _configuration;
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, CircuitBreaker> _circuitBreakers;
@@ -24,10 +25,12 @@ public class CommunicationProtocolManager
 
     public CommunicationProtocolManager(
         ILogger<CommunicationProtocolManager> logger,
+        ILoggerFactory loggerFactory,
         IOptions<PeerServiceConfiguration> configuration,
         HttpClient httpClient)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _configuration = configuration?.Value?.Communication ?? throw new ArgumentNullException(nameof(configuration));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _circuitBreakers = new ConcurrentDictionary<string, CircuitBreaker>();
@@ -138,8 +141,7 @@ public class CommunicationProtocolManager
         var client = _streamingClients.GetOrAdd(peer.PeerId, _ =>
         {
             var address = $"http://{peer.Address}:{peer.Port}";
-            var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-            var logger = loggerFactory.CreateLogger<StreamingCommunicationClient>();
+            var logger = _loggerFactory.CreateLogger<StreamingCommunicationClient>();
             return new StreamingCommunicationClient(logger, peer.PeerId, address);
         });
 
@@ -257,8 +259,7 @@ public class CommunicationProtocolManager
     private RestFallbackClient CreateRestClient(PeerNode peer)
     {
         var baseUrl = $"http://{peer.Address}:{peer.Port}";
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var logger = loggerFactory.CreateLogger<RestFallbackClient>();
+        var logger = _loggerFactory.CreateLogger<RestFallbackClient>();
         return new RestFallbackClient(logger, _httpClient, baseUrl);
     }
 
@@ -266,8 +267,7 @@ public class CommunicationProtocolManager
     {
         return _circuitBreakers.GetOrAdd(peerId, _ =>
         {
-            var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-            var logger = loggerFactory.CreateLogger<CircuitBreaker>();
+            var logger = _loggerFactory.CreateLogger<CircuitBreaker>();
             return new CircuitBreaker(
                 logger,
                 $"peer-{peerId}",

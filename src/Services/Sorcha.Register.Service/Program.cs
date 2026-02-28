@@ -87,7 +87,6 @@ if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
         sp.GetRequiredService<IRegisterRepository>());
 
-    Console.WriteLine($"✅ Register Service using MongoDB storage: {builder.Configuration["RegisterStorage:MongoDB:ConnectionString"]}");
 }
 else
 {
@@ -97,8 +96,6 @@ else
     // Register the same instance as IReadOnlyRegisterRepository
     builder.Services.AddSingleton<IReadOnlyRegisterRepository>(sp =>
         sp.GetRequiredService<IRegisterRepository>());
-
-    Console.WriteLine("✅ Register Service using InMemory storage (development mode)");
 }
 
 // Event infrastructure: Redis Streams for durable event publishing/subscribing
@@ -170,6 +167,15 @@ builder.AddJwtAuthentication();
 builder.Services.AddRegisterAuthorization();
 
 var app = builder.Build();
+
+if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
+{
+    app.Logger.LogInformation("Register Service using MongoDB storage");
+}
+else
+{
+    app.Logger.LogInformation("Register Service using InMemory storage (development mode)");
+}
 
 // Map default endpoints (health checks)
 app.MapDefaultEndpoints();

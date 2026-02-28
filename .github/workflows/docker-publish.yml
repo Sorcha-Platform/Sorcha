@@ -1,0 +1,132 @@
+name: Docker Publish — Build & Push Images
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'src/Services/**'
+      - 'src/Common/**'
+      - 'src/Core/**'
+      - 'docker-compose.yml'
+      - 'Directory.Packages.props'
+
+  workflow_dispatch:
+    inputs:
+      force_publish_all:
+        description: 'Force publish all service images'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      has_changes: ${{ steps.detect.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed services
+        id: detect
+        run: |
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway"]'
+
+          if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
+            echo "Force publishing all services"
+            echo "services=$ALL_SERVICES" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check if Common or Core libraries changed — triggers all services
+          COMMON_CORE_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E "^src/(Common|Core)/" | head -1 || true)
+          DOCKER_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E "^(docker-compose\.yml|Directory\.Packages\.props)" | head -1 || true)
+
+          if [ -n "$COMMON_CORE_CHANGED" ] || [ -n "$DOCKER_CHANGED" ]; then
+            echo "Common/Core/infrastructure changed — rebuilding all services"
+            echo "services=$ALL_SERVICES" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check individual services
+          declare -A SERVICE_PATHS
+          SERVICE_PATHS["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/"
+          SERVICE_PATHS["wallet-service"]="src/Services/Sorcha.Wallet.Service/"
+          SERVICE_PATHS["register-service"]="src/Services/Sorcha.Register.Service/"
+          SERVICE_PATHS["tenant-service"]="src/Services/Sorcha.Tenant.Service/"
+          SERVICE_PATHS["peer-service"]="src/Services/Sorcha.Peer.Service/"
+          SERVICE_PATHS["validator-service"]="src/Services/Sorcha.Validator.Service/"
+          SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
+
+          CHANGED="["
+          FIRST=true
+          for SVC in "${!SERVICE_PATHS[@]}"; do
+            if git diff --name-only HEAD~1 HEAD | grep -q "${SERVICE_PATHS[$SVC]}"; then
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                CHANGED="$CHANGED,"
+              fi
+              CHANGED="$CHANGED\"$SVC\""
+            fi
+          done
+          CHANGED="$CHANGED]"
+
+          echo "services=$CHANGED" >> "$GITHUB_OUTPUT"
+          if [ "$CHANGED" = "[]" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Changed services: $CHANGED"
+
+  publish:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 3
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Dockerfile path
+        id: resolve
+        run: |
+          declare -A DOCKERFILES
+          DOCKERFILES["blueprint-service"]="src/Services/Sorcha.Blueprint.Service/Dockerfile"
+          DOCKERFILES["wallet-service"]="src/Services/Sorcha.Wallet.Service/Dockerfile"
+          DOCKERFILES["register-service"]="src/Services/Sorcha.Register.Service/Dockerfile"
+          DOCKERFILES["tenant-service"]="src/Services/Sorcha.Tenant.Service/Dockerfile"
+          DOCKERFILES["peer-service"]="src/Services/Sorcha.Peer.Service/Dockerfile"
+          DOCKERFILES["validator-service"]="src/Services/Sorcha.Validator.Service/Dockerfile"
+          DOCKERFILES["api-gateway"]="src/Services/Sorcha.ApiGateway/Dockerfile"
+          echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.resolve.outputs.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          tags: |
+            sorcha/${{ matrix.service }}:latest
+            sorcha/${{ matrix.service }}:master
+            sorcha/${{ matrix.service }}:master-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

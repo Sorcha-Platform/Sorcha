@@ -1039,7 +1039,6 @@ public class ValidationEngine : IValidationEngine
         }
     }
 
-    #region Private Methods
 
     private static bool IsGenesisOrControlTransaction(Transaction transaction)
     {
@@ -1254,5 +1253,4 @@ public class ValidationEngine : IValidationEngine
         return result;
     }
 
-    #endregion
 }

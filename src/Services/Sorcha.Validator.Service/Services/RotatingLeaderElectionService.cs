@@ -324,7 +324,6 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         return validatorOrder[nextIndex];
     }
 
-    #region Timer Management
 
     private void StartHeartbeatTimer()
     {
@@ -385,9 +384,7 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         _logger.LogDebug("Started term rotation timer with duration {Duration}", termDuration);
     }
 
-    #endregion
 
-    #region Health Check
 
     private async Task CheckLeaderHealthAsync()
     {
@@ -463,9 +460,7 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         }
     }
 
-    #endregion
 
-    #region Event Handlers
 
     private async void OnValidatorListChanged(object? sender, ValidatorListChangedEventArgs e)
     {
@@ -509,9 +504,7 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         LeaderChanged?.Invoke(this, args);
     }
 
-    #endregion
 
-    #region Configuration Helpers
 
     private async Task RefreshConfigAsync(CancellationToken ct)
     {
@@ -581,9 +574,7 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         return _cachedValidatorOrder[validatorIndex];
     }
 
-    #endregion
 
-    #region IDisposable
 
     public void Dispose()
     {
@@ -602,5 +593,4 @@ public class RotatingLeaderElectionService : ILeaderElectionService, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    #endregion
 }

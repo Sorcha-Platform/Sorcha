@@ -203,7 +203,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         _pendingStore.Add(registerId, pending);
 
         // Schedule cleanup of expired pending registrations
-        _ = Task.Run(async () => await CleanupExpiredPendingRegistrationsAsync(), cancellationToken);
+        _ = CleanupExpiredPendingRegistrationsAsync();
 
         _logger.LogInformation(
             "Register initiation created with ID {RegisterId}, {AttestationCount} attestation(s) to sign, expires at {ExpiresAt}",

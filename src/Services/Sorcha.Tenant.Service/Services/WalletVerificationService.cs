@@ -328,7 +328,6 @@ public class WalletVerificationService : IWalletVerificationService
         return await _repository.GetActiveWalletLinkCountAsync(participantId, cancellationToken);
     }
 
-    #region Helper Methods
 
     /// <summary>
     /// Generates a cryptographically secure nonce.
@@ -386,5 +385,4 @@ public class WalletVerificationService : IWalletVerificationService
         };
     }
 
-    #endregion
 }

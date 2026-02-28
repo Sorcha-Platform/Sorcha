@@ -12,7 +12,7 @@ namespace Sorcha.Peer.Service.Communication;
 /// <summary>
 /// Client for bidirectional streaming communication with peers
 /// </summary>
-public class StreamingCommunicationClient : IDisposable
+public class StreamingCommunicationClient : IDisposable, IAsyncDisposable
 {
     private readonly ILogger<StreamingCommunicationClient> _logger;
     private readonly string _peerId;
@@ -167,12 +167,26 @@ public class StreamingCommunicationClient : IDisposable
         _logger.LogInformation("Closed streaming connection to {PeerId}", _peerId);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (!_disposed)
+        {
+            await CloseAsync();
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+    }
+
     public void Dispose()
     {
         if (!_disposed)
         {
-            CloseAsync().GetAwaiter().GetResult();
+            _streamingCall?.Dispose();
+            _streamingCall = null;
+            _channel?.Dispose();
+            _channel = null;
             _disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }

@@ -1,0 +1,50 @@
+name: Docker CI — Build Validation
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'src/Services/**'
+      - 'src/Common/**'
+      - 'src/Core/**'
+      - 'docker-compose.yml'
+      - 'Directory.Packages.props'
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: blueprint-service
+            dockerfile: src/Services/Sorcha.Blueprint.Service/Dockerfile
+          - service: wallet-service
+            dockerfile: src/Services/Sorcha.Wallet.Service/Dockerfile
+          - service: register-service
+            dockerfile: src/Services/Sorcha.Register.Service/Dockerfile
+          - service: tenant-service
+            dockerfile: src/Services/Sorcha.Tenant.Service/Dockerfile
+          - service: peer-service
+            dockerfile: src/Services/Sorcha.Peer.Service/Dockerfile
+          - service: validator-service
+            dockerfile: src/Services/Sorcha.Validator.Service/Dockerfile
+          - service: api-gateway
+            dockerfile: src/Services/Sorcha.ApiGateway/Dockerfile
+
+    name: Build ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: sorcha/${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -59,7 +59,7 @@ public class GossipProtocolEngine
         });
 
         var availablePeers = allPeers
-            .Where(p => !state.SentToPeers.Contains(p.PeerId))
+            .Where(p => !state.SentToPeers.ContainsKey(p.PeerId))
             .ToList();
 
         if (availablePeers.Count == 0)
@@ -77,7 +77,7 @@ public class GossipProtocolEngine
         // Mark as sent
         foreach (var peer in selectedPeers)
         {
-            state.SentToPeers.Add(peer.PeerId);
+            state.SentToPeers.TryAdd(peer.PeerId, 0);
         }
 
         state.CurrentRound = round;
@@ -274,5 +274,5 @@ public class TransactionGossipState
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? LastGossipAt { get; set; }
     public int CurrentRound { get; set; }
-    public HashSet<string> SentToPeers { get; set; } = new();
+    public ConcurrentDictionary<string, byte> SentToPeers { get; set; } = new();
 }

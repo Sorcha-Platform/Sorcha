@@ -11,7 +11,7 @@ namespace Sorcha.Validator.Service.Services;
 /// Thread-safe in-memory store for dockets awaiting consensus.
 /// Implements efficient lookups by ID, register, and status.
 /// </summary>
-public class PendingDocketStore : IPendingDocketStore
+public class PendingDocketStore : IPendingDocketStore, IDisposable
 {
     private readonly ConcurrentDictionary<string, DocketEntry> _dockets = new();
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -264,7 +264,6 @@ public class PendingDocketStore : IPendingDocketStore
         };
     }
 
-    #region Helper Methods
 
     private void TrackDuration(double durationMs)
     {
@@ -277,10 +276,6 @@ public class PendingDocketStore : IPendingDocketStore
         }
     }
 
-    #endregion
-
-    #region Inner Classes
-
     private class DocketEntry
     {
         public required Docket Docket { get; init; }
@@ -288,5 +283,10 @@ public class PendingDocketStore : IPendingDocketStore
         public required ConcurrentDictionary<string, Signature> Signatures { get; init; }
     }
 
-    #endregion
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

@@ -338,7 +338,6 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         return totalRemoved;
     }
 
-    #region Inner Classes
 
     /// <summary>
     /// Thread-safe priority queue for a single register
@@ -529,5 +528,4 @@ public class VerifiedTransactionQueue : IVerifiedTransactionQueue
         }
     }
 
-    #endregion
 }

@@ -174,7 +174,6 @@ public static class ThresholdEndpoints
         });
     }
 
-    #region Internal State Classes
 
     private class ThresholdState
     {
@@ -208,5 +207,4 @@ public static class ThresholdEndpoints
             _shares.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Key).ToArray();
     }
 
-    #endregion
 }
