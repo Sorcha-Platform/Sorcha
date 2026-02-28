@@ -26,6 +26,9 @@ public class MemPoolManagerTests
     // In-memory storage to simulate Redis hash operations
     private readonly Dictionary<string, Dictionary<string, string>> _hashStore = new();
 
+    // In-memory storage to simulate Redis set operations (payload hash index)
+    private readonly HashSet<string> _setStore = new();
+
     public MemPoolManagerTests()
     {
         _mockRedis = new Mock<IConnectionMultiplexer>();
@@ -104,6 +107,32 @@ public class MemPoolManagerTests
                 var k = key.ToString();
                 return _hashStore.ContainsKey(k) ? _hashStore[k].Count : 0;
             });
+
+        // HashGet (single field)
+        _mockDatabase
+            .Setup(db => db.HashGet(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey key, RedisValue field, CommandFlags _) =>
+            {
+                var k = key.ToString();
+                if (_hashStore.ContainsKey(k) && _hashStore[k].TryGetValue(field.ToString(), out var value))
+                    return (RedisValue)value;
+                return RedisValue.Null;
+            });
+
+        // SetAdd
+        _mockDatabase
+            .Setup(db => db.SetAdd(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey _, RedisValue value, CommandFlags __) => _setStore.Add(value.ToString()));
+
+        // SetContains
+        _mockDatabase
+            .Setup(db => db.SetContains(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey _, RedisValue value, CommandFlags __) => _setStore.Contains(value.ToString()));
+
+        // SetRemove
+        _mockDatabase
+            .Setup(db => db.SetRemove(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey _, RedisValue value, CommandFlags __) => _setStore.Remove(value.ToString()));
     }
 
     #region Constructor Tests
@@ -503,6 +532,68 @@ public class MemPoolManagerTests
         // Assert - current implementation only tracks TotalTransactions, not per-priority counts
         stats.TotalTransactions.Should().Be(4);
         stats.FillPercentage.Should().Be(4.0); // 4/100 * 100
+    }
+
+    #endregion
+
+    #region TransactionExistsAsync Tests
+
+    [Fact]
+    public async Task TransactionExistsAsync_WithExistingPayloadHash_ReturnsTrue()
+    {
+        // Arrange
+        var manager = new MemPoolManager(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+        await manager.AddTransactionAsync("register-1", transaction);
+
+        // Act
+        var exists = await manager.TransactionExistsAsync(transaction.PayloadHash);
+
+        // Assert
+        exists.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TransactionExistsAsync_WithNonExistentPayloadHash_ReturnsFalse()
+    {
+        // Arrange
+        var manager = new MemPoolManager(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act
+        var exists = await manager.TransactionExistsAsync("non-existent-hash");
+
+        // Assert
+        exists.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TransactionExistsAsync_WithNullOrWhiteSpace_ReturnsFalse()
+    {
+        // Arrange
+        var manager = new MemPoolManager(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        (await manager.TransactionExistsAsync(null!)).Should().BeFalse();
+        (await manager.TransactionExistsAsync("")).Should().BeFalse();
+        (await manager.TransactionExistsAsync("   ")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TransactionExistsAsync_AfterRemoval_ReturnsFalse()
+    {
+        // Arrange
+        var manager = new MemPoolManager(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+        await manager.AddTransactionAsync("register-1", transaction);
+
+        // Verify it exists first
+        (await manager.TransactionExistsAsync(transaction.PayloadHash)).Should().BeTrue();
+
+        // Act
+        await manager.RemoveTransactionAsync("register-1", "tx-1");
+
+        // Assert
+        (await manager.TransactionExistsAsync(transaction.PayloadHash)).Should().BeFalse();
     }
 
     #endregion

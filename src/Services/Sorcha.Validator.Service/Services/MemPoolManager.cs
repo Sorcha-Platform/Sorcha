@@ -16,6 +16,7 @@ namespace Sorcha.Validator.Service.Services;
 public class MemPoolManager : IMemPoolManager
 {
     private const string RedisKeyPrefix = "validator:mempool:";
+    private const string PayloadHashIndexKey = "validator:mempool:payload-hashes";
 
     private readonly IConnectionMultiplexer _redis;
     private readonly MemPoolConfiguration _config;
@@ -68,6 +69,12 @@ public class MemPoolManager : IMemPoolManager
             var json = JsonSerializer.Serialize(transaction, JsonOptions);
             db.HashSet(hashKey, transaction.TransactionId, json);
 
+            // Add payload hash to secondary index for fast duplicate detection
+            if (!string.IsNullOrWhiteSpace(transaction.PayloadHash))
+            {
+                db.SetAdd(PayloadHashIndexKey, transaction.PayloadHash);
+            }
+
             _logger.LogInformation("Added transaction {TransactionId} to memory pool for register {RegisterId} (persisted to Redis)",
                 transaction.TransactionId, registerId);
 
@@ -91,10 +98,25 @@ public class MemPoolManager : IMemPoolManager
             var db = _redis.GetDatabase();
             var hashKey = $"{RedisKeyPrefix}{registerId}:transactions";
 
+            // Retrieve the transaction to get its payload hash before removing
+            var existingJson = db.HashGet(hashKey, transactionId);
             var removed = db.HashDelete(hashKey, transactionId);
 
-            if (removed)
+            if (removed && existingJson.HasValue)
             {
+                try
+                {
+                    var transaction = JsonSerializer.Deserialize<Transaction>(existingJson.ToString(), JsonOptions);
+                    if (transaction != null && !string.IsNullOrWhiteSpace(transaction.PayloadHash))
+                    {
+                        db.SetRemove(PayloadHashIndexKey, transaction.PayloadHash);
+                    }
+                }
+                catch (JsonException)
+                {
+                    // If we can't deserialize, just skip index cleanup
+                }
+
                 _logger.LogInformation("Removed transaction {TransactionId} from memory pool for register {RegisterId}",
                     transactionId, registerId);
             }
@@ -201,6 +223,27 @@ public class MemPoolManager : IMemPoolManager
     }
 
     /// <summary>
+    /// Checks if a transaction with the given payload hash exists in any memory pool
+    /// </summary>
+    public Task<bool> TransactionExistsAsync(string payloadHash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(payloadHash))
+            return Task.FromResult(false);
+
+        try
+        {
+            var db = _redis.GetDatabase();
+            var exists = db.SetContains(PayloadHashIndexKey, payloadHash);
+            return Task.FromResult(exists);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to check if transaction with payload hash {PayloadHash} exists in memory pool", payloadHash);
+            return Task.FromResult(false);
+        }
+    }
+
+    /// <summary>
     /// Cleans up expired transactions from all memory pools
     /// </summary>
     public Task CleanupExpiredTransactionsAsync(CancellationToken cancellationToken = default)
@@ -225,6 +268,13 @@ public class MemPoolManager : IMemPoolManager
                         if (transaction != null && transaction.AddedToPoolAt.Add(_config.DefaultTTL) < now)
                         {
                             db.HashDelete(key, entry.Name);
+
+                            // Remove payload hash from secondary index
+                            if (!string.IsNullOrWhiteSpace(transaction.PayloadHash))
+                            {
+                                db.SetRemove(PayloadHashIndexKey, transaction.PayloadHash);
+                            }
+
                             totalExpired++;
                         }
                     }

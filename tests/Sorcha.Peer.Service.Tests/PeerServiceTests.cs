@@ -8,6 +8,7 @@ using Moq;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Monitoring;
 using Sorcha.Peer.Service.Network;
 using Sorcha.Peer.Service.Observability;
@@ -24,6 +25,7 @@ public class PeerServiceTests : IDisposable
     private readonly HealthMonitorService _healthMonitorService;
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerExchangeService _exchangeService;
+    private readonly TransactionDistributionService _distributionService;
     private readonly PeerServiceConfiguration _configuration;
 
     public PeerServiceTests()
@@ -89,12 +91,25 @@ public class PeerServiceTests : IDisposable
             _peerListManager,
             _connectionPool,
             _config);
+
+        var gossipEngine = new GossipProtocolEngine(
+            new Mock<ILogger<GossipProtocolEngine>>().Object,
+            _config,
+            _peerListManager);
+        var queueManager = new TransactionQueueManager(
+            new Mock<ILogger<TransactionQueueManager>>().Object,
+            _config);
+        _distributionService = new TransactionDistributionService(
+            new Mock<ILogger<TransactionDistributionService>>().Object,
+            _config,
+            queueManager,
+            gossipEngine);
     }
 
     private PeerService CreateService() => new PeerService(
         _loggerMock.Object, _config, _peerListManager,
         _networkAddressService, _peerDiscoveryService,
-        _healthMonitorService, _connectionPool, _exchangeService);
+        _healthMonitorService, _connectionPool, _exchangeService, _distributionService);
 
     [Fact]
     public void Constructor_ShouldInitializeWithDependencies()
@@ -111,7 +126,7 @@ public class PeerServiceTests : IDisposable
         var act = () => new PeerService(
             null!, _config, _peerListManager,
             _networkAddressService, _peerDiscoveryService,
-            _healthMonitorService, _connectionPool, _exchangeService);
+            _healthMonitorService, _connectionPool, _exchangeService, _distributionService);
 
         act.Should().Throw<ArgumentNullException>()
             .WithParameterName("logger");
@@ -123,7 +138,7 @@ public class PeerServiceTests : IDisposable
         var act = () => new PeerService(
             _loggerMock.Object, null!, _peerListManager,
             _networkAddressService, _peerDiscoveryService,
-            _healthMonitorService, _connectionPool, _exchangeService);
+            _healthMonitorService, _connectionPool, _exchangeService, _distributionService);
 
         act.Should().Throw<ArgumentNullException>()
             .WithParameterName("configuration");

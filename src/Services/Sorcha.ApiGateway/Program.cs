@@ -44,6 +44,9 @@ builder.Services.AddSingleton<OpenApiAggregationService>();
 // Add JWT authentication (AUTH-005)
 builder.AddJwtAuthentication();
 
+// Add shared authorization policies (AUTH-005)
+builder.AddSorchaAuthorizationPolicies();
+
 // Add OpenAPI documentation
 builder.Services.AddOpenApi();
 

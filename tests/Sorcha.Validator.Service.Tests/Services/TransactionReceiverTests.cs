@@ -293,6 +293,40 @@ public class TransactionReceiverTests
         result.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task IsTransactionKnownAsync_ExistsInMemPool_ReturnsTrue()
+    {
+        // Arrange - hash not in local cache, but exists in mempool
+        const string hash = "mempool-hash";
+
+        _memPoolManagerMock.Setup(x => x.TransactionExistsAsync(hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _receiver.IsTransactionKnownAsync(hash);
+
+        // Assert
+        result.Should().BeTrue();
+        _memPoolManagerMock.Verify(x => x.TransactionExistsAsync(hash, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IsTransactionKnownAsync_NotInCacheOrMemPool_ReturnsFalse()
+    {
+        // Arrange - hash not in local cache and not in mempool
+        const string hash = "unknown-hash";
+
+        _memPoolManagerMock.Setup(x => x.TransactionExistsAsync(hash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _receiver.IsTransactionKnownAsync(hash);
+
+        // Assert
+        result.Should().BeFalse();
+        _memPoolManagerMock.Verify(x => x.TransactionExistsAsync(hash, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     #endregion
 
     #region GetStats Tests

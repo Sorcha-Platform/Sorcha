@@ -44,6 +44,14 @@ public interface IMemPoolManager
     Task<MemPoolStats> GetStatsAsync(string registerId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Checks if a transaction with the given payload hash exists in any memory pool
+    /// </summary>
+    /// <param name="payloadHash">SHA-256 hash of the transaction payload</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if the transaction exists in the memory pool</returns>
+    Task<bool> TransactionExistsAsync(string payloadHash, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Removes expired transactions from all memory pools
     /// </summary>
     Task CleanupExpiredTransactionsAsync(CancellationToken cancellationToken = default);
