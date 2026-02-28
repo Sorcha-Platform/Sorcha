@@ -10,6 +10,12 @@ namespace Sorcha.Storage.EFCore;
 /// <summary>
 /// Entity Framework Core implementation of IRepository for warm-tier relational storage.
 /// </summary>
+/// <remarks>
+/// This repository follows the unit-of-work pattern. Methods like <see cref="AddAsync"/>,
+/// <see cref="UpdateAsync"/>, and <see cref="DeleteAsync"/> stage changes in the EF Core
+/// change tracker. Call <see cref="SaveChangesAsync"/> to persist all staged changes to
+/// the database in a single transaction.
+/// </remarks>
 /// <typeparam name="TEntity">Entity type.</typeparam>
 /// <typeparam name="TId">Primary key type.</typeparam>
 /// <typeparam name="TContext">DbContext type.</typeparam>
@@ -121,6 +127,17 @@ public class EFCoreRepository<TEntity, TId, TContext> : IRepository<TEntity, TId
     /// <inheritdoc/>
     public async Task<bool> ExistsAsync(TId id, CancellationToken cancellationToken = default)
     {
+        var entityType = _context.Model.FindEntityType(typeof(TEntity));
+        var primaryKey = entityType?.FindPrimaryKey();
+        if (primaryKey is not null && primaryKey.Properties.Count == 1)
+        {
+            var keyProperty = primaryKey.Properties[0].Name;
+            return await _dbSet.AnyAsync(
+                e => EF.Property<object>(e, keyProperty).Equals(id),
+                cancellationToken);
+        }
+
+        // Fallback for composite keys or unresolvable metadata
         var entity = await _dbSet.FindAsync([id], cancellationToken);
         return entity is not null;
     }

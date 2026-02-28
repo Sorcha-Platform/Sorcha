@@ -77,8 +77,6 @@ public class TransactionFactory : ITransactionFactory
         return serializer.DeserializeFromJson(json);
     }
 
-    #region Private Helper Methods
-
     private ITransaction CreateV1Transaction()
     {
         var payloadManager = new PayloadManager(_symmetricCrypto, _cryptoModule, _hashProvider);
@@ -87,8 +85,10 @@ public class TransactionFactory : ITransactionFactory
 
     private ITransactionSerializer GetSerializer(TransactionVersion version)
     {
+        // TODO: Implement version-based serializer routing when V2 format is defined
+        // Currently only V1 serializers are available — version parameter intentionally unused
+        _ = version;
         return new BinaryTransactionSerializer(_cryptoModule, _hashProvider, _symmetricCrypto);
     }
 
-    #endregion
 }

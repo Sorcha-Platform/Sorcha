@@ -40,6 +40,11 @@ public class JsonTransactionSerializer : ITransactionSerializer
         if (transaction == null)
             throw new ArgumentNullException(nameof(transaction));
 
+        // Intentional sync-over-async: SerializeToJson implements the synchronous
+        // ITransactionSerializer.SerializeToJson contract. GetAllAsync retrieves the
+        // in-memory payload collection and completes synchronously in practice. Making
+        // the serializer interface async would be a breaking change to ITransactionSerializer
+        // and all consumers (JSON export, API responses, debugging output).
         var payloads = transaction.PayloadManager.GetAllAsync().GetAwaiter().GetResult();
 
         var obj = new

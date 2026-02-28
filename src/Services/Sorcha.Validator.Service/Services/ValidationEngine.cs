@@ -9,6 +9,7 @@ using Json.Schema;
 using Microsoft.Extensions.Options;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models.Constants;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
@@ -529,8 +530,7 @@ public class ValidationEngine : IValidationEngine
                 try
                 {
                     // Parse the algorithm
-                    var network = ParseAlgorithmToNetwork(signature.Algorithm);
-                    if (network == null)
+                    if (!AlgorithmMapper.TryParseAlgorithm(signature.Algorithm, out var network))
                     {
                         errors.Add(CreateError("VAL_SIG_001",
                             $"Unsupported signature algorithm: {signature.Algorithm}",
@@ -543,7 +543,7 @@ public class ValidationEngine : IValidationEngine
                     var verifyResult = await _cryptoModule.VerifyAsync(
                         signature.SignatureValue,
                         signedHash,
-                        (byte)network.Value,
+                        (byte)network,
                         signature.PublicKey,
                         ct);
 
@@ -890,11 +890,10 @@ public class ValidationEngine : IValidationEngine
             if (transaction.Signatures.Count > 0)
             {
                 var firstSig = transaction.Signatures[0];
-                var network = ParseAlgorithmToNetwork(firstSig.Algorithm);
 
-                if (network != null)
+                if (AlgorithmMapper.TryParseAlgorithm(firstSig.Algorithm, out var sigNetwork))
                 {
-                    var derivedWallet = _walletUtilities.PublicKeyToWallet(firstSig.PublicKey, (byte)network.Value);
+                    var derivedWallet = _walletUtilities.PublicKeyToWallet(firstSig.PublicKey, (byte)sigNetwork);
                     var participant = blueprint.Participants.FirstOrDefault(p =>
                         string.Equals(p.Id, action.Sender, StringComparison.OrdinalIgnoreCase));
 
@@ -1193,18 +1192,6 @@ public class ValidationEngine : IValidationEngine
             sw.Elapsed);
     }
 
-    private static WalletNetworks? ParseAlgorithmToNetwork(string algorithm)
-    {
-        return algorithm?.ToUpperInvariant() switch
-        {
-            "ED25519" => WalletNetworks.ED25519,
-            "NIST-P256" or "NISTP256" or "P256" or "ECDSA-P256" => WalletNetworks.NISTP256,
-            "RSA-4096" or "RSA4096" => WalletNetworks.RSA4096,
-            "ML-DSA-65" or "MLDSA65" => WalletNetworks.ML_DSA_65,
-            "SLH-DSA-128S" or "SLHDSA128S" => WalletNetworks.SLH_DSA_128s,
-            _ => null
-        };
-    }
 
     private static ValidationEngineError CreateError(
         string code,

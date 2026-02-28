@@ -20,7 +20,6 @@ public class InMemoryWormStore<TDocument, TId> : IWormStore<TDocument, TId>
 {
     private readonly ConcurrentDictionary<TId, string> _store = new();
     private readonly Func<TDocument, TId> _idSelector;
-    private readonly Func<TDocument, TId, TDocument>? _idSetter;
     private readonly JsonSerializerOptions _jsonOptions;
     private ulong _currentSequence;
     private readonly object _sequenceLock = new();
@@ -35,7 +34,6 @@ public class InMemoryWormStore<TDocument, TId> : IWormStore<TDocument, TId>
         Func<TDocument, TId, TDocument>? idSetter = null)
     {
         _idSelector = idSelector ?? throw new ArgumentNullException(nameof(idSelector));
-        _idSetter = idSetter;
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -46,12 +44,6 @@ public class InMemoryWormStore<TDocument, TId> : IWormStore<TDocument, TId>
     public Task<TDocument> AppendAsync(TDocument document, CancellationToken cancellationToken = default)
     {
         var id = _idSelector(document);
-
-        // Check if ID already exists - WORM cannot overwrite
-        if (_store.ContainsKey(id))
-        {
-            throw new InvalidOperationException($"Document with ID '{id}' already exists. WORM storage does not allow updates.");
-        }
 
         var json = JsonSerializer.Serialize(document, _jsonOptions);
 

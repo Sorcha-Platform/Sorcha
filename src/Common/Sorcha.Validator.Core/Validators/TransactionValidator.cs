@@ -16,6 +16,10 @@ public class TransactionValidator : ITransactionValidator
 {
     private readonly IHashProvider _hashProvider;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TransactionValidator"/> class.
+    /// </summary>
+    /// <param name="hashProvider">Hash provider for payload verification.</param>
     public TransactionValidator(IHashProvider hashProvider)
     {
         _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));
@@ -244,7 +248,7 @@ public class TransactionValidator : ITransactionValidator
             }
 
             // Validate algorithm
-            var validAlgorithms = new[] { "ED25519", "NIST-P256", "RSA-4096" };
+            var validAlgorithms = new[] { "ED25519", "NIST-P256", "RSA-4096", "ML-DSA-65", "SLH-DSA-128s", "SLH-DSA-192s" };
             if (!validAlgorithms.Contains(sig.Algorithm, StringComparer.OrdinalIgnoreCase))
             {
                 errors.Add(new ValidationError

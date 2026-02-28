@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults.Helpers;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -232,15 +233,8 @@ public partial class InputValidationMiddleware
             attackType, clientIp, context.Request.Path, details);
     }
 
-    private static string GetClientIp(HttpContext context)
-    {
-        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(forwardedFor))
-        {
-            return forwardedFor.Split(',').FirstOrDefault()?.Trim() ?? "unknown";
-        }
-        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    }
+    private static string GetClientIp(HttpContext context) =>
+        ClientIpHelper.GetClientIp(context);
 
     private static async Task WriteErrorResponse(HttpContext context, int statusCode, string message)
     {

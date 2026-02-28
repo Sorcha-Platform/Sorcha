@@ -16,6 +16,10 @@ public class DocketValidator : IDocketValidator
 {
     private readonly IHashProvider _hashProvider;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DocketValidator"/> class.
+    /// </summary>
+    /// <param name="hashProvider">Hash provider for docket integrity verification.</param>
     public DocketValidator(IHashProvider hashProvider)
     {
         _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));

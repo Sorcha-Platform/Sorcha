@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Participant;
 
@@ -254,17 +255,7 @@ public class ParticipantServiceClient : IParticipantServiceClient
         }
     }
 
-    private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
-    {
-        var token = await _serviceAuth.GetTokenAsync(cancellationToken);
-        if (token is not null)
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        }
-        else
-        {
-            _logger.LogWarning("No auth token available for Participant Service call");
-        }
-    }
+    private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
+        ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Participant Service", cancellationToken);
 }

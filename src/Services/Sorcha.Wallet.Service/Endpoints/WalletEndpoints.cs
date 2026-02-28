@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
@@ -197,7 +198,7 @@ public static class WalletEndpoints
             // Generate PQC key pair and ws2 address for hybrid wallets
             if (request.EnableHybrid && !string.IsNullOrEmpty(request.PqcAlgorithm))
             {
-                var pqcNetwork = ParsePqcAlgorithm(request.PqcAlgorithm);
+                var pqcNetwork = AlgorithmMapper.ParseAlgorithm(request.PqcAlgorithm);
                 var pqcKeyResult = await cryptoModule.GenerateKeySetAsync(pqcNetwork, cancellationToken: cancellationToken);
                 if (pqcKeyResult.IsSuccess)
                 {
@@ -1357,12 +1358,4 @@ public static class WalletEndpoints
         return context.User.FindFirstValue("tenant") ?? "default";
     }
 
-    private static WalletNetworks ParsePqcAlgorithm(string algorithm) => algorithm.ToUpperInvariant() switch
-    {
-        "ML-DSA-65" or "MLDSA65" => WalletNetworks.ML_DSA_65,
-        "SLH-DSA-128S" or "SLHDSA128S" => WalletNetworks.SLH_DSA_128s,
-        "SLH-DSA-192S" or "SLHDSA192S" => WalletNetworks.SLH_DSA_192s,
-        "ML-KEM-768" or "MLKEM768" => WalletNetworks.ML_KEM_768,
-        _ => throw new ArgumentException($"Unsupported PQC algorithm: {algorithm}")
-    };
 }

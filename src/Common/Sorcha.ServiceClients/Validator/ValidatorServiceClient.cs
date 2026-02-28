@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Validator;
 
@@ -21,10 +22,10 @@ public class ValidatorServiceClient : IValidatorServiceClient
     private readonly string _serviceAddress;
 
     public ValidatorServiceClient(
+        HttpClient httpClient,
         IConfiguration configuration,
         IServiceAuthClient serviceAuth,
-        ILogger<ValidatorServiceClient> logger,
-        HttpClient httpClient)
+        ILogger<ValidatorServiceClient> logger)
     {
         _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -156,17 +157,7 @@ public class ValidatorServiceClient : IValidatorServiceClient
         }
     }
 
-    private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
-    {
-        var token = await _serviceAuth.GetTokenAsync(cancellationToken);
-        if (token is not null)
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        }
-        else
-        {
-            _logger.LogWarning("No auth token available for Validator Service call");
-        }
-    }
+    private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
+        ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Validator Service", cancellationToken);
 }

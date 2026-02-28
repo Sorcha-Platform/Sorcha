@@ -87,6 +87,11 @@ public class BinaryTransactionSerializer : ITransactionSerializer
         }
 
         // Write payloads
+        // Intentional sync-over-async: SerializeToBinary implements the synchronous
+        // ITransactionSerializer.SerializeToBinary contract. GetAllAsync retrieves the
+        // in-memory payload collection and completes synchronously in practice. Making
+        // the serializer interface async would be a breaking change to ITransactionSerializer
+        // and all consumers (transport packets, binary wire format, peer service).
         var payloads = transaction.PayloadManager.GetAllAsync().GetAwaiter().GetResult();
         WriteVarInt(writer, (ulong)payloads.Count());
 
@@ -242,8 +247,6 @@ public class BinaryTransactionSerializer : ITransactionSerializer
         };
     }
 
-    #region Helper Methods
-
     private void WriteVarInt(BinaryWriter writer, ulong value)
     {
         var encoded = VariableLengthInteger.Encode(value);
@@ -286,5 +289,4 @@ public class BinaryTransactionSerializer : ITransactionSerializer
         return Encoding.UTF8.GetString(bytes);
     }
 
-    #endregion
 }

@@ -27,6 +27,13 @@ public static class EFCoreServiceExtensions
     {
         var connectionString = configuration.GetSection("Storage:Warm:Relational:ConnectionString").Value;
 
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "PostgreSQL connection string is not configured. " +
+                "Set 'Storage:Warm:Relational:ConnectionString' in configuration.");
+        }
+
         services.AddDbContext<TContext>(options =>
         {
             options.UseNpgsql(connectionString, npgsqlOptions =>

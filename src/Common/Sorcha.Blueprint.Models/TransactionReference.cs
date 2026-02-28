@@ -129,8 +129,6 @@ public class TransactionReference : IEquatable<TransactionReference>
         }
     }
 
-    #region Equality
-
     /// <inheritdoc/>
     public bool Equals(TransactionReference? other)
     {
@@ -170,8 +168,6 @@ public class TransactionReference : IEquatable<TransactionReference>
     {
         return !(left == right);
     }
-
-    #endregion
 
     /// <inheritdoc/>
     public override string ToString()

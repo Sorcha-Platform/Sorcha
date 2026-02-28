@@ -30,7 +30,7 @@ public class RedisCacheStore : ICacheStore, IAsyncDisposable
     private long _hits;
     private long _misses;
     private long _evictions;
-    private readonly List<double> _latencies = new();
+    private readonly Queue<double> _latencies = new();
     private readonly object _statsLock = new();
 
     /// <summary>
@@ -275,8 +275,8 @@ public class RedisCacheStore : ICacheStore, IAsyncDisposable
                 return 0;
             }
 
-            var fullPattern = GetKey(pattern.Replace("*", ""));
-            var keys = server.Keys(pattern: $"{fullPattern}*").ToArray();
+            var fullPattern = GetKey(pattern);
+            var keys = server.Keys(pattern: fullPattern).ToArray();
 
             if (keys.Length > 0)
             {
@@ -393,12 +393,12 @@ public class RedisCacheStore : ICacheStore, IAsyncDisposable
     {
         lock (_statsLock)
         {
-            _latencies.Add(latencyMs);
+            _latencies.Enqueue(latencyMs);
 
             // Keep only the last 1000 samples
             if (_latencies.Count > 1000)
             {
-                _latencies.RemoveAt(0);
+                _latencies.Dequeue();
             }
         }
     }

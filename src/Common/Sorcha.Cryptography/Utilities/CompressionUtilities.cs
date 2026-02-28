@@ -165,8 +165,6 @@ public class CompressionUtilities : ICompressionUtilities
         return null;
     }
 
-    #region Private Helper Methods
-
     private bool IsAlreadyCompressedFormat(byte[] data)
     {
         if (data == null || data.Length < 4)
@@ -206,5 +204,4 @@ public class CompressionUtilities : ICompressionUtilities
         };
     }
 
-    #endregion
 }

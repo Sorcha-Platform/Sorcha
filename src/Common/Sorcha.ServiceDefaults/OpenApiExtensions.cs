@@ -35,14 +35,14 @@ public static class OpenApiExtensions
 
                 if (document.Info.Contact == null)
                 {
-                    document.Info.Contact = new() { };
+                    document.Info.Contact = new();
                 }
                 document.Info.Contact.Name = "Sorcha Contributors";
                 document.Info.Contact.Url = new Uri("https://github.com/sorcha-platform/sorcha");
 
                 if (document.Info.License == null)
                 {
-                    document.Info.License = new() { };
+                    document.Info.License = new();
                 }
                 document.Info.License.Name = "MIT License";
                 document.Info.License.Url = new Uri("https://opensource.org/licenses/MIT");

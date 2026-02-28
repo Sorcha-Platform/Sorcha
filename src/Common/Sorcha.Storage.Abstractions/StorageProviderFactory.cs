@@ -93,13 +93,13 @@ public class StorageProviderFactory : IStorageProviderFactory
 
         // Note: Warm and Cold tier health checks require specific type parameters
         // They should be checked by the consuming service that knows the types
-        warmTier = TierHealthStatus.Healthy(
+        warmTier = TierHealthStatus.Unhealthy(
             provider: _configuration.Warm?.Relational?.Provider ?? _configuration.Warm?.Documents?.Provider ?? "Unknown",
-            responseTimeMs: 0);
+            errorMessage: "Health check not implemented — requires service-specific type parameters");
 
-        coldTier = TierHealthStatus.Healthy(
+        coldTier = TierHealthStatus.Unhealthy(
             provider: "MongoDB",
-            responseTimeMs: 0);
+            errorMessage: "Health check not implemented — requires service-specific type parameters");
 
         var isHealthy = (hotTier?.IsHealthy ?? true)
                      && (warmTier?.IsHealthy ?? true)

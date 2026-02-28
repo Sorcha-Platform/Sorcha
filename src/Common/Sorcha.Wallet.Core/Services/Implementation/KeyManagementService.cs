@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using NBitcoin;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
@@ -82,7 +83,7 @@ public class KeyManagementService : IKeyManagementService
             var privateKeyBytes = derived.PrivateKey.ToBytes();
 
             // Generate key set using Sorcha.Cryptography
-            var network = ParseAlgorithm(algorithm);
+            var network = AlgorithmMapper.ParseAlgorithm(algorithm);
             var keySetResult = await _cryptoModule.GenerateKeySetAsync(network, privateKeyBytes);
 
             if (keySetResult.Status != CryptoStatus.Success)
@@ -122,7 +123,7 @@ public class KeyManagementService : IKeyManagementService
 
         try
         {
-            var network = ParseAlgorithm(algorithm);
+            var network = AlgorithmMapper.ParseAlgorithm(algorithm);
             var address = _walletUtilities.PublicKeyToWallet(publicKey, (byte)network);
 
             if (string.IsNullOrEmpty(address))
@@ -220,17 +221,4 @@ public class KeyManagementService : IKeyManagementService
         }
     }
 
-    private static WalletNetworks ParseAlgorithm(string algorithm)
-    {
-        return algorithm.ToUpperInvariant() switch
-        {
-            "ED25519" => WalletNetworks.ED25519,
-            "NISTP256" or "NIST-P256" or "P-256" or "P256" => WalletNetworks.NISTP256,
-            "RSA" or "RSA4096" or "RSA-4096" => WalletNetworks.RSA4096,
-            "ML-DSA-65" or "MLDSA65" => WalletNetworks.ML_DSA_65,
-            "SLH-DSA-128S" or "SLHDSA128S" => WalletNetworks.SLH_DSA_128s,
-            "ML-KEM-768" or "MLKEM768" => WalletNetworks.ML_KEM_768,
-            _ => throw new ArgumentException($"Unsupported algorithm: {algorithm}", nameof(algorithm))
-        };
-    }
 }

@@ -6,6 +6,7 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
@@ -200,7 +201,9 @@ public class WalletGrpcService : Protos.WalletService.WalletServiceBase
             throw new RpcException(new Status(StatusCode.FailedPrecondition,
                 $"Wallet is {wallet.Status} and cannot sign data"));
 
-        var network = ParseAlgorithm(wallet.Algorithm);
+        if (!AlgorithmMapper.TryParseAlgorithm(wallet.Algorithm, out var network))
+            throw new RpcException(new Status(StatusCode.Internal,
+                $"Wallet has unsupported algorithm: {wallet.Algorithm}"));
         byte[] privateKey;
         byte[] publicKey;
 
@@ -467,15 +470,4 @@ public class WalletGrpcService : Protos.WalletService.WalletServiceBase
         };
     }
 
-    private static WalletNetworks ParseAlgorithm(string algorithm)
-    {
-        return algorithm.ToUpperInvariant() switch
-        {
-            "ED25519" => WalletNetworks.ED25519,
-            "NISTP256" => WalletNetworks.NISTP256,
-            "RSA4096" => WalletNetworks.RSA4096,
-            _ => throw new RpcException(new Status(StatusCode.Internal,
-                $"Wallet has unsupported algorithm: {algorithm}"))
-        };
-    }
 }

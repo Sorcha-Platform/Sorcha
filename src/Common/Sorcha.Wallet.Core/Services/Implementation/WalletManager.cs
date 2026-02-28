@@ -367,14 +367,16 @@ public class WalletManager : IWalletService
             }
 
             // Soft delete by changing status
+            var previousStatus = wallet.Status;
             wallet.Status = WalletStatus.Deleted;
+            wallet.UpdatedAt = DateTime.UtcNow;
             wallet.LastAccessedAt = DateTime.UtcNow;
             await _repository.UpdateAsync(wallet, cancellationToken);
 
             await _eventPublisher.PublishAsync(new WalletStatusChangedEvent
             {
                 WalletAddress = wallet.Address,
-                OldStatus = WalletStatus.Active,
+                OldStatus = previousStatus,
                 NewStatus = WalletStatus.Deleted
             }, cancellationToken);
 
@@ -389,36 +391,15 @@ public class WalletManager : IWalletService
 
     /// <inheritdoc/>
     [Obsolete("Use RegisterDerivedAddressAsync for client-side derivation instead", true)]
-    public async Task<WalletAddress> GenerateAddressAsync(
+    public Task<WalletAddress> GenerateAddressAsync(
         string walletAddress,
         int index,
         bool isChange = false,
         string? label = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(walletAddress))
-            throw new ArgumentException("Wallet address cannot be empty", nameof(walletAddress));
-
-        try
-        {
-            var wallet = await _repository.GetByAddressAsync(walletAddress, false, false, false, cancellationToken);
-            if (wallet == null)
-            {
-                throw new InvalidOperationException($"Wallet {walletAddress} not found");
-            }
-
-            // Server-side address derivation is not supported — the mnemonic is never stored server-side.
-            // Clients must derive addresses locally and register them via RegisterDerivedAddressAsync.
-            throw new NotSupportedException(
-                "Server-side address generation is not supported. " +
-                "Address derivation requires the wallet mnemonic which is not stored on the server. " +
-                "Use RegisterDerivedAddressAsync for client-side derivation instead.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to generate address for wallet {Address}", walletAddress);
-            throw;
-        }
+        throw new NotSupportedException(
+            "Server-side address generation is not supported. Use RegisterDerivedAddressAsync instead.");
     }
 
     /// <summary>

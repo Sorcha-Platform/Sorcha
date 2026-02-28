@@ -59,7 +59,7 @@ public class WalletUtilities : IWalletUtilities
 
             return Bech32.Encode(WalletPrefix, classicalData);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException or OverflowException)
         {
             return null;
         }
@@ -106,7 +106,7 @@ public class WalletUtilities : IWalletUtilities
             byte[] publicKey = bdata.Skip(1).ToArray();
             return (bnetwork, publicKey);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException or OverflowException)
         {
             return null;
         }
@@ -160,7 +160,7 @@ public class WalletUtilities : IWalletUtilities
             // Encode with Base58Check
             return Base58.EncodeCheck(wifData);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException or OverflowException)
         {
             return null;
         }
@@ -187,7 +187,7 @@ public class WalletUtilities : IWalletUtilities
 
             return (network, privateKey);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException or OverflowException)
         {
             return null;
         }

@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -26,14 +26,18 @@ public class VerifiedCache<TDocument, TId> : IVerifiedCache<TDocument, TId>
     private readonly Func<TDocument, string>? _hashSelector;
     private readonly VerifiedCacheConfiguration _configuration;
     private readonly ILogger<VerifiedCache<TDocument, TId>>? _logger;
-    private readonly JsonSerializerOptions _jsonOptions;
+
+    // Probabilistic verification — verify only a percentage of cache hits
+    // to avoid negating the performance benefit of caching.
+    private readonly Random _random = new();
+    private const double VerificationProbability = 0.05; // 5% of reads
 
     // Statistics
     private long _cacheHits;
     private long _cacheMisses;
     private long _wormFetches;
     private long _verificationFailures;
-    private readonly List<double> _latencies = new();
+    private readonly Queue<double> _latencies = new();
     private readonly object _statsLock = new();
 
     /// <summary>
@@ -59,11 +63,6 @@ public class VerifiedCache<TDocument, TId> : IVerifiedCache<TDocument, TId>
         _configuration = options?.Value ?? new VerifiedCacheConfiguration();
         _hashSelector = hashSelector;
         _logger = logger;
-
-        _jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        };
     }
 
     private string GetCacheKey(TId id) => $"{_configuration.KeyPrefix}{id}";
@@ -83,8 +82,10 @@ public class VerifiedCache<TDocument, TId> : IVerifiedCache<TDocument, TId>
             {
                 Interlocked.Increment(ref _cacheHits);
 
-                // Optionally verify hash
-                if (_configuration.EnableHashVerification && _hashSelector is not null)
+                // Probabilistically verify hash to maintain integrity confidence
+                // without negating the performance benefit of caching.
+                if (_configuration.EnableHashVerification && _hashSelector is not null
+                    && _random.NextDouble() < VerificationProbability)
                 {
                     var wormDoc = await _wormStore.GetAsync(id, cancellationToken);
                     if (wormDoc is not null)
@@ -370,10 +371,10 @@ public class VerifiedCache<TDocument, TId> : IVerifiedCache<TDocument, TId>
     {
         lock (_statsLock)
         {
-            _latencies.Add(latencyMs);
+            _latencies.Enqueue(latencyMs);
             if (_latencies.Count > 1000)
             {
-                _latencies.RemoveAt(0);
+                _latencies.Dequeue();
             }
         }
     }

@@ -105,8 +105,6 @@ public class HashProvider : IHashProvider
         }
     }
 
-    #region Blake2b Implementation
-
     private byte[] ComputeBlake2b(byte[] data, int hashSize)
     {
         if (hashSize != 32 && hashSize != 64)
@@ -140,10 +138,6 @@ public class HashProvider : IHashProvider
         return GenericHash.Hash(data, key, hashSize);
     }
 
-    #endregion
-
-    #region Helper Methods
-
     /// <summary>
     /// Computes double SHA-256 hash (used in Bitcoin).
     /// </summary>
@@ -171,11 +165,12 @@ public class HashProvider : IHashProvider
         // SHA-256 first
         byte[] sha256Hash = SHA256.HashData(data);
 
-        // Then RIPEMD-160 (not available in .NET, would need external library)
-        // For now, we'll use SHA-256 again as a placeholder
-        // In production, use a proper RIPEMD-160 implementation
-        return SHA256.HashData(sha256Hash).Take(20).ToArray();
+        // Then RIPEMD-160 using BouncyCastle
+        var ripemd160 = new Org.BouncyCastle.Crypto.Digests.RipeMD160Digest();
+        ripemd160.BlockUpdate(sha256Hash, 0, sha256Hash.Length);
+        byte[] result = new byte[ripemd160.GetDigestSize()];
+        ripemd160.DoFinal(result, 0);
+        return result;
     }
 
-    #endregion
 }

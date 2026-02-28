@@ -19,6 +19,13 @@ public static class SerilogExtensions
     /// Uses <c>writeToProviders: true</c> to preserve the OpenTelemetry logging provider,
     /// so enriched logs flow through both Console and OTLP.
     /// </summary>
+    /// <remarks>
+    /// This method requires <see cref="WebApplicationBuilder"/> specifically because
+    /// Serilog's <c>UseSerilog</c> extension targets <see cref="IHostBuilder"/>,
+    /// which is only accessible via <see cref="WebApplicationBuilder.Host"/>.
+    /// </remarks>
+    /// <param name="builder">The web application builder.</param>
+    /// <returns>The builder for chaining.</returns>
     public static WebApplicationBuilder AddSerilogLogging(this WebApplicationBuilder builder)
     {
         builder.Host.UseSerilog((context, services, config) => config

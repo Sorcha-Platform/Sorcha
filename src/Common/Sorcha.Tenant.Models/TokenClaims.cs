@@ -16,8 +16,6 @@ namespace Sorcha.Tenant.Models;
 /// </remarks>
 public class TokenClaims
 {
-    #region Standard JWT Claims
-
     /// <summary>
     /// Subject (user or service principal ID).
     /// Standard JWT "sub" claim.
@@ -67,10 +65,6 @@ public class TokenClaims
     /// </summary>
     public string? Name { get; init; }
 
-    #endregion
-
-    #region Deployment Claims
-
     /// <summary>
     /// Unique identifier for the Sorcha deployment that issued this token.
     /// Custom claim: "deployment_id".
@@ -92,10 +86,6 @@ public class TokenClaims
     /// </summary>
     public bool Federated { get; init; } = false;
 
-    #endregion
-
-    #region Organization Claims
-
     /// <summary>
     /// Organization ID (null for public identities and service principals).
     /// Custom claim: "org_id".
@@ -109,10 +99,6 @@ public class TokenClaims
     /// </summary>
     public string? OrganizationSubdomain { get; init; }
 
-    #endregion
-
-    #region Identity & Role Claims
-
     /// <summary>
     /// Token type ("user", "service", "public").
     /// Custom claim: "token_type".
@@ -125,10 +111,6 @@ public class TokenClaims
     /// Custom claim: "roles".
     /// </summary>
     public string[] Roles { get; init; } = Array.Empty<string>();
-
-    #endregion
-
-    #region Permission Claims
 
     /// <summary>
     /// Blockchain IDs this user/organization can access.
@@ -148,10 +130,6 @@ public class TokenClaims
     /// Custom claim: "can_publish_blueprint".
     /// </summary>
     public bool CanPublishBlueprint { get; init; }
-
-    #endregion
-
-    #region Claim Name Constants
 
     /// <summary>
     /// JWT claim name constants for consistent claim handling.
@@ -207,5 +185,4 @@ public class TokenClaims
         public const string Member = "Member";
     }
 
-    #endregion
 }

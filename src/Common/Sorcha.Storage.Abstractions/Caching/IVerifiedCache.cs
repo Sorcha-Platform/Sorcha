@@ -200,6 +200,7 @@ public enum CacheStartupStrategy
 /// <summary>
 /// Configuration for verified cache behavior.
 /// </summary>
+/// <seealso cref="Sorcha.Storage.Abstractions.RegisterCacheConfiguration"/>
 public class VerifiedCacheConfiguration
 {
     /// <summary>

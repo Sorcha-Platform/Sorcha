@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Register;
 
@@ -19,7 +20,6 @@ public class RegisterServiceClient : IRegisterServiceClient
     private readonly IServiceAuthClient _serviceAuth;
     private readonly ILogger<RegisterServiceClient> _logger;
     private readonly string _serviceAddress;
-    private readonly bool _useGrpc;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -41,8 +41,6 @@ public class RegisterServiceClient : IRegisterServiceClient
             ?? configuration["GrpcClients:RegisterService:Address"]
             ?? throw new InvalidOperationException("Register Service address not configured");
 
-        _useGrpc = configuration.GetValue<bool>("ServiceClients:RegisterService:UseGrpc", false);
-
         // Configure HttpClient base address
         if (_httpClient.BaseAddress == null)
         {
@@ -50,26 +48,13 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
 
         _logger.LogInformation(
-            "RegisterServiceClient initialized (Address: {Address}, Protocol: {Protocol})",
-            _serviceAddress, _useGrpc ? "gRPC" : "HTTP");
+            "RegisterServiceClient initialized (Address: {Address}, Protocol: HTTP)",
+            _serviceAddress);
     }
 
-    /// <summary>
-    /// Sets the JWT authentication header for service-to-service calls
-    /// </summary>
-    private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
-    {
-        var token = await _serviceAuth.GetTokenAsync(cancellationToken);
-        if (token is not null)
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        }
-        else
-        {
-            _logger.LogWarning("No auth token available for Register Service call");
-        }
-    }
+    private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
+        ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Register Service", cancellationToken);
 
     // =========================================================================
     // Docket Operations

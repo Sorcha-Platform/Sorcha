@@ -27,7 +27,8 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
 
     public PeerServiceClient(
         IConfiguration configuration,
-        ILogger<PeerServiceClient> logger)
+        ILogger<PeerServiceClient> logger,
+        HttpClient? httpClient = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -56,10 +57,10 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
             _communicationClient = new PeerCommunication.PeerCommunicationClient(_channel);
         }
 
-        // Create HttpClient for REST API calls
-        if (!string.IsNullOrEmpty(httpAddress))
+        // Use injected HttpClient for REST API calls
+        if (httpClient is not null)
         {
-            _httpClient = new HttpClient { BaseAddress = new Uri(httpAddress.TrimEnd('/') + "/") };
+            _httpClient = httpClient;
         }
 
         _logger.LogInformation("PeerServiceClient initialized (gRPC: {Address}, HTTP: {HttpAddress}, PeerId: {PeerId})",
@@ -434,7 +435,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
         if (!_disposed)
         {
             _channel?.Dispose();
-            _httpClient?.Dispose();
+            // Note: _httpClient is managed by IHttpClientFactory — do not dispose it here
             _disposed = true;
         }
     }

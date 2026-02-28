@@ -83,8 +83,10 @@ public static class InMemoryServiceExtensions
     }
 
     /// <summary>
-    /// Adds all in-memory storage implementations.
-    /// Useful for development and testing scenarios.
+    /// Adds in-memory cache store as the default storage provider.
+    /// For document and WORM stores, use the typed registration methods
+    /// (<see cref="AddInMemoryDocumentStore{TDocument, TId}"/> and
+    /// <see cref="AddInMemoryWormStore{TDocument, TId}"/>).
     /// </summary>
     /// <param name="services">Service collection.</param>
     /// <returns>Service collection for chaining.</returns>

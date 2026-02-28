@@ -108,7 +108,12 @@ public class TransactionBuilder : ITransactionBuilder
         if (recipientWallets == null || recipientWallets.Length == 0)
             throw new ArgumentException("At least one recipient is required", nameof(recipientWallets));
 
-        // Synchronously add payload (async version would be better in production)
+        // Intentional sync-over-async: TransactionBuilder.AddPayload maintains a synchronous API
+        // to preserve the fluent builder pattern (Create().AddPayload().AddPayload().SignAsync()).
+        // The underlying AddPayloadAsync performs CPU-bound hash computation and in-memory
+        // collection updates that complete synchronously in practice. Making this async would
+        // require changing AddPayload to AddPayloadAsync, breaking the fluent builder API
+        // contract and all callers across the codebase.
         var result = _transaction!.PayloadManager.AddPayloadAsync(
             data, recipientWallets, options).GetAwaiter().GetResult();
 

@@ -304,6 +304,24 @@ public class WalletService
 
 ---
 
+## Context Management (Core Guideline)
+
+**Problem:** Large files auto-loaded into every session waste context window. After compaction, sessions restart with 100KB+ of reference material that may not be relevant.
+
+**Rules:**
+1. **MASTER-TASKS.md** — Active work only. Completed phases archived to `MASTER-TASKS-ARCHIVE.md`. Read the archive on-demand when historical context is needed.
+2. **MEMORY.md** — Cap at 50 lines. Active patterns and preferences only. No historical fix notes or completed branch details.
+3. **Plan/spec files** — Read on-demand when implementing, not at session start. Large reference docs pollute compact summaries.
+4. **Current work focus** — Store in MEMORY.md under `## Current Branch` with branch name, remaining tasks, and build status. Update on session end.
+5. **On continue** — Check `MEMORY.md > Current Branch` section first. Only load the plan/task files if continuing that work.
+6. **Settings permissions** — Use broad patterns (`Bash(*)`) not one-off approvals. Keep the list under 20 entries.
+
+**On session end or before compact:**
+- Update `MEMORY.md > Current Branch` with progress
+- Do NOT read large reference files just to summarize them
+
+---
+
 ## AI Assistant Requirements
 
 ### MANDATORY: Update these when generating code

@@ -254,8 +254,6 @@ public sealed class BLSThresholdProvider : IDisposable
         }
     }
 
-    #region Polynomial and Lagrange Math
-
     /// <summary>
     /// Evaluates polynomial f(x) = a0 + a1*x + ... + a(t-1)*x^(t-1) at the given point
     /// using Horner's method. All arithmetic is in the Fr scalar field.
@@ -321,10 +319,6 @@ public sealed class BLSThresholdProvider : IDisposable
 
         return result;
     }
-
-    #endregion
-
-    #region Serialization Helpers
 
     private static byte[] SerializeG1(ref mclBnG1 point)
     {
@@ -443,10 +437,6 @@ public sealed class BLSThresholdProvider : IDisposable
         return g2;
     }
 
-    #endregion
-
-    #region Utility Methods
-
     private static byte[] BuildSignerBitfield(uint[] shareIndices, uint totalSigners)
     {
         var byteCount = (int)((totalSigners + 7) / 8);
@@ -461,8 +451,6 @@ public sealed class BLSThresholdProvider : IDisposable
         }
         return bitfield;
     }
-
-    #endregion
 
     public void Dispose()
     {

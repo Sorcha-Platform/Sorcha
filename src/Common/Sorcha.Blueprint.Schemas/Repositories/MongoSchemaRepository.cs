@@ -18,6 +18,8 @@ public class MongoSchemaRepository : ISchemaRepository
 {
     private readonly IMongoCollection<MongoSchemaDocument> _collection;
     private readonly ILogger<MongoSchemaRepository> _logger;
+    private readonly bool _createIndexesOnStartup;
+    private bool _indexesCreated;
 
     /// <summary>
     /// Initializes a new instance with configuration options.
@@ -34,10 +36,7 @@ public class MongoSchemaRepository : ISchemaRepository
         var database = client.GetDatabase(config.DatabaseName);
         _collection = database.GetCollection<MongoSchemaDocument>(config.CollectionName);
 
-        if (config.CreateIndexesOnStartup)
-        {
-            CreateIndexesAsync().GetAwaiter().GetResult();
-        }
+        _createIndexesOnStartup = config.CreateIndexesOnStartup;
     }
 
     /// <summary>
@@ -53,6 +52,19 @@ public class MongoSchemaRepository : ISchemaRepository
 
         _collection = database.GetCollection<MongoSchemaDocument>(collectionName);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Ensures indexes are created on first access when configured.
+    /// Uses lazy initialization to avoid synchronous-over-async deadlocks in the constructor.
+    /// </summary>
+    private async Task EnsureIndexesAsync()
+    {
+        if (_createIndexesOnStartup && !_indexesCreated)
+        {
+            await CreateIndexesAsync();
+            _indexesCreated = true;
+        }
     }
 
     /// <summary>
@@ -104,6 +116,7 @@ public class MongoSchemaRepository : ISchemaRepository
         string? organizationId = null,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync();
         var filter = CreateAccessFilter(identifier, organizationId);
         var doc = await _collection.Find(filter).FirstOrDefaultAsync(cancellationToken);
         return doc is null ? null : ToSchemaEntry(doc);
@@ -119,6 +132,7 @@ public class MongoSchemaRepository : ISchemaRepository
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync();
         var filterBuilder = Builders<MongoSchemaDocument>.Filter;
         var filters = new List<FilterDefinition<MongoSchemaDocument>>();
 
@@ -149,7 +163,15 @@ public class MongoSchemaRepository : ISchemaRepository
         // Search filter (title and description)
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var searchRegex = new BsonRegularExpression(search, "i");
+            // Enforce max length to limit resource consumption
+            if (search.Length > 200)
+            {
+                search = search[..200];
+            }
+
+            // Escape regex special characters to prevent ReDoS attacks
+            var escapedSearch = System.Text.RegularExpressions.Regex.Escape(search);
+            var searchRegex = new BsonRegularExpression(escapedSearch, "i");
             filters.Add(filterBuilder.Or(
                 filterBuilder.Regex(s => s.Title, searchRegex),
                 filterBuilder.Regex(s => s.Description, searchRegex)));
@@ -184,6 +206,7 @@ public class MongoSchemaRepository : ISchemaRepository
     public async Task<SchemaEntry> CreateAsync(SchemaEntry entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        await EnsureIndexesAsync();
 
         var doc = ToDocument(entry);
         try
@@ -202,6 +225,7 @@ public class MongoSchemaRepository : ISchemaRepository
     public async Task<SchemaEntry> UpdateAsync(SchemaEntry entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
+        await EnsureIndexesAsync();
 
         entry.DateModified = DateTimeOffset.UtcNow;
         var doc = ToDocument(entry);
@@ -227,6 +251,7 @@ public class MongoSchemaRepository : ISchemaRepository
         string organizationId,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync();
         var filter = Builders<MongoSchemaDocument>.Filter.And(
             Builders<MongoSchemaDocument>.Filter.Eq(s => s.Identifier, identifier),
             Builders<MongoSchemaDocument>.Filter.Eq(s => s.OrganizationId, organizationId));
@@ -248,6 +273,7 @@ public class MongoSchemaRepository : ISchemaRepository
         string? organizationId = null,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync();
         var filter = CreateAccessFilter(identifier, organizationId);
         var count = await _collection.CountDocumentsAsync(filter, new CountOptions { Limit = 1 }, cancellationToken);
         return count > 0;
@@ -258,6 +284,7 @@ public class MongoSchemaRepository : ISchemaRepository
         string identifier,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIndexesAsync();
         var filter = Builders<MongoSchemaDocument>.Filter.And(
             Builders<MongoSchemaDocument>.Filter.Eq(s => s.Identifier, identifier),
             Builders<MongoSchemaDocument>.Filter.Eq(s => s.IsGloballyPublished, true));

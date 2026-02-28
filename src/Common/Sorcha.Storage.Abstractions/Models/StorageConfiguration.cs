@@ -40,8 +40,9 @@ public class StorageConfiguration
 }
 
 /// <summary>
-/// Configuration for Register Service verified cache.
+/// Configuration for Register Service verified cache startup verification.
 /// </summary>
+/// <seealso cref="Sorcha.Storage.Abstractions.Caching.VerifiedCacheConfiguration"/>
 public class RegisterCacheConfiguration
 {
     /// <summary>

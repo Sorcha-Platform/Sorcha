@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
-using Sorcha.Wallet.Core.Encryption.Interfaces;
-using Sorcha.Wallet.Core.Encryption.Logging;
 
 namespace Sorcha.Wallet.Core.Encryption.Providers;
 
@@ -45,18 +42,12 @@ namespace Sorcha.Wallet.Core.Encryption.Providers;
 /// - Machine-specific in fallback mode (tied to machine-id)
 /// - Secret Service may require user session (not always available in containers)
 /// </summary>
-public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
+public sealed class LinuxSecretServiceEncryptionProvider : EncryptionProviderBase
 {
     private readonly string _fallbackKeyPath;
     private readonly string _serviceName;
-    private readonly string _defaultKeyId;
     private readonly string? _machineKeyMaterial;
     private readonly bool _secretServiceAvailable;
-    private readonly ConcurrentDictionary<string, (byte[] key, DateTime loadedAt)> _keyCache;
-    private readonly EncryptionAuditLogger _auditLogger;
-    private readonly ILogger<LinuxSecretServiceEncryptionProvider> _logger;
-    private bool _disposed;
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(30);
 
     private const string ServiceName = "sorcha-wallet-service";
     private const int Pbkdf2Iterations = 100000;
@@ -86,6 +77,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         string defaultKeyId,
         ILogger<LinuxSecretServiceEncryptionProvider> logger,
         string? machineKeyMaterial = null)
+        : base(defaultKeyId, logger, "LinuxSecretService")
     {
         if (!IsAvailable)
         {
@@ -94,25 +86,21 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         }
 
         _fallbackKeyPath = fallbackKeyPath ?? throw new ArgumentNullException(nameof(fallbackKeyPath));
-        _defaultKeyId = defaultKeyId ?? throw new ArgumentNullException(nameof(defaultKeyId));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _machineKeyMaterial = machineKeyMaterial;
         _serviceName = ServiceName;
-        _keyCache = new ConcurrentDictionary<string, (byte[] key, DateTime loadedAt)>();
-        _auditLogger = new EncryptionAuditLogger(logger, "LinuxSecretService");
 
         // Check Secret Service availability
         _secretServiceAvailable = CheckSecretServiceAvailable();
 
         if (_secretServiceAvailable)
         {
-            _logger.LogInformation("Linux Secret Service detected and available");
-            _auditLogger.LogProviderInitialized($"Mode=SecretService, ServiceName={_serviceName}");
+            Logger.LogInformation("Linux Secret Service detected and available");
+            AuditLogger.LogProviderInitialized($"Mode=SecretService, ServiceName={_serviceName}");
         }
         else
         {
             var keySource = string.IsNullOrWhiteSpace(_machineKeyMaterial) ? "machine-id" : "configured";
-            _logger.LogWarning(
+            Logger.LogWarning(
                 "Linux Secret Service not available, using file-based fallback: {FallbackPath} (KEK source: {KeySource})",
                 _fallbackKeyPath, keySource);
 
@@ -122,8 +110,8 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
             // Load existing keys from fallback storage
             LoadKeysFromFallbackStorage();
 
-            _auditLogger.LogProviderInitialized(
-                $"Mode=Fallback, FallbackPath={_fallbackKeyPath}, DefaultKeyId={_defaultKeyId}, KekSource={keySource}");
+            AuditLogger.LogProviderInitialized(
+                $"Mode=Fallback, FallbackPath={_fallbackKeyPath}, DefaultKeyId={defaultKeyId}, KekSource={keySource}");
         }
     }
 
@@ -139,7 +127,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
             if (!Directory.Exists(_fallbackKeyPath))
             {
                 Directory.CreateDirectory(_fallbackKeyPath);
-                _logger.LogInformation("Created fallback key storage directory: {FallbackPath}", _fallbackKeyPath);
+                Logger.LogInformation("Created fallback key storage directory: {FallbackPath}", _fallbackKeyPath);
             }
 
             // Verify directory is writable by creating and deleting a test file
@@ -148,7 +136,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
             {
                 File.WriteAllBytes(testFilePath, [0x00]);
                 File.Delete(testFilePath);
-                _logger.LogDebug("Fallback key storage directory is writable: {FallbackPath}", _fallbackKeyPath);
+                Logger.LogDebug("Fallback key storage directory is writable: {FallbackPath}", _fallbackKeyPath);
             }
             catch (UnauthorizedAccessException)
             {
@@ -169,7 +157,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex,
+            Logger.LogError(ex,
                 "Cannot create wallet encryption key storage directory: {FallbackPath}. " +
                 "Check that the container has write permissions to this path.",
                 _fallbackKeyPath);
@@ -187,7 +175,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         }
         catch (IOException ex) when (ex.Message.Contains("Permission denied") || ex.Message.Contains("Access"))
         {
-            _logger.LogError(ex,
+            Logger.LogError(ex,
                 "Permission denied accessing wallet encryption key storage: {FallbackPath}",
                 _fallbackKeyPath);
 
@@ -200,192 +188,69 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
     }
 
     /// <inheritdoc />
-    public string GetDefaultKeyId() => _defaultKeyId;
-
-    /// <inheritdoc />
-    public async Task<string> EncryptAsync(
-        byte[] plaintext,
-        string keyId,
-        CancellationToken cancellationToken = default)
+    protected override async Task<bool> KeyExistsInStoreAsync(string keyId, CancellationToken cancellationToken)
     {
-        if (plaintext == null || plaintext.Length == 0)
-            throw new ArgumentException("Plaintext cannot be null or empty.", nameof(plaintext));
-
-        if (string.IsNullOrWhiteSpace(keyId))
-            throw new ArgumentException("Key ID cannot be null or empty.", nameof(keyId));
-
-        using var timer = EncryptionOperationTimer.Start();
-
-        try
-        {
-            // Get or create DEK
-            var dek = await GetOrCreateKeyAsync(keyId, cancellationToken);
-
-            // Encrypt data with AES-256-GCM using DEK
-            using var aes = new AesGcm(dek, AesGcm.TagByteSizes.MaxSize);
-
-            var nonce = RandomNumberGenerator.GetBytes(AesGcm.NonceByteSizes.MaxSize);
-            var ciphertext = new byte[plaintext.Length];
-            var tag = new byte[AesGcm.TagByteSizes.MaxSize];
-
-            aes.Encrypt(nonce, plaintext, ciphertext, tag);
-
-            // Combine: nonce (12) + tag (16) + ciphertext
-            var combined = new byte[nonce.Length + tag.Length + ciphertext.Length];
-            Buffer.BlockCopy(nonce, 0, combined, 0, nonce.Length);
-            Buffer.BlockCopy(tag, 0, combined, nonce.Length, tag.Length);
-            Buffer.BlockCopy(ciphertext, 0, combined, nonce.Length + tag.Length, ciphertext.Length);
-
-            var result = Convert.ToBase64String(combined);
-
-            _auditLogger.LogEncryptSuccess(keyId, timer.ElapsedMilliseconds);
-
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _auditLogger.LogEncryptFailure(keyId, ex, timer.ElapsedMilliseconds);
-            throw;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<byte[]> DecryptAsync(
-        string ciphertext,
-        string keyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(ciphertext))
-            throw new ArgumentException("Ciphertext cannot be null or empty.", nameof(ciphertext));
-
-        if (string.IsNullOrWhiteSpace(keyId))
-            throw new ArgumentException("Key ID cannot be null or empty.", nameof(keyId));
-
-        using var timer = EncryptionOperationTimer.Start();
-
-        try
-        {
-            var dek = await GetOrCreateKeyAsync(keyId, cancellationToken);
-
-            var combined = Convert.FromBase64String(ciphertext);
-
-            var nonceSize = AesGcm.NonceByteSizes.MaxSize;
-            var tagSize = AesGcm.TagByteSizes.MaxSize;
-
-            if (combined.Length < nonceSize + tagSize)
-            {
-                throw new CryptographicException(
-                    $"Ciphertext too short. Expected at least {nonceSize + tagSize} bytes.");
-            }
-
-            var nonce = new byte[nonceSize];
-            var tag = new byte[tagSize];
-            var encryptedData = new byte[combined.Length - nonceSize - tagSize];
-
-            Buffer.BlockCopy(combined, 0, nonce, 0, nonceSize);
-            Buffer.BlockCopy(combined, nonceSize, tag, 0, tagSize);
-            Buffer.BlockCopy(combined, nonceSize + tagSize, encryptedData, 0, encryptedData.Length);
-
-            using var aes = new AesGcm(dek, AesGcm.TagByteSizes.MaxSize);
-            var plaintext = new byte[encryptedData.Length];
-
-            aes.Decrypt(nonce, encryptedData, tag, plaintext);
-
-            _auditLogger.LogDecryptSuccess(keyId, timer.ElapsedMilliseconds);
-
-            return plaintext;
-        }
-        catch (Exception ex)
-        {
-            _auditLogger.LogDecryptFailure(keyId, ex, timer.ElapsedMilliseconds);
-            throw;
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<bool> KeyExistsAsync(string keyId, CancellationToken cancellationToken = default)
-    {
-        using var timer = EncryptionOperationTimer.Start();
-
-        // Check in-memory cache first (TTL-aware)
-        if (_keyCache.TryGetValue(keyId, out var cached) && DateTime.UtcNow - cached.loadedAt < CacheTtl)
-        {
-            _auditLogger.LogKeyExists(keyId, exists: true, timer.ElapsedMilliseconds);
-            return true;
-        }
-
-        bool exists;
-
         if (_secretServiceAvailable)
         {
             // Check Secret Service
-            exists = await CheckSecretServiceKeyExists(keyId, cancellationToken);
-        }
-        else
-        {
-            // Check fallback file storage
-            var keyFilePath = GetFallbackKeyFilePath(keyId);
-            exists = File.Exists(keyFilePath);
+            return await CheckSecretServiceKeyExists(keyId, cancellationToken);
         }
 
-        _auditLogger.LogKeyExists(keyId, exists, timer.ElapsedMilliseconds);
-
-        return exists;
+        // Check fallback file storage
+        var keyFilePath = GetKeyFilePath(_fallbackKeyPath, keyId);
+        return File.Exists(keyFilePath);
     }
 
     /// <inheritdoc />
-    public async Task CreateKeyAsync(string keyId, CancellationToken cancellationToken = default)
+    protected override async Task ProtectAndStoreKeyAsync(string keyId, byte[] dek, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(keyId))
-            throw new ArgumentException("Key ID cannot be null or empty.", nameof(keyId));
-
-        using var timer = EncryptionOperationTimer.Start();
-
-        try
+        if (_secretServiceAvailable)
         {
-            // Generate random 256-bit DEK
-            var dek = RandomNumberGenerator.GetBytes(32);
-
-            if (_secretServiceAvailable)
-            {
-                // Store in Secret Service
-                await StoreDekInSecretService(keyId, dek, cancellationToken);
-            }
-            else
-            {
-                // Store in fallback file storage
-                await StoreDekInFallbackStorage(keyId, dek, cancellationToken);
-            }
-
-            // Cache for performance
-            _keyCache[keyId] = (dek, DateTime.UtcNow);
-
-            _auditLogger.LogCreateKeySuccess(keyId, timer.ElapsedMilliseconds);
+            // Store in Secret Service
+            await StoreDekInSecretService(keyId, dek, cancellationToken);
         }
-        catch (Exception ex)
+        else
         {
-            _auditLogger.LogCreateKeyFailure(keyId, ex, timer.ElapsedMilliseconds);
-            throw;
+            // Store in fallback file storage
+            await StoreDekInFallbackStorage(keyId, dek, cancellationToken);
         }
     }
 
+    /// <inheritdoc />
+    protected override async Task<byte[]?> RetrieveKeyAsync(string keyId, CancellationToken cancellationToken)
+    {
+        if (_secretServiceAvailable)
+        {
+            return await RetrieveDekFromSecretService(keyId, cancellationToken);
+        }
+
+        var keyFilePath = GetKeyFilePath(_fallbackKeyPath, keyId);
+        if (!File.Exists(keyFilePath))
+        {
+            return null;
+        }
+
+        return await RetrieveDekFromFallbackStorage(keyId, cancellationToken);
+    }
+
     /// <summary>
-    /// Gets or creates encryption key (DEK).
-    /// Handles stale key recovery when the KEK has changed (e.g., Docker container rebuild
-    /// changed /etc/machine-id, making stored DEKs undecryptable).
+    /// Overrides base to add stale key recovery for fallback mode.
+    /// When the KEK has changed (e.g., Docker container rebuild changed /etc/machine-id),
+    /// stored DEKs become undecryptable. This override catches the authentication failure,
+    /// deletes the stale file, and allows the base class to regenerate.
     /// </summary>
-    private async Task<byte[]> GetOrCreateKeyAsync(string keyId, CancellationToken cancellationToken)
+    protected override async Task<byte[]> GetOrCreateKeyAsync(string keyId, CancellationToken cancellationToken)
     {
         // Check cache first (with TTL)
-        if (_keyCache.TryGetValue(keyId, out var cached))
+        if (KeyCache.TryGetValue(keyId, out var cached))
         {
             if (DateTime.UtcNow - cached.loadedAt < CacheTtl)
             {
                 return cached.key;
             }
 
-            // Cache expired — evict and re-fetch from storage
-            if (_keyCache.TryRemove(keyId, out var expired))
+            // Cache expired -- evict and re-fetch from storage
+            if (KeyCache.TryRemove(keyId, out var expired))
             {
                 Array.Clear(expired.key, 0, expired.key.Length);
             }
@@ -400,7 +265,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         }
         else
         {
-            var keyFilePath = GetFallbackKeyFilePath(keyId);
+            var keyFilePath = GetKeyFilePath(_fallbackKeyPath, keyId);
             if (File.Exists(keyFilePath))
             {
                 try
@@ -412,7 +277,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
                     // KEK has changed (e.g., /etc/machine-id regenerated after Docker rebuild).
                     // The stored DEK is encrypted with the old KEK and cannot be recovered.
                     // Delete the stale file and regenerate a new DEK.
-                    _logger.LogWarning(
+                    Logger.LogWarning(
                         "Stale encryption key detected for '{KeyId}': the machine key (KEK) has changed, " +
                         "likely due to a Docker container rebuild. Deleting stale key file and regenerating. " +
                         "Any wallets encrypted with the old key will need to be re-created. " +
@@ -426,7 +291,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
                     }
                     catch (Exception deleteEx)
                     {
-                        _logger.LogError(deleteEx, "Failed to delete stale key file: {KeyFile}", keyFilePath);
+                        Logger.LogError(deleteEx, "Failed to delete stale key file: {KeyFile}", keyFilePath);
                     }
 
                     // dek remains null, will be created below
@@ -438,11 +303,11 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         if (dek == null)
         {
             await CreateKeyAsync(keyId, cancellationToken);
-            return _keyCache[keyId].key;
+            return KeyCache[keyId].key;
         }
 
         // Cache and return
-        _keyCache[keyId] = (dek, DateTime.UtcNow);
+        KeyCache[keyId] = (dek, DateTime.UtcNow);
         return dek;
     }
 
@@ -591,7 +456,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         aes.Encrypt(nonce, dek, encryptedDek, tag);
 
         // Store nonce + tag + encryptedDek
-        var keyFile = GetFallbackKeyFilePath(keyId);
+        var keyFile = GetKeyFilePath(_fallbackKeyPath, keyId);
         var combined = new byte[nonce.Length + tag.Length + encryptedDek.Length];
         Buffer.BlockCopy(nonce, 0, combined, 0, nonce.Length);
         Buffer.BlockCopy(tag, 0, combined, nonce.Length, tag.Length);
@@ -605,7 +470,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
     /// </summary>
     private async Task<byte[]> RetrieveDekFromFallbackStorage(string keyId, CancellationToken cancellationToken)
     {
-        var keyFile = GetFallbackKeyFilePath(keyId);
+        var keyFile = GetKeyFilePath(_fallbackKeyPath, keyId);
         var combined = await File.ReadAllBytesAsync(keyFile, cancellationToken);
 
         var nonceSize = AesGcm.NonceByteSizes.MaxSize;
@@ -637,7 +502,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         // Directory existence and writability is already verified by EnsureFallbackDirectoryIsWritable()
         if (!Directory.Exists(_fallbackKeyPath))
         {
-            _logger.LogDebug(
+            Logger.LogDebug(
                 "Fallback key storage directory is empty (fresh installation): {FallbackPath}",
                 _fallbackKeyPath);
             return;
@@ -653,12 +518,12 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
                 var keyId = Path.GetFileNameWithoutExtension(keyFile);
                 var dek = RetrieveDekFromFallbackStorage(keyId, CancellationToken.None).GetAwaiter().GetResult();
 
-                _keyCache[keyId] = (dek, DateTime.UtcNow);
+                KeyCache[keyId] = (dek, DateTime.UtcNow);
                 loadedCount++;
             }
             catch (AuthenticationTagMismatchException)
             {
-                _logger.LogWarning(
+                Logger.LogWarning(
                     "Stale encryption key file detected: {KeyFile}. " +
                     "The machine key (KEK) has changed since this DEK was stored " +
                     "(likely due to Docker container rebuild changing /etc/machine-id). " +
@@ -668,14 +533,14 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
             }
             catch (Exception ex)
             {
-                _logger.LogError(
+                Logger.LogError(
                     ex,
                     "Failed to load encryption key from fallback file: {KeyFile}",
                     keyFile);
             }
         }
 
-        _auditLogger.LogKeysLoaded(loadedCount, $"{_fallbackKeyPath} (fallback)");
+        AuditLogger.LogKeysLoaded(loadedCount, $"{_fallbackKeyPath} (fallback)");
     }
 
     /// <summary>
@@ -737,27 +602,9 @@ public sealed class LinuxSecretServiceEncryptionProvider : IEncryptionProvider
         return Environment.MachineName;
     }
 
-    /// <summary>
-    /// Gets file path for fallback encrypted DEK storage
-    /// </summary>
-    private string GetFallbackKeyFilePath(string keyId)
-    {
-        var safeKeyId = string.Join("_", keyId.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(_fallbackKeyPath, $"{safeKeyId}.key");
-    }
-
     /// <inheritdoc />
-    public void Dispose()
+    protected override void OnDispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        foreach (var kvp in _keyCache)
-        {
-            Array.Clear(kvp.Value.key, 0, kvp.Value.key.Length);
-        }
-        _keyCache.Clear();
-
-        _logger.LogDebug("LinuxSecretServiceEncryptionProvider disposed — DEK cache cleared");
+        Logger.LogDebug("LinuxSecretServiceEncryptionProvider disposed — DEK cache cleared");
     }
 }

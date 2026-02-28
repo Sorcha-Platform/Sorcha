@@ -107,15 +107,16 @@ public class MongoDocumentStore<TDocument, TId> : IDocumentStore<TDocument, TId>
     /// <inheritdoc/>
     public async Task<TDocument> InsertAsync(TDocument document, CancellationToken cancellationToken = default)
     {
-        var id = _idSelector(document);
-        var existing = await GetAsync(id, cancellationToken);
-        if (existing is not null)
+        try
         {
-            throw new InvalidOperationException($"Document with ID '{id}' already exists.");
+            await _collection.InsertOneAsync(document, new InsertOneOptions(), cancellationToken);
+            return document;
         }
-
-        await _collection.InsertOneAsync(document, new InsertOneOptions(), cancellationToken);
-        return document;
+        catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey)
+        {
+            var id = _idSelector(document);
+            throw new InvalidOperationException($"Document with ID '{id}' already exists.", ex);
+        }
     }
 
     /// <inheritdoc/>

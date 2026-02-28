@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Wallet;
 
@@ -496,19 +497,9 @@ public class WalletServiceClient : IWalletServiceClient
     // Private Helpers
     // =========================================================================
 
-    private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
-    {
-        var token = await _serviceAuth.GetTokenAsync(cancellationToken);
-        if (token is not null)
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        }
-        else
-        {
-            _logger.LogWarning("No auth token available for Wallet Service call");
-        }
-    }
+    private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
+        ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Wallet Service", cancellationToken);
 
     // =========================================================================
     // Response DTOs

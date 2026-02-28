@@ -8,6 +8,7 @@ using Sodium;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
+using Sorcha.Cryptography.Utilities;
 
 namespace Sorcha.Cryptography.Core;
 
@@ -434,8 +435,6 @@ public class CryptoModule : ICryptoModule
         }
     }
 
-    #region ED25519 Implementation
-
     private Task<CryptoResult<KeySet>> GenerateED25519KeySetAsync(byte[]? seed, CancellationToken cancellationToken)
     {
         return Task.Run(() =>
@@ -548,10 +547,6 @@ public class CryptoModule : ICryptoModule
             return CryptoResult<byte[]>.Success(publicKey);
         }, cancellationToken);
     }
-
-    #endregion
-
-    #region NIST P-256 Implementation
 
     private Task<CryptoResult<KeySet>> GenerateNISTP256KeySetAsync(byte[]? seed, CancellationToken cancellationToken)
     {
@@ -671,10 +666,6 @@ public class CryptoModule : ICryptoModule
         }, cancellationToken);
     }
 
-    #endregion
-
-    #region RSA-4096 Implementation
-
     private Task<CryptoResult<KeySet>> GenerateRSA4096KeySetAsync(CancellationToken cancellationToken)
     {
         return Task.Run(() =>
@@ -778,10 +769,6 @@ public class CryptoModule : ICryptoModule
         }, cancellationToken);
     }
 
-    #endregion
-
-    #region Hybrid Signing & Verification
-
     /// <summary>
     /// Concurrently signs data with both a classical and PQC key, producing a HybridSignature.
     /// </summary>
@@ -820,9 +807,9 @@ public class CryptoModule : ICryptoModule
             var hybrid = new HybridSignature
             {
                 Classical = Convert.ToBase64String(classicalResult.Value!),
-                ClassicalAlgorithm = NetworkToAlgorithmName((WalletNetworks)classicalNetwork),
+                ClassicalAlgorithm = AlgorithmMapper.ToAlgorithmName((WalletNetworks)classicalNetwork),
                 Pqc = Convert.ToBase64String(pqcResult.Value!),
-                PqcAlgorithm = NetworkToAlgorithmName((WalletNetworks)pqcNetwork),
+                PqcAlgorithm = AlgorithmMapper.ToAlgorithmName((WalletNetworks)pqcNetwork),
                 WitnessPublicKey = Convert.ToBase64String(pqcPublicKey)
             };
 
@@ -864,11 +851,10 @@ public class CryptoModule : ICryptoModule
             // Verify classical component if present
             if (!string.IsNullOrEmpty(hybridSignature.Classical) && classicalPublicKey != null)
             {
-                var classicalNetwork = AlgorithmNameToNetwork(hybridSignature.ClassicalAlgorithm!);
-                if (classicalNetwork.HasValue)
+                if (AlgorithmMapper.TryParseAlgorithm(hybridSignature.ClassicalAlgorithm!, out var classicalNetwork))
                 {
                     var sig = Convert.FromBase64String(hybridSignature.Classical);
-                    var result = await VerifyAsync(sig, hash, (byte)classicalNetwork.Value, classicalPublicKey, cancellationToken);
+                    var result = await VerifyAsync(sig, hash, (byte)classicalNetwork, classicalPublicKey, cancellationToken);
                     classicalValid = result == CryptoStatus.Success;
                 }
             }
@@ -876,12 +862,11 @@ public class CryptoModule : ICryptoModule
             // Verify PQC component if present (public key from WitnessPublicKey)
             if (!string.IsNullOrEmpty(hybridSignature.Pqc) && !string.IsNullOrEmpty(hybridSignature.WitnessPublicKey))
             {
-                var pqcNetwork = AlgorithmNameToNetwork(hybridSignature.PqcAlgorithm!);
-                if (pqcNetwork.HasValue)
+                if (AlgorithmMapper.TryParseAlgorithm(hybridSignature.PqcAlgorithm!, out var pqcNetworkEnum))
                 {
                     var sig = Convert.FromBase64String(hybridSignature.Pqc);
                     var pubKey = Convert.FromBase64String(hybridSignature.WitnessPublicKey);
-                    var result = await VerifyAsync(sig, hash, (byte)pqcNetwork.Value, pubKey, cancellationToken);
+                    var result = await VerifyAsync(sig, hash, (byte)pqcNetworkEnum, pubKey, cancellationToken);
                     pqcValid = result == CryptoStatus.Success;
                 }
             }
@@ -902,10 +887,6 @@ public class CryptoModule : ICryptoModule
             return CryptoStatus.InvalidSignature;
         }
     }
-
-    #endregion
-
-    #region PQC Helpers
 
     private CryptoResult<KeySet> RecoverPqcKeySet(WalletNetworks network, byte[] keyData)
     {
@@ -947,29 +928,4 @@ public class CryptoModule : ICryptoModule
         return CryptoResult<byte[]>.Success(result.Value!.Ciphertext);
     }
 
-    private static string NetworkToAlgorithmName(WalletNetworks network) => network switch
-    {
-        WalletNetworks.ED25519 => "ED25519",
-        WalletNetworks.NISTP256 => "NISTP256",
-        WalletNetworks.RSA4096 => "RSA4096",
-        WalletNetworks.ML_DSA_65 => "ML-DSA-65",
-        WalletNetworks.SLH_DSA_128s => "SLH-DSA-128s",
-        WalletNetworks.SLH_DSA_192s => "SLH-DSA-192s",
-        WalletNetworks.ML_KEM_768 => "ML-KEM-768",
-        _ => network.ToString()
-    };
-
-    private static WalletNetworks? AlgorithmNameToNetwork(string algorithmName) => algorithmName?.ToUpperInvariant() switch
-    {
-        "ED25519" => WalletNetworks.ED25519,
-        "NISTP256" or "NIST-P256" or "P-256" or "P256" => WalletNetworks.NISTP256,
-        "RSA4096" or "RSA-4096" => WalletNetworks.RSA4096,
-        "ML-DSA-65" or "MLDSA65" => WalletNetworks.ML_DSA_65,
-        "SLH-DSA-128S" or "SLHDSA128S" => WalletNetworks.SLH_DSA_128s,
-        "SLH-DSA-192S" or "SLHDSA192S" => WalletNetworks.SLH_DSA_192s,
-        "ML-KEM-768" or "MLKEM768" => WalletNetworks.ML_KEM_768,
-        _ => null
-    };
-
-    #endregion
 }

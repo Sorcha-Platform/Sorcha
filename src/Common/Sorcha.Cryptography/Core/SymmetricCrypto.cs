@@ -124,8 +124,6 @@ public class SymmetricCrypto : ISymmetricCrypto
         return RandomNumberGenerator.GetBytes(ivSize);
     }
 
-    #region AES-GCM Implementation
-
     private Task<CryptoResult<SymmetricCiphertext>> EncryptAesGcmAsync(
         byte[] plaintext,
         byte[] key,
@@ -186,10 +184,6 @@ public class SymmetricCrypto : ISymmetricCrypto
         }, cancellationToken);
     }
 
-    #endregion
-
-    #region ChaCha20-Poly1305 Implementation
-
     private Task<CryptoResult<SymmetricCiphertext>> EncryptChaCha20Poly1305Async(
         byte[] plaintext,
         byte[] key,
@@ -244,10 +238,6 @@ public class SymmetricCrypto : ISymmetricCrypto
             }
         }, cancellationToken);
     }
-
-    #endregion
-
-    #region XChaCha20-Poly1305 Implementation
 
     private Task<CryptoResult<SymmetricCiphertext>> EncryptXChaCha20Poly1305Async(
         byte[] plaintext,
@@ -304,5 +294,4 @@ public class SymmetricCrypto : ISymmetricCrypto
         }, cancellationToken);
     }
 
-    #endregion
 }

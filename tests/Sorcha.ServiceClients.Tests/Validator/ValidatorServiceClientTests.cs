@@ -35,7 +35,7 @@ public class ValidatorServiceClientTests
 
     private ValidatorServiceClient CreateClient(HttpClient httpClient)
     {
-        return new ValidatorServiceClient(_configuration, _mockServiceAuth.Object, _mockLogger.Object, httpClient);
+        return new ValidatorServiceClient(httpClient, _configuration, _mockServiceAuth.Object, _mockLogger.Object);
     }
 
     private static TransactionSubmission CreateTestRequest()

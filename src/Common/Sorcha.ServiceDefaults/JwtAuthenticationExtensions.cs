@@ -337,6 +337,9 @@ public static class JwtAuthenticationExtensions
     /// </summary>
     private static string GetOrCreateDevelopmentKey()
     {
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        var logger = loggerFactory.CreateLogger("Sorcha.Jwt");
+
         try
         {
             // Check if we already have a key
@@ -367,7 +370,7 @@ public static class JwtAuthenticationExtensions
             // Save the key
             File.WriteAllText(DevKeyFilePath, newKey);
 
-            Console.WriteLine($"[JWT] Generated new development signing key at: {DevKeyFilePath}");
+            logger.LogInformation("Generated new development signing key at: {DevKeyFilePath}", DevKeyFilePath);
 
             return newKey;
         }
@@ -375,8 +378,7 @@ public static class JwtAuthenticationExtensions
         {
             // If we can't persist the key, generate one in memory
             // This means services might have different keys if started at different times
-            Console.WriteLine($"[JWT] Warning: Could not persist development key: {ex.Message}");
-            Console.WriteLine("[JWT] Generating in-memory key - services may not share tokens");
+            logger.LogWarning(ex, "Could not persist development key — generating in-memory key. Services may not share tokens");
 
             var keyBytes = new byte[32];
             using (var rng = RandomNumberGenerator.Create())

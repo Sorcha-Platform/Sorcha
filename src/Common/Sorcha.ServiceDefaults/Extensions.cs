@@ -12,6 +12,7 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Sorcha.ServiceDefaults.Helpers;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -23,6 +24,12 @@ public static class Extensions
     private const string HealthEndpointPath = "/health";
     private const string AlivenessEndpointPath = "/alive";
 
+    /// <summary>
+    /// Adds common .NET Aspire service defaults: OpenTelemetry, health checks, service discovery, and HTTP resilience.
+    /// </summary>
+    /// <typeparam name="TBuilder">The host application builder type.</typeparam>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The builder for chaining.</returns>
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.ConfigureOpenTelemetry();
@@ -40,15 +47,15 @@ public static class Extensions
             http.AddServiceDiscovery();
         });
 
-        // Uncomment the following to restrict the allowed schemes for service discovery.
-        // builder.Services.Configure<ServiceDiscoveryOptions>(options =>
-        // {
-        //     options.AllowedSchemes = ["https"];
-        // });
-
         return builder;
     }
 
+    /// <summary>
+    /// Configures OpenTelemetry with logging, metrics, and tracing for ASP.NET Core, HTTP, and runtime instrumentation.
+    /// </summary>
+    /// <typeparam name="TBuilder">The host application builder type.</typeparam>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The builder for chaining.</returns>
     public static TBuilder ConfigureOpenTelemetry<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.Logging.AddOpenTelemetry(logging =>
@@ -76,8 +83,6 @@ public static class Extensions
                             !context.Request.Path.StartsWithSegments(HealthEndpointPath)
                             && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
                     )
-                    // Uncomment the following line to enable gRPC instrumentation (requires the OpenTelemetry.Instrumentation.GrpcNetClient package)
-                    //.AddGrpcClientInstrumentation()
                     .AddHttpClientInstrumentation();
 
                 // Add custom activity sources for Peer Service
@@ -98,16 +103,15 @@ public static class Extensions
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
 
-        // Uncomment the following lines to enable the Azure Monitor exporter (requires the Azure.Monitor.OpenTelemetry.AspNetCore package)
-        //if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
-        //{
-        //    builder.Services.AddOpenTelemetry()
-        //       .UseAzureMonitor();
-        //}
-
         return builder;
     }
 
+    /// <summary>
+    /// Adds default health checks including a self-check tagged as "live" for liveness probes.
+    /// </summary>
+    /// <typeparam name="TBuilder">The host application builder type.</typeparam>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The builder for chaining.</returns>
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddHealthChecks()
@@ -117,6 +121,11 @@ public static class Extensions
         return builder;
     }
 
+    /// <summary>
+    /// Maps health check endpoints: <c>/health</c> for readiness and <c>/alive</c> for liveness probes.
+    /// </summary>
+    /// <param name="app">The web application.</param>
+    /// <returns>The web application for chaining.</returns>
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
         // Health check endpoints are required for production monitoring and orchestration.
@@ -412,23 +421,8 @@ public static class Extensions
     /// Gets a client identifier for rate limiting partitioning.
     /// Uses X-Forwarded-For header if behind a proxy, otherwise uses remote IP.
     /// </summary>
-    private static string GetClientIdentifier(HttpContext context)
-    {
-        // Check for forwarded header (when behind proxy/load balancer)
-        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(forwardedFor))
-        {
-            // Take the first IP (original client)
-            var clientIp = forwardedFor.Split(',').FirstOrDefault()?.Trim();
-            if (!string.IsNullOrEmpty(clientIp))
-            {
-                return clientIp;
-            }
-        }
-
-        // Fall back to remote IP address
-        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    }
+    private static string GetClientIdentifier(HttpContext context) =>
+        ClientIpHelper.GetClientIp(context);
 
     /// <summary>
     /// Adds input validation services with configurable options.

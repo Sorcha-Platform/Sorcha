@@ -72,8 +72,18 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<BlueprintServiceClient>();
         services.AddScoped<IBlueprintServiceClient, BlueprintServiceClient>();
 
-        // Peer Service uses gRPC, registered as singleton for channel reuse
-        services.AddSingleton<IPeerServiceClient, PeerServiceClient>();
+        // Peer Service: HttpClient via factory (avoids socket exhaustion), gRPC channel created internally
+        services.AddHttpClient<IPeerServiceClient, PeerServiceClient>((sp, client) =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var httpAddress = config["ServiceClients:PeerService:HttpAddress"]
+                ?? config["ServiceClients:PeerService:Address"]
+                ?? "";
+            if (!string.IsNullOrEmpty(httpAddress))
+            {
+                client.BaseAddress = new Uri(httpAddress.TrimEnd('/') + "/");
+            }
+        });
 
         services.AddHttpClient<ValidatorServiceClient>();
         services.AddScoped<IValidatorServiceClient, ValidatorServiceClient>();
@@ -129,7 +139,7 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers Peer Service gRPC client as singleton for channel reuse
+    /// Registers Peer Service client with HttpClient factory for REST and internal gRPC channel
     /// </summary>
     /// <param name="services">Service collection</param>
     /// <param name="configuration">Configuration</param>
@@ -138,7 +148,17 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddSingleton<IPeerServiceClient, PeerServiceClient>();
+        services.AddHttpClient<IPeerServiceClient, PeerServiceClient>((sp, client) =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var httpAddress = config["ServiceClients:PeerService:HttpAddress"]
+                ?? config["ServiceClients:PeerService:Address"]
+                ?? "";
+            if (!string.IsNullOrEmpty(httpAddress))
+            {
+                client.BaseAddress = new Uri(httpAddress.TrimEnd('/') + "/");
+            }
+        });
         return services;
     }
 
