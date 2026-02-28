@@ -3,13 +3,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RootNamespace>Sorcha.Blueprint.Engine</RootNamespace>
     <DocumentationFile>Sorcha.Blueprint.Engine.xml</DocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <RootNamespace>Sorcha.Blueprint.Engine</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
