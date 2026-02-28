@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <PackageId>Sorcha.Blueprint.Fluent</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Fluent API for programmatic blueprint construction and JSON-LD generation</Description>
     <RootNamespace>Sorcha.Blueprint.Fluent</RootNamespace>
   </PropertyGroup>
 

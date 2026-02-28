@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <PackageId>Sorcha.Blueprint.Schemas</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Schema management with FHIR, ISO 20022, UBL, W3C VC, and Schema.org providers</Description>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Blazored.LocalStorage" />
   </ItemGroup>

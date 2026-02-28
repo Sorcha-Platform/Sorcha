@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <PackageId>Sorcha.Register.Storage.InMemory</PackageId>
+    <Version>2.0.0</Version>
+    <Description>In-memory register repository for testing and development</Description>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Sorcha.Register.Core\Sorcha.Register.Core.csproj" />
   </ItemGroup>

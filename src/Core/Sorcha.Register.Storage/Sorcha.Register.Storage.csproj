@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <PackageId>Sorcha.Register.Storage</PackageId>
+    <Version>2.0.0</Version>
+    <Description>Multi-tier register storage abstraction with verified cache</Description>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- CS1591: Suppress missing XML doc warnings for internal types -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <Description>Register Service storage implementation using multi-tier storage abstractions with verified cache</Description>
   </PropertyGroup>
 
   <ItemGroup>
