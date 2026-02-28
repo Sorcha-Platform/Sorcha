@@ -2,9 +2,9 @@
 
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for completed phases, historical updates, critical path, and task summaries.
 
-**Version:** 6.2
+**Version:** 6.3
 **Last Updated:** 2026-02-28
-**Status:** Active - Production Packaging & CI/CD
+**Status:** Active - Production Packaging & CI/CD (Phase C complete)
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
 ---
@@ -28,7 +28,7 @@ This document tracks **active work only**. Completed phases and historical updat
 
 Establish production-grade NuGet packaging, Central Package Management, automated CI/CD, and code quality standards across the entire codebase.
 
-### Phase A: Shared Libraries (src/Common/) — 🚧 IN PROGRESS
+### Phase A: Shared Libraries (src/Common/) — ✅ COMPLETE
 
 **Plan doc:** [docs/plans/2026-02-27-code-quality-fixes.md](../docs/plans/2026-02-27-code-quality-fixes.md)
 
@@ -188,16 +188,18 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 | B3c-19 | Fix undisposed `JsonDocument` placeholder in `BlueprintServiceRepository.cs:302` | ✅ |
 | B3c-20 | Add XML docs on hardcoded defaults in `RegisterStorageConfiguration.cs` | ✅ |
 
-### Phase C: Services (src/Services/) — 📋 NOT STARTED
+### Phase C: Services (src/Services/) — ✅ COMPLETE
+
+**Plan doc:** [docs/plans/2026-02-28-phase-c-code-quality-findings.md](../docs/plans/2026-02-28-phase-c-code-quality-findings.md)
 
 | # | Task | Status |
 |---|------|--------|
-| C1 | Add Directory.Build.props for Services (shared build settings, Docker metadata) | 📋 |
-| C2 | Standardize service project structure and naming | 📋 |
-| C3 | Code quality review across all 7 services | 📋 |
-| C4 | Create docker-ci.yml (PR Docker build validation) | 📋 |
-| C5 | Create docker-publish.yml (auto Docker image build & push on merge) | 📋 |
-| C6 | Service-level integration test improvements | 📋 |
+| C1 | Add Directory.Build.props for Services (shared build settings, no NuGet packaging) | ✅ |
+| C2 | Standardize 7 service csproj files, Dockerfiles, gitignore, Peer data→Data rename | ✅ |
+| C3 | Code quality review across all 7 services (21 findings: 7 critical, 9 important, 5 minor) | ✅ |
+| C4 | Create docker-ci.yml (PR Docker build validation, matrix of 7 services) | ✅ |
+| C5 | Create docker-publish.yml (auto Docker image build & push on merge to Docker Hub) | ✅ |
+| C6 | Integration test improvements (Register.Service.IntegrationTests, remove stubs) | ✅ |
 
 ### Phase D: Applications (src/Apps/) — 📋 NOT STARTED
 
@@ -232,6 +234,6 @@ All transactions MUST go through the Validator Service mempool before being seal
 
 ---
 
-**Last Updated:** 2026-02-27
+**Last Updated:** 2026-02-28
 **Next Review:** Weekly
 **Document Owner:** Sorcha Architecture Team
