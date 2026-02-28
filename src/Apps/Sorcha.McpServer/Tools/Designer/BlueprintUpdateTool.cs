@@ -198,7 +198,7 @@ public sealed class BlueprintUpdateTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new BlueprintUpdateResult
                     {

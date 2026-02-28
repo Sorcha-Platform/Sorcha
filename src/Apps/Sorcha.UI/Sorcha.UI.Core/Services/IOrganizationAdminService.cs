@@ -11,8 +11,6 @@ namespace Sorcha.UI.Core.Services;
 /// </summary>
 public interface IOrganizationAdminService
 {
-    #region Organization Operations
-
     /// <summary>
     /// Lists all organizations.
     /// </summary>
@@ -83,10 +81,6 @@ public interface IOrganizationAdminService
     Task<PlatformKpis> GetPlatformStatsAsync(
         CancellationToken cancellationToken = default);
 
-    #endregion
-
-    #region User Operations
-
     /// <summary>
     /// Lists users in an organization.
     /// </summary>
@@ -149,10 +143,7 @@ public interface IOrganizationAdminService
         Guid userId,
         CancellationToken cancellationToken = default);
 
-    #endregion
 }
-
-#region DTOs for client-side use
 
 /// <summary>
 /// Organization DTO for client-side use.
@@ -261,5 +252,3 @@ public record UserListResult
     public IReadOnlyList<UserDto> Users { get; init; } = [];
     public int TotalCount { get; init; }
 }
-
-#endregion

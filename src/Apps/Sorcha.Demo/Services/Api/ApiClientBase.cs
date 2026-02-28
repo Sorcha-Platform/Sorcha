@@ -157,8 +157,9 @@ public abstract class ApiClientBase
             var response = await HttpClient.GetAsync($"{url}/health", ct);
             return response.IsSuccessStatusCode;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Health check failed for {url}: {ex.Message}");
             return false;
         }
     }

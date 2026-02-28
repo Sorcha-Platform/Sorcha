@@ -156,7 +156,7 @@ public sealed class TokenRevokeTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new TokenRevokeResult
                     {

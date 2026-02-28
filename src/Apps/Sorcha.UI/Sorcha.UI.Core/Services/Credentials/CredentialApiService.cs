@@ -258,7 +258,10 @@ public class CredentialApiService : ICredentialApiService
                 claims = JsonSerializer.Deserialize<Dictionary<string, object>>(
                     entity.ClaimsJson, JsonOptions) ?? new();
             }
-            catch (JsonException) { }
+            catch (JsonException)
+            {
+                // Resilience: malformed claims JSON falls back to empty dictionary
+            }
         }
 
         var displayConfig = new CredentialDisplayViewModel();
@@ -271,7 +274,10 @@ public class CredentialApiService : ICredentialApiService
                 if (parsed != null)
                     displayConfig = parsed;
             }
-            catch (JsonException) { }
+            catch (JsonException)
+            {
+                // Resilience: malformed display config JSON falls back to default
+            }
         }
 
         return new CredentialDetailViewModel

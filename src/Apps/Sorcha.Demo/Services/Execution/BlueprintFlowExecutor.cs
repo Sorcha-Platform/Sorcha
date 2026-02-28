@@ -155,9 +155,10 @@ public class BlueprintFlowExecutor
                 return existing.Id ?? blueprint.Id ?? "";
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Blueprint doesn't exist, continue to create it
+            // Blueprint doesn't exist or retrieval failed, continue to create it
+            Console.Error.WriteLine($"Blueprint lookup failed (will create new): {ex.Message}");
         }
 
         // Blueprint doesn't exist, create it

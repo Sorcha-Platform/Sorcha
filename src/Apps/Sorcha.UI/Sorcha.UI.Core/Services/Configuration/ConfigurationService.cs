@@ -11,7 +11,7 @@ namespace Sorcha.UI.Core.Services.Configuration;
 /// Service for managing user profiles and UI configuration.
 /// Stores configuration in browser LocalStorage.
 /// </summary>
-public class ConfigurationService : IConfigurationService
+public class ConfigurationService : IConfigurationService, IDisposable
 {
     private const string ProfilesStorageKey = "sorcha:profiles";
     private const string UiConfigStorageKey = "sorcha:ui-config";
@@ -234,5 +234,14 @@ public class ConfigurationService : IConfigurationService
 
         // Set the default active profile
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", ActiveProfileKey, ProfileDefaults.DefaultActiveProfile);
+    }
+
+    /// <summary>
+    /// Disposes the semaphore used for thread-safe storage access.
+    /// </summary>
+    public void Dispose()
+    {
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

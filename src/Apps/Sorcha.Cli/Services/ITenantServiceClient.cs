@@ -10,7 +10,7 @@ namespace Sorcha.Cli.Services;
 /// </summary>
 public interface ITenantServiceClient
 {
-    #region Organizations
+    // --- Organizations ---
 
     /// <summary>
     /// Lists all organizations.
@@ -42,9 +42,7 @@ public interface ITenantServiceClient
     [Delete("/api/organizations/{id}")]
     Task DeleteOrganizationAsync(string id, [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Users
+    // --- Users ---
 
     /// <summary>
     /// Lists all users in an organization.
@@ -76,9 +74,7 @@ public interface ITenantServiceClient
     [Delete("/api/organizations/{organizationId}/users/{userId}")]
     Task DeleteUserAsync(string organizationId, string userId, [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Service Principals
+    // --- Service Principals ---
 
     /// <summary>
     /// Lists all service principals in an organization.
@@ -110,9 +106,7 @@ public interface ITenantServiceClient
     [Post("/api/organizations/{organizationId}/principals/{clientId}/rotate-secret")]
     Task<RotateSecretResponse> RotateSecretAsync(string organizationId, string clientId, [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Bootstrap
+    // --- Bootstrap ---
 
     /// <summary>
     /// Bootstraps a fresh Sorcha installation with initial organization and admin user.
@@ -120,5 +114,4 @@ public interface ITenantServiceClient
     [Post("/api/tenants/bootstrap")]
     Task<BootstrapResponse> BootstrapAsync([Body] BootstrapRequest request);
 
-    #endregion
 }

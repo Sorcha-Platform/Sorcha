@@ -27,7 +27,6 @@ public class OrganizationAdminService : IOrganizationAdminService
         _logger = logger;
     }
 
-    #region Organization Operations
 
     public async Task<OrganizationListResult> ListOrganizationsAsync(
         bool includeInactive = false,
@@ -220,9 +219,6 @@ public class OrganizationAdminService : IOrganizationAdminService
         }
     }
 
-    #endregion
-
-    #region User Operations
 
     public async Task<UserListResult> GetOrganizationUsersAsync(
         Guid organizationId,
@@ -382,9 +378,6 @@ public class OrganizationAdminService : IOrganizationAdminService
         }
     }
 
-    #endregion
-
-    #region Helper Methods
 
     private static string[] GetUpdatedFields(UpdateOrganizationDto request)
     {
@@ -403,8 +396,6 @@ public class OrganizationAdminService : IOrganizationAdminService
         if (request.Status != null) fields.Add("status");
         return [.. fields];
     }
-
-    #endregion
 
     /// <summary>
     /// Internal response class for stats endpoint.

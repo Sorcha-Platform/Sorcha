@@ -161,7 +161,7 @@ public sealed class TenantCreateTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new TenantCreateResult
                     {

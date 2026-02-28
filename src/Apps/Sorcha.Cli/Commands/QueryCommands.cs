@@ -599,7 +599,7 @@ public class QueryODataCommand : Command
                     var json = JsonDocument.Parse(content);
                     Console.WriteLine(JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true }));
                 }
-                catch
+                catch (JsonException)
                 {
                     // If not valid JSON, just print raw content
                     Console.WriteLine(content);

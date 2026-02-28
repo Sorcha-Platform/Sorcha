@@ -11,7 +11,7 @@ namespace Sorcha.Cli.Services;
 /// </summary>
 public interface IRegisterServiceClient
 {
-    #region Registers
+    // --- Registers ---
 
     /// <summary>
     /// Lists all registers.
@@ -43,9 +43,7 @@ public interface IRegisterServiceClient
     [Get("/api/registers/stats/count")]
     Task<RegisterStatsResponse> GetRegisterStatsAsync([Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Two-Phase Register Creation
+    // --- Two-Phase Register Creation ---
 
     /// <summary>
     /// Initiates register creation (Phase 1).
@@ -59,9 +57,7 @@ public interface IRegisterServiceClient
     [Post("/api/registers/finalize")]
     Task<FinalizeRegisterCreationResponse> FinalizeRegisterCreationAsync([Body] FinalizeRegisterCreationRequest request, [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Transactions
+    // --- Transactions ---
 
     /// <summary>
     /// Lists all transactions in a register.
@@ -100,9 +96,7 @@ public interface IRegisterServiceClient
         string transactionId,
         [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Dockets
+    // --- Dockets ---
 
     /// <summary>
     /// Lists all dockets in a register.
@@ -122,9 +116,7 @@ public interface IRegisterServiceClient
     [Get("/api/registers/{registerId}/dockets/{docketId}/transactions")]
     Task<List<TransactionModel>> GetDocketTransactionsAsync(string registerId, ulong docketId, [Header("Authorization")] string authorization);
 
-    #endregion
-
-    #region Query API
+    // --- Query API ---
 
     /// <summary>
     /// Queries transactions by wallet address.
@@ -176,10 +168,9 @@ public interface IRegisterServiceClient
         [Query("$count")] bool? count,
         [Header("Authorization")] string authorization);
 
-    #endregion
 }
 
-#region Request/Response DTOs
+// --- Request/Response DTOs ---
 
 /// <summary>
 /// Request to update a register.
@@ -244,4 +235,3 @@ public class QueryStatsResponse
     public int TotalDockets { get; set; }
 }
 
-#endregion

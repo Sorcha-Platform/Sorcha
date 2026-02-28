@@ -291,7 +291,7 @@ public sealed class DisclosureAnalysisTool
                     });
                     return new DisclosureResultDto { Error = errorResponse?.Error ?? "Disclosure analysis failed" };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new DisclosureResultDto { Error = "Disclosure analysis failed" };
                 }

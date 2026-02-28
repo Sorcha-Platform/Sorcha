@@ -169,7 +169,7 @@ public sealed class TenantUpdateTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new TenantUpdateResult
                     {

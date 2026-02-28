@@ -143,7 +143,7 @@ public sealed class BlueprintExportTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new BlueprintExportResult
                     {

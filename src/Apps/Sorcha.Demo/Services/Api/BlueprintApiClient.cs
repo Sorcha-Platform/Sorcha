@@ -20,8 +20,6 @@ public class BlueprintApiClient : ApiClientBase
         _baseUrl = baseUrl.TrimEnd('/');
     }
 
-    #region Blueprint Management
-
     /// <summary>
     /// Creates a new blueprint
     /// </summary>
@@ -47,10 +45,6 @@ public class BlueprintApiClient : ApiClientBase
     {
         return await PostAsync<object, Sorcha.Blueprint.Models.Blueprint>($"{_baseUrl}/blueprints/{blueprintId}/publish", new { }, ct);
     }
-
-    #endregion
-
-    #region Orchestration (Blueprint Instances)
 
     /// <summary>
     /// Creates a new blueprint instance for execution
@@ -127,8 +121,6 @@ public class BlueprintApiClient : ApiClientBase
 
         return await GetAsync<List<BlueprintInstanceResponse>>(url, ct);
     }
-
-    #endregion
 
     /// <summary>
     /// Checks Blueprint Service health

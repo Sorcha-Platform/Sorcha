@@ -60,7 +60,11 @@
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // Resilience: malformed JSON in previous data should not prevent rendering.
+            // Return whatever was parsed so far; the UI will show partial data gracefully.
+        }
 
         return results;
     }

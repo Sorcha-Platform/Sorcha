@@ -13,6 +13,7 @@
 @inject ITransactionService TransactionService
 @inject RegisterHubConnection HubConnection
 @inject NavigationManager Navigation
+@inject ILogger<Detail> Logger
 
 <PageTitle>@(_register?.Name ?? "Register") - Sorcha</PageTitle>
 
@@ -236,7 +237,7 @@
         catch (Exception ex)
         {
             // Log but don't fail - the UI still works without real-time updates
-            Console.WriteLine($"Failed to start real-time connection: {ex.Message}");
+            Logger.LogWarning(ex, "Failed to start real-time connection");
             _connectionState = HubConnection.ConnectionState;
         }
     }
@@ -265,7 +266,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to stop connection: {ex.Message}");
+                Logger.LogWarning(ex, "Failed to stop connection");
             }
 
             _connectionState = HubConnection.ConnectionState;
@@ -408,9 +409,9 @@
         {
             await HubConnection.UnsubscribeFromRegisterAsync(RegisterId);
         }
-        catch
+        catch (Exception)
         {
-            // Ignore errors during cleanup
+            // Best-effort unsubscribe during cleanup -- connection may already be closed
         }
     }
 }

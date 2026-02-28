@@ -147,7 +147,7 @@ public sealed class WalletSignTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new WalletSignResult
                     {

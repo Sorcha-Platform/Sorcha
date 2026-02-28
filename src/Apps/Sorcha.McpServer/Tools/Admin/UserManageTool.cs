@@ -188,7 +188,7 @@ public sealed class UserManageTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new UserManageResult
                     {

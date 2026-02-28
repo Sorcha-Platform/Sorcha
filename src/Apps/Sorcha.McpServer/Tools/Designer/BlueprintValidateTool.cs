@@ -285,9 +285,9 @@ public sealed class BlueprintValidateTool
                         };
                     }
                 }
-                catch
+                catch (JsonException)
                 {
-                    // Ignore parse errors
+                    // Error response body was not valid JSON; fall through to return null
                 }
 
                 return null;

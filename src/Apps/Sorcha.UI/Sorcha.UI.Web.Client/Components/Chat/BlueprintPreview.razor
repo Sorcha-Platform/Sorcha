@@ -341,7 +341,10 @@
                 return props.EnumerateObject().Count();
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // Resilience: malformed schema JSON returns zero count rather than failing
+        }
         return 0;
     }
 
@@ -407,7 +410,10 @@
                     });
                 }
             }
-            catch { }
+            catch (Exception)
+            {
+                // Resilience: skip schemas with malformed JSON rather than failing the preview
+            }
         }
 
         return fields;

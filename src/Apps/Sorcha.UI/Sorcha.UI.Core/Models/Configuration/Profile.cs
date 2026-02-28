@@ -100,8 +100,6 @@ public sealed record Profile
     /// </summary>
     public bool IsSystemProfile { get; init; }
 
-    #region URL Resolution Methods
-
     /// <summary>
     /// Gets the resolved Tenant Service URL.
     /// Returns the override if specified, otherwise derives from base URL.
@@ -195,10 +193,6 @@ public sealed record Profile
             : $"{SorchaServiceUrl.TrimEnd('/')}/api/service-auth/token";
     }
 
-    #endregion
-
-    #region Validation
-
     /// <summary>
     /// Validates the profile configuration.
     /// A profile is valid if it has a name and at least one way to reach services:
@@ -243,8 +237,6 @@ public sealed record Profile
                Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
-
-    #endregion
 
     /// <summary>
     /// Creates a new profile with updated timestamp

@@ -166,7 +166,7 @@ public sealed class ActionSubmitTool
                         ValidationErrors = errorResponse?.ValidationErrors ?? []
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new ActionSubmitResult
                     {

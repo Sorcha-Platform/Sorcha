@@ -133,7 +133,7 @@ public sealed class DisclosedDataTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new DisclosedDataResult
                     {

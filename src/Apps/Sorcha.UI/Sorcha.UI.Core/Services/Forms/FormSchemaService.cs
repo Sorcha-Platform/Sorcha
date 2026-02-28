@@ -302,7 +302,7 @@ public class FormSchemaService : IFormSchemaService
                         if (!System.Text.RegularExpressions.Regex.IsMatch(strValue, pattern.GetString()!))
                             errors.Add("Value does not match the required pattern");
                     }
-                    catch { /* Invalid regex — skip validation */ }
+                    catch (ArgumentException) { /* Invalid regex in schema -- skip pattern validation */ }
                 }
                 if (fieldSchema.TryGetProperty("enum", out var enumValues))
                 {

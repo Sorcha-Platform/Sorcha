@@ -127,7 +127,7 @@ public sealed class ActionDetailsTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new ActionDetailsResult
                     {

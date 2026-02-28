@@ -159,7 +159,7 @@ public sealed class RegisterQueryTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new RegisterQueryResult
                     {

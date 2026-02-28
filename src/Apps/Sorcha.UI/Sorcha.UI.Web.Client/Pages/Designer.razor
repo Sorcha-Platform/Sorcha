@@ -19,6 +19,7 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject BlueprintSerializationService SerializationService
+@inject ILogger<Designer> Logger
 
 <PageTitle>Blueprint Designer - Sorcha Platform</PageTitle>
 
@@ -193,12 +194,11 @@
             // Add welcome nodes
             AddWelcomeNodes();
 
-            Console.WriteLine($"Blueprint Designer initialized - Loaded {savedBlueprints.Count} saved blueprints");
+            Logger.LogInformation("Blueprint Designer initialized - Loaded {Count} saved blueprints", savedBlueprints.Count);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error initializing diagram: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Logger.LogError(ex, "Error initializing diagram");
         }
     }
 
@@ -448,7 +448,7 @@
     {
         CurrentBlueprint = updatedBlueprint;
         Snackbar.Add("Blueprint properties saved", Severity.Success);
-        Console.WriteLine($"Blueprint properties updated - Title: {updatedBlueprint.Title}");
+        Logger.LogDebug("Blueprint properties updated - Title: {Title}", updatedBlueprint.Title);
         StateHasChanged();
     }
 
@@ -470,7 +470,7 @@
             }
 
             Snackbar.Add($"Action {updatedAction.Id} properties saved", Severity.Success);
-            Console.WriteLine($"Action properties updated - Action: {updatedAction.Title}");
+            Logger.LogDebug("Action properties updated - Action: {Title}", updatedAction.Title);
             StateHasChanged();
         }
     }
@@ -513,12 +513,12 @@
 
             await RefreshBlueprintList();
             Snackbar.Add($"Blueprint '{CurrentBlueprint.Title}' saved successfully", Severity.Success);
-            Console.WriteLine($"Saved blueprint '{CurrentBlueprint.Title}' - Version {CurrentBlueprint.Version} - {CurrentBlueprint.Actions.Count} actions");
+            Logger.LogInformation("Saved blueprint '{Title}' - Version {Version} - {Count} actions", CurrentBlueprint.Title, CurrentBlueprint.Version, CurrentBlueprint.Actions.Count);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error saving blueprint: {ex.Message}", Severity.Error);
-            Console.WriteLine($"Error saving blueprint: {ex.Message}");
+            Logger.LogError(ex, "Error saving blueprint");
         }
     }
 
@@ -576,12 +576,12 @@
             actionCounter = blueprint.Actions.Count;
 
             Snackbar.Add($"Blueprint '{blueprint.Title}' loaded successfully", Severity.Success);
-            Console.WriteLine($"Loaded blueprint '{blueprint.Title}' - Version {blueprint.Version} - {blueprint.Actions.Count} actions");
+            Logger.LogInformation("Loaded blueprint '{Title}' - Version {Version} - {Count} actions", blueprint.Title, blueprint.Version, blueprint.Actions.Count);
         }
         catch (Exception ex)
         {
             Snackbar.Add($"Error loading blueprint: {ex.Message}", Severity.Error);
-            Console.WriteLine($"Error loading blueprint: {ex.Message}");
+            Logger.LogError(ex, "Error loading blueprint");
         }
     }
 
@@ -596,7 +596,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error refreshing blueprint list: {ex.Message}");
+            Logger.LogWarning(ex, "Error refreshing blueprint list");
             savedBlueprints = new List<Blueprint>();
         }
     }

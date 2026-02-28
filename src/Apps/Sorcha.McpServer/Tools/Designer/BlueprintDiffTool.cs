@@ -146,7 +146,7 @@ public sealed class BlueprintDiffTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new BlueprintDiffResult
                     {

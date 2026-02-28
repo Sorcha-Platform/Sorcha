@@ -295,7 +295,7 @@ public sealed class BlueprintSimulateTool
                     });
                     return new RouteResultDto { Error = errorResponse?.Error ?? "Routing failed" };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new RouteResultDto { Error = "Routing failed" };
                 }

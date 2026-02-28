@@ -57,9 +57,9 @@ public class LinuxEncryption : IEncryptionProvider
                 {
                     return File.ReadAllText(path).Trim();
                 }
-                catch
+                catch (IOException)
                 {
-                    // Continue to next path
+                    // File exists but unreadable (permissions, etc.) — try next path
                 }
             }
         }

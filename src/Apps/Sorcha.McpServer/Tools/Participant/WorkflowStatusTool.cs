@@ -127,7 +127,7 @@ public sealed class WorkflowStatusTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new WorkflowStatusResult
                     {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Text.Json;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
@@ -376,9 +377,13 @@ public class AuthStatusCommand : Command
                             }
                         }
                     }
-                    catch
+                    catch (FormatException)
                     {
-                        // Not a valid JWT or can't decode - that's okay
+                        // Not valid base64 - token may not be a JWT
+                    }
+                    catch (JsonException)
+                    {
+                        // Not valid JSON payload - token format unrecognized
                     }
                 }
                 else

@@ -160,8 +160,10 @@ public class AuthenticationService : IAuthenticationService
 
             return true;
         }
-        catch
+        catch (Exception)
         {
+            // Resilience: token refresh failure clears stale tokens and returns false
+            // so callers can prompt re-authentication
             await _tokenCache.RemoveTokenAsync(profileName);
             return false;
         }
@@ -179,9 +181,9 @@ public class AuthenticationService : IAuthenticationService
                     new AuthenticationHeaderValue("Bearer", entry.AccessToken);
                 await _httpClient.PostAsync("/api/auth/logout", null);
             }
-            catch
+            catch (Exception)
             {
-                // Best-effort server-side revocation — don't fail logout if server is unreachable
+                // Best-effort server-side revocation -- don't fail logout if server is unreachable
             }
             finally
             {
@@ -193,9 +195,9 @@ public class AuthenticationService : IAuthenticationService
     }
 
     /// <inheritdoc />
-    public bool IsAuthenticated(string profileName)
+    public async Task<bool> IsAuthenticatedAsync(string profileName)
     {
-        var entry = _tokenCache.GetTokenAsync(profileName).GetAwaiter().GetResult();
+        var entry = await _tokenCache.GetTokenAsync(profileName);
         return entry != null && !entry.IsExpired;
     }
 
@@ -230,8 +232,9 @@ public class AuthenticationService : IAuthenticationService
                 ExpiresAt = entry.ExpiresAt
             };
         }
-        catch
+        catch (Exception)
         {
+            // Resilience: malformed JWT returns unauthenticated rather than crashing the UI
             return AuthenticationStateInfo.Unauthenticated();
         }
     }

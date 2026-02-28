@@ -517,8 +517,6 @@
         await OnDiscardChanges.InvokeAsync();
     }
 
-    #region Participant Editor Integration
-
     private async Task OpenAddParticipantDialog()
     {
         var model = new ParticipantModel();
@@ -637,10 +635,6 @@
         return Enum.TryParse<ParticipantRole>(organisation, ignoreCase: true, out var r) ? r : ParticipantRole.Member;
     }
 
-    #endregion
-
-    #region Condition Editor Integration
-
     private async Task OpenConditionEditorDialog()
     {
         var model = editedAction.Condition != null
@@ -699,10 +693,6 @@
 
         return fields;
     }
-
-    #endregion
-
-    #region Calculation Editor Integration
 
     private async Task OpenAddCalculationDialog()
     {
@@ -826,10 +816,6 @@
         return fields;
     }
 
-    #endregion
-
-    #region Schema Picker
-
     private async Task OpenSchemaPickerDialog()
     {
         var parameters = new DialogParameters
@@ -875,5 +861,4 @@
         return "Untitled Schema";
     }
 
-    #endregion
 }

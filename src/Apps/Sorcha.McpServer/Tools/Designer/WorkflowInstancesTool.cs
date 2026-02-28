@@ -161,7 +161,7 @@ public sealed class WorkflowInstancesTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new WorkflowInstancesResult
                     {

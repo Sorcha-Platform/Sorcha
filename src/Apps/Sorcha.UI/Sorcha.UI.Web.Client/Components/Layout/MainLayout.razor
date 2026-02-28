@@ -267,6 +267,9 @@
             _unreadCount = await ActivityLogService.GetUnreadCountAsync();
             StateHasChanged();
         }
-        catch { /* Silently ignore — non-critical UI element */ }
+        catch (Exception)
+        {
+            // Resilience: unread count is a non-critical UI element -- don't fail the layout
+        }
     }
 }

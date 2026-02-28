@@ -208,9 +208,15 @@ public class AuthenticationService : IAuthenticationService
 
             return tokenResponse;
         }
-        catch
+        catch (HttpRequestException)
         {
-            // Refresh failed, clear the cache
+            // Refresh failed due to network error, clear the cache
+            await _tokenCache.ClearAsync(profileName);
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            // Refresh failed due to invalid response, clear the cache
             await _tokenCache.ClearAsync(profileName);
             return null;
         }

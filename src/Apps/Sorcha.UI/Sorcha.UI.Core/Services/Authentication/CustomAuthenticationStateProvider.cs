@@ -55,8 +55,9 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 
             return new AuthenticationState(user);
         }
-        catch
+        catch (Exception)
         {
+            // Resilience: invalid or corrupt JWT returns anonymous identity rather than crashing
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
     }

@@ -114,7 +114,7 @@ public sealed class WalletInfoTool
                         ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
                     };
                 }
-                catch
+                catch (JsonException)
                 {
                     return new WalletInfoResult
                     {

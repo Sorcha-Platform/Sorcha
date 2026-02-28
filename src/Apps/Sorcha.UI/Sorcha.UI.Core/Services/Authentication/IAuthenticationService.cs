@@ -49,7 +49,7 @@ public interface IAuthenticationService
     /// </summary>
     /// <param name="profileName">Profile name</param>
     /// <returns>True if authenticated with valid token, false otherwise</returns>
-    bool IsAuthenticated(string profileName);
+    Task<bool> IsAuthenticatedAsync(string profileName);
 
     /// <summary>
     /// Gets detailed authentication state information
