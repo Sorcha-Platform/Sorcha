@@ -36,9 +36,16 @@ public class JsonSchemaCache : IDisposable
         };
     }
 
-    public JsonSchemaCache() : this(new MemoryCache(new MemoryCacheOptions
+    /// <summary>
+    /// Creates a new JsonSchemaCache with a configurable maximum size.
+    /// </summary>
+    /// <param name="maxCacheSize">
+    /// Maximum number of cached schemas. Default: 500.
+    /// Schemas are larger than logic expressions, so a smaller default is used.
+    /// </param>
+    public JsonSchemaCache(int maxCacheSize = 500) : this(new MemoryCache(new MemoryCacheOptions
     {
-        SizeLimit = 500 // Schemas are larger than logic expressions
+        SizeLimit = maxCacheSize
     }))
     {
     }

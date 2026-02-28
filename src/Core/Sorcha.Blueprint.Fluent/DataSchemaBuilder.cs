@@ -130,7 +130,6 @@ public class DataSchemaBuilder
             schema["required"] = _required;
         }
 
-        var json = JsonSerializer.Serialize(schema);
-        return JsonDocument.Parse(json);
+        return JsonSerializer.SerializeToDocument(schema);
     }
 }

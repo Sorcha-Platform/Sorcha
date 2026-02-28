@@ -15,16 +15,26 @@ namespace Sorcha.Blueprint.Schemas;
 /// </summary>
 public class BlueprintServiceRepository : ISchemaRepository
 {
+    private static readonly JsonDocument EmptyDocument = JsonDocument.Parse("{}");
+
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<string, string> _etagCache = new();
     private readonly object _cacheLock = new();
+    private readonly TimeSpan _cacheDuration;
     private List<SchemaDocument>? _cachedSchemas;
     private DateTimeOffset _cacheExpiry = DateTimeOffset.MinValue;
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    public BlueprintServiceRepository(HttpClient httpClient)
+    /// <summary>
+    /// Initializes a new BlueprintServiceRepository.
+    /// </summary>
+    /// <param name="httpClient">HTTP client for communicating with the Blueprint Service API.</param>
+    /// <param name="cacheDuration">
+    /// How long to cache fetched schemas before re-fetching. Default: 5 minutes.
+    /// </param>
+    public BlueprintServiceRepository(HttpClient httpClient, TimeSpan? cacheDuration = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _cacheDuration = cacheDuration ?? TimeSpan.FromMinutes(5);
     }
 
     /// <inheritdoc />
@@ -55,7 +65,7 @@ public class BlueprintServiceRepository : ISchemaRepository
             lock (_cacheLock)
             {
                 _cachedSchemas = result;
-                _cacheExpiry = DateTimeOffset.UtcNow.Add(CacheDuration);
+                _cacheExpiry = DateTimeOffset.UtcNow.Add(_cacheDuration);
             }
 
             return result;
@@ -328,7 +338,7 @@ public class BlueprintServiceRepository : ISchemaRepository
                 Author = "Sorcha",
                 AddedAt = DateTimeOffset.UtcNow
             },
-            Schema = JsonDocument.Parse("{}"), // Will be loaded on demand
+            Schema = EmptyDocument, // Will be loaded on demand
             IsValid = true
         };
 

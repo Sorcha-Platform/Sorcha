@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Sorcha.Blueprint.Schemas;
 
@@ -12,19 +13,33 @@ namespace Sorcha.Blueprint.Schemas;
 public class SchemaStoreRepository : ISchemaRepository
 {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<SchemaStoreRepository> _logger;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly List<SchemaDocument> _cachedSchemas = [];
+    private readonly TimeSpan _cacheExpiration;
     private bool _initialized = false;
     private DateTimeOffset _lastRefresh = DateTimeOffset.MinValue;
-    private static readonly TimeSpan CacheExpiration = TimeSpan.FromHours(24);
 
     private const string SchemaStoreCatalogUrl = "https://www.schemastore.org/api/json/catalog.json";
 
     public SchemaSource SourceType => SchemaSource.SchemaStore;
 
-    public SchemaStoreRepository(HttpClient httpClient)
+    /// <summary>
+    /// Initializes a new SchemaStoreRepository.
+    /// </summary>
+    /// <param name="httpClient">HTTP client for fetching schemas from SchemaStore.org.</param>
+    /// <param name="logger">Logger instance.</param>
+    /// <param name="cacheExpiration">
+    /// How long to cache the schema catalog before re-fetching. Default: 24 hours.
+    /// </param>
+    public SchemaStoreRepository(
+        HttpClient httpClient,
+        ILogger<SchemaStoreRepository> logger,
+        TimeSpan? cacheExpiration = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _cacheExpiration = cacheExpiration ?? TimeSpan.FromHours(24);
     }
 
     public async Task<IEnumerable<SchemaDocument>> GetAllSchemasAsync(CancellationToken cancellationToken = default)
@@ -82,7 +97,7 @@ public class SchemaStoreRepository : ISchemaRepository
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         // Fast path: cache is still valid
-        if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < CacheExpiration)
+        if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < _cacheExpiration)
         {
             return;
         }
@@ -91,7 +106,7 @@ public class SchemaStoreRepository : ISchemaRepository
         try
         {
             // Double-check after acquiring the lock
-            if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < CacheExpiration)
+            if (_initialized && (DateTimeOffset.UtcNow - _lastRefresh) < _cacheExpiration)
             {
                 return;
             }
@@ -123,7 +138,7 @@ public class SchemaStoreRepository : ISchemaRepository
             catch (HttpRequestException ex)
             {
                 // Log error but don't fail - return empty results
-                Console.WriteLine($"Failed to fetch SchemaStore catalog: {ex.Message}");
+                _logger.LogWarning(ex, "Failed to fetch SchemaStore catalog");
                 _initialized = true; // Mark as initialized to prevent repeated failures
             }
         }
@@ -239,7 +254,7 @@ public class SchemaStoreRepository : ISchemaRepository
         }
         catch (HttpRequestException ex)
         {
-            Console.WriteLine($"Failed to fetch schema from {schemaDoc.Metadata.SchemaUrl}: {ex.Message}");
+            _logger.LogWarning(ex, "Failed to fetch schema from {SchemaUrl}", schemaDoc.Metadata.SchemaUrl);
             return null;
         }
     }

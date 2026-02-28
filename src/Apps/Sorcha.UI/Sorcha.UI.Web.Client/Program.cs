@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using Sorcha.Blueprint.Schemas;
@@ -44,7 +45,8 @@ builder.Services.AddScoped<ISchemaCacheService, LocalStorageSchemaCacheService>(
 builder.Services.AddScoped<SchemaLibraryService>(sp =>
 {
     var cacheService = sp.GetRequiredService<ISchemaCacheService>();
-    var schemaLibrary = new SchemaLibraryService(cacheService);
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+    var schemaLibrary = new SchemaLibraryService(cacheService, loggerFactory);
 
     var httpClient = sp.GetRequiredService<HttpClient>();
 
@@ -52,7 +54,8 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
     schemaLibrary.AddRepository(new BlueprintServiceRepository(httpClient));
 
     // Add SchemaStore repository for external schemas
-    schemaLibrary.AddRepository(new SchemaStoreRepository(httpClient));
+    var schemaStoreLogger = loggerFactory.CreateLogger<SchemaStoreRepository>();
+    schemaLibrary.AddRepository(new SchemaStoreRepository(httpClient, schemaStoreLogger));
 
     return schemaLibrary;
 });

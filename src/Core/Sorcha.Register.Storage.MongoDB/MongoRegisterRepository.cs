@@ -443,6 +443,7 @@ public class MongoRegisterRepository : IRegisterRepository
     public async Task<int> CountRegistersAsync(CancellationToken cancellationToken = default)
     {
         var count = await _registers.EstimatedDocumentCountAsync(cancellationToken: cancellationToken);
+        // Safe cast: register count won't exceed int.MaxValue in practice
         return (int)count;
     }
 

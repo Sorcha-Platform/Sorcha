@@ -76,7 +76,7 @@ public class BitstringStatusListChecker : IRevocationChecker
 
             var isSet = (bytes[byteIndex] & (1 << bitIndex)) != 0;
 
-            // Determine purpose from the status list
+            // Default purpose is "revocation" per W3C Bitstring Status List specification
             var purpose = "revocation";
             if (subject.TryGetProperty("statusPurpose", out var purposeProp))
             {

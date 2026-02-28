@@ -216,85 +216,95 @@ public class InMemoryRegisterRepository : IRegisterRepository
         return Task.CompletedTask;
     }
 
-    public async Task<IEnumerable<TransactionModel>> QueryTransactionsAsync(
+    public Task<IEnumerable<TransactionModel>> QueryTransactionsAsync(
         string registerId,
         Expression<Func<TransactionModel, bool>> predicate,
         CancellationToken cancellationToken = default)
     {
-        var transactions = await GetTransactionsAsync(registerId, cancellationToken);
-        return transactions.Where(predicate).ToList();
+        if (!_transactions.TryGetValue(registerId, out var registerTransactions))
+        {
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
+        }
+
+        var compiled = predicate.Compile();
+        IEnumerable<TransactionModel> result = registerTransactions.Values.Where(compiled).ToList();
+        return Task.FromResult(result);
     }
 
-    public async Task<IEnumerable<TransactionModel>> GetTransactionsByDocketAsync(
+    public Task<IEnumerable<TransactionModel>> GetTransactionsByDocketAsync(
         string registerId,
         ulong docketId,
         CancellationToken cancellationToken = default)
     {
         if (!_transactions.TryGetValue(registerId, out var registerTransactions))
         {
-            return Enumerable.Empty<TransactionModel>();
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
         }
 
-        return registerTransactions.Values
+        IEnumerable<TransactionModel> result = registerTransactions.Values
             .Where(t => t.DocketNumber == docketId)
             .OrderBy(t => t.TimeStamp)
             .ToList();
+        return Task.FromResult(result);
     }
 
     // ===========================
     // Advanced Queries
     // ===========================
 
-    public async Task<IEnumerable<TransactionModel>> GetAllTransactionsByRecipientAddressAsync(
+    public Task<IEnumerable<TransactionModel>> GetAllTransactionsByRecipientAddressAsync(
         string registerId,
         string address,
         CancellationToken cancellationToken = default)
     {
         if (!_transactions.TryGetValue(registerId, out var registerTransactions))
         {
-            return Enumerable.Empty<TransactionModel>();
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
         }
 
-        return registerTransactions.Values
+        IEnumerable<TransactionModel> result = registerTransactions.Values
             .Where(t => t.RecipientsWallets.Contains(address))
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
+        return Task.FromResult(result);
     }
 
-    public async Task<IEnumerable<TransactionModel>> GetAllTransactionsBySenderAddressAsync(
+    public Task<IEnumerable<TransactionModel>> GetAllTransactionsBySenderAddressAsync(
         string registerId,
         string address,
         CancellationToken cancellationToken = default)
     {
         if (!_transactions.TryGetValue(registerId, out var registerTransactions))
         {
-            return Enumerable.Empty<TransactionModel>();
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
         }
 
-        return registerTransactions.Values
+        IEnumerable<TransactionModel> result = registerTransactions.Values
             .Where(t => t.SenderWallet == address)
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
+        return Task.FromResult(result);
     }
 
-    public async Task<IEnumerable<TransactionModel>> GetTransactionsByPrevTxIdAsync(
+    public Task<IEnumerable<TransactionModel>> GetTransactionsByPrevTxIdAsync(
         string registerId,
         string prevTxId,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(prevTxId))
         {
-            return Enumerable.Empty<TransactionModel>();
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
         }
 
         if (!_transactions.TryGetValue(registerId, out var registerTransactions))
         {
-            return Enumerable.Empty<TransactionModel>();
+            return Task.FromResult(Enumerable.Empty<TransactionModel>());
         }
 
-        return registerTransactions.Values
+        IEnumerable<TransactionModel> result = registerTransactions.Values
             .Where(t => t.PrevTxId == prevTxId)
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
+        return Task.FromResult(result);
     }
 }

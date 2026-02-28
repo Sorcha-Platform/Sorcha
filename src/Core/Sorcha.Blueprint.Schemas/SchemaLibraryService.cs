@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Sorcha.Blueprint.Schemas;
 
 /// <summary>
@@ -12,12 +15,14 @@ public class SchemaLibraryService
     private readonly Dictionary<string, SchemaDocument> _favoriteSchemas = [];
     private readonly ISchemaCacheService? _cacheService;
 
-    public SchemaLibraryService(ISchemaCacheService? cacheService = null)
+    public SchemaLibraryService(ISchemaCacheService? cacheService = null, ILoggerFactory? loggerFactory = null)
     {
         _cacheService = cacheService;
 
         // Initialize with built-in repository by default
-        AddRepository(new BuiltInSchemaRepository());
+        var builtInLogger = loggerFactory?.CreateLogger<BuiltInSchemaRepository>()
+            ?? NullLogger<BuiltInSchemaRepository>.Instance;
+        AddRepository(new BuiltInSchemaRepository(builtInLogger));
     }
 
     /// <summary>

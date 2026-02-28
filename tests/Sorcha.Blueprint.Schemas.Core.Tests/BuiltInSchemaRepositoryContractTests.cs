@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Sorcha.Blueprint.Schemas;
 
 namespace Sorcha.Blueprint.Schemas.Core.Tests;
@@ -11,7 +12,7 @@ namespace Sorcha.Blueprint.Schemas.Core.Tests;
 /// </summary>
 public class BuiltInSchemaRepositoryContractTests : SchemaRepositoryContractTests
 {
-    private readonly BuiltInSchemaRepository _repository = new();
+    private readonly BuiltInSchemaRepository _repository = new(NullLogger<BuiltInSchemaRepository>.Instance);
 
     protected override ISchemaRepository CreateRepository() => _repository;
 

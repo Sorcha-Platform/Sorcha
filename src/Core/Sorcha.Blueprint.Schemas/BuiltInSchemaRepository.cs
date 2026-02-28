@@ -3,6 +3,7 @@
 
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Sorcha.Blueprint.Schemas;
 
@@ -12,12 +13,14 @@ namespace Sorcha.Blueprint.Schemas;
 public class BuiltInSchemaRepository : ISchemaRepository
 {
     private readonly List<SchemaDocument> _schemas = [];
+    private readonly ILogger<BuiltInSchemaRepository> _logger;
     private volatile bool _initialized = false;
 
     public SchemaSource SourceType => SchemaSource.BuiltIn;
 
-    public BuiltInSchemaRepository()
+    public BuiltInSchemaRepository(ILogger<BuiltInSchemaRepository> logger)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         InitializeBuiltInSchemas();
     }
 
@@ -123,7 +126,7 @@ public class BuiltInSchemaRepository : ISchemaRepository
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to load schema from {resourceName}: {ex.Message}");
+                _logger.LogWarning(ex, "Failed to load schema from {ResourceName}", resourceName);
             }
         }
 

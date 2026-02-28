@@ -36,9 +36,15 @@ public class JsonLogicCache : IDisposable
         };
     }
 
-    public JsonLogicCache() : this(new MemoryCache(new MemoryCacheOptions
+    /// <summary>
+    /// Creates a new JsonLogicCache with a configurable maximum size.
+    /// </summary>
+    /// <param name="maxCacheSize">
+    /// Maximum number of cached expressions. Default: 1000.
+    /// </param>
+    public JsonLogicCache(int maxCacheSize = 1000) : this(new MemoryCache(new MemoryCacheOptions
     {
-        SizeLimit = 1000 // Max 1000 cached expressions
+        SizeLimit = maxCacheSize
     }))
     {
     }

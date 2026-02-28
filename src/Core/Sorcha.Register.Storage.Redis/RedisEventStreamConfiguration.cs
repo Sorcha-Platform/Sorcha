@@ -37,4 +37,35 @@ public class RedisEventStreamConfiguration
     /// Messages per XREADGROUP call
     /// </summary>
     public int BatchSize { get; set; } = 10;
+
+    /// <summary>
+    /// Startup delay in seconds before the event processing loop begins.
+    /// Allows subscriptions to be registered before processing starts.
+    /// Default: 2 seconds.
+    /// </summary>
+    public int StartupDelaySeconds { get; set; } = 2;
+
+    /// <summary>
+    /// Circuit breaker failure ratio threshold (0.0 to 1.0).
+    /// Default: 0.5 (50% failure rate triggers the breaker).
+    /// </summary>
+    public double CircuitBreakerFailureRatio { get; set; } = 0.5;
+
+    /// <summary>
+    /// Circuit breaker sampling duration in seconds.
+    /// Default: 30 seconds.
+    /// </summary>
+    public int CircuitBreakerSamplingDurationSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Circuit breaker break duration in seconds.
+    /// Default: 15 seconds.
+    /// </summary>
+    public int CircuitBreakerBreakDurationSeconds { get; set; } = 15;
+
+    /// <summary>
+    /// Timeout in seconds for individual publish operations.
+    /// Default: 5 seconds.
+    /// </summary>
+    public int PublishTimeoutSeconds { get; set; } = 5;
 }

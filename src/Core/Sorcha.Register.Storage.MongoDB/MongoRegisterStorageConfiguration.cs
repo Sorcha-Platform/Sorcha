@@ -9,9 +9,10 @@ namespace Sorcha.Register.Storage.MongoDB;
 public class MongoRegisterStorageConfiguration
 {
     /// <summary>
-    /// MongoDB connection string.
+    /// MongoDB connection string. Required — must be provided via configuration.
+    /// No default is set to prevent accidental use of a local instance in production.
     /// </summary>
-    public string ConnectionString { get; set; } = "mongodb://localhost:27017";
+    public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
     /// Database name for register storage.

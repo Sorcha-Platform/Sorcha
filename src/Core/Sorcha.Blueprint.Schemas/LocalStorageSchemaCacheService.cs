@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Blazored.LocalStorage;
+using Microsoft.Extensions.Logging;
 
 namespace Sorcha.Blueprint.Schemas;
 
@@ -12,6 +13,7 @@ namespace Sorcha.Blueprint.Schemas;
 public class LocalStorageSchemaCacheService : ISchemaCacheService
 {
     private readonly ILocalStorageService _localStorage;
+    private readonly ILogger<LocalStorageSchemaCacheService> _logger;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private const string CacheKey = "sorcha:schema-cache";
     private static readonly TimeSpan DefaultCacheDuration = TimeSpan.FromDays(7); // 7 days default
@@ -19,9 +21,12 @@ public class LocalStorageSchemaCacheService : ISchemaCacheService
     private SchemaCache? _memoryCache;
     private bool _isLoaded = false;
 
-    public LocalStorageSchemaCacheService(ILocalStorageService localStorage)
+    public LocalStorageSchemaCacheService(
+        ILocalStorageService localStorage,
+        ILogger<LocalStorageSchemaCacheService> logger)
     {
         _localStorage = localStorage ?? throw new ArgumentNullException(nameof(localStorage));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async Task<SchemaDocument?> GetAsync(string id, CancellationToken cancellationToken = default)
@@ -117,8 +122,9 @@ public class LocalStorageSchemaCacheService : ISchemaCacheService
             await _localStorage.ContainKeyAsync(CacheKey, cancellationToken);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "Local storage not available");
             return false;
         }
     }
@@ -158,7 +164,7 @@ public class LocalStorageSchemaCacheService : ISchemaCacheService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading schema cache: {ex.Message}");
+                _logger.LogWarning(ex, "Error loading schema cache");
                 _memoryCache = new SchemaCache();
             }
 
@@ -183,7 +189,7 @@ public class LocalStorageSchemaCacheService : ISchemaCacheService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error saving schema cache: {ex.Message}");
+            _logger.LogWarning(ex, "Error saving schema cache");
         }
     }
 }

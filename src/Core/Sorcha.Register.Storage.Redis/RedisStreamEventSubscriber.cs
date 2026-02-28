@@ -19,6 +19,7 @@ public class RedisStreamEventSubscriber : IEventSubscriber
     private readonly ILogger<RedisStreamEventSubscriber> _logger;
     private readonly string _consumerName;
 
+    // Plain Dictionary protected by _lock — preferred over ConcurrentDictionary for coordinated multi-field updates
     private readonly Dictionary<string, List<SubscriptionEntry>> _subscriptions = new();
     private readonly object _lock = new();
 

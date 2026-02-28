@@ -24,6 +24,14 @@
             Thread-safe for concurrent async access via per-key locking.
             </remarks>
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Caching.JsonLogicCache.#ctor(System.Int32)">
+            <summary>
+            Creates a new JsonLogicCache with a configurable maximum size.
+            </summary>
+            <param name="maxCacheSize">
+            Maximum number of cached expressions. Default: 1000.
+            </param>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Caching.JsonLogicCache.GetOrAdd``1(System.Text.Json.Nodes.JsonNode,System.Func{System.Text.Json.Nodes.JsonNode,``0})">
             <summary>
             Get or add an expression to the cache
@@ -119,6 +127,15 @@
             Schema parsing (JsonSchema.FromText) is expensive — this cache ensures each unique schema
             is only parsed once and then reused for subsequent validations.
             </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Caching.JsonSchemaCache.#ctor(System.Int32)">
+            <summary>
+            Creates a new JsonSchemaCache with a configurable maximum size.
+            </summary>
+            <param name="maxCacheSize">
+            Maximum number of cached schemas. Default: 500.
+            Schemas are larger than logic expressions, so a smaller default is used.
+            </param>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Caching.JsonSchemaCache.GetOrAdd(System.Text.Json.Nodes.JsonNode,System.Func{System.String,Json.Schema.JsonSchema})">
             <summary>

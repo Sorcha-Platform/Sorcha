@@ -40,15 +40,15 @@ public class RedisStreamEventPublisher : IEventPublisher
         _resiliencePipeline = new ResiliencePipelineBuilder()
             .AddCircuitBreaker(new CircuitBreakerStrategyOptions
             {
-                FailureRatio = 0.5,
-                SamplingDuration = TimeSpan.FromSeconds(30),
+                FailureRatio = _config.CircuitBreakerFailureRatio,
+                SamplingDuration = TimeSpan.FromSeconds(_config.CircuitBreakerSamplingDurationSeconds),
                 MinimumThroughput = 5,
-                BreakDuration = TimeSpan.FromSeconds(15),
+                BreakDuration = TimeSpan.FromSeconds(_config.CircuitBreakerBreakDurationSeconds),
                 ShouldHandle = new PredicateBuilder().Handle<RedisException>()
             })
             .AddTimeout(new TimeoutStrategyOptions
             {
-                Timeout = TimeSpan.FromSeconds(5)
+                Timeout = TimeSpan.FromSeconds(_config.PublishTimeoutSeconds)
             })
             .Build();
     }
