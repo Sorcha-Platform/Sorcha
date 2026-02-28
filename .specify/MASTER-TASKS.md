@@ -117,15 +117,76 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 | A21 | Upgrade SimpleBase 4.0.2 → 5.6.0 (encoding API changes) | 📋 |
 | A22 | Upgrade coverlet.collector 6.0.4 → 8.0.0 (test coverage) | 📋 |
 
-### Phase B: Core Libraries (src/Core/) — 📋 NOT STARTED
+### Phase B: Core Libraries (src/Core/) — 🚧 IN PROGRESS
+
+**Plan doc:** [docs/plans/2026-02-28-phase-b-core-libraries-plan.md](../docs/plans/2026-02-28-phase-b-core-libraries-plan.md)
 
 | # | Task | Status |
 |---|------|--------|
-| B1 | Add Directory.Build.props for Core libraries (NuGet metadata, build settings) | 📋 |
-| B2 | Add NuGet PackageId/Version to Core libraries (Blueprint.Engine, Blueprint.Fluent, Register.Core, Register.Storage.*) | 📋 |
-| B3 | Code quality review across Core libraries | 📋 |
+| B1 | Add Directory.Build.props for Core libraries (NuGet metadata, build settings) | ✅ |
+| B2 | Add NuGet PackageId/Version to Core libraries (8 projects, v2.0.0) | ✅ |
+| B3 | Code quality review across Core libraries | 🚧 (review complete, fixes below) |
 | B4 | Fill test gaps in Core libraries | 📋 |
-| B5 | Add nuget-publish.yml path triggers for src/Core/** | 📋 |
+| B5 | Add nuget-publish.yml path triggers for src/Core/** | ✅ |
+
+#### B3a: Critical Fixes (10)
+
+| # | Task | Status |
+|---|------|--------|
+| B3a-1 | Fix `.GetAwaiter().GetResult()` in `MongoRegisterRepository` constructor — async index creation | 📋 |
+| B3a-2 | Fix undisposed `JsonDocument` in `BitstringStatusListChecker.cs:48` | 📋 |
+| B3a-3 | Fix bare `catch {}` in `BitstringStatusListChecker.cs:93-96` — catch specific exceptions | 📋 |
+| B3a-4 | Fix bare `catch {}` in `CredentialVerifier.cs:199-203` — security-critical revocation check | 📋 |
+| B3a-5 | Fix hardcoded `SignatureValid = true` in `CredentialVerifier.cs:154` — fail-safe to false | 📋 |
+| B3a-6 | Fix `SemaphoreSlim` leak in `JsonLogicCache.cs` — implement IDisposable | 📋 |
+| B3a-7 | Fix `SemaphoreSlim` leak in `JsonSchemaCache.cs` — implement IDisposable | 📋 |
+| B3a-8 | Fix bare `catch {}` in `BlueprintServiceRepository.cs:233-236` | 📋 |
+| B3a-9 | Fix bare `catch {}` in `BlueprintServiceRepository.cs:258-261` | 📋 |
+| B3a-10 | Fix bare `catch {}` in `SchemaStoreRepository.cs:151-153` | 📋 |
+
+#### B3b: Important Fixes (14)
+
+| # | Task | Status |
+|---|------|--------|
+| B3b-1 | Fix TOCTOU race in `TransactionManager.cs:59-66` fork detection | 📋 |
+| B3b-2 | Fix TOCTOU race in `InMemoryRegisterRepository.cs:65` UpdateRegisterAsync | 📋 |
+| B3b-3 | Fix thread-unsafe `List<>` in `InMemoryEventPublisher.cs` — use ConcurrentBag | 📋 |
+| B3b-4 | Fix thread-unsafe caching in `BlueprintServiceRepository.cs` — Dictionary, List | 📋 |
+| B3b-5 | Fix thread-unsafe caching in `SchemaStoreRepository.cs` — List, bool, DateTime | 📋 |
+| B3b-6 | Fix thread-unsafe `_memoryCache`/`_isLoaded` in `LocalStorageSchemaCacheService.cs` | 📋 |
+| B3b-7 | Add `volatile` to `_initialized` in `BuiltInSchemaRepository.cs` | 📋 |
+| B3b-8 | Fix `CancellationToken.None` in `DocketCacheWarmingService.cs` background task | 📋 |
+| B3b-9 | Fix broad `catch (Exception)` in `ActionProcessor.cs:178-182` | 📋 |
+| B3b-10 | Fix silent 365-day fallback in `CredentialIssuer.cs:114-125` — log warning | 📋 |
+| B3b-11 | Fix `new MongoClient()` in `MongoRegisterRepository.cs` — use IMongoClient injection | 📋 |
+| B3b-12 | Add `volatile` to `_classMapRegistered` in `MongoRegisterRepository.cs` | 📋 |
+| B3b-13 | Fix double JSON parse in `BuiltInSchemaRepository.cs:82,117` | 📋 |
+| B3b-14 | Fix O(n²) `Array.IndexOf` in `RedisStreamEventSubscriber.cs:108` | 📋 |
+
+#### B3c: Minor Fixes (20)
+
+| # | Task | Status |
+|---|------|--------|
+| B3c-1 | Replace `Console.WriteLine` with ILogger in `BuiltInSchemaRepository.cs` | 📋 |
+| B3c-2 | Replace `Console.WriteLine` with ILogger in `SchemaStoreRepository.cs` (2 locations) | 📋 |
+| B3c-3 | Replace `Console.WriteLine` with ILogger in `LocalStorageSchemaCacheService.cs` (2 locations) | 📋 |
+| B3c-4 | Add logging to bare `catch {}` in `LocalStorageSchemaCacheService.cs:118-121` | 📋 |
+| B3c-5 | Fix serialize-then-parse round-trip in `DataSchemaBuilder.cs:133-134` | 📋 |
+| B3c-6 | Fix `JsonDocument.Parse("{}")` placeholder in `BlueprintServiceRepository.cs:302` | 📋 |
+| B3c-7 | Add XML docs on `RegisterStorageConfiguration` defaults | 📋 |
+| B3c-8 | Make 2-second startup delay configurable in `EventSubscriptionHostedService.cs` | 📋 |
+| B3c-9 | Make Polly resilience parameters configurable in `RedisStreamEventPublisher.cs` | 📋 |
+| B3c-10 | Make cache size limit configurable in `JsonLogicCache.cs` | 📋 |
+| B3c-11 | Make cache size limit configurable in `JsonSchemaCache.cs` | 📋 |
+| B3c-12 | Remove default connection string in `MongoRegisterStorageConfiguration.cs` | 📋 |
+| B3c-13 | Fix `int` cast of `EstimatedDocumentCount` in `MongoRegisterRepository.cs` | 📋 |
+| B3c-14 | Remove unnecessary `async` from 5 methods in `InMemoryRegisterRepository.cs` | 📋 |
+| B3c-15 | Document `Dictionary` vs `ConcurrentDictionary` choice in `RedisStreamEventSubscriber.cs` | 📋 |
+| B3c-16 | Document hardcoded `"revocation"` default in `BitstringStatusListChecker.cs` | 📋 |
+| B3c-17 | Make 24-hour cache expiry configurable in `SchemaStoreRepository.cs` | 📋 |
+| B3c-18 | Make 5-minute cache duration configurable in `BlueprintServiceRepository.cs` | 📋 |
+| B3c-19 | Fix undisposed `JsonDocument` placeholder in `BlueprintServiceRepository.cs:302` | 📋 |
+| B3c-20 | Add XML docs on hardcoded defaults in `RegisterStorageConfiguration.cs` | 📋 |
 
 ### Phase C: Services (src/Services/) — 📋 NOT STARTED
 
