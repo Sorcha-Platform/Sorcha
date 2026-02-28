@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <!-- Project Metadata -->
+    <Authors>Sorcha Contributors</Authors>
+    <Company>Sorcha Contributors</Company>
+    <Copyright>Copyright (c) 2026 Sorcha Contributors</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/sorcha-platform/sorcha</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <!-- Build Settings -->
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>13</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

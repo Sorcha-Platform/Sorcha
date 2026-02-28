@@ -2,10 +2,6 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
 
     <!-- Global Tool Configuration -->
     <PackAsTool>true</PackAsTool>
@@ -17,14 +13,14 @@
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
 
-    <Authors>Sorcha Project</Authors>
     <Description>Administrative CLI tool for managing Sorcha distributed ledger platform</Description>
     <PackageTags>sorcha;cli;blockchain;ledger;admin</PackageTags>
-    <PackageProjectUrl>https://github.com/sorcha/sorcha</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/sorcha/sorcha</RepositoryUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sorcha.Cli.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Package README -->
