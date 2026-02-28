@@ -5,6 +5,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Copy build property files for central package management
+COPY ["Directory.Packages.props", "."]
+COPY ["src/Services/Directory.Build.props", "src/Services/"]
+COPY ["src/Common/Directory.Build.props", "src/Common/"]
+
 # Copy project files for restore
 COPY ["src/Services/Sorcha.ApiGateway/Sorcha.ApiGateway.csproj", "src/Services/Sorcha.ApiGateway/"]
 COPY ["src/Common/Sorcha.ServiceDefaults/Sorcha.ServiceDefaults.csproj", "src/Common/Sorcha.ServiceDefaults/"]
