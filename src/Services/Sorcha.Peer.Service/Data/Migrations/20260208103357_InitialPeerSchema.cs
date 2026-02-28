@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Sorcha.Peer.Service.data.Migrations
+namespace Sorcha.Peer.Service.Data.Migrations
 {
     /// <inheritdoc />
     public partial class InitialPeerSchema : Migration

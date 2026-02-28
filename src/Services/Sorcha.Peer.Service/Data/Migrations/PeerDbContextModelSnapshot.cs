@@ -10,7 +10,7 @@ using Sorcha.Peer.Service.Data;
 
 #nullable disable
 
-namespace Sorcha.Peer.Service.data.Migrations
+namespace Sorcha.Peer.Service.Data.Migrations
 {
     [DbContext(typeof(PeerDbContext))]
     partial class PeerDbContextModelSnapshot : ModelSnapshot

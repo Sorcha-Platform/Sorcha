@@ -121,6 +121,11 @@ UpgradeLog*.htm
 ServiceFabricBackup/
 *.rptproj.bak
 
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 # SQL Server files
 *.mdf
 *.ldf

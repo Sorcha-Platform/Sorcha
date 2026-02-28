@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Copyright (c) 2025 Sorcha Contributors
+# Copyright (c) 2026 Sorcha Contributors
 
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

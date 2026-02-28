@@ -449,12 +449,12 @@ public class TenantDbContext : DbContext
                 entity.Property(e => e.OldValues)
                     .HasConversion(
                         v => v == null ? null : v.RootElement.GetRawText(),
-                        v => v == null ? null : System.Text.Json.JsonDocument.Parse(v));
+                        v => v == null ? null : System.Text.Json.JsonDocument.Parse(v, default(System.Text.Json.JsonDocumentOptions)));
 
                 entity.Property(e => e.NewValues)
                     .HasConversion(
                         v => v == null ? null : v.RootElement.GetRawText(),
-                        v => v == null ? null : System.Text.Json.JsonDocument.Parse(v));
+                        v => v == null ? null : System.Text.Json.JsonDocument.Parse(v, default(System.Text.Json.JsonDocumentOptions)));
             }
             else
             {

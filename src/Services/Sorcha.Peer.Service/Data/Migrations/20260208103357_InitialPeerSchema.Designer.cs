@@ -11,7 +11,7 @@ using Sorcha.Peer.Service.Data;
 
 #nullable disable
 
-namespace Sorcha.Peer.Service.data.Migrations
+namespace Sorcha.Peer.Service.Data.Migrations
 {
     [DbContext(typeof(PeerDbContext))]
     [Migration("20260208103357_InitialPeerSchema")]
