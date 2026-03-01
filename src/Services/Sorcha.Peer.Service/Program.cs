@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Sorcha.Peer.Service;
 using Sorcha.Peer.Service.Communication;
@@ -17,6 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Peer.Service.Models;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Peer;
+using Sorcha.Peer.Service.GrpcServices;
 using Sorcha.Peer.Service.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -72,6 +74,19 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Add Redis for advertisement persistence
 builder.AddRedisClient("redis");
+
+// Add PeerDbContext with PostgreSQL (falls back to InMemory if no connection string)
+var peerDbConnectionString = builder.Configuration.GetConnectionString("PeerDb");
+if (!string.IsNullOrEmpty(peerDbConnectionString))
+{
+    builder.Services.AddDbContextFactory<Sorcha.Peer.Service.Data.PeerDbContext>(options =>
+        options.UseNpgsql(peerDbConnectionString));
+}
+else
+{
+    builder.Services.AddDbContextFactory<Sorcha.Peer.Service.Data.PeerDbContext>(options =>
+        options.UseInMemoryDatabase("PeerServiceDb"));
+}
 
 // Add services
 builder.Services.AddGrpc(options =>
@@ -129,6 +144,8 @@ builder.Services.AddSingleton<PeerExchangeService>();
 // Register gRPC service implementations
 builder.Services.AddSingleton<PeerDiscoveryServiceImpl>();
 builder.Services.AddSingleton<PeerHeartbeatGrpcService>();
+builder.Services.AddSingleton<RegisterSyncGrpcService>();
+builder.Services.AddSingleton<TransactionDistributionGrpcService>();
 
 // Register background services
 builder.Services.AddHostedService<PeerService>();
@@ -175,6 +192,8 @@ app.MapSorchaOpenApiUi("Peer Service");
 // Map gRPC services
 app.MapGrpcService<PeerDiscoveryServiceImpl>();
 app.MapGrpcService<PeerHeartbeatGrpcService>();
+app.MapGrpcService<RegisterSyncGrpcService>();
+app.MapGrpcService<TransactionDistributionGrpcService>();
 
 // Enable gRPC reflection for development
 if (app.Environment.IsDevelopment())

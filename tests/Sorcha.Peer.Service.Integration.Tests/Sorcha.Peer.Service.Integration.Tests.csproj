@@ -18,10 +18,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Grpc.Net.Client" />
-    <PackageReference Include="Grpc.Tools">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -38,10 +34,8 @@
     <ProjectReference Include="..\..\src\Services\Sorcha.Peer.Service\Sorcha.Peer.Service.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Protobuf Include="..\..\src\Services\Sorcha.Peer.Service\Protos\peer_discovery.proto" GrpcServices="Client" Link="Protos\peer_discovery.proto" />
-    <Protobuf Include="..\..\src\Services\Sorcha.Peer.Service\Protos\peer_communication.proto" GrpcServices="Client" Link="Protos\peer_communication.proto" />
-    <Protobuf Include="..\..\src\Services\Sorcha.Peer.Service\Protos\transaction_distribution.proto" GrpcServices="Client" Link="Protos\transaction_distribution.proto" />
-  </ItemGroup>
+  <!-- Proto types (PeerDiscovery, PeerCommunication, TransactionDistribution) are
+       compiled in Sorcha.ServiceClients and Sorcha.Peer.Service and flow via
+       transitive ProjectReference. No local Protobuf compilation needed. -->
 
 </Project>

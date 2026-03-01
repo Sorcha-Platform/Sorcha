@@ -207,21 +207,28 @@ public class TransactionReceiver : ITransactionReceiver
     }
 
     /// <inheritdoc/>
-    public Task<bool> IsTransactionKnownAsync(
+    public async Task<bool> IsTransactionKnownAsync(
         string transactionHash,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(transactionHash);
 
-        // Check in-memory known transactions cache
+        // Check in-memory known transactions cache (fastest)
         if (_knownTransactions.ContainsKey(transactionHash))
         {
-            return Task.FromResult(true);
+            return true;
         }
 
-        // TODO: Check memory pool and confirmed transactions
-        // For now, only check the known transactions cache
-        return Task.FromResult(false);
+        // Check Redis-backed memory pool for duplicate payload hash
+        if (await _memPoolManager.TransactionExistsAsync(transactionHash, ct))
+        {
+            _logger.LogDebug(
+                "Transaction with hash {TransactionHash} found in memory pool",
+                transactionHash);
+            return true;
+        }
+
+        return false;
     }
 
     /// <inheritdoc/>

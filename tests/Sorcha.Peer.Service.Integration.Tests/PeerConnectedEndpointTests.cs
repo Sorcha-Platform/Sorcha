@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using FluentAssertions;
-using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
+
+using FluentAssertions;
+
+using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
 
 namespace Sorcha.Peer.Service.Integration.Tests;
 
 /// <summary>
-/// Integration tests for the connected peers endpoint
+/// Integration tests for the connected peers endpoint.
+/// Tests /api/peers/connected which is publicly accessible (AllowAnonymous).
 /// </summary>
 [Collection("PeerIntegration")]
 public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
@@ -35,7 +38,7 @@ public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
 
         var result = await response.Content.ReadFromJsonAsync<ConnectedPeersAnonymousResponse>();
         result.Should().NotBeNull();
-        result!.ConnectedPeerCount.Should().BeGreaterOrEqualTo(0);
+        result!.ConnectedPeerCount.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -50,15 +53,15 @@ public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
 
         // Assert
         result.Should().NotBeNull();
-        result!.ConnectedPeerCount.Should().BeGreaterOrEqualTo(0);
+        result!.ConnectedPeerCount.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
     public async Task ConnectedPeers_Endpoint_Should_Be_Accessible_Without_Authentication()
     {
-        // Arrange
+        // Arrange - Use a fresh client from the factory (no auth headers)
         var peer = _fixture.Peers[0];
-        var client = new HttpClient { BaseAddress = peer.HttpClient.BaseAddress };
+        using var client = peer.Factory.CreateClient();
 
         // Act
         var response = await client.GetAsync("/api/peers/connected");
@@ -68,7 +71,7 @@ public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
 
         var result = await response.Content.ReadFromJsonAsync<ConnectedPeersAnonymousResponse>();
         result.Should().NotBeNull();
-        result!.ConnectedPeerCount.Should().BeGreaterOrEqualTo(0);
+        result!.ConnectedPeerCount.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -106,7 +109,7 @@ public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
         foreach (var (peerId, result) in connectedCounts)
         {
             result.Should().NotBeNull($"Connected peers result for {peerId} should not be null");
-            result!.ConnectedPeerCount.Should().BeGreaterOrEqualTo(0, $"Peer {peerId} should report non-negative peer count");
+            result!.ConnectedPeerCount.Should().BeGreaterThanOrEqualTo(0, $"Peer {peerId} should report non-negative peer count");
         }
     }
 
@@ -130,7 +133,7 @@ public class PeerConnectedEndpointTests : IClassFixture<PeerTestFixture>
         public List<string> SupportedProtocols { get; set; } = new();
         public DateTimeOffset LastSeen { get; set; }
         public int AverageLatencyMs { get; set; }
-        public bool IsBootstrapNode { get; set; }
+        public bool IsSeedNode { get; set; }
     }
 
     private class PeerHealthResponse

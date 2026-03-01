@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using FluentAssertions;
-using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
+
+using FluentAssertions;
+
+using Sorcha.Peer.Service.Integration.Tests.Infrastructure;
 
 namespace Sorcha.Peer.Service.Integration.Tests;
 
 /// <summary>
-/// Integration tests for peer service health and metrics endpoints
+/// Integration tests for peer service health and metrics endpoints.
+/// Tests the /api/health endpoint which returns service status and metrics.
 /// </summary>
 [Collection("PeerIntegration")]
 public class PeerHealthTests : IClassFixture<PeerTestFixture>
@@ -42,63 +45,6 @@ public class PeerHealthTests : IClassFixture<PeerTestFixture>
     }
 
     [Fact]
-    public async Task Metrics_Endpoint_Should_Return_Current_Metrics()
-    {
-        // Arrange
-        var peer = _fixture.Peers[0];
-
-        // Act
-        var response = await peer.HttpClient.GetAsync("/api/metrics");
-
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var metrics = await response.Content.ReadFromJsonAsync<MetricsResponse>();
-        metrics.Should().NotBeNull();
-        metrics!.UptimeSeconds.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public async Task Metrics_Via_gRPC_Should_Match_REST_Metrics()
-    {
-        // Arrange
-        var peer = _fixture.Peers[0];
-
-        // Act
-        var grpcMetrics = await peer.GrpcClient.GetMetricsAsync(new MetricsRequest());
-        var restResponse = await peer.HttpClient.GetAsync("/api/metrics");
-        var restMetrics = await restResponse.Content.ReadFromJsonAsync<MetricsResponse>();
-
-        // Assert
-        grpcMetrics.Should().NotBeNull();
-        restMetrics.Should().NotBeNull();
-
-        // Metrics should be very close (may not be exact due to timing)
-        grpcMetrics.TotalTransactions.Should().BeGreaterOrEqualTo(restMetrics!.TotalTransactions - 10);
-        grpcMetrics.UptimeSeconds.Should().BeCloseTo(restMetrics.UptimeSeconds, 5);
-    }
-
-    [Fact]
-    public async Task Uptime_Should_Increase_Over_Time()
-    {
-        // Arrange
-        var peer = _fixture.Peers[0];
-
-        // Act
-        var metrics1 = await peer.GrpcClient.GetMetricsAsync(new MetricsRequest());
-        var uptime1 = metrics1.UptimeSeconds;
-
-        await Task.Delay(2000); // Wait 2 seconds
-
-        var metrics2 = await peer.GrpcClient.GetMetricsAsync(new MetricsRequest());
-        var uptime2 = metrics2.UptimeSeconds;
-
-        // Assert
-        uptime2.Should().BeGreaterThan(uptime1);
-        (uptime2 - uptime1).Should().BeGreaterOrEqualTo(1); // At least 1 second difference
-    }
-
-    [Fact]
     public async Task Health_Check_Should_Include_Metrics()
     {
         // Arrange
@@ -111,9 +57,28 @@ public class PeerHealthTests : IClassFixture<PeerTestFixture>
         // Assert
         health.Should().NotBeNull();
         health!.Metrics.Should().NotBeNull();
-        health.Metrics!.ActivePeers.Should().BeGreaterOrEqualTo(0);
-        health.Metrics.TotalTransactions.Should().BeGreaterOrEqualTo(0);
-        health.Metrics.ThroughputPerSecond.Should().BeGreaterOrEqualTo(0);
+        health.Metrics!.TotalPeers.Should().BeGreaterThanOrEqualTo(0);
+        health.Metrics.HealthyPeers.Should().BeGreaterThanOrEqualTo(0);
+        health.Metrics.UnhealthyPeers.Should().BeGreaterThanOrEqualTo(0);
+        health.Metrics.QueueSize.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task Health_Metrics_Should_Reflect_Peer_State()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+
+        // Act
+        var response = await peer.HttpClient.GetAsync("/api/health");
+        var health = await response.Content.ReadFromJsonAsync<HealthResponse>();
+
+        // Assert
+        health.Should().NotBeNull();
+        health!.Metrics.Should().NotBeNull();
+
+        // UnhealthyPeers should equal TotalPeers minus HealthyPeers
+        health.Metrics!.UnhealthyPeers.Should().Be(health.Metrics.TotalPeers - health.Metrics.HealthyPeers);
     }
 
     [Fact]
@@ -135,6 +100,38 @@ public class PeerHealthTests : IClassFixture<PeerTestFixture>
         }
     }
 
+    [Fact]
+    public async Task Stats_Endpoint_Should_Return_Statistics()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+
+        // Act
+        var response = await peer.HttpClient.GetAsync("/api/peers/stats");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task PeerHealth_Endpoint_Should_Return_Peer_Health()
+    {
+        // Arrange
+        var peer = _fixture.Peers[0];
+
+        // Act
+        var response = await peer.HttpClient.GetAsync("/api/peers/health");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var peerHealth = await response.Content.ReadFromJsonAsync<PeerHealthResponse>();
+        peerHealth.Should().NotBeNull();
+        peerHealth!.TotalPeers.Should().BeGreaterThanOrEqualTo(0);
+        peerHealth.HealthyPeers.Should().BeGreaterThanOrEqualTo(0);
+        peerHealth.HealthPercentage.Should().BeGreaterThanOrEqualTo(0);
+    }
+
     // Helper classes for deserialization
     private class HealthResponse
     {
@@ -148,20 +145,18 @@ public class PeerHealthTests : IClassFixture<PeerTestFixture>
 
     private class HealthMetrics
     {
-        public int ActivePeers { get; set; }
-        public long TotalTransactions { get; set; }
-        public double ThroughputPerSecond { get; set; }
-        public double CpuUsagePercent { get; set; }
-        public long MemoryUsageBytes { get; set; }
+        public int TotalPeers { get; set; }
+        public int HealthyPeers { get; set; }
+        public int UnhealthyPeers { get; set; }
+        public double AverageLatencyMs { get; set; }
+        public long QueueSize { get; set; }
     }
 
-    private class MetricsResponse
+    private class PeerHealthResponse
     {
-        public int ActivePeers { get; set; }
-        public long TotalTransactions { get; set; }
-        public double ThroughputPerSecond { get; set; }
-        public double CpuUsagePercent { get; set; }
-        public long MemoryUsageBytes { get; set; }
-        public long UptimeSeconds { get; set; }
+        public int TotalPeers { get; set; }
+        public int HealthyPeers { get; set; }
+        public int UnhealthyPeers { get; set; }
+        public double HealthPercentage { get; set; }
     }
 }

@@ -8,8 +8,8 @@ using Sorcha.Peer.Service.Protos;
 namespace Sorcha.Peer.Service.Integration.Tests.Infrastructure;
 
 /// <summary>
-/// Test fixture for peer-to-peer integration tests
-/// Provides multiple peer instances for testing
+/// Test fixture for peer-to-peer integration tests.
+/// Provides multiple peer instances for testing REST and gRPC endpoints.
 /// </summary>
 public class PeerTestFixture : IAsyncLifetime
 {

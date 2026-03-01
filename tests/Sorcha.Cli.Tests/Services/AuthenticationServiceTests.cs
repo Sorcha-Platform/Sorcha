@@ -7,7 +7,7 @@ using Sorcha.Cli.Tests.Utilities;
 
 namespace Sorcha.Cli.Tests.Services;
 
-[Collection("AuthenticationServiceTests")]
+[Collection("CliEnvironment")]
 public class AuthenticationServiceTests : IDisposable
 {
     private readonly string _testConfigDir;

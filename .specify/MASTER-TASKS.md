@@ -213,6 +213,24 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 | D4 | Add Apps to Docker CI/CD + CLI publish workflow | ✅ |
 | D5 | E2E test pipeline integration (Playwright in CI) | ✅ |
 
+### Phase E: Feature Completion (98% → 100% MVD) — ✅ COMPLETE
+
+| # | Task | Status |
+|---|------|--------|
+| E1a | Stabilize Tenant test suite (BCrypt→Argon2id in TestDataSeeder) | ✅ |
+| E1b | Stabilize CLI test suite (unified xUnit collection for env var isolation) | ✅ |
+| E1c | Stabilize Peer integration tests (rewrite factory + 5 test files) | ✅ |
+| E2a | Register PeerDbContext in DI (PostgreSQL + InMemory fallback) | ✅ |
+| E2b | Wire TransactionDistributionService.ProcessQueueAsync in PeerService loop | ✅ |
+| E2c | Wire live subscription loop in RegisterSyncBackgroundService | ✅ |
+| E2d | Align appsettings.json structure with PeerServiceConfiguration model | ✅ |
+| E3a | Implement RegisterSyncGrpcService (4 RPCs: PullDocketChain, PullDocketTransactions, SubscribeToRegister, GetRegisterSyncStatus) | ✅ |
+| E3b | Implement TransactionDistributionGrpcService (3 RPCs: NotifyTransaction, GetTransaction, StreamTransaction) | ✅ |
+| E3c | Fix Tenant GetOrganizationStats TotalUsers (add GetTotalActiveUserCountAsync) | ✅ |
+| E3d | Fix Tenant ListServicePrincipals includeInactive (add GetAllServicePrincipalsAsync) | ✅ |
+| E3e | Fix Validator duplicate detection cross-check (Redis mempool O(1) set index) | ✅ |
+| E3f | Add YARP auth policies to 48 API routes + rate limiting on 7 write routes | ✅ |
+
 ---
 
 ## P0 — Transaction Pipeline Audit

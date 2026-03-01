@@ -53,6 +53,11 @@ public interface IIdentityRepository
     /// </summary>
     Task DeactivateUserAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets the total count of active users across all organizations.
+    /// </summary>
+    Task<int> GetTotalActiveUserCountAsync(CancellationToken cancellationToken = default);
+
     // PublicIdentity operations (PassKey/FIDO2, public schema)
 
     /// <summary>
@@ -101,6 +106,11 @@ public interface IIdentityRepository
     /// Gets all active service principals.
     /// </summary>
     Task<List<ServicePrincipal>> GetActiveServicePrincipalsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all service principals regardless of status.
+    /// </summary>
+    Task<List<ServicePrincipal>> GetAllServicePrincipalsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a new service principal.

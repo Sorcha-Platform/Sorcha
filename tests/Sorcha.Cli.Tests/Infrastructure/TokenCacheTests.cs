@@ -7,7 +7,7 @@ namespace Sorcha.Cli.Tests.Infrastructure;
 /// Collection to ensure TokenCache tests run sequentially
 /// (they share environment variables and file system state).
 /// </summary>
-[Collection("TokenCacheTests")]
+[Collection("CliEnvironment")]
 public class TokenCacheTests : IDisposable
 {
     private readonly string _testConfigDir;

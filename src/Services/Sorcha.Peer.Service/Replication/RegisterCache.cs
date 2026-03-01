@@ -218,6 +218,34 @@ public class RegisterCacheEntry
     }
 
     /// <summary>
+    /// Gets dockets ordered by version, starting from the specified version (exclusive).
+    /// </summary>
+    public IReadOnlyList<CachedDocket> GetDocketsFromVersion(long fromVersion, int maxDockets = 0)
+    {
+        var query = _dockets
+            .Where(d => d.Key > fromVersion)
+            .OrderBy(d => d.Key)
+            .Select(d => d.Value);
+
+        if (maxDockets > 0)
+            query = query.Take(maxDockets);
+
+        return query.ToList().AsReadOnly();
+    }
+
+    /// <summary>
+    /// Gets transactions with version greater than the specified version, ordered by version.
+    /// </summary>
+    public IReadOnlyList<CachedTransaction> GetTransactionsFromVersion(long fromVersion)
+    {
+        return _transactions.Values
+            .Where(t => t.Version > fromVersion)
+            .OrderBy(t => t.Version)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    /// <summary>
     /// Clears all cached data for this register.
     /// </summary>
     public void Clear()

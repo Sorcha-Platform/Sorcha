@@ -9,7 +9,7 @@ namespace Sorcha.Cli.Tests.Integration;
 /// <summary>
 /// Integration tests for HttpClientFactory with mock HTTP responses.
 /// </summary>
-[Collection("HttpClientFactoryIntegrationTests")]
+[Collection("CliEnvironment")]
 public class HttpClientFactoryIntegrationTests : IDisposable
 {
     private readonly string _testConfigDir;
@@ -328,5 +328,7 @@ public class HttpClientFactoryIntegrationTests : IDisposable
                 // Ignore cleanup errors
             }
         }
+
+        Environment.SetEnvironmentVariable("SORCHA_CONFIG_DIR", null);
     }
 }

@@ -370,9 +370,7 @@ public partial class OrganizationService : IOrganizationService
     {
         var organizations = await _organizationRepository.GetAllActiveAsync(cancellationToken);
 
-        // TODO: Implement user count efficiently
-        // For now, returning 0 for user count to avoid additional repository method
-        var totalUsers = 0;
+        var totalUsers = await _identityRepository.GetTotalActiveUserCountAsync(cancellationToken);
 
         return new OrganizationStatsResponse
         {

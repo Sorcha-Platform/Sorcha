@@ -208,11 +208,9 @@ public class ServiceAuthService : IServiceAuthService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
-        var principals = await _identityRepository.GetActiveServicePrincipalsAsync(cancellationToken);
-
-        // Note: GetActiveServicePrincipalsAsync only returns active ones.
-        // For includeInactive, we'd need a different repository method.
-        // For now, this suffices for the MVP.
+        var principals = includeInactive
+            ? await _identityRepository.GetAllServicePrincipalsAsync(cancellationToken)
+            : await _identityRepository.GetActiveServicePrincipalsAsync(cancellationToken);
 
         return new ServicePrincipalListResponse
         {

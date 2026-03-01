@@ -76,6 +76,12 @@ public class IdentityRepository : IIdentityRepository
         }
     }
 
+    public async Task<int> GetTotalActiveUserCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.UserIdentities
+            .CountAsync(u => u.Status == IdentityStatus.Active, cancellationToken);
+    }
+
 
 
     public async Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -138,6 +144,12 @@ public class IdentityRepository : IIdentityRepository
     {
         return await _context.ServicePrincipals
             .Where(sp => sp.Status == ServicePrincipalStatus.Active)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<List<ServicePrincipal>> GetAllServicePrincipalsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.ServicePrincipals
             .ToListAsync(cancellationToken);
     }
 
