@@ -223,12 +223,13 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         }
 
         // Step 5: Assemble encrypted payload group
+        // Clone Data and IV because SymmetricCiphertext.Dispose() will zeroize them
         var encryptedGroup = new EncryptedPayloadGroup
         {
             GroupId = group.GroupId,
             DisclosedFields = group.DisclosedFields,
-            Ciphertext = ciphertext.Data,
-            Nonce = ciphertext.IV,
+            Ciphertext = (byte[])ciphertext.Data.Clone(),
+            Nonce = (byte[])ciphertext.IV.Clone(),
             PlaintextHash = plaintextHash,
             EncryptionAlgorithm = EncryptionType.XCHACHA20_POLY1305,
             WrappedKeys = wrappedKeys.ToArray()

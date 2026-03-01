@@ -103,14 +103,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T031 [P] [US3] Write mixed-algorithm integration test — single transaction with ED25519 + P-256 + RSA-4096 + ML-KEM-768 recipients, verify all can unwrap the symmetric key and decrypt in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [x] T031 [P] [US3] Write mixed-algorithm integration test — single transaction with ED25519 + P-256 + RSA-4096 + ML-KEM-768 recipients, verify all can unwrap the symmetric key and decrypt in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Verify ED25519 (Curve25519 SealedBox) key wrap round-trip through EncryptionPipelineService — encrypt 32-byte symmetric key, decrypt, compare in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T033 [US3] Verify P-256 ECIES key wrap round-trip through EncryptionPipelineService (uses Phase 2 T007 implementation) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T034 [US3] Verify RSA-4096 OAEP-SHA256 key wrap round-trip through EncryptionPipelineService (32-byte key well within 446-byte limit) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T035 [US3] Verify ML-KEM-768 KEM encapsulate/decapsulate key wrap round-trip through EncryptionPipelineService (uses Phase 2 T009 fix) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [x] T032 [US3] Verify ED25519 (Curve25519 SealedBox) key wrap round-trip through EncryptionPipelineService — encrypt 32-byte symmetric key, decrypt, compare in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [x] T033 [US3] Verify P-256 ECIES key wrap round-trip through EncryptionPipelineService (uses Phase 2 T007 implementation) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [x] T034 [US3] Verify RSA-4096 OAEP-SHA256 key wrap round-trip through EncryptionPipelineService (32-byte key well within 446-byte limit) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [x] T035 [US3] Verify ML-KEM-768 KEM encapsulate/decapsulate key wrap round-trip through EncryptionPipelineService (uses Phase 2 T009 fix) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
 
 **Checkpoint**: All 4 algorithms encrypt and decrypt correctly. Mixed-algorithm transactions work.
 
