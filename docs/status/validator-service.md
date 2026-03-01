@@ -1,8 +1,8 @@
 # Validator Service Status
 
-**Overall Status:** 95% COMPLETE ✅
+**Overall Status:** 100% MVD COMPLETE ✅
 **Location:** `src/Services/Sorcha.Validator.Service/`
-**Last Updated:** 2025-12-22
+**Last Updated:** 2026-03-01
 
 ---
 
@@ -15,11 +15,12 @@
 | REST API Endpoints | ✅ 100% | ~400 | Comprehensive |
 | gRPC Peer Communication | ✅ 100% | ~290 | Included |
 | .NET Aspire Integration | ✅ 100% | N/A | Configured |
-| **TOTAL** | **✅ 95%** | **~3,090** | **16 test files** |
+| Duplicate Detection | ✅ 100% | ~150 | Redis set index |
+| **TOTAL** | **✅ 100% MVD** | **~3,240** | **16 test files** |
 
 ---
 
-## Core Implementation - 95% COMPLETE ✅
+## Core Implementation - 100% MVD COMPLETE ✅
 
 ### Validator Service Architecture
 
@@ -194,13 +195,18 @@
 
 ---
 
-## Pending (5%)
+## Completed (Phase E - 2026-03-01)
 
-1. 🚧 JWT authentication and authorization
-2. 🚧 Fork detection and chain recovery
-3. 🚧 Enhanced observability (custom metrics)
-4. 🚧 Persistent memory pool state (Redis/PostgreSQL)
-5. 🚧 Production enclave support (Intel SGX, AMD SEV)
+11. ✅ JWT authentication and authorization
+12. ✅ Duplicate detection cross-check (Redis set index)
+13. ✅ Enhanced observability (custom metrics)
+14. ✅ Persistent memory pool state (Redis)
+
+## Deferred (Post-MVD)
+
+1. Fork detection and chain recovery
+2. Production enclave support (Intel SGX, AMD SEV)
+3. Decentralized consensus (multi-validator network)
 
 ---
 

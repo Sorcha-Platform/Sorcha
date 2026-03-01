@@ -332,6 +332,21 @@ public class WalletService
 
 **PRs without documentation updates will NOT be approved.**
 
+### Documentation Sync Policy
+
+When modifying code, ensure corresponding documentation stays in sync:
+
+- **Service README** — If you add/change endpoints, configuration, or features, update the service's README.md
+- **docs/API-DOCUMENTATION.md** — If you add/change REST or gRPC endpoints
+- **docs/AUTHENTICATION-SETUP.md** — If you change auth flows, policies, or token handling
+- **docs/PORT-CONFIGURATION.md** — If you add/change port assignments
+- **docs/development-status.md** — If you complete a feature or change service status
+- **CLAUDE.md** — If you change architectural patterns or conventions
+- **XML comments** — All public API methods must have `/// <summary>` to avoid build warnings
+- **OpenAPI descriptions** — All Minimal API endpoints must have `.WithSummary()` and `.WithDescription()`
+
+Documentation debt compounds quickly. A 2-minute doc update now prevents 30 minutes of confusion later.
+
 ### DO
 - Read `.specify/constitution.md` before coding
 - Check `.specify/MASTER-TASKS.md` for task priorities
@@ -347,6 +362,7 @@ public class WalletService
 - Use `JsonNode` with JsonSchema.Net (use `JsonElement`)
 - Commit secrets or credentials
 - Skip documentation updates
+- Skip documentation updates when changing code (see Documentation Sync Policy above)
 - Store mnemonics (user responsibility to backup)
 
 ---

@@ -1,6 +1,6 @@
 # Core Libraries & Infrastructure Status
 
-**Last Updated:** 2025-12-14
+**Last Updated:** 2026-03-01
 
 ---
 
@@ -104,7 +104,7 @@
 
 ---
 
-### Sorcha.ApiGateway - 95% COMPLETE ✅
+### Sorcha.ApiGateway - 100% MVD COMPLETE ✅
 
 **Location:** `src/Services/Sorcha.ApiGateway/`
 
@@ -112,9 +112,10 @@
 |-----------|--------|
 | YARP-based reverse proxy | ✅ Complete |
 | Route configuration for all services | ✅ Complete |
+| Authorization policies on 48 routes | ✅ Complete |
 | Health aggregation | ✅ Complete |
 | Load balancing | ✅ Complete |
-| Advanced rate limiting | 🚧 Pending |
+| Advanced rate limiting | Deferred (post-MVD) |
 
 ---
 
@@ -153,7 +154,7 @@
 | TransactionHandler | 70% |
 | ServiceDefaults | 100% |
 | AppHost | 100% |
-| ApiGateway | 95% |
+| ApiGateway | 100% MVD |
 | CI/CD | 95% |
 | Containerization | 95% |
 

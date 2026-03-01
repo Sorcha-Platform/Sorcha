@@ -1,7 +1,7 @@
 # Sorcha Tenant Service
 
 **Version**: 1.0.0
-**Status**: In Development
+**Status**: Complete (100% MVD)
 **Framework**: .NET 10.0
 **Architecture**: Microservice
 
@@ -459,5 +459,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: 2025-11-22
+**Last Updated**: 2026-03-01
 **Maintained By**: Sorcha Contributors
+**Deferred (Post-MVD)**: Azure AD B2C integration

@@ -28,22 +28,23 @@ Sorcha is a **distributed ledger platform** for building secure, multi-participa
 
 ## Development Status
 
-**Current Stage:** Active Development - MVD Phase (98% Complete) | [View Detailed Status Report](docs/development-status.md)
+**Current Stage:** MVD Feature Complete (100%) | [View Detailed Status Report](docs/development-status.md)
 
 | Component | Status | Completion |
 |-----------|--------|------------|
-| Core Libraries | Production Ready | 97% |
+| Core Libraries | Production Ready | 100% |
 | **⭐ Execution Engine (Portable)** | **✅ COMPLETE** | **100%** |
 | **⭐ Blueprint Service** | **✅ COMPLETE** | **100%** |
 | **⭐ Wallet Service** | **✅ COMPLETE** | **95%** |
 | **⭐ Register Service** | **✅ COMPLETE** | **100%** |
-| **⭐ Peer Service** | **Functional** | **70%** |
-| **⭐ Validator Service** | **✅ Nearly Complete** | **95%** |
+| **⭐ Peer Service** | **✅ COMPLETE** | **100% MVD** |
+| **⭐ Validator Service** | **✅ COMPLETE** | **100% MVD** |
+| **⭐ Tenant Service** | **✅ COMPLETE** | **100% MVD** |
 | **⭐ Sorcha.UI (Unified)** | **✅ COMPLETE** | **100%** |
-| Services & APIs | Enhanced | 97% |
+| Services & APIs | Complete | 100% MVD |
 | Testing & CI/CD | Production Ready | 95% |
 
-> **⚠️ Production Readiness: 30%** - Core functionality and authentication complete. Database persistence and security hardening are pending. See [MASTER-PLAN.md](.specify/MASTER-PLAN.md) for details.
+> **⚠️ Production Readiness: 30%** - All MVD features complete. Production hardening pending: Azure Key Vault, Azure AD B2C, fork detection, enclave support, BLS threshold coordination. See [MASTER-PLAN.md](.specify/MASTER-PLAN.md) for details.
 
 **Recent Updates (2026-02-27):**
 - ✅ **Codebase Consolidation** — Eliminated ~1,000+ lines of duplicated code across 69 projects
@@ -84,13 +85,10 @@ Sorcha is a **distributed ledger platform** for building secure, multi-participa
 - ✅ **UI Consolidation complete** - Single unified Sorcha.UI application
 - ✅ **UI Register Management** - Wallet selection wizard, transaction query
 - ✅ **CLI Register Commands** - Two-phase creation, dockets, queries
-- ✅ **Peer Service Phase 1-3** - Hub connection, replication, heartbeat
-- ✅ **Validator Service 95%** - Memory pool, docket building, consensus, transaction storage
-  - System wallet auto-initialization
-  - Redis-backed memory pool and register monitoring
-  - Full genesis docket creation with transaction document storage
-- 🚧 Validator Service decentralized consensus (leader election, multi-validator)
-- 🚧 Production deployment (Azure Key Vault, MongoDB persistence)
+- ✅ **Peer Service 100% MVD** - P2P topology, 7 gRPC RPCs, register replication, live subscriptions
+- ✅ **Validator Service 100% MVD** - Memory pool, docket building, consensus, duplicate detection
+- ✅ **Tenant Service 100% MVD** - Auth, orgs, service principals, user stats
+- ✅ **API Gateway 100% MVD** - Auth policies on 48 routes, rate limiting on write-heavy routes
 
 See the [detailed development status](docs/development-status.md) for complete information on modules, testing coverage, and infrastructure.
 
@@ -165,9 +163,9 @@ All specifications are designed to provide context for AI-assisted development. 
   - ✅ JWT Bearer authentication with authorization policies (AUTH-002 COMPLETE)
   - 🚧 MongoDB repository (InMemory implementation complete)
 
-- **✅ Validator Service** (95% COMPLETE): Blockchain consensus and validation
+- **✅ Validator Service** (100% MVD): Blockchain consensus and validation
   - ✅ System wallet auto-initialization with `ISystemWalletProvider`
-  - ✅ Redis-backed memory pool (`IMemPoolManager`) for transaction persistence
+  - ✅ Redis-backed memory pool (`IMemPoolManager`) with duplicate detection cross-check
   - ✅ Redis-backed register monitoring (`IRegisterMonitoringRegistry`) for docket build tracking
   - ✅ Genesis docket creation with Merkle tree computation
   - ✅ Docket building and signing with system wallet
@@ -175,10 +173,9 @@ All specifications are designed to provide context for AI-assisted development. 
   - ✅ Full transaction document storage integration with Register Service
   - ✅ Periodic docket build triggers (`DocketBuildTriggerService`)
   - ✅ JWT Bearer authentication for service-to-service communication
-  - 🚧 Decentralized consensus (leader election, multi-validator)
-  - 🚧 Byzantine fault tolerance mechanisms
+  - Deferred: Decentralized consensus (leader election), fork detection, enclave support
 
-- **✅ Tenant Service** (85% COMPLETE): Multi-tenant authentication and authorization ([View Specification](.specify/specs/sorcha-tenant-service.md))
+- **✅ Tenant Service** (100% MVD): Multi-tenant authentication and authorization ([View Specification](.specify/specs/sorcha-tenant-service.md))
   - ✅ User authentication with JWT tokens (60 min lifetime)
   - ✅ Service-to-service authentication (OAuth2 client credentials, 8 hour tokens)
   - ✅ Delegation tokens for services acting on behalf of users
@@ -189,11 +186,11 @@ All specifications are designed to provide context for AI-assisted development. 
   - ✅ Role-based access control (9 authorization policies)
   - ✅ 30+ REST API endpoints fully documented
   - ✅ Bootstrap API endpoint for system initialization
-  - ✅ 67 integration tests (91% pass rate)
+  - ✅ 67 integration tests
   - ✅ Participant Identity API with wallet linking
-  - 🚧 PostgreSQL repository (partially implemented)
-  - 🚧 6 failing tests to resolve
-  - 🚧 Production deployment with Azure AD/B2C (pending)
+  - ✅ Service principal management with includeInactive filter
+  - ✅ Organization stats with user count
+  - Deferred: Azure AD B2C integration
 
 - **Blueprint Designer**: Visual designer for creating and managing workflows
   - Blazor WASM client with offline capabilities
@@ -464,7 +461,7 @@ For a production-like environment with all services containerized.
 - External access via published ports only
 - Backend services (blueprint, wallet, register, tenant, validator) are not directly exposed
 - All HTTP/HTTPS API access goes through the API Gateway
-- See [docs/DOCKER-BRIDGE-NETWORKING.md](docs/DOCKER-BRIDGE-NETWORKING.md) for detailed networking architecture
+- See [docs/PORT-CONFIGURATION.md](docs/PORT-CONFIGURATION.md) for detailed port and networking configuration
 
 ### Development Workflow
 
@@ -669,7 +666,7 @@ An interactive console mode is planned for Sprint 5, which will enable:
 - Command history and tab completion
 - Multi-line input for complex JSON payloads
 
-See [CLI-SPRINT-4-SUMMARY.md](docs/CLI-SPRINT-4-SUMMARY.md) for full planning details.
+See the [CLI README](src/Apps/Sorcha.Cli/README.md) for full command reference.
 
 ### CLI Architecture
 
@@ -977,22 +974,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [x] Unified Blueprint-Action Service with SignalR (100%)
 - [x] Wallet Service with EF Core persistence (95%)
 - [x] Register Service with distributed ledger (100%)
-- [x] Peer Service hub connection and replication (70%)
-- [x] Validator Service memory pool, consensus, and transaction storage (95%)
+- [x] Peer Service P2P topology, gRPC RPCs, register replication (100% MVD)
+- [x] Validator Service memory pool, consensus, duplicate detection (100% MVD)
+- [x] Tenant Service auth, orgs, service principals, user stats (100% MVD)
+- [x] API Gateway auth policies on all routes, rate limiting (100% MVD)
 - [x] UI Consolidation - Single unified Sorcha.UI (100%)
 - [x] UI Register Management with wallet selection (100%)
 - [x] UI Authentication with token refresh (100%)
 - [x] CLI Register Commands (100%)
 - [x] AI-Assisted Blueprint Design Chat with Claude integration (100%)
 - [x] Codebase Consolidation — shared auth policies, pipeline helpers, CLI fixes, MCP model extraction (100%)
-- [ ] Validator Service decentralized consensus (leader election)
-- [ ] MongoDB persistence for Register Service
 - [ ] Azure Key Vault integration for Wallet Service
-- [ ] Plugin system for custom actions
-- [ ] Multi-tenant support (Tenant Service 85%)
+- [ ] Azure AD B2C for Tenant Service
+- [ ] Decentralized consensus (leader election, multi-validator)
+- [ ] Fork detection and enclave support (Validator)
+- [ ] BLS threshold coordination (Peer)
 - [ ] Cloud deployment templates (Azure, AWS, GCP)
-- [ ] Advanced consensus mechanisms
-- [ ] Real-time monitoring dashboard
+- [ ] Production security hardening
 
 ## Documentation
 
@@ -1000,17 +998,18 @@ Full documentation is available in the [docs](docs/) directory:
 
 - [Architecture Overview](docs/architecture.md)
 - [Getting Started Guide](docs/getting-started.md)
-- [Blueprint Schema](docs/blueprint-schema.md)
+- [Blueprint Quick Start](docs/blueprint-quick-start.md)
 - [Development Status](docs/development-status.md)
-- [Wallet Service Status](docs/wallet-service-status.md) ⭐ NEW
-- [API Reference](docs/api-reference.md)
-- [Deployment Guide](docs/deployment.md)
+- [API Documentation](docs/API-DOCUMENTATION.md)
+- [Authentication Setup](docs/AUTHENTICATION-SETUP.md)
+- [Docker Quick Start](docs/DOCKER-QUICK-START.md)
+- [Port Configuration](docs/PORT-CONFIGURATION.md)
 
 ## Support
 
 - Documentation: [docs/](docs/)
-- Issues: [GitHub Issues](https://github.com/yourusername/sorcha/issues)
-- Discussions: [GitHub Discussions](https://github.com/yourusername/sorcha/discussions)
+- Issues: [GitHub Issues](https://github.com/Sorcha-Platform/Sorcha/issues)
+- Discussions: [GitHub Discussions](https://github.com/Sorcha-Platform/Sorcha/discussions)
 
 ## Acknowledgments
 

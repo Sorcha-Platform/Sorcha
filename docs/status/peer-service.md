@@ -1,8 +1,8 @@
 # Peer Service Status
 
-**Overall Status:** 80% COMPLETE
+**Overall Status:** 100% MVD COMPLETE
 **Location:** `src/Services/Sorcha.Peer.Service/`
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-03-01
 
 ---
 
@@ -16,8 +16,10 @@
 | PEER-024: Management & Observability | 100% | REST endpoints, CLI commands, Blazor UI |
 | PR #110 Review Fixes | 100% | 12 issues (3 critical, 4 high, 5 medium) |
 | Observability | 100% | 7 metrics, 6 traces |
+| gRPC Service | 100% | 7 RPCs implemented |
+| Register Replication | 100% | Full replication pipeline |
+| Live Subscriptions | 100% | Real-time register subscriptions |
 | Tests | 504 passing | Unit tests comprehensive |
-| Remaining | 20% | Integration tests, E2E validation |
 
 ---
 
@@ -89,12 +91,18 @@ JWT Bearer authentication via shared `ServiceDefaults.AddJwtAuthentication()`:
 
 ---
 
-## Pending (20%)
+## Completed (Phase E - 2026-03-01)
 
-1. Integration tests (P2P multi-node scenarios)
-2. E2E validation (seed + peer node cluster)
+13. gRPC service with 7 RPCs
+14. Register replication pipeline
+15. Live register subscriptions
+
+## Deferred (Post-MVD)
+
+1. BLS threshold coordination
+2. TLS support for gRPC in production
 3. Performance tests (replication throughput)
-4. TLS support for gRPC in production
+4. Integration tests (P2P multi-node scenarios)
 
 ---
 

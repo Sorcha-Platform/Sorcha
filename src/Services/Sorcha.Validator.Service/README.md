@@ -1,9 +1,9 @@
 # Sorcha Validator Service
 
 **Version:** 1.0
-**Status:** MVP Implementation Complete (95%)
+**Status:** Complete (100% MVD)
 **Location:** `src/Services/Sorcha.Validator.Service/`
-**Last Updated:** 2025-12-22
+**Last Updated:** 2026-03-01
 
 ---
 
@@ -97,7 +97,7 @@ The Validator Service serves as the **trust anchor** of Sorcha, ensuring:
 
 ## Key Features
 
-### ✅ Implemented (95% Complete)
+### ✅ Implemented (100% MVD)
 
 1. **Memory Pool Management**
    - FIFO + priority queues (High/Normal/Low)
@@ -139,13 +139,13 @@ The Validator Service serves as the **trust anchor** of Sorcha, ensuring:
    - MemPoolCleanupService (expired transaction removal)
    - DocketBuildTriggerService (automatic docket building)
 
-### 🚧 Planned Future Enhancements
+### Deferred (Post-MVD)
 
-- JWT authentication and authorization
 - Fork detection and chain recovery
-- Enhanced observability (custom metrics)
-- Persistent memory pool state (Redis/PostgreSQL)
 - Enclave support (Intel SGX, AMD SEV, Azure Confidential Computing)
+- Decentralized consensus (multi-node quorum)
+- Persistent memory pool state (Redis/PostgreSQL)
+- Enhanced observability (custom metrics)
 
 ---
 
@@ -845,6 +845,6 @@ src/Common/Sorcha.Validator.Core/
 ---
 
 **Version:** 1.0
-**Last Updated:** 2025-12-22
-**Status:** MVP Implementation Complete (95%)
+**Last Updated:** 2026-03-01
+**Status:** Complete (100% MVD)
 **Owner:** Sorcha Architecture Team

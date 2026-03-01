@@ -1,6 +1,6 @@
 # Critical Issues & Next Actions
 
-**Last Updated:** 2025-12-14
+**Last Updated:** 2026-03-01
 
 ---
 
@@ -77,72 +77,20 @@
 
 ---
 
-### Immediate Priority (Week 1-2)
+### Deferred / Future Work (Post-MVD)
 
-**1. Resolve Register Service Code Duplication (P1, 4-6h)**
-- Decide on DocketManager/ChainValidator ownership
-- Remove duplicate code
-- Update references
-- Document decision
+All services have reached 100% MVD as of 2026-03-01. The following items are deferred to post-MVD phases:
 
-**2. End-to-End Integration (P0, 24-32h)**
-- Implement Wallet Service client in Blueprint Service
-- Implement Register Service client in Blueprint Service
-- Replace stub encryption/decryption with real Wallet Service calls
-- Integration tests for Blueprint ↔ Wallet ↔ Register flow
-
-**Total Effort:** ~30 hours
-
----
-
-### Short-term Priority (Week 3-4)
-
-**3. Wallet Service Production Readiness (P2, 16-20h)**
-- ✅ EF Core repository implementation (DONE 2025-12-13)
-- Azure Key Vault encryption provider
-- Production authentication
-- Address generation design decision
-
-**Total Effort:** ~20 hours remaining
-
----
-
-### Medium-term Priority (Week 5-8)
-
-**4. End-to-End Integration (P0, 24-32h)**
-- Blueprint → Action → Sign → Register flow
-- File attachment end-to-end
-- Multi-participant workflows
-- Performance testing
-
-**5. MongoDB Repository (P1, 12-16h)**
-- Implement IRegisterRepository for MongoDB
-- Add connection pooling and indexes
-- Migration from in-memory
-
-**6. Documentation Updates (P2, 16-20h)**
-- API integration guides
-- Deployment documentation
-- Troubleshooting guides
-- Code examples
-
-**Total Effort:** ~60 hours
-
----
-
-## Remaining Platform Gaps
-
-1. **Persistent Storage** - MongoDB for Register, full production PostgreSQL
-2. **API Gateway JWT validation** - Not yet implemented
-3. **Peer Service tests** - 30% remaining (tests and polish)
-4. **Validator Service** - 5% remaining (enclave support, persistence)
-5. **Tenant Service** - 15% remaining (6 failing tests, Azure AD B2C)
-
----
-
-## Recommendation
-
-Focus on persistent storage implementation next. All three main services (Blueprint, Wallet, Register) now have JWT authentication integrated. The platform is production-ready and requires database implementation for production deployment.
+| Item | Service | Priority | Notes |
+|------|---------|----------|-------|
+| Azure Key Vault integration | Wallet | P2 | Production key encryption provider |
+| Azure AD B2C integration | Tenant | P2 | External identity provider |
+| Fork detection and chain recovery | Validator | P2 | Requires multi-validator network |
+| Enclave support (Intel SGX, AMD SEV) | Validator | P3 | Hardware security module integration |
+| BLS threshold coordination | Peer | P3 | Multi-party signature schemes |
+| Decentralized consensus | Validator | P3 | Multi-validator distributed voting |
+| Production security hardening | All | P2 | TLS, secret rotation, audit logging |
+| Advanced rate limiting | API Gateway | P3 | Per-client throttling |
 
 ---
 

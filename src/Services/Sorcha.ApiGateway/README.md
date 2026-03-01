@@ -1,7 +1,7 @@
 # Sorcha API Gateway
 
 **Version**: 1.0.0
-**Status**: Production Ready (95% Complete - Minor Enhancements Pending)
+**Status**: Production Ready (100% MVD)
 **Framework**: .NET 10.0
 **Architecture**: Reverse Proxy (YARP)
 
@@ -661,7 +661,9 @@ policy.WithOrigins("https://app.sorcha.io", "https://sorcha.io")
       .AllowCredentials();
 ```
 
-### Rate Limiting (Future)
+### Rate Limiting
+
+Rate limiting is applied to 7 write-heavy routes to protect backend services from abuse. Auth policies are enforced on all 48 API routes.
 
 ```json
 {
@@ -911,6 +913,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Last Updated**: 2025-12-24
+**Last Updated**: 2026-03-01
 **Maintained By**: Sorcha Contributors
-**Status**: ✅ Production Ready (95% Complete - Minor Enhancements Pending)
+**Status**: ✅ Production Ready (100% MVD)

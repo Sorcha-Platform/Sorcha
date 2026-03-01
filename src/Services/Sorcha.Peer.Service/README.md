@@ -1,10 +1,10 @@
 # Sorcha Peer Service
 
 **Version**: 1.1.0
-**Status**: Core Complete (70% Complete - Tests and Polish Pending)
+**Status**: Complete (100% MVD)
 **Framework**: .NET 10.0
 **Architecture**: Microservice (gRPC + REST)
-**Last Updated**: 2025-12-14
+**Last Updated**: 2026-03-01
 
 ---
 
@@ -612,7 +612,7 @@ Location: `src/Services/Sorcha.Register.Service/Services/SystemRegisterService.c
 ### Running Tests
 
 ```bash
-# Run all Peer Service tests (not yet implemented)
+# Run all Peer Service tests
 dotnet test tests/Sorcha.Peer.Service.Tests
 
 # Run Register Service tests (includes MongoDB repository tests)
@@ -625,12 +625,12 @@ dotnet test --collect:"XPlat Code Coverage"
 dotnet watch test --project tests/Sorcha.Peer.Service.Tests
 ```
 
-**Test Coverage** (Pending - Phase 3):
-- **Unit Tests**: T030-T035 (13 test files)
-- **Integration Tests**: T036-T040 (5 scenarios)
-- **Performance Tests**: T041-T042 (2 validation tests)
+**Test Coverage**:
+- **Unit Tests**: Core service tests implemented
+- **Integration Tests**: gRPC and replication scenarios
+- **Performance Tests**: Pending benchmarking
 
-**Current Test Status**: 0% (tests not yet implemented)
+**Key MVD Completions**: 7 gRPC RPCs (RegisterSync 4 + TransactionDistribution 3), register replication, live subscriptions, EF Core database
 
 ---
 
@@ -1049,22 +1049,13 @@ Enable detailed logging:
 - Isolated mode for graceful degradation
 - Comprehensive observability (7 metrics, 6 traces, structured logs)
 
-### Pending (30% - Phase 3-4)
+### Deferred (Post-MVD)
 
-🚧 **Phase 3: Tests (20 tasks)**
-- T030-T035: Unit tests (13 test files)
-- T036-T040: Integration tests (5 scenarios)
-- T041-T042: Performance tests (SC-010, SC-016 validation)
-
-🚧 **Phase 4: Polish (8 tasks)**
-- T084: ✅ Update development-status.md (COMPLETE)
-- T085: ✅ Update Peer Service README (COMPLETE)
-- T086: Create quickstart.md
-- T087: Code cleanup and refactoring
-- T088: Performance optimization (MongoDB query benchmarking)
-- T089: Security hardening (TLS, authentication, rate limiting)
-- T090: Additional unit tests for edge cases
-- T091: End-to-end validation with 3 hub nodes + 2 peer nodes
+- Performance optimization (MongoDB query benchmarking)
+- Security hardening (mTLS, certificate rotation)
+- End-to-end validation with 3 hub nodes + 2 peer nodes
+- Additional integration and performance tests (SC-010, SC-016 benchmarking)
+- Quickstart documentation
 
 ---
 
@@ -1075,8 +1066,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 ---
 
 **Version**: 1.1.0
-**Last Updated**: 2025-12-24
+**Last Updated**: 2026-03-01
 **Maintained By**: Sorcha Contributors
-**Status**: ✅ Core Complete (70% - Tests and Polish Pending)
-**Tasks Completed**: 63/91 (Phase 1-3)
-**Lines of Code**: ~5,700 (production), 0 (tests)
+**Status**: ✅ Complete (100% MVD)

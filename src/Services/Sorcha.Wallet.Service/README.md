@@ -1,7 +1,7 @@
 # Sorcha Wallet Service
 
 **Version**: 1.0.0
-**Status**: 90% Complete (Core Complete, Production Infrastructure Pending)
+**Status**: 95% Complete (Azure Key Vault Deferred)
 **Framework**: .NET 10.0
 **Architecture**: Microservice
 
@@ -658,15 +658,14 @@ Enable detailed logging:
 
 ---
 
-## Pending Production Features
+## Production Feature Status
 
-### Priority 1 (Required for Production)
-- [ ] **EF Core Repository**: Replace in-memory repository with SQL Server/PostgreSQL
-- [ ] **Azure Key Vault Integration**: Production-grade key encryption
-- [ ] **JWT Authentication**: Integration with Tenant Service
-- [ ] **Rate Limiting**: Prevent brute-force attacks
+### Completed (MVD)
+- [x] **EF Core Repository**: PostgreSQL persistence via EF Core
+- [x] **JWT Authentication**: Integration with Tenant Service
 
-### Priority 2 (Nice to Have)
+### Deferred (Post-MVD)
+- [ ] **Azure Key Vault Integration**: Production-grade key encryption (HSM)
 - [ ] **AWS KMS Support**: Alternative to Azure Key Vault
 - [ ] **Hardware Wallet Integration**: Ledger, Trezor support
 - [ ] **Audit Logging**: Comprehensive operation logging
@@ -715,6 +714,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Last Updated**: 2025-11-23
+**Last Updated**: 2026-03-01
 **Maintained By**: Sorcha Contributors
-**Status**: ⚠️ 90% Complete (Core Complete, Production Infrastructure Pending)
+**Status**: 95% Complete (Azure Key Vault Deferred)

@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after completing the UI Consolidation project (Sorcha.Admin → Sorcha.UI migration) on 2026-01-21.
+This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Phase E Feature Completion (all services 100% MVD) on 2026-03-01.
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
@@ -248,26 +248,37 @@ For detailed implementation status, see the individual section files:
 
 ---
 
-## Remaining Gaps
+## Deferred from MVD (Future Work)
 
-1. **Persistent Storage** - MongoDB for Register, full production PostgreSQL
-2. **API Gateway JWT validation** - Not yet implemented
-3. **Peer Service tests** - 20% remaining (integration tests, E2E validation)
-4. **Validator Service** - 5% remaining (enclave support, persistence)
-5. **Tenant Service** - 15% remaining (6 failing tests, Azure AD B2C)
-6. **UI Consolidation** - Complete (Sorcha.Admin removed from solution)
+These items are explicitly **out of scope for MVD** and deferred to production readiness phases:
 
----
-
-## Recommendation
-
-Focus on persistent storage implementation next. All three main services (Blueprint, Wallet, Register) now have JWT authentication integrated. The platform is production-ready and requires database implementation for production deployment.
+1. **Azure AD B2C** — External identity provider for Tenant Service
+2. **Azure Key Vault** — Production key management for Wallet Service
+3. **Fork Detection** — Validator Service chain fork handling
+4. **Enclave Support** — Trusted execution environment for Validator
+5. **BLS Threshold Coordination** — Peer Service distributed docket signing
+6. **Decentralized Consensus** — Leader election, multi-validator coordination
 
 ---
 
-**Document Version:** 3.2
-**Last Updated:** 2026-02-08
-**Next Review:** 2026-02-14
+## Production Readiness (~30%)
+
+The platform is feature-complete for MVD but requires the following for production deployment:
+
+| Area | Status | Priority |
+|------|--------|----------|
+| Security hardening | Pending | P0 |
+| Azure AD B2C integration | Pending | P1 |
+| Azure Key Vault for key storage | Pending | P1 |
+| Production database tuning | Pending | P1 |
+| Load testing at scale | Pending | P2 |
+| Monitoring and alerting | Pending | P2 |
+| Deployment automation | Partial | P2 |
+
+---
+
+**Document Version:** 4.0
+**Last Updated:** 2026-03-01
 **Owner:** Sorcha Architecture Team
 
 **See Also:**
