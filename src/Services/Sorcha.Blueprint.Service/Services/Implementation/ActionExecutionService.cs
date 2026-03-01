@@ -47,6 +47,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
     private readonly IEncryptionPipelineService? _encryptionPipeline;
+    private readonly IDisclosureGroupBuilder? _disclosureGroupBuilder;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly ILogger<ActionExecutionService> _logger;
@@ -68,7 +69,8 @@ public class ActionExecutionService : IActionExecutionService
         ICredentialVerifier? credentialVerifier = null,
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
         IStatusListManager? statusListManager = null,
-        IEncryptionPipelineService? encryptionPipeline = null)
+        IEncryptionPipelineService? encryptionPipeline = null,
+        IDisclosureGroupBuilder? disclosureGroupBuilder = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -86,6 +88,7 @@ public class ActionExecutionService : IActionExecutionService
         _confirmationOptions = confirmationOptions?.Value ?? new TransactionConfirmationOptions();
         _statusListManager = statusListManager;
         _encryptionPipeline = encryptionPipeline;
+        _disclosureGroupBuilder = disclosureGroupBuilder;
     }
 
     /// <inheritdoc/>
@@ -272,23 +275,32 @@ public class ActionExecutionService : IActionExecutionService
 
             if (recipients.Length > 0)
             {
-                // Build simple disclosure groups (one per wallet -- US2 will optimize with grouping)
-                var groups = disclosedPayloads.Select(kvp =>
+                // US2: DisclosureGroupBuilder groups recipients with identical field sets
+                DisclosureGroup[] groups;
+                if (_disclosureGroupBuilder != null)
                 {
-                    var recipient = recipients.FirstOrDefault(r => r.WalletAddress == kvp.Key);
-                    if (recipient == null) return null;
-
-                    var fields = kvp.Value.Keys.OrderBy(k => k).ToArray();
-                    var groupId = ComputeGroupId(fields);
-
-                    return new DisclosureGroup
+                    groups = _disclosureGroupBuilder.BuildGroups(disclosedPayloads, recipients);
+                }
+                else
+                {
+                    // Fallback: build simple disclosure groups (one per wallet)
+                    groups = disclosedPayloads.Select(kvp =>
                     {
-                        GroupId = groupId,
-                        DisclosedFields = fields,
-                        FilteredPayload = kvp.Value,
-                        Recipients = [recipient]
-                    };
-                }).Where(g => g != null).ToArray()!;
+                        var recipient = recipients.FirstOrDefault(r => r.WalletAddress == kvp.Key);
+                        if (recipient == null) return null;
+
+                        var fields = kvp.Value.Keys.OrderBy(k => k).ToArray();
+                        var groupId = ComputeGroupId(fields);
+
+                        return new DisclosureGroup
+                        {
+                            GroupId = groupId,
+                            DisclosedFields = fields,
+                            FilteredPayload = kvp.Value,
+                            Recipients = [recipient]
+                        };
+                    }).Where(g => g != null).ToArray()!;
+                }
 
                 encryptionResult = await _encryptionPipeline.EncryptDisclosedPayloadsAsync(groups!, cancellationToken);
 

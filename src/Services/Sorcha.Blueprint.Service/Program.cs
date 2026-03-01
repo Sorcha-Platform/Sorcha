@@ -63,6 +63,10 @@ builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.ICryptoModule, Sorcha.
 builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
 builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.ISymmetricCrypto, Sorcha.Cryptography.Core.SymmetricCrypto>();
 
+// Add Encryption pipeline services (045-encrypted-payload-integration)
+builder.Services.AddScoped<Sorcha.TransactionHandler.Encryption.IEncryptionPipelineService, Sorcha.TransactionHandler.Encryption.EncryptionPipelineService>();
+builder.Services.AddSingleton<Sorcha.TransactionHandler.Encryption.IDisclosureGroupBuilder, Sorcha.TransactionHandler.Encryption.DisclosureGroupBuilder>();
+
 // Add transaction confirmation options
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions.SectionName));

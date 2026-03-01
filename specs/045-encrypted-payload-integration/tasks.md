@@ -83,13 +83,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T027 [P] [US2] Write DisclosureGroupBuilder unit tests (identical fields → 1 group, N distinct sets → N groups, single unique recipient → 1 group with 1 key, single-recipient edge case per US2 acceptance scenario 3, deterministic grouping) in `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupBuilderTests.cs`
+- [x] T027 [P] [US2] Write DisclosureGroupBuilder unit tests (identical fields → 1 group, N distinct sets → N groups, single unique recipient → 1 group with 1 key, single-recipient edge case per US2 acceptance scenario 3, deterministic grouping) in `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupBuilderTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Implement DisclosureGroupBuilder — hash sorted disclosed field names to create deterministic GroupId, group recipients by hash, return DisclosureGroup[] in `src/Common/Sorcha.TransactionHandler/Encryption/DisclosureGroupBuilder.cs`
-- [ ] T029 [US2] Integrate DisclosureGroupBuilder into EncryptionPipelineService — call BuildGroups before encryption loop, encrypt once per group, wrap key per member within group at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T030 [US2] Write integration test verifying optimization: 10 participants across 3 disclosure field sets → exactly 3 ciphertexts with correct wrapped key distribution in `tests/Sorcha.TransactionHandler.Tests/Encryption/EncryptionPipelineServiceTests.cs`
+- [x] T028 [US2] Implement DisclosureGroupBuilder — hash sorted disclosed field names to create deterministic GroupId, group recipients by hash, return DisclosureGroup[] in `src/Common/Sorcha.TransactionHandler/Encryption/DisclosureGroupBuilder.cs`
+- [x] T029 [US2] Integrate DisclosureGroupBuilder into ActionExecutionService — replace inline LINQ group building with IDisclosureGroupBuilder.BuildGroups call, register in DI at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [x] T030 [US2] Write integration test verifying optimization: 10 participants across 3 disclosure field sets → exactly 3 ciphertexts with correct wrapped key distribution in `tests/Sorcha.TransactionHandler.Tests/Encryption/EncryptionPipelineServiceTests.cs`
 
 **Checkpoint**: Encryption produces M ciphertexts (not N). Payload size proportional to disclosure groups.
 

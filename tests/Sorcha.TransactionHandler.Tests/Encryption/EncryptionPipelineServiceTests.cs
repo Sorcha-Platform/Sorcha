@@ -656,6 +656,106 @@ public class EncryptionPipelineServiceTests
 
     #endregion
 
+    #region DisclosureGroupBuilder integration (T030)
+
+    [Fact]
+    public async Task EncryptDisclosedPayloadsAsync_WithDisclosureGroupBuilder_GroupsIdenticalFieldSets()
+    {
+        // Arrange — 10 recipients across 3 disclosure field sets
+        var builder = new DisclosureGroupBuilder();
+
+        // Build 10 recipients across 3 field sets:
+        // Wallets 1-4 get fields ["name", "amount"] (4 recipients)
+        // Wallets 5-7 get fields ["name", "email"] (3 recipients)
+        // Wallets 8-10 get fields ["amount", "date"] (3 recipients)
+        var recipients = new RecipientInfo[10];
+        for (var i = 0; i < 10; i++)
+        {
+            recipients[i] = new RecipientInfo
+            {
+                WalletAddress = $"ws1qwallet{i + 1:D2}",
+                PublicKey = new byte[] { 0x04, (byte)(i + 1), 0x02, 0x03 },
+                Algorithm = WalletNetworks.ED25519,
+                Source = KeySource.Register
+            };
+        }
+
+        var disclosedPayloads = new Dictionary<string, Dictionary<string, object>>();
+
+        // Wallets 1-4: ["name", "amount"]
+        for (var i = 0; i < 4; i++)
+        {
+            disclosedPayloads[$"ws1qwallet{i + 1:D2}"] = new Dictionary<string, object>
+            {
+                ["name"] = "Alice",
+                ["amount"] = 100
+            };
+        }
+
+        // Wallets 5-7: ["name", "email"]
+        for (var i = 4; i < 7; i++)
+        {
+            disclosedPayloads[$"ws1qwallet{i + 1:D2}"] = new Dictionary<string, object>
+            {
+                ["name"] = "Alice",
+                ["email"] = "alice@example.com"
+            };
+        }
+
+        // Wallets 8-10: ["amount", "date"]
+        for (var i = 7; i < 10; i++)
+        {
+            disclosedPayloads[$"ws1qwallet{i + 1:D2}"] = new Dictionary<string, object>
+            {
+                ["amount"] = 100,
+                ["date"] = "2026-01-01"
+            };
+        }
+
+        // Act — build groups, then encrypt
+        var groups = builder.BuildGroups(disclosedPayloads, recipients);
+        var result = await _sut.EncryptDisclosedPayloadsAsync(groups);
+
+        // Assert — exactly 3 groups (one per unique field set)
+        result.Success.Should().BeTrue();
+        result.Groups.Should().HaveCount(3);
+
+        // Verify wrapped key counts match recipient distribution
+        var wrappedKeyCounts = result.Groups
+            .Select(g => g.WrappedKeys.Length)
+            .OrderByDescending(c => c)
+            .ToArray();
+        wrappedKeyCounts.Should().BeEquivalentTo([4, 3, 3]);
+
+        // Verify each group has the correct disclosed fields (sorted)
+        var fieldSets = result.Groups
+            .Select(g => string.Join(",", g.DisclosedFields.OrderBy(f => f)))
+            .OrderBy(f => f)
+            .ToArray();
+        fieldSets.Should().BeEquivalentTo(
+            new[] { "amount,date", "amount,name", "email,name" });
+
+        // Symmetric encryption should happen exactly 3 times (once per group, not per recipient)
+        _symmetricCryptoMock.Verify(s =>
+            s.EncryptAsync(
+                It.IsAny<byte[]>(),
+                EncryptionType.XCHACHA20_POLY1305,
+                null,
+                It.IsAny<CancellationToken>()),
+            Times.Exactly(3));
+
+        // Asymmetric key wrapping should happen exactly 10 times (once per recipient)
+        _cryptoModuleMock.Verify(c =>
+            c.EncryptAsync(
+                It.IsAny<byte[]>(),
+                It.IsAny<byte>(),
+                It.IsAny<byte[]>(),
+                It.IsAny<CancellationToken>()),
+            Times.Exactly(10));
+    }
+
+    #endregion
+
     #region Helpers
 
     private static DisclosureGroup CreateDisclosureGroup(
