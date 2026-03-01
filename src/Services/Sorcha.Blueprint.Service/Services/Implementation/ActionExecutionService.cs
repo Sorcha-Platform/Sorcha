@@ -269,9 +269,13 @@ public class ActionExecutionService : IActionExecutionService
         EncryptionResult? encryptionResult = null;
         if (_encryptionPipeline != null && disclosedPayloads.Count > 0)
         {
-            // Resolve recipient keys from ExternalRecipientKeys (US1 MVP)
-            // US4 will add automatic register resolution
-            var recipients = ResolveRecipientKeys(disclosedPayloads.Keys, request.ExternalRecipientKeys);
+            // US4: Automatic register resolution with external key override
+            var (recipients, resolveError) = await ResolveRecipientKeysAsync(
+                disclosedPayloads.Keys, request.ExternalRecipientKeys, instance.RegisterId, cancellationToken);
+            if (resolveError != null)
+            {
+                throw new InvalidOperationException(resolveError);
+            }
 
             if (recipients.Length > 0)
             {
@@ -1189,37 +1193,103 @@ public class ActionExecutionService : IActionExecutionService
     }
 
     /// <summary>
-    /// Resolves recipient public keys from external key info (US1 MVP).
-    /// US4 will add automatic register resolution.
+    /// Resolves recipient public keys from external keys and register (US4: Automatic register resolution with external key override).
+    /// External keys take precedence over register-published keys per FR-010.
+    /// Revoked participants cause a hard failure. Not-found wallets without external keys are skipped with a warning.
     /// </summary>
-    private static RecipientInfo[] ResolveRecipientKeys(
+    private async Task<(RecipientInfo[] Recipients, string? Error)> ResolveRecipientKeysAsync(
         IEnumerable<string> walletAddresses,
-        Dictionary<string, ExternalKeyInfo>? externalKeys)
+        Dictionary<string, ExternalKeyInfo>? externalKeys,
+        string registerId,
+        CancellationToken cancellationToken)
     {
-        if (externalKeys == null || externalKeys.Count == 0)
-            return [];
-
+        var allWallets = walletAddresses.ToList();
         var recipients = new List<RecipientInfo>();
-        foreach (var wallet in walletAddresses)
+        var skippedRecipients = new List<string>();
+
+        // Step 1: Resolve external keys first (they take precedence per FR-010)
+        var externallyResolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (externalKeys != null && externalKeys.Count > 0)
         {
-            if (externalKeys.TryGetValue(wallet, out var keyInfo))
+            foreach (var wallet in allWallets)
             {
-                if (!Enum.TryParse<WalletNetworks>(keyInfo.Algorithm, ignoreCase: true, out var algorithm))
+                if (externalKeys.TryGetValue(wallet, out var keyInfo))
                 {
-                    continue; // Skip unrecognized algorithms
+                    if (!Enum.TryParse<WalletNetworks>(keyInfo.Algorithm, ignoreCase: true, out var algorithm))
+                    {
+                        continue; // Skip unrecognized algorithms
+                    }
+
+                    recipients.Add(new RecipientInfo
+                    {
+                        WalletAddress = wallet,
+                        PublicKey = Convert.FromBase64String(keyInfo.PublicKey),
+                        Algorithm = algorithm,
+                        Source = KeySource.External
+                    });
+                    externallyResolved.Add(wallet);
+                }
+            }
+        }
+
+        // Step 2: Collect wallets that still need resolution from the register
+        var walletsNeedingResolution = allWallets
+            .Where(w => !externallyResolved.Contains(w))
+            .ToArray();
+
+        if (walletsNeedingResolution.Length > 0)
+        {
+            // Step 3: Batch resolve from register
+            var batchRequest = new BatchPublicKeyRequest
+            {
+                WalletAddresses = walletsNeedingResolution
+            };
+
+            var batchResponse = await _registerClient.ResolvePublicKeysBatchAsync(
+                registerId, batchRequest, cancellationToken);
+
+            // Step 4: Handle revoked participants — hard failure
+            if (batchResponse.Revoked.Length > 0)
+            {
+                var revokedList = string.Join(", ", batchResponse.Revoked);
+                return ([], $"Recipient {revokedList} has been revoked and cannot receive encrypted payloads");
+            }
+
+            // Step 5: Add resolved keys from register
+            foreach (var (wallet, resolution) in batchResponse.Resolved)
+            {
+                if (!Enum.TryParse<WalletNetworks>(resolution.Algorithm, ignoreCase: true, out var algorithm))
+                {
+                    _logger.LogWarning(
+                        "Unrecognized algorithm '{Algorithm}' for wallet {Wallet} from register — skipping",
+                        resolution.Algorithm, wallet);
+                    skippedRecipients.Add(wallet);
+                    continue;
                 }
 
                 recipients.Add(new RecipientInfo
                 {
                     WalletAddress = wallet,
-                    PublicKey = Convert.FromBase64String(keyInfo.PublicKey),
+                    PublicKey = Convert.FromBase64String(resolution.PublicKey),
                     Algorithm = algorithm,
-                    Source = KeySource.External
+                    Source = KeySource.Register
                 });
+            }
+
+            // Step 6: Handle not-found wallets — skip with warning
+            if (batchResponse.NotFound.Length > 0)
+            {
+                foreach (var wallet in batchResponse.NotFound)
+                {
+                    _logger.LogWarning(
+                        "Public key not found on register for wallet {Wallet} — recipient skipped (no external key provided)",
+                        wallet);
+                    skippedRecipients.Add(wallet);
+                }
             }
         }
 
-        return recipients.ToArray();
+        return (recipients.ToArray(), null);
     }
 
     /// <summary>

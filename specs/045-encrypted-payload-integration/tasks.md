@@ -124,12 +124,12 @@
 
 ### Tests for User Story 4
 
-- [ ] T036 [P] [US4] Write public key resolution integration tests (register-published keys, external-provided keys, mixed sources, revoked participant 410, not-found warning) in `tests/Sorcha.Blueprint.Service.Tests/Services/PublicKeyResolutionTests.cs`
+- [x] T036 [P] [US4] Write public key resolution integration tests (register-published keys, external-provided keys, mixed sources, revoked participant 410, not-found warning) in `tests/Sorcha.Blueprint.Service.Tests/Services/PublicKeyResolutionTests.cs`
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Integrate batch ResolvePublicKeysBatchAsync into EncryptionPipelineService — collect all recipient wallet addresses, batch resolve from register, merge with ExternalRecipientKeys (added in US1 T022) at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T038 [US4] Handle resolution failures: revoked participant → fail with clear error, not-found without external key → skip with warning, register unavailable → retry with exponential backoff (3 attempts) at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [x] T037 [US4] Integrate batch ResolvePublicKeysBatchAsync into ActionExecutionService.ResolveRecipientKeysAsync — collect all recipient wallet addresses, batch resolve from register, merge with ExternalRecipientKeys (added in US1 T022) at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [x] T038 [US4] Handle resolution failures: revoked participant → fail with clear error, not-found without external key → skip with warning, register unavailable → handled by ServiceClient Polly retry at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
 
 **Checkpoint**: Public keys resolved automatically from register. External override works. Mixed sources in one transaction.
 
@@ -189,15 +189,15 @@
 
 ### Tests for User Story 7
 
-- [ ] T053 [P] [US7] Write recipient decryption tests (authorized decrypt succeeds, unauthorized denied, integrity hash verification, legacy unencrypted backward compat, rotated key error message) in `tests/Sorcha.Blueprint.Service.Tests/Services/RecipientDecryptionTests.cs`
+- [x] T053 [P] [US7] Write recipient decryption tests (authorized decrypt succeeds, unauthorized denied, integrity hash verification, legacy unencrypted backward compat, rotated key error message) in `tests/Sorcha.Blueprint.Service.Tests/Services/RecipientDecryptionTests.cs`
 
 ### Implementation for User Story 7
 
-- [ ] T054 [US7] Implement decryption flow in transaction retrieval path — identify payload group(s) by wallet address from Challenges[].Address, unwrap symmetric key via Wallet Service `POST /api/v1/wallets/{address}/decrypt`, decrypt ciphertext with SymmetricCrypto at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs` (new or modify existing)
-- [ ] T055 [US7] Add SHA-256 integrity hash verification post-decryption — compare decrypted plaintext hash against stored PlaintextHash, fail with tamper-detected error if mismatch at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T056 [US7] Handle access denied — return appropriate error when requesting wallet address is not in any payload group's Challenges at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T057 [US7] Handle backward compatibility — detect legacy transactions via `ContentEncoding != "encrypted"` or zeroed IV (`PayloadManager.IsLegacy()` pattern), return plaintext directly at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T058 [US7] Handle rotated key failure — return clear error message stating original key is required when decryption fails due to key rotation at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [x] T054 [US7] Implement decryption flow in transaction retrieval path — identify payload group(s) by wallet address from Challenges[].Address, unwrap symmetric key via Wallet Service `POST /api/v1/wallets/{address}/decrypt`, decrypt ciphertext with SymmetricCrypto at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs` (new or modify existing)
+- [x] T055 [US7] Add SHA-256 integrity hash verification post-decryption — compare decrypted plaintext hash against stored PlaintextHash, fail with tamper-detected error if mismatch at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [x] T056 [US7] Handle access denied — return appropriate error when requesting wallet address is not in any payload group's Challenges at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [x] T057 [US7] Handle backward compatibility — detect legacy transactions via `ContentEncoding != "encrypted"` or zeroed IV (`PayloadManager.IsLegacy()` pattern), return plaintext directly at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [x] T058 [US7] Handle rotated key failure — return clear error message stating original key is required when decryption fails due to key rotation at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
 
 **Checkpoint**: Recipients decrypt disclosed fields. Unauthorized access denied. Legacy transactions still work.
 

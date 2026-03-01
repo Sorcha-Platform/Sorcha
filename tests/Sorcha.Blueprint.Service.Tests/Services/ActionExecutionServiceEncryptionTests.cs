@@ -63,6 +63,19 @@ public class ActionExecutionServiceEncryptionTests
         // Default: no idempotency collision
         _mockActionStore.Setup(s => s.GetByIdempotencyKeyAsync(It.IsAny<string>()))
             .ReturnsAsync((string?)null);
+
+        // Default: register returns empty batch response (no published keys, not-found, or revoked)
+        _mockRegisterClient
+            .Setup(x => x.ResolvePublicKeysBatchAsync(
+                It.IsAny<string>(),
+                It.IsAny<BatchPublicKeyRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BatchPublicKeyResponse
+            {
+                Resolved = new Dictionary<string, PublicKeyResolution>(),
+                NotFound = [],
+                Revoked = []
+            });
     }
 
     private ActionExecutionService CreateServiceWithEncryption()

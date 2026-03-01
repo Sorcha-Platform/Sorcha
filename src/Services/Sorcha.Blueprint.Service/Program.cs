@@ -109,6 +109,10 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 
+// Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
+    Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
+
 // Add Activity Events PostgreSQL context (043)
 builder.Services.AddDbContext<Sorcha.Blueprint.Service.Data.BlueprintEventsDbContext>(options =>
 {
