@@ -143,19 +143,19 @@
 
 ### Tests for User Story 5
 
-- [ ] T039 [P] [US5] Write EncryptionBackgroundService unit tests (consume from channel, process encryption, send progress, handle failures) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs`
-- [ ] T040 [P] [US5] Write SignalR progress notification tests (EncryptionProgress, EncryptionComplete, EncryptionFailed events sent to correct wallet group) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs`
+- [x] T039 [P] [US5] Write EncryptionBackgroundService unit tests (consume from channel, process encryption, send progress, handle failures) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs`
+- [x] T040 [P] [US5] Write SignalR progress notification tests (EncryptionProgress, EncryptionComplete, EncryptionFailed events sent to correct wallet group) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs`
 
 ### Implementation for User Story 5
 
-- [ ] T041 [US5] Create EncryptionWorkItem record and register `Channel<EncryptionWorkItem>` (bounded, 100 capacity) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T042 [US5] Implement EncryptionBackgroundService : BackgroundService — read from channel, call EncryptionPipelineService, send progress via IHubContext<ActionsHub>, update operation store in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T043 [US5] Implement InMemoryEncryptionOperationStore (ConcurrentDictionary-backed, with cleanup of completed operations after configurable retention) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InMemoryEncryptionOperationStore.cs`
-- [ ] T044 [US5] Modify ActionExecutionService.ExecuteAsync to: perform validate/calculate/route/disclose synchronously, write EncryptionWorkItem to channel, return HTTP 202 with operationId at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
-- [ ] T045 [US5] Add EncryptionProgress, EncryptionComplete, EncryptionFailed events to NotificationService per `contracts/signalr-encryption-events.yaml` — send to `wallet:{submittingWalletAddress}` group at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
-- [ ] T046 [US5] Add `GET /api/operations/{operationId}` polling endpoint for clients without SignalR at `src/Services/Sorcha.Blueprint.Service/Endpoints/` (new file or existing operations endpoint)
-- [ ] T047 [US5] Store encryption completion/failure as persistent ActivityEvent for disconnected users at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T048 [US5] Register Channel<EncryptionWorkItem>, EncryptionBackgroundService, InMemoryEncryptionOperationStore in Blueprint.Service DI at `src/Services/Sorcha.Blueprint.Service/Program.cs`
+- [x] T041 [US5] Create EncryptionWorkItem record and register `Channel<EncryptionWorkItem>` (bounded, 100 capacity) in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionWorkItem.cs`
+- [x] T042 [US5] Implement EncryptionBackgroundService : BackgroundService — read from channel, call EncryptionPipelineService, send progress via IHubContext<ActionsHub>, update operation store in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T043 [US5] Implement InMemoryEncryptionOperationStore (ConcurrentDictionary-backed, with cleanup of completed operations after configurable retention) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InMemoryEncryptionOperationStore.cs`
+- [x] T044 [US5] Modify ActionExecutionService.ExecuteAsync to: perform validate/calculate/route/disclose synchronously, write EncryptionWorkItem to channel, return HTTP 202 with operationId at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [x] T045 [US5] Add EncryptionProgress, EncryptionComplete, EncryptionFailed events to NotificationService per `contracts/signalr-encryption-events.yaml` — send to `wallet:{submittingWalletAddress}` group at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
+- [x] T046 [US5] Add `GET /api/operations/{operationId}` polling endpoint for clients without SignalR at `src/Services/Sorcha.Blueprint.Service/Endpoints/OperationsEndpoints.cs`
+- [x] T047 [US5] Store encryption completion/failure as persistent ActivityEvent for disconnected users at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T048 [US5] Register Channel<EncryptionWorkItem>, EncryptionBackgroundService, InMemoryEncryptionOperationStore in Blueprint.Service DI at `src/Services/Sorcha.Blueprint.Service/Program.cs`
 
 **Checkpoint**: Actions return HTTP 202 immediately. SignalR delivers progress. Polling fallback works.
 

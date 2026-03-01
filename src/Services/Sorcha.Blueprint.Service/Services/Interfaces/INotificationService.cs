@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Blueprint.Service.Hubs;
+using Sorcha.Blueprint.Service.Models;
 
 namespace Sorcha.Blueprint.Service.Services.Interfaces;
 
@@ -69,4 +70,28 @@ public interface INotificationService
     /// <param name="instanceId">The workflow instance ID</param>
     /// <param name="ct">Cancellation token</param>
     Task NotifyWorkflowCompletedAsync(string instanceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Notify a wallet about encryption progress.
+    /// </summary>
+    /// <param name="walletAddress">The submitting wallet address</param>
+    /// <param name="notification">The progress notification</param>
+    /// <param name="ct">Cancellation token</param>
+    Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionProgressNotification notification, CancellationToken ct = default);
+
+    /// <summary>
+    /// Notify a wallet that encryption completed successfully.
+    /// </summary>
+    /// <param name="walletAddress">The submitting wallet address</param>
+    /// <param name="notification">The completion notification</param>
+    /// <param name="ct">Cancellation token</param>
+    Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionCompleteNotification notification, CancellationToken ct = default);
+
+    /// <summary>
+    /// Notify a wallet that encryption failed.
+    /// </summary>
+    /// <param name="walletAddress">The submitting wallet address</param>
+    /// <param name="notification">The failure notification</param>
+    /// <param name="ct">Cancellation token</param>
+    Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionFailedNotification notification, CancellationToken ct = default);
 }

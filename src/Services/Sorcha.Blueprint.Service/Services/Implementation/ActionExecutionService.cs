@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
@@ -25,6 +26,7 @@ using Sorcha.TransactionHandler.Encryption.Models;
 using Microsoft.Extensions.Options;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using EncryptionOpStatus = Sorcha.Blueprint.Service.Models.EncryptionOperationStatus;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -48,6 +50,8 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IStatusListManager? _statusListManager;
     private readonly IEncryptionPipelineService? _encryptionPipeline;
     private readonly IDisclosureGroupBuilder? _disclosureGroupBuilder;
+    private readonly Channel<EncryptionWorkItem>? _encryptionChannel;
+    private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly ILogger<ActionExecutionService> _logger;
@@ -70,7 +74,9 @@ public class ActionExecutionService : IActionExecutionService
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
         IStatusListManager? statusListManager = null,
         IEncryptionPipelineService? encryptionPipeline = null,
-        IDisclosureGroupBuilder? disclosureGroupBuilder = null)
+        IDisclosureGroupBuilder? disclosureGroupBuilder = null,
+        Channel<EncryptionWorkItem>? encryptionChannel = null,
+        IEncryptionOperationStore? encryptionOperationStore = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -89,6 +95,8 @@ public class ActionExecutionService : IActionExecutionService
         _statusListManager = statusListManager;
         _encryptionPipeline = encryptionPipeline;
         _disclosureGroupBuilder = disclosureGroupBuilder;
+        _encryptionChannel = encryptionChannel;
+        _encryptionOperationStore = encryptionOperationStore;
     }
 
     /// <inheritdoc/>
@@ -267,6 +275,7 @@ public class ActionExecutionService : IActionExecutionService
 
         // 9c. Encrypt disclosed payloads (envelope encryption)
         EncryptionResult? encryptionResult = null;
+        DisclosureGroup[]? disclosureGroups = null;
         if (_encryptionPipeline != null && disclosedPayloads.Count > 0)
         {
             // US4: Automatic register resolution with external key override
@@ -280,15 +289,14 @@ public class ActionExecutionService : IActionExecutionService
             if (recipients.Length > 0)
             {
                 // US2: DisclosureGroupBuilder groups recipients with identical field sets
-                DisclosureGroup[] groups;
                 if (_disclosureGroupBuilder != null)
                 {
-                    groups = _disclosureGroupBuilder.BuildGroups(disclosedPayloads, recipients);
+                    disclosureGroups = _disclosureGroupBuilder.BuildGroups(disclosedPayloads, recipients);
                 }
                 else
                 {
                     // Fallback: build simple disclosure groups (one per wallet)
-                    groups = disclosedPayloads.Select(kvp =>
+                    disclosureGroups = disclosedPayloads.Select(kvp =>
                     {
                         var recipient = recipients.FirstOrDefault(r => r.WalletAddress == kvp.Key);
                         if (recipient == null) return null;
@@ -306,7 +314,56 @@ public class ActionExecutionService : IActionExecutionService
                     }).Where(g => g != null).ToArray()!;
                 }
 
-                encryptionResult = await _encryptionPipeline.EncryptDisclosedPayloadsAsync(groups!, cancellationToken);
+                // Async path: offload encryption to background service when channel is available
+                if (_encryptionChannel != null && _encryptionOperationStore != null && disclosureGroups!.Length > 0)
+                {
+                    var operation = await _encryptionOperationStore.CreateAsync(new EncryptionOperation
+                    {
+                        OperationId = Guid.NewGuid().ToString("N"),
+                        BlueprintId = instance.BlueprintId,
+                        ActionId = actionId.ToString(),
+                        InstanceId = instanceId,
+                        SubmittingWalletAddress = request.SenderWallet,
+                        TotalRecipients = recipients.Length,
+                        TotalGroups = disclosureGroups.Length,
+                        TotalSteps = 4
+                    });
+
+                    var workItem = new EncryptionWorkItem
+                    {
+                        OperationId = operation.OperationId,
+                        InstanceId = instanceId,
+                        BlueprintId = instance.BlueprintId,
+                        ActionId = actionId,
+                        SenderWallet = request.SenderWallet,
+                        RegisterId = instance.RegisterId,
+                        DisclosureGroups = disclosureGroups!,
+                        PayloadWithCalculations = payloadWithCalculations,
+                        DisclosedPayloads = disclosedPayloads,
+                        PreviousTransactionId = accumulatedState.PreviousTransactionId,
+                        DelegationToken = delegationToken
+                    };
+
+                    await _encryptionChannel.Writer.WriteAsync(workItem, cancellationToken);
+
+                    _logger.LogInformation(
+                        "Encryption offloaded to background service. OperationId: {OperationId}",
+                        operation.OperationId);
+
+                    // Return HTTP 202 with operationId for async tracking
+                    return new ActionSubmissionResponse
+                    {
+                        TransactionId = string.Empty, // Will be filled by background service
+                        InstanceId = instanceId,
+                        OperationId = operation.OperationId,
+                        IsAsync = true,
+                        NextActions = [],
+                        IsComplete = false
+                    };
+                }
+
+                // Synchronous fallback (channel not injected, e.g. in tests)
+                encryptionResult = await _encryptionPipeline.EncryptDisclosedPayloadsAsync(disclosureGroups!, cancellationToken);
 
                 if (!encryptionResult.Success)
                 {

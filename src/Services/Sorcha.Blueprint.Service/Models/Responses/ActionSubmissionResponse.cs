@@ -56,6 +56,18 @@ public record ActionSubmissionResponse
     public string? IssuedCredentialId { get; init; }
 
     /// <summary>
+    /// Operation ID for async encryption tracking (non-null when IsAsync is true).
+    /// Use this with the /api/operations/{operationId} endpoint or SignalR EncryptionProgress events.
+    /// </summary>
+    public string? OperationId { get; init; }
+
+    /// <summary>
+    /// True when encryption is being processed asynchronously.
+    /// TransactionId will be empty; monitor via OperationId.
+    /// </summary>
+    public bool IsAsync { get; init; }
+
+    /// <summary>
     /// File transaction hashes (if files were attached)
     /// </summary>
     public List<string>? FileTransactionHashes { get; init; }
