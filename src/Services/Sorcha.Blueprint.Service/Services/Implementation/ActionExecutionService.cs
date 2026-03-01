@@ -9,6 +9,7 @@ using System.Text.Json;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
+using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Interfaces;
@@ -18,6 +19,9 @@ using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Cryptography.Enums;
+using Sorcha.TransactionHandler.Encryption;
+using Sorcha.TransactionHandler.Encryption.Models;
 using Microsoft.Extensions.Options;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -42,6 +46,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IExecutionEngine _executionEngine;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
+    private readonly IEncryptionPipelineService? _encryptionPipeline;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly ILogger<ActionExecutionService> _logger;
@@ -62,7 +67,8 @@ public class ActionExecutionService : IActionExecutionService
         ILogger<ActionExecutionService> logger,
         ICredentialVerifier? credentialVerifier = null,
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
-        IStatusListManager? statusListManager = null)
+        IStatusListManager? statusListManager = null,
+        IEncryptionPipelineService? encryptionPipeline = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -79,6 +85,7 @@ public class ActionExecutionService : IActionExecutionService
         _credentialVerifier = credentialVerifier;
         _confirmationOptions = confirmationOptions?.Value ?? new TransactionConfirmationOptions();
         _statusListManager = statusListManager;
+        _encryptionPipeline = encryptionPipeline;
     }
 
     /// <inheritdoc/>
@@ -255,7 +262,53 @@ public class ActionExecutionService : IActionExecutionService
             disclosedPayloads[request.SenderWallet] = payloadWithCalculations;
         }
 
-        // 9b. Issue credential if action has issuance configuration
+        // 9c. Encrypt disclosed payloads (envelope encryption)
+        EncryptionResult? encryptionResult = null;
+        if (_encryptionPipeline != null && disclosedPayloads.Count > 0)
+        {
+            // Resolve recipient keys from ExternalRecipientKeys (US1 MVP)
+            // US4 will add automatic register resolution
+            var recipients = ResolveRecipientKeys(disclosedPayloads.Keys, request.ExternalRecipientKeys);
+
+            if (recipients.Length > 0)
+            {
+                // Build simple disclosure groups (one per wallet -- US2 will optimize with grouping)
+                var groups = disclosedPayloads.Select(kvp =>
+                {
+                    var recipient = recipients.FirstOrDefault(r => r.WalletAddress == kvp.Key);
+                    if (recipient == null) return null;
+
+                    var fields = kvp.Value.Keys.OrderBy(k => k).ToArray();
+                    var groupId = ComputeGroupId(fields);
+
+                    return new DisclosureGroup
+                    {
+                        GroupId = groupId,
+                        DisclosedFields = fields,
+                        FilteredPayload = kvp.Value,
+                        Recipients = [recipient]
+                    };
+                }).Where(g => g != null).ToArray()!;
+
+                encryptionResult = await _encryptionPipeline.EncryptDisclosedPayloadsAsync(groups!, cancellationToken);
+
+                if (!encryptionResult.Success)
+                {
+                    throw new InvalidOperationException(
+                        $"Encryption failed for recipient {encryptionResult.FailedRecipient}: {encryptionResult.Error}");
+                }
+
+                if (encryptionResult.SkippedRecipients.Count > 0)
+                {
+                    _logger.LogWarning(
+                        "Skipped {Count} recipients during encryption (key not resolved): {Recipients}",
+                        encryptionResult.SkippedRecipients.Count,
+                        string.Join(", ", encryptionResult.SkippedRecipients));
+                }
+            }
+        }
+
+        // 9d. Issue credential if action has issuance configuration
         CredentialIssuanceResult? issuedCredential = null;
         if (actionDef.CredentialIssuanceConfig != null)
         {
@@ -263,15 +316,28 @@ public class ActionExecutionService : IActionExecutionService
                 actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
         }
 
-        // 10. Build transaction (include calculated values in payload for state reconstruction)
-        var transaction = await _transactionBuilder.BuildActionTransactionAsync(
-            blueprint,
-            instance,
-            actionDef,
-            payloadWithCalculations,
-            disclosedPayloads,
-            accumulatedState.PreviousTransactionId,
-            cancellationToken);
+        // 10. Build transaction
+        BuiltTransaction transaction;
+        if (encryptionResult?.Success == true && encryptionResult.Groups.Length > 0)
+        {
+            // Build with encrypted payloads (no plaintext on ledger)
+            transaction = await _transactionBuilder.BuildEncryptedActionTransactionAsync(
+                blueprint, instance, actionDef,
+                payloadWithCalculations,
+                encryptionResult.Groups,
+                accumulatedState.PreviousTransactionId,
+                cancellationToken);
+        }
+        else
+        {
+            // Legacy plaintext path (no encryption pipeline or empty payload)
+            transaction = await _transactionBuilder.BuildActionTransactionAsync(
+                blueprint, instance, actionDef,
+                payloadWithCalculations,
+                disclosedPayloads,
+                accumulatedState.PreviousTransactionId,
+                cancellationToken);
+        }
 
         // 10b. Add credential issuance metadata to transaction (T061)
         if (issuedCredential != null)
@@ -1108,6 +1174,50 @@ public class ActionExecutionService : IActionExecutionService
         var txIdSource = Encoding.UTF8.GetBytes($"blueprint-publish-{registerId}-{blueprintId}");
         var hash = SHA256.HashData(txIdSource);
         return Convert.ToHexStringLower(hash);
+    }
+
+    /// <summary>
+    /// Resolves recipient public keys from external key info (US1 MVP).
+    /// US4 will add automatic register resolution.
+    /// </summary>
+    private static RecipientInfo[] ResolveRecipientKeys(
+        IEnumerable<string> walletAddresses,
+        Dictionary<string, ExternalKeyInfo>? externalKeys)
+    {
+        if (externalKeys == null || externalKeys.Count == 0)
+            return [];
+
+        var recipients = new List<RecipientInfo>();
+        foreach (var wallet in walletAddresses)
+        {
+            if (externalKeys.TryGetValue(wallet, out var keyInfo))
+            {
+                if (!Enum.TryParse<WalletNetworks>(keyInfo.Algorithm, ignoreCase: true, out var algorithm))
+                {
+                    continue; // Skip unrecognized algorithms
+                }
+
+                recipients.Add(new RecipientInfo
+                {
+                    WalletAddress = wallet,
+                    PublicKey = Convert.FromBase64String(keyInfo.PublicKey),
+                    Algorithm = algorithm,
+                    Source = KeySource.External
+                });
+            }
+        }
+
+        return recipients.ToArray();
+    }
+
+    /// <summary>
+    /// Computes a deterministic group ID from sorted field names.
+    /// </summary>
+    private static string ComputeGroupId(string[] sortedFields)
+    {
+        var input = string.Join("|", sortedFields);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
 
