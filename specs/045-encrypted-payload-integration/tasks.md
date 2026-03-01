@@ -19,12 +19,12 @@
 
 **Purpose**: Create the new types, interfaces, and DTOs that multiple user stories depend on
 
-- [ ] T001 Create encryption pipeline models (EncryptedPayloadGroup, WrappedKey, DisclosureGroup, RecipientInfo, KeySource enum, EncryptionType extensions) in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
-- [ ] T002 [P] Create EncryptionOperation model and EncryptionOperationStatus enum in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionOperationModels.cs`
-- [ ] T003 [P] Create IEncryptionPipelineService interface (EncryptDisclosedPayloadsAsync, EstimateEncryptedSizeAsync) in `src/Common/Sorcha.TransactionHandler/Encryption/IEncryptionPipelineService.cs`
-- [ ] T004 [P] Create IDisclosureGroupBuilder interface (BuildGroups method) in `src/Common/Sorcha.TransactionHandler/Encryption/IDisclosureGroupBuilder.cs`
-- [ ] T005 [P] Create IEncryptionOperationStore interface (Create, Update, GetById, GetByWalletAddress) in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IEncryptionOperationStore.cs`
-- [ ] T006 [P] Add BatchPublicKeyRequest, BatchPublicKeyResponse, and ExternalKeyInfo DTOs to `src/Common/Sorcha.ServiceClients/Register/Models/PublishedParticipantModels.cs`
+- [x] T001 Create encryption pipeline models (EncryptedPayloadGroup, WrappedKey, DisclosureGroup, RecipientInfo, KeySource enum, EncryptionType extensions) in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
+- [x] T002 [P] Create EncryptionOperation model and EncryptionOperationStatus enum in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionOperationModels.cs`
+- [x] T003 [P] Create IEncryptionPipelineService interface (EncryptDisclosedPayloadsAsync, EstimateEncryptedSizeAsync) in `src/Common/Sorcha.TransactionHandler/Encryption/IEncryptionPipelineService.cs`
+- [x] T004 [P] Create IDisclosureGroupBuilder interface (BuildGroups method) in `src/Common/Sorcha.TransactionHandler/Encryption/IDisclosureGroupBuilder.cs`
+- [x] T005 [P] Create IEncryptionOperationStore interface (Create, Update, GetById, GetByWalletAddress) in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IEncryptionOperationStore.cs`
+- [x] T006 [P] Add BatchPublicKeyRequest, BatchPublicKeyResponse, and ExternalKeyInfo DTOs to `src/Common/Sorcha.ServiceClients/Register/Models/PublishedParticipantModels.cs`
 
 ---
 
