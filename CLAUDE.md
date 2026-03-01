@@ -4,7 +4,7 @@ A distributed ledger platform for secure, multi-participant data flow orchestrat
 
 Sorcha implements the **DAD** (Disclosure, Alteration, Destruction) security model - creating cryptographically secured registers where disclosure is managed through defined schemas, alteration is recorded on immutable ledgers, and destruction risk is eliminated through peer network replication.
 
-**Current Status:** 98% MVD Complete | Production Readiness: 30%
+**Current Status:** 100% MVD Complete | Production Readiness: 30%
 
 ---
 
@@ -419,6 +419,26 @@ Interactive demos and test scripts are in `walkthroughs/`:
 | `UserWalletCreation/` | 🚧 | User management, wallet creation |
 
 See `walkthroughs/README.md` for guidelines on creating new walkthroughs.
+
+---
+
+## Branch & PR Policy
+
+**All changes MUST go through branches and pull requests.** Direct pushes to `master` are blocked by GitHub branch protection.
+
+```bash
+# Standard workflow
+git checkout -b feature/description    # Create branch
+# ... make changes, commit ...
+git push -u origin feature/description # Push branch
+gh pr create --fill                    # Create PR
+gh pr merge --squash                   # Merge after review
+```
+
+- Never commit directly to `master` — it will be rejected
+- Use descriptive branch names: `feature/`, `fix/`, `docs/`, `chore/`
+- PRs can be self-merged (0 approvals required for solo dev)
+- Keep PRs focused — one logical change per PR
 
 ---
 
