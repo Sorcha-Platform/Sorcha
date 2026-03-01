@@ -338,7 +338,7 @@ public class CryptoModule : ICryptoModule
                 WalletNetworks.ED25519 => await EncryptED25519Async(data, publicKey, cancellationToken),
                 WalletNetworks.NISTP256 => await EncryptNISTP256Async(data, publicKey, cancellationToken),
                 WalletNetworks.RSA4096 => await EncryptRSA4096Async(data, publicKey, cancellationToken),
-                WalletNetworks.ML_KEM_768 => await Task.Run(() => EncapsulateAsEncrypt(publicKey), cancellationToken),
+                WalletNetworks.ML_KEM_768 => await _pqcEncapsulationProvider.EncryptWithKemAsync(data, publicKey, cancellationToken),
                 WalletNetworks.ML_DSA_65 => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "ML-DSA-65 is a signature algorithm, not an encryption scheme"),
                 WalletNetworks.SLH_DSA_128s => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "SLH-DSA-128s is a signature algorithm, not an encryption scheme"),
                 WalletNetworks.SLH_DSA_192s => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "SLH-DSA-192s is a signature algorithm, not an encryption scheme"),
@@ -380,7 +380,7 @@ public class CryptoModule : ICryptoModule
                 WalletNetworks.ED25519 => await DecryptED25519Async(ciphertext, privateKey, cancellationToken),
                 WalletNetworks.NISTP256 => await DecryptNISTP256Async(ciphertext, privateKey, cancellationToken),
                 WalletNetworks.RSA4096 => await DecryptRSA4096Async(ciphertext, privateKey, cancellationToken),
-                WalletNetworks.ML_KEM_768 => await Task.Run(() => _pqcEncapsulationProvider.Decapsulate(ciphertext, privateKey), cancellationToken),
+                WalletNetworks.ML_KEM_768 => await _pqcEncapsulationProvider.DecryptWithKemAsync(ciphertext, privateKey, cancellationToken),
                 WalletNetworks.ML_DSA_65 => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "ML-DSA-65 is a signature algorithm, not an encryption scheme"),
                 WalletNetworks.SLH_DSA_128s => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "SLH-DSA-128s is a signature algorithm, not an encryption scheme"),
                 WalletNetworks.SLH_DSA_192s => CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "SLH-DSA-192s is a signature algorithm, not an encryption scheme"),
@@ -626,18 +626,121 @@ public class CryptoModule : ICryptoModule
 
     private Task<CryptoResult<byte[]>> EncryptNISTP256Async(byte[] data, byte[] publicKey, CancellationToken cancellationToken)
     {
-        // ECIES implementation for NIST P-256
-        return Task.FromResult(CryptoResult<byte[]>.Failure(
-            CryptoStatus.EncryptionFailed,
-            "NIST P-256 encryption not yet implemented"));
+        return Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (publicKey.Length != 64)
+                return CryptoResult<byte[]>.Failure(CryptoStatus.InvalidKey, "NIST P-256 public key must be 64 bytes (uncompressed X + Y)");
+
+            // 1. Generate ephemeral P-256 key pair
+            using var ephemeral = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+            var ephemeralParams = ephemeral.ExportParameters(false);
+
+            // 2. Import recipient's public key for ECDH
+            var qx = new byte[32];
+            var qy = new byte[32];
+            Array.Copy(publicKey, 0, qx, 0, 32);
+            Array.Copy(publicKey, 32, qy, 0, 32);
+            var recipientParams = new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint { X = qx, Y = qy }
+            };
+            using var recipientKey = ECDiffieHellman.Create(recipientParams);
+
+            // 3. ECDH to derive shared secret, then HKDF-SHA256 to get AES key
+            var sharedSecret = ephemeral.DeriveKeyFromHash(
+                recipientKey.PublicKey,
+                HashAlgorithmName.SHA256,
+                null, // no prepend
+                new byte[] { 0x53, 0x6F, 0x72, 0x63, 0x68, 0x61, 0x45, 0x43, 0x49, 0x45, 0x53 }); // "SorchaECIES" append
+
+            // Take first 32 bytes as AES-256 key
+            var aesKey = sharedSecret[..32];
+
+            // 4. AES-256-GCM encrypt
+            var nonce = new byte[12];
+            RandomNumberGenerator.Fill(nonce);
+            var ciphertext = new byte[data.Length];
+            var tag = new byte[16];
+            using var aes = new AesGcm(aesKey, 16);
+            aes.Encrypt(nonce, data, ciphertext, tag);
+
+            // 5. Pack: [ephemeral X (32)] [ephemeral Y (32)] [nonce (12)] [ciphertext (var)] [tag (16)]
+            // Total: 64 + 12 + data.Length + 16 = 92 + data.Length
+            var ephemeralPubX = ephemeralParams.Q.X!;
+            var ephemeralPubY = ephemeralParams.Q.Y!;
+            var result = new byte[64 + 12 + ciphertext.Length + 16];
+            Array.Copy(ephemeralPubX, 0, result, 0, 32);
+            Array.Copy(ephemeralPubY, 0, result, 32, 32);
+            Array.Copy(nonce, 0, result, 64, 12);
+            Array.Copy(ciphertext, 0, result, 76, ciphertext.Length);
+            Array.Copy(tag, 0, result, 76 + ciphertext.Length, 16);
+
+            // 6. Zeroize sensitive material
+            CryptographicOperations.ZeroMemory(sharedSecret);
+            CryptographicOperations.ZeroMemory(aesKey);
+
+            return CryptoResult<byte[]>.Success(result);
+        }, cancellationToken);
     }
 
     private Task<CryptoResult<byte[]>> DecryptNISTP256Async(byte[] ciphertext, byte[] privateKey, CancellationToken cancellationToken)
     {
-        // ECIES implementation for NIST P-256
-        return Task.FromResult(CryptoResult<byte[]>.Failure(
-            CryptoStatus.DecryptionFailed,
-            "NIST P-256 decryption not yet implemented"));
+        return Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (privateKey.Length != 32)
+                return CryptoResult<byte[]>.Failure(CryptoStatus.InvalidKey, "NIST P-256 private key must be 32 bytes");
+
+            // Minimum: 64 (ephemeral pub) + 12 (nonce) + 1 (min cipher) + 16 (tag) = 93
+            if (ciphertext.Length < 93)
+                return CryptoResult<byte[]>.Failure(CryptoStatus.InvalidParameter, "Ciphertext too short for ECIES");
+
+            // 1. Unpack: [ephemeral X (32)] [ephemeral Y (32)] [nonce (12)] [ciphertext (var)] [tag (16)]
+            var ephemeralX = ciphertext[..32];
+            var ephemeralY = ciphertext[32..64];
+            var nonce = ciphertext[64..76];
+            var encryptedData = ciphertext[76..^16];
+            var tag = ciphertext[^16..];
+
+            // 2. Import ephemeral public key
+            var ephemeralParams = new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint { X = ephemeralX, Y = ephemeralY }
+            };
+            using var ephemeralKey = ECDiffieHellman.Create(ephemeralParams);
+
+            // 3. Import our private key for ECDH
+            var recipientParams = new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                D = privateKey
+            };
+            using var recipientKey = ECDiffieHellman.Create(recipientParams);
+
+            // 4. ECDH + HKDF-SHA256 to derive AES key (same as encrypt)
+            var sharedSecret = recipientKey.DeriveKeyFromHash(
+                ephemeralKey.PublicKey,
+                HashAlgorithmName.SHA256,
+                null,
+                new byte[] { 0x53, 0x6F, 0x72, 0x63, 0x68, 0x61, 0x45, 0x43, 0x49, 0x45, 0x53 }); // "SorchaECIES"
+            var aesKey = sharedSecret[..32];
+
+            // 5. AES-256-GCM decrypt
+            var plaintext = new byte[encryptedData.Length];
+            using var aes = new AesGcm(aesKey, 16);
+            aes.Decrypt(nonce, encryptedData, tag, plaintext);
+
+            // 6. Zeroize
+            CryptographicOperations.ZeroMemory(sharedSecret);
+            CryptographicOperations.ZeroMemory(aesKey);
+
+            return CryptoResult<byte[]>.Success(plaintext);
+        }, cancellationToken);
     }
 
     private Task<CryptoResult<byte[]>> CalculateNISTP256PublicKeyAsync(byte[] privateKey, CancellationToken cancellationToken)
@@ -915,17 +1018,6 @@ public class CryptoModule : ICryptoModule
             return CryptoResult<KeySet>.Failure(CryptoStatus.InvalidKey,
                 $"PQC key recovery failed: {ex.Message}");
         }
-    }
-
-    private CryptoResult<byte[]> EncapsulateAsEncrypt(byte[] publicKey)
-    {
-        // ML-KEM Encrypt returns ciphertext (the shared secret must be retrieved separately)
-        var result = _pqcEncapsulationProvider.Encapsulate(publicKey);
-        if (!result.IsSuccess)
-            return CryptoResult<byte[]>.Failure(result.Status, result.ErrorMessage);
-
-        // Return ciphertext; caller gets shared secret via separate API or stores alongside
-        return CryptoResult<byte[]>.Success(result.Value!.Ciphertext);
     }
 
 }

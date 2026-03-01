@@ -34,16 +34,16 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T007 [P] Implement P-256 ECIES encrypt/decrypt (ECDH + HKDF-SHA256 + AES-256-GCM) replacing stubs at `src/Common/Sorcha.Cryptography/Core/CryptoModule.cs` lines 627-641
-- [ ] T008 [P] Write P-256 ECIES round-trip tests (encrypt + decrypt, key sizes, error cases) in `tests/Sorcha.Cryptography.Tests/Core/CryptoModuleNistP256Tests.cs`
-- [ ] T009 [P] Fix ML-KEM-768 decapsulate endpoint to call `DecryptWithKemAsync` instead of `DecryptPayloadAsync` at `src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs` line 1321
-- [ ] T010 [P] Write ML-KEM-768 decapsulate fix tests (round-trip encapsulate+decapsulate) in `tests/Sorcha.Wallet.Service.Tests/Endpoints/MlKemDecapsulateTests.cs`
-- [ ] T011 [P] Implement batch public key resolution endpoint `POST /api/registers/{registerId}/participants/resolve-public-keys` per `contracts/register-batch-public-keys.yaml` at `src/Services/Sorcha.Register.Service/Program.cs` (after line 1560)
-- [ ] T012 [P] Add `ResolvePublicKeysBatchAsync` method to `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in `src/Common/Sorcha.ServiceClients/Register/RegisterServiceClient.cs`
-- [ ] T013 [P] Write batch public key resolution tests (found, not-found, revoked, mixed results, >200 validation) in `tests/Sorcha.Register.Service.Tests/Endpoints/BatchPublicKeyResolutionTests.cs`
-- [ ] T014 [P] Raise MaxTransactionSizeBytes default from 1MB to 4MB at `src/Services/Sorcha.Validator.Service/Configuration/TransactionReceiverConfiguration.cs` line 32
-- [ ] T015 [P] Add size enforcement check in `ReceiveTransactionAsync` before deserialization — reject with clear error code if `transactionData.Length > _config.MaxTransactionSizeBytes` at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs` (after line 66)
-- [ ] T016 [P] Write transaction size enforcement tests (under limit accepted, over limit rejected with TRANSACTION_TOO_LARGE, configurable limit) in `tests/Sorcha.Validator.Service.Tests/Services/TransactionReceiverSizeTests.cs`
+- [x] T007 [P] Implement P-256 ECIES encrypt/decrypt (ECDH + HKDF-SHA256 + AES-256-GCM) replacing stubs at `src/Common/Sorcha.Cryptography/Core/CryptoModule.cs` lines 627-641
+- [x] T008 [P] Write P-256 ECIES round-trip tests (encrypt + decrypt, key sizes, error cases) in `tests/Sorcha.Cryptography.Tests/Unit/CryptoModuleNistP256Tests.cs`
+- [x] T009 [P] Fix ML-KEM-768 encrypt/decrypt to call `EncryptWithKemAsync`/`DecryptWithKemAsync` in `src/Common/Sorcha.Cryptography/Core/CryptoModule.cs`
+- [x] T010 [P] Write ML-KEM-768 encrypt/decrypt fix tests (round-trip) in `tests/Sorcha.Cryptography.Tests/Unit/Pqc/CryptoModuleMlKemTests.cs`
+- [x] T011 [P] Implement batch public key resolution endpoint `POST /api/registers/{registerId}/participants/resolve-public-keys` per `contracts/register-batch-public-keys.yaml` at `src/Services/Sorcha.Register.Service/Program.cs` (after line 1560)
+- [x] T012 [P] Add `ResolvePublicKeysBatchAsync` method to `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in `src/Common/Sorcha.ServiceClients/Register/RegisterServiceClient.cs`
+- [x] T013 [P] Write batch public key resolution tests (found, not-found, revoked, mixed results, >200 validation) in `tests/Sorcha.Register.Service.Tests/BatchPublicKeyResolutionTests.cs`
+- [x] T014 [P] Raise MaxTransactionSizeBytes default from 1MB to 4MB at `src/Services/Sorcha.Validator.Service/Configuration/TransactionReceiverConfiguration.cs` line 32
+- [x] T015 [P] Add size enforcement check in `ReceiveTransactionAsync` before deserialization — reject with clear error code if `transactionData.Length > _config.MaxTransactionSizeBytes` at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs` (after line 66)
+- [x] T016 [P] Write transaction size enforcement tests (under limit accepted, over limit rejected with TRANSACTION_TOO_LARGE, configurable limit) in `tests/Sorcha.Validator.Service.Tests/Services/TransactionReceiverSizeTests.cs`
 
 **Checkpoint**: All 4 algorithms work for key wrapping, batch public key endpoint exists, size enforcement active at 4MB
 

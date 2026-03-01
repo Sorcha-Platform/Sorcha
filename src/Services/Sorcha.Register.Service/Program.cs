@@ -1559,6 +1559,73 @@ participantsGroup.MapGet("/by-address/{walletAddress}/public-key", (
 .WithSummary("Resolve public key by wallet address")
 .WithDescription("Returns the public key for field-level encryption. Returns 410 Gone if participant is revoked.");
 
+/// <summary>
+/// Batch resolve public keys for multiple wallet addresses
+/// </summary>
+participantsGroup.MapPost("/resolve-public-keys", (
+    ParticipantIndexService index,
+    string registerId,
+    Sorcha.ServiceClients.Register.Models.BatchPublicKeyRequest request) =>
+{
+    // Validate request
+    if (request.WalletAddresses == null || request.WalletAddresses.Length == 0)
+        return Results.BadRequest(new { error = "walletAddresses must contain at least one address" });
+
+    if (request.WalletAddresses.Length > 200)
+        return Results.BadRequest(new { error = "Maximum 200 addresses per request" });
+
+    var resolved = new Dictionary<string, Sorcha.ServiceClients.Register.Models.PublicKeyResolution>();
+    var notFound = new List<string>();
+    var revoked = new List<string>();
+
+    foreach (var walletAddress in request.WalletAddresses.Distinct())
+    {
+        var record = index.GetByAddress(registerId, walletAddress);
+        if (record == null)
+        {
+            notFound.Add(walletAddress);
+            continue;
+        }
+
+        if (string.Equals(record.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+        {
+            revoked.Add(walletAddress);
+            continue;
+        }
+
+        // Find matching address entry (same logic as single resolve)
+        var addressInfo = !string.IsNullOrEmpty(request.Algorithm)
+            ? record.Addresses.FirstOrDefault(a => string.Equals(a.Algorithm, request.Algorithm, StringComparison.OrdinalIgnoreCase))
+            : record.Addresses.FirstOrDefault(a => a.Primary) ?? record.Addresses.FirstOrDefault();
+
+        if (addressInfo == null)
+        {
+            notFound.Add(walletAddress);
+            continue;
+        }
+
+        resolved[walletAddress] = new Sorcha.ServiceClients.Register.Models.PublicKeyResolution
+        {
+            ParticipantId = record.ParticipantId,
+            ParticipantName = record.ParticipantName,
+            WalletAddress = addressInfo.WalletAddress,
+            PublicKey = addressInfo.PublicKey,
+            Algorithm = addressInfo.Algorithm,
+            Status = record.Status
+        };
+    }
+
+    return Results.Ok(new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse
+    {
+        Resolved = resolved,
+        NotFound = notFound.ToArray(),
+        Revoked = revoked.ToArray()
+    });
+})
+.WithName("ResolvePublicKeysBatch")
+.WithSummary("Batch resolve public keys")
+.WithDescription("Resolves public keys for multiple wallet addresses. Returns resolved, not-found, and revoked addresses separately. Max 200 addresses per request.");
+
 // ===========================
 // Zero-Knowledge Proof API
 // ===========================

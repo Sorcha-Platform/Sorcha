@@ -27,9 +27,9 @@ public class TransactionReceiverConfiguration
 
     /// <summary>
     /// Maximum size of a transaction in bytes.
-    /// Default: 1 MB.
+    /// Default: 4 MB.
     /// </summary>
-    public int MaxTransactionSizeBytes { get; set; } = 1024 * 1024;
+    public int MaxTransactionSizeBytes { get; set; } = 4 * 1024 * 1024;
 
     /// <summary>
     /// Whether to validate transaction signatures on receipt.

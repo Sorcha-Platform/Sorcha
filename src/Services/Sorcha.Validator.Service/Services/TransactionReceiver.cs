@@ -83,6 +83,22 @@ public class TransactionReceiver : ITransactionReceiver
                 };
             }
 
+            // Enforce transaction size limit
+            if (transactionData.Length > _config.MaxTransactionSizeBytes)
+            {
+                Interlocked.Increment(ref _totalRejected);
+                _logger.LogWarning(
+                    "Transaction {TransactionHash} from peer {PeerId} exceeds size limit ({Size} > {MaxSize} bytes)",
+                    transactionHash, senderPeerId, transactionData.Length, _config.MaxTransactionSizeBytes);
+
+                return new TransactionReceptionResult
+                {
+                    Accepted = false,
+                    ValidationErrors = new[] { $"TRANSACTION_TOO_LARGE: Transaction size {transactionData.Length} bytes exceeds maximum {_config.MaxTransactionSizeBytes} bytes" },
+                    ReceivedAt = receivedAt
+                };
+            }
+
             // Deserialize transaction
             Transaction? transaction;
             try
