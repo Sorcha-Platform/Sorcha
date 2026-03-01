@@ -65,9 +65,11 @@
 - [ ] T019 [US1] Implement EncryptionPipelineService — orchestrate symmetric encryption via ISymmetricCrypto + key wrapping via ICryptoModule for each recipient, return EncryptedPayloadGroup[] in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
 - [ ] T020 [US1] Create `BuildEncryptedActionTransactionAsync` method on ITransactionBuilderService that accepts EncryptedPayloadGroup[] instead of plaintext Dictionary — serialize encrypted payloads into PayloadModel[] with `ContentEncoding: "encrypted"` in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs`
 - [ ] T021 [US1] Implement `BuildEncryptedActionTransactionAsync` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionBuilderService.cs` — map EncryptedPayloadGroup to PayloadModel (Data=ciphertext, IV=nonce, Challenges=wrapped keys, Hash=integrity hash, PayloadFlags=algorithm)
-- [ ] T022 [US1] Modify `ActionExecutionService.ExecuteAsync` at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` lines 249-274 — insert encryption step between `ApplyDisclosures` (line 249) and transaction building (line 267). Initially: resolve keys from external source, encrypt, call new `BuildEncryptedActionTransactionAsync`
-- [ ] T023 [US1] Handle default case: when no disclosure rules defined, encrypt full payload under sender's wallet address only at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
-- [ ] T024 [US1] Handle atomicity: if any recipient's key wrapping fails, fail the entire operation with a clear error identifying the failing recipient and algorithm in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T022 [US1] Add `ExternalRecipientKeys` property (Dictionary<string, ExternalKeyInfo>?) to action submission request DTO at `src/Services/Sorcha.Blueprint.Service/Models/` — US1 MVP requires externally-provided keys until US4 adds automatic register resolution
+- [ ] T023 [US1] Modify `ActionExecutionService.ExecuteAsync` at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` lines 249-274 — insert encryption step between `ApplyDisclosures` (line 249) and transaction building (line 267). Resolve keys from ExternalRecipientKeys, encrypt, call new `BuildEncryptedActionTransactionAsync`
+- [ ] T024 [US1] Handle default case: when no disclosure rules defined, encrypt full payload under sender's wallet address only at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [ ] T025 [US1] Handle empty payload: when payload data is empty (e.g., status-change action with no fields), bypass encryption pipeline and build transaction with empty payload section at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T026 [US1] Handle atomicity: if any recipient's key wrapping (cryptographic failure) fails, fail the entire operation with a clear error identifying the failing recipient and algorithm. Key resolution failures (not-found) skip with warning per spec edge case 1, in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
 
 **Checkpoint**: Actions produce encrypted transactions. Single algorithm (e.g., ED25519 only) works. Plaintext never stored.
 
@@ -81,13 +83,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Write DisclosureGroupBuilder unit tests (identical fields → 1 group, N distinct sets → N groups, single unique recipient → 1 group with 1 key, deterministic grouping) in `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupBuilderTests.cs`
+- [ ] T027 [P] [US2] Write DisclosureGroupBuilder unit tests (identical fields → 1 group, N distinct sets → N groups, single unique recipient → 1 group with 1 key, single-recipient edge case per US2 acceptance scenario 3, deterministic grouping) in `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupBuilderTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T026 [US2] Implement DisclosureGroupBuilder — hash sorted disclosed field names to create deterministic GroupId, group recipients by hash, return DisclosureGroup[] in `src/Common/Sorcha.TransactionHandler/Encryption/DisclosureGroupBuilder.cs`
-- [ ] T027 [US2] Integrate DisclosureGroupBuilder into EncryptionPipelineService — call BuildGroups before encryption loop, encrypt once per group, wrap key per member within group at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T028 [US2] Write integration test verifying optimization: 10 participants across 3 disclosure field sets → exactly 3 ciphertexts with correct wrapped key distribution in `tests/Sorcha.TransactionHandler.Tests/Encryption/EncryptionPipelineServiceTests.cs`
+- [ ] T028 [US2] Implement DisclosureGroupBuilder — hash sorted disclosed field names to create deterministic GroupId, group recipients by hash, return DisclosureGroup[] in `src/Common/Sorcha.TransactionHandler/Encryption/DisclosureGroupBuilder.cs`
+- [ ] T029 [US2] Integrate DisclosureGroupBuilder into EncryptionPipelineService — call BuildGroups before encryption loop, encrypt once per group, wrap key per member within group at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T030 [US2] Write integration test verifying optimization: 10 participants across 3 disclosure field sets → exactly 3 ciphertexts with correct wrapped key distribution in `tests/Sorcha.TransactionHandler.Tests/Encryption/EncryptionPipelineServiceTests.cs`
 
 **Checkpoint**: Encryption produces M ciphertexts (not N). Payload size proportional to disclosure groups.
 
@@ -101,14 +103,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T029 [P] [US3] Write mixed-algorithm integration test — single transaction with ED25519 + P-256 + RSA-4096 + ML-KEM-768 recipients, verify all can unwrap the symmetric key and decrypt in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [ ] T031 [P] [US3] Write mixed-algorithm integration test — single transaction with ED25519 + P-256 + RSA-4096 + ML-KEM-768 recipients, verify all can unwrap the symmetric key and decrypt in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] Verify ED25519 (Curve25519 SealedBox) key wrap round-trip through EncryptionPipelineService — encrypt 32-byte symmetric key, decrypt, compare in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T031 [US3] Verify P-256 ECIES key wrap round-trip through EncryptionPipelineService (uses Phase 2 T007 implementation) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T032 [US3] Verify RSA-4096 OAEP-SHA256 key wrap round-trip through EncryptionPipelineService (32-byte key well within 446-byte limit) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
-- [ ] T033 [US3] Verify ML-KEM-768 KEM encapsulate/decapsulate key wrap round-trip through EncryptionPipelineService (uses Phase 2 T009 fix) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [ ] T032 [US3] Verify ED25519 (Curve25519 SealedBox) key wrap round-trip through EncryptionPipelineService — encrypt 32-byte symmetric key, decrypt, compare in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [ ] T033 [US3] Verify P-256 ECIES key wrap round-trip through EncryptionPipelineService (uses Phase 2 T007 implementation) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [ ] T034 [US3] Verify RSA-4096 OAEP-SHA256 key wrap round-trip through EncryptionPipelineService (32-byte key well within 446-byte limit) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
+- [ ] T035 [US3] Verify ML-KEM-768 KEM encapsulate/decapsulate key wrap round-trip through EncryptionPipelineService (uses Phase 2 T009 fix) in `tests/Sorcha.TransactionHandler.Tests/Encryption/MixedAlgorithmEncryptionTests.cs`
 
 **Checkpoint**: All 4 algorithms encrypt and decrypt correctly. Mixed-algorithm transactions work.
 
@@ -122,13 +124,12 @@
 
 ### Tests for User Story 4
 
-- [ ] T034 [P] [US4] Write public key resolution integration tests (register-published keys, external-provided keys, mixed sources, revoked participant 410, not-found warning) in `tests/Sorcha.Blueprint.Service.Tests/Services/PublicKeyResolutionTests.cs`
+- [ ] T036 [P] [US4] Write public key resolution integration tests (register-published keys, external-provided keys, mixed sources, revoked participant 410, not-found warning) in `tests/Sorcha.Blueprint.Service.Tests/Services/PublicKeyResolutionTests.cs`
 
 ### Implementation for User Story 4
 
-- [ ] T035 [US4] Integrate batch ResolvePublicKeysBatchAsync into EncryptionPipelineService — collect all recipient wallet addresses, batch resolve from register, merge with externally-provided keys at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T036 [US4] Add `ExternalRecipientKeys` property to action submission request DTO at `src/Services/Sorcha.Blueprint.Service/Models/` — pass through ActionExecutionService to encryption pipeline
-- [ ] T037 [US4] Handle resolution failures: revoked participant → fail with clear error, not-found without external key → skip with warning, register unavailable → retry with exponential backoff (3 attempts) at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T037 [US4] Integrate batch ResolvePublicKeysBatchAsync into EncryptionPipelineService — collect all recipient wallet addresses, batch resolve from register, merge with ExternalRecipientKeys (added in US1 T022) at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T038 [US4] Handle resolution failures: revoked participant → fail with clear error, not-found without external key → skip with warning, register unavailable → retry with exponential backoff (3 attempts) at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
 
 **Checkpoint**: Public keys resolved automatically from register. External override works. Mixed sources in one transaction.
 
@@ -142,19 +143,19 @@
 
 ### Tests for User Story 5
 
-- [ ] T038 [P] [US5] Write EncryptionBackgroundService unit tests (consume from channel, process encryption, send progress, handle failures) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs`
-- [ ] T039 [P] [US5] Write SignalR progress notification tests (EncryptionProgress, EncryptionComplete, EncryptionFailed events sent to correct wallet group) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs`
+- [ ] T039 [P] [US5] Write EncryptionBackgroundService unit tests (consume from channel, process encryption, send progress, handle failures) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceTests.cs`
+- [ ] T040 [P] [US5] Write SignalR progress notification tests (EncryptionProgress, EncryptionComplete, EncryptionFailed events sent to correct wallet group) in `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs`
 
 ### Implementation for User Story 5
 
-- [ ] T040 [US5] Create EncryptionWorkItem record and register `Channel<EncryptionWorkItem>` (bounded, 100 capacity) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T041 [US5] Implement EncryptionBackgroundService : BackgroundService — read from channel, call EncryptionPipelineService, send progress via IHubContext<ActionsHub>, update operation store in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T042 [US5] Implement InMemoryEncryptionOperationStore (ConcurrentDictionary-backed, with cleanup of completed operations after configurable retention) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InMemoryEncryptionOperationStore.cs`
-- [ ] T043 [US5] Modify ActionExecutionService.ExecuteAsync to: perform validate/calculate/route/disclose synchronously, write EncryptionWorkItem to channel, return HTTP 202 with operationId at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
-- [ ] T044 [US5] Add EncryptionProgress, EncryptionComplete, EncryptionFailed events to NotificationService per `contracts/signalr-encryption-events.yaml` — send to `wallet:{submittingWalletAddress}` group at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
-- [ ] T045 [US5] Add `GET /api/operations/{operationId}` polling endpoint for clients without SignalR at `src/Services/Sorcha.Blueprint.Service/Endpoints/` (new file or existing operations endpoint)
-- [ ] T046 [US5] Store encryption completion/failure as persistent ActivityEvent for disconnected users at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T047 [US5] Register Channel<EncryptionWorkItem>, EncryptionBackgroundService, InMemoryEncryptionOperationStore in Blueprint.Service DI at `src/Services/Sorcha.Blueprint.Service/Program.cs`
+- [ ] T041 [US5] Create EncryptionWorkItem record and register `Channel<EncryptionWorkItem>` (bounded, 100 capacity) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [ ] T042 [US5] Implement EncryptionBackgroundService : BackgroundService — read from channel, call EncryptionPipelineService, send progress via IHubContext<ActionsHub>, update operation store in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [ ] T043 [US5] Implement InMemoryEncryptionOperationStore (ConcurrentDictionary-backed, with cleanup of completed operations after configurable retention) in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InMemoryEncryptionOperationStore.cs`
+- [ ] T044 [US5] Modify ActionExecutionService.ExecuteAsync to: perform validate/calculate/route/disclose synchronously, write EncryptionWorkItem to channel, return HTTP 202 with operationId at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [ ] T045 [US5] Add EncryptionProgress, EncryptionComplete, EncryptionFailed events to NotificationService per `contracts/signalr-encryption-events.yaml` — send to `wallet:{submittingWalletAddress}` group at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
+- [ ] T046 [US5] Add `GET /api/operations/{operationId}` polling endpoint for clients without SignalR at `src/Services/Sorcha.Blueprint.Service/Endpoints/` (new file or existing operations endpoint)
+- [ ] T047 [US5] Store encryption completion/failure as persistent ActivityEvent for disconnected users at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [ ] T048 [US5] Register Channel<EncryptionWorkItem>, EncryptionBackgroundService, InMemoryEncryptionOperationStore in Blueprint.Service DI at `src/Services/Sorcha.Blueprint.Service/Program.cs`
 
 **Checkpoint**: Actions return HTTP 202 immediately. SignalR delivers progress. Polling fallback works.
 
@@ -168,13 +169,13 @@
 
 ### Tests for User Story 6
 
-- [ ] T048 [P] [US6] Write pre-flight size estimation tests (under limit passes, over limit fails early, estimation accuracy within 10% margin) in `tests/Sorcha.TransactionHandler.Tests/Encryption/SizeEstimationTests.cs`
+- [ ] T049 [P] [US6] Write pre-flight size estimation tests (under limit passes, over limit fails early, estimation accuracy within 10% margin) in `tests/Sorcha.TransactionHandler.Tests/Encryption/SizeEstimationTests.cs`
 
 ### Implementation for User Story 6
 
-- [ ] T049 [US6] Add `EstimateEncryptedSizeAsync` to EncryptionPipelineService — calculate `sum(payload_sizes * encryption_overhead) + sum(recipients * wrapped_key_size) + metadata` and compare against configurable limit at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T050 [US6] Call size estimation before encryption starts in EncryptionBackgroundService — fail with 413-equivalent error if estimate exceeds limit, send EncryptionFailed notification at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T051 [US6] Make MaxTransactionSizeBytes hot-reloadable via `IOptionsMonitor<TransactionReceiverConfiguration>` (instead of IOptions) in Validator Service for configurable-without-restart at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs`
+- [ ] T050 [US6] Add `EstimateEncryptedSizeAsync` to EncryptionPipelineService — calculate `sum(payload_sizes * encryption_overhead) + sum(recipients * wrapped_key_size) + metadata` and compare against configurable limit at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [ ] T051 [US6] Call size estimation before encryption starts in EncryptionBackgroundService — fail with 413-equivalent error if estimate exceeds limit, send EncryptionFailed notification at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [ ] T052 [US6] Make MaxTransactionSizeBytes hot-reloadable via `IOptionsMonitor<TransactionReceiverConfiguration>` (instead of IOptions) in Validator Service for configurable-without-restart at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs`
 
 **Checkpoint**: Oversized transactions caught before expensive encryption. Config changes apply without restart.
 
@@ -188,15 +189,15 @@
 
 ### Tests for User Story 7
 
-- [ ] T052 [P] [US7] Write recipient decryption tests (authorized decrypt succeeds, unauthorized denied, integrity hash verification, legacy unencrypted backward compat, rotated key error message) in `tests/Sorcha.Blueprint.Service.Tests/Services/RecipientDecryptionTests.cs`
+- [ ] T053 [P] [US7] Write recipient decryption tests (authorized decrypt succeeds, unauthorized denied, integrity hash verification, legacy unencrypted backward compat, rotated key error message) in `tests/Sorcha.Blueprint.Service.Tests/Services/RecipientDecryptionTests.cs`
 
 ### Implementation for User Story 7
 
-- [ ] T053 [US7] Implement decryption flow in transaction retrieval path — identify payload group(s) by wallet address from Challenges[].Address, unwrap symmetric key via Wallet Service `POST /api/v1/wallets/{address}/decrypt`, decrypt ciphertext with SymmetricCrypto at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs` (new or modify existing)
-- [ ] T054 [US7] Add SHA-256 integrity hash verification post-decryption — compare decrypted plaintext hash against stored PlaintextHash, fail with tamper-detected error if mismatch at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T055 [US7] Handle access denied — return appropriate error when requesting wallet address is not in any payload group's Challenges at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T056 [US7] Handle backward compatibility — detect legacy transactions via `ContentEncoding != "encrypted"` or zeroed IV (`PayloadManager.IsLegacy()` pattern), return plaintext directly at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
-- [ ] T057 [US7] Handle rotated key failure — return clear error message stating original key is required when decryption fails due to key rotation at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [ ] T054 [US7] Implement decryption flow in transaction retrieval path — identify payload group(s) by wallet address from Challenges[].Address, unwrap symmetric key via Wallet Service `POST /api/v1/wallets/{address}/decrypt`, decrypt ciphertext with SymmetricCrypto at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs` (new or modify existing)
+- [ ] T055 [US7] Add SHA-256 integrity hash verification post-decryption — compare decrypted plaintext hash against stored PlaintextHash, fail with tamper-detected error if mismatch at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [ ] T056 [US7] Handle access denied — return appropriate error when requesting wallet address is not in any payload group's Challenges at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [ ] T057 [US7] Handle backward compatibility — detect legacy transactions via `ContentEncoding != "encrypted"` or zeroed IV (`PayloadManager.IsLegacy()` pattern), return plaintext directly at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
+- [ ] T058 [US7] Handle rotated key failure — return clear error message stating original key is required when decryption fails due to key rotation at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionRetrievalService.cs`
 
 **Checkpoint**: Recipients decrypt disclosed fields. Unauthorized access denied. Legacy transactions still work.
 
@@ -206,15 +207,15 @@
 
 **Purpose**: Documentation, observability, gateway routes, and final validation
 
-- [ ] T058 [P] Add OpenTelemetry traces for encryption pipeline steps (key resolution, grouping, encryption, key wrapping, transaction building, submission) in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T059 [P] Update Scalar/OpenAPI documentation — add .WithSummary() and .WithDescription() to batch public key endpoint and operations endpoint
-- [ ] T060 [P] Add YARP routes for new endpoints (batch public key resolution, operations polling) at `src/Services/Sorcha.ApiGateway/appsettings.json`
-- [ ] T061 [P] Update `docs/API-DOCUMENTATION.md` with new endpoints (batch public key, operations, encrypted action flow)
-- [ ] T062 [P] Update `docs/development-status.md` with encryption integration completion
-- [ ] T063 [P] Update `.specify/MASTER-TASKS.md` — mark T037-T039 complete, add 045 feature tasks
-- [ ] T064 Run full test suite: `dotnet test --configuration Release` — verify SC-007 (all existing tests still pass)
-- [ ] T065 Performance validation: verify SC-004 (2s for 5 recipients/3 groups/10KB) and SC-005 (500ms first notification)
-- [ ] T066 End-to-end validation: run quickstart.md scenarios against Docker Compose deployment
+- [ ] T059 [P] Add OpenTelemetry traces for encryption pipeline steps (key resolution, grouping, encryption, key wrapping, transaction building, submission) in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [ ] T060 [P] Update Scalar/OpenAPI documentation — add .WithSummary() and .WithDescription() to batch public key endpoint and operations endpoint
+- [ ] T061 [P] Add YARP routes for new endpoints (batch public key resolution, operations polling) at `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [ ] T062 [P] Update `docs/API-DOCUMENTATION.md` with new endpoints (batch public key, operations, encrypted action flow)
+- [ ] T063 [P] Update `docs/development-status.md` with encryption integration completion
+- [ ] T064 [P] Update `.specify/MASTER-TASKS.md` — mark T037-T039 complete, add 045 feature tasks
+- [ ] T065 Run full test suite: `dotnet test --configuration Release` — verify SC-007 (all existing tests still pass)
+- [ ] T066 Performance validation: verify SC-004 (2s for 5 recipients/3 groups/10KB), SC-005 (500ms first notification), and SC-006 (50-recipient encrypted transaction fits within 4MB limit)
+- [ ] T067 End-to-end validation: run quickstart.md scenarios against Docker Compose deployment
 
 ---
 
@@ -266,7 +267,7 @@ Phase 10 (Polish) ── after all desired stories complete
 
 **After US1**: US4, US5, US6, US7 can proceed in parallel (different services/files)
 
-**Phase 10**: T058-T063 all parallelizable (different documentation files)
+**Phase 10**: T059-T064 all parallelizable (different documentation files)
 
 ---
 
@@ -298,7 +299,7 @@ Agent D: "US7 — Implement recipient decryption in transaction retrieval path"
 
 1. Complete Phase 1: Setup (T001-T006)
 2. Complete Phase 2: Foundational (T007-T016) — **max parallelism: 4 agents**
-3. Complete Phase 3: US1 (T017-T024)
+3. Complete Phase 3: US1 (T017-T026)
 4. **STOP and VALIDATE**: Submit an action, query the register, confirm ciphertext-only storage
 5. This alone closes the critical security gap — plaintext is gone from the ledger
 
@@ -342,4 +343,4 @@ With multiple agents after Phase 2:
   - FR-013 to FR-017 → US5 (Phase 7)
   - FR-018 to FR-019 → US6 (Phase 2 + Phase 8)
   - FR-020 to FR-022 → US7 (Phase 9)
-  - FR-023 → US1 atomicity (T024)
+  - FR-023 → US1 atomicity (T026)

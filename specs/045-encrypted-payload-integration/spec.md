@@ -135,7 +135,7 @@ Recipients retrieve and decrypt their action payloads through the standard trans
 - What happens when all recipients share the exact same disclosure (all fields)? One disclosure group is created with all recipients — the most efficient case.
 - What happens when payload data is empty (e.g., a status-change action with no payload fields)? No encryption is needed. The transaction is built with an empty payload section.
 - What happens when the symmetric encryption key generation fails? The operation fails immediately with a cryptographic error. No partial transaction is created.
-- What happens when one recipient's key wrapping fails but others succeed? The entire operation fails atomically — no partial encryption. The error identifies the failing recipient and algorithm.
+- What happens when one recipient's key wrapping fails but others succeed? The entire operation fails atomically — no partial encryption. The error identifies the failing recipient and algorithm. (Note: this applies to *cryptographic* failures during wrapping, not key *resolution* failures — see edge case 1 above.)
 
 ## Requirements *(mandatory)*
 
@@ -183,7 +183,7 @@ Recipients retrieve and decrypt their action payloads through the standard trans
 
 **Atomicity:**
 
-- **FR-023**: Encryption MUST be atomic per transaction — if any recipient's key wrapping fails, the entire encryption operation fails. No partial transactions are created.
+- **FR-023**: Encryption MUST be atomic per transaction for cryptographic failures — if any recipient's key wrapping or symmetric encryption fails, the entire encryption operation fails. No partial transactions are created. Note: key *resolution* failures (recipient not found, no external key provided) are handled separately: the recipient is skipped with a warning included in the operation result, not treated as an atomic failure.
 
 ### Key Entities
 
