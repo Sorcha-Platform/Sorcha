@@ -1,0 +1,84 @@
+# SignalR Events — Encryption Progress Notifications
+# New events on the existing ActionsHub (/actionshub)
+
+hub: ActionsHub
+url: /actionshub
+authentication: JWT Bearer (existing)
+
+events:
+  # Sent when encryption progress changes
+  # Target group: wallet:{submittingWalletAddress}
+  EncryptionProgress:
+    description: |
+      Real-time progress update during async encryption.
+      Sent at each pipeline step transition and periodically during
+      long-running steps (e.g., per-group during encryption).
+    payload:
+      operationId:
+        type: string
+        description: Unique tracking identifier
+      step:
+        type: integer
+        description: Current step number (1-based)
+      stepName:
+        type: string
+        description: Human-readable step name
+        examples:
+          - Resolving recipient public keys
+          - Encrypting disclosure group 1 of 3
+          - Wrapping keys for group 2
+          - Building transaction
+          - Submitting to validator
+      totalSteps:
+        type: integer
+        description: Total number of steps
+      percentComplete:
+        type: integer
+        description: Overall percentage (0-100)
+      timestamp:
+        type: string
+        format: date-time
+
+  # Sent when encryption completes successfully
+  # Target group: wallet:{submittingWalletAddress}
+  EncryptionComplete:
+    description: |
+      Encryption and transaction submission completed successfully.
+      The transaction hash can be used to retrieve the transaction.
+    payload:
+      operationId:
+        type: string
+      transactionHash:
+        type: string
+        description: 64-char hex SHA-256 hash of the committed transaction
+      timestamp:
+        type: string
+        format: date-time
+
+  # Sent when encryption fails
+  # Target group: wallet:{submittingWalletAddress}
+  EncryptionFailed:
+    description: |
+      Encryption failed at some step. The entire operation is atomic —
+      no partial transaction was created.
+    payload:
+      operationId:
+        type: string
+      error:
+        type: string
+        description: Human-readable error message
+      failedRecipient:
+        type: string
+        nullable: true
+        description: Wallet address of the recipient that caused the failure (if applicable)
+      step:
+        type: string
+        description: Pipeline step where failure occurred
+      timestamp:
+        type: string
+        format: date-time
+
+# Persistent notification fallback:
+# If the user is disconnected when EncryptionComplete or EncryptionFailed fires,
+# the result is stored as a persistent notification in the ActivityEvents table.
+# The client retrieves missed notifications via GET /api/events on reconnect.
