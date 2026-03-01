@@ -24,8 +24,8 @@ public class TransactionReceiverSizeTests
         {
             MaxTransactionSizeBytes = maxSizeBytes
         };
-        var configOptions = new Mock<IOptions<TransactionReceiverConfiguration>>();
-        configOptions.Setup(x => x.Value).Returns(config);
+        var configOptions = new Mock<IOptionsMonitor<TransactionReceiverConfiguration>>();
+        configOptions.Setup(x => x.CurrentValue).Returns(config);
 
         return new TransactionReceiver(
             _memPoolManagerMock.Object,

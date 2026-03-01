@@ -169,13 +169,13 @@
 
 ### Tests for User Story 6
 
-- [ ] T049 [P] [US6] Write pre-flight size estimation tests (under limit passes, over limit fails early, estimation accuracy within 10% margin) in `tests/Sorcha.TransactionHandler.Tests/Encryption/SizeEstimationTests.cs`
+- [x] T049 [P] [US6] Write pre-flight size estimation tests (under limit passes, over limit fails early, estimation accuracy within 10% margin) in `tests/Sorcha.TransactionHandler.Tests/Encryption/SizeEstimationTests.cs`
 
 ### Implementation for User Story 6
 
-- [ ] T050 [US6] Add `EstimateEncryptedSizeAsync` to EncryptionPipelineService — calculate `sum(payload_sizes * encryption_overhead) + sum(recipients * wrapped_key_size) + metadata` and compare against configurable limit at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T051 [US6] Call size estimation before encryption starts in EncryptionBackgroundService — fail with 413-equivalent error if estimate exceeds limit, send EncryptionFailed notification at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T052 [US6] Make MaxTransactionSizeBytes hot-reloadable via `IOptionsMonitor<TransactionReceiverConfiguration>` (instead of IOptions) in Validator Service for configurable-without-restart at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs`
+- [x] T050 [US6] Add `CheckSizeLimit` convenience method to EncryptionPipelineService — wraps `EstimateEncryptedSize` and compares against configurable limit at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [x] T051 [US6] Call size estimation before encryption starts in EncryptionBackgroundService — fail with 413-equivalent error if estimate exceeds limit, send EncryptionFailed notification at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T052 [US6] Make MaxTransactionSizeBytes hot-reloadable via `IOptionsMonitor<TransactionReceiverConfiguration>` (instead of IOptions) in Validator Service for configurable-without-restart at `src/Services/Sorcha.Validator.Service/Services/TransactionReceiver.cs`
 
 **Checkpoint**: Oversized transactions caught before expensive encryption. Config changes apply without restart.
 

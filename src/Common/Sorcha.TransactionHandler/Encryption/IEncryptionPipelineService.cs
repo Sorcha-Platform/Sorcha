@@ -33,4 +33,14 @@ public interface IEncryptionPipelineService
     /// <param name="disclosureGroups">Pre-grouped recipients with their filtered payloads.</param>
     /// <returns>Estimated total size in bytes.</returns>
     long EstimateEncryptedSize(DisclosureGroup[] disclosureGroups);
+
+    /// <summary>
+    /// Pre-flight convenience method that estimates encrypted size and checks against a limit.
+    /// Returns whether the estimated size is within the limit, the estimated bytes, and the limit bytes.
+    /// </summary>
+    /// <param name="disclosureGroups">Pre-grouped recipients with their filtered payloads.</param>
+    /// <param name="maxTransactionSizeBytes">Maximum allowed transaction size in bytes. Default: 4 MB.</param>
+    /// <returns>Tuple of (WithinLimit, EstimatedBytes, LimitBytes).</returns>
+    (bool WithinLimit, long EstimatedBytes, long LimitBytes) CheckSizeLimit(
+        DisclosureGroup[] disclosureGroups, long maxTransactionSizeBytes = 4 * 1024 * 1024);
 }

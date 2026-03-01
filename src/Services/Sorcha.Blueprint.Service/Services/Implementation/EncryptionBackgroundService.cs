@@ -99,6 +99,17 @@ public sealed class EncryptionBackgroundService : BackgroundService
                     PercentComplete = 10
                 }, ct);
 
+            // Pre-flight size check (T051) — fail fast before expensive encryption
+            var sizeCheck = encryptionPipeline.CheckSizeLimit(workItem.DisclosureGroups);
+            if (!sizeCheck.WithinLimit)
+            {
+                await HandleFailureAsync(operationId, workItem.SenderWallet,
+                    $"Estimated encrypted size ({sizeCheck.EstimatedBytes} bytes) exceeds limit ({sizeCheck.LimitBytes} bytes)",
+                    null, StepResolvingKeys,
+                    notificationService, scope.ServiceProvider, workItem, ct);
+                return;
+            }
+
             // Step 2: Encrypting
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Encrypting,
                 StepEncrypting, "Encrypting payloads", 30);

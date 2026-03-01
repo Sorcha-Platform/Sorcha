@@ -18,7 +18,7 @@ public class TransactionReceiverTests
 {
     private readonly Mock<IMemPoolManager> _memPoolManagerMock;
     private readonly Mock<IValidationEngine> _validationEngineMock;
-    private readonly Mock<IOptions<TransactionReceiverConfiguration>> _configMock;
+    private readonly Mock<IOptionsMonitor<TransactionReceiverConfiguration>> _configMock;
     private readonly Mock<ILogger<TransactionReceiver>> _loggerMock;
     private readonly TransactionReceiverConfiguration _config;
     private readonly TransactionReceiver _receiver;
@@ -33,8 +33,8 @@ public class TransactionReceiverTests
 
         _memPoolManagerMock = new Mock<IMemPoolManager>();
         _validationEngineMock = new Mock<IValidationEngine>();
-        _configMock = new Mock<IOptions<TransactionReceiverConfiguration>>();
-        _configMock.Setup(x => x.Value).Returns(_config);
+        _configMock = new Mock<IOptionsMonitor<TransactionReceiverConfiguration>>();
+        _configMock.Setup(x => x.CurrentValue).Returns(_config);
         _loggerMock = new Mock<ILogger<TransactionReceiver>>();
 
         _receiver = new TransactionReceiver(

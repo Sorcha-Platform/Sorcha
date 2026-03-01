@@ -238,6 +238,14 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         return EncryptionResult.Succeeded([encryptedGroup]);
     }
 
+    /// <inheritdoc />
+    public (bool WithinLimit, long EstimatedBytes, long LimitBytes) CheckSizeLimit(
+        DisclosureGroup[] disclosureGroups, long maxTransactionSizeBytes = 4 * 1024 * 1024)
+    {
+        var estimated = EstimateEncryptedSize(disclosureGroups);
+        return (estimated <= maxTransactionSizeBytes, estimated, maxTransactionSizeBytes);
+    }
+
     /// <summary>
     /// Returns the estimated wrapped key size in bytes for a given algorithm.
     /// </summary>
