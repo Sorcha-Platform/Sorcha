@@ -3,7 +3,7 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for completed phases, historical updates, critical path, and task summaries.
 
 **Version:** 6.3
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-02
 **Status:** Active - Production Packaging & CI/CD (Phase D complete)
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
@@ -110,12 +110,12 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 
 | # | Task | Status |
 |---|------|--------|
-| A17 | Upgrade MudBlazor 8.15.0 → 9.0.0 (UI breaking changes) | 📋 |
-| A18 | Upgrade Refit 9.0.2 → 10.0.1 (HTTP client generation changes) | 📋 |
-| A19 | Upgrade ModelContextProtocol 0.7.0-preview.1 → 1.0.0 (MCP server GA) | 📋 |
-| A20 | Upgrade Anthropic.SDK 4.0.0 → 5.10.0 (AI integration) | 📋 |
-| A21 | Upgrade SimpleBase 4.0.2 → 5.6.0 (encoding API changes) | 📋 |
-| A22 | Upgrade coverlet.collector 6.0.4 → 8.0.0 (test coverage) | 📋 |
+| A17 | Upgrade MudBlazor 8.15.0 → 9.0.0 (UI breaking changes) | ✅ |
+| A18 | Upgrade Refit 9.0.2 → 10.0.1 (HTTP client generation changes) | ✅ |
+| A19 | Upgrade ModelContextProtocol 0.7.0-preview.1 → 1.0.0 (MCP server GA) | ✅ |
+| A20 | Upgrade Anthropic.SDK 4.0.0 → 5.10.0 (AI integration) | ✅ |
+| A21 | Upgrade SimpleBase 4.0.2 → 5.6.0 (encoding API changes) | ✅ |
+| A22 | Upgrade coverlet.collector 6.0.4 → 8.0.0 (test coverage) | ✅ |
 
 ### Phase B: Core Libraries (src/Core/) — ✅ COMPLETE
 
@@ -278,6 +278,6 @@ All transactions MUST go through the Validator Service mempool before being seal
 
 ---
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-02
 **Next Review:** Weekly
 **Document Owner:** Sorcha Architecture Team

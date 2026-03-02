@@ -3,6 +3,7 @@
 
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -29,6 +30,7 @@ public static class OrganizationEndpoints
             .WithDescription("Creates a new organization. The authenticated user becomes the organization administrator.")
             .Produces<OrganizationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
+            .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/", ListOrganizations)
@@ -148,7 +150,7 @@ public static class OrganizationEndpoints
         return app;
     }
 
-    private static async Task<Results<Created<OrganizationResponse>, ValidationProblem>> CreateOrganization(
+    private static async Task<Results<Created<OrganizationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateOrganization(
         CreateOrganizationRequest request,
         IOrganizationService organizationService,
         ClaimsPrincipal user,
@@ -167,6 +169,15 @@ public static class OrganizationEndpoints
         {
             var response = await organizationService.CreateOrganizationAsync(request, userId, cancellationToken);
             return TypedResults.Created($"/api/organizations/{response.Id}", response);
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("already taken"))
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Subdomain Conflict",
+                Detail = ex.Message,
+                Status = StatusCodes.Status409Conflict
+            });
         }
         catch (ArgumentException ex)
         {

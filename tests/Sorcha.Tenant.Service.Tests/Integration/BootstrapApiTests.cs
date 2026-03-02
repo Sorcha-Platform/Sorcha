@@ -4,6 +4,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Tests.Infrastructure;
 
@@ -22,11 +25,17 @@ public class BootstrapApiTests : IClassFixture<TenantServiceWebApplicationFactor
         _factory = factory;
     }
 
-    public ValueTask InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // Bootstrap is an unauthenticated endpoint - anyone can call it (should be protected in production)
         _client = _factory.CreateUnauthenticatedClient();
-        return ValueTask.CompletedTask;
+
+        // Reset the database before each test to clear the BootstrapCompleted one-shot guard
+        // and any previously created orgs/users, ensuring test isolation
+        using var scope = _factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+        await context.Database.EnsureDeletedAsync();
+        await context.Database.EnsureCreatedAsync();
     }
 
     public ValueTask DisposeAsync()

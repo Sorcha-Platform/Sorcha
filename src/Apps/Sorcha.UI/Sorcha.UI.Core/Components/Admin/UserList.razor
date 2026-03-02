@@ -233,7 +233,7 @@
             return;
         }
 
-        var result = await DialogService.ShowMessageBox(
+        var result = await DialogService.ShowMessageBoxAsync(
             "Confirm Removal",
             $"Are you sure you want to remove '{user.DisplayName}' from this organization? They will lose access to all organization resources.",
             yesText: "Remove",

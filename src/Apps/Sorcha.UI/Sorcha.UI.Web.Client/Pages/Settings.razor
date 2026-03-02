@@ -523,7 +523,7 @@
 
     private async Task DisableTwoFactor()
     {
-        var confirmed = await DialogService.ShowMessageBox(
+        var confirmed = await DialogService.ShowMessageBoxAsync(
             "Disable Two-Factor Authentication",
             "Are you sure? This will make your account less secure.",
             yesText: "Disable",
@@ -624,7 +624,7 @@
 
     private async Task DeleteProfile(Profile profile)
     {
-        var confirmed = await DialogService.ShowMessageBox(
+        var confirmed = await DialogService.ShowMessageBoxAsync(
             "Delete Profile",
             $"Are you sure you want to delete the profile '{profile.Name}'?",
             yesText: "Delete",

@@ -34,6 +34,22 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
     /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Provide JWT signing configuration so TokenService can generate real tokens
+        // for login/token/bootstrap endpoints that don't use the Test auth scheme
+        builder.ConfigureAppConfiguration((context, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["JwtSettings:SigningKey"] = "TestSigningKey_MustBeAtLeast32BytesLong!!",
+                ["JwtSettings:Issuer"] = "https://tenant.sorcha.io",
+                ["JwtSettings:Audience"] = "https://api.sorcha.io",
+                ["JwtSettings:InstallationName"] = "test",
+                ["JwtSettings:ValidateIssuer"] = "false",
+                ["JwtSettings:ValidateAudience"] = "false",
+                ["JwtSettings:ValidateLifetime"] = "false",
+            });
+        });
+
         builder.ConfigureTestServices(services =>
         {
             // Remove all EF Core related services to prevent provider conflicts

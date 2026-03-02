@@ -101,7 +101,7 @@ public static class TestDataSeeder
             ClientId = "test-client-id",
             ClientSecretEncrypted = CreateArgon2idHash("test-client-secret"),
             Status = ServicePrincipalStatus.Active,
-            Scopes = new[] { "blueprints:read", "wallets:write" },
+            Scopes = new[] { "blueprints:read", "wallets:write", "tenant:delegate" },
             CreatedAt = DateTimeOffset.UtcNow
         };
 

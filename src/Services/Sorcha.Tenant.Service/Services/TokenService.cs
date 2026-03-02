@@ -35,6 +35,7 @@ public class TokenService : ITokenService
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tokenHandler = new JwtSecurityTokenHandler();
+        _tokenHandler.MapInboundClaims = false;
 
         // Set up signing credentials if key is configured
         if (!string.IsNullOrEmpty(_config.SigningKey))
@@ -363,7 +364,7 @@ public class TokenService : ITokenService
                 return new TokenIntrospectionResponse { Active = false };
             }
 
-            var roles = principal.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+            var roles = principal.FindAll("role").Select(c => c.Value).ToArray();
 
             return new TokenIntrospectionResponse
             {
