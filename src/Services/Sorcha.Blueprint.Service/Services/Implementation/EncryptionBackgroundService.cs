@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics;
 using System.Threading.Channels;
+using ActivityEvent = Sorcha.Blueprint.Service.Models.ActivityEvent;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Validator;
@@ -18,6 +20,8 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 /// </summary>
 public sealed class EncryptionBackgroundService : BackgroundService
 {
+    private static readonly ActivitySource ActivitySource = new("Sorcha.Encryption.BackgroundService");
+
     private readonly Channel<EncryptionWorkItem> _channel;
     private readonly IEncryptionOperationStore _operationStore;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -74,6 +78,11 @@ public sealed class EncryptionBackgroundService : BackgroundService
     internal async Task ProcessWorkItemAsync(EncryptionWorkItem workItem, CancellationToken ct)
     {
         var operationId = workItem.OperationId;
+        using var activity = ActivitySource.StartActivity("ProcessEncryptionWorkItem");
+        activity?.SetTag("encryption.operation_id", operationId);
+        activity?.SetTag("encryption.instance_id", workItem.InstanceId);
+        activity?.SetTag("encryption.sender_wallet", workItem.SenderWallet);
+
         _logger.LogInformation("Processing encryption work item {OperationId} for instance {InstanceId}",
             operationId, workItem.InstanceId);
 
@@ -222,6 +231,8 @@ public sealed class EncryptionBackgroundService : BackgroundService
             // Store persistent activity event for disconnected users (T047)
             await StoreActivityEventAsync(scope.ServiceProvider, workItem, txHash, success: true, error: null);
 
+            activity?.SetTag("encryption.tx_hash", txHash);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             _logger.LogInformation(
                 "Encryption operation {OperationId} completed. Transaction: {TxHash}",
                 operationId, txHash);
@@ -240,6 +251,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             _logger.LogError(ex, "Encryption operation {OperationId} failed", operationId);
 
             try

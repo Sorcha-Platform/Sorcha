@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Cryptography.Enums;
@@ -20,6 +21,8 @@ namespace Sorcha.TransactionHandler.Encryption;
 /// </remarks>
 public sealed class EncryptionPipelineService : IEncryptionPipelineService
 {
+    private static readonly ActivitySource ActivitySource = new("Sorcha.Encryption.Pipeline");
+
     private readonly ISymmetricCrypto _symmetricCrypto;
     private readonly ICryptoModule _cryptoModule;
     private readonly IHashProvider _hashProvider;
@@ -89,6 +92,10 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             nonEmptyGroups.Length,
             nonEmptyGroups.Sum(g => g.Recipients.Length));
 
+        using var activity = ActivitySource.StartActivity("EncryptDisclosedPayloads");
+        activity?.SetTag("encryption.group_count", nonEmptyGroups.Length);
+        activity?.SetTag("encryption.total_recipients", nonEmptyGroups.Sum(g => g.Recipients.Length));
+
         var encryptedGroups = new List<EncryptedPayloadGroup>(nonEmptyGroups.Length);
 
         foreach (var group in nonEmptyGroups)
@@ -99,6 +106,8 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             if (!groupResult.Success)
             {
                 // T026: Atomic failure — if any group fails, the entire operation fails
+                activity?.SetTag("encryption.error", groupResult.Error);
+                activity?.SetStatus(ActivityStatusCode.Error, groupResult.Error);
                 _logger.LogError(
                     "Encryption failed for group {GroupId}: {Error}",
                     group.GroupId, groupResult.Error);
@@ -110,6 +119,7 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             encryptedGroups.Add(groupResult.Groups[0]);
         }
 
+        activity?.SetStatus(ActivityStatusCode.Ok);
         _logger.LogInformation(
             "Successfully encrypted {GroupCount} disclosure groups",
             encryptedGroups.Count);
@@ -163,6 +173,10 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         DisclosureGroup group,
         CancellationToken cancellationToken)
     {
+        using var groupActivity = ActivitySource.StartActivity("EncryptGroup");
+        groupActivity?.SetTag("encryption.group_id", group.GroupId);
+        groupActivity?.SetTag("encryption.recipient_count", group.Recipients.Length);
+
         // Step 1: Serialize filtered payload to JSON bytes
         var plaintextBytes = JsonSerializer.SerializeToUtf8Bytes(
             group.FilteredPayload, CompactJsonOptions);
@@ -170,6 +184,7 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         _logger.LogDebug(
             "Group {GroupId}: serialized payload is {Size} bytes for {RecipientCount} recipients",
             group.GroupId, plaintextBytes.Length, group.Recipients.Length);
+        groupActivity?.SetTag("encryption.plaintext_bytes", plaintextBytes.Length);
 
         // Step 2: Compute SHA-256 hash of plaintext for post-decryption integrity
         var plaintextHash = _hashProvider.ComputeHash(plaintextBytes, HashType.SHA256);

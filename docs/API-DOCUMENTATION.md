@@ -940,6 +940,97 @@ POST /api/execution/disclose
 
 ---
 
+## Encrypted Action Flow
+
+### Async Encryption Pipeline
+
+When an action has disclosure rules with encryption, the submission returns `202 Accepted` with an operation ID for tracking progress.
+
+#### Submit Encrypted Action
+
+```http
+POST /api/actions
+```
+
+**Request Body** (same as standard action, encryption is automatic when blueprint has disclosure rules):
+```json
+{
+  "blueprintId": "bp-123",
+  "actionId": "0",
+  "senderWallet": "wallet-789",
+  "registerAddress": "register-101",
+  "payloadData": { "itemName": "Widget Pro", "quantity": 100 },
+  "externalRecipientKeys": {
+    "wallet-abc": { "publicKey": "base64...", "algorithm": "ED25519" }
+  }
+}
+```
+
+**Response:** `202 Accepted`
+```json
+{
+  "operationId": "op-uuid-123",
+  "isAsync": true,
+  "instanceId": "instance-abc"
+}
+```
+
+#### Poll Operation Status
+
+```http
+GET /api/operations/{operationId}
+Authorization: Bearer {token}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "operationId": "op-uuid-123",
+  "status": "Encrypting",
+  "currentStep": 2,
+  "totalSteps": 4,
+  "stepName": "Encrypting payloads",
+  "percentComplete": 30,
+  "transactionHash": null,
+  "error": null,
+  "createdAt": "2026-03-02T10:00:00Z"
+}
+```
+
+**Status values:** `Pending`, `ResolvingKeys`, `Encrypting`, `BuildingTransaction`, `Submitting`, `Complete`, `Failed`
+
+### Batch Public Key Resolution
+
+```http
+POST /api/registers/{registerId}/participants/resolve-public-keys
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "walletAddresses": ["wallet-abc", "wallet-def"],
+  "algorithm": "ED25519"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "resolved": {
+    "wallet-abc": {
+      "participantId": "part-1",
+      "walletAddress": "wallet-abc",
+      "publicKey": "base64...",
+      "algorithm": "ED25519",
+      "status": "Active"
+    }
+  },
+  "notFound": ["wallet-xyz"],
+  "revoked": []
+}
+```
+
+---
+
 ## Real-time Notifications (SignalR)
 
 ### Hub Endpoint: `/actionshub`
@@ -1102,6 +1193,19 @@ connection.on("ActionConfirmed", (notification) => {
 
 connection.on("ActionPending", (notification) => {
   console.log("Action pending:", notification);
+});
+
+// Encryption progress events (sent to wallet:{address} group)
+connection.on("EncryptionProgress", (notification) => {
+  console.log(`Step ${notification.step}/${notification.totalSteps}: ${notification.stepName} (${notification.percentComplete}%)`);
+});
+
+connection.on("EncryptionComplete", (notification) => {
+  console.log("Encryption complete, tx:", notification.transactionHash);
+});
+
+connection.on("EncryptionFailed", (notification) => {
+  console.error("Encryption failed:", notification.error);
 });
 ```
 

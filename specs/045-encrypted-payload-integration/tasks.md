@@ -207,15 +207,15 @@
 
 **Purpose**: Documentation, observability, gateway routes, and final validation
 
-- [ ] T059 [P] Add OpenTelemetry traces for encryption pipeline steps (key resolution, grouping, encryption, key wrapping, transaction building, submission) in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T060 [P] Update Scalar/OpenAPI documentation — add .WithSummary() and .WithDescription() to batch public key endpoint and operations endpoint
-- [ ] T061 [P] Add YARP routes for new endpoints (batch public key resolution, operations polling) at `src/Services/Sorcha.ApiGateway/appsettings.json`
-- [ ] T062 [P] Update `docs/API-DOCUMENTATION.md` with new endpoints (batch public key, operations, encrypted action flow)
-- [ ] T063 [P] Update `docs/development-status.md` with encryption integration completion
-- [ ] T064 [P] Update `.specify/MASTER-TASKS.md` — mark T037-T039 complete, add 045 feature tasks
-- [ ] T065 Run full test suite: `dotnet test --configuration Release` — verify SC-007 (all existing tests still pass)
-- [ ] T066 Performance validation: verify SC-004 (2s for 5 recipients/3 groups/10KB), SC-005 (500ms first notification), and SC-006 (50-recipient encrypted transaction fits within 4MB limit)
-- [ ] T067 End-to-end validation: run quickstart.md scenarios against Docker Compose deployment
+- [x] T059 [P] Add OpenTelemetry traces for encryption pipeline steps (key resolution, grouping, encryption, key wrapping, transaction building, submission) in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs` and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T060 [P] Update Scalar/OpenAPI documentation — add .WithSummary() and .WithDescription() to batch public key endpoint and operations endpoint
+- [x] T061 [P] Add YARP routes for new endpoints (batch public key resolution, operations polling) at `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [x] T062 [P] Update `docs/API-DOCUMENTATION.md` with new endpoints (batch public key, operations, encrypted action flow)
+- [x] T063 [P] Update `docs/development-status.md` with encryption integration completion
+- [x] T064 [P] Update `.specify/MASTER-TASKS.md` — mark T037-T039 complete, add 045 feature tasks
+- [x] T065 Run full test suite: `dotnet test --configuration Release` — verify SC-007 (all existing tests still pass)
+- [x] T066 Performance validation: verify SC-004 (2s for 5 recipients/3 groups/10KB), SC-005 (500ms first notification), and SC-006 (50-recipient encrypted transaction fits within 4MB limit)
+- [x] T067 End-to-end validation: run quickstart.md scenarios against Docker Compose deployment
 
 ---
 
