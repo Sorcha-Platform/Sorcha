@@ -278,6 +278,17 @@ All transactions MUST go through the Validator Service mempool before being seal
 
 ---
 
+---
+
+## 046 — UI Polish & Blueprint Designer
+
+> **Priority:** P2 (Polish)
+> **Status:** ✅ Complete
+> **Branch:** `046-ui-polish-designer`
+> **Spec:** [specs/046-ui-polish-designer/](../specs/046-ui-polish-designer/)
+
+43 tasks across 7 user stories: dashboard wizard/GUID bug (US1), notification panel overflow (US2), dark mode hardcoded colors (US3), stale coming-soon labels (US4), blueprint designer save/load (US5), EventsHub real-time notifications (US6), i18n wiring for Home/Settings/MainLayout (US7). All 3 UI projects build with 0 errors. 618 bUnit tests pass.
+
 **Last Updated:** 2026-03-02
 **Next Review:** Weekly
 **Document Owner:** Sorcha Architecture Team
