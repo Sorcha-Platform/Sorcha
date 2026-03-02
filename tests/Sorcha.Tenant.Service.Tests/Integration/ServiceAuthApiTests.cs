@@ -338,12 +338,11 @@ public class ServiceAuthApiTests : IClassFixture<TenantServiceWebApplicationFact
             });
         var created = await createResponse.Content.ReadFromJsonAsync<ServicePrincipalRegistrationResponse>();
 
-        // Act
-        var response = await _adminClient.PostAsync(
-            $"/api/service-principals/{created!.Id}/revoke",
-            null);
+        // Act — endpoint is DELETE /api/service-principals/{id} returning 204
+        var response = await _adminClient.DeleteAsync(
+            $"/api/service-principals/{created!.Id}");
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 }

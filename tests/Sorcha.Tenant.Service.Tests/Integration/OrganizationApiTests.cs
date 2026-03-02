@@ -136,7 +136,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
     public async Task GetOrganizationBySubdomain_WithValidSubdomain_ReturnsOrganization()
     {
         // Act
-        var response = await _adminClient.GetAsync("/api/organizations/subdomain/test-org");
+        var response = await _adminClient.GetAsync("/api/organizations/by-subdomain/test-org");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -221,9 +221,12 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        // Verify deletion
+        // Verify soft deletion — org still exists but is now Inactive
         var getResponse = await _adminClient.GetAsync($"/api/organizations/{created.Id}");
-        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var deactivated = await getResponse.Content.ReadFromJsonAsync<OrganizationResponse>();
+        deactivated.Should().NotBeNull();
+        deactivated!.Status.Should().Be(OrganizationStatus.Deleted);
     }
 
     [Fact]
