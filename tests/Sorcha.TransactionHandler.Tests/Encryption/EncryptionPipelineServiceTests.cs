@@ -366,7 +366,6 @@ public class EncryptionPipelineServiceTests
     public async Task EncryptDisclosedPayloadsAsync_KeyWrappingFailure_FailsEntireOperationWithRecipientIdentified()
     {
         // Arrange — second recipient's key wrapping fails
-        var failingPubKey = new byte[] { 0xFF, 0xFE, 0xFD };
         var callCount = 0;
         _cryptoModuleMock
             .Setup(c => c.EncryptAsync(

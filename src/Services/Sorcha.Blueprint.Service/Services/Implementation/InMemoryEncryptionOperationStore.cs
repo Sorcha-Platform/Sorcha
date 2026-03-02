@@ -71,13 +71,10 @@ public sealed class InMemoryEncryptionOperationStore : IEncryptionOperationStore
         var cutoff = DateTimeOffset.UtcNow - _retentionPeriod;
         var removed = 0;
 
-        foreach (var kvp in _operations)
+        foreach (var kvp in _operations.Where(kvp => kvp.Value.CompletedAt.HasValue && kvp.Value.CompletedAt.Value < cutoff))
         {
-            if (kvp.Value.CompletedAt.HasValue && kvp.Value.CompletedAt.Value < cutoff)
-            {
-                if (_operations.TryRemove(kvp.Key, out _))
-                    removed++;
-            }
+            if (_operations.TryRemove(kvp.Key, out _))
+                removed++;
         }
 
         if (removed > 0)

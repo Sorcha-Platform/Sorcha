@@ -200,9 +200,6 @@ public class SizeEstimationTests
         // Verify estimate is at least as large as actual (conservative estimate)
         // The estimate uses XChaCha20 overhead (40 bytes) + wrapped key sizes per algorithm
         // which should be >= the mock's small return values
-        var lowerBound = actualSize * 0.5; // Very generous lower bound due to mock data
-        var upperBound = actualSize * 10.0; // Upper bound accounting for overhead estimates vs mock data
-
         // The key accuracy check: estimate components should be consistent
         // Plaintext serialization size should match between estimate and encrypt paths
         var plaintextSize1 = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(payload1).Length;
