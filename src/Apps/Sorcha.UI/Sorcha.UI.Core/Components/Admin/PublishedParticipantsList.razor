@@ -149,7 +149,7 @@
 
     private async Task ConfirmRevokeAsync(PublishedParticipantViewModel item)
     {
-        var result = await DialogService.ShowMessageBox(
+        var result = await DialogService.ShowMessageBoxAsync(
             "Confirm Revocation",
             $"Are you sure you want to revoke the published record for '{item.ParticipantName}' on register '{item.RegisterName}'? This action cannot be undone.",
             yesText: "Revoke",

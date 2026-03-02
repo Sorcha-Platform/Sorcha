@@ -180,7 +180,7 @@
 
     private async Task ConfirmDeactivateAsync(OrganizationDto organization)
     {
-        var result = await DialogService.ShowMessageBox(
+        var result = await DialogService.ShowMessageBoxAsync(
             "Confirm Deactivation",
             $"Are you sure you want to deactivate '{organization.Name}'? This action can be reversed by an administrator.",
             yesText: "Deactivate",

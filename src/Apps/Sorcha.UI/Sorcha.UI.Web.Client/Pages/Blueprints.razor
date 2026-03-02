@@ -285,7 +285,7 @@
 
     private async Task DeleteBlueprint(BlueprintListItemViewModel blueprint)
     {
-        var result = await DialogService.ShowMessageBox(
+        var result = await DialogService.ShowMessageBoxAsync(
             "Delete Blueprint",
             $"Are you sure you want to delete '{blueprint.Title}'? This action cannot be undone.",
             yesText: "Delete", cancelText: "Cancel");

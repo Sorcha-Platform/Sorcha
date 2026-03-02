@@ -47,7 +47,7 @@ public class AnthropicProviderService : IAIProviderService
             Model = _options.Model,
             MaxTokens = _options.MaxTokens,
             Messages = anthropicMessages,
-            SystemMessage = systemPrompt ?? "You are a helpful assistant.",
+            System = new List<SystemMessage> { new SystemMessage(systemPrompt ?? "You are a helpful assistant.") },
             Tools = anthropicTools,
             Stream = true
         };
@@ -127,9 +127,15 @@ public class AnthropicProviderService : IAIProviderService
                 var toolResultContents = msg.ToolResults.Select(tr => new ToolResultContent
                 {
                     ToolUseId = tr.ToolCallId,
-                    Content = tr.Success
-                        ? tr.Result?.RootElement.GetRawText() ?? "{}"
-                        : $"Error: {tr.Error}"
+                    Content = new List<ContentBase>
+                    {
+                        new TextContent
+                        {
+                            Text = tr.Success
+                                ? tr.Result?.RootElement.GetRawText() ?? "{}"
+                                : $"Error: {tr.Error}"
+                        }
+                    }
                 }).ToList();
 
                 result.Add(new Message

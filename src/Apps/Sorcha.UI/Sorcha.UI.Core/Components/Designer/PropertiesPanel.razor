@@ -588,7 +588,7 @@
 
     private async Task DeleteParticipant(Participant participant)
     {
-        var confirm = await DialogService.ShowMessageBox(
+        var confirm = await DialogService.ShowMessageBoxAsync(
             "Delete Participant",
             $"Are you sure you want to delete participant '{participant.Name}'? This action cannot be undone.",
             yesText: "Delete",
@@ -769,7 +769,7 @@
 
     private async Task DeleteCalculation(string fieldName)
     {
-        var confirm = await DialogService.ShowMessageBox(
+        var confirm = await DialogService.ShowMessageBoxAsync(
             "Delete Calculation",
             $"Are you sure you want to delete the calculation '{fieldName}'? This action cannot be undone.",
             yesText: "Delete",
