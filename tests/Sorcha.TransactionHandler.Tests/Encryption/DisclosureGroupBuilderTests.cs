@@ -21,9 +21,38 @@ public class DisclosureGroupBuilderTests
     #region Identical fields → single group
 
     [Fact]
-    public void BuildGroups_IdenticalFields_ReturnsOneGroup()
+    public void BuildGroups_IdenticalFieldsAndValues_ReturnsOneGroup()
     {
-        // Arrange — 3 recipients all get fields ["name", "amount"]
+        // Arrange — 3 recipients all get identical fields AND values (homogeneous disclosure)
+        var disclosedPayloads = new Dictionary<string, Dictionary<string, object>>
+        {
+            ["ws1qalice"] = new() { ["name"] = "SharedDoc", ["amount"] = 100 },
+            ["ws1qbob"] = new() { ["name"] = "SharedDoc", ["amount"] = 100 },
+            ["ws1qcarol"] = new() { ["name"] = "SharedDoc", ["amount"] = 100 }
+        };
+
+        var recipients = new[]
+        {
+            CreateRecipient("ws1qalice"),
+            CreateRecipient("ws1qbob"),
+            CreateRecipient("ws1qcarol")
+        };
+
+        // Act
+        var result = _sut.BuildGroups(disclosedPayloads, recipients);
+
+        // Assert — same fields + same values = one group
+        result.Should().HaveCount(1);
+        result[0].Recipients.Should().HaveCount(3);
+        result[0].DisclosedFields.Should().BeEquivalentTo(new[] { "amount", "name" },
+            options => options.WithStrictOrdering(),
+            because: "fields must be sorted alphabetically");
+    }
+
+    [Fact]
+    public void BuildGroups_IdenticalFieldsDifferentValues_ReturnsSeparateGroups()
+    {
+        // Arrange — 3 recipients with same field names but different values (personalized disclosure)
         var disclosedPayloads = new Dictionary<string, Dictionary<string, object>>
         {
             ["ws1qalice"] = new() { ["name"] = "Alice", ["amount"] = 100 },
@@ -41,12 +70,9 @@ public class DisclosureGroupBuilderTests
         // Act
         var result = _sut.BuildGroups(disclosedPayloads, recipients);
 
-        // Assert
-        result.Should().HaveCount(1);
-        result[0].Recipients.Should().HaveCount(3);
-        result[0].DisclosedFields.Should().BeEquivalentTo(new[] { "amount", "name" },
-            options => options.WithStrictOrdering(),
-            because: "fields must be sorted alphabetically");
+        // Assert — same fields but different values = separate groups (no data crossover)
+        result.Should().HaveCount(3);
+        result.SelectMany(g => g.Recipients).Should().HaveCount(3);
     }
 
     #endregion
@@ -111,9 +137,33 @@ public class DisclosureGroupBuilderTests
     #region Deterministic GroupId
 
     [Fact]
-    public void BuildGroups_DeterministicGroupId()
+    public void BuildGroups_DeterministicGroupId_SameFieldsSameValues()
     {
-        // Arrange — same fields in different order should produce same GroupId
+        // Arrange — same fields + same values in different dictionary order → same GroupId
+        var disclosedPayloads1 = new Dictionary<string, Dictionary<string, object>>
+        {
+            ["ws1qalice"] = new() { ["zebra"] = 1, ["alpha"] = 2, ["middle"] = 3 }
+        };
+        var disclosedPayloads2 = new Dictionary<string, Dictionary<string, object>>
+        {
+            ["ws1qbob"] = new() { ["alpha"] = 2, ["middle"] = 3, ["zebra"] = 1 }
+        };
+
+        var recipients1 = new[] { CreateRecipient("ws1qalice") };
+        var recipients2 = new[] { CreateRecipient("ws1qbob") };
+
+        // Act
+        var result1 = _sut.BuildGroups(disclosedPayloads1, recipients1);
+        var result2 = _sut.BuildGroups(disclosedPayloads2, recipients2);
+
+        // Assert — identical fields + values → same GroupId regardless of insertion order
+        result1[0].GroupId.Should().Be(result2[0].GroupId);
+    }
+
+    [Fact]
+    public void BuildGroups_DeterministicGroupId_SameFieldsDifferentValues()
+    {
+        // Arrange — same fields but different values → different GroupId
         var disclosedPayloads1 = new Dictionary<string, Dictionary<string, object>>
         {
             ["ws1qalice"] = new() { ["zebra"] = 1, ["alpha"] = 2, ["middle"] = 3 }
@@ -130,8 +180,8 @@ public class DisclosureGroupBuilderTests
         var result1 = _sut.BuildGroups(disclosedPayloads1, recipients1);
         var result2 = _sut.BuildGroups(disclosedPayloads2, recipients2);
 
-        // Assert — both produce the same GroupId since field names (sorted) are identical
-        result1[0].GroupId.Should().Be(result2[0].GroupId);
+        // Assert — same fields but different values → different GroupId
+        result1[0].GroupId.Should().NotBe(result2[0].GroupId);
     }
 
     #endregion
@@ -142,15 +192,15 @@ public class DisclosureGroupBuilderTests
     public void BuildGroups_MixedGroups()
     {
         // Arrange — 5 recipients across 2 distinct field sets
-        // Group A: ["amount", "name"] → 3 members
-        // Group B: ["name", "ssn"]   → 2 members
+        // Group A: ["amount", "name"] with identical values → 3 members
+        // Group B: ["name", "ssn"] with identical values   → 2 members
         var disclosedPayloads = new Dictionary<string, Dictionary<string, object>>
         {
-            ["ws1q1"] = new() { ["name"] = "Alice", ["amount"] = 100 },
-            ["ws1q2"] = new() { ["name"] = "Bob", ["amount"] = 200 },
-            ["ws1q3"] = new() { ["name"] = "Carol", ["amount"] = 300 },
-            ["ws1q4"] = new() { ["name"] = "Dan", ["ssn"] = "111" },
-            ["ws1q5"] = new() { ["name"] = "Eve", ["ssn"] = "222" }
+            ["ws1q1"] = new() { ["name"] = "SharedReport", ["amount"] = 100 },
+            ["ws1q2"] = new() { ["name"] = "SharedReport", ["amount"] = 100 },
+            ["ws1q3"] = new() { ["name"] = "SharedReport", ["amount"] = 100 },
+            ["ws1q4"] = new() { ["name"] = "Confidential", ["ssn"] = "000-00-0000" },
+            ["ws1q5"] = new() { ["name"] = "Confidential", ["ssn"] = "000-00-0000" }
         };
 
         var recipients = new[]
@@ -165,7 +215,7 @@ public class DisclosureGroupBuilderTests
         // Act
         var result = _sut.BuildGroups(disclosedPayloads, recipients);
 
-        // Assert
+        // Assert — 2 groups: same fields + same values within each group
         result.Should().HaveCount(2);
 
         var groupA = result.First(g => g.DisclosedFields.Contains("amount"));

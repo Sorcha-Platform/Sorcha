@@ -310,7 +310,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
         _logger.LogWarning("Encryption operation {OperationId} failed: {Error}", operationId, error);
     }
 
-    private static async Task StoreActivityEventAsync(
+    private async Task StoreActivityEventAsync(
         IServiceProvider serviceProvider, EncryptionWorkItem workItem,
         string? txHash, bool success, string? error)
     {
@@ -339,9 +339,10 @@ public sealed class EncryptionBackgroundService : BackgroundService
 
             await eventService.CreateEventAsync(activityEvent);
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort: don't fail the pipeline if event storage fails
+            _logger.LogWarning(ex, "Failed to store activity event for operation {OperationId}", workItem.OperationId);
         }
     }
 }

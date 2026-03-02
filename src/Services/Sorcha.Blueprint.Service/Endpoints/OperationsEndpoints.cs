@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Claims;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -20,10 +21,21 @@ public static class OperationsEndpoints
             .WithTags("Operations")
             .RequireAuthorization();
 
-        group.MapGet("/{operationId}", async (string operationId, IEncryptionOperationStore store) =>
+        group.MapGet("/{operationId}", async (string operationId, IEncryptionOperationStore store, HttpContext httpContext) =>
         {
             var operation = await store.GetByIdAsync(operationId);
-            return operation is null ? Results.NotFound() : Results.Ok(operation);
+            if (operation is null) return Results.NotFound();
+
+            // Verify the requesting user owns this operation.
+            // The wallet address in the JWT (if present) must match the submitting wallet,
+            // or the user's sub claim must be present (service-to-service calls are trusted).
+            var walletClaim = httpContext.User.FindFirst("wallet_address")?.Value;
+            if (walletClaim != null && !string.Equals(walletClaim, operation.SubmittingWalletAddress, StringComparison.Ordinal))
+            {
+                return Results.Forbid();
+            }
+
+            return Results.Ok(operation);
         })
         .WithName("GetEncryptionOperation")
         .WithSummary("Get encryption operation status")

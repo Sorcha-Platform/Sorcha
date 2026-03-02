@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 using Sorcha.TransactionHandler.Encryption.Models;
 
@@ -46,8 +47,10 @@ public sealed class DisclosureGroupBuilder : IDisclosureGroupBuilder
             // Extract sorted field names
             var sortedFields = payload.Keys.OrderBy(k => k).ToArray();
 
-            // Compute deterministic group ID: SHA-256 hex of joined sorted field names
-            var groupId = ComputeGroupId(sortedFields);
+            // Compute deterministic group ID from field names AND payload content.
+            // This ensures recipients with identical field names but different values
+            // are placed in separate groups (no silent data crossover).
+            var groupId = ComputeGroupId(sortedFields, payload);
 
             if (groupMap.TryGetValue(groupId, out var existing))
             {
@@ -73,12 +76,17 @@ public sealed class DisclosureGroupBuilder : IDisclosureGroupBuilder
     }
 
     /// <summary>
-    /// Computes a deterministic SHA-256 hex hash of the sorted field names joined by "|".
+    /// Computes a deterministic SHA-256 hex hash of sorted field names AND their values.
+    /// This ensures recipients with the same field set but different values get separate groups.
     /// </summary>
-    private static string ComputeGroupId(string[] sortedFields)
+    private static string ComputeGroupId(string[] sortedFields, Dictionary<string, object> payload)
     {
-        var joined = string.Join("|", sortedFields);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(joined));
+        var fieldsPart = string.Join("|", sortedFields);
+        var valuesPart = JsonSerializer.Serialize(
+            sortedFields.Select(f => payload.TryGetValue(f, out var v) ? v : null),
+            new JsonSerializerOptions { WriteIndented = false });
+        var combined = $"{fieldsPart}\n{valuesPart}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

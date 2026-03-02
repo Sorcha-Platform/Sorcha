@@ -302,7 +302,7 @@ public class ActionExecutionService : IActionExecutionService
                         if (recipient == null) return null;
 
                         var fields = kvp.Value.Keys.OrderBy(k => k).ToArray();
-                        var groupId = ComputeGroupId(fields);
+                        var groupId = ComputeGroupId(fields, kvp.Value);
 
                         return new DisclosureGroup
                         {
@@ -343,6 +343,10 @@ public class ActionExecutionService : IActionExecutionService
                         PreviousTransactionId = accumulatedState.PreviousTransactionId,
                         DelegationToken = delegationToken
                     };
+
+                    // Store idempotency key BEFORE writing to channel to prevent duplicate submissions
+                    // if the client retries before the background service completes.
+                    await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, operation.OperationId, TimeSpan.FromHours(24));
 
                     await _encryptionChannel.Writer.WriteAsync(workItem, cancellationToken);
 
@@ -1350,12 +1354,16 @@ public class ActionExecutionService : IActionExecutionService
     }
 
     /// <summary>
-    /// Computes a deterministic group ID from sorted field names.
+    /// Computes a deterministic group ID from sorted field names and their values.
     /// </summary>
-    private static string ComputeGroupId(string[] sortedFields)
+    private static string ComputeGroupId(string[] sortedFields, Dictionary<string, object> payload)
     {
-        var input = string.Join("|", sortedFields);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        var fieldsPart = string.Join("|", sortedFields);
+        var valuesPart = System.Text.Json.JsonSerializer.Serialize(
+            sortedFields.Select(f => payload.TryGetValue(f, out var v) ? v : null),
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+        var combined = $"{fieldsPart}\n{valuesPart}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
