@@ -172,7 +172,7 @@
   "settings.connections.activate": "Aktivieren",
   "settings.connections.activatedSuccess": "Profil aktiviert: {0}",
   "settings.connections.deleteTitle": "Profil löschen",
-  "settings.connections.deleteConfirm": "Sind Sie sicher, dass Sie das Profil „{0}" löschen möchten?",
+  "settings.connections.deleteConfirm": "Sind Sie sicher, dass Sie das Profil \u201E{0}\u201C löschen möchten?",
   "settings.connections.deletedSuccess": "Profil gelöscht: {0}",
   "settings.connections.cannotDelete": "Dieses Profil kann nicht gelöscht werden",
   "settings.connections.profile": "Profil",

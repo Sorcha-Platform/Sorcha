@@ -214,7 +214,14 @@
             await Loc.InitializeAsync();
 
             EventsHub.OnUnreadCountUpdated += OnUnreadCountUpdated;
-            await EventsHub.ConnectAsync();
+            try
+            {
+                await EventsHub.ConnectAsync();
+            }
+            catch (Exception)
+            {
+                // Hub may be unavailable — SignalR will auto-reconnect
+            }
 
             StateHasChanged();
         }
