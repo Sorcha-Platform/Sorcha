@@ -7,6 +7,7 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.TransactionHandler.Core;
+using Sorcha.TransactionHandler.Encryption.Models;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
@@ -134,6 +135,84 @@ public static class TransactionBuilderServiceExtensions
 
         // Serialize with canonical options for deterministic hashing.
         // UnsafeRelaxedJsonEscaping ensures '+' in timestamps/base64 is not escaped to \u002B,
+        // which would cause hash mismatches after HTTP/Redis round-trips.
+        var transactionData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(transactionPayload, CanonicalJsonOptions);
+
+        // Generate TxId as SHA-256 hash of canonical transaction data (64 hex chars)
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(transactionData);
+        var txId = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        // PayloadHash = SHA-256 of canonical JSON — same bytes as TxId since we serialize once
+        // with deterministic options. The Validator re-canonicalizes with the same options to verify.
+        var payloadHash = txId;
+
+        return Task.FromResult(new BuiltTransaction
+        {
+            TransactionData = transactionData,
+            TxId = txId,
+            PayloadHash = payloadHash,
+            RegisterId = instance.RegisterId,
+            Metadata = metadata
+        });
+    }
+
+    /// <summary>
+    /// Builds an action transaction with encrypted payloads.
+    /// Serializes encrypted payload groups into transaction data for signing and submission.
+    /// Used when the encryption pipeline has pre-encrypted the disclosed payloads.
+    /// </summary>
+    public static Task<BuiltTransaction> BuildEncryptedActionTransactionAsync(
+        this ITransactionBuilderService service,
+        BlueprintModel blueprint,
+        Instance instance,
+        ActionModel action,
+        Dictionary<string, object> payloadData,
+        EncryptedPayloadGroup[] encryptedGroups,
+        string? previousTransactionId,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["blueprintId"] = blueprint.Id,
+            ["actionId"] = action.Id,
+            ["instanceId"] = instance.Id,
+            ["previousTxId"] = previousTransactionId ?? ""
+        };
+
+        // Serialize encrypted groups into a JSON-friendly representation.
+        // byte[] fields are Base64-encoded since JSON cannot hold raw binary.
+        var serializedGroups = encryptedGroups.Select(g => new
+        {
+            groupId = g.GroupId,
+            disclosedFields = g.DisclosedFields,
+            ciphertext = Convert.ToBase64String(g.Ciphertext),
+            nonce = Convert.ToBase64String(g.Nonce),
+            plaintextHash = Convert.ToBase64String(g.PlaintextHash),
+            encryptionAlgorithm = g.EncryptionAlgorithm.ToString(),
+            wrappedKeys = g.WrappedKeys.Select(wk => new
+            {
+                walletAddress = wk.WalletAddress,
+                encryptedKey = Convert.ToBase64String(wk.EncryptedKey),
+                algorithm = wk.Algorithm.ToString()
+            }).ToArray()
+        }).ToArray();
+
+        // Build transaction payload with encrypted payloads instead of plaintext.
+        // The "contentEncoding" field distinguishes encrypted from plaintext transactions.
+        var transactionPayload = new
+        {
+            type = "action",
+            contentEncoding = "encrypted",
+            blueprintId = blueprint.Id,
+            actionId = action.Id,
+            instanceId = instance.Id,
+            previousTxId = previousTransactionId,
+            timestamp = DateTimeOffset.UtcNow,
+            encryptedPayloads = serializedGroups
+        };
+
+        // Serialize with canonical options for deterministic hashing.
+        // UnsafeRelaxedJsonEscaping ensures '+' in base64 is not escaped to \u002B,
         // which would cause hash mismatches after HTTP/Redis round-trips.
         var transactionData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(transactionPayload, CanonicalJsonOptions);
 

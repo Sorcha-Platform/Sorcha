@@ -6,9 +6,11 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
+using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Interfaces;
@@ -18,9 +20,13 @@ using Sorcha.Blueprint.Service.Models.Requests;
 using Sorcha.Blueprint.Service.Models.Responses;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.Cryptography.Enums;
+using Sorcha.TransactionHandler.Encryption;
+using Sorcha.TransactionHandler.Encryption.Models;
 using Microsoft.Extensions.Options;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using EncryptionOpStatus = Sorcha.Blueprint.Service.Models.EncryptionOperationStatus;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -42,6 +48,10 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IExecutionEngine _executionEngine;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly IStatusListManager? _statusListManager;
+    private readonly IEncryptionPipelineService? _encryptionPipeline;
+    private readonly IDisclosureGroupBuilder? _disclosureGroupBuilder;
+    private readonly Channel<EncryptionWorkItem>? _encryptionChannel;
+    private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly ILogger<ActionExecutionService> _logger;
@@ -62,7 +72,11 @@ public class ActionExecutionService : IActionExecutionService
         ILogger<ActionExecutionService> logger,
         ICredentialVerifier? credentialVerifier = null,
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
-        IStatusListManager? statusListManager = null)
+        IStatusListManager? statusListManager = null,
+        IEncryptionPipelineService? encryptionPipeline = null,
+        IDisclosureGroupBuilder? disclosureGroupBuilder = null,
+        Channel<EncryptionWorkItem>? encryptionChannel = null,
+        IEncryptionOperationStore? encryptionOperationStore = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -79,6 +93,10 @@ public class ActionExecutionService : IActionExecutionService
         _credentialVerifier = credentialVerifier;
         _confirmationOptions = confirmationOptions?.Value ?? new TransactionConfirmationOptions();
         _statusListManager = statusListManager;
+        _encryptionPipeline = encryptionPipeline;
+        _disclosureGroupBuilder = disclosureGroupBuilder;
+        _encryptionChannel = encryptionChannel;
+        _encryptionOperationStore = encryptionOperationStore;
     }
 
     /// <inheritdoc/>
@@ -255,7 +273,119 @@ public class ActionExecutionService : IActionExecutionService
             disclosedPayloads[request.SenderWallet] = payloadWithCalculations;
         }
 
-        // 9b. Issue credential if action has issuance configuration
+        // 9c. Encrypt disclosed payloads (envelope encryption)
+        EncryptionResult? encryptionResult = null;
+        DisclosureGroup[]? disclosureGroups = null;
+        if (_encryptionPipeline != null && disclosedPayloads.Count > 0)
+        {
+            // US4: Automatic register resolution with external key override
+            var (recipients, resolveError) = await ResolveRecipientKeysAsync(
+                disclosedPayloads.Keys, request.ExternalRecipientKeys, instance.RegisterId, cancellationToken);
+            if (resolveError != null)
+            {
+                throw new InvalidOperationException(resolveError);
+            }
+
+            if (recipients.Length > 0)
+            {
+                // US2: DisclosureGroupBuilder groups recipients with identical field sets
+                if (_disclosureGroupBuilder != null)
+                {
+                    disclosureGroups = _disclosureGroupBuilder.BuildGroups(disclosedPayloads, recipients);
+                }
+                else
+                {
+                    // Fallback: build simple disclosure groups (one per wallet)
+                    disclosureGroups = disclosedPayloads.Select(kvp =>
+                    {
+                        var recipient = recipients.FirstOrDefault(r => r.WalletAddress == kvp.Key);
+                        if (recipient == null) return null;
+
+                        var fields = kvp.Value.Keys.OrderBy(k => k).ToArray();
+                        var groupId = ComputeGroupId(fields, kvp.Value);
+
+                        return new DisclosureGroup
+                        {
+                            GroupId = groupId,
+                            DisclosedFields = fields,
+                            FilteredPayload = kvp.Value,
+                            Recipients = [recipient]
+                        };
+                    }).Where(g => g != null).ToArray()!;
+                }
+
+                // Async path: offload encryption to background service when channel is available
+                if (_encryptionChannel != null && _encryptionOperationStore != null && disclosureGroups!.Length > 0)
+                {
+                    var operation = await _encryptionOperationStore.CreateAsync(new EncryptionOperation
+                    {
+                        OperationId = Guid.NewGuid().ToString("N"),
+                        BlueprintId = instance.BlueprintId,
+                        ActionId = actionId.ToString(),
+                        InstanceId = instanceId,
+                        SubmittingWalletAddress = request.SenderWallet,
+                        TotalRecipients = recipients.Length,
+                        TotalGroups = disclosureGroups.Length,
+                        TotalSteps = 4
+                    });
+
+                    var workItem = new EncryptionWorkItem
+                    {
+                        OperationId = operation.OperationId,
+                        InstanceId = instanceId,
+                        BlueprintId = instance.BlueprintId,
+                        ActionId = actionId,
+                        SenderWallet = request.SenderWallet,
+                        RegisterId = instance.RegisterId,
+                        DisclosureGroups = disclosureGroups!,
+                        PayloadWithCalculations = payloadWithCalculations,
+                        DisclosedPayloads = disclosedPayloads,
+                        PreviousTransactionId = accumulatedState.PreviousTransactionId,
+                        DelegationToken = delegationToken
+                    };
+
+                    // Store idempotency key BEFORE writing to channel to prevent duplicate submissions
+                    // if the client retries before the background service completes.
+                    await _actionStore.StoreIdempotencyKeyAsync(idempotencyKey, operation.OperationId, TimeSpan.FromHours(24));
+
+                    await _encryptionChannel.Writer.WriteAsync(workItem, cancellationToken);
+
+                    _logger.LogInformation(
+                        "Encryption offloaded to background service. OperationId: {OperationId}",
+                        operation.OperationId);
+
+                    // Return HTTP 202 with operationId for async tracking
+                    return new ActionSubmissionResponse
+                    {
+                        TransactionId = string.Empty, // Will be filled by background service
+                        InstanceId = instanceId,
+                        OperationId = operation.OperationId,
+                        IsAsync = true,
+                        NextActions = [],
+                        IsComplete = false
+                    };
+                }
+
+                // Synchronous fallback (channel not injected, e.g. in tests)
+                encryptionResult = await _encryptionPipeline.EncryptDisclosedPayloadsAsync(disclosureGroups!, cancellationToken);
+
+                if (!encryptionResult.Success)
+                {
+                    throw new InvalidOperationException(
+                        $"Encryption failed for recipient {encryptionResult.FailedRecipient}: {encryptionResult.Error}");
+                }
+
+                if (encryptionResult.SkippedRecipients.Count > 0)
+                {
+                    _logger.LogWarning(
+                        "Skipped {Count} recipients during encryption (key not resolved): {Recipients}",
+                        encryptionResult.SkippedRecipients.Count,
+                        string.Join(", ", encryptionResult.SkippedRecipients));
+                }
+            }
+        }
+
+        // 9d. Issue credential if action has issuance configuration
         CredentialIssuanceResult? issuedCredential = null;
         if (actionDef.CredentialIssuanceConfig != null)
         {
@@ -263,15 +393,28 @@ public class ActionExecutionService : IActionExecutionService
                 actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
         }
 
-        // 10. Build transaction (include calculated values in payload for state reconstruction)
-        var transaction = await _transactionBuilder.BuildActionTransactionAsync(
-            blueprint,
-            instance,
-            actionDef,
-            payloadWithCalculations,
-            disclosedPayloads,
-            accumulatedState.PreviousTransactionId,
-            cancellationToken);
+        // 10. Build transaction
+        BuiltTransaction transaction;
+        if (encryptionResult?.Success == true && encryptionResult.Groups.Length > 0)
+        {
+            // Build with encrypted payloads (no plaintext on ledger)
+            transaction = await _transactionBuilder.BuildEncryptedActionTransactionAsync(
+                blueprint, instance, actionDef,
+                payloadWithCalculations,
+                encryptionResult.Groups,
+                accumulatedState.PreviousTransactionId,
+                cancellationToken);
+        }
+        else
+        {
+            // Legacy plaintext path (no encryption pipeline or empty payload)
+            transaction = await _transactionBuilder.BuildActionTransactionAsync(
+                blueprint, instance, actionDef,
+                payloadWithCalculations,
+                disclosedPayloads,
+                accumulatedState.PreviousTransactionId,
+                cancellationToken);
+        }
 
         // 10b. Add credential issuance metadata to transaction (T061)
         if (issuedCredential != null)
@@ -1108,6 +1251,120 @@ public class ActionExecutionService : IActionExecutionService
         var txIdSource = Encoding.UTF8.GetBytes($"blueprint-publish-{registerId}-{blueprintId}");
         var hash = SHA256.HashData(txIdSource);
         return Convert.ToHexStringLower(hash);
+    }
+
+    /// <summary>
+    /// Resolves recipient public keys from external keys and register (US4: Automatic register resolution with external key override).
+    /// External keys take precedence over register-published keys per FR-010.
+    /// Revoked participants cause a hard failure. Not-found wallets without external keys are skipped with a warning.
+    /// </summary>
+    private async Task<(RecipientInfo[] Recipients, string? Error)> ResolveRecipientKeysAsync(
+        IEnumerable<string> walletAddresses,
+        Dictionary<string, ExternalKeyInfo>? externalKeys,
+        string registerId,
+        CancellationToken cancellationToken)
+    {
+        var allWallets = walletAddresses.ToList();
+        var recipients = new List<RecipientInfo>();
+        var skippedRecipients = new List<string>();
+
+        // Step 1: Resolve external keys first (they take precedence per FR-010)
+        var externallyResolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (externalKeys != null && externalKeys.Count > 0)
+        {
+            foreach (var wallet in allWallets)
+            {
+                if (externalKeys.TryGetValue(wallet, out var keyInfo))
+                {
+                    if (!Enum.TryParse<WalletNetworks>(keyInfo.Algorithm, ignoreCase: true, out var algorithm))
+                    {
+                        continue; // Skip unrecognized algorithms
+                    }
+
+                    recipients.Add(new RecipientInfo
+                    {
+                        WalletAddress = wallet,
+                        PublicKey = Convert.FromBase64String(keyInfo.PublicKey),
+                        Algorithm = algorithm,
+                        Source = KeySource.External
+                    });
+                    externallyResolved.Add(wallet);
+                }
+            }
+        }
+
+        // Step 2: Collect wallets that still need resolution from the register
+        var walletsNeedingResolution = allWallets
+            .Where(w => !externallyResolved.Contains(w))
+            .ToArray();
+
+        if (walletsNeedingResolution.Length > 0)
+        {
+            // Step 3: Batch resolve from register
+            var batchRequest = new BatchPublicKeyRequest
+            {
+                WalletAddresses = walletsNeedingResolution
+            };
+
+            var batchResponse = await _registerClient.ResolvePublicKeysBatchAsync(
+                registerId, batchRequest, cancellationToken);
+
+            // Step 4: Handle revoked participants — hard failure
+            if (batchResponse.Revoked.Length > 0)
+            {
+                var revokedList = string.Join(", ", batchResponse.Revoked);
+                return ([], $"Recipient {revokedList} has been revoked and cannot receive encrypted payloads");
+            }
+
+            // Step 5: Add resolved keys from register
+            foreach (var (wallet, resolution) in batchResponse.Resolved)
+            {
+                if (!Enum.TryParse<WalletNetworks>(resolution.Algorithm, ignoreCase: true, out var algorithm))
+                {
+                    _logger.LogWarning(
+                        "Unrecognized algorithm '{Algorithm}' for wallet {Wallet} from register — skipping",
+                        resolution.Algorithm, wallet);
+                    skippedRecipients.Add(wallet);
+                    continue;
+                }
+
+                recipients.Add(new RecipientInfo
+                {
+                    WalletAddress = wallet,
+                    PublicKey = Convert.FromBase64String(resolution.PublicKey),
+                    Algorithm = algorithm,
+                    Source = KeySource.Register
+                });
+            }
+
+            // Step 6: Handle not-found wallets — skip with warning
+            if (batchResponse.NotFound.Length > 0)
+            {
+                foreach (var wallet in batchResponse.NotFound)
+                {
+                    _logger.LogWarning(
+                        "Public key not found on register for wallet {Wallet} — recipient skipped (no external key provided)",
+                        wallet);
+                    skippedRecipients.Add(wallet);
+                }
+            }
+        }
+
+        return (recipients.ToArray(), null);
+    }
+
+    /// <summary>
+    /// Computes a deterministic group ID from sorted field names and their values.
+    /// </summary>
+    private static string ComputeGroupId(string[] sortedFields, Dictionary<string, object> payload)
+    {
+        var fieldsPart = string.Join("|", sortedFields);
+        var valuesPart = System.Text.Json.JsonSerializer.Serialize(
+            sortedFields.Select(f => payload.TryGetValue(f, out var v) ? v : null),
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+        var combined = $"{fieldsPart}\n{valuesPart}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }
 

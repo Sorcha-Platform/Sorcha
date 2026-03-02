@@ -295,6 +295,18 @@ public interface IRegisterServiceClient
         string? algorithm = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Batch resolves public keys for multiple wallet addresses
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="request">Batch request with wallet addresses and optional algorithm filter</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Batch response with resolved, not-found, and revoked addresses</returns>
+    Task<Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse> ResolvePublicKeysBatchAsync(
+        string registerId,
+        Sorcha.ServiceClients.Register.Models.BatchPublicKeyRequest request,
+        CancellationToken cancellationToken = default);
+
     // =========================================================================
     // Register Management (All Services)
     // =========================================================================

@@ -3,6 +3,7 @@
 
 using Microsoft.AspNetCore.SignalR;
 using Sorcha.Blueprint.Service.Hubs;
+using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
@@ -209,6 +210,84 @@ public class NotificationService : INotificationService
             _logger.LogError(ex,
                 "Failed to send WorkflowCompleted notification for instance {InstanceId}",
                 instanceId);
+        }
+    }
+
+    /// <summary>
+    /// Notify a wallet about encryption progress.
+    /// </summary>
+    public async Task NotifyEncryptionProgressAsync(
+        string walletAddress, EncryptionProgressNotification notification, CancellationToken ct = default)
+    {
+        try
+        {
+            var groupName = GetWalletGroupName(walletAddress);
+
+            await _hubContext.Clients
+                .Group(groupName)
+                .SendAsync("EncryptionProgress", notification, ct);
+
+            _logger.LogDebug(
+                "Sent EncryptionProgress to wallet {Wallet}. Step: {Step}/{Total} ({Percent}%)",
+                walletAddress, notification.Step, notification.TotalSteps, notification.PercentComplete);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionProgress notification to wallet {Wallet}",
+                walletAddress);
+        }
+    }
+
+    /// <summary>
+    /// Notify a wallet that encryption completed successfully.
+    /// </summary>
+    public async Task NotifyEncryptionCompleteAsync(
+        string walletAddress, EncryptionCompleteNotification notification, CancellationToken ct = default)
+    {
+        try
+        {
+            var groupName = GetWalletGroupName(walletAddress);
+
+            await _hubContext.Clients
+                .Group(groupName)
+                .SendAsync("EncryptionComplete", notification, ct);
+
+            _logger.LogInformation(
+                "Sent EncryptionComplete to wallet {Wallet}. Operation: {OperationId}, TxHash: {TxHash}",
+                walletAddress, notification.OperationId, notification.TransactionHash);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionComplete notification to wallet {Wallet}",
+                walletAddress);
+        }
+    }
+
+    /// <summary>
+    /// Notify a wallet that encryption failed.
+    /// </summary>
+    public async Task NotifyEncryptionFailedAsync(
+        string walletAddress, EncryptionFailedNotification notification, CancellationToken ct = default)
+    {
+        try
+        {
+            var groupName = GetWalletGroupName(walletAddress);
+
+            await _hubContext.Clients
+                .Group(groupName)
+                .SendAsync("EncryptionFailed", notification, ct);
+
+            _logger.LogWarning(
+                "Sent EncryptionFailed to wallet {Wallet}. Operation: {OperationId}, Error: {Error}",
+                walletAddress, notification.OperationId, notification.Error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionFailed notification to wallet {Wallet}",
+                walletAddress);
         }
     }
 

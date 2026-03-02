@@ -1089,6 +1089,54 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     // =========================================================================
+    // Batch Public Key Resolution
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse> ResolvePublicKeysBatchAsync(
+        string registerId,
+        Sorcha.ServiceClients.Register.Models.BatchPublicKeyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Batch resolving {Count} public keys from register {RegisterId}",
+                request.WalletAddresses.Length, registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/participants/resolve-public-keys",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Batch public key resolution failed for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse();
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse>(
+                JsonOptions, cancellationToken);
+            return result ?? new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse();
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error during batch public key resolution for register {RegisterId}", registerId);
+            return new Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to batch resolve public keys for register {RegisterId}", registerId);
+            throw;
+        }
+    }
+
+    // =========================================================================
     // Internal DTOs
     // =========================================================================
 

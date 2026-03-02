@@ -1,0 +1,112 @@
+# Register Service — Batch Public Key Resolution
+# New endpoint for resolving multiple recipient public keys in a single request
+
+openapi: 3.1.0
+info:
+  title: Register Service - Batch Public Key Resolution
+  version: 1.0.0
+
+paths:
+  /api/registers/{registerId}/participants/resolve-public-keys:
+    post:
+      operationId: ResolvePublicKeysBatch
+      summary: Resolve public keys for multiple wallet addresses
+      description: |
+        Returns public keys for encryption. Handles mixed results:
+        some addresses may resolve, some may not be found, some may be revoked.
+        Maximum 200 addresses per request.
+      tags:
+        - Participants
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchPublicKeyRequest'
+      responses:
+        '200':
+          description: Batch resolution results (may contain mixed outcomes)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchPublicKeyResponse'
+        '400':
+          description: Invalid request (empty array, >200 addresses)
+        '401':
+          description: Unauthorized
+        '404':
+          description: Register not found
+
+components:
+  schemas:
+    BatchPublicKeyRequest:
+      type: object
+      required:
+        - walletAddresses
+      properties:
+        walletAddresses:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 200
+          description: Wallet addresses to resolve
+        algorithm:
+          type: string
+          nullable: true
+          description: Optional algorithm filter (e.g., ED25519, NISTP256)
+
+    BatchPublicKeyResponse:
+      type: object
+      required:
+        - resolved
+        - notFound
+        - revoked
+      properties:
+        resolved:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PublicKeyResolution'
+          description: Map of wallet address to resolved public key info
+        notFound:
+          type: array
+          items:
+            type: string
+          description: Wallet addresses with no published participant record
+        revoked:
+          type: array
+          items:
+            type: string
+          description: Wallet addresses whose participant record is revoked
+
+    PublicKeyResolution:
+      type: object
+      required:
+        - participantId
+        - participantName
+        - walletAddress
+        - publicKey
+        - algorithm
+        - status
+      properties:
+        participantId:
+          type: string
+        participantName:
+          type: string
+        walletAddress:
+          type: string
+        publicKey:
+          type: string
+          description: Base64-encoded public key bytes
+        algorithm:
+          type: string
+          description: Algorithm identifier (ED25519, NISTP256, RSA4096, ML_KEM_768)
+        status:
+          type: string
+          description: Participant status (Active, Revoked)

@@ -63,6 +63,20 @@ builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.ICryptoModule, Sorcha.
 builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
 builder.Services.AddScoped<Sorcha.Cryptography.Interfaces.ISymmetricCrypto, Sorcha.Cryptography.Core.SymmetricCrypto>();
 
+// Add Encryption pipeline services (045-encrypted-payload-integration)
+builder.Services.AddScoped<Sorcha.TransactionHandler.Encryption.IEncryptionPipelineService, Sorcha.TransactionHandler.Encryption.EncryptionPipelineService>();
+builder.Services.AddSingleton<Sorcha.TransactionHandler.Encryption.IDisclosureGroupBuilder, Sorcha.TransactionHandler.Encryption.DisclosureGroupBuilder>();
+
+// Encryption async pipeline - background processing with SignalR notifications (045 Phase 7)
+builder.Services.AddSingleton(System.Threading.Channels.Channel.CreateBounded<Sorcha.Blueprint.Service.Models.EncryptionWorkItem>(
+    new System.Threading.Channels.BoundedChannelOptions(100)
+    {
+        FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait
+    }));
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.IEncryptionOperationStore,
+    Sorcha.Blueprint.Service.Services.Implementation.InMemoryEncryptionOperationStore>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EncryptionBackgroundService>();
+
 // Add transaction confirmation options
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.TransactionConfirmationOptions.SectionName));
@@ -104,6 +118,10 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
     Sorcha.Blueprint.Service.Services.Implementation.StateReconstructionService>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
+
+// Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
+    Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
 
 // Add Activity Events PostgreSQL context (043)
 builder.Services.AddDbContext<Sorcha.Blueprint.Service.Data.BlueprintEventsDbContext>(options =>
@@ -266,6 +284,9 @@ app.MapHub<Sorcha.Blueprint.Service.Hubs.EventsHub>("/hubs/events").RequireAutho
 
 // Map Activity Events endpoints (043)
 app.MapEventEndpoints();
+
+// Map Operations endpoints (045 Phase 7 - async encryption status)
+app.MapOperationsEndpoints();
 
 // ===========================
 // Blueprint CRUD Endpoints

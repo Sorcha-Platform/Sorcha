@@ -1,0 +1,57 @@
+# Validator Service — Transaction Size Enforcement
+# Fix: Enforce the existing MaxTransactionSizeBytes config (raised to 4MB default)
+
+openapi: 3.1.0
+info:
+  title: Validator Service - Transaction Size Enforcement
+  version: 1.0.0
+
+paths:
+  /api/transactions:
+    post:
+      operationId: SubmitTransaction
+      summary: Submit a transaction for validation
+      description: |
+        Existing endpoint — now enforces configurable maximum transaction size.
+        Default: 4MB. Configurable via TransactionReceiver:MaxTransactionSizeBytes.
+      responses:
+        '200':
+          description: Transaction accepted
+        '413':
+          description: Transaction exceeds maximum size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionSizeError'
+
+components:
+  schemas:
+    TransactionSizeError:
+      type: object
+      required:
+        - error
+        - code
+        - actualSize
+        - maxSize
+      properties:
+        error:
+          type: string
+          example: Transaction exceeds maximum size limit
+        code:
+          type: string
+          example: TRANSACTION_TOO_LARGE
+        actualSize:
+          type: integer
+          description: Actual transaction size in bytes
+          example: 5242880
+        maxSize:
+          type: integer
+          description: Configured maximum size in bytes
+          example: 4194304
+
+# Configuration (appsettings.json):
+# {
+#   "TransactionReceiver": {
+#     "MaxTransactionSizeBytes": 4194304  // 4MB default, configurable per deployment
+#   }
+# }

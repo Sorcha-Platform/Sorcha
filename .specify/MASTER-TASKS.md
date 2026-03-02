@@ -233,6 +233,30 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 
 ---
 
+## 045 — Encrypted Payload Integration
+
+> **Priority:** P0 (Security)
+> **Status:** ✅ Complete
+> **Branch:** `045-encrypted-payload-integration`
+> **Spec:** [specs/045-encrypted-payload-integration/](../specs/045-encrypted-payload-integration/)
+
+Envelope encryption for action transaction payloads — XChaCha20-Poly1305 symmetric encryption with per-recipient asymmetric key wrapping, disclosure grouping, async pipeline with SignalR progress, and recipient decryption.
+
+| Phase | Description | Tasks | Status |
+|-------|-------------|-------|--------|
+| 1 | Setup (models, interfaces) | T001-T006 | ✅ |
+| 2 | Foundational (P-256 ECIES, ML-KEM fix, batch keys, size limits) | T007-T016 | ✅ |
+| 3 | US1: Core envelope encryption | T017-T026 | ✅ |
+| 4 | US2: Disclosure grouping | T027-T031 | ✅ |
+| 5 | US3: Algorithm completeness | T032-T035 | ✅ |
+| 6 | US4: Public key resolution | T036-T038 | ✅ |
+| 7 | US5: Async pipeline + SignalR | T039-T048 | ✅ |
+| 8 | US6: Pre-flight size estimation | T049-T052 | ✅ |
+| 9 | US7: Recipient decryption | T053-T058 | ✅ |
+| 10 | Polish (telemetry, docs, YARP) | T059-T067 | ✅ |
+
+---
+
 ## P0 — Transaction Pipeline Audit
 
 > **Priority:** P0 (MVD Blocker)

@@ -69,3 +69,44 @@ public class PublicKeyResolution
     public required string Algorithm { get; init; }
     public required string Status { get; init; }
 }
+
+/// <summary>
+/// Request for batch public key resolution (FR-008).
+/// </summary>
+public class BatchPublicKeyRequest
+{
+    /// <summary>Wallet addresses to resolve (1-200).</summary>
+    public required string[] WalletAddresses { get; init; }
+
+    /// <summary>Optional algorithm filter.</summary>
+    public string? Algorithm { get; init; }
+}
+
+/// <summary>
+/// Response from batch public key resolution.
+/// Handles mixed results: some found, some not found, some revoked.
+/// </summary>
+public class BatchPublicKeyResponse
+{
+    /// <summary>Successfully resolved keys (address → resolution).</summary>
+    public Dictionary<string, PublicKeyResolution> Resolved { get; init; } = new();
+
+    /// <summary>Addresses with no published participant record.</summary>
+    public string[] NotFound { get; init; } = [];
+
+    /// <summary>Addresses whose participant record is revoked.</summary>
+    public string[] Revoked { get; init; } = [];
+}
+
+/// <summary>
+/// Externally-provided public key for recipients not on the register.
+/// Used in action submission to bypass register lookup (FR-010).
+/// </summary>
+public class ExternalKeyInfo
+{
+    /// <summary>Base64-encoded public key.</summary>
+    public required string PublicKey { get; init; }
+
+    /// <summary>Algorithm identifier: ED25519, NISTP256, RSA4096, ML_KEM_768.</summary>
+    public required string Algorithm { get; init; }
+}

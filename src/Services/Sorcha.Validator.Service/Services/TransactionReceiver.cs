@@ -18,7 +18,7 @@ public class TransactionReceiver : ITransactionReceiver
 {
     private readonly IMemPoolManager _memPoolManager;
     private readonly IValidationEngine _validationEngine;
-    private readonly TransactionReceiverConfiguration _config;
+    private readonly IOptionsMonitor<TransactionReceiverConfiguration> _config;
     private readonly ILogger<TransactionReceiver> _logger;
 
     // Track known transaction hashes (for duplicate detection)
@@ -37,12 +37,12 @@ public class TransactionReceiver : ITransactionReceiver
     public TransactionReceiver(
         IMemPoolManager memPoolManager,
         IValidationEngine validationEngine,
-        IOptions<TransactionReceiverConfiguration> config,
+        IOptionsMonitor<TransactionReceiverConfiguration> config,
         ILogger<TransactionReceiver> logger)
     {
         _memPoolManager = memPoolManager ?? throw new ArgumentNullException(nameof(memPoolManager));
         _validationEngine = validationEngine ?? throw new ArgumentNullException(nameof(validationEngine));
-        _config = config?.Value ?? new TransactionReceiverConfiguration();
+        _config = config ?? throw new ArgumentNullException(nameof(config));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -79,6 +79,22 @@ public class TransactionReceiver : ITransactionReceiver
                 {
                     Accepted = false,
                     AlreadyKnown = true,
+                    ReceivedAt = receivedAt
+                };
+            }
+
+            // Enforce transaction size limit
+            if (transactionData.Length > _config.CurrentValue.MaxTransactionSizeBytes)
+            {
+                Interlocked.Increment(ref _totalRejected);
+                _logger.LogWarning(
+                    "Transaction {TransactionHash} from peer {PeerId} exceeds size limit ({Size} > {MaxSize} bytes)",
+                    transactionHash, senderPeerId, transactionData.Length, _config.CurrentValue.MaxTransactionSizeBytes);
+
+                return new TransactionReceptionResult
+                {
+                    Accepted = false,
+                    ValidationErrors = new[] { $"TRANSACTION_TOO_LARGE: Transaction size {transactionData.Length} bytes exceeds maximum {_config.CurrentValue.MaxTransactionSizeBytes} bytes" },
                     ReceivedAt = receivedAt
                 };
             }
@@ -290,18 +306,18 @@ public class TransactionReceiver : ITransactionReceiver
     {
         var now = DateTimeOffset.UtcNow;
 
-        if (now - _lastCleanup < _config.CleanupInterval)
+        if (now - _lastCleanup < _config.CurrentValue.CleanupInterval)
             return;
 
         lock (_cleanupLock)
         {
-            if (now - _lastCleanup < _config.CleanupInterval)
+            if (now - _lastCleanup < _config.CurrentValue.CleanupInterval)
                 return;
 
             _lastCleanup = now;
 
             // Remove expired entries
-            var cutoff = now - _config.KnownTransactionRetention;
+            var cutoff = now - _config.CurrentValue.KnownTransactionRetention;
             var toRemove = _knownTransactions
                 .Where(kvp => kvp.Value < cutoff)
                 .Select(kvp => kvp.Key)

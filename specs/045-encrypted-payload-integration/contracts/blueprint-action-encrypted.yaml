@@ -1,0 +1,201 @@
+# Blueprint Service — Encrypted Action Execution
+# Modified action submission to support async encryption with progress
+
+openapi: 3.1.0
+info:
+  title: Blueprint Service - Encrypted Action Execution
+  version: 1.0.0
+
+paths:
+  /api/blueprints/{blueprintId}/instances/{instanceId}/actions/{actionId}/execute:
+    post:
+      operationId: ExecuteAction
+      summary: Execute a blueprint action with encrypted payloads
+      description: |
+        Validates, calculates, routes, and discloses synchronously.
+        Returns immediately with an operation tracking ID.
+        Encryption and transaction submission happen asynchronously
+        with real-time SignalR progress notifications.
+      tags:
+        - Actions
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: actionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionExecutionRequest'
+      responses:
+        '202':
+          description: Action accepted, encryption in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionAcceptedResponse'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionValidationError'
+        '401':
+          description: Unauthorized
+        '413':
+          description: Estimated encrypted size exceeds transaction limit
+
+  /api/operations/{operationId}:
+    get:
+      operationId: GetEncryptionOperation
+      summary: Get encryption operation status
+      description: |
+        Returns current status of an async encryption operation.
+        Use for polling fallback when SignalR is unavailable.
+      tags:
+        - Operations
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Operation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncryptionOperationStatus'
+        '404':
+          description: Operation not found
+
+components:
+  schemas:
+    ActionExecutionRequest:
+      type: object
+      required:
+        - payload
+        - walletAddress
+      properties:
+        payload:
+          type: object
+          description: Action payload data
+        walletAddress:
+          type: string
+          description: Submitting participant's wallet address
+        externalRecipientKeys:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ExternalKeyInfo'
+          nullable: true
+          description: |
+            Optional map of wallet address to public key for recipients
+            not published on the register. Bypasses register lookup.
+
+    ExternalKeyInfo:
+      type: object
+      required:
+        - publicKey
+        - algorithm
+      properties:
+        publicKey:
+          type: string
+          description: Base64-encoded public key
+        algorithm:
+          type: string
+          enum: [ED25519, NISTP256, RSA4096, ML_KEM_768]
+
+    ActionAcceptedResponse:
+      type: object
+      required:
+        - operationId
+        - status
+        - message
+      properties:
+        operationId:
+          type: string
+          format: uuid
+          description: Unique tracking identifier for the encryption operation
+        status:
+          type: string
+          enum: [Accepted]
+        message:
+          type: string
+          description: Human-readable status message
+        totalRecipients:
+          type: integer
+          description: Number of recipients to encrypt for
+        totalGroups:
+          type: integer
+          description: Number of unique disclosure groups
+        estimatedSteps:
+          type: integer
+          description: Estimated total pipeline steps
+
+    ActionValidationError:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    EncryptionOperationStatus:
+      type: object
+      required:
+        - operationId
+        - status
+      properties:
+        operationId:
+          type: string
+        status:
+          type: string
+          enum: [Pending, ResolvingKeys, Encrypting, BuildingTransaction, Submitting, Complete, Failed]
+        currentStep:
+          type: integer
+        totalSteps:
+          type: integer
+        stepName:
+          type: string
+        percentComplete:
+          type: integer
+          minimum: 0
+          maximum: 100
+        transactionHash:
+          type: string
+          nullable: true
+          description: Transaction hash on success
+        error:
+          type: string
+          nullable: true
+          description: Error message on failure
+        failedRecipient:
+          type: string
+          nullable: true
+          description: Wallet address of failed recipient
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true

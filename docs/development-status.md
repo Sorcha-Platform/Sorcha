@@ -91,6 +91,20 @@ For detailed implementation status, see the individual section files:
 
 ## Recent Completions
 
+### 2026-03-02
+- **045-Encrypted-Payload-Integration** (67 tasks, 10 phases — envelope encryption for action transactions)
+  - **Envelope encryption**: XChaCha20-Poly1305 symmetric + per-recipient asymmetric key wrapping (ED25519, P-256, RSA-4096, ML-KEM-768)
+  - **Disclosure grouping**: DisclosureGroupBuilder optimizes M groups (by unique field set) instead of N per-recipient ciphertexts
+  - **Async pipeline**: Channel&lt;T&gt; + BackgroundService with 4-step progress (ResolvingKeys → Encrypting → BuildingTransaction → Submitting)
+  - **SignalR notifications**: EncryptionProgress, EncryptionComplete, EncryptionFailed events to wallet groups
+  - **Operations polling**: GET /api/operations/{operationId} fallback for clients without SignalR
+  - **Public key resolution**: Batch register lookup with external key override, revoked → hard fail, not-found → skip with warning
+  - **Pre-flight size estimation**: CheckSizeLimit with 4MB default, hot-reloadable via IOptionsMonitor
+  - **Recipient decryption**: TransactionRetrievalService unwraps key → decrypts → verifies SHA-256 integrity hash
+  - **Backward compatibility**: Legacy unencrypted transactions detected and returned as-is
+  - **OpenTelemetry**: ActivitySource traces on EncryptionPipelineService and EncryptionBackgroundService
+  - Test results: 44+ new tests across Blueprint Service and TransactionHandler
+
 ### 2026-02-26
 - **043-UI-CLI-Modernization** (66 tasks, 11 phases — UI polish and CLI expansion)
   - **Activity Log**: EventEntity + EventService + SignalR EventHub, ActivityLogPanel with bell icon notification badge, 49 endpoint/service tests

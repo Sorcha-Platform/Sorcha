@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Blueprint.Models.Credentials;
+using Sorcha.ServiceClients.Register.Models;
 
 namespace Sorcha.Blueprint.Service.Models.Requests;
 
@@ -50,6 +51,14 @@ public record ActionSubmissionRequest
     /// Required when the action has credential requirements defined.
     /// </summary>
     public List<CredentialPresentation>? CredentialPresentations { get; init; }
+
+    /// <summary>
+    /// Externally-provided public keys for recipients not on the register.
+    /// Maps wallet address to key info. Used to bypass register lookup (FR-010).
+    /// When null or empty, all recipient keys will be resolved from the register in US4.
+    /// For US1 MVP, this is the primary key source until automatic register resolution is implemented.
+    /// </summary>
+    public Dictionary<string, ExternalKeyInfo>? ExternalRecipientKeys { get; init; }
 
     /// <summary>
     /// Optional file attachments

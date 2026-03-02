@@ -115,17 +115,17 @@ public class PqcEncryptionFlowTests : IDisposable
 
         var plaintext = System.Text.Encoding.UTF8.GetBytes("CryptoModule ML-KEM test");
 
-        // Encrypt (produces KEM ciphertext only via CryptoModule.EncryptAsync)
+        // Encrypt (KEM encapsulation + XChaCha20-Poly1305 via CryptoModule.EncryptAsync)
         var encryptResult = await _cryptoModule.EncryptAsync(
             plaintext, (byte)WalletNetworks.ML_KEM_768, keyResult.Value.PublicKey.Key!);
         encryptResult.IsSuccess.Should().BeTrue();
 
-        // CryptoModule.EncryptAsync for ML-KEM returns the ciphertext only (no symmetric layer)
-        // Decapsulate returns shared secret (32 bytes)
-        var decapResult = await _cryptoModule.DecryptAsync(
+        // CryptoModule now uses EncryptWithKemAsync (KEM + XChaCha20-Poly1305)
+        // Decrypt should return the original plaintext
+        var decryptResult = await _cryptoModule.DecryptAsync(
             encryptResult.Value!, (byte)WalletNetworks.ML_KEM_768, keyResult.Value.PrivateKey.Key!);
-        decapResult.IsSuccess.Should().BeTrue();
-        decapResult.Value.Should().HaveCount(32, "ML-KEM shared secret is 32 bytes");
+        decryptResult.IsSuccess.Should().BeTrue();
+        decryptResult.Value.Should().BeEquivalentTo(plaintext, "decrypt should return original plaintext");
     }
 
     [Fact]
