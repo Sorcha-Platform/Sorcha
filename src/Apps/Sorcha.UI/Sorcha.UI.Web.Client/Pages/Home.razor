@@ -6,12 +6,14 @@
 @layout MainLayout
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Sorcha.UI.Core.Models.Dashboard
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Web.Client.Components.Layout
 @inject IDashboardService DashboardService
-@inject IUserPreferencesService UserPreferencesService
+@inject IWalletPreferenceService WalletPreferences
+@inject IWalletApiService WalletApi
 @inject NavigationManager Navigation
 
 <PageTitle>Dashboard - Sorcha</PageTitle>
@@ -34,7 +36,7 @@
             }
             else
             {
-            <MudText Typo="Typo.h4" Class="mb-4">Welcome back, @context.User.Identity?.Name!</MudText>
+            <MudText Typo="Typo.h4" Class="mb-4">Welcome back, @GetDisplayName(context)!</MudText>
 
             @* Stats Cards *@
             <MudGrid Class="mb-6">
@@ -205,16 +207,20 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var defaultWallet = await UserPreferencesService.GetDefaultWalletAsync();
-        _hasDefaultWallet = !string.IsNullOrEmpty(defaultWallet);
+        var wallets = await WalletApi.GetWalletsAsync();
+        var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
+        _hasDefaultWallet = defaultWallet is not null;
 
         _stats = await DashboardService.GetDashboardStatsAsync();
         _isLoading = false;
+    }
 
-        if (_stats.IsLoaded && _stats.TotalWallets == 0)
-        {
-            Navigation.NavigateTo("wallets/create?first-login=true");
-            return;
-        }
+    private static string GetDisplayName(AuthenticationState context)
+    {
+        var user = context.User;
+        return user.FindFirst("name")?.Value
+            ?? user.FindFirst("preferred_username")?.Value
+            ?? user.FindFirst("email")?.Value
+            ?? "Welcome back";
     }
 }

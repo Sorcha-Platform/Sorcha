@@ -87,6 +87,25 @@ public class BlueprintApiService : IBlueprintApiService
         }
     }
 
+    public async Task<BlueprintListItemViewModel?> UpdateBlueprintAsync(string id, object blueprint, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.PutAsJsonAsync($"/api/blueprints/{id}", blueprint, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<BlueprintListItemViewModel>(cancellationToken: cancellationToken);
+            }
+            _logger.LogWarning("Failed to update blueprint {Id}: {StatusCode}", id, response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating blueprint {Id}", id);
+            return null;
+        }
+    }
+
     public async Task<bool> DeleteBlueprintAsync(string id, CancellationToken cancellationToken = default)
     {
         try

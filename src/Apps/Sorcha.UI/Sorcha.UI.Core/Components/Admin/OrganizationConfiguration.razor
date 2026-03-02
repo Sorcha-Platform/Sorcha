@@ -16,7 +16,7 @@
             Security Policies
         </MudText>
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
-            These settings are not yet enforced by the backend. Coming soon.
+            Automated security policy enforcement is planned for a future release.
         </MudText>
         <MudGrid Spacing="3">
             <MudItem xs="12" md="4">
@@ -48,7 +48,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.VpnKey" Class="mr-2" />
                 External Identity Providers
             </MudText>
-            <MudTooltip Text="Coming soon — OIDC and SAML provider integration">
+            <MudTooltip Text="External identity provider integration (OIDC and SAML) is planned for a future release">
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Add" Disabled="true">
                     Add Provider
@@ -59,7 +59,7 @@
         @if (_config.ExternalProviders.Count == 0)
         {
             <MudAlert Severity="Severity.Info" Dense="true">
-                No external identity providers configured. OIDC and SAML integration is coming soon.
+                No external identity providers configured. OIDC and SAML integration is planned for a future release.
             </MudAlert>
         }
         else

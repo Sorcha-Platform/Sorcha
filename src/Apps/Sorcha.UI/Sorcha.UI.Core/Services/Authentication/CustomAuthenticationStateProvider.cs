@@ -14,7 +14,7 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
     private readonly ITokenCache _tokenCache;
     private readonly IConfigurationService _configurationService;
-    private readonly JwtSecurityTokenHandler _jwtHandler = new();
+    private readonly JwtSecurityTokenHandler _jwtHandler = new() { MapInboundClaims = false };
 
     public CustomAuthenticationStateProvider(
         ITokenCache tokenCache,

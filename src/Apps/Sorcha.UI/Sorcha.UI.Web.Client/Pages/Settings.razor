@@ -10,6 +10,7 @@
 @using Sorcha.UI.Core.Components.Configuration
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
+@inject ITotpClientService TotpService
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -507,18 +508,53 @@
         }
     }
 
-    private void SetupTwoFactor()
+    private async Task SetupTwoFactor()
     {
-        _showTotpSetup = true;
-        // TODO: Call TotpClientService.SetupTotpAsync() when available
-        _totpSecret = "PLACEHOLDER";
-        _totpQrUri = "otpauth://totp/Sorcha:user@example.com?secret=PLACEHOLDER&issuer=Sorcha";
+        try
+        {
+            var setupResponse = await TotpService.SetupTotpAsync();
+            if (setupResponse != null)
+            {
+                _totpSecret = setupResponse.Secret;
+                _totpQrUri = setupResponse.QrUri;
+                _totpBackupCodes = setupResponse.BackupCodes?.ToList() ?? [];
+                _showTotpSetup = true;
+            }
+            else
+            {
+                Snackbar.Add("Failed to initiate 2FA setup. Please try again.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error setting up 2FA: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task VerifyTotpSetup()
     {
-        // TODO: Call TotpClientService.VerifySetupAsync() when available
-        Snackbar.Add("2FA verification will be available once the TOTP service is connected", Severity.Info);
+        if (string.IsNullOrEmpty(_totpVerificationCode) || _totpVerificationCode.Length != 6)
+            return;
+
+        try
+        {
+            var verified = await TotpService.VerifySetupAsync(_totpVerificationCode);
+            if (verified)
+            {
+                _preferences.TwoFactorEnabled = true;
+                _showTotpSetup = false;
+                _totpVerificationCode = string.Empty;
+                Snackbar.Add("Two-factor authentication enabled successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Invalid verification code. Please try again.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error verifying 2FA code: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task DisableTwoFactor()
@@ -531,8 +567,27 @@
 
         if (confirmed == true)
         {
-            // TODO: Call TotpClientService.DisableTotpAsync() when available
-            Snackbar.Add("2FA disable will be available once the TOTP service is connected", Severity.Info);
+            try
+            {
+                var disabled = await TotpService.DisableTotpAsync();
+                if (disabled)
+                {
+                    _preferences.TwoFactorEnabled = false;
+                    _showTotpSetup = false;
+                    _totpSecret = string.Empty;
+                    _totpQrUri = string.Empty;
+                    _totpBackupCodes.Clear();
+                    Snackbar.Add("Two-factor authentication has been disabled.", Severity.Info);
+                }
+                else
+                {
+                    Snackbar.Add("Failed to disable 2FA. Please try again.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error disabling 2FA: {ex.Message}", Severity.Error);
+            }
         }
     }
 

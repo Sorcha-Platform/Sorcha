@@ -172,9 +172,9 @@ Users who select a non-English language in Settings see the UI rendered in their
 - **FR-019**: All designer state (participants, actions, routes, schemas, conditions, calculations, layout positions) MUST be preserved through a save/load cycle.
 
 **Snackbar Migration**
-- **FR-020**: System events (transaction confirmations, action notifications, blueprint operations) MUST be routed to the integrated activity log rather than toast popups.
+- **FR-020**: SignalR-driven system events (action notifications received via hub connections) MUST be routed to the integrated activity log rather than toast popups. Remaining event migration (direct API responses, clipboard operations) is deferred to a follow-up feature.
 - **FR-021**: Brief ephemeral feedback (clipboard copy confirmations) MAY remain as lightweight inline notifications.
-- **FR-022**: Error feedback MUST be presented both inline on the originating page and logged in the activity log for persistent reference.
+- **FR-022**: Error feedback from SignalR-driven events MUST be presented in the activity log. Inline error feedback for direct API calls remains unchanged in this feature. Dual-channel error reporting (both inline and activity log) is deferred to a follow-up feature.
 - **FR-023**: All unused notification service injections MUST be removed from components after migration.
 
 **Localization**
