@@ -100,7 +100,8 @@ var rewriteOptions = new RewriteOptions()
     .AddRewrite(@"^app/_framework/(.*)$", "_framework/$1", skipRemainingRules: true)
     .AddRewrite(@"^app/_content/(.*)$", "_content/$1", skipRemainingRules: true)
     .AddRewrite(@"^app/Sorcha\.UI\.Web\.styles\.css$", "Sorcha.UI.Web.styles.css", skipRemainingRules: true)
-    .AddRewrite(@"^app/appsettings\.(.*)$", "appsettings.$1", skipRemainingRules: true);
+    .AddRewrite(@"^app/appsettings\.(.*)$", "appsettings.$1", skipRemainingRules: true)
+    .AddRewrite(@"^app/i18n/(.*)$", "i18n/$1", skipRemainingRules: true);
 app.UseRewriter(rewriteOptions);
 
 // Serve Blazor framework files

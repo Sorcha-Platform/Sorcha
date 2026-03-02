@@ -10,6 +10,8 @@
 @inject IActivityLogService ActivityLogService
 @inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
+@inject EventsHubConnection EventsHub
+@inject ILocalizationService Loc
 
 <MudThemeProvider Theme="_theme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -39,16 +41,16 @@
                     </MudMenuItem>
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Navigation.NavigateTo("settings"))">
-                        Settings
+                        @Loc.T("nav.settings")
                     </MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@HandleLogout">
-                        Logout
+                        @Loc.T("nav.logout")
                     </MudMenuItem>
                 </MudMenu>
             </Authorized>
             <NotAuthorized>
                 <MudButton Href="auth/login" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Login">
-                    Sign In
+                    @Loc.T("nav.signIn")
                 </MudButton>
             </NotAuthorized>
         </AuthorizeView>
@@ -58,100 +60,100 @@
         <MudDrawerHeader>
             @if (_drawerOpen)
             {
-                <MudText Typo="Typo.h6">Navigation</MudText>
+                <MudText Typo="Typo.h6">@Loc.T("nav.navigation")</MudText>
             }
         </MudDrawerHeader>
         <AuthorizeView>
             <Authorized>
                 <MudNavMenu>
                     <MudNavLink Href="dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
-                        Dashboard
+                        @Loc.T("nav.dashboard")
                     </MudNavLink>
                     @if (_drawerOpen)
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">MY ACTIVITY</MudText>
+                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.myActivity")</MudText>
                     }
                     <MudNavLink Href="my-workflows" Icon="@Icons.Material.Filled.PostAdd">
-                        New Submission
+                        @Loc.T("nav.newSubmission")
                     </MudNavLink>
                     <MudNavLink Href="my-actions" Icon="@Icons.Material.Filled.Task">
-                        Pending Actions
+                        @Loc.T("nav.pendingActions")
                     </MudNavLink>
                     <MudNavLink Href="my-wallet" Icon="@Icons.Material.Filled.AccountBalanceWallet">
-                        My Wallet
+                        @Loc.T("nav.myWallet")
                     </MudNavLink>
                     <MudNavLink Href="credentials" Icon="@Icons.Material.Filled.Badge">
-                        My Credentials
+                        @Loc.T("nav.myCredentials")
                     </MudNavLink>
                     <MudNavLink Href="my-transactions" Icon="@Icons.Material.Filled.Receipt">
-                        My Transactions
+                        @Loc.T("nav.myTransactions")
                     </MudNavLink>
                     @if (_drawerOpen)
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">DESIGNER</MudText>
+                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.designer")</MudText>
                     }
                     <MudNavLink Href="blueprints" Icon="@Icons.Material.Filled.Description">
-                        My Blueprints
+                        @Loc.T("nav.myBlueprints")
                     </MudNavLink>
                     <MudNavLink Href="designer" Icon="@Icons.Material.Filled.Add">
-                        Visual Designer
+                        @Loc.T("nav.visualDesigner")
                     </MudNavLink>
                     <MudNavLink Href="designer/chat" Icon="@Icons.Material.Filled.SmartToy">
-                        AI Chat Designer
+                        @Loc.T("nav.aiChatDesigner")
                     </MudNavLink>
                     <MudNavLink Href="templates" Icon="@Icons.Material.Filled.ContentCopy">
-                        Catalogue
+                        @Loc.T("nav.catalogue")
                     </MudNavLink>
                     <MudNavLink Href="schemas" Icon="@Icons.Material.Filled.Schema">
-                        Data Schemas
+                        @Loc.T("nav.dataSchemas")
                     </MudNavLink>
                     @if (_drawerOpen)
                     {
                         <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">ADMINISTRATION</MudText>
+                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.administration")</MudText>
                     }
-                    <MudNavGroup Title="Wallets" Icon="@Icons.Material.Filled.AccountBalanceWallet" Expanded="false">
+                    <MudNavGroup Title="@Loc.T("nav.wallets")" Icon="@Icons.Material.Filled.AccountBalanceWallet" Expanded="false">
                         <MudNavLink Href="wallets" Icon="@Icons.Material.Filled.List">
-                            All Wallets
+                            @Loc.T("nav.allWallets")
                         </MudNavLink>
                         <MudNavLink Href="wallets/create" Icon="@Icons.Material.Filled.AddCircleOutline">
-                            Create Wallet
+                            @Loc.T("nav.createWallet")
                         </MudNavLink>
                         <MudNavLink Href="wallets/recover" Icon="@Icons.Material.Filled.Restore">
-                            Recover Wallet
+                            @Loc.T("nav.recoverWallet")
                         </MudNavLink>
                     </MudNavGroup>
                     <MudNavLink Href="registers" Icon="@Icons.Material.Filled.Storage">
-                        Registers
+                        @Loc.T("nav.registers")
                     </MudNavLink>
                     <MudNavLink Href="participants" Icon="@Icons.Material.Filled.People">
-                        Participants
+                        @Loc.T("nav.participants")
                     </MudNavLink>
                     <AuthorizeView Roles="Administrator,SystemAdmin">
                         <Authorized Context="adminContext">
                             <MudNavGroup Title="System" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
                                 <MudNavLink Href="admin/health" Icon="@Icons.Material.Filled.HealthAndSafety">
-                                    System Health
+                                    @Loc.T("nav.systemHealth")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/peers" Icon="@Icons.Material.Filled.Hub">
-                                    Peer Network
+                                    @Loc.T("nav.peerNetwork")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/organizations" Icon="@Icons.Material.Filled.Business">
-                                    Organisations
+                                    @Loc.T("nav.organizations")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/validator" Icon="@Icons.Material.Filled.VerifiedUser">
-                                    Validator
+                                    @Loc.T("nav.validator")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/principals" Icon="@Icons.Material.Filled.VpnKey">
-                                    Service Principals
+                                    @Loc.T("nav.servicePrincipals")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/sectors" Icon="@Icons.Material.Filled.FilterList">
-                                    Schema Sectors
+                                    @Loc.T("nav.schemaSectors")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/schema-providers" Icon="@Icons.Material.Filled.CloudSync">
-                                    Schema Providers
+                                    @Loc.T("nav.schemaProviders")
                                 </MudNavLink>
                             </MudNavGroup>
                         </Authorized>
@@ -161,17 +163,17 @@
                         <MudDivider Class="my-2" />
                     }
                     <MudNavLink Href="settings" Icon="@Icons.Material.Filled.Settings">
-                        Settings
+                        @Loc.T("nav.settings")
                     </MudNavLink>
                     <MudNavLink Href="help" Icon="@Icons.Material.Filled.Help">
-                        Help & Support
+                        @Loc.T("nav.help")
                     </MudNavLink>
                 </MudNavMenu>
             </Authorized>
             <NotAuthorized>
                 <MudNavMenu>
                     <MudNavLink Href="auth/login" Icon="@Icons.Material.Filled.Login">
-                        Sign In
+                        @Loc.T("nav.signIn")
                     </MudNavLink>
                 </MudNavMenu>
             </NotAuthorized>
@@ -184,8 +186,8 @@
         </MudContainer>
     </MudMainContent>
     <StatusFooter />
+    <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
 </MudLayout>
-<ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
 
 </CascadingAuthenticationState>
 
@@ -207,6 +209,20 @@
             ThemeService.OnThemeChanged += OnThemeChanged;
             await ThemeService.InitializeAsync();
             _isDarkMode = ThemeService.IsDarkMode;
+
+            Loc.OnLanguageChanged += OnLanguageChanged;
+            await Loc.InitializeAsync();
+
+            EventsHub.OnUnreadCountUpdated += OnUnreadCountUpdated;
+            try
+            {
+                await EventsHub.ConnectAsync();
+            }
+            catch (Exception)
+            {
+                // Hub may be unavailable — SignalR will auto-reconnect
+            }
+
             StateHasChanged();
         }
     }
@@ -214,12 +230,26 @@
     public async ValueTask DisposeAsync()
     {
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        Loc.OnLanguageChanged -= OnLanguageChanged;
+        EventsHub.OnUnreadCountUpdated -= OnUnreadCountUpdated;
+        await EventsHub.DisconnectAsync();
         await TokenRefreshService.StopAsync();
     }
 
     private void OnThemeChanged()
     {
         _isDarkMode = ThemeService.IsDarkMode;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLanguageChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnUnreadCountUpdated(int count)
+    {
+        _unreadCount = count;
         InvokeAsync(StateHasChanged);
     }
 
@@ -235,6 +265,13 @@
         {
             Primary = "#667eea",
             Secondary = "#764ba2",
+            AppbarBackground = "#1e1e1e",
+            Surface = "#1e1e1e",
+            Background = "#121212",
+            DrawerBackground = "#1e1e1e",
+            TextPrimary = "#e0e0e0",
+            TextSecondary = "#b0b0b0",
+            LinesDefault = "#333333",
         }
     };
 

@@ -6,7 +6,7 @@
 @attribute [Authorize]
 @using Sorcha.UI.Core.Services
 @inject IWalletApiService WalletService
-@inject IUserPreferencesService UserPreferencesService
+@inject IWalletPreferenceService WalletPreferences
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -48,8 +48,8 @@
                                 <MudSelectItem Value="@("ED25519")">ED25519 (Recommended)</MudSelectItem>
                                 <MudSelectItem Value="@("NISTP256")">NIST P-256</MudSelectItem>
                                 <MudSelectItem Value="@("RSA4096")">RSA 4096</MudSelectItem>
-                                <MudSelectItem Value="@("ML-DSA-65")" Disabled="true">ML-DSA-65 (Coming Soon)</MudSelectItem>
-                                <MudSelectItem Value="@("ML-KEM-768")" Disabled="true">ML-KEM-768 (Coming Soon)</MudSelectItem>
+                                <MudSelectItem Value="@("ML-DSA-65")">ML-DSA-65</MudSelectItem>
+                                <MudSelectItem Value="@("ML-KEM-768")">ML-KEM-768</MudSelectItem>
                             </MudSelect>
                         </MudItem>
 
@@ -71,7 +71,7 @@
                             <MudAlert Severity="Severity.Info" Class="mb-2">
                                 <MudText Typo="Typo.body2">
                                     <strong>ED25519</strong> is recommended for most use cases. It offers the best balance of security and performance.
-                                    Post-quantum algorithms (ML-DSA-65, ML-KEM-768) will be available in a future release.
+                                    Post-quantum algorithms (ML-DSA-65, ML-KEM-768) provide quantum-resistant cryptography.
                                 </MudText>
                             </MudAlert>
                         </MudItem>
@@ -105,7 +105,7 @@
             break;
 
         case WizardStep.MnemonicDisplay:
-            <MudPaper Class="pa-6" Elevation="4" Style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);">
+            <MudPaper Class="pa-6" Elevation="4" Style="background: var(--mud-palette-background-gray);">
                 <MudAlert Severity="Severity.Warning" Class="mb-4" Icon="@Icons.Material.Filled.Warning">
                     <MudText Typo="Typo.h6">CRITICAL: Backup Your Recovery Phrase</MudText>
                     <MudText Typo="Typo.body2" Class="mt-2">
@@ -125,7 +125,7 @@
                         {
                             var index = i;
                             <MudItem xs="4" sm="3" md="2">
-                                <MudPaper Class="pa-2 text-center" Outlined="true" Style="background: white;">
+                                <MudPaper Class="pa-2 text-center" Outlined="true" Style="background: var(--mud-palette-surface);">
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">@(index + 1)</MudText>
                                     <MudText Typo="Typo.body1" Style="font-family: monospace; font-weight: 600;">@response.MnemonicWords[index]</MudText>
                                 </MudPaper>
@@ -261,14 +261,11 @@
         }
         response = null;
 
-        if (_isWizard && walletAddress != null)
+        // Always set default wallet on first wallet creation (wizard or first-login)
+        if ((_isWizard || _isFirstLogin) && walletAddress != null)
         {
-            await UserPreferencesService.SetDefaultWalletAsync(walletAddress);
+            await WalletPreferences.SetDefaultWalletAsync(walletAddress);
             Navigation.NavigateTo("/");
-        }
-        else if (_isFirstLogin)
-        {
-            Navigation.NavigateTo("dashboard");
         }
         else if (walletAddress != null)
         {

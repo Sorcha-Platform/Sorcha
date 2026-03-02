@@ -2,6 +2,8 @@
 @using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Services
 @inject IActivityLogService ActivityLogService
+@inject EventsHubConnection EventsHub
+@implements IDisposable
 
 <MudDrawer @bind-Open="IsOpen" Anchor="Anchor.End" Elevation="4" Variant="DrawerVariant.Temporary" Width="400px">
     <MudDrawerHeader>
@@ -82,6 +84,12 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public EventCallback OnEventsRead { get; set; }
 
+    protected override void OnInitialized()
+    {
+        EventsHub.OnEventReceived += HandleEventReceived;
+        EventsHub.OnUnreadCountUpdated += HandleUnreadCountUpdated;
+    }
+
     private async Task LoadEventsAsync()
     {
         _loading = true;
@@ -142,4 +150,29 @@
         "Error" => Color.Error,
         _ => Color.Info
     };
+
+    private void HandleEventReceived(ActivityEventDto eventDto)
+    {
+        InvokeAsync(() =>
+        {
+            if (_isOpen)
+            {
+                // Prepend new event at the top of the list when panel is open
+                _events.Insert(0, eventDto);
+                _totalCount++;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void HandleUnreadCountUpdated(int count)
+    {
+        InvokeAsync(() => OnEventsRead.InvokeAsync());
+    }
+
+    public void Dispose()
+    {
+        EventsHub.OnEventReceived -= HandleEventReceived;
+        EventsHub.OnUnreadCountUpdated -= HandleUnreadCountUpdated;
+    }
 }

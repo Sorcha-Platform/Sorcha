@@ -6,35 +6,39 @@
 @layout MainLayout
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
+@implements IDisposable
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Sorcha.UI.Core.Models.Dashboard
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Web.Client.Components.Layout
 @inject IDashboardService DashboardService
-@inject IUserPreferencesService UserPreferencesService
+@inject IWalletPreferenceService WalletPreferences
+@inject IWalletApiService WalletApi
+@inject ILocalizationService Loc
 @inject NavigationManager Navigation
 
-<PageTitle>Dashboard - Sorcha</PageTitle>
+<PageTitle>@Loc.T("dashboard.pageTitle")</PageTitle>
 
 <CascadingAuthenticationState>
     <AuthorizeView>
         <Authorized>
             @if (!_hasDefaultWallet && !_isLoading)
             {
-                <MudText Typo="Typo.h4" Class="mb-4">Welcome to Sorcha</MudText>
+                <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcome")</MudText>
                 <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AccountBalanceWallet">
                     <MudText Typo="Typo.body1">
-                        Create your first wallet to get started. A wallet is required for signing transactions and participating in workflows.
+                        @Loc.T("dashboard.wizard.walletRequired")
                     </MudText>
                 </MudAlert>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="wallets/create?wizard=true"
                            StartIcon="@Icons.Material.Filled.Add" Size="Size.Large">
-                    Create Wallet
+                    @Loc.T("wallet.create")
                 </MudButton>
             }
             else
             {
-            <MudText Typo="Typo.h4" Class="mb-4">Welcome back, @context.User.Identity?.Name!</MudText>
+            <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcomeBack", GetDisplayName(context))</MudText>
 
             @* Stats Cards *@
             <MudGrid Class="mb-6">
@@ -48,13 +52,13 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.ActiveBlueprints</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Blueprints</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.blueprints")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -68,13 +72,13 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.TotalWallets</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Wallets</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.wallets")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -88,13 +92,13 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.RecentTransactions</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Transactions</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.transactions")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -108,13 +112,13 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.ConnectedPeers</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Peers</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.peers")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -128,13 +132,13 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.ActiveRegisters</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Registers</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.registers")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
@@ -148,32 +152,32 @@
                             }
                             else if (!_stats.IsLoaded)
                             {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">Unavailable</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
                             }
                             else
                             {
                                 <MudText Typo="Typo.h5">@_stats.TotalOrganizations</MudText>
                             }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Organizations</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.organizations")</MudText>
                         </MudCardContent>
                     </MudCard>
                 </MudItem>
             </MudGrid>
 
             @* Quick Actions *@
-            <MudText Typo="Typo.h6" Class="mb-2">Quick Actions</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.quickActions")</MudText>
             <MudStack Row="true" Spacing="2" Class="mb-6">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="designer"
                            StartIcon="@Icons.Material.Filled.Add">
-                    Create Blueprint
+                    @Loc.T("blueprint.create")
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="wallets"
                            StartIcon="@Icons.Material.Filled.AccountBalanceWallet">
-                    Manage Wallets
+                    @Loc.T("dashboard.manageWallets")
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="registers"
                            StartIcon="@Icons.Material.Filled.Storage">
-                    View Registers
+                    @Loc.T("dashboard.viewRegisters")
                 </MudButton>
             </MudStack>
 
@@ -181,14 +185,14 @@
             @if (!_stats.IsLoaded && !_isLoading)
             {
                 <MudAlert Severity="Severity.Warning" Class="mb-4">
-                    Unable to load dashboard statistics. <a href="/app/wallets" class="mud-alert-link">View Wallets</a>
+                    @Loc.T("dashboard.statsError") <a href="/app/wallets" class="mud-alert-link">@Loc.T("dashboard.viewWallets")</a>
                 </MudAlert>
             }
 
             @* Recent Activity *@
-            <MudText Typo="Typo.h6" Class="mb-2">Recent Activity</MudText>
+            <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.recentActivity")</MudText>
             <MudPaper Elevation="1" Class="pa-4">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">No recent activity</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.noRecentActivity")</MudText>
             </MudPaper>
             }
         </Authorized>
@@ -205,16 +209,32 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var defaultWallet = await UserPreferencesService.GetDefaultWalletAsync();
-        _hasDefaultWallet = !string.IsNullOrEmpty(defaultWallet);
+        Loc.OnLanguageChanged += OnLanguageChanged;
+
+        var wallets = await WalletApi.GetWalletsAsync();
+        var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
+        _hasDefaultWallet = defaultWallet is not null;
 
         _stats = await DashboardService.GetDashboardStatsAsync();
         _isLoading = false;
+    }
 
-        if (_stats.IsLoaded && _stats.TotalWallets == 0)
-        {
-            Navigation.NavigateTo("wallets/create?first-login=true");
-            return;
-        }
+    private void OnLanguageChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Loc.OnLanguageChanged -= OnLanguageChanged;
+    }
+
+    private static string GetDisplayName(AuthenticationState context)
+    {
+        var user = context.User;
+        return user.FindFirst("name")?.Value
+            ?? user.FindFirst("preferred_username")?.Value
+            ?? user.FindFirst("email")?.Value
+            ?? string.Empty;
     }
 }

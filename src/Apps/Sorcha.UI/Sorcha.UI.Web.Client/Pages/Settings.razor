@@ -10,80 +10,84 @@
 @using Sorcha.UI.Core.Components.Configuration
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
+@inject ITotpClientService TotpService
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject ILocalizationService Loc
+@inject IThemeService ThemeService
+@implements IDisposable
 
-<PageTitle>Settings - Sorcha Platform</PageTitle>
+<PageTitle>@Loc.T("settings.pageTitle")</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
     <MudText Typo="Typo.h4" Class="mb-2">
         <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
-        Settings
+        @Loc.T("settings.title")
     </MudText>
     <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
-        Configure your experience, security, and connection profiles
+        @Loc.T("settings.subtitle")
     </MudText>
 
     <MudPaper Class="pa-4" Elevation="2">
         <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
 
             <!-- Appearance Tab -->
-            <MudTabPanel Text="Appearance" Icon="@Icons.Material.Filled.Palette">
-                <MudText Typo="Typo.h6" Class="mb-3">Theme</MudText>
+            <MudTabPanel Text="@Loc.T("settings.appearance")" Icon="@Icons.Material.Filled.Palette">
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.theme")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    Choose how Sorcha looks to you. Select a theme or let the app match your system settings.
+                    @Loc.T("settings.theme.description")
                 </MudText>
 
                 <MudRadioGroup T="string" Value="@_preferences.Theme" ValueChanged="OnThemeChanged">
                     <MudRadio T="string" Value="@("Light")" Color="Color.Primary">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.LightMode" Class="mr-2" />
-                            Light
+                            @Loc.T("settings.theme.light")
                         </div>
                     </MudRadio>
                     <MudRadio T="string" Value="@("Dark")" Color="Color.Primary">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.DarkMode" Class="mr-2" />
-                            Dark
+                            @Loc.T("settings.theme.dark")
                         </div>
                     </MudRadio>
                     <MudRadio T="string" Value="@("System")" Color="Color.Primary">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.SettingsBrightness" Class="mr-2" />
-                            System Default
+                            @Loc.T("settings.theme.system")
                         </div>
                     </MudRadio>
                 </MudRadioGroup>
 
                 <MudDivider Class="my-4" />
 
-                <MudText Typo="Typo.h6" Class="mb-3">Time Format</MudText>
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.timeFormat")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    How timestamps are displayed throughout the application.
+                    @Loc.T("settings.timeFormat.description")
                 </MudText>
 
                 <MudRadioGroup T="string" Value="@_preferences.TimeFormat" ValueChanged="OnTimeFormatChanged">
                     <MudRadio T="string" Value="@("UTC")" Color="Color.Primary">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.Public" Class="mr-2" />
-                            UTC — Consistent across all locations
+                            @Loc.T("settings.timeFormat.utcDescription")
                         </div>
                     </MudRadio>
                     <MudRadio T="string" Value="@("Local")" Color="Color.Primary">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
-                            Local — Adjusted to your timezone
+                            @Loc.T("settings.timeFormat.localDescription")
                         </div>
                     </MudRadio>
                 </MudRadioGroup>
             </MudTabPanel>
 
             <!-- Language Tab -->
-            <MudTabPanel Text="Language" Icon="@Icons.Material.Filled.Language">
-                <MudText Typo="Typo.h6" Class="mb-3">Display Language</MudText>
+            <MudTabPanel Text="@Loc.T("settings.language")" Icon="@Icons.Material.Filled.Language">
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.language.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    Select the language used throughout the application interface.
+                    @Loc.T("settings.language.description")
                 </MudText>
 
                 <MudList T="string" Dense="true" Class="mb-4" Style="max-width: 400px;">
@@ -103,10 +107,10 @@
             </MudTabPanel>
 
             <!-- Security Tab -->
-            <MudTabPanel Text="Security" Icon="@Icons.Material.Filled.Security">
-                <MudText Typo="Typo.h6" Class="mb-3">Two-Factor Authentication</MudText>
+            <MudTabPanel Text="@Loc.T("settings.security")" Icon="@Icons.Material.Filled.Security">
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.twoFactor.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    Add an extra layer of security to your account by requiring a verification code on each login.
+                    @Loc.T("settings.twoFactor.description")
                 </MudText>
 
                 @if (_preferences.TwoFactorEnabled)
@@ -114,7 +118,7 @@
                     <MudAlert Severity="Severity.Success" Class="mb-4">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Class="mr-2" />
-                            Two-factor authentication is enabled.
+                            @Loc.T("settings.twoFactor.enabledMessage")
                         </div>
                     </MudAlert>
 
@@ -122,7 +126,7 @@
                                Color="Color.Error"
                                StartIcon="@Icons.Material.Filled.RemoveCircle"
                                OnClick="DisableTwoFactor">
-                        Disable 2FA
+                        @Loc.T("settings.twoFactor.disable")
                     </MudButton>
                 }
                 else
@@ -130,7 +134,7 @@
                     <MudAlert Severity="Severity.Warning" Class="mb-4">
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
-                            Two-factor authentication is not enabled. Your account is less secure.
+                            @Loc.T("settings.twoFactor.disabledMessage")
                         </div>
                     </MudAlert>
 
@@ -138,7 +142,7 @@
                                Color="Color.Primary"
                                StartIcon="@Icons.Material.Filled.Security"
                                OnClick="SetupTwoFactor">
-                        Enable 2FA
+                        @Loc.T("settings.twoFactor.enable")
                     </MudButton>
                 }
 
@@ -146,9 +150,9 @@
                 {
                     <MudDivider Class="my-4" />
                     <MudPaper Class="pa-4" Outlined="true">
-                        <MudText Typo="Typo.subtitle1" Class="mb-3">Setup Authenticator App</MudText>
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">@Loc.T("settings.twoFactor.setupTitle")</MudText>
                         <MudText Typo="Typo.body2" Class="mb-3">
-                            Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                            @Loc.T("settings.twoFactor.setupDescription")
                         </MudText>
 
                         @if (!string.IsNullOrEmpty(_totpQrUri))
@@ -160,13 +164,13 @@
                             </div>
 
                             <MudText Typo="Typo.caption" Class="mb-3" Align="Align.Center">
-                                Or enter this key manually: <code>@_totpSecret</code>
+                                @Loc.T("settings.twoFactor.manualKey") <code>@_totpSecret</code>
                             </MudText>
                         }
 
                         <MudTextField @bind-Value="_totpVerificationCode"
-                                      Label="Verification Code"
-                                      Placeholder="Enter 6-digit code"
+                                      Label="@Loc.T("settings.twoFactor.verificationCodeLabel")"
+                                      Placeholder="@Loc.T("settings.twoFactor.verificationCodePlaceholder")"
                                       Variant="Variant.Outlined"
                                       MaxLength="6"
                                       Style="max-width: 300px;"
@@ -176,14 +180,14 @@
                                    Color="Color.Primary"
                                    Disabled="@(string.IsNullOrEmpty(_totpVerificationCode) || _totpVerificationCode.Length != 6)"
                                    OnClick="VerifyTotpSetup">
-                            Verify and Enable
+                            @Loc.T("settings.twoFactor.verifyAndEnable")
                         </MudButton>
 
                         @if (_totpBackupCodes.Any())
                         {
                             <MudDivider Class="my-4" />
                             <MudAlert Severity="Severity.Warning" Class="mb-3">
-                                Save these backup codes in a safe place. Each code can only be used once.
+                                @Loc.T("settings.twoFactor.backupCodesWarning")
                             </MudAlert>
                             <MudPaper Class="pa-3" Outlined="true" Style="max-width: 300px;">
                                 @foreach (var totpCode in _totpBackupCodes)
@@ -197,35 +201,35 @@
             </MudTabPanel>
 
             <!-- Notifications Tab -->
-            <MudTabPanel Text="Notifications" Icon="@Icons.Material.Filled.Notifications">
-                <MudText Typo="Typo.h6" Class="mb-3">Push Notifications</MudText>
+            <MudTabPanel Text="@Loc.T("settings.notifications")" Icon="@Icons.Material.Filled.Notifications">
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.notifications.push")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    Receive browser notifications when you have pending actions or important events.
+                    @Loc.T("settings.notifications.description")
                 </MudText>
 
                 <MudSwitch T="bool" Value="@_preferences.NotificationsEnabled"
                            ValueChanged="OnNotificationsChanged"
                            Color="Color.Primary"
-                           Label="@(_preferences.NotificationsEnabled ? "Push notifications are enabled" : "Push notifications are disabled")" />
+                           Label="@(_preferences.NotificationsEnabled ? Loc.T("settings.notifications.enabled") : Loc.T("settings.notifications.disabled"))" />
 
                 @if (_preferences.NotificationsEnabled)
                 {
                     <MudDivider Class="my-4" />
-                    <MudText Typo="Typo.subtitle2" Class="mb-2">Notification Types</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">@Loc.T("settings.notifications.types")</MudText>
                     <MudCheckBox T="bool" Value="true" Disabled="true" Color="Color.Primary"
-                                 Label="Pending actions requiring your attention" />
+                                 Label="@Loc.T("settings.notifications.pendingActions")" />
                     <MudCheckBox T="bool" Value="true" Disabled="true" Color="Color.Primary"
-                                 Label="Blueprint workflow state changes" />
+                                 Label="@Loc.T("settings.notifications.workflowChanges")" />
                     <MudCheckBox T="bool" Value="true" Disabled="true" Color="Color.Primary"
-                                 Label="Validator alerts and warnings" />
+                                 Label="@Loc.T("settings.notifications.validatorAlerts")" />
                 }
             </MudTabPanel>
 
             <!-- Connections Tab (was Configuration) -->
-            <MudTabPanel Text="Connections" Icon="@Icons.Material.Filled.Dns">
-                <MudText Typo="Typo.h6" Class="mb-3">Connection Profiles</MudText>
+            <MudTabPanel Text="@Loc.T("settings.connections")" Icon="@Icons.Material.Filled.Dns">
+                <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.connections.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    Manage connection profiles for different Sorcha environments (local, docker, production).
+                    @Loc.T("settings.connections.description")
                 </MudText>
 
                 <!-- Active Profile Display -->
@@ -235,16 +239,16 @@
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="mr-2" />
                             <div>
-                                <strong>Active Profile:</strong> @_activeProfile.Name
+                                <strong>@Loc.T("settings.connections.activeProfile")</strong> @_activeProfile.Name
                                 <br />
                                 <MudText Typo="Typo.caption">
                                     @if (!string.IsNullOrEmpty(_activeProfile.SorchaServiceUrl))
                                     {
-                                        <span>Base URL: @_activeProfile.SorchaServiceUrl</span>
+                                        <span>@Loc.T("settings.connections.baseUrl") @_activeProfile.SorchaServiceUrl</span>
                                     }
                                     else
                                     {
-                                        <span>Using individual service URLs</span>
+                                        <span>@Loc.T("settings.connections.usingIndividualUrls")</span>
                                     }
                                 </MudText>
                             </div>
@@ -261,22 +265,22 @@
                 {
                     <MudTable Items="@_profiles.OrderBy(p => p.Name)" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Class="mb-4">
                         <HeaderContent>
-                            <MudTh>Profile</MudTh>
-                            <MudTh>Base URL</MudTh>
-                            <MudTh>SSL</MudTh>
-                            <MudTh Style="width: 200px;">Actions</MudTh>
+                            <MudTh>@Loc.T("settings.connections.profile")</MudTh>
+                            <MudTh>@Loc.T("settings.connections.baseUrl")</MudTh>
+                            <MudTh>@Loc.T("settings.connections.ssl")</MudTh>
+                            <MudTh Style="width: 200px;">@Loc.T("settings.connections.actions")</MudTh>
                         </HeaderContent>
                         <RowTemplate>
-                            <MudTd DataLabel="Profile">
+                            <MudTd DataLabel="@Loc.T("settings.connections.profile")">
                                 <div class="d-flex align-center">
                                     <MudText>@context.Name</MudText>
                                     @if (context.Name == _activeProfile?.Name)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Active</MudChip>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">@Loc.T("settings.connections.active")</MudChip>
                                     }
                                     @if (context.IsSystemProfile)
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-1">System</MudChip>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="ml-1">@Loc.T("settings.connections.system")</MudChip>
                                     }
                                 </div>
                                 @if (!string.IsNullOrEmpty(context.Description))
@@ -284,24 +288,24 @@
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Description</MudText>
                                 }
                             </MudTd>
-                            <MudTd DataLabel="Base URL">
+                            <MudTd DataLabel="@Loc.T("settings.connections.baseUrl")">
                                 <MudText Typo="Typo.body2">
-                                    @(string.IsNullOrEmpty(context.SorchaServiceUrl) ? "(individual URLs)" : context.SorchaServiceUrl)
+                                    @(string.IsNullOrEmpty(context.SorchaServiceUrl) ? Loc.T("settings.connections.individualUrls") : context.SorchaServiceUrl)
                                 </MudText>
                             </MudTd>
-                            <MudTd DataLabel="SSL">
+                            <MudTd DataLabel="@Loc.T("settings.connections.ssl")">
                                 <MudIcon Icon="@(context.VerifySsl ? Icons.Material.Filled.Lock : Icons.Material.Filled.LockOpen)"
                                          Color="@(context.VerifySsl ? Color.Success : Color.Warning)"
                                          Size="Size.Small" />
                             </MudTd>
-                            <MudTd DataLabel="Actions">
+                            <MudTd DataLabel="@Loc.T("settings.connections.actions")">
                                 @if (context.Name != _activeProfile?.Name)
                                 {
                                     <MudButton Size="Size.Small"
                                                Variant="Variant.Text"
                                                Color="Color.Primary"
                                                OnClick="@(() => ActivateProfile(context.Name))">
-                                        Activate
+                                        @Loc.T("settings.connections.activate")
                                     </MudButton>
                                 }
                                 <MudIconButton Icon="@Icons.Material.Filled.Edit"
@@ -318,22 +322,22 @@
                 }
                 else
                 {
-                    <MudAlert Severity="Severity.Info" Class="mb-4">No profiles configured.</MudAlert>
+                    <MudAlert Severity="Severity.Info" Class="mb-4">@Loc.T("settings.connections.noProfiles")</MudAlert>
                 }
 
                 <MudButton StartIcon="@Icons.Material.Filled.Add"
                            Color="Color.Primary"
                            Variant="Variant.Filled"
                            OnClick="CreateNewProfile">
-                    New Profile
+                    @Loc.T("settings.connections.newProfile")
                 </MudButton>
             </MudTabPanel>
 
             <!-- About Tab -->
-            <MudTabPanel Text="About" Icon="@Icons.Material.Filled.Info">
-                <MudText Typo="Typo.h5" Class="mb-2">Sorcha Platform</MudText>
+            <MudTabPanel Text="@Loc.T("settings.about")" Icon="@Icons.Material.Filled.Info">
+                <MudText Typo="Typo.h5" Class="mb-2">@Loc.T("settings.about.title")</MudText>
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                    A distributed ledger platform for secure, multi-participant data flow orchestration
+                    @Loc.T("settings.about.description")
                 </MudText>
 
                 <MudDivider Class="my-4" />
@@ -343,19 +347,19 @@
                         <MudPaper Class="pa-4" Outlined="true">
                             <MudText Typo="Typo.subtitle1" Class="mb-3">
                                 <MudIcon Icon="@Icons.Material.Filled.Code" Size="Size.Small" Class="mr-1" />
-                                Version Information
+                                @Loc.T("settings.about.versionInfo")
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>Version:</strong> 1.0.0-preview
+                                <strong>@Loc.T("settings.about.version")</strong> 1.0.0-preview
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>Build:</strong> @_buildNumber
+                                <strong>@Loc.T("settings.about.build")</strong> @_buildNumber
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>Framework:</strong> .NET 10.0
+                                <strong>@Loc.T("settings.about.framework")</strong> .NET 10.0
                             </MudText>
                             <MudText Typo="Typo.body2">
-                                <strong>Platform:</strong> Blazor WebAssembly
+                                <strong>@Loc.T("settings.about.platform")</strong> Blazor WebAssembly
                             </MudText>
                         </MudPaper>
                     </MudItem>
@@ -363,19 +367,19 @@
                         <MudPaper Class="pa-4" Outlined="true">
                             <MudText Typo="Typo.subtitle1" Class="mb-3">
                                 <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Small" Class="mr-1" />
-                                Security Features
+                                @Loc.T("settings.about.securityFeatures")
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>Cryptography:</strong> ED25519, P-256, RSA-4096
+                                <strong>@Loc.T("settings.about.cryptography")</strong> ED25519, P-256, RSA-4096
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>HD Wallets:</strong> BIP32/BIP39/BIP44
+                                <strong>@Loc.T("settings.about.hdWallets")</strong> BIP32/BIP39/BIP44
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mb-1">
-                                <strong>Authentication:</strong> JWT Bearer
+                                <strong>@Loc.T("settings.about.authentication")</strong> JWT Bearer
                             </MudText>
                             <MudText Typo="Typo.body2">
-                                <strong>Model:</strong> DAD (Disclosure, Alteration, Destruction)
+                                <strong>@Loc.T("settings.about.model")</strong> DAD (Disclosure, Alteration, Destruction)
                             </MudText>
                         </MudPaper>
                     </MudItem>
@@ -385,7 +389,7 @@
 
                 <MudText Typo="Typo.subtitle1" Class="mb-3">
                     <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" Class="mr-1" />
-                    Resources
+                    @Loc.T("settings.about.resources")
                 </MudText>
                 <MudGrid>
                     <MudItem xs="12" sm="4">
@@ -394,7 +398,7 @@
                                    Variant="Variant.Outlined"
                                    StartIcon="@Icons.Custom.Brands.GitHub"
                                    FullWidth="true">
-                            GitHub Repository
+                            @Loc.T("settings.about.github")
                         </MudButton>
                     </MudItem>
                     <MudItem xs="12" sm="4">
@@ -402,7 +406,7 @@
                                    Variant="Variant.Outlined"
                                    StartIcon="@Icons.Material.Filled.Help"
                                    FullWidth="true">
-                            Help & Documentation
+                            @Loc.T("settings.about.helpDocs")
                         </MudButton>
                     </MudItem>
                     <MudItem xs="12" sm="4">
@@ -411,7 +415,7 @@
                                    Variant="Variant.Outlined"
                                    StartIcon="@Icons.Material.Filled.Public"
                                    FullWidth="true">
-                            Website
+                            @Loc.T("settings.about.website")
                         </MudButton>
                     </MudItem>
                 </MudGrid>
@@ -419,7 +423,7 @@
                 <MudDivider Class="my-4" />
 
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    MIT License - Copyright (c) 2026 Sorcha Contributors
+                    @Loc.T("settings.about.license")
                 </MudText>
             </MudTabPanel>
         </MudTabs>
@@ -451,7 +455,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Loc.OnLanguageChanged += OnLocLanguageChanged;
         await Task.WhenAll(LoadPreferencesAsync(), LoadProfilesAsync());
+    }
+
+    private void OnLocLanguageChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Loc.OnLanguageChanged -= OnLocLanguageChanged;
     }
 
     private async Task LoadPreferencesAsync()
@@ -462,37 +477,45 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error loading preferences: {ex.Message}", Severity.Error);
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
         }
     }
 
     private async Task OnThemeChanged(string theme)
     {
         _preferences.Theme = theme;
-        await SavePreferencesAsync(new UpdateUserPreferencesRequest { Theme = theme });
-        Snackbar.Add($"Theme set to {theme}", Severity.Success);
+        var themePreference = Enum.Parse<ThemePreference>(theme);
+        await ThemeService.SetThemeAsync(themePreference);
+        var themeKey = theme switch
+        {
+            "Light" => "settings.theme.light",
+            "Dark" => "settings.theme.dark",
+            _ => "settings.theme.system"
+        };
+        Snackbar.Add($"{Loc.T("settings.theme")}: {Loc.T(themeKey)}", Severity.Success);
     }
 
     private async Task OnTimeFormatChanged(string format)
     {
         _preferences.TimeFormat = format;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { TimeFormat = format });
-        Snackbar.Add($"Time format set to {format}", Severity.Success);
+        var formatKey = format == "UTC" ? "settings.timeFormat.utc" : "settings.timeFormat.local";
+        Snackbar.Add($"{Loc.T("settings.timeFormat")}: {Loc.T(formatKey)}", Severity.Success);
     }
 
     private async Task OnLanguageChanged(string languageCode)
     {
         _preferences.Language = languageCode;
-        await SavePreferencesAsync(new UpdateUserPreferencesRequest { Language = languageCode });
+        await Loc.SetLanguageAsync(languageCode);
         var langName = _supportedLanguages.FirstOrDefault(l => l.Code == languageCode).Name ?? languageCode;
-        Snackbar.Add($"Language set to {langName}", Severity.Success);
+        Snackbar.Add($"{Loc.T("settings.language")}: {langName}", Severity.Success);
     }
 
     private async Task OnNotificationsChanged(bool enabled)
     {
         _preferences.NotificationsEnabled = enabled;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationsEnabled = enabled });
-        Snackbar.Add(enabled ? "Notifications enabled" : "Notifications disabled", Severity.Success);
+        Snackbar.Add(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"), Severity.Success);
     }
 
     private async Task SavePreferencesAsync(UpdateUserPreferencesRequest request)
@@ -503,36 +526,90 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error saving preferences: {ex.Message}", Severity.Error);
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
         }
     }
 
-    private void SetupTwoFactor()
+    private async Task SetupTwoFactor()
     {
-        _showTotpSetup = true;
-        // TODO: Call TotpClientService.SetupTotpAsync() when available
-        _totpSecret = "PLACEHOLDER";
-        _totpQrUri = "otpauth://totp/Sorcha:user@example.com?secret=PLACEHOLDER&issuer=Sorcha";
+        try
+        {
+            var setupResponse = await TotpService.SetupTotpAsync();
+            if (setupResponse != null)
+            {
+                _totpSecret = setupResponse.Secret;
+                _totpQrUri = setupResponse.QrUri;
+                _totpBackupCodes = setupResponse.BackupCodes?.ToList() ?? [];
+                _showTotpSetup = true;
+            }
+            else
+            {
+                Snackbar.Add(Loc.T("settings.twoFactor.setupFailed"), Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task VerifyTotpSetup()
     {
-        // TODO: Call TotpClientService.VerifySetupAsync() when available
-        Snackbar.Add("2FA verification will be available once the TOTP service is connected", Severity.Info);
+        if (string.IsNullOrEmpty(_totpVerificationCode) || _totpVerificationCode.Length != 6)
+            return;
+
+        try
+        {
+            var verified = await TotpService.VerifySetupAsync(_totpVerificationCode);
+            if (verified)
+            {
+                _preferences.TwoFactorEnabled = true;
+                _showTotpSetup = false;
+                _totpVerificationCode = string.Empty;
+                Snackbar.Add(Loc.T("settings.twoFactor.enabledSuccess"), Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(Loc.T("settings.twoFactor.invalidCode"), Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task DisableTwoFactor()
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Disable Two-Factor Authentication",
-            "Are you sure? This will make your account less secure.",
-            yesText: "Disable",
-            cancelText: "Cancel");
+            Loc.T("settings.twoFactor.disableTitle"),
+            Loc.T("settings.twoFactor.disableConfirm"),
+            yesText: Loc.T("settings.twoFactor.disable"),
+            cancelText: Loc.T("common.cancel"));
 
         if (confirmed == true)
         {
-            // TODO: Call TotpClientService.DisableTotpAsync() when available
-            Snackbar.Add("2FA disable will be available once the TOTP service is connected", Severity.Info);
+            try
+            {
+                var disabled = await TotpService.DisableTotpAsync();
+                if (disabled)
+                {
+                    _preferences.TwoFactorEnabled = false;
+                    _showTotpSetup = false;
+                    _totpSecret = string.Empty;
+                    _totpQrUri = string.Empty;
+                    _totpBackupCodes.Clear();
+                    Snackbar.Add(Loc.T("settings.twoFactor.disabledSuccess"), Severity.Info);
+                }
+                else
+                {
+                    Snackbar.Add(Loc.T("settings.twoFactor.disableFailed"), Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
+            }
         }
     }
 
@@ -547,7 +624,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error loading profiles: {ex.Message}", Severity.Error);
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -566,11 +643,11 @@
                 ApiConfiguration.ConfigureFromProfile(profile);
             }
             await LoadProfilesAsync();
-            Snackbar.Add($"Activated profile: {profileName}", Severity.Success);
+            Snackbar.Add(Loc.T("settings.connections.activatedSuccess", profileName), Severity.Success);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error activating profile: {ex.Message}", Severity.Error);
+            Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
         }
     }
 
@@ -589,7 +666,7 @@
             CloseButton = true
         };
 
-        var dialog = await DialogService.ShowAsync<ProfileEditorDialog>("Edit Profile", parameters, options);
+        var dialog = await DialogService.ShowAsync<ProfileEditorDialog>(Loc.T("settings.connections.editProfile"), parameters, options);
         var result = await dialog.Result;
 
         if (result is not null && !result.Canceled)
@@ -613,7 +690,7 @@
             CloseButton = true
         };
 
-        var dialog = await DialogService.ShowAsync<ProfileEditorDialog>("New Profile", parameters, options);
+        var dialog = await DialogService.ShowAsync<ProfileEditorDialog>(Loc.T("settings.connections.newProfile"), parameters, options);
         var result = await dialog.Result;
 
         if (result is not null && !result.Canceled)
@@ -625,10 +702,10 @@
     private async Task DeleteProfile(Profile profile)
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Delete Profile",
-            $"Are you sure you want to delete the profile '{profile.Name}'?",
-            yesText: "Delete",
-            cancelText: "Cancel");
+            Loc.T("settings.connections.deleteTitle"),
+            Loc.T("settings.connections.deleteConfirm", profile.Name),
+            yesText: Loc.T("common.delete"),
+            cancelText: Loc.T("common.cancel"));
 
         if (confirmed == true)
         {
@@ -638,16 +715,16 @@
                 if (deleted)
                 {
                     await LoadProfilesAsync();
-                    Snackbar.Add($"Deleted profile: {profile.Name}", Severity.Info);
+                    Snackbar.Add(Loc.T("settings.connections.deletedSuccess", profile.Name), Severity.Info);
                 }
                 else
                 {
-                    Snackbar.Add("Cannot delete this profile", Severity.Warning);
+                    Snackbar.Add(Loc.T("settings.connections.cannotDelete"), Severity.Warning);
                 }
             }
             catch (Exception ex)
             {
-                Snackbar.Add($"Error deleting profile: {ex.Message}", Severity.Error);
+                Snackbar.Add($"{Loc.T("common.error")}: {ex.Message}", Severity.Error);
             }
         }
     }

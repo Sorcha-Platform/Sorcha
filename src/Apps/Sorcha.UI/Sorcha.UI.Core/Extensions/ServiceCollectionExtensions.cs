@@ -276,6 +276,9 @@ public static class ServiceCollectionExtensions
         // Actions Hub Connection (SignalR for real-time action notifications)
         services.AddActionsHubServices(baseAddress);
 
+        // Events Hub Connection (SignalR for real-time activity event notifications)
+        services.AddEventsHubServices(baseAddress);
+
         // Theme Service (043 - T042)
         services.AddScoped<IThemeService>(sp =>
         {
@@ -376,6 +379,32 @@ public static class ServiceCollectionExtensions
             var configService = sp.GetRequiredService<IConfigurationService>();
             var logger = sp.GetRequiredService<ILogger<ActionsHubConnection>>();
             return new ActionsHubConnection(hubBaseUrl, authService, configService, logger);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the Events Hub connection for real-time activity event notifications.
+    /// </summary>
+    public static IServiceCollection AddEventsHubServices(this IServiceCollection services, string baseAddress)
+    {
+        services.AddScoped<EventsHubConnection>(sp =>
+        {
+            string hubBaseUrl;
+            if (Uri.TryCreate(baseAddress, UriKind.Absolute, out var uri))
+            {
+                hubBaseUrl = $"{uri.Scheme}://{uri.Authority}";
+            }
+            else
+            {
+                hubBaseUrl = "";
+            }
+
+            var authService = sp.GetRequiredService<IAuthenticationService>();
+            var configService = sp.GetRequiredService<IConfigurationService>();
+            var logger = sp.GetRequiredService<ILogger<EventsHubConnection>>();
+            return new EventsHubConnection(hubBaseUrl, authService, configService, logger);
         });
 
         return services;

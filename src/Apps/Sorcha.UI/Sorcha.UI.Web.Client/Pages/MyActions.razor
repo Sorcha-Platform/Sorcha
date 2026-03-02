@@ -289,26 +289,26 @@
     private async Task HandleActionAvailable(ActionAvailableNotification notification)
     {
         _recentNotifications.Add(notification);
-        Snackbar.Add($"New action available: {notification.ActionTitle}", Severity.Success);
+        // Real-time event delivered to ActivityLogPanel via EventsHub
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleActionConfirmed(ActionNotification notification)
+    private Task HandleActionConfirmed(ActionNotification notification)
     {
-        Snackbar.Add($"Action confirmed", Severity.Info);
-        await InvokeAsync(StateHasChanged);
+        // Real-time event delivered to ActivityLogPanel via EventsHub
+        return InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleActionRejected(ActionRejectedNotification notification)
+    private Task HandleActionRejected(ActionRejectedNotification notification)
     {
-        Snackbar.Add($"Action was rejected: {notification.Reason}", Severity.Warning);
-        await InvokeAsync(StateHasChanged);
+        // Real-time event delivered to ActivityLogPanel via EventsHub
+        return InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleWorkflowCompleted(WorkflowCompletedNotification notification)
     {
-        Snackbar.Add("Workflow completed", Severity.Success);
+        // Real-time event delivered to ActivityLogPanel via EventsHub
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }

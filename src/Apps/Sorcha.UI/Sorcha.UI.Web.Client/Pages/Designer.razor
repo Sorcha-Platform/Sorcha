@@ -13,15 +13,19 @@
 @using System.Text.Json
 @using System.Text.Json.Nodes
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Models.Blueprints
 @using BlueprintAction = Sorcha.Blueprint.Models.Action
 @inject ILocalStorageService LocalStorage
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject BlueprintSerializationService SerializationService
+@inject IBlueprintApiService BlueprintApi
 @inject ILogger<Designer> Logger
 
 <PageTitle>Blueprint Designer - Sorcha Platform</PageTitle>
+
+<NavigationLock OnBeforeInternalNavigation="OnBeforeNav" ConfirmExternalNavigation="_hasUnsavedChanges" />
 
 <div style="width: 100%; height: 100vh; display: flex; flex-direction: column; position: relative;">
     <!-- Toolbar and Canvas Container with Right Panel -->
@@ -143,6 +147,11 @@
     private bool showJsonView = false;
     private int participantCounter = 0;
     private int actionCounter = 0;
+    private string? _persistedBlueprintId;
+    private bool _hasUnsavedChanges;
+
+    [SupplyParameterFromQuery(Name = "id")]
+    public string? BlueprintId { get; set; }
 
     private const string BLUEPRINTS_KEY = "sorcha:blueprints";
 
@@ -199,6 +208,14 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error initializing diagram");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(BlueprintId) && BlueprintId != _persistedBlueprintId)
+        {
+            await LoadBlueprint(BlueprintId);
         }
     }
 
@@ -299,6 +316,7 @@
 
         Diagram.Nodes.Add(action);
         CurrentBlueprint.Actions.Add(action.Action);
+        _hasUnsavedChanges = true;
 
         // Create link from previous action to new action
         if (previousActionNode != null)
@@ -373,6 +391,7 @@
         {
             var participant = savedModel.ToParticipant();
             CurrentBlueprint.Participants.Add(participant);
+            _hasUnsavedChanges = true;
             Snackbar.Add($"Participant '{participant.Name}' added to blueprint", Severity.Success);
             StateHasChanged();
         }
@@ -427,6 +446,7 @@
                 }
             }
 
+            _hasUnsavedChanges = true;
             Snackbar.Add("Routing condition updated", Severity.Success);
             StateHasChanged();
         }
@@ -447,6 +467,7 @@
     private void OnBlueprintPropertiesSaved(Blueprint updatedBlueprint)
     {
         CurrentBlueprint = updatedBlueprint;
+        _hasUnsavedChanges = true;
         Snackbar.Add("Blueprint properties saved", Severity.Success);
         Logger.LogDebug("Blueprint properties updated - Title: {Title}", updatedBlueprint.Title);
         StateHasChanged();
@@ -469,6 +490,7 @@
                 node.Title = updatedAction.Title;
             }
 
+            _hasUnsavedChanges = true;
             Snackbar.Add($"Action {updatedAction.Id} properties saved", Severity.Success);
             Logger.LogDebug("Action properties updated - Action: {Title}", updatedAction.Title);
             StateHasChanged();
@@ -493,26 +515,63 @@
             // Update timestamp
             CurrentBlueprint.UpdatedAt = DateTimeOffset.UtcNow;
 
-            // Get existing blueprints
-            var blueprintsJson = await LocalStorage.GetItemAsStringAsync(BLUEPRINTS_KEY);
-            var blueprints = string.IsNullOrEmpty(blueprintsJson)
-                ? new List<Blueprint>()
-                : JsonSerializer.Deserialize<List<Blueprint>>(blueprintsJson) ?? new List<Blueprint>();
-
-            // Update or add current blueprint
-            var existing = blueprints.FirstOrDefault(b => b.Id == CurrentBlueprint.Id);
-            if (existing != null)
+            // Save to API (primary path)
+            BlueprintListItemViewModel? result;
+            if (string.IsNullOrEmpty(_persistedBlueprintId))
             {
-                blueprints.Remove(existing);
+                // New blueprint — POST to create
+                result = await BlueprintApi.SaveBlueprintAsync(CurrentBlueprint);
+                if (result is not null)
+                {
+                    _persistedBlueprintId = result.Id;
+                    CurrentBlueprint.Id = result.Id;
+                    Logger.LogInformation("Created blueprint '{Title}' with Id {Id}", CurrentBlueprint.Title, result.Id);
+                }
             }
-            blueprints.Add(CurrentBlueprint);
+            else
+            {
+                // Existing blueprint — PUT to update
+                result = await BlueprintApi.UpdateBlueprintAsync(_persistedBlueprintId, CurrentBlueprint);
+                if (result is not null)
+                {
+                    Logger.LogInformation("Updated blueprint '{Title}' Id {Id}", CurrentBlueprint.Title, _persistedBlueprintId);
+                }
+            }
 
-            // Save to LocalStorage
-            var json = JsonSerializer.Serialize(blueprints);
-            await LocalStorage.SetItemAsStringAsync(BLUEPRINTS_KEY, json);
+            if (result is not null)
+            {
+                _hasUnsavedChanges = false;
+                Snackbar.Add($"Blueprint '{CurrentBlueprint.Title}' saved successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to save blueprint to server — saved to local draft", Severity.Warning);
+            }
+
+            // T025: Save to LocalStorage as offline draft fallback
+            try
+            {
+                var blueprintsJson = await LocalStorage.GetItemAsStringAsync(BLUEPRINTS_KEY);
+                var blueprints = string.IsNullOrEmpty(blueprintsJson)
+                    ? new List<Blueprint>()
+                    : JsonSerializer.Deserialize<List<Blueprint>>(blueprintsJson) ?? new List<Blueprint>();
+
+                var existing = blueprints.FirstOrDefault(b => b.Id == CurrentBlueprint.Id);
+                if (existing != null)
+                {
+                    blueprints.Remove(existing);
+                }
+                blueprints.Add(CurrentBlueprint);
+
+                var json = JsonSerializer.Serialize(blueprints);
+                await LocalStorage.SetItemAsStringAsync(BLUEPRINTS_KEY, json);
+            }
+            catch (Exception lsEx)
+            {
+                Logger.LogWarning(lsEx, "Failed to save offline draft to LocalStorage");
+            }
 
             await RefreshBlueprintList();
-            Snackbar.Add($"Blueprint '{CurrentBlueprint.Title}' saved successfully", Severity.Success);
             Logger.LogInformation("Saved blueprint '{Title}' - Version {Version} - {Count} actions", CurrentBlueprint.Title, CurrentBlueprint.Version, CurrentBlueprint.Actions.Count);
         }
         catch (Exception ex)
@@ -526,11 +585,20 @@
     {
         try
         {
-            var blueprintsJson = await LocalStorage.GetItemAsStringAsync(BLUEPRINTS_KEY);
-            if (string.IsNullOrEmpty(blueprintsJson)) return;
+            // Load from API (primary path)
+            var blueprint = await BlueprintApi.GetBlueprintDetailAsync(blueprintId);
 
-            var blueprints = JsonSerializer.Deserialize<List<Blueprint>>(blueprintsJson);
-            var blueprint = blueprints?.FirstOrDefault(b => b.Id == blueprintId);
+            // Fallback to LocalStorage if API is unavailable
+            if (blueprint == null)
+            {
+                Logger.LogWarning("Blueprint {Id} not found via API, trying LocalStorage fallback", blueprintId);
+                var blueprintsJson = await LocalStorage.GetItemAsStringAsync(BLUEPRINTS_KEY);
+                if (!string.IsNullOrEmpty(blueprintsJson))
+                {
+                    var localBlueprints = JsonSerializer.Deserialize<List<Blueprint>>(blueprintsJson);
+                    blueprint = localBlueprints?.FirstOrDefault(b => b.Id == blueprintId);
+                }
+            }
 
             if (blueprint == null)
             {
@@ -544,6 +612,8 @@
 
             // Load blueprint
             CurrentBlueprint = blueprint;
+            _persistedBlueprintId = blueprintId;
+            _hasUnsavedChanges = false;
 
             // Recreate nodes from blueprint data
             int yOffset = 100;
@@ -828,9 +898,28 @@
 
             participantCounter = importedBlueprint.Participants.Count;
             actionCounter = importedBlueprint.Actions.Count;
+            _persistedBlueprintId = null;
+            _hasUnsavedChanges = true;
 
             Snackbar.Add($"Blueprint '{importedBlueprint.Title}' imported successfully", Severity.Success);
             StateHasChanged();
+        }
+    }
+
+    private async Task OnBeforeNav(LocationChangingContext context)
+    {
+        if (_hasUnsavedChanges)
+        {
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Unsaved Changes",
+                "You have unsaved changes. Are you sure you want to leave?",
+                yesText: "Leave",
+                cancelText: "Stay");
+
+            if (confirmed != true)
+            {
+                context.PreventNavigation();
+            }
         }
     }
 

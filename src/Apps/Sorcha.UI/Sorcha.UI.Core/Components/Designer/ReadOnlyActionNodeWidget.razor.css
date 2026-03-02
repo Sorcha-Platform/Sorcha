@@ -1,5 +1,5 @@
 .readonly-action-node {
-    background: white;
+    background: var(--mud-palette-surface);
     border: 2px solid #1976d2;
     border-radius: 10px;
     min-width: 280px;
@@ -72,27 +72,27 @@
 
 .readonly-node-section {
     padding: 8px 12px;
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--mud-palette-lines-default);
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
 .readonly-section-icon {
-    color: #757575;
+    color: var(--mud-palette-text-secondary);
 }
 
 .readonly-sender {
     font-size: 12px;
     font-weight: 500;
-    color: #424242;
+    color: var(--mud-palette-text-primary);
 }
 
 .readonly-summary {
-    background: #f8f9fa;
+    background: var(--mud-palette-background);
 }
 
 .readonly-summary .mud-typography {
     font-size: 11px;
-    color: #666;
+    color: var(--mud-palette-text-secondary);
 }
