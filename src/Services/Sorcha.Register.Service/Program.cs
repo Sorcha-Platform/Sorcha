@@ -161,10 +161,12 @@ builder.Services.AddHostedService<AdvertisementResyncService>();
 // Register event bridge: subscribes to domain events and broadcasts via SignalR
 builder.Services.AddHostedService<RegisterEventBridgeService>();
 
-// Feature 047: Local address bloom filter index (US1)
+// Feature 047: Local address bloom filter index (US1) + inbound transaction router (US2)
 builder.Services.AddGrpc();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocalAddressIndex,
     Sorcha.Register.Service.Services.Implementation.RedisBloomFilterAddressIndex>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
+    Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
 
 // Add JWT authentication and authorization (AUTH-002)
 // JWT authentication is now configured via shared ServiceDefaults with auto-key generation

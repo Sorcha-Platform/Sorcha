@@ -5,6 +5,7 @@ using Grpc.Core;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Grpc;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.GrpcServices;
 
@@ -43,18 +44,22 @@ public class WalletNotificationGrpcService : WalletNotificationService.WalletNot
     private const int PageSize = 100;
 
     private readonly IWalletRepository _repository;
+    private readonly INotificationDeliveryService _deliveryService;
     private readonly ILogger<WalletNotificationGrpcService> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WalletNotificationGrpcService"/> class.
     /// </summary>
     /// <param name="repository">Wallet repository for data access.</param>
+    /// <param name="deliveryService">Notification delivery service for routing inbound action notifications.</param>
     /// <param name="logger">Logger instance.</param>
     public WalletNotificationGrpcService(
         IWalletRepository repository,
+        INotificationDeliveryService deliveryService,
         ILogger<WalletNotificationGrpcService> logger)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _deliveryService = deliveryService ?? throw new ArgumentNullException(nameof(deliveryService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -204,35 +209,133 @@ public class WalletNotificationGrpcService : WalletNotificationService.WalletNot
 
     /// <summary>
     /// Notifies the Wallet Service of a single inbound transaction matching a local address.
+    /// Resolves the recipient address to a wallet and user, checks notification preferences,
+    /// and delivers via the appropriate channel (real-time SignalR or digest queue).
     /// </summary>
-    /// <param name="request">Inbound transaction notification request.</param>
+    /// <param name="request">Inbound transaction notification request with recipient address and metadata.</param>
     /// <param name="context">gRPC server call context.</param>
-    /// <returns>Notification delivery response.</returns>
-    /// <remarks>
-    /// This method is a Phase 4 (US2) stub. Full implementation — address resolution,
-    /// SignalR delivery, and digest queuing — will be added in the next phase.
-    /// </remarks>
-    public override Task<NotifyInboundTransactionResponse> NotifyInboundTransaction(
+    /// <returns>Notification delivery response indicating success and delivery method.</returns>
+    public override async Task<NotifyInboundTransactionResponse> NotifyInboundTransaction(
         NotifyInboundTransactionRequest request,
         ServerCallContext context)
     {
-        throw new RpcException(new Status(StatusCode.Unimplemented, "Phase 4 US2"));
+        _logger.LogInformation(
+            "NotifyInboundTransaction called for address {Address}, tx {TxId}",
+            request.RecipientAddress, request.TransactionId);
+
+        try
+        {
+            var result = await _deliveryService.DeliverAsync(
+                recipientAddress: request.RecipientAddress,
+                transactionId: request.TransactionId,
+                registerId: request.RegisterId,
+                docketNumber: request.DocketNumber,
+                blueprintId: request.BlueprintId,
+                instanceId: request.InstanceId,
+                actionId: request.ActionId,
+                nextActionId: request.NextActionId,
+                senderAddress: request.SenderAddress,
+                timestamp: request.Timestamp?.ToDateTimeOffset() ?? DateTimeOffset.UtcNow,
+                isRecovery: request.IsRecovery,
+                cancellationToken: context.CancellationToken);
+
+            return new NotifyInboundTransactionResponse
+            {
+                Success = result != NotificationDeliveryResult.NoUserFound,
+                Delivery = MapDeliveryResult(result),
+                Message = result.ToString()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to deliver notification for address {Address}, tx {TxId}",
+                request.RecipientAddress, request.TransactionId);
+            throw new RpcException(new Status(StatusCode.Internal,
+                $"Notification delivery failed: {ex.Message}"));
+        }
     }
 
     /// <summary>
     /// Batch-notifies the Wallet Service of multiple inbound transactions during recovery.
+    /// Processes each transaction sequentially and returns aggregate delivery counts.
     /// </summary>
-    /// <param name="request">Batch inbound transaction notification request.</param>
+    /// <param name="request">Batch notification request containing multiple transactions.</param>
     /// <param name="context">gRPC server call context.</param>
-    /// <returns>Batch notification delivery summary response.</returns>
-    /// <remarks>
-    /// This method is a Phase 4 (US2) stub. Full implementation — batch address resolution,
-    /// recovery-mode delivery, and aggregate response counts — will be added in the next phase.
-    /// </remarks>
-    public override Task<NotifyInboundTransactionBatchResponse> NotifyInboundTransactionBatch(
+    /// <returns>Aggregate delivery summary with counts per delivery outcome.</returns>
+    public override async Task<NotifyInboundTransactionBatchResponse> NotifyInboundTransactionBatch(
         NotifyInboundTransactionBatchRequest request,
         ServerCallContext context)
     {
-        throw new RpcException(new Status(StatusCode.Unimplemented, "Phase 4 US2"));
+        _logger.LogInformation(
+            "NotifyInboundTransactionBatch called with {Count} transactions",
+            request.Transactions.Count);
+
+        var response = new NotifyInboundTransactionBatchResponse
+        {
+            Total = request.Transactions.Count
+        };
+
+        foreach (var tx in request.Transactions)
+        {
+            if (context.CancellationToken.IsCancellationRequested)
+                break;
+
+            try
+            {
+                var result = await _deliveryService.DeliverAsync(
+                    recipientAddress: tx.RecipientAddress,
+                    transactionId: tx.TransactionId,
+                    registerId: tx.RegisterId,
+                    docketNumber: tx.DocketNumber,
+                    blueprintId: tx.BlueprintId,
+                    instanceId: tx.InstanceId,
+                    actionId: tx.ActionId,
+                    nextActionId: tx.NextActionId,
+                    senderAddress: tx.SenderAddress,
+                    timestamp: tx.Timestamp?.ToDateTimeOffset() ?? DateTimeOffset.UtcNow,
+                    isRecovery: tx.IsRecovery,
+                    cancellationToken: context.CancellationToken);
+
+                switch (result)
+                {
+                    case NotificationDeliveryResult.DeliveredRealTime:
+                        response.DeliveredRealTime++;
+                        break;
+                    case NotificationDeliveryResult.QueuedForDigest:
+                        response.QueuedForDigest++;
+                        break;
+                    case NotificationDeliveryResult.RateLimited:
+                        response.RateLimited++;
+                        break;
+                    case NotificationDeliveryResult.NoUserFound:
+                        response.NoUserFound++;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to deliver batch notification for address {Address}, tx {TxId}",
+                    tx.RecipientAddress, tx.TransactionId);
+                response.Errors.Add($"tx {tx.TransactionId}: {ex.Message}");
+            }
+        }
+
+        _logger.LogInformation(
+            "Batch complete: {Total} total, {RealTime} real-time, {Digest} digest, {Limited} rate-limited, {NoUser} no-user, {Errors} errors",
+            response.Total, response.DeliveredRealTime, response.QueuedForDigest,
+            response.RateLimited, response.NoUserFound, response.Errors.Count);
+
+        return response;
     }
+
+    private static NotificationDelivery MapDeliveryResult(NotificationDeliveryResult result) => result switch
+    {
+        NotificationDeliveryResult.DeliveredRealTime => NotificationDelivery.RealTime,
+        NotificationDeliveryResult.QueuedForDigest => NotificationDelivery.DigestQueued,
+        NotificationDeliveryResult.RateLimited => NotificationDelivery.RateLimited,
+        NotificationDeliveryResult.NoUserFound => NotificationDelivery.NoUser,
+        _ => NotificationDelivery.Unspecified
+    };
 }

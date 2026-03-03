@@ -30,9 +30,21 @@ builder.Services.AddDidResolvers();
 // Add presentation request service (OID4VP)
 builder.Services.AddSingleton<IPresentationRequestService, PresentationRequestService>();
 
-// Feature 047: Address registration service for bloom filter sync
+// Feature 047: Address registration service (US1) + notification pipeline (US2)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IAddressRegistrationService,
     Sorcha.Wallet.Service.Services.Implementation.AddressRegistrationService>();
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.INotificationRateLimiter,
+    Sorcha.Wallet.Service.Services.Implementation.NotificationRateLimiter>();
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.INotificationPreferenceProvider,
+    Sorcha.Wallet.Service.Services.Implementation.DefaultNotificationPreferenceProvider>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
+    Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
+
+// Add Redis for notification rate limiting and pub/sub
+builder.AddRedisClient("redis");
+
+// Add service clients for inter-service communication
+builder.Services.AddServiceClients(builder.Configuration);
 
 // Add gRPC services for inter-service communication (Validator, Peer, etc.)
 builder.Services.AddGrpc();
