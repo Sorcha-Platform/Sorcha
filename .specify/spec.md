@@ -472,7 +472,7 @@ The following items are explicitly out of scope for the current specification:
 - [Implementation Plan](.specify/plan.md)
 - [Project README](../README.md)
 - [Deployment Documentation](../deploy/bicep/README.md)
-- [Troubleshooting Guide](../TROUBLESHOOTING.md)
+- [Troubleshooting Guide](../docs/TROUBLESHOOTING.md)
 - [Dependency Upgrade Plan](../DEPENDENCY_UPGRADE_PLAN.md)
 
 ---

@@ -299,7 +299,7 @@ docker logs sorcha-peer-service | grep "Successfully connected"
    - Use Scalar API docs for testing endpoints
 
 3. **Production Deployment**:
-   - Review [DEPLOYMENT.md](../DEPLOYMENT.md)
+   - Review [DEPLOYMENT.md](../../DEPLOYMENT.md)
    - Replace development certificates
    - Configure production secrets
    - Review [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md)
@@ -345,6 +345,6 @@ docker logs sorcha-peer-service | grep "Successfully connected"
 **Author:** Claude Sonnet 4.5
 **Related Documents:**
 - [README.md](../README.md#option-3-using-docker-compose-production-like)
-- [DEPLOYMENT.md](../DEPLOYMENT.md#docker-deployment)
+- [DEPLOYMENT.md](../../DEPLOYMENT.md#docker-deployment)
 - [DOCKER-QUICK-START.md](DOCKER-QUICK-START.md)
 - [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md)

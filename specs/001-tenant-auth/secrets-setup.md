@@ -531,4 +531,4 @@ For full quickstart guide, see [quickstart.md](quickstart.md).
 
 **Last Updated**: 2025-11-22
 **Maintained By**: Sorcha Security Team
-**Questions?**: See [TROUBLESHOOTING.md](../../TROUBLESHOOTING.md)
+**Questions?**: See [TROUBLESHOOTING.md](../../docs/TROUBLESHOOTING.md)

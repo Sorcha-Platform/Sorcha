@@ -381,14 +381,14 @@ For production deployments:
    - Configure proper JWT signing keys
    - Use Azure Key Vault or AWS KMS for secrets
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for full production deployment guide.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full production deployment guide.
 
 ---
 
 ## Additional Resources
 
 - **Main README**: [../README.md](../README.md)
-- **Deployment Guide**: [../DEPLOYMENT.md](../DEPLOYMENT.md)
+- **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Docker Networking**: [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md)
 - **Port Configuration**: [PORT-CONFIGURATION.md](PORT-CONFIGURATION.md)
 - **Architecture**: [architecture.md](architecture.md)
