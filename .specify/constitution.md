@@ -268,7 +268,7 @@ SORCHA is a distributed ledger platform built on microservices architecture, pro
 - [Project README](../README.md)
 - [Contributing Guidelines](../CONTRIBUTING.md)
 - [License](../LICENCE.txt)
-- [Troubleshooting Guide](../TROUBLESHOOTING.md)
+- [Troubleshooting Guide](../docs/TROUBLESHOOTING.md)
 
 ---
 

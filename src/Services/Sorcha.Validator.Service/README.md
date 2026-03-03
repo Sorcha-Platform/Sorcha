@@ -831,7 +831,7 @@ src/Common/Sorcha.Validator.Core/
 
 ### Getting Help
 
-- Review [TROUBLESHOOTING.md](./../../../TROUBLESHOOTING.md) for common issues
+- Review [TROUBLESHOOTING.md](./../../../docs/TROUBLESHOOTING.md) for common issues
 - Check [CLAUDE.md](./../../../CLAUDE.md) for AI assistant guidelines
 - Create a GitHub issue with the `validator-service` label
 
