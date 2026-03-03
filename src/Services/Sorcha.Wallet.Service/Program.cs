@@ -40,6 +40,9 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.INotific
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
+// Feature 047: Digest notification batching (US5)
+builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.NotificationDigestWorker>();
+
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
 

@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
 using Sorcha.Register.Storage.MongoDB;
 using Sorcha.Register.Storage.Redis;
+using Sorcha.Register.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
@@ -168,6 +169,13 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocal
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
     Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
 
+// Feature 047: Register recovery service (US4) — detects docket gaps and recovers from peers
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IRegisterRecoveryService>(sp =>
+    sp.GetRequiredService<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>());
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>());
+
 // Add JWT authentication and authorization (AUTH-002)
 // JWT authentication is now configured via shared ServiceDefaults with auto-key generation
 builder.AddJwtAuthentication();
@@ -207,6 +215,9 @@ app.MapHub<RegisterHub>("/hubs/register");
 
 // Feature 047: Map RegisterAddress gRPC service for bloom filter operations
 app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcService>();
+
+// Feature 047: Map recovery health endpoints (US4)
+app.MapRecoveryHealthEndpoints();
 
 // Add authentication and authorization middleware (AUTH-002)
 app.UseAuthentication();
