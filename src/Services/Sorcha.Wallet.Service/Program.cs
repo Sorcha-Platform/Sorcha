@@ -30,6 +30,10 @@ builder.Services.AddDidResolvers();
 // Add presentation request service (OID4VP)
 builder.Services.AddSingleton<IPresentationRequestService, PresentationRequestService>();
 
+// Feature 047: Address registration service for bloom filter sync
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IAddressRegistrationService,
+    Sorcha.Wallet.Service.Services.Implementation.AddressRegistrationService>();
+
 // Add gRPC services for inter-service communication (Validator, Peer, etc.)
 builder.Services.AddGrpc();
 
@@ -83,6 +87,7 @@ app.UseRateLimiting();
 
 // Map gRPC services for inter-service communication
 app.MapGrpcService<WalletGrpcService>();
+app.MapGrpcService<WalletNotificationGrpcService>();
 
 // Map Wallet API endpoints
 app.MapWalletEndpoints();

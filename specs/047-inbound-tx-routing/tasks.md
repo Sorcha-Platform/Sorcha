@@ -52,17 +52,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Create ILocalAddressIndex.cs interface (Add, MayContain, Rebuild, GetStats) in src/Services/Sorcha.Register.Service/Services/Interfaces/
-- [ ] T011 [US1] Implement RedisBloomFilterAddressIndex.cs using StackExchange.Redis SETBIT/GETBIT with 10 hash functions (MurmurHash3), sizing for 100K addresses at <0.1% FP rate, Redis key namespace register:bloom:{registerId}. Rebuild MUST be atomic: build new filter under a temp key (register:bloom:{registerId}:rebuild), then RENAME to swap — ensures concurrent MayContain calls see either old or new filter, never empty. In src/Services/Sorcha.Register.Service/Services/Implementation/
-- [ ] T012 [US1] Implement RegisterAddressGrpcService.cs with RegisterLocalAddress, RemoveLocalAddress, and RebuildAddressIndex RPCs using ILocalAddressIndex and IWalletNotificationClient in src/Services/Sorcha.Register.Service/GrpcServices/
-- [ ] T013 [P] [US1] Create IAddressRegistrationService.cs interface in src/Services/Sorcha.Wallet.Service/Services/Interfaces/
-- [ ] T014 [US1] Implement AddressRegistrationService.cs — on wallet create/delete, calls Register Service gRPC RegisterLocalAddress/RemoveLocalAddress via IRegisterAddressClient in src/Services/Sorcha.Wallet.Service/Services/Implementation/
-- [ ] T015 [US1] Implement GetAllLocalAddresses server-streaming endpoint in WalletNotificationGrpcService.cs — streams all active wallet addresses from IWalletRepository for bloom filter rebuild in src/Services/Sorcha.Wallet.Service/GrpcServices/
-- [ ] T016 [US1] Register ILocalAddressIndex, RegisterAddressGrpcService in Register Service DI (Program.cs)
-- [ ] T017 [US1] Register IAddressRegistrationService, WalletNotificationGrpcService in Wallet Service DI (Program.cs)
-- [ ] T018 [US1] Create admin REST endpoint POST /api/admin/registers/{registerId}/rebuild-index in src/Services/Sorcha.Register.Service/Endpoints/AdminEndpoints.cs — wraps gRPC RebuildAddressIndex call, returns address count and duration. Add YARP route in API Gateway for /api/admin/registers/* path. Include .WithSummary() and .WithDescription() per constitution
-- [ ] T019 [P] [US1] Write RedisBloomFilterAddressIndexTests.cs — Add, MayContain, Rebuild (verify atomic swap via RENAME), false positive rate validation, hash distribution, concurrent MayContain during rebuild in tests/Sorcha.Register.Service.Tests/
-- [ ] T020 [P] [US1] Write AddressRegistrationServiceTests.cs — register on wallet create, remove on wallet delete, gRPC client call verification in tests/Sorcha.Wallet.Service.Tests/
+- [X] T010 [US1] Create ILocalAddressIndex.cs interface (Add, MayContain, Rebuild, GetStats) in src/Services/Sorcha.Register.Service/Services/Interfaces/
+- [X] T011 [US1] Implement RedisBloomFilterAddressIndex.cs using StackExchange.Redis SETBIT/GETBIT with 10 hash functions (MurmurHash3), sizing for 100K addresses at <0.1% FP rate, Redis key namespace register:bloom:{registerId}. Rebuild MUST be atomic: build new filter under a temp key (register:bloom:{registerId}:rebuild), then RENAME to swap — ensures concurrent MayContain calls see either old or new filter, never empty. In src/Services/Sorcha.Register.Service/Services/Implementation/
+- [X] T012 [US1] Implement RegisterAddressGrpcService.cs with RegisterLocalAddress, RemoveLocalAddress, and RebuildAddressIndex RPCs using ILocalAddressIndex and IWalletNotificationClient in src/Services/Sorcha.Register.Service/GrpcServices/
+- [X] T013 [P] [US1] Create IAddressRegistrationService.cs interface in src/Services/Sorcha.Wallet.Service/Services/Interfaces/
+- [X] T014 [US1] Implement AddressRegistrationService.cs — on wallet create/delete, calls Register Service gRPC RegisterLocalAddress/RemoveLocalAddress via IRegisterAddressClient in src/Services/Sorcha.Wallet.Service/Services/Implementation/
+- [X] T015 [US1] Implement GetAllLocalAddresses server-streaming endpoint in WalletNotificationGrpcService.cs — streams all active wallet addresses from IWalletRepository for bloom filter rebuild in src/Services/Sorcha.Wallet.Service/GrpcServices/
+- [X] T016 [US1] Register ILocalAddressIndex, RegisterAddressGrpcService in Register Service DI (Program.cs)
+- [X] T017 [US1] Register IAddressRegistrationService, WalletNotificationGrpcService in Wallet Service DI (Program.cs)
+- [X] T018 [US1] Create admin REST endpoint POST /api/admin/registers/{registerId}/rebuild-index in Register Service Program.cs (follows existing inline endpoint pattern). Add YARP route in API Gateway for /api/admin/registers/* path. Include .WithSummary() and .WithDescription() per constitution
+- [X] T019 [P] [US1] Write RedisBloomFilterAddressIndexTests.cs — Add, MayContain, Rebuild (verify atomic swap via RENAME), false positive rate validation, hash distribution, concurrent MayContain during rebuild in tests/Sorcha.Register.Service.Tests/
+- [X] T020 [P] [US1] Write AddressRegistrationServiceTests.cs — register on wallet create, remove on wallet delete, gRPC client call verification in tests/Sorcha.Wallet.Service.Tests/
 
 **Checkpoint**: Wallet addresses automatically register in bloom filter. Index rebuilds on startup and admin command (both gRPC and REST). Rebuild is atomic — no missed transactions during rebuild. All US1 tests pass.
 
