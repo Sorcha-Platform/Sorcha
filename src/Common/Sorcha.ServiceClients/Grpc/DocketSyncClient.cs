@@ -3,8 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Grpc.Core;
-using Grpc.Net.Client;
-using Microsoft.Extensions.Configuration;
+using Grpc.Net.ClientFactory;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Protos;
 
@@ -13,21 +12,19 @@ namespace Sorcha.ServiceClients.Grpc;
 /// <summary>
 /// gRPC client for Docket Sync Service.
 /// Recovery sync — stream missing dockets and query network head.
+/// Uses GrpcClientFactory for Aspire service discovery and HTTP handler pooling.
 /// </summary>
-public class DocketSyncClient : IDocketSyncClient, IDisposable
+public class DocketSyncClient : IDocketSyncClient
 {
-    private readonly DocketSyncService.DocketSyncServiceClient _client;
-    private readonly GrpcChannel _channel;
+    internal const string ClientName = "DocketSync";
+
+    private readonly GrpcClientFactory _clientFactory;
     private readonly ILogger<DocketSyncClient> _logger;
 
-    public DocketSyncClient(IConfiguration configuration, ILogger<DocketSyncClient> logger)
+    public DocketSyncClient(GrpcClientFactory clientFactory, ILogger<DocketSyncClient> logger)
     {
+        _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _logger = logger;
-        var address = configuration["ServiceClients:PeerService:GrpcAddress"]
-            ?? configuration["ServiceClients:PeerService:Address"]
-            ?? "https://localhost:7002";
-        _channel = GrpcChannel.ForAddress(address);
-        _client = new DocketSyncService.DocketSyncServiceClient(_channel);
     }
 
     /// <inheritdoc />
@@ -35,7 +32,8 @@ public class DocketSyncClient : IDocketSyncClient, IDisposable
         string registerId, CancellationToken ct = default)
     {
         _logger.LogDebug("Querying latest docket number for register {RegisterId}", registerId);
-        return await _client.GetLatestDocketNumberAsync(
+        var client = _clientFactory.CreateClient<DocketSyncService.DocketSyncServiceClient>(ClientName);
+        return await client.GetLatestDocketNumberAsync(
             new GetLatestDocketNumberRequest { RegisterId = registerId },
             cancellationToken: ct);
     }
@@ -49,7 +47,8 @@ public class DocketSyncClient : IDocketSyncClient, IDisposable
             "Starting docket sync for register {RegisterId} from docket {FromDocket}",
             registerId, fromDocketNumber);
 
-        using var call = _client.SyncDockets(new SyncDocketsRequest
+        var client = _clientFactory.CreateClient<DocketSyncService.DocketSyncServiceClient>(ClientName);
+        using var call = client.SyncDockets(new SyncDocketsRequest
         {
             RegisterId = registerId,
             FromDocketNumber = fromDocketNumber,
@@ -61,10 +60,5 @@ public class DocketSyncClient : IDocketSyncClient, IDisposable
         {
             yield return entry;
         }
-    }
-
-    public void Dispose()
-    {
-        _channel.Dispose();
     }
 }

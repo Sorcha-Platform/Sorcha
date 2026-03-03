@@ -82,10 +82,9 @@ public class WalletNotificationGrpcService : WalletNotificationService.WalletNot
     /// </para>
     ///
     /// <para>
-    /// Wallets are fetched in pages of <c>100</c> using <see cref="IWalletRepository.GetByTenantAsync"/>.
-    /// An empty string is used as the tenant discriminator to retrieve wallets across all
-    /// tenants — callers should ensure this behaviour is supported by the active repository
-    /// implementation. Paging continues until a page returns fewer entries than the page size.
+    /// Wallets are fetched in pages of <c>100</c> using <see cref="IWalletRepository.GetAllPagedAsync"/>
+    /// which retrieves wallets across all tenants without filtering.
+    /// Paging continues until a page returns fewer entries than the page size.
     /// </para>
     ///
     /// <para><b>active_only behaviour:</b></para>
@@ -120,8 +119,7 @@ public class WalletNotificationGrpcService : WalletNotificationService.WalletNot
 
                 try
                 {
-                    page = await _repository.GetByTenantAsync(
-                        tenant: string.Empty,
+                    page = await _repository.GetAllPagedAsync(
                         skip: skip,
                         take: PageSize,
                         cancellationToken: context.CancellationToken);

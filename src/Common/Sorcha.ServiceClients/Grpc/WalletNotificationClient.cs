@@ -3,8 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Grpc.Core;
-using Grpc.Net.Client;
-using Microsoft.Extensions.Configuration;
+using Grpc.Net.ClientFactory;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Service.Grpc;
 
@@ -13,21 +12,19 @@ namespace Sorcha.ServiceClients.Grpc;
 /// <summary>
 /// gRPC client for Wallet Notification Service.
 /// Resolves addresses to users and delivers inbound action notifications.
+/// Uses GrpcClientFactory for Aspire service discovery and HTTP handler pooling.
 /// </summary>
-public class WalletNotificationClient : IWalletNotificationClient, IDisposable
+public class WalletNotificationClient : IWalletNotificationClient
 {
-    private readonly WalletNotificationService.WalletNotificationServiceClient _client;
-    private readonly GrpcChannel _channel;
+    internal const string ClientName = "WalletNotification";
+
+    private readonly GrpcClientFactory _clientFactory;
     private readonly ILogger<WalletNotificationClient> _logger;
 
-    public WalletNotificationClient(IConfiguration configuration, ILogger<WalletNotificationClient> logger)
+    public WalletNotificationClient(GrpcClientFactory clientFactory, ILogger<WalletNotificationClient> logger)
     {
+        _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _logger = logger;
-        var address = configuration["ServiceClients:WalletService:GrpcAddress"]
-            ?? configuration["ServiceClients:WalletService:Address"]
-            ?? "https://localhost:7001";
-        _channel = GrpcChannel.ForAddress(address);
-        _client = new WalletNotificationService.WalletNotificationServiceClient(_channel);
     }
 
     /// <inheritdoc />
@@ -36,7 +33,8 @@ public class WalletNotificationClient : IWalletNotificationClient, IDisposable
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         _logger.LogDebug("Streaming all local addresses for register {RegisterId}", registerId);
-        using var call = _client.GetAllLocalAddresses(
+        var client = _clientFactory.CreateClient<WalletNotificationService.WalletNotificationServiceClient>(ClientName);
+        using var call = client.GetAllLocalAddresses(
             new GetAllLocalAddressesRequest { RegisterId = registerId, ActiveOnly = activeOnly },
             cancellationToken: ct);
 
@@ -52,7 +50,8 @@ public class WalletNotificationClient : IWalletNotificationClient, IDisposable
     {
         _logger.LogDebug("Notifying inbound transaction {TransactionId} for address {Address}",
             request.TransactionId, request.RecipientAddress);
-        return await _client.NotifyInboundTransactionAsync(request, cancellationToken: ct);
+        var client = _clientFactory.CreateClient<WalletNotificationService.WalletNotificationServiceClient>(ClientName);
+        return await client.NotifyInboundTransactionAsync(request, cancellationToken: ct);
     }
 
     /// <inheritdoc />
@@ -60,11 +59,7 @@ public class WalletNotificationClient : IWalletNotificationClient, IDisposable
         NotifyInboundTransactionBatchRequest request, CancellationToken ct = default)
     {
         _logger.LogDebug("Notifying batch of {Count} inbound transactions", request.Transactions.Count);
-        return await _client.NotifyInboundTransactionBatchAsync(request, cancellationToken: ct);
-    }
-
-    public void Dispose()
-    {
-        _channel.Dispose();
+        var client = _clientFactory.CreateClient<WalletNotificationService.WalletNotificationServiceClient>(ClientName);
+        return await client.NotifyInboundTransactionBatchAsync(request, cancellationToken: ct);
     }
 }

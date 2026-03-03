@@ -175,6 +175,24 @@ public class EfCoreWalletRepository : IWalletRepository
     }
 
     /// <inheritdoc />
+    public async Task<IEnumerable<WalletEntity>> GetAllPagedAsync(
+        int skip = 0,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Getting all wallets across tenants (skip={Skip}, take={Take})", skip, take);
+
+        var wallets = await _context.Wallets
+            .AsNoTracking()
+            .OrderByDescending(w => w.CreatedAt)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return wallets;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> ExistsAsync(string address, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
