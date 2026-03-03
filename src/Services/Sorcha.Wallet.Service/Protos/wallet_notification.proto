@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+//
+// gRPC contract: Wallet Notification Service
+// Direction: Register Service → Wallet Service
+// Purpose: Resolve addresses to users and deliver inbound action notifications
+
+syntax = "proto3";
+
+option csharp_namespace = "Sorcha.Wallet.Service.Grpc";
+
+package sorcha.wallet;
+
+import "google/protobuf/timestamp.proto";
+
+// Service for resolving wallet addresses and delivering inbound notifications.
+// Called by Register Service when bloom filter matches are found.
+service WalletNotificationService {
+
+  // Get all local wallet addresses for bloom filter rebuild.
+  // Returns a stream of addresses for efficient bulk transfer.
+  // Called by Register Service on startup or admin-triggered rebuild.
+  rpc GetAllLocalAddresses (GetAllLocalAddressesRequest) returns (stream LocalAddressEntry);
+
+  // Notify Wallet Service of an inbound transaction matching a local address.
+  // Wallet Service resolves address → wallet → user, checks notification preferences,
+  // and delivers notification via SignalR or queues for digest.
+  rpc NotifyInboundTransaction (NotifyInboundTransactionRequest) returns (NotifyInboundTransactionResponse);
+
+  // Batch notify for multiple matched transactions (used during recovery).
+  // More efficient than individual calls when processing historical dockets.
+  rpc NotifyInboundTransactionBatch (NotifyInboundTransactionBatchRequest) returns (NotifyInboundTransactionBatchResponse);
+}
+
+message GetAllLocalAddressesRequest {
+  // Optional: filter to specific register
+  string register_id = 1;
+
+  // Optional: only return addresses for active wallets
+  bool active_only = 2;
+}
+
+message LocalAddressEntry {
+  // The wallet address
+  string address = 1;
+
+  // The wallet ID this address belongs to
+  string wallet_id = 2;
+
+  // The wallet owner's user sub
+  string user_id = 3;
+
+  // Whether the wallet is currently active
+  bool is_active = 4;
+}
+
+message NotifyInboundTransactionRequest {
+  // The matched recipient address
+  string recipient_address = 1;
+
+  // Transaction identifier (64-char hex SHA-256)
+  string transaction_id = 2;
+
+  // Register the transaction belongs to
+  string register_id = 3;
+
+  // Docket number containing this transaction
+  int64 docket_number = 4;
+
+  // Blueprint metadata from TransactionMetaData
+  string blueprint_id = 5;
+  string instance_id = 6;
+  uint32 action_id = 7;
+  uint32 next_action_id = 8;
+
+  // Sender address (if available from transaction)
+  string sender_address = 9;
+
+  // When the transaction was stored
+  google.protobuf.Timestamp timestamp = 10;
+
+  // True if this notification comes from recovery processing
+  bool is_recovery = 11;
+}
+
+message NotifyInboundTransactionResponse {
+  bool success = 1;
+
+  // How the notification was delivered
+  NotificationDelivery delivery = 2;
+
+  string message = 3;
+}
+
+enum NotificationDelivery {
+  NOTIFICATION_DELIVERY_UNSPECIFIED = 0;
+
+  // Delivered immediately via SignalR
+  NOTIFICATION_DELIVERY_REAL_TIME = 1;
+
+  // Queued for digest delivery
+  NOTIFICATION_DELIVERY_DIGEST_QUEUED = 2;
+
+  // Rate limited — overflow routed to digest
+  NOTIFICATION_DELIVERY_RATE_LIMITED = 3;
+
+  // User not found for this address
+  NOTIFICATION_DELIVERY_NO_USER = 4;
+}
+
+message NotifyInboundTransactionBatchRequest {
+  repeated NotifyInboundTransactionRequest transactions = 1;
+}
+
+message NotifyInboundTransactionBatchResponse {
+  int32 total = 1;
+  int32 delivered_real_time = 2;
+  int32 queued_for_digest = 3;
+  int32 rate_limited = 4;
+  int32 no_user_found = 5;
+  repeated string errors = 6;
+}

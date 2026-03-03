@@ -590,6 +590,18 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.DefaultWalletAddress)
                 .HasMaxLength(200);
 
+            entity.Property(e => e.NotificationMethod)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(20)
+                .HasDefaultValue(NotificationMethod.InApp);
+
+            entity.Property(e => e.NotificationFrequency)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(20)
+                .HasDefaultValue(NotificationFrequency.RealTime);
+
             // Unique index: one preferences record per user
             entity.HasIndex(e => e.UserId)
                 .IsUnique()

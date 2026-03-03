@@ -49,6 +49,18 @@ public class UserPreferences
     public bool NotificationsEnabled { get; set; }
 
     /// <summary>
+    /// Delivery channel for inbound action notifications.
+    /// Default: InApp (in-app notifications only).
+    /// </summary>
+    public NotificationMethod NotificationMethod { get; set; } = NotificationMethod.InApp;
+
+    /// <summary>
+    /// Delivery timing for inbound action notifications.
+    /// Default: RealTime (immediate per-transaction delivery).
+    /// </summary>
+    public NotificationFrequency NotificationFrequency { get; set; } = NotificationFrequency.RealTime;
+
+    /// <summary>
     /// Whether two-factor authentication is active.
     /// Read-only via preferences API — managed exclusively by the TOTP enrollment flow.
     /// </summary>

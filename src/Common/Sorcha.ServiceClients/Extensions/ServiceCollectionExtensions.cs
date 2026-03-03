@@ -7,6 +7,7 @@ using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.ServiceClients.Grpc;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Did;
@@ -90,6 +91,11 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<ParticipantServiceClient>();
         services.AddScoped<IParticipantServiceClient, ParticipantServiceClient>();
+
+        // Feature 047: Inbound transaction routing gRPC clients
+        services.AddSingleton<IRegisterAddressClient, RegisterAddressClient>();
+        services.AddSingleton<IWalletNotificationClient, WalletNotificationClient>();
+        services.AddSingleton<IDocketSyncClient, DocketSyncClient>();
 
         return services;
     }

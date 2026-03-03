@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <Protobuf Include="Protos\wallet_service.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\wallet_notification.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+//
+// gRPC contract: Docket Sync Service
+// Direction: Register Service → Peer Service
+// Purpose: Recovery sync — stream missing dockets and query network head
+
+syntax = "proto3";
+
+option csharp_namespace = "Sorcha.Peer.Service.Protos";
+
+package sorcha.peer;
+
+import "google/protobuf/timestamp.proto";
+
+// Service for docket synchronization during recovery mode.
+// Called by Register Service when it detects a gap between local state and network head.
+service DocketSyncService {
+
+  // Get the latest docket number for a register from the peer network.
+  // Used to detect if the local node is behind and needs recovery.
+  rpc GetLatestDocketNumber (GetLatestDocketNumberRequest) returns (GetLatestDocketNumberResponse);
+
+  // Stream dockets from a starting point to the network head.
+  // Used during recovery to catch up on missed dockets.
+  // Dockets are streamed in sequential order with full chain integrity data.
+  rpc SyncDockets (SyncDocketsRequest) returns (stream SyncDocketEntry);
+}
+
+message GetLatestDocketNumberRequest {
+  // The register to query
+  string register_id = 1;
+}
+
+message GetLatestDocketNumberResponse {
+  // The latest docket number known to the network
+  int64 latest_docket_number = 1;
+
+  // The peer that provided this information
+  string source_peer_id = 2;
+
+  // When this information was retrieved
+  google.protobuf.Timestamp queried_at = 3;
+
+  // True if the peer network is reachable
+  bool network_available = 4;
+}
+
+message SyncDocketsRequest {
+  // The register to sync
+  string register_id = 1;
+
+  // Start syncing from this docket number (exclusive — first returned docket is from_docket + 1)
+  int64 from_docket_number = 2;
+
+  // Optional: stop at this docket number (inclusive). If 0, sync to head.
+  int64 to_docket_number = 3;
+
+  // Maximum dockets to return per stream (for flow control). 0 = unlimited.
+  int32 max_count = 4;
+}
+
+message SyncDocketEntry {
+  // Docket number (sequential)
+  int64 docket_number = 1;
+
+  // Docket hash for integrity verification
+  string docket_hash = 2;
+
+  // Previous docket hash (for chain linkage verification)
+  string previous_docket_hash = 3;
+
+  // Merkle root of transactions in this docket
+  string merkle_root = 4;
+
+  // Serialized docket data (includes all transactions)
+  bytes docket_data = 5;
+
+  // Number of transactions in this docket
+  int32 transaction_count = 6;
+
+  // When the docket was originally sealed
+  google.protobuf.Timestamp sealed_at = 7;
+
+  // Validator signature on the docket
+  string validator_signature = 8;
+
+  // Validator's public key or ID for signature verification
+  string validator_id = 9;
+}

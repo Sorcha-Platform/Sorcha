@@ -32,6 +32,10 @@
          which would produce duplicate message types (CS0436). -->
     <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\peer_communication.proto" GrpcServices="Both" Link="Protos\peer_communication.proto" />
     <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\peer_discovery.proto" GrpcServices="Both" Link="Protos\peer_discovery.proto" />
+    <!-- Feature 047: Inbound transaction routing — client stubs for cross-service gRPC calls -->
+    <Protobuf Include="..\..\Services\Sorcha.Register.Service\Protos\register_address.proto" GrpcServices="Client" Link="Protos\register_address.proto" />
+    <Protobuf Include="..\..\Services\Sorcha.Wallet.Service\Protos\wallet_notification.proto" GrpcServices="Client" Link="Protos\wallet_notification.proto" />
+    <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\docket_sync.proto" GrpcServices="Client" Link="Protos\docket_sync.proto" />
   </ItemGroup>
 
 </Project>

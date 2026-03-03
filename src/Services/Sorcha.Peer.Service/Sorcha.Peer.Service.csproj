@@ -36,6 +36,7 @@
     <Protobuf Include="Protos\transaction_distribution.proto" GrpcServices="Both" />
     <Protobuf Include="Protos\register_sync.proto" GrpcServices="Both" />
     <Protobuf Include="Protos\peer_heartbeat.proto" GrpcServices="Both" />
+    <Protobuf Include="Protos\docket_sync.proto" GrpcServices="Both" />
   </ItemGroup>
 
   <ItemGroup>
