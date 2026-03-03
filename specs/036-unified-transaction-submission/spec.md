@@ -3,7 +3,7 @@
 **Feature Branch**: `036-unified-transaction-submission`
 **Created**: 2026-02-18
 **Status**: Draft
-**Input**: User description: "Unified Transaction Submission & System Wallet Signing Service — requirements are in docs/transaction-submission-flow.md"
+**Input**: User description: "Unified Transaction Submission & System Wallet Signing Service — requirements are in docs/reference/transaction-submission-flow.md"
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -621,4 +621,4 @@ az containerapp restart --name tenant-service --resource-group $RESOURCE_GROUP
 ---
 
 **Questions or Issues?**
-See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) or create a GitHub issue.
+See [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) or create a GitHub issue.

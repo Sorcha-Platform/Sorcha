@@ -814,9 +814,9 @@ src/Common/Sorcha.Validator.Core/
 ### Related Documents
 
 - **Specification:** [.specify/specs/sorcha-validator-service.md](./../../../.specify/specs/sorcha-validator-service.md)
-- **Design:** [docs/validator-service-design.md](./../../../docs/validator-service-design.md)
+- **Design:** [docs/validator-service-design.md](./../../../docs/reference/validator-service-design.md)
 - **Implementation Plan:** [docs/validator-service-implementation-plan.md](./../../../docs/validator-service-implementation-plan.md)
-- **Architecture:** [docs/architecture.md](./../../../docs/architecture.md)
+- **Architecture:** [docs/architecture.md](./../../../docs/reference/architecture.md)
 - **API Documentation:** [https://localhost:7087/scalar/v1](https://localhost:7087/scalar/v1) (when running)
 
 ### Quick Links
@@ -831,7 +831,7 @@ src/Common/Sorcha.Validator.Core/
 
 ### Getting Help
 
-- Review [TROUBLESHOOTING.md](./../../../docs/TROUBLESHOOTING.md) for common issues
+- Review [TROUBLESHOOTING.md](./../../../docs/guides/TROUBLESHOOTING.md) for common issues
 - Check [CLAUDE.md](./../../../CLAUDE.md) for AI assistant guidelines
 - Create a GitHub issue with the `validator-service` label
 

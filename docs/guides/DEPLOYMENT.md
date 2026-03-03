@@ -29,7 +29,7 @@ For CI/CD deployment, configure these secrets in GitHub:
 
 ## Docker Deployment
 
-> 📘 **Quick Start**: For a step-by-step Docker deployment guide, see [docs/DOCKER-QUICK-START.md](docs/DOCKER-QUICK-START.md)
+> 📘 **Quick Start**: For a step-by-step Docker deployment guide, see [DOCKER-QUICK-START.md](../getting-started/DOCKER-QUICK-START.md)
 
 ### Prerequisites
 

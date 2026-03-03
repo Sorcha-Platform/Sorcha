@@ -2890,8 +2890,8 @@ public class ExpressionComplexityValidator
 4. Offer certification program
 
 **Resources to Create:**
-- `/docs/json-logic-guide.md` - Comprehensive JSON Logic reference
-- `/docs/json-e-templates.md` - Template authoring guide
+- `json-logic-guide.md` - Comprehensive JSON Logic reference
+- `json-e-templates.md` - Template authoring guide
 - `/docs/json-ld-integration.md` - Semantic web integration guide
 - `/examples/blueprints/` - Curated example library
 - Blueprint Designer in-app tutorials

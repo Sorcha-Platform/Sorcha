@@ -676,14 +676,14 @@ Register Service
 - [ ] Document .proto file locations and structure
 
 **4.2.2: Update Architecture Documentation (2h)**
-- [ ] Update `docs/architecture.md` with gRPC service diagram
-- [ ] Update `docs/AUTHENTICATION-SETUP.md` for gRPC auth flow
+- [ ] Update `docs/reference/architecture.md` with gRPC service diagram
+- [ ] Update `docs/guides/AUTHENTICATION-SETUP.md` for gRPC auth flow
 - [ ] Create `docs/GRPC-GUIDE.md` for developers
 - [ ] Document mTLS certificate management
 
 **4.2.3: Update API Documentation (2h)**
 - [ ] Generate .proto documentation (protoc-gen-doc)
-- [ ] Update `docs/API-DOCUMENTATION.md`
+- [ ] Update `docs/reference/API-DOCUMENTATION.md`
 - [ ] Create gRPC client examples
 - [ ] Document error handling patterns
 
@@ -701,9 +701,9 @@ Register Service
 - `.specify/specs/sorcha-tenant-service.md`
 - `.specify/specs/sorcha-wallet-service.md`
 - `.specify/specs/sorcha-register-service.md`
-- `docs/architecture.md`
-- `docs/AUTHENTICATION-SETUP.md`
-- `docs/API-DOCUMENTATION.md`
+- `docs/reference/architecture.md`
+- `docs/guides/AUTHENTICATION-SETUP.md`
+- `docs/reference/API-DOCUMENTATION.md`
 
 ---
 
@@ -1040,9 +1040,9 @@ Register Service
 - `.specify/specs/sorcha-tenant-service.md`
 - `.specify/specs/sorcha-wallet-service.md`
 - `.specify/specs/sorcha-register-service.md`
-- `docs/architecture.md`
-- `docs/AUTHENTICATION-SETUP.md`
-- `docs/API-DOCUMENTATION.md`
+- `docs/reference/architecture.md`
+- `docs/guides/AUTHENTICATION-SETUP.md`
+- `docs/reference/API-DOCUMENTATION.md`
 
 **Tests:**
 - All 369 integration test files (spread across 4 test projects)

@@ -430,7 +430,7 @@ Admin.Tests/Services/BrowserTokenCacheTests.cs    → UI.Core.Tests/Services/
 **Files to Update**:
 ```
 CLAUDE.md                              - Remove Admin references
-docs/development-status.md             - Update completion status
+docs/reference/development-status.md   - Update completion status
 .specify/MASTER-TASKS.md               - Mark migration complete
 README.md                              - Update project list
 ```

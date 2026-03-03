@@ -962,6 +962,6 @@ Before submitting code, ask:
 
 **References:**
 - [Constitution](.specify/constitution.md)
-- [Architecture](architecture.md)
+- [Architecture](../reference/architecture.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Unified Design Summary](.specify/UNIFIED-DESIGN-SUMMARY.md)

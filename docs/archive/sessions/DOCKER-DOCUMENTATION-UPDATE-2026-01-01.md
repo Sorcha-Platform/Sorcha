@@ -289,7 +289,7 @@ docker logs sorcha-peer-service | grep "Successfully connected"
 ### For Users
 
 1. **First Time Setup**:
-   - Follow [DOCKER-QUICK-START.md](DOCKER-QUICK-START.md)
+   - Follow [DOCKER-QUICK-START.md](../../getting-started/DOCKER-QUICK-START.md)
    - Generate certificate before starting services
    - Access landing page at `http://localhost/`
 
@@ -346,5 +346,5 @@ docker logs sorcha-peer-service | grep "Successfully connected"
 **Related Documents:**
 - [README.md](../README.md#option-3-using-docker-compose-production-like)
 - [DEPLOYMENT.md](../../DEPLOYMENT.md#docker-deployment)
-- [DOCKER-QUICK-START.md](DOCKER-QUICK-START.md)
+- [DOCKER-QUICK-START.md](../../getting-started/DOCKER-QUICK-START.md)
 - [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md)

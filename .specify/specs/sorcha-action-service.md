@@ -1166,7 +1166,7 @@ Not applicable - new service implementation.
 
 ## References
 
-1. [Sorcha Architecture](../../docs/architecture.md)
+1. [Sorcha Architecture](../../docs/reference/architecture.md)
 2. [Blueprint Schema](../../docs/blueprint-schema.md)
 3. [Transaction Handler Specification](sorcha-transaction-handler.md)
 4. [Wallet Service Specification](sorcha-wallet-service.md)

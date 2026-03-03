@@ -61,7 +61,7 @@ Purpose: Give AI coding agents the minimal, actionable knowledge to be productiv
   - API Gateway (YARP): `src/Services/Sorcha.ApiGateway/`
 
 - **Test naming and patterns**:
-  - Unit tests follow `MethodName_Scenario_ExpectedBehavior` (see `docs/architecture.md` Test Naming Convention).
+  - Unit tests follow `MethodName_Scenario_ExpectedBehavior` (see `docs/reference/architecture.md` Test Naming Convention).
   - Use `xUnit`, `Moq`, and `FluentAssertions`.
 
 - **Integration & E2E specifics**:

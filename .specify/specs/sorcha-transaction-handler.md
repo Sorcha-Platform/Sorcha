@@ -7,7 +7,7 @@
 **Related Specification:** [Sorcha-cryptography-rewrite.md](Sorcha-cryptography-rewrite.md)
 
 **Related Documentation:**
-- [Blockchain Transaction Format - JSON-LD Specification](../../docs/blockchain-transaction-format.md)
+- [Blockchain Transaction Format - JSON-LD Specification](../../docs/reference/blockchain-transaction-format.md)
 
 ## Executive Summary
 

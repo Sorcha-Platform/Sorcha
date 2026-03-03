@@ -45,7 +45,7 @@ docker-compose logs -f <service-name>
 docker-compose down -v && docker-compose up -d
 ```
 
-See [docs/DOCKER-DEVELOPMENT-WORKFLOW.md](docs/DOCKER-DEVELOPMENT-WORKFLOW.md) for detailed workflows.
+See [docs/getting-started/DOCKER-DEVELOPMENT-WORKFLOW.md](docs/getting-started/DOCKER-DEVELOPMENT-WORKFLOW.md) for detailed workflows.
 
 ### .NET Aspire (Debugging)
 
@@ -63,7 +63,7 @@ Access points with Aspire:
 - Blueprint Service: `https://localhost:7000`
 - Register Service: `https://localhost:7290`
 
-See [docs/PORT-CONFIGURATION.md](docs/PORT-CONFIGURATION.md) for all port assignments.
+See [docs/getting-started/PORT-CONFIGURATION.md](docs/getting-started/PORT-CONFIGURATION.md) for all port assignments.
 
 ## Project Structure
 
@@ -255,10 +255,10 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 |----------|---------|
 | [.specify/constitution.md](.specify/constitution.md) | Architectural principles |
 | [.specify/MASTER-TASKS.md](.specify/MASTER-TASKS.md) | Task tracking with priorities |
-| [docs/architecture.md](docs/architecture.md) | System architecture diagrams |
-| [docs/API-DOCUMENTATION.md](docs/API-DOCUMENTATION.md) | REST and gRPC endpoints |
-| [docs/AUTHENTICATION-SETUP.md](docs/AUTHENTICATION-SETUP.md) | JWT configuration |
-| [docs/PORT-CONFIGURATION.md](docs/PORT-CONFIGURATION.md) | Port assignments |
+| [docs/reference/architecture.md](docs/reference/architecture.md) | System architecture diagrams |
+| [docs/reference/API-DOCUMENTATION.md](docs/reference/API-DOCUMENTATION.md) | REST and gRPC endpoints |
+| [docs/guides/AUTHENTICATION-SETUP.md](docs/guides/AUTHENTICATION-SETUP.md) | JWT configuration |
+| [docs/getting-started/PORT-CONFIGURATION.md](docs/getting-started/PORT-CONFIGURATION.md) | Port assignments |
 | [CLAUDE.md](CLAUDE.md) | AI assistant development guidelines |
 
 ## Scripts
@@ -281,7 +281,7 @@ See `scripts/README.md` for the full list.
 
 **Current:** 100% MVD (Minimum Viable Deliverable) | Production Readiness: 30%
 
-See [docs/development-status.md](docs/development-status.md) for detailed component status.
+See [docs/reference/development-status.md](docs/reference/development-status.md) for detailed component status.
 
 ### Remaining for Production
 

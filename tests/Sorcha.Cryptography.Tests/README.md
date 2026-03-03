@@ -536,7 +536,7 @@ If memory tests fail:
 ## Resources
 
 - [Sorcha.Cryptography Library](../../src/Common/Sorcha.Cryptography/)
-- [Main Testing Guide](../../docs/testing.md)
+- [Main Testing Guide](../../docs/guides/testing/testing.md)
 - [Performance Tests](../Sorcha.Performance.Tests/)
 - [xUnit Documentation](https://xunit.net/)
 - [FluentAssertions](https://fluentassertions.com/)

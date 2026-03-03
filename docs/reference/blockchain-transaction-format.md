@@ -415,8 +415,8 @@ All implementations MUST:
 
 ### Sorcha Documentation
 - [Architecture](architecture.md)
-- [JSON-LD Implementation Summary](json-ld-implementation-summary.md)
-- [Blueprint Architecture](blueprint-architecture.md)
+- [JSON-LD Implementation Summary](../guides/blueprints/json-ld-implementation-summary.md)
+- [Blueprint Architecture](../guides/blueprints/blueprint-architecture.md)
 - [Register Service Specification](../.specify/specs/sorcha-register-service.md)
 - [Transaction Handler Specification](../.specify/specs/sorcha-transaction-handler.md)
 

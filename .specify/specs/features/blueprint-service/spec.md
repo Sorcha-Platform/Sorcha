@@ -4,7 +4,7 @@
 **Created**: 2025-12-03
 **Updated**: 2025-12-04 (Sprint 10 Orchestration Complete)
 **Status**: 100% Complete (Unified Blueprint-Action Service with Full Orchestration)
-**Input**: Derived from `docs/blueprint-architecture.md` and existing codebase analysis
+**Input**: Derived from `docs/guides/blueprints/blueprint-architecture.md` and existing codebase analysis
 
 ## Architecture Overview
 

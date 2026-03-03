@@ -162,4 +162,4 @@ The script is designed to be idempotent:
 - [PingPong Walkthrough](../PingPong/) - Simpler version without wallets/register
 - [BlueprintStorageBasic](../BlueprintStorageBasic/) - Docker bootstrap basics
 - [CLAUDE.md](../../CLAUDE.md) - Project guide
-- [docs/PORT-CONFIGURATION.md](../../docs/PORT-CONFIGURATION.md) - Port assignments
+- [docs/PORT-CONFIGURATION.md](../../docs/getting-started/PORT-CONFIGURATION.md) - Port assignments

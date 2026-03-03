@@ -294,8 +294,8 @@ This decision will be validated by:
 - [Mutual TLS in gRPC](https://grpc.io/docs/guides/auth/)
 - [gRPC Performance Best Practices](https://grpc.io/docs/guides/performance/)
 - [Sorcha Constitution v1.3](../constitution.md)
-- [Sorcha Development Status](../../docs/development-status.md)
-- [AUTH-002 Service Authentication Integration](../../docs/AUTHENTICATION-SETUP.md)
+- [Sorcha Development Status](../../docs/reference/development-status.md)
+- [AUTH-002 Service Authentication Integration](../../docs/guides/AUTHENTICATION-SETUP.md)
 
 ## Revision History
 

@@ -214,7 +214,7 @@ None currently identified. All tests passing.
 
 ## Related Documentation
 
-- [JWT Configuration Guide](JWT-CONFIGURATION.md)
+- [JWT Configuration Guide](../../guides/JWT-CONFIGURATION.md)
 - [Sorcha.Admin Tests README](../tests/Sorcha.Admin.Tests/README.md)
 - [ProfileDefaults Source](../src/Apps/Sorcha.Admin/Models/Configuration/ProfileDefaults.cs)
 - [LoginDialog Source](../src/Apps/Sorcha.Admin/Components/Authentication/LoginDialog.razor)

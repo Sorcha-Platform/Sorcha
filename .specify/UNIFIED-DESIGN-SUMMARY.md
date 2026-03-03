@@ -291,7 +291,7 @@ Notifies participants (SignalR)
 - [BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md](.specify/BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md) - Detailed implementation plan (138 tasks)
 
 **Updated Architecture:**
-- [docs/architecture.md](../docs/architecture.md) - Updated architecture documentation
+- [docs/architecture.md](../docs/reference/architecture.md) - Updated architecture documentation
 
 **Action Service Design (SUPERSEDED):**
 - [ACTION-SERVICE-DESIGN.md](.specify/ACTION-SERVICE-DESIGN.md) - Original action service design (for reference)
@@ -336,7 +336,7 @@ A: Yes, JSON Logic supports custom operators. The engine can be extended via dep
 ## Service Boundaries and Security Architecture
 
 **Date Added:** 2025-11-16
-**Related ADR:** [ADR-005: Validator Service Security Boundary](../docs/architecture/ADR-005-Validator-Service-Security-Boundary.md)
+**Related ADR:** [ADR-005: Validator Service Security Boundary](../docs/reference/architecture/ADR-005-Validator-Service-Security-Boundary.md)
 
 ### Register Service vs. Validator Service
 

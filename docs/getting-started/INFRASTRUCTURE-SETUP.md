@@ -369,7 +369,7 @@ After starting infrastructure:
    - See [BOOTSTRAP-CREDENTIALS.md](BOOTSTRAP-CREDENTIALS.md) for complete credential reference
 
 5. **Test authentication**:
-   - User login: [AUTHENTICATION-SETUP.md](AUTHENTICATION-SETUP.md)
+   - User login: [AUTHENTICATION-SETUP.md](../guides/AUTHENTICATION-SETUP.md)
    - Service tokens: [BOOTSTRAP-CREDENTIALS.md](BOOTSTRAP-CREDENTIALS.md#service-principal-credentials)
 
 ---

@@ -768,7 +768,7 @@ A `BackgroundService` processes accumulated notification events, groups them by 
 - **Specification**: [.specify/specs/sorcha-wallet-service.md](.specify/specs/sorcha-wallet-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7084/scalar)
 - **Development Status**: [docs/wallet-service-status.md](../../docs/wallet-service-status.md)
-- **Architecture**: [docs/architecture.md](../../docs/architecture.md)
+- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
 - **BIP39 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 - **BIP44 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)
 - **OpenAPI Spec**: `https://localhost:7084/openapi/v1.json`

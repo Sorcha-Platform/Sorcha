@@ -531,7 +531,7 @@ These files contain detailed acceptance criteria, implementation guidance, and t
 - [Imported Specification](../archive/import-register-20251113/register-service.md)
 - [Import Overview](../archive/import-register-20251113/REGISTER-OVERVIEW.md)
 - [Sorcha Constitution](../constitution.md)
-- [Sorcha Architecture](../../docs/architecture.md)
+- [Sorcha Architecture](../../docs/reference/architecture.md)
 
 ---
 

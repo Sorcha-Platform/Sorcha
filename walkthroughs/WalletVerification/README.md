@@ -544,7 +544,7 @@ After completing this walkthrough:
 - [Wallet Service Specification](../../.specify/specs/sorcha-wallet-service.md)
 - [Register Service Specification](../../.specify/specs/sorcha-register-service.md)
 - [Cryptography Specification](../../.specify/specs/sorcha-cryptography-rewrite.md)
-- [Docker Development Workflow](../../docs/DOCKER-DEVELOPMENT-WORKFLOW.md)
+- [Docker Development Workflow](../../docs/getting-started/DOCKER-DEVELOPMENT-WORKFLOW.md)
 
 ---
 

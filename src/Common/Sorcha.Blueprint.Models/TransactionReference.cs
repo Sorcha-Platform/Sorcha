@@ -16,7 +16,7 @@ namespace Sorcha.Blueprint.Models;
 /// This model provides a compact way to reference transactions without including
 /// the full transaction data. It supports universal addressability via DID URIs.
 ///
-/// See: docs/blockchain-transaction-format.md
+/// See: docs/reference/blockchain-transaction-format.md
 /// </remarks>
 public class TransactionReference : IEquatable<TransactionReference>
 {

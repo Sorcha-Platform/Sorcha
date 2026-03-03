@@ -2,7 +2,7 @@
 
 **Branch**: `039-verifiable-presentations` | **Date**: 2026-02-21 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/039-verifiable-presentations/spec.md`
-**Design**: [design document](../../docs/plans/2026-02-21-verifiable-credentials-design.md)
+**Design**: [design document](../../docs/archive/plans/2026-02-21-verifiable-credentials-design.md)
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

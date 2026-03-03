@@ -152,7 +152,7 @@ public sealed class LinuxSecretServiceEncryptionProvider : EncryptionProviderBas
                     "  docker-compose up -d\n\n" +
                     "Option 3 - Run the setup script:\n" +
                     "  ./scripts/setup.ps1 (Windows) or ./scripts/setup.sh (Linux/macOS)\n\n" +
-                    "For more information, see: docs/FIRST-RUN-SETUP.md");
+                    "For more information, see: docs/getting-started/FIRST-RUN-SETUP.md");
             }
         }
         catch (UnauthorizedAccessException ex)

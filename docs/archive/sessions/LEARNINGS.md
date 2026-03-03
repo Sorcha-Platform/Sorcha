@@ -386,9 +386,9 @@ with proper access to encryption keys and cryptographic operations.
 
 ## Related Documentation
 
-- [Architecture](architecture.md)
-- [Validator Service Design](validator-service-design.md)
-- [Testing Guide](testing.md)
+- [Architecture](../../reference/architecture.md)
+- [Validator Service Design](../../reference/validator-service-design.md)
+- [Testing Guide](../../guides/testing/testing.md)
 - [Security Guidelines](security-guidelines.md) (planned)
 
 ---
