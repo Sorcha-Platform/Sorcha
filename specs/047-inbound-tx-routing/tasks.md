@@ -87,9 +87,9 @@
 - [X] T027 [US2] Implement NotifyInboundTransactionBatch endpoint in WalletNotificationGrpcService.cs — processes batch of matched transactions (used during recovery mode), delegates each to INotificationDeliveryService, returns aggregate counts (delivered/queued/rate-limited/no-user) in src/Services/Sorcha.Wallet.Service/GrpcServices/
 - [X] T028 [US2] Create EventsHubNotificationBridge.cs — IHostedService in Blueprint Service that subscribes to Redis pub/sub channel (wallet:notifications) and pushes InboundActionEvent payloads via IHubContext<EventsHub> to target user's SignalR group. Before pushing, enriches the event: resolves blueprint_id → blueprint name and action_id → action description via IBlueprintStore (owned by Blueprint Service), resolves sender_address → sender display name via IParticipantServiceClient (falls back to raw address if participant not found), and constructs navigation path (/blueprints/{id}/instances/{instanceId}/actions/{actionId}) in src/Services/Sorcha.Blueprint.Service/Services/Implementation/
 - [X] T029 [US2] Register IInboundTransactionRouter in Register Service DI, INotificationDeliveryService + INotificationRateLimiter in Wallet Service DI, EventsHubNotificationBridge as hosted service in Blueprint Service DI (Program.cs for each)
-- [ ] T030 [P] [US2] Write InboundTransactionRouterTests.cs — bloom filter match triggers gRPC call, no match skips, non-action type filtered out, multiple recipients with one local match in tests/Sorcha.Register.Service.Tests/
-- [ ] T031 [P] [US2] Write NotificationDeliveryServiceTests.cs — real-time delivery path, digest queue routing, rate-limited overflow to digest, no-user-found handling, preference lookup, email/push fallback to in-app in tests/Sorcha.Wallet.Service.Tests/
-- [ ] T032 [P] [US2] Write NotificationRateLimiterTests.cs — under limit allows, at limit blocks, window slides after TTL, per-user isolation in tests/Sorcha.Wallet.Service.Tests/
+- [X] T030 [P] [US2] Write InboundTransactionRouterTests.cs — bloom filter match triggers gRPC call, no match skips, non-action type filtered out, multiple recipients with one local match in tests/Sorcha.Register.Service.Tests/
+- [X] T031 [P] [US2] Write NotificationDeliveryServiceTests.cs — real-time delivery path, digest queue routing, rate-limited overflow to digest, no-user-found handling, preference lookup, email/push fallback to in-app in tests/Sorcha.Wallet.Service.Tests/
+- [X] T032 [P] [US2] Write NotificationRateLimiterTests.cs — under limit allows, at limit blocks, window slides after TTL, per-user isolation in tests/Sorcha.Wallet.Service.Tests/
 
 **Checkpoint**: Inbound action transactions trigger real-time user notifications via SignalR with enriched content (blueprint name, action description, sender name or address, navigation link). Batch endpoint ready for recovery. Rate limiting caps at 10/min/user with overflow to digest. All US2 tests pass.
 
@@ -105,10 +105,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Extend UserPreferenceEndpoints.cs PATCH handler to accept and validate NotificationMethod and NotificationFrequency fields with FluentValidation, update GET response to include new fields in src/Services/Sorcha.Tenant.Service/Endpoints/UserPreferenceEndpoints.cs
-- [ ] T034 [US3] Create NotificationPreferencesPanel.razor component — notification method dropdown (InApp/InApp+Email/InApp+Push) and frequency radio buttons (RealTime/Hourly/Daily) with save/cancel, wired to PATCH /api/users/preferences in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/
-- [ ] T035 [P] [US3] Add notification preference i18n keys (section title, method labels, frequency labels, descriptions, save confirmation) to en.json, fr.json, de.json, es.json in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/wwwroot/i18n/
-- [ ] T036 [P] [US3] Write NotificationPreferenceTests.cs — PATCH updates method/frequency, GET returns saved values, defaults for new users (InApp+RealTime), invalid enum rejected in tests/Sorcha.Tenant.Service.Tests/
+- [X] T033 [US3] Extend UserPreferenceEndpoints.cs PATCH handler to accept and validate NotificationMethod and NotificationFrequency fields with FluentValidation, update GET response to include new fields in src/Services/Sorcha.Tenant.Service/Endpoints/UserPreferenceEndpoints.cs
+- [X] T034 [US3] Create NotificationPreferencesPanel.razor component — notification method dropdown (InApp/InApp+Email/InApp+Push) and frequency radio buttons (RealTime/Hourly/Daily) with save/cancel, wired to PATCH /api/users/preferences in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Settings/
+- [X] T035 [P] [US3] Add notification preference i18n keys (section title, method labels, frequency labels, descriptions, save confirmation) to en.json, fr.json, de.json, es.json in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/wwwroot/i18n/
+- [X] T036 [P] [US3] Write NotificationPreferenceTests.cs — PATCH updates method/frequency, GET returns saved values, defaults for new users (InApp+RealTime), invalid enum rejected in tests/Sorcha.Tenant.Service.Tests/
 
 **Checkpoint**: Users can view and change notification preferences in Settings. Defaults work for new users. All US3 tests pass.
 
@@ -124,8 +124,8 @@
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Implement DocketSyncGrpcService.cs — GetLatestDocketNumber (unary, queries local MongoDB for latest docket) and SyncDockets (server streaming from from_docket_number+1 to head with max_count flow control) in src/Services/Sorcha.Peer.Service/GrpcServices/
-- [ ] T038 [US4] Create IRegisterRecoveryService.cs interface in src/Services/Sorcha.Register.Service/Services/Interfaces/
+- [X] T037 [US4] Implement DocketSyncGrpcService.cs — GetLatestDocketNumber (unary, queries local MongoDB for latest docket) and SyncDockets (server streaming from from_docket_number+1 to head with max_count flow control) in src/Services/Sorcha.Peer.Service/GrpcServices/
+- [X] T038 [US4] Create IRegisterRecoveryService.cs interface in src/Services/Sorcha.Register.Service/Services/Interfaces/
 - [ ] T039 [US4] Implement RegisterRecoveryService.cs — IHostedService that on startup compares local latest docket vs network head via IDocketSyncClient, enters recovery if gap detected, streams missing dockets, verifies chain integrity (previous_docket_hash linkage), runs bloom filter check on recovered transaction recipients, sends batch notification via IWalletNotificationClient.NotifyInboundTransactionBatch (T027), tracks RecoveryState in Redis hash (register:recovery:{registerId}) in src/Services/Sorcha.Register.Service/Services/Implementation/
 - [ ] T040 [US4] Create RecoveryHealthEndpoints.cs — GET /health/sync returning JSON with status (recovering/synced/stalled), current docket, target docket, progress percentage, dockets processed, last error, staleness check (<10s). Include .WithSummary() and .WithDescription() per constitution in src/Services/Sorcha.Register.Service/Endpoints/
 - [ ] T041 [US4] Register RegisterRecoveryService as hosted service and map RecoveryHealthEndpoints in Register Service DI (Program.cs), register DocketSyncGrpcService in Peer Service DI (Program.cs)

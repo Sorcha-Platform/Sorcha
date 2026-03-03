@@ -46,7 +46,7 @@ public class QueryApiTests : IClassFixture<WebApplicationFactory<Program>>
         result.Should().NotBeNull();
         result!.Page.Should().Be(1);
         result.PageSize.Should().Be(2);
-        result.Items.Should().HaveCountLessOrEqualTo(2);
+        result.Items.Should().HaveCountLessThanOrEqualTo(2);
     }
 
     [Fact]
@@ -205,7 +205,7 @@ public class QueryApiTests : IClassFixture<WebApplicationFactory<Program>>
         result.Should().NotBeNull();
         result!.Page.Should().Be(1);
         result.PageSize.Should().Be(5);
-        result.Items.Should().HaveCountLessOrEqualTo(5);
+        result.Items.Should().HaveCountLessThanOrEqualTo(5);
     }
 
     private async Task<string> CreateTestRegisterAsync()

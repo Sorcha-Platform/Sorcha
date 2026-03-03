@@ -215,6 +215,78 @@
                 @if (_preferences.NotificationsEnabled)
                 {
                     <MudDivider Class="my-4" />
+
+                    <!-- Notification Method -->
+                    <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.notifications.method")</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        @Loc.T("settings.notifications.method.description")
+                    </MudText>
+
+                    <MudSelect T="string" Value="@_preferences.NotificationMethod"
+                               ValueChanged="OnNotificationMethodChanged"
+                               Label="@Loc.T("settings.notifications.method")"
+                               Variant="Variant.Outlined"
+                               Style="max-width: 400px;"
+                               Class="mb-4">
+                        <MudSelectItem T="string" Value="@("InApp")">
+                            @Loc.T("settings.notifications.method.inApp")
+                        </MudSelectItem>
+                        <MudSelectItem T="string" Value="@("InAppPlusEmail")">
+                            @Loc.T("settings.notifications.method.inAppPlusEmail")
+                        </MudSelectItem>
+                        <MudSelectItem T="string" Value="@("InAppPlusPush")">
+                            @Loc.T("settings.notifications.method.inAppPlusPush")
+                        </MudSelectItem>
+                    </MudSelect>
+
+                    <MudDivider Class="my-4" />
+
+                    <!-- Notification Frequency -->
+                    <MudText Typo="Typo.h6" Class="mb-3">@Loc.T("settings.notifications.frequency")</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        @Loc.T("settings.notifications.frequency.description")
+                    </MudText>
+
+                    <MudRadioGroup T="string" Value="@_preferences.NotificationFrequency"
+                                   ValueChanged="OnNotificationFrequencyChanged">
+                        <MudRadio T="string" Value="@("RealTime")" Color="Color.Primary">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.FlashOn" Class="mr-2" />
+                                <div>
+                                    <MudText>@Loc.T("settings.notifications.frequency.realTime")</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @Loc.T("settings.notifications.frequency.realTime.description")
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("HourlyDigest")" Color="Color.Primary">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
+                                <div>
+                                    <MudText>@Loc.T("settings.notifications.frequency.hourlyDigest")</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @Loc.T("settings.notifications.frequency.hourlyDigest.description")
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("DailyDigest")" Color="Color.Primary">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Today" Class="mr-2" />
+                                <div>
+                                    <MudText>@Loc.T("settings.notifications.frequency.dailyDigest")</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @Loc.T("settings.notifications.frequency.dailyDigest.description")
+                                    </MudText>
+                                </div>
+                            </div>
+                        </MudRadio>
+                    </MudRadioGroup>
+
+                    <MudDivider Class="my-4" />
+
+                    <!-- Notification Types (informational) -->
                     <MudText Typo="Typo.subtitle2" Class="mb-2">@Loc.T("settings.notifications.types")</MudText>
                     <MudCheckBox T="bool" Value="true" Disabled="true" Color="Color.Primary"
                                  Label="@Loc.T("settings.notifications.pendingActions")" />
@@ -516,6 +588,20 @@
         _preferences.NotificationsEnabled = enabled;
         await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationsEnabled = enabled });
         Snackbar.Add(enabled ? Loc.T("settings.notifications.enabledSuccess") : Loc.T("settings.notifications.disabledSuccess"), Severity.Success);
+    }
+
+    private async Task OnNotificationMethodChanged(string method)
+    {
+        _preferences.NotificationMethod = method;
+        await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationMethod = method });
+        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
+    }
+
+    private async Task OnNotificationFrequencyChanged(string frequency)
+    {
+        _preferences.NotificationFrequency = frequency;
+        await SavePreferencesAsync(new UpdateUserPreferencesRequest { NotificationFrequency = frequency });
+        Snackbar.Add(Loc.T("settings.notifications.saved"), Severity.Success);
     }
 
     private async Task SavePreferencesAsync(UpdateUserPreferencesRequest request)
