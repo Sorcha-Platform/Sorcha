@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Hubs;
 using Sorcha.ServiceClients.Models;
 using Sorcha.ServiceClients.Participant;
@@ -30,7 +31,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
     private readonly IConnectionMultiplexer _redis;
     private readonly IHubContext<EventsHub> _hubContext;
     private readonly IBlueprintStore _blueprintStore;
-    private readonly IParticipantServiceClient _participantClient;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EventsHubNotificationBridge> _logger;
     private ISubscriber? _subscriber;
 
@@ -38,13 +39,13 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         IConnectionMultiplexer redis,
         IHubContext<EventsHub> hubContext,
         IBlueprintStore blueprintStore,
-        IParticipantServiceClient participantClient,
+        IServiceScopeFactory scopeFactory,
         ILogger<EventsHubNotificationBridge> logger)
     {
         _redis = redis;
         _hubContext = hubContext;
         _blueprintStore = blueprintStore;
-        _participantClient = participantClient;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -166,7 +167,10 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         {
             try
             {
-                var participant = await _participantClient.GetByWalletAddressAsync(
+                using var scope = _scopeFactory.CreateScope();
+                var participantClient = scope.ServiceProvider
+                    .GetRequiredService<IParticipantServiceClient>();
+                var participant = await participantClient.GetByWalletAddressAsync(
                     actionEvent.SenderAddress);
                 if (participant is not null)
                 {
