@@ -13,6 +13,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services.Implementation;
 using Sorcha.Register.Service.Services.Interfaces;
+using Sorcha.Register.Service.Tests.Helpers;
 using Sorcha.ServiceClients.Grpc;
 using Sorcha.Wallet.Service.Grpc;
 using StackExchange.Redis;
@@ -74,6 +75,7 @@ public class RegisterRecoveryServiceTests
             _mockDocketSyncClient.Object,
             _mockTransactionRouter.Object,
             _mockWalletNotificationClient.Object,
+            new InboundRoutingMetrics(new TestMeterFactory()),
             _mockRedis.Object,
             _configuration,
             _mockLogger.Object);

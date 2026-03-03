@@ -7,6 +7,7 @@ using Moq;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;
+using Sorcha.Wallet.Service.Tests.Helpers;
 using StackExchange.Redis;
 using Xunit;
 
@@ -53,6 +54,7 @@ public class NotificationDeliveryServiceTests
             _mockWalletRepository.Object,
             _mockRateLimiter.Object,
             _mockPreferenceProvider.Object,
+            new NotificationMetrics(new TestMeterFactory()),
             _mockRedis.Object,
             _mockLogger.Object);
     }
@@ -168,6 +170,14 @@ public class NotificationDeliveryServiceTests
                 It.IsAny<RedisValue>(),
                 It.IsAny<double>(),
                 It.IsAny<SortedSetWhen>(),
+                It.IsAny<CommandFlags>()),
+            Times.Once);
+
+        // Verify user is added to the active-users set for efficient digest lookup
+        _mockDatabase.Verify(
+            db => db.SetAddAsync(
+                (RedisKey)"wallet:digest:active-users",
+                (RedisValue)TestUserId,
                 It.IsAny<CommandFlags>()),
             Times.Once);
 

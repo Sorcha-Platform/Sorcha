@@ -20,6 +20,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
 {
     private const string PubSubChannel = "wallet:notifications";
     private const string DigestKeyPrefix = "wallet:digest:";
+    private const string DigestActiveUsersKey = "wallet:digest:active-users";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -29,6 +30,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
     private readonly IWalletRepository _walletRepository;
     private readonly INotificationRateLimiter _rateLimiter;
     private readonly INotificationPreferenceProvider _preferenceProvider;
+    private readonly NotificationMetrics _metrics;
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<NotificationDeliveryService> _logger;
 
@@ -36,12 +38,14 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         IWalletRepository walletRepository,
         INotificationRateLimiter rateLimiter,
         INotificationPreferenceProvider preferenceProvider,
+        NotificationMetrics metrics,
         IConnectionMultiplexer redis,
         ILogger<NotificationDeliveryService> logger)
     {
         _walletRepository = walletRepository;
         _rateLimiter = rateLimiter;
         _preferenceProvider = preferenceProvider;
+        _metrics = metrics;
         _redis = redis;
         _logger = logger;
     }
@@ -70,6 +74,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
             _logger.LogDebug(
                 "No wallet found for address {Address} — bloom filter false positive or deleted wallet",
                 recipientAddress);
+            _metrics.RecordNoUserFound();
             return NotificationDeliveryResult.NoUserFound;
         }
 
@@ -103,7 +108,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         var actionEvent = new InboundActionEvent
         {
             WalletAddress = recipientAddress,
-            WalletId = Guid.TryParse(wallet.Address, out _) ? Guid.Empty : Guid.Empty,
+            WalletId = Guid.Empty, // Wallet entity uses string Address as PK, not a Guid
             UserId = userId,
             TenantId = tenantId,
             BlueprintId = blueprintId,
@@ -123,6 +128,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         {
             // User prefers digest — queue directly
             await QueueForDigestAsync(userId, actionEvent);
+            _metrics.RecordQueuedForDigest();
             _logger.LogDebug(
                 "Digest-queued notification for user {UserId}, tx {TxId}",
                 userId, transactionId);
@@ -136,6 +142,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         {
             // Rate-limited — overflow to digest
             await QueueForDigestAsync(userId, actionEvent);
+            _metrics.RecordRateLimited();
             _logger.LogInformation(
                 "Rate-limited notification for user {UserId}, overflow to digest. Tx {TxId}",
                 userId, transactionId);
@@ -144,6 +151,8 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
 
         // Deliver real-time via Redis pub/sub
         await PublishRealTimeAsync(actionEvent);
+        _metrics.RecordDeliveredRealTime();
+        _metrics.RecordDeliveryLatency((DateTimeOffset.UtcNow - timestamp).TotalMilliseconds);
         _logger.LogDebug(
             "Real-time notification published for user {UserId}, tx {TxId}",
             userId, transactionId);
@@ -164,5 +173,6 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         var json = JsonSerializer.Serialize(actionEvent, JsonOptions);
         var score = actionEvent.Timestamp.ToUnixTimeMilliseconds();
         await db.SortedSetAddAsync(key, json, score);
+        await db.SetAddAsync(DigestActiveUsersKey, userId);
     }
 }

@@ -24,6 +24,7 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
     private const string RebuildSuffix = ":rebuild";
 
     private readonly IDatabase _database;
+    private readonly InboundRoutingMetrics _metrics;
     private readonly ILogger<RedisBloomFilterAddressIndex> _logger;
     private readonly int _expectedAddressCount;
     private readonly double _falsePositiveRate;
@@ -31,12 +32,14 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
     public RedisBloomFilterAddressIndex(
         IConnectionMultiplexer redis,
         IConfiguration configuration,
+        InboundRoutingMetrics metrics,
         ILogger<RedisBloomFilterAddressIndex> logger)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(configuration);
 
         _database = redis.GetDatabase();
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         _expectedAddressCount = configuration.GetValue("BloomFilter:ExpectedAddressCount", 100_000);
@@ -54,17 +57,16 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
         var paramsKey = ParamsKeyPrefix + registerId;
 
         var positions = ComputeHashPositions(address, hashCount, bitArraySize);
-        var allAlreadySet = true;
 
-        foreach (var position in positions)
-        {
-            var wasSet = await _database.StringGetBitAsync(bloomKey, position);
-            if (!wasSet)
-            {
-                allAlreadySet = false;
-                await _database.StringSetBitAsync(bloomKey, position, true);
-            }
-        }
+        // Pipeline all SETBIT calls in a single round-trip.
+        // SETBIT returns the previous bit value, so GETBIT is unnecessary.
+        var batch = _database.CreateBatch();
+        var tasks = positions
+            .Select(pos => batch.StringSetBitAsync(bloomKey, pos, true))
+            .ToArray();
+        batch.Execute();
+        var previousValues = await Task.WhenAll(tasks);
+        var allAlreadySet = previousValues.All(wasAlreadySet => wasAlreadySet);
 
         if (!allAlreadySet)
         {
@@ -124,10 +126,12 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
                 continue;
 
             var positions = ComputeHashPositions(address, hashCount, bitArraySize);
-            foreach (var position in positions)
-            {
-                await _database.StringSetBitAsync(rebuildKey, position, true);
-            }
+            var rebuildBatch = _database.CreateBatch();
+            var setTasks = positions
+                .Select(pos => rebuildBatch.StringSetBitAsync(rebuildKey, pos, true))
+                .ToArray();
+            rebuildBatch.Execute();
+            await Task.WhenAll(setTasks);
 
             addressCount++;
 
@@ -153,6 +157,8 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
         batch.Execute();
 
         sw.Stop();
+        _metrics.RecordBloomFilterRebuild();
+
         _logger.LogInformation(
             "Bloom filter rebuilt for register {RegisterId}: {AddressCount} addresses, {Duration}ms, {BitArraySize} bits, {HashCount} hash functions",
             registerId, addressCount, sw.ElapsedMilliseconds, bitArraySize, hashCount);

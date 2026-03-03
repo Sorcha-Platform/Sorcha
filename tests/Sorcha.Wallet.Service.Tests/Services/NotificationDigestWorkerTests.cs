@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.ServiceClients.Models;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Service.Tests.Helpers;
 using StackExchange.Redis;
 using Xunit;
 
@@ -17,13 +18,13 @@ public class NotificationDigestWorkerTests
 {
     private readonly Mock<IConnectionMultiplexer> _mockRedis;
     private readonly Mock<IDatabase> _mockDatabase;
-    private readonly Mock<IServer> _mockServer;
     private readonly Mock<ISubscriber> _mockSubscriber;
     private readonly Mock<ILogger<NotificationDigestWorker>> _mockLogger;
 
     private const string TestUserId = "user-001";
     private const string AnotherUserId = "user-002";
     private const string DigestKeyPrefix = "wallet:digest:";
+    private const string DigestActiveUsersKey = "wallet:digest:active-users";
     private const string PubSubChannel = "wallet:notifications";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -36,17 +37,12 @@ public class NotificationDigestWorkerTests
     {
         _mockRedis = new Mock<IConnectionMultiplexer>();
         _mockDatabase = new Mock<IDatabase>();
-        _mockServer = new Mock<IServer>();
         _mockSubscriber = new Mock<ISubscriber>();
         _mockLogger = new Mock<ILogger<NotificationDigestWorker>>();
 
         _mockRedis
             .Setup(r => r.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(_mockDatabase.Object);
-
-        _mockRedis
-            .Setup(r => r.GetServers())
-            .Returns([_mockServer.Object]);
 
         _mockRedis
             .Setup(r => r.GetSubscriber(It.IsAny<object>()))
@@ -71,6 +67,7 @@ public class NotificationDigestWorkerTests
         return new NotificationDigestWorker(
             _mockRedis.Object,
             configuration,
+            new NotificationMetrics(new TestMeterFactory()),
             _mockLogger.Object);
     }
 
@@ -94,31 +91,29 @@ public class NotificationDigestWorkerTests
         };
     }
 
-    private void SetupDigestKeys(params string[] userIds)
+    private void SetupActiveUsers(params string[] userIds)
     {
-        var keys = userIds.Select(id => (RedisKey)$"{DigestKeyPrefix}{id}").ToArray();
-        _mockServer
-            .Setup(s => s.KeysAsync(
-                It.IsAny<int>(),
-                It.Is<RedisValue>(v => v.ToString() == "wallet:digest:*"),
-                It.IsAny<int>(),
-                It.IsAny<long>(),
-                It.IsAny<int>(),
+        var members = userIds.Select(id => (RedisValue)id).ToArray();
+        _mockDatabase
+            .Setup(db => db.SetMembersAsync(
+                (RedisKey)DigestActiveUsersKey,
                 It.IsAny<CommandFlags>()))
-            .Returns(keys.ToAsyncEnumerable());
+            .ReturnsAsync(members);
+
+        // Default: SortedSetLengthAsync returns 0 (empty after processing) so user is removed from set
+        _mockDatabase
+            .Setup(db => db.SortedSetLengthAsync(
+                It.IsAny<RedisKey>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(0);
     }
 
-    private void SetupEmptyDigestKeys()
+    private void SetupEmptyActiveUsers()
     {
-        _mockServer
-            .Setup(s => s.KeysAsync(
-                It.IsAny<int>(),
-                It.Is<RedisValue>(v => v.ToString() == "wallet:digest:*"),
-                It.IsAny<int>(),
-                It.IsAny<long>(),
-                It.IsAny<int>(),
+        _mockDatabase
+            .Setup(db => db.SetMembersAsync(
+                (RedisKey)DigestActiveUsersKey,
                 It.IsAny<CommandFlags>()))
-            .Returns(Array.Empty<RedisKey>().ToAsyncEnumerable());
+            .ReturnsAsync(Array.Empty<RedisValue>());
     }
 
     private void SetupScriptResult(string userId, params InboundActionEvent[] events)
@@ -160,7 +155,7 @@ public class NotificationDigestWorkerTests
         var event1 = CreateTestEvent(blueprintId: "bp-001");
         var event2 = CreateTestEvent(blueprintId: "bp-001");
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, event1, event2);
 
         var worker = CreateWorker();
@@ -184,7 +179,7 @@ public class NotificationDigestWorkerTests
         var event1 = CreateTestEvent(userId: TestUserId, blueprintId: "bp-001");
         var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
 
-        SetupDigestKeys(TestUserId, AnotherUserId);
+        SetupActiveUsers(TestUserId, AnotherUserId);
         SetupScriptResult(TestUserId, event1);
         SetupScriptResult(AnotherUserId, event2);
 
@@ -214,7 +209,7 @@ public class NotificationDigestWorkerTests
         var eventBp1b = CreateTestEvent(blueprintId: "bp-001");
         var eventBp2 = CreateTestEvent(blueprintId: "bp-002");
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, eventBp1a, eventBp1b, eventBp2);
 
         string? capturedJson = null;
@@ -254,7 +249,7 @@ public class NotificationDigestWorkerTests
     public async Task ProcessPendingDigestsAsync_NoDigestKeys_DoesNotPublish()
     {
         // Arrange
-        SetupEmptyDigestKeys();
+        SetupEmptyActiveUsers();
 
         var worker = CreateWorker();
 
@@ -275,7 +270,7 @@ public class NotificationDigestWorkerTests
     public async Task ProcessPendingDigestsAsync_DigestKeyExistsButEmpty_DoesNotPublish()
     {
         // Arrange — key exists but Lua script returns empty array
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupEmptyScriptResult(TestUserId);
 
         var worker = CreateWorker();
@@ -303,7 +298,7 @@ public class NotificationDigestWorkerTests
         // Arrange
         var testEvent = CreateTestEvent();
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, testEvent);
 
         var worker = CreateWorker();
@@ -330,7 +325,7 @@ public class NotificationDigestWorkerTests
         // Arrange
         var testEvent = CreateTestEvent();
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, testEvent);
 
         RedisValue[]? capturedValues = null;
@@ -373,7 +368,7 @@ public class NotificationDigestWorkerTests
         var testEvent = CreateTestEvent(blueprintId: "bp-001",
             timestamp: new DateTimeOffset(2026, 3, 1, 14, 30, 0, TimeSpan.Zero));
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, testEvent);
 
         string? capturedJson = null;
@@ -409,7 +404,7 @@ public class NotificationDigestWorkerTests
         // Arrange — event with null blueprint ID
         var testEvent = CreateTestEvent(blueprintId: null);
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
         SetupScriptResult(TestUserId, testEvent);
 
         string? capturedJson = null;
@@ -439,12 +434,10 @@ public class NotificationDigestWorkerTests
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ProcessPendingDigestsAsync_NoRedisServer_ReturnsWithoutError()
+    public async Task ProcessPendingDigestsAsync_NoActiveUsers_ReturnsWithoutError()
     {
-        // Arrange — GetServers returns empty
-        _mockRedis
-            .Setup(r => r.GetServers())
-            .Returns(Array.Empty<IServer>());
+        // Arrange — active-users set is empty
+        SetupEmptyActiveUsers();
 
         var worker = CreateWorker();
 
@@ -468,7 +461,7 @@ public class NotificationDigestWorkerTests
         // Arrange — user-001 script fails, user-002 succeeds
         var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
 
-        SetupDigestKeys(TestUserId, AnotherUserId);
+        SetupActiveUsers(TestUserId, AnotherUserId);
 
         _mockDatabase
             .Setup(db => db.ScriptEvaluateAsync(
@@ -501,7 +494,7 @@ public class NotificationDigestWorkerTests
         var validEvent = CreateTestEvent(blueprintId: "bp-001");
         var key = (RedisKey)$"{DigestKeyPrefix}{TestUserId}";
 
-        SetupDigestKeys(TestUserId);
+        SetupActiveUsers(TestUserId);
 
         var entries = new[]
         {

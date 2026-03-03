@@ -8,6 +8,7 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services.Implementation;
 using Sorcha.Register.Service.Services.Interfaces;
+using Sorcha.Register.Service.Tests.Helpers;
 using Sorcha.ServiceClients.Grpc;
 using Sorcha.Wallet.Service.Grpc;
 using Xunit;
@@ -39,6 +40,7 @@ public class InboundTransactionRouterTests
         _sut = new InboundTransactionRouter(
             _mockAddressIndex.Object,
             _mockWalletClient.Object,
+            new InboundRoutingMetrics(new TestMeterFactory()),
             _mockLogger.Object);
     }
 

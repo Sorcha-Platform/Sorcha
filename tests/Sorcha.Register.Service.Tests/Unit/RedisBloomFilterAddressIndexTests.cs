@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Register.Service.Services.Implementation;
 using Sorcha.Register.Service.Services.Interfaces;
+using Sorcha.Register.Service.Tests.Helpers;
 using StackExchange.Redis;
 using Xunit;
 
@@ -57,7 +58,10 @@ public class RedisBloomFilterAddressIndexTests
             })
             .Build();
 
-        _sut = new RedisBloomFilterAddressIndex(_mockRedis.Object, _configuration, _mockLogger.Object);
+        _sut = new RedisBloomFilterAddressIndex(
+            _mockRedis.Object, _configuration,
+            new InboundRoutingMetrics(new TestMeterFactory()),
+            _mockLogger.Object);
     }
 
     #region AddAsync Tests
@@ -68,14 +72,9 @@ public class RedisBloomFilterAddressIndexTests
         // Arrange
         var address = "1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf";
 
-        // All GETBIT calls return false — address not yet present
-        _mockDb
-            .Setup(d => d.StringGetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(false);
-
-        // SETBIT returns false (previous bit value)
-        _mockDb
-            .Setup(d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+        // Pipelined SETBIT returns false (previous bit value) — address not yet present
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(false);
 
         _mockDb
@@ -95,8 +94,8 @@ public class RedisBloomFilterAddressIndexTests
 
         // Assert
         result.Should().BeTrue();
-        _mockDb.Verify(
-            d => d.StringSetBitAsync(
+        _mockBatch.Verify(
+            b => b.StringSetBitAsync(
                 It.Is<RedisKey>(k => k == BloomKeyPrefix + RegisterId),
                 It.IsAny<long>(),
                 true,
@@ -110,20 +109,20 @@ public class RedisBloomFilterAddressIndexTests
         // Arrange
         var address = "1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf";
 
-        // All GETBIT calls return true — all bits are already set (address present)
-        _mockDb
-            .Setup(d => d.StringGetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
+        // Pipelined SETBIT returns true — all bits were already set (address present)
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
         // Act
         var result = await _sut.AddAsync(RegisterId, address);
 
-        // Assert
+        // Assert — all bits already set means address was already present
         result.Should().BeFalse();
 
-        // SETBIT should NOT be called when all bits are already set
+        // SETBIT is still called (pipelined), but since all returned true, count is not incremented
         _mockDb.Verify(
-            d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()),
+            d => d.HashIncrementAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()),
             Times.Never);
     }
 
@@ -233,8 +232,9 @@ public class RedisBloomFilterAddressIndexTests
             .Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
-        _mockDb
-            .Setup(d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+        // Pipelined SETBIT on batch during rebuild
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(false);
 
         _mockDb
@@ -250,9 +250,9 @@ public class RedisBloomFilterAddressIndexTests
         stats.BitArraySize.Should().BeGreaterThan(0);
         stats.HashFunctionCount.Should().BeGreaterThan(0);
 
-        // Verify SETBIT called on the rebuild key (not the main key)
-        _mockDb.Verify(
-            d => d.StringSetBitAsync(
+        // Verify pipelined SETBIT called on the rebuild key (not the main key)
+        _mockBatch.Verify(
+            b => b.StringSetBitAsync(
                 It.Is<RedisKey>(k => k == rebuildKey),
                 It.IsAny<long>(),
                 true,
@@ -271,8 +271,9 @@ public class RedisBloomFilterAddressIndexTests
             .Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
-        _mockDb
-            .Setup(d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+        // Pipelined SETBIT on batch during rebuild
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(false);
 
         _mockDb
@@ -352,8 +353,9 @@ public class RedisBloomFilterAddressIndexTests
             .Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
-        _mockDb
-            .Setup(d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+        // Pipelined SETBIT on batch during rebuild
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(false);
 
         _mockDb
@@ -632,18 +634,19 @@ public class RedisBloomFilterAddressIndexTests
         var knownAddress = "known-wallet-address-123";
         var setPositions = new HashSet<long>();
 
-        // Track which positions are set during AddAsync
-        _mockDb
-            .Setup(d => d.StringGetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey _, long offset, CommandFlags _) => setPositions.Contains(offset));
-
-        _mockDb
-            .Setup(d => d.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+        // Track which positions are set during pipelined AddAsync (batch SETBIT)
+        _mockBatch
+            .Setup(b => b.StringSetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync((RedisKey _, long offset, bool _, CommandFlags _) =>
             {
                 setPositions.Add(offset);
                 return false;
             });
+
+        // MayContainAsync reads bits directly via GETBIT on _database
+        _mockDb
+            .Setup(d => d.StringGetBitAsync(It.IsAny<RedisKey>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey _, long offset, CommandFlags _) => setPositions.Contains(offset));
 
         _mockDb
             .Setup(d => d.HashIncrementAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
@@ -673,7 +676,7 @@ public class RedisBloomFilterAddressIndexTests
     public void Constructor_NullRedis_ThrowsArgumentNullException()
     {
         // Act
-        var act = () => new RedisBloomFilterAddressIndex(null!, _configuration, _mockLogger.Object);
+        var act = () => new RedisBloomFilterAddressIndex(null!, _configuration, new InboundRoutingMetrics(new TestMeterFactory()), _mockLogger.Object);
 
         // Assert
         act.Should().Throw<ArgumentNullException>();
@@ -683,7 +686,7 @@ public class RedisBloomFilterAddressIndexTests
     public void Constructor_NullConfiguration_ThrowsArgumentNullException()
     {
         // Act
-        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, null!, _mockLogger.Object);
+        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, null!, new InboundRoutingMetrics(new TestMeterFactory()), _mockLogger.Object);
 
         // Assert
         act.Should().Throw<ArgumentNullException>();
@@ -693,7 +696,7 @@ public class RedisBloomFilterAddressIndexTests
     public void Constructor_NullLogger_ThrowsArgumentNullException()
     {
         // Act
-        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, _configuration, null!);
+        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, _configuration, new InboundRoutingMetrics(new TestMeterFactory()), null!);
 
         // Assert
         act.Should().Throw<ArgumentNullException>();
@@ -706,7 +709,7 @@ public class RedisBloomFilterAddressIndexTests
         var emptyConfig = new ConfigurationBuilder().Build();
 
         // Act — should not throw; uses GetValue defaults
-        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, emptyConfig, _mockLogger.Object);
+        var act = () => new RedisBloomFilterAddressIndex(_mockRedis.Object, emptyConfig, new InboundRoutingMetrics(new TestMeterFactory()), _mockLogger.Object);
 
         // Assert
         act.Should().NotThrow();

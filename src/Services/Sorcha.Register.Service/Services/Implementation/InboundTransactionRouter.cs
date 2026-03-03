@@ -19,15 +19,18 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
 {
     private readonly ILocalAddressIndex _addressIndex;
     private readonly IWalletNotificationClient _walletNotificationClient;
+    private readonly InboundRoutingMetrics _metrics;
     private readonly ILogger<InboundTransactionRouter> _logger;
 
     public InboundTransactionRouter(
         ILocalAddressIndex addressIndex,
         IWalletNotificationClient walletNotificationClient,
+        InboundRoutingMetrics metrics,
         ILogger<InboundTransactionRouter> logger)
     {
         _addressIndex = addressIndex;
         _walletNotificationClient = walletNotificationClient;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -70,9 +73,15 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
                 continue;
 
             var isLocal = await _addressIndex.MayContainAsync(registerId, address, cancellationToken);
+            _metrics.RecordBloomFilterCheck();
 
             if (!isLocal)
+            {
+                _metrics.RecordBloomFilterMiss();
                 continue;
+            }
+
+            _metrics.RecordBloomFilterHit();
 
             _logger.LogInformation(
                 "Bloom filter match for address {Address} in docket {DocketNumber}, routing notification (TxId: {TxId}, recovery: {IsRecovery})",

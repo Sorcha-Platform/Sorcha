@@ -27,6 +27,7 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
     private readonly IDocketSyncClient _docketSyncClient;
     private readonly IInboundTransactionRouter _transactionRouter;
     private readonly IWalletNotificationClient _walletNotificationClient;
+    private readonly InboundRoutingMetrics _metrics;
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RegisterRecoveryService> _logger;
 
@@ -43,6 +44,7 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
         IDocketSyncClient docketSyncClient,
         IInboundTransactionRouter transactionRouter,
         IWalletNotificationClient walletNotificationClient,
+        InboundRoutingMetrics metrics,
         IConnectionMultiplexer redis,
         IConfiguration configuration,
         ILogger<RegisterRecoveryService> logger)
@@ -51,6 +53,7 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
         _docketSyncClient = docketSyncClient ?? throw new ArgumentNullException(nameof(docketSyncClient));
         _transactionRouter = transactionRouter ?? throw new ArgumentNullException(nameof(transactionRouter));
         _walletNotificationClient = walletNotificationClient ?? throw new ArgumentNullException(nameof(walletNotificationClient));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -238,6 +241,8 @@ public sealed class RegisterRecoveryService : BackgroundService, IRegisterRecove
 
                     previousDocketHash = entry.DocketHash;
                     currentDocket = entry.DocketNumber;
+
+                    _metrics.RecordRecoveryDocketProcessed();
 
                     state = state with
                     {

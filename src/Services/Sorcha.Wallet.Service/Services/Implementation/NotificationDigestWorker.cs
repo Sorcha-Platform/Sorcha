@@ -20,7 +20,7 @@ public sealed class NotificationDigestWorker : BackgroundService
 {
     private const string PubSubChannel = "wallet:notifications";
     private const string DigestKeyPrefix = "wallet:digest:";
-    private const string DigestKeyPattern = "wallet:digest:*";
+    private const string DigestActiveUsersKey = "wallet:digest:active-users";
 
     /// <summary>
     /// Lua script for atomic dequeue: read all entries up to a score, then remove them.
@@ -41,6 +41,7 @@ public sealed class NotificationDigestWorker : BackgroundService
     };
 
     private readonly IConnectionMultiplexer _redis;
+    private readonly NotificationMetrics _metrics;
     private readonly ILogger<NotificationDigestWorker> _logger;
 
     private readonly int _checkIntervalMinutes;
@@ -48,9 +49,11 @@ public sealed class NotificationDigestWorker : BackgroundService
     public NotificationDigestWorker(
         IConnectionMultiplexer redis,
         IConfiguration configuration,
+        NotificationMetrics metrics,
         ILogger<NotificationDigestWorker> logger)
     {
         _redis = redis ?? throw new ArgumentNullException(nameof(redis));
+        _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         var notifSection = configuration.GetSection("Notifications");
@@ -90,39 +93,30 @@ public sealed class NotificationDigestWorker : BackgroundService
 
     /// <summary>
     /// Process all pending digest queues across all users.
+    /// Uses an active-users SET instead of SCAN to avoid walking the entire keyspace.
     /// </summary>
     internal async Task ProcessPendingDigestsAsync(CancellationToken cancellationToken = default)
     {
         var db = _redis.GetDatabase();
-        var server = _redis.GetServers().FirstOrDefault();
 
-        if (server == null)
-        {
-            _logger.LogWarning("No Redis server available for digest processing");
-            return;
-        }
+        // Use active-users set instead of SCAN — O(M) where M is digest users, not O(N) total keys
+        var activeUsers = await db.SetMembersAsync(DigestActiveUsersKey);
 
-        // Scan for all digest keys
-        var digestKeys = new List<RedisKey>();
-        await foreach (var key in server.KeysAsync(pattern: DigestKeyPattern))
-        {
-            digestKeys.Add(key);
-        }
-
-        if (digestKeys.Count == 0)
+        if (activeUsers.Length == 0)
         {
             _logger.LogDebug("No pending digest queues found");
             return;
         }
 
-        _logger.LogDebug("Found {Count} digest queues to process", digestKeys.Count);
+        _logger.LogDebug("Found {Count} digest queues to process", activeUsers.Length);
 
-        foreach (var key in digestKeys)
+        foreach (var userIdValue in activeUsers)
         {
             if (cancellationToken.IsCancellationRequested)
                 break;
 
-            var userId = key.ToString().Replace(DigestKeyPrefix, string.Empty);
+            var userId = userIdValue.ToString();
+            var key = (RedisKey)$"{DigestKeyPrefix}{userId}";
             await ProcessUserDigestAsync(db, key, userId, cancellationToken);
         }
     }
@@ -193,10 +187,18 @@ public sealed class NotificationDigestWorker : BackgroundService
             var subscriber = _redis.GetSubscriber();
             var digestJson = JsonSerializer.Serialize(digestNotification, JsonOptions);
             await subscriber.PublishAsync(RedisChannel.Literal(PubSubChannel), digestJson);
+            _metrics.RecordDigestDelivered(events.Count);
 
             _logger.LogInformation(
                 "Digest delivered for user {UserId}: {EventCount} events across {BlueprintCount} blueprints",
                 userId, events.Count, grouped.Count);
+
+            // Remove from active-users set if sorted set is now empty
+            var remainingCount = await db.SortedSetLengthAsync(key);
+            if (remainingCount == 0)
+            {
+                await db.SetRemoveAsync(DigestActiveUsersKey, userId);
+            }
         }
         catch (Exception ex)
         {
