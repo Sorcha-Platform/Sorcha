@@ -44,9 +44,8 @@ public static class RecoveryHealthEndpoints
                 }
 
                 var gap = state.NetworkHeadDocket - state.LocalLatestDocket;
-                var totalGap = state.NetworkHeadDocket - (state.NetworkHeadDocket - gap);
-                var progressPercent = totalGap > 0
-                    ? (int)(state.DocketsProcessed * 100 / totalGap)
+                var progressPercent = gap > 0
+                    ? (int)(state.DocketsProcessed * 100 / gap)
                     : 100;
 
                 var lastProgressAge = DateTimeOffset.UtcNow - state.LastProgressAt;

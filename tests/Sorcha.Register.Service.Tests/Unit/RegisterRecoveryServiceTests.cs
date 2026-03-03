@@ -15,7 +15,6 @@ using Sorcha.Register.Service.Services.Implementation;
 using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.Register.Service.Tests.Helpers;
 using Sorcha.ServiceClients.Grpc;
-using Sorcha.Wallet.Service.Grpc;
 using StackExchange.Redis;
 using Xunit;
 
@@ -34,7 +33,6 @@ public class RegisterRecoveryServiceTests
     private readonly Mock<IReadOnlyRegisterRepository> _mockRepository;
     private readonly Mock<IDocketSyncClient> _mockDocketSyncClient;
     private readonly Mock<IInboundTransactionRouter> _mockTransactionRouter;
-    private readonly Mock<IWalletNotificationClient> _mockWalletNotificationClient;
     private readonly Mock<IDatabase> _mockDb;
     private readonly Mock<IConnectionMultiplexer> _mockRedis;
     private readonly IConfiguration _configuration;
@@ -46,7 +44,6 @@ public class RegisterRecoveryServiceTests
         _mockRepository = new Mock<IReadOnlyRegisterRepository>();
         _mockDocketSyncClient = new Mock<IDocketSyncClient>();
         _mockTransactionRouter = new Mock<IInboundTransactionRouter>();
-        _mockWalletNotificationClient = new Mock<IWalletNotificationClient>();
         _mockLogger = new Mock<ILogger<RegisterRecoveryService>>();
 
         _mockDb = new Mock<IDatabase>();
@@ -74,7 +71,6 @@ public class RegisterRecoveryServiceTests
             _mockRepository.Object,
             _mockDocketSyncClient.Object,
             _mockTransactionRouter.Object,
-            _mockWalletNotificationClient.Object,
             new InboundRoutingMetrics(new TestMeterFactory()),
             _mockRedis.Object,
             _configuration,

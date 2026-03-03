@@ -87,8 +87,27 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
 
         try
         {
-            var actionEvent = JsonSerializer.Deserialize<InboundActionEvent>(
-                message.ToString(), JsonOptions);
+            var json = message.ToString();
+
+            // Discriminate between real-time and digest notifications on the shared channel.
+            // DigestNotification payloads contain "blueprintGroups"; individual events do not.
+            if (json.Contains("\"blueprintGroups\"", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Received digest notification on {Channel}, forwarding as digest event", PubSubChannel);
+
+                using var doc = JsonDocument.Parse(json);
+                var userId = doc.RootElement.TryGetProperty("userId", out var uid) ? uid.GetString() : null;
+                if (userId is not null)
+                {
+                    var groupName = $"user:{userId}";
+                    await _hubContext.Clients.Group(groupName)
+                        .SendAsync("DigestNotificationReceived", json);
+                }
+
+                return;
+            }
+
+            var actionEvent = JsonSerializer.Deserialize<InboundActionEvent>(json, JsonOptions);
 
             if (actionEvent is null)
             {
@@ -100,13 +119,13 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             var enrichedPayload = await EnrichEventAsync(actionEvent);
 
             // Push to user's SignalR group
-            var groupName = $"user:{actionEvent.UserId}";
-            await _hubContext.Clients.Group(groupName)
+            var userGroup = $"user:{actionEvent.UserId}";
+            await _hubContext.Clients.Group(userGroup)
                 .SendAsync("InboundActionReceived", enrichedPayload);
 
             _logger.LogDebug(
                 "Pushed InboundActionReceived to group {Group} for tx {TxId}",
-                groupName, actionEvent.TransactionId);
+                userGroup, actionEvent.TransactionId);
         }
         catch (Exception ex)
         {

@@ -1761,6 +1761,7 @@ proofsGroup.MapPost("/verify-inclusion", (
 // ===========================
 
 var adminGroup = app.MapGroup("/api/admin/registers/{registerId}")
+    .RequireAuthorization("RequireAdministrator")
     .WithTags("Admin");
 
 /// <summary>

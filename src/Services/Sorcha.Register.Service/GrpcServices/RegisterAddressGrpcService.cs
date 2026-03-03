@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Service.Grpc;
@@ -138,18 +139,21 @@ public class RegisterAddressGrpcService : RegisterAddressService.RegisterAddress
     }
 
     private static async IAsyncEnumerable<string> FilterOutRemovedAddress(
-        IAsyncEnumerable<LocalAddressEntry> entries, string addressToRemove)
+        IAsyncEnumerable<LocalAddressEntry> entries, string addressToRemove,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var entry in entries)
+        await foreach (var entry in entries.WithCancellation(cancellationToken))
         {
             if (!string.Equals(entry.Address, addressToRemove, StringComparison.OrdinalIgnoreCase))
                 yield return entry.Address;
         }
     }
 
-    private static async IAsyncEnumerable<string> ExtractAddresses(IAsyncEnumerable<LocalAddressEntry> entries)
+    private static async IAsyncEnumerable<string> ExtractAddresses(
+        IAsyncEnumerable<LocalAddressEntry> entries,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var entry in entries)
+        await foreach (var entry in entries.WithCancellation(cancellationToken))
         {
             yield return entry.Address;
         }
