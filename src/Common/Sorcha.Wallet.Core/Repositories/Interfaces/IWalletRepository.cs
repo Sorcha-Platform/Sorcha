@@ -74,6 +74,19 @@ public interface IWalletRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all wallets across all tenants with paging.
+    /// Used for system-level operations like bloom filter rebuild.
+    /// </summary>
+    /// <param name="skip">Number of records to skip</param>
+    /// <param name="take">Number of records to take</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of wallets</returns>
+    Task<IEnumerable<WalletEntity>> GetAllPagedAsync(
+        int skip = 0,
+        int take = 100,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Checks if a wallet exists
     /// </summary>
     /// <param name="address">Wallet address</param>

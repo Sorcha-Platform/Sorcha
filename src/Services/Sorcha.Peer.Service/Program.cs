@@ -146,6 +146,7 @@ builder.Services.AddSingleton<PeerDiscoveryServiceImpl>();
 builder.Services.AddSingleton<PeerHeartbeatGrpcService>();
 builder.Services.AddSingleton<RegisterSyncGrpcService>();
 builder.Services.AddSingleton<TransactionDistributionGrpcService>();
+builder.Services.AddSingleton<DocketSyncGrpcService>();
 
 // Register background services
 builder.Services.AddHostedService<PeerService>();
@@ -194,6 +195,7 @@ app.MapGrpcService<PeerDiscoveryServiceImpl>();
 app.MapGrpcService<PeerHeartbeatGrpcService>();
 app.MapGrpcService<RegisterSyncGrpcService>();
 app.MapGrpcService<TransactionDistributionGrpcService>();
+app.MapGrpcService<DocketSyncGrpcService>();
 
 // Enable gRPC reflection for development
 if (app.Environment.IsDevelopment())

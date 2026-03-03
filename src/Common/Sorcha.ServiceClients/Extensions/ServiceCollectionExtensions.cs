@@ -7,10 +7,14 @@ using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Blueprint;
+using Sorcha.ServiceClients.Grpc;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Validator;
+using Sorcha.Register.Service.Grpc;
+using Sorcha.Wallet.Service.Grpc;
+using Sorcha.Peer.Service.Protos;
 
 namespace Sorcha.ServiceClients.Extensions;
 
@@ -90,6 +94,37 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<ParticipantServiceClient>();
         services.AddScoped<IParticipantServiceClient, ParticipantServiceClient>();
+
+        // Feature 047: Inbound transaction routing gRPC clients via GrpcClientFactory.
+        // Named clients are resolved per-call via GrpcClientFactory.CreateClient<T>(name),
+        // which is safe for Singleton consumers (no captive dependency).
+        // Aspire service discovery resolves https+http:// URIs at runtime.
+        services.AddGrpcClient<RegisterAddressService.RegisterAddressServiceClient>(
+            RegisterAddressClient.ClientName, o =>
+        {
+            o.Address = new Uri(
+                configuration["ServiceClients:RegisterService:GrpcAddress"]
+                ?? "https+http://register-service");
+        });
+        services.AddSingleton<IRegisterAddressClient, RegisterAddressClient>();
+
+        services.AddGrpcClient<WalletNotificationService.WalletNotificationServiceClient>(
+            WalletNotificationClient.ClientName, o =>
+        {
+            o.Address = new Uri(
+                configuration["ServiceClients:WalletService:GrpcAddress"]
+                ?? "https+http://wallet-service");
+        });
+        services.AddSingleton<IWalletNotificationClient, WalletNotificationClient>();
+
+        services.AddGrpcClient<DocketSyncService.DocketSyncServiceClient>(
+            DocketSyncClient.ClientName, o =>
+        {
+            o.Address = new Uri(
+                configuration["ServiceClients:PeerService:GrpcAddress"]
+                ?? "https+http://peer-service");
+        });
+        services.AddSingleton<IDocketSyncClient, DocketSyncClient>();
 
         return services;
     }

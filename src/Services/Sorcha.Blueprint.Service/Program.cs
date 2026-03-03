@@ -136,6 +136,9 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IEventSe
     Sorcha.Blueprint.Service.Services.Implementation.EventService>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventCleanupService>();
 
+// Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
+
 // Add SignalR (Sprint 5)
 // TODO: Add Redis backplane when Microsoft.AspNetCore.SignalR.StackExchangeRedis package is added
 builder.Services.AddSignalR();

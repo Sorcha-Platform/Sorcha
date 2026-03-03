@@ -696,6 +696,73 @@ Enable detailed logging:
 
 ---
 
+## Notification Pipeline
+
+The Wallet Service receives inbound transaction notifications from the Register Service and delivers them to users in real-time or via digest batching.
+
+### Pipeline Flow
+
+```
+Register Service (docket sealed)
+    → gRPC: NotifyInboundTransaction
+        → Resolve address → wallet → user
+            → Rate limiter check
+                ├── Under limit → Redis pub/sub (real-time)
+                └── Over limit  → Redis sorted set (digest queue)
+```
+
+### Real-time Delivery
+
+When an inbound transaction is detected, the notification pipeline:
+1. Resolves the recipient wallet address to a user identity
+2. Checks the sliding window rate limiter
+3. Publishes via Redis pub/sub (`wallet:notifications` channel) for the EventsHub SignalR bridge
+
+### Rate Limiting
+
+A sliding window rate limiter prevents notification flooding. When the rate limit is exceeded, events are queued to the digest for later consolidated delivery.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Notifications:RealTimeRateLimitPerMinute` | `10` | Max real-time notifications per user per minute |
+
+### Digest Batching
+
+A `BackgroundService` processes accumulated notification events, groups them by blueprint, and delivers consolidated summaries. Digest frequency is determined by user preference (hourly or daily).
+
+**Configuration** (`appsettings.json`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Notifications:DigestCheckIntervalMinutes` | `5` | How often the worker checks for pending digests |
+| `Notifications:DigestHourlyMinute` | `0` | Minute of the hour to send hourly digests |
+| `Notifications:DigestDailyHour` | `8` | Hour of the day (UTC) to send daily digests |
+| `Notifications:DigestDailyMinute` | `0` | Minute of the hour to send daily digests |
+
+```json
+{
+  "Notifications": {
+    "RealTimeRateLimitPerMinute": 10,
+    "DigestCheckIntervalMinutes": 5,
+    "DigestHourlyMinute": 0,
+    "DigestDailyHour": 8,
+    "DigestDailyMinute": 0
+  }
+}
+```
+
+### gRPC Services
+
+**WalletNotificationGrpcService** — Receives inbound transaction notifications from the Register Service.
+
+| RPC Method | Description |
+|------------|-------------|
+| `GetAllLocalAddresses` | Returns all locally-registered wallet addresses for bloom filter population |
+| `NotifyInboundTransaction` | Notify a single inbound transaction for a local address |
+| `NotifyInboundTransactionBatch` | Batch notify for recovery processing (multiple transactions) |
+
+---
+
 ## Resources
 
 - **Specification**: [.specify/specs/sorcha-wallet-service.md](.specify/specs/sorcha-wallet-service.md)
@@ -714,6 +781,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Last Updated**: 2026-03-01
+**Last Updated**: 2026-03-03
 **Maintained By**: Sorcha Contributors
 **Status**: 95% Complete (Azure Key Vault Deferred)

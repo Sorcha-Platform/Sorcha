@@ -31,7 +31,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Services\Sorcha.Peer.Service\Sorcha.Peer.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Peer.Service\Sorcha.Peer.Service.csproj">
+      <Aliases>global,PeerService</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

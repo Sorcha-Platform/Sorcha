@@ -17,6 +17,8 @@ public static class UserPreferenceEndpoints
     private static readonly string[] ValidThemes = ["Light", "Dark", "System"];
     private static readonly string[] ValidLanguages = ["en", "fr", "de", "es"];
     private static readonly string[] ValidTimeFormats = ["UTC", "Local"];
+    private static readonly string[] ValidNotificationMethods = ["InApp", "InAppPlusEmail", "InAppPlusPush"];
+    private static readonly string[] ValidNotificationFrequencies = ["RealTime", "HourlyDigest", "DailyDigest"];
 
     /// <summary>
     /// Maps user preference endpoints to the application.
@@ -90,6 +92,10 @@ public static class UserPreferenceEndpoints
             errors["timeFormat"] = [$"Must be one of: {string.Join(", ", ValidTimeFormats)}"];
         if (request.DefaultWalletAddress is not null && request.DefaultWalletAddress.Length > 200)
             errors["defaultWalletAddress"] = ["Must be 200 characters or fewer"];
+        if (request.NotificationMethod is not null && !ValidNotificationMethods.Contains(request.NotificationMethod))
+            errors["notificationMethod"] = [$"Must be one of: {string.Join(", ", ValidNotificationMethods)}"];
+        if (request.NotificationFrequency is not null && !ValidNotificationFrequencies.Contains(request.NotificationFrequency))
+            errors["notificationFrequency"] = [$"Must be one of: {string.Join(", ", ValidNotificationFrequencies)}"];
 
         if (errors.Count > 0)
             return TypedResults.ValidationProblem(errors);
@@ -114,6 +120,10 @@ public static class UserPreferenceEndpoints
             prefs.DefaultWalletAddress = request.DefaultWalletAddress;
         if (request.NotificationsEnabled.HasValue)
             prefs.NotificationsEnabled = request.NotificationsEnabled.Value;
+        if (request.NotificationMethod is not null)
+            prefs.NotificationMethod = Enum.Parse<NotificationMethod>(request.NotificationMethod);
+        if (request.NotificationFrequency is not null)
+            prefs.NotificationFrequency = Enum.Parse<NotificationFrequency>(request.NotificationFrequency);
         // Note: TwoFactorEnabled is intentionally read-only via this API
 
         prefs.UpdatedAt = DateTimeOffset.UtcNow;
@@ -210,6 +220,8 @@ public static class UserPreferenceEndpoints
         timeFormat = p.TimeFormat.ToString(),
         defaultWalletAddress = p.DefaultWalletAddress,
         notificationsEnabled = p.NotificationsEnabled,
+        notificationMethod = p.NotificationMethod.ToString(),
+        notificationFrequency = p.NotificationFrequency.ToString(),
         twoFactorEnabled = p.TwoFactorEnabled
     };
 }
@@ -222,7 +234,9 @@ public record UpdatePreferencesRequest(
     string? Language = null,
     string? TimeFormat = null,
     string? DefaultWalletAddress = null,
-    bool? NotificationsEnabled = null);
+    bool? NotificationsEnabled = null,
+    string? NotificationMethod = null,
+    string? NotificationFrequency = null);
 
 /// <summary>
 /// Request to set default wallet address.

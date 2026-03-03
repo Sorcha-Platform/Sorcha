@@ -156,7 +156,7 @@ public class CryptoPolicyServiceTests
         var result = await _sut.GetPolicyHistoryAsync(registerId);
 
         // Assert — both are updates (not genesis), so all come from FindAllPolicyUpdatesAsync
-        result.Should().HaveCountGreaterOrEqualTo(2);
+        result.Should().HaveCountGreaterThanOrEqualTo(2);
         result.First().Version.Should().Be(1);
         result.Last().Version.Should().Be(2);
     }

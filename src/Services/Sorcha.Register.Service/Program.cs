@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
 using Sorcha.Register.Storage.MongoDB;
 using Sorcha.Register.Storage.Redis;
+using Sorcha.Register.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
@@ -161,6 +162,23 @@ builder.Services.AddHostedService<AdvertisementResyncService>();
 // Register event bridge: subscribes to domain events and broadcasts via SignalR
 builder.Services.AddHostedService<RegisterEventBridgeService>();
 
+// Feature 047: Local address bloom filter index (US1) + inbound transaction router (US2)
+builder.Services.AddGrpc();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocalAddressIndex,
+    Sorcha.Register.Service.Services.Implementation.RedisBloomFilterAddressIndex>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
+    Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
+
+// Feature 047: Inbound routing metrics (T047 — observability)
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.InboundRoutingMetrics>();
+
+// Feature 047: Register recovery service (US4) — detects docket gaps and recovers from peers
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IRegisterRecoveryService>(sp =>
+    sp.GetRequiredService<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>());
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>());
+
 // Add JWT authentication and authorization (AUTH-002)
 // JWT authentication is now configured via shared ServiceDefaults with auto-key generation
 builder.AddJwtAuthentication();
@@ -197,6 +215,12 @@ app.MapSorchaOpenApiUi("Register Service");
 
 // Map SignalR hub
 app.MapHub<RegisterHub>("/hubs/register");
+
+// Feature 047: Map RegisterAddress gRPC service for bloom filter operations
+app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcService>();
+
+// Feature 047: Map recovery health endpoints (US4)
+app.MapRecoveryHealthEndpoints();
 
 // Add authentication and authorization middleware (AUTH-002)
 app.UseAuthentication();
@@ -1737,6 +1761,7 @@ proofsGroup.MapPost("/verify-inclusion", (
 // ===========================
 
 var adminGroup = app.MapGroup("/api/admin/registers/{registerId}")
+    .RequireAuthorization("RequireAdministrator")
     .WithTags("Admin");
 
 /// <summary>
@@ -1905,6 +1930,48 @@ List<string> BuildMerkleProofPath(List<string> txIds, string targetTxId, IHashPr
     }
 
     return proofPath;
+}
+
+// Feature 047: Bloom filter admin endpoint (US1)
+/// <summary>Trigger a full rebuild of the bloom filter for a register.</summary>
+adminGroup.MapPost("/rebuild-index", async (
+    Sorcha.Register.Service.Services.Interfaces.ILocalAddressIndex addressIndex,
+    Sorcha.ServiceClients.Grpc.IWalletNotificationClient walletClient,
+    ILogger<Program> logger,
+    string registerId) =>
+{
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+
+    var addresses = walletClient.GetAllLocalAddressesAsync(registerId, activeOnly: true);
+    var addressStream = ExtractAddressStrings(addresses);
+
+    var stats = await addressIndex.RebuildAsync(registerId, addressStream);
+
+    sw.Stop();
+    logger.LogInformation(
+        "Admin bloom filter rebuild for register {RegisterId}: {AddressCount} addresses in {Duration}ms",
+        registerId, stats.AddressCount, sw.ElapsedMilliseconds);
+
+    return Results.Ok(new
+    {
+        success = true,
+        registerId,
+        addressCount = stats.AddressCount,
+        rebuildDurationMs = sw.ElapsedMilliseconds,
+        bitArraySize = stats.BitArraySize,
+        hashFunctionCount = stats.HashFunctionCount
+    });
+})
+.WithName("RebuildAddressIndex")
+.WithSummary("Rebuild bloom filter address index")
+.WithDescription("Triggers a full rebuild of the bloom filter for a register. Fetches all wallet addresses from Wallet Service and rebuilds the Redis-backed probabilistic index. Returns address count and rebuild duration.");
+
+static async IAsyncEnumerable<string> ExtractAddressStrings(IAsyncEnumerable<Sorcha.Wallet.Service.Grpc.LocalAddressEntry> entries)
+{
+    await foreach (var entry in entries)
+    {
+        yield return entry.Address;
+    }
 }
 
 app.Run();

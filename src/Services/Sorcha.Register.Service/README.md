@@ -739,6 +739,82 @@ Enable detailed logging:
 
 ---
 
+## Inbound Transaction Routing
+
+The Register Service participates in the **inbound transaction routing** pipeline, identifying transactions that involve locally-registered wallet addresses and triggering notifications to the Wallet Service for user delivery.
+
+### Bloom Filter (Local Address Index)
+
+A Redis-backed probabilistic data structure efficiently determines whether a wallet address is registered locally. When a new docket is sealed, the bloom filter is queried for each transaction's recipient addresses to identify inbound transactions.
+
+**Configuration** (`appsettings.json`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `BloomFilter:ExpectedAddressCount` | `100000` | Expected number of addresses (sizing parameter) |
+| `BloomFilter:FalsePositiveRate` | `0.001` | Target false positive rate (0.1%) |
+| `BloomFilter:RebuildOnStartup` | `true` | Rebuild the filter from storage on service start |
+
+```json
+{
+  "BloomFilter": {
+    "ExpectedAddressCount": 100000,
+    "FalsePositiveRate": 0.001,
+    "RebuildOnStartup": true
+  }
+}
+```
+
+### Admin Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/admin/registers/{registerId}/rebuild-index` | Force rebuild the bloom filter index for a register |
+
+### Health Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health/sync` | Returns recovery/sync status |
+
+**Response format:**
+
+```json
+{
+  "status": "synced",
+  "currentDocket": 42,
+  "targetDocket": 42,
+  "progressPercentage": 100.0,
+  "docketsProcessed": 42,
+  "lastError": null
+}
+```
+
+Status values: `synced` (fully caught up), `recovering` (processing missing dockets), `stalled` (recovery error).
+
+### Recovery
+
+The Register Service automatically detects docket gaps on startup and recovers missing data:
+
+1. **Gap Detection**: Compares local docket height against peers to identify missing dockets
+2. **Streaming Recovery**: Streams missing dockets from the Peer Service via gRPC
+3. **Chain Integrity**: Verifies hash chain continuity during recovery
+4. **Catch-up Notifications**: Delivers inbound transaction notifications for recovered dockets
+
+Recovery runs as a `BackgroundService` and reports status via the `/health/sync` endpoint.
+
+### gRPC Services
+
+**RegisterAddressGrpcService** — Manages the local address index for inbound transaction routing.
+
+| RPC Method | Description |
+|------------|-------------|
+| `RegisterLocalAddress` | Add an address to the bloom filter index |
+| `RemoveLocalAddress` | Remove an address from the bloom filter index |
+| `RebuildAddressIndex` | Rebuild the entire bloom filter from storage |
+
+---
+
 ## Resources
 
 - **Specification**: [.specify/specs/sorcha-register-service.md](.specify/specs/sorcha-register-service.md)
@@ -787,6 +863,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Last Updated**: 2025-11-23
+**Last Updated**: 2026-03-03
 **Maintained By**: Sorcha Contributors
 **Status**: ✅ Production Ready (100% Complete)

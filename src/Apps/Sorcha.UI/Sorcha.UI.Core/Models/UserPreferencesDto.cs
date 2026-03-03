@@ -13,6 +13,8 @@ public class UserPreferencesDto
     public string TimeFormat { get; set; } = "Local";
     public string? DefaultWalletAddress { get; set; }
     public bool NotificationsEnabled { get; set; }
+    public string NotificationMethod { get; set; } = "InApp";
+    public string NotificationFrequency { get; set; } = "RealTime";
     public bool TwoFactorEnabled { get; set; }
 }
 
@@ -26,6 +28,8 @@ public class UpdateUserPreferencesRequest
     public string? TimeFormat { get; set; }
     public string? DefaultWalletAddress { get; set; }
     public bool? NotificationsEnabled { get; set; }
+    public string? NotificationMethod { get; set; }
+    public string? NotificationFrequency { get; set; }
 }
 
 /// <summary>

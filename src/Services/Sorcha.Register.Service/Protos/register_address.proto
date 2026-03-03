@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+//
+// gRPC contract: Register Address Service
+// Direction: Wallet Service → Register Service
+// Purpose: Register/remove local wallet addresses in the bloom filter
+
+syntax = "proto3";
+
+option csharp_namespace = "Sorcha.Register.Service.Grpc";
+
+package sorcha.register;
+
+// Service for managing local address registration in the bloom filter.
+// Called by Wallet Service when addresses are created, derived, or deleted.
+service RegisterAddressService {
+
+  // Register a single wallet address as local.
+  // Called when a new wallet is created or a new address is derived.
+  // Register Service adds the address to the bloom filter in Redis.
+  rpc RegisterLocalAddress (RegisterLocalAddressRequest) returns (RegisterLocalAddressResponse);
+
+  // Mark an address for removal from the local index.
+  // Called when a wallet is deleted or deactivated.
+  // Triggers a bloom filter rebuild since bloom filters don't support deletion.
+  rpc RemoveLocalAddress (RemoveLocalAddressRequest) returns (RemoveLocalAddressResponse);
+
+  // Trigger a full rebuild of the bloom filter for a register.
+  // Called by admin command or automatically on startup.
+  rpc RebuildAddressIndex (RebuildAddressIndexRequest) returns (RebuildAddressIndexResponse);
+}
+
+message RegisterLocalAddressRequest {
+  // The wallet address to register (e.g., base58 or hex encoded)
+  string address = 1;
+
+  // The register ID this address belongs to
+  string register_id = 2;
+}
+
+message RegisterLocalAddressResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RemoveLocalAddressRequest {
+  // The wallet address to remove
+  string address = 1;
+
+  // The register ID this address belongs to
+  string register_id = 2;
+}
+
+message RemoveLocalAddressResponse {
+  bool success = 1;
+
+  // True if a rebuild was triggered (bloom filters require rebuild on removal)
+  bool rebuild_triggered = 2;
+
+  string message = 3;
+}
+
+message RebuildAddressIndexRequest {
+  // The register ID to rebuild the index for.
+  // If empty, rebuilds all registers.
+  string register_id = 1;
+}
+
+message RebuildAddressIndexResponse {
+  bool success = 1;
+  int32 address_count = 2;
+  int64 rebuild_duration_ms = 3;
+  string message = 4;
+}

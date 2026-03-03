@@ -248,6 +248,100 @@ public class UserPreferenceEndpointsTests : IClassFixture<TenantServiceWebApplic
 
     #endregion
 
+    #region Notification Preference Tests
+
+    [Fact]
+    public async Task GetPreferences_FirstAccess_ReturnsDefaultNotificationPreferences()
+    {
+        var response = await _client.GetAsync("/api/preferences");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var prefs = await response.Content.ReadFromJsonAsync<PreferencesResponse>();
+        prefs.Should().NotBeNull();
+        prefs!.NotificationMethod.Should().Be("InApp");
+        prefs.NotificationFrequency.Should().Be("RealTime");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_NotificationMethod_UpdatesMethod()
+    {
+        // Ensure preferences exist
+        await _client.GetAsync("/api/preferences");
+
+        var response = await _client.PutAsJsonAsync("/api/preferences", new { notificationMethod = "InAppPlusEmail" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var prefs = await response.Content.ReadFromJsonAsync<PreferencesResponse>();
+        prefs.Should().NotBeNull();
+        prefs!.NotificationMethod.Should().Be("InAppPlusEmail");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_NotificationFrequency_UpdatesFrequency()
+    {
+        // Ensure preferences exist
+        await _client.GetAsync("/api/preferences");
+
+        var response = await _client.PutAsJsonAsync("/api/preferences", new { notificationFrequency = "DailyDigest" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var prefs = await response.Content.ReadFromJsonAsync<PreferencesResponse>();
+        prefs.Should().NotBeNull();
+        prefs!.NotificationFrequency.Should().Be("DailyDigest");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_BothNotificationFields_UpdatesBoth()
+    {
+        // Ensure preferences exist
+        await _client.GetAsync("/api/preferences");
+
+        var response = await _client.PutAsJsonAsync("/api/preferences", new
+        {
+            notificationMethod = "InAppPlusPush",
+            notificationFrequency = "HourlyDigest"
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var prefs = await response.Content.ReadFromJsonAsync<PreferencesResponse>();
+        prefs.Should().NotBeNull();
+        prefs!.NotificationMethod.Should().Be("InAppPlusPush");
+        prefs.NotificationFrequency.Should().Be("HourlyDigest");
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_InvalidNotificationMethod_ReturnsBadRequest()
+    {
+        var response = await _client.PutAsJsonAsync("/api/preferences", new { notificationMethod = "Email" });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_InvalidNotificationFrequency_ReturnsBadRequest()
+    {
+        var response = await _client.PutAsJsonAsync("/api/preferences", new { notificationFrequency = "Weekly" });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdatePreferences_NotificationMethod_DoesNotChangeOtherFields()
+    {
+        // Ensure preferences exist with known frequency
+        await _client.GetAsync("/api/preferences");
+        await _client.PutAsJsonAsync("/api/preferences", new { notificationFrequency = "DailyDigest" });
+
+        // Update only method
+        var response = await _client.PutAsJsonAsync("/api/preferences", new { notificationMethod = "InAppPlusEmail" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var prefs = await response.Content.ReadFromJsonAsync<PreferencesResponse>();
+        prefs.Should().NotBeNull();
+        prefs!.NotificationMethod.Should().Be("InAppPlusEmail");
+        prefs.NotificationFrequency.Should().Be("DailyDigest"); // Unchanged
+    }
+
+    #endregion
+
     // Response DTOs for deserialization
     private record PreferencesResponse(
         string Theme,
@@ -255,6 +349,8 @@ public class UserPreferenceEndpointsTests : IClassFixture<TenantServiceWebApplic
         string TimeFormat,
         string? DefaultWalletAddress,
         bool NotificationsEnabled,
+        string NotificationMethod,
+        string NotificationFrequency,
         bool TwoFactorEnabled);
 
     private record DefaultWalletDto(string? DefaultWalletAddress);

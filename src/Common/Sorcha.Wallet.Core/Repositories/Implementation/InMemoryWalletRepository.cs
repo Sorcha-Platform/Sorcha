@@ -194,6 +194,24 @@ public class InMemoryWalletRepository : IWalletRepository
     }
 
     /// <inheritdoc/>
+    public Task<IEnumerable<WalletEntity>> GetAllPagedAsync(
+        int skip = 0,
+        int take = 100,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var wallets = _wallets.Values
+            .OrderBy(w => w.CreatedAt)
+            .Skip(skip)
+            .Take(take)
+            .Select(CloneWallet)
+            .ToList();
+
+        return Task.FromResult<IEnumerable<WalletEntity>>(wallets);
+    }
+
+    /// <inheritdoc/>
     public Task<bool> ExistsAsync(string address, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(address))
