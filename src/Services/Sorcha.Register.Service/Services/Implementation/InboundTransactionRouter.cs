@@ -58,6 +58,10 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
             return 0;
         }
 
+        _logger.LogDebug(
+            "Checking {AddressCount} addresses against bloom filter for docket {DocketNumber}",
+            recipientAddresses.Count, docketNumber);
+
         var matchCount = 0;
 
         foreach (var address in recipientAddresses)
@@ -71,8 +75,8 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
                 continue;
 
             _logger.LogInformation(
-                "Bloom filter match for address {Address} in transaction {TxId} (recovery: {IsRecovery})",
-                address, transactionId, isRecovery);
+                "Bloom filter match for address {Address} in docket {DocketNumber}, routing notification (TxId: {TxId}, recovery: {IsRecovery})",
+                address, docketNumber, transactionId, isRecovery);
 
             try
             {
@@ -114,6 +118,11 @@ public sealed class InboundTransactionRouter : IInboundTransactionRouter
                     "Failed to notify Wallet Service for address {Address} in transaction {TxId}",
                     address, transactionId);
             }
+        }
+
+        if (matchCount == 0)
+        {
+            _logger.LogDebug("No local addresses matched in docket {DocketNumber}", docketNumber);
         }
 
         return matchCount;

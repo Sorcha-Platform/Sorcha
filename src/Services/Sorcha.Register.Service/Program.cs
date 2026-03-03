@@ -169,6 +169,9 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocal
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
     Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
 
+// Feature 047: Inbound routing metrics (T047 — observability)
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.InboundRoutingMetrics>();
+
 // Feature 047: Register recovery service (US4) — detects docket gaps and recovers from peers
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.RegisterRecoveryService>();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IRegisterRecoveryService>(sp =>

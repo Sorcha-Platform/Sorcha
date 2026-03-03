@@ -148,7 +148,7 @@
 
 - [X] T044 [US5] Implement NotificationDigestWorker.cs — BackgroundService with configurable timer (DigestCheckIntervalMinutes), scans all users with pending digest items in Redis sorted sets (wallet:digest:{userId}), groups events by blueprint, delivers consolidated notification via Redis pub/sub (wallet:notifications) for EventsHub push, removes processed events atomically (Lua script ZRANGEBYSCORE+ZREMRANGEBYSCORE), skips empty digests in src/Services/Sorcha.Wallet.Service/Services/Implementation/
 - [X] T045 [US5] Register NotificationDigestWorker as hosted service in Wallet Service DI (Program.cs)
-- [ ] T046 [P] [US5] Write NotificationDigestWorkerTests.cs — timer fires and processes pending digests, events grouped by blueprint with counts, empty digest suppressed, atomic dequeue (no double delivery), flush pending on preference change to real-time in tests/Sorcha.Wallet.Service.Tests/
+- [X] T046 [P] [US5] Write NotificationDigestWorkerTests.cs — timer fires and processes pending digests, events grouped by blueprint with counts, empty digest suppressed, atomic dequeue (no double delivery), flush pending on preference change to real-time in tests/Sorcha.Wallet.Service.Tests/
 
 **Checkpoint**: Digest users receive single consolidated notifications at configured intervals. Empty digests suppressed. All US5 tests pass.
 
@@ -158,11 +158,11 @@
 
 **Purpose**: Observability, documentation, gateway routing, E2E testing
 
-- [ ] T047 Add structured logging (ILogger) for bloom filter operations, notification delivery, recovery progress and OpenTelemetry metrics (Meter) for bloom_filter_hit_rate, notification_delivery_latency_ms, recovery_dockets_per_second across Register and Wallet services
-- [ ] T048 [P] Add YARP route for /health/sync endpoint in API Gateway configuration (src/Services/Sorcha.ApiGateway/)
-- [ ] T049 [P] Update Register Service README.md with bloom filter config, recovery endpoints, admin rebuild endpoint, and health check; update Wallet Service README.md with notification pipeline, digest config, and rate limiting
-- [ ] T050 [P] Write NotificationPreferencesTests.cs Playwright E2E — navigate to Settings, change notification method and frequency, verify save persists, verify defaults for new user in tests/Sorcha.UI.E2E.Tests/
-- [ ] T051 Run quickstart.md scenarios 1–5 to validate end-to-end integration across all services
+- [X] T047 Add structured logging (ILogger) for bloom filter operations, notification delivery, recovery progress and OpenTelemetry metrics (Meter) for bloom_filter_hit_rate, notification_delivery_latency_ms, recovery_dockets_per_second across Register and Wallet services
+- [X] T048 [P] Add YARP route for /health/sync endpoint in API Gateway configuration (src/Services/Sorcha.ApiGateway/)
+- [X] T049 [P] Update Register Service README.md with bloom filter config, recovery endpoints, admin rebuild endpoint, and health check; update Wallet Service README.md with notification pipeline, digest config, and rate limiting
+- [X] T050 [P] Write NotificationPreferencesTests.cs Playwright E2E — navigate to Settings, change notification method and frequency, verify save persists, verify defaults for new user in tests/Sorcha.UI.E2E.Tests/
+- [X] T051 Run quickstart.md scenarios 1–5 to validate end-to-end integration across all services
 
 **Checkpoint**: All observability in place, documentation updated, E2E tests pass, quickstart scenarios validated.
 
