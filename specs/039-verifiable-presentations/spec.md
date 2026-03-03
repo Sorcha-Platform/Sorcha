@@ -4,7 +4,7 @@
 **Created**: 2026-02-21
 **Status**: Draft
 **Input**: User description: "Verifiable credential lifecycle, OID4VP presentations, Bitstring Status List, wallet card UI, and multi-method DID resolution"
-**Design Document**: `docs/plans/2026-02-21-verifiable-credentials-design.md`
+**Design Document**: `docs/archive/plans/2026-02-21-verifiable-credentials-design.md`
 
 ## User Scenarios & Testing *(mandatory)*
 

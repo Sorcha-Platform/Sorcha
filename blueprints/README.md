@@ -62,7 +62,7 @@ Every blueprint follows this structure:
    ```bash
    sorcha blueprint publish --file blueprints/templates/ping-pong-template.json
    ```
-3. See [docs/blueprint-quick-start.md](../docs/blueprint-quick-start.md) for a full tutorial
+3. See [docs/blueprint-quick-start.md](../docs/getting-started/blueprint-quick-start.md) for a full tutorial
 
 ## Schema Reference
 

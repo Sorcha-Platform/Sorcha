@@ -56,7 +56,7 @@ When any automated or AI-generated code is created or modified, the following do
 ### 2. Documentation Files (`docs/`)
 
 **What to Update:**
-- **Architecture Documentation** (`docs/architecture.md`) - Update if:
+- **Architecture Documentation** (`docs/reference/architecture.md`) - Update if:
   - New services or components are added
   - Service interactions change
   - Data flow patterns are modified
@@ -66,7 +66,7 @@ When any automated or AI-generated code is created or modified, the following do
   - Request/response formats change
   - Authentication requirements change
 
-- **Development Status** (`docs/development-status.md`) - Update if:
+- **Development Status** (`docs/reference/development-status.md`) - Update if:
   - Component completion percentages change
   - Major milestones are reached
   - New features are implemented
@@ -336,8 +336,8 @@ public async Task<IActionResult> SignTransaction(string id, SignRequest request)
 **Required Documentation Updates:**
 1. ✅ **README.md** - Add service to architecture overview
 2. ✅ **src/Services/Sorcha.NewService/README.md** - Create new README
-3. ✅ **docs/architecture.md** - Add service to architecture diagrams
-4. ✅ **docs/development-status.md** - Add service status section
+3. ✅ **docs/reference/architecture.md** - Add service to architecture diagrams
+4. ✅ **docs/reference/development-status.md** - Add service status section
 5. ✅ **.specify/MASTER-PLAN.md** - Update phase completion
 6. ✅ **.specify/MASTER-TASKS.md** - Mark all related tasks complete
 7. ✅ **.specify/specs/sorcha-new-service.md** - Create or update spec

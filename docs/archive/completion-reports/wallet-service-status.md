@@ -583,5 +583,5 @@ tests/
 **Related Documents:**
 - [Wallet Service Specification](.specify/specs/sorcha-wallet-service.md)
 - [Project Constitution](.specify/constitution.md)
-- [Development Status](development-status.md)
+- [Development Status](../../reference/development-status.md)
 - [README](../README.md)

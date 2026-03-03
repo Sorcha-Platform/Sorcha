@@ -297,10 +297,10 @@ public class WalletService
 | `.specify/constitution.md` | Architectural principles (read first!) |
 | `.specify/MASTER-TASKS.md` | Task tracking with priorities |
 | `.specify/AI-CODE-DOCUMENTATION-POLICY.md` | MANDATORY documentation requirements |
-| `docs/PORT-CONFIGURATION.md` | Complete port assignments |
-| `docs/AUTHENTICATION-SETUP.md` | JWT configuration guide |
-| `docs/development-status.md` | Current completion status |
-| `docs/architecture.md` | System architecture diagrams |
+| `docs/getting-started/PORT-CONFIGURATION.md` | Complete port assignments |
+| `docs/guides/AUTHENTICATION-SETUP.md` | JWT configuration guide |
+| `docs/reference/development-status.md` | Current completion status |
+| `docs/reference/architecture.md` | System architecture diagrams |
 
 ---
 
@@ -337,10 +337,10 @@ public class WalletService
 When modifying code, ensure corresponding documentation stays in sync:
 
 - **Service README** — If you add/change endpoints, configuration, or features, update the service's README.md
-- **docs/API-DOCUMENTATION.md** — If you add/change REST or gRPC endpoints
-- **docs/AUTHENTICATION-SETUP.md** — If you change auth flows, policies, or token handling
-- **docs/PORT-CONFIGURATION.md** — If you add/change port assignments
-- **docs/development-status.md** — If you complete a feature or change service status
+- **docs/reference/API-DOCUMENTATION.md** — If you add/change REST or gRPC endpoints
+- **docs/guides/AUTHENTICATION-SETUP.md** — If you change auth flows, policies, or token handling
+- **docs/getting-started/PORT-CONFIGURATION.md** — If you add/change port assignments
+- **docs/reference/development-status.md** — If you complete a feature or change service status
 - **CLAUDE.md** — If you change architectural patterns or conventions
 - **XML comments** — All public API methods must have `/// <summary>` to avoid build warnings
 - **OpenAPI descriptions** — All Minimal API endpoints must have `.WithSummary()` and `.WithDescription()`

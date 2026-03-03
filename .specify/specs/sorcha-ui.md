@@ -2310,7 +2310,7 @@ Content-Security-Policy:
 - [Sorcha.Admin Feature Requirements](../../src/Apps/Sorcha.Admin/FEATURE-REQUIREMENTS.md)
 - [Sorcha.Admin Known Issues](../../src/Apps/Sorcha.Admin/KNOWN-ISSUES.md)
 - [Sorcha Constitution](../constitution.md)
-- [Sorcha Architecture](../../docs/architecture.md)
+- [Sorcha Architecture](../../docs/reference/architecture.md)
 
 **External References:**
 - [.NET MAUI Documentation](https://learn.microsoft.com/dotnet/maui/)

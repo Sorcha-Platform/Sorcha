@@ -11,7 +11,7 @@
 - [sorcha-transaction-handler.md](sorcha-transaction-handler.md)
 
 **Related Documentation:**
-- [Blockchain Transaction Format - JSON-LD Specification](../../docs/blockchain-transaction-format.md)
+- [Blockchain Transaction Format - JSON-LD Specification](../../docs/reference/blockchain-transaction-format.md)
 
 ## Executive Summary
 
@@ -100,7 +100,7 @@ This separation ensures:
 3. **Zero-Trust Architecture**: Security-sensitive components have explicit boundaries
 4. **Future Enclave Support**: Validator logic can run in secure enclaves (SGX/SEV)
 
-See [Validator Service Design](../../docs/validator-service-design.md) for complete details.
+See [Validator Service Design](../../docs/reference/validator-service-design.md) for complete details.
 
 ## Core Concepts
 
@@ -128,7 +128,7 @@ A **Transaction** represents a signed data submission to a register. They are th
 - Tracks version for schema evolution
 
 **JSON-LD Representation:**
-All transactions MUST be representable in JSON-LD format following the [Blockchain Transaction Format specification](../../docs/blockchain-transaction-format.md). Transactions are addressable via DID URIs:
+All transactions MUST be representable in JSON-LD format following the [Blockchain Transaction Format specification](../../docs/reference/blockchain-transaction-format.md). Transactions are addressable via DID URIs:
 - DID Format: `did:sorcha:register:{registerId}/tx/{txId}`
 - JSON-LD Context: `https://sorcha.dev/contexts/blockchain/v1.jsonld`
 - Supports semantic web integration and universal resolvability
@@ -2272,7 +2272,7 @@ The following items are explicitly out of scope for this specification:
 
 ### Internal Documentation
 - [Sorcha Constitution](../constitution.md)
-- [Sorcha Architecture](../../docs/architecture.md)
+- [Sorcha Architecture](../../docs/reference/architecture.md)
 - [Wallet Service Specification](sorcha-wallet-service.md)
 - [Transaction Handler Specification](sorcha-transaction-handler.md)
 - [Cryptography Specification](sorcha-cryptography-rewrite.md)

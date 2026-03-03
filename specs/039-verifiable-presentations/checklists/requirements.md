@@ -35,5 +35,5 @@
 - 8 edge cases documented covering status list capacity, network failures, concurrent access, and offline scenarios
 - 10 measurable success criteria defined, all technology-agnostic
 - 10 assumptions documented covering existing system foundations and external dependencies
-- Design document at `docs/plans/2026-02-21-verifiable-credentials-design.md` provides implementation context (separate from spec)
+- Design document at `docs/archive/plans/2026-02-21-verifiable-credentials-design.md` provides implementation context (separate from spec)
 - Spec references W3C standards (Bitstring Status List v1.0, DID Core, OID4VP) as domain requirements, not implementation choices

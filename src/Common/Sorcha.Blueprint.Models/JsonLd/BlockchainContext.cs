@@ -10,7 +10,7 @@ namespace Sorcha.Blueprint.Models.JsonLd;
 /// Implements the Blockchain Transaction Format specification
 /// </summary>
 /// <remarks>
-/// See: docs/blockchain-transaction-format.md for complete specification
+/// See: docs/reference/blockchain-transaction-format.md for complete specification
 /// Context URL: https://sorcha.dev/contexts/blockchain/v1.jsonld
 /// </remarks>
 public static class BlockchainContext

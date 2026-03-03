@@ -252,7 +252,7 @@ None currently identified.
 
 - [Admin Authentication Fixes](ADMIN-AUTH-FIXES.md) - Original authentication fixes
 - [Admin Navigation Fixes](ADMIN-AUTH-NAVIGATION-FIX.md) - Login navigation fixes
-- [JWT Configuration Guide](JWT-CONFIGURATION.md)
+- [JWT Configuration Guide](../../guides/JWT-CONFIGURATION.md)
 - [CustomAuthenticationStateProvider Source](../src/Apps/Sorcha.Admin/Services/Authentication/CustomAuthenticationStateProvider.cs)
 - [TokenService Source](../src/Services/Sorcha.Tenant.Service/Services/TokenService.cs)
 

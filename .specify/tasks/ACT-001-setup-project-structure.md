@@ -197,6 +197,6 @@ dotnet build
 
 ## References
 
-- [Project Structure Documentation](../../docs/project-structure.md)
-- [Architecture Documentation](../../docs/architecture.md)
+- [Project Structure Documentation](../../docs/reference/project-structure.md)
+- [Architecture Documentation](../../docs/reference/architecture.md)
 - [Action Service Specification](../specs/sorcha-action-service.md)

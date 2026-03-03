@@ -365,7 +365,7 @@ Typical test execution times (on modern hardware):
 - [xUnit Documentation](https://xunit.net/)
 - [FluentAssertions Documentation](https://fluentassertions.com/)
 - [gRPC Testing Guide](https://grpc.io/docs/guides/testing/)
-- [Sorcha Architecture Documentation](../../../docs/architecture.md)
+- [Sorcha Architecture Documentation](../../../docs/reference/architecture.md)
 
 ## Contributing
 

@@ -65,7 +65,7 @@ After first run, the system creates a default organization and admin user:
 | Email | `admin@sorcha.local` |
 | Password | `Dev_Pass_2025!` |
 
-> **Change these immediately in production.** See [Authentication Setup](docs/AUTHENTICATION-SETUP.md) for production configuration.
+> **Change these immediately in production.** See [Authentication Setup](docs/guides/AUTHENTICATION-SETUP.md) for production configuration.
 
 ## How It Works
 
@@ -180,14 +180,14 @@ Key settings:
 
 | Document | Description |
 |----------|-------------|
-| [Docker Quick Start](docs/DOCKER-QUICK-START.md) | Getting started with Docker |
-| [Authentication Setup](docs/AUTHENTICATION-SETUP.md) | JWT and auth configuration |
-| [API Documentation](docs/API-DOCUMENTATION.md) | REST and gRPC endpoint reference |
-| [Blueprint Quick Start](docs/blueprint-quick-start.md) | Creating your first blueprint |
-| [Port Configuration](docs/PORT-CONFIGURATION.md) | Service ports and networking |
-| [Architecture](docs/architecture.md) | System design and data flows |
-| [Deployment Guide](docs/DEPLOYMENT.md) | Production deployment |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [Docker Quick Start](docs/getting-started/DOCKER-QUICK-START.md) | Getting started with Docker |
+| [Authentication Setup](docs/guides/AUTHENTICATION-SETUP.md) | JWT and auth configuration |
+| [API Documentation](docs/reference/API-DOCUMENTATION.md) | REST and gRPC endpoint reference |
+| [Blueprint Quick Start](docs/getting-started/blueprint-quick-start.md) | Creating your first blueprint |
+| [Port Configuration](docs/getting-started/PORT-CONFIGURATION.md) | Service ports and networking |
+| [Architecture](docs/reference/architecture.md) | System design and data flows |
+| [Deployment Guide](docs/guides/DEPLOYMENT.md) | Production deployment |
+| [Troubleshooting](docs/guides/TROUBLESHOOTING.md) | Common issues and solutions |
 
 ## Walkthroughs
 

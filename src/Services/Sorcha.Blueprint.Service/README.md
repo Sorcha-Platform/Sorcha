@@ -527,8 +527,8 @@ Enable detailed logging:
 
 - **Specification**: [.specify/specs/sorcha-blueprint-service.md](.specify/specs/)
 - **API Reference**: [Scalar UI](https://localhost:7081/scalar)
-- **Architecture**: [docs/architecture.md](../../docs/architecture.md)
-- **Development Status**: [docs/development-status.md](../../docs/development-status.md)
+- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
+- **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)
 - **Portable Engine**: [src/Core/Sorcha.Blueprint.Engine](../Core/Sorcha.Blueprint.Engine/)
 - **OpenAPI Spec**: `https://localhost:7081/openapi/v1.json`
 

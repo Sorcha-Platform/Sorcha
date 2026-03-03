@@ -819,9 +819,9 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 
 - **Specification**: [.specify/specs/sorcha-register-service.md](.specify/specs/sorcha-register-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7085/scalar)
-- **Architecture**: [docs/architecture.md](../../docs/architecture.md)
-- **Development Status**: [docs/development-status.md](../../docs/development-status.md)
-- **Transaction Format**: [docs/blockchain-transaction-format.md](../../docs/blockchain-transaction-format.md)
+- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
+- **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)
+- **Transaction Format**: [docs/blockchain-transaction-format.md](../../docs/reference/blockchain-transaction-format.md)
 - **OpenAPI Spec**: `https://localhost:7085/openapi/v1.json`
 
 ---

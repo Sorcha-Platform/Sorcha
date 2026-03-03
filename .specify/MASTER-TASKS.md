@@ -24,13 +24,13 @@ This document tracks **active work only**. Completed phases and historical updat
 
 > **Priority:** P0 (Production Readiness)
 > **Status:** 🚧 In Progress
-> **Design Doc:** [docs/plans/2026-02-27-shared-library-nuget-design.md](../docs/plans/2026-02-27-shared-library-nuget-design.md)
+> **Design Doc:** [docs/plans/2026-02-27-shared-library-nuget-design.md](../docs/archive/plans/2026-02-27-shared-library-nuget-design.md)
 
 Establish production-grade NuGet packaging, Central Package Management, automated CI/CD, and code quality standards across the entire codebase.
 
 ### Phase A: Shared Libraries (src/Common/) — ✅ COMPLETE
 
-**Plan doc:** [docs/plans/2026-02-27-code-quality-fixes.md](../docs/plans/2026-02-27-code-quality-fixes.md)
+**Plan doc:** [docs/plans/2026-02-27-code-quality-fixes.md](../docs/archive/plans/2026-02-27-code-quality-fixes.md)
 
 | # | Task | Status |
 |---|------|--------|
@@ -119,7 +119,7 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 
 ### Phase B: Core Libraries (src/Core/) — ✅ COMPLETE
 
-**Plan doc:** [docs/plans/2026-02-28-phase-b-core-libraries-plan.md](../docs/plans/2026-02-28-phase-b-core-libraries-plan.md)
+**Plan doc:** [docs/plans/2026-02-28-phase-b-core-libraries-plan.md](../docs/archive/plans/2026-02-28-phase-b-core-libraries-plan.md)
 
 | # | Task | Status |
 |---|------|--------|
@@ -190,7 +190,7 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 
 ### Phase C: Services (src/Services/) — ✅ COMPLETE
 
-**Plan doc:** [docs/plans/2026-02-28-phase-c-code-quality-findings.md](../docs/plans/2026-02-28-phase-c-code-quality-findings.md)
+**Plan doc:** [docs/plans/2026-02-28-phase-c-code-quality-findings.md](../docs/archive/plans/2026-02-28-phase-c-code-quality-findings.md)
 
 | # | Task | Status |
 |---|------|--------|
@@ -203,7 +203,7 @@ Establish production-grade NuGet packaging, Central Package Management, automate
 
 ### Phase D: Applications (src/Apps/) — ✅ COMPLETE
 
-**Plan doc:** [docs/plans/2026-02-28-phase-d-code-quality-findings.md](../docs/plans/2026-02-28-phase-d-code-quality-findings.md)
+**Plan doc:** [docs/plans/2026-02-28-phase-d-code-quality-findings.md](../docs/archive/plans/2026-02-28-phase-d-code-quality-findings.md)
 
 | # | Task | Status |
 |---|------|--------|
@@ -261,7 +261,7 @@ Envelope encryption for action transaction payloads — XChaCha20-Poly1305 symme
 
 > **Priority:** P0 (MVD Blocker)
 > **Status:** ✅ Complete
-> **Research Doc:** [docs/transaction-submission-flow.md](../docs/transaction-submission-flow.md)
+> **Research Doc:** [docs/transaction-submission-flow.md](../docs/reference/transaction-submission-flow.md)
 
 All transactions MUST go through the Validator Service mempool before being sealed into dockets. Direct writes to the register ledger are NOT permitted.
 

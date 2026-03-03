@@ -9,7 +9,7 @@
 | **Status** | Specification |
 | **Date** | 2025-11-16 |
 | **Author** | Claude Code (Anthropic) |
-| **Related Docs** | `/docs/validator-service-design.md` |
+| **Related Docs** | `/docs/reference/validator-service-design.md` |
 
 ---
 
@@ -998,7 +998,7 @@ Get MemPool metrics.
 
 ### 7.1 Core Models
 
-See `/docs/validator-service-design.md` Section 3 for complete data model specifications.
+See `/docs/reference/validator-service-design.md` Section 3 for complete data model specifications.
 
 **Key Models:**
 - `Docket` - Blockchain block
@@ -1146,7 +1146,7 @@ services:
 
 ### 9.3 .NET Aspire Configuration
 
-See `/docs/validator-service-design.md` Section 7.3 for complete Aspire orchestration.
+See `/docs/reference/validator-service-design.md` Section 7.3 for complete Aspire orchestration.
 
 ---
 
@@ -1318,9 +1318,9 @@ _logger.LogInformation(
 
 ## Appendix B: References
 
-- `/docs/validator-service-design.md` - Design specification
+- `/docs/reference/validator-service-design.md` - Design specification
 - `/docs/alpha-validator-service-analysis.md` - Alpha Validator analysis
-- `/docs/architecture.md` - Sorcha architecture
+- `/docs/reference/architecture.md` - Sorcha architecture
 - `/docs/blueprint-schema.md` - Blueprint data format
 - `/.specify/UNIFIED-DESIGN-SUMMARY.md` - Unified design
 - `/.specify/MASTER-PLAN.md` - Implementation roadmap

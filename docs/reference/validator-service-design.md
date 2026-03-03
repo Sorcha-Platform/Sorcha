@@ -1729,7 +1729,7 @@ public class ValidatorOrchestratorTests : IClassFixture<WebApplicationFactory<Pr
 - `alpha-validator-service-analysis.md` - Alpha Validator analysis
 - `SORCHA-VALIDATOR-DESIGN-RECOMMENDATIONS.md` - Design recommendations
 - `VALIDATOR-SERVICE-QUICK-REFERENCE.md` - Developer quick reference
-- `/docs/architecture.md` - Overall Sorcha architecture
+- `architecture.md` - Overall Sorcha architecture
 - `/docs/blueprint-schema.md` - Blueprint data format
 - `/.specify/UNIFIED-DESIGN-SUMMARY.md` - Unified design summary
 

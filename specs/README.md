@@ -92,5 +92,5 @@ specs/NNN-feature-name/
 - [.specify/constitution.md](../.specify/constitution.md) — Architectural principles
 - [.specify/MASTER-PLAN.md](../.specify/MASTER-PLAN.md) — Development roadmap
 - [.specify/MASTER-TASKS.md](../.specify/MASTER-TASKS.md) — Task tracking
-- [docs/architecture.md](../docs/architecture.md) — System architecture
-- [docs/API-DOCUMENTATION.md](../docs/API-DOCUMENTATION.md) — API reference
+- [docs/architecture.md](../docs/reference/architecture.md) — System architecture
+- [docs/API-DOCUMENTATION.md](../docs/reference/API-DOCUMENTATION.md) — API reference

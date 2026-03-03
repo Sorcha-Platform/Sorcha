@@ -617,8 +617,8 @@
 **Files to Update**:
 - `CLAUDE.md`
 - `README.md`
-- `docs/development-status.md`
-- `docs/architecture.md`
+- `docs/reference/development-status.md`
+- `docs/reference/architecture.md`
 - `.specify/MASTER-TASKS.md`
 
 **Acceptance Criteria**:

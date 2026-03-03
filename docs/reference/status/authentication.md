@@ -125,7 +125,7 @@ All three core services now have JWT Bearer authentication integrated with the T
 
 ## Documentation
 
-**File:** `docs/AUTHENTICATION-SETUP.md` (364 lines)
+**File:** `docs/guides/AUTHENTICATION-SETUP.md` (364 lines)
 
 - ✅ Architecture overview with service diagram
 - ✅ Configuration guide for all services
@@ -172,3 +172,4 @@ All three core services now have JWT Bearer authentication integrated with the T
 ---
 
 **Back to:** [Development Status](../development-status.md)
+

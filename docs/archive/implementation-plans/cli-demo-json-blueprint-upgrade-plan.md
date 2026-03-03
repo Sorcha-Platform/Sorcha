@@ -921,7 +921,7 @@ If the upgrade encounters blocking issues:
 
 - **JSON-e Specification:** https://json-e.js.org/
 - **JsonE.NET NuGet:** https://www.nuget.org/packages/JsonE.NET/
-- **Blueprint Format Documentation:** `docs/blueprint-format.md`
+- **Blueprint Format Documentation:** `docs/guides/blueprints/blueprint-format.md`
 - **Constitution:** `.specify/constitution.md`
 - **CLAUDE.md Guidelines:** `CLAUDE.md`
 

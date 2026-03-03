@@ -304,8 +304,8 @@ If you need to move a project:
 ## Related Documentation
 
 - [Architecture Overview](architecture.md)
-- [Testing Guide](testing.md)
-- [Getting Started](getting-started.md)
+- [Testing Guide](../guides/testing/testing.md)
+- [Getting Started](../getting-started/getting-started.md)
 - [Contributing Guidelines](../CONTRIBUTING.md)
 
 ---

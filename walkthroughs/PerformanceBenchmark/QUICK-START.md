@@ -252,7 +252,7 @@ docker logs sorcha-register-service-1
 For issues or questions:
 - Check `PERFORMANCE-REPORT.md` for analysis framework
 - Review `../README.md` for other walkthroughs
-- See `../../docs/architecture.md` for system design
+- See `../../docs/reference/architecture.md` for system design
 
 ---
 

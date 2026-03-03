@@ -877,8 +877,8 @@ Enable detailed logging:
 
 ## Resources
 
-- **Architecture**: [docs/architecture.md](../../docs/architecture.md)
-- **Development Status**: [docs/development-status.md](../../docs/development-status.md)
+- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
+- **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)
 - **YARP Documentation**: https://microsoft.github.io/reverse-proxy/
 - **.NET Aspire**: https://learn.microsoft.com/en-us/dotnet/aspire/
 

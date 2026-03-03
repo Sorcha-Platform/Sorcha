@@ -146,7 +146,7 @@ var signRequest = new
 ## See Also
 
 - [PERFORMANCE-RESULTS.md](../PERFORMANCE-RESULTS.md) - **Complete test results and analysis** ⭐
-- [PAYLOAD-SERIALIZATION-GUIDE.md](../../../docs/PAYLOAD-SERIALIZATION-GUIDE.md) - API documentation with examples
+- [PAYLOAD-SERIALIZATION-GUIDE.md](../../../docs/guides/PAYLOAD-SERIALIZATION-GUIDE.md) - API documentation with examples
 - [SOLUTION-SUMMARY.md](../SOLUTION-SUMMARY.md) - Full explanation of the JSON serialization issue
 - [STATUS-FINAL.md](../STATUS-FINAL.md) - Final status and deliverables
 - `test-single-transaction.ps1` - PowerShell version (shows the problem)

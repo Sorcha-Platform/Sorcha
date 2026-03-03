@@ -625,8 +625,8 @@ Week 15:    AI-Assisted Blueprint Design ✅
 - [Master Task List](MASTER-TASKS.md) - Detailed task breakdown
 - [Project Specification](spec.md) - Requirements and architecture
 - [Project Constitution](constitution.md) - Principles and standards
-- [Development Status](../docs/development-status.md) - Current completion status
-- [Architecture Documentation](../docs/architecture.md) - System architecture
+- [Development Status](../docs/reference/development-status.md) - Current completion status
+- [Architecture Documentation](../docs/reference/architecture.md) - System architecture
 
 ---
 
