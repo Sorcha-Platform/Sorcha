@@ -506,6 +506,11 @@ public class PolicyHistoryResponse
     /// Total number of versions across all pages
     /// </summary>
     public int TotalCount { get; set; }
+
+    /// <summary>
+    /// Total number of pages
+    /// </summary>
+    public int TotalPages { get; set; }
 }
 
 /// <summary>

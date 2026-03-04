@@ -62,20 +62,23 @@ builder.Services.AddControllers()
 builder.AddSorchaOpenApi("Sorcha Register Service API", "Distributed ledger for storing immutable transaction records with cryptographic chain integrity, OData queries, SignalR real-time notifications, and wallet-based payload encryption.");
 
 // Register storage and event infrastructure
+// MongoDB client — shared by register storage (when configured) and system register
+builder.Services.Configure<MongoRegisterStorageConfiguration>(
+    builder.Configuration.GetSection("RegisterStorage:MongoDB"));
+
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+    var connectionString = !string.IsNullOrWhiteSpace(config.ConnectionString)
+        ? config.ConnectionString
+        : builder.Configuration.GetConnectionString("MongoDB") ?? "mongodb://localhost:27017";
+    return new MongoClient(connectionString);
+});
+
 // Smart configuration: Use MongoDB if configured, otherwise InMemory
 var storageType = builder.Configuration["RegisterStorage:Type"] ?? "InMemory";
 if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
 {
-    // Configure MongoDB storage
-    builder.Services.Configure<MongoRegisterStorageConfiguration>(
-        builder.Configuration.GetSection("RegisterStorage:MongoDB"));
-
-    builder.Services.AddSingleton<IMongoClient>(sp =>
-    {
-        var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
-        return new MongoClient(config.ConnectionString);
-    });
-
     builder.Services.AddSingleton<IRegisterRepository>(sp =>
     {
         var client = sp.GetRequiredService<IMongoClient>();
@@ -141,13 +144,7 @@ builder.Services.AddSingleton<Sorcha.Register.Core.Services.ISystemBlueprintVali
 builder.Services.AddSingleton<Sorcha.Register.Core.Services.IRegisterPolicyService,
     Sorcha.Register.Core.Services.RegisterPolicyService>();
 
-// Register MongoDB for system register
-builder.Services.AddSingleton<IMongoClient>(sp =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("MongoDB") ?? "mongodb://localhost:27017";
-    return new MongoClient(connectionString);
-});
-
+// System register MongoDB database (reuses the shared IMongoClient)
 builder.Services.AddSingleton<IMongoDatabase>(sp =>
 {
     var client = sp.GetRequiredService<IMongoClient>();

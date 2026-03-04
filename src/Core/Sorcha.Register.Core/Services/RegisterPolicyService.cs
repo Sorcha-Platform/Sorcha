@@ -34,8 +34,8 @@ public interface IRegisterPolicyService
     /// <param name="page">Page number (1-based)</param>
     /// <param name="pageSize">Number of items per page</param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>Paginated list of register policies in chronological order</returns>
-    Task<List<RegisterPolicy>> GetPolicyHistoryAsync(string registerId, int page, int pageSize, CancellationToken ct = default);
+    /// <returns>Tuple of (paginated policies, total count across all pages)</returns>
+    Task<(List<RegisterPolicy> Policies, int TotalCount)> GetPolicyHistoryAsync(string registerId, int page, int pageSize, CancellationToken ct = default);
 
     /// <summary>
     /// Validates that a blueprint version exists in the system register.
@@ -68,6 +68,11 @@ public interface ISystemBlueprintValidator
 /// </summary>
 public class RegisterPolicyService : IRegisterPolicyService
 {
+    private static readonly JsonSerializerOptions s_deserializeOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly IReadOnlyRegisterRepository _repository;
     private readonly ISystemBlueprintValidator _blueprintValidator;
     private readonly ILogger<RegisterPolicyService> _logger;
@@ -129,7 +134,7 @@ public class RegisterPolicyService : IRegisterPolicyService
     }
 
     /// <inheritdoc/>
-    public async Task<List<RegisterPolicy>> GetPolicyHistoryAsync(
+    public async Task<(List<RegisterPolicy> Policies, int TotalCount)> GetPolicyHistoryAsync(
         string registerId, int page, int pageSize, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
@@ -167,7 +172,7 @@ public class RegisterPolicyService : IRegisterPolicyService
             "Retrieved {Count} policy snapshots for register {RegisterId} (page {Page}/{TotalPages})",
             policies.Count, registerId, page, totalPages);
 
-        return policies;
+        return (policies, totalCount);
     }
 
     /// <inheritdoc/>
@@ -205,10 +210,7 @@ public class RegisterPolicyService : IRegisterPolicyService
                 ? Convert.FromBase64String(payloadData)
                 : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
 
-            return JsonSerializer.Deserialize<ControlTransactionPayload>(payloadBytes, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            return JsonSerializer.Deserialize<ControlTransactionPayload>(payloadBytes, s_deserializeOptions);
         }
         catch (Exception ex)
         {

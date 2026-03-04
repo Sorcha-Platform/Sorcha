@@ -64,7 +64,7 @@ public static class RegisterPolicyEndpoints
                 if (p < 1) return Results.BadRequest("Page must be >= 1");
                 if (ps < 1 || ps > 100) return Results.BadRequest("PageSize must be between 1 and 100");
 
-                var policies = await policyService.GetPolicyHistoryAsync(registerId, p, ps, cancellationToken);
+                var (policies, totalCount) = await policyService.GetPolicyHistoryAsync(registerId, p, ps, cancellationToken);
 
                 return Results.Ok(new PolicyHistoryResponse
                 {
@@ -78,7 +78,8 @@ public static class RegisterPolicyEndpoints
                     }).ToList(),
                     Page = p,
                     PageSize = ps,
-                    TotalCount = policies.Count
+                    TotalCount = totalCount,
+                    TotalPages = (int)Math.Ceiling((double)totalCount / ps)
                 });
             }
             catch (Exception ex)
@@ -350,8 +351,11 @@ public class PolicyHistoryResponse
     /// <summary>Page size</summary>
     public int PageSize { get; set; }
 
-    /// <summary>Total count of versions on this page</summary>
+    /// <summary>Total number of policy versions across all pages</summary>
     public int TotalCount { get; set; }
+
+    /// <summary>Total number of pages</summary>
+    public int TotalPages { get; set; }
 }
 
 /// <summary>

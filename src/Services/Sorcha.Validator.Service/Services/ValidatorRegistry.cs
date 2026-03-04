@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Polly;
@@ -312,7 +314,7 @@ public class ValidatorRegistry : IValidatorRegistry
             {
                 var regTx = new Sorcha.Register.Models.TransactionModel
                 {
-                    TxId = Guid.NewGuid().ToString("N"),
+                    TxId = GenerateTransactionId(),
                     RegisterId = registerId,
                     TimeStamp = DateTime.UtcNow,
                     SenderWallet = "system:validator-registry",
@@ -332,7 +334,7 @@ public class ValidatorRegistry : IValidatorRegistry
             catch (Exception txEx)
             {
                 _logger.LogWarning(txEx, "Failed to record validator registration on chain — registration stored in Redis only");
-                txId = $"local-reg-{Guid.NewGuid():N}";
+                txId = GenerateTransactionId();
             }
 
             return ValidatorRegistrationResult.Succeeded(txId, orderIndex);
@@ -490,7 +492,7 @@ public class ValidatorRegistry : IValidatorRegistry
             {
                 var approvalTx = new Sorcha.Register.Models.TransactionModel
                 {
-                    TxId = Guid.NewGuid().ToString("N"),
+                    TxId = GenerateTransactionId(),
                     RegisterId = registerId,
                     TimeStamp = DateTime.UtcNow,
                     SenderWallet = "system:validator-registry",
@@ -510,7 +512,7 @@ public class ValidatorRegistry : IValidatorRegistry
             catch (Exception txEx)
             {
                 _logger.LogWarning(txEx, "Failed to record validator approval on chain — approval stored in Redis only");
-                txId = $"local-approve-{Guid.NewGuid():N}";
+                txId = GenerateTransactionId();
             }
 
             return ValidatorApprovalResult.Succeeded(txId, updatedValidator.OrderIndex ?? 0, approvedAt);
@@ -644,8 +646,12 @@ public class ValidatorRegistry : IValidatorRegistry
             "Found {UnapprovedCount} unapproved validators for register {RegisterId} during transition",
             unapproved.Count, registerId);
 
+        var remainingCount = activeValidators.Count;
+
         foreach (var validator in unapproved)
         {
+            remainingCount--;
+
             switch (mode)
             {
                 case TransitionMode.Immediate:
@@ -685,7 +691,7 @@ public class ValidatorRegistry : IValidatorRegistry
             }
 
             RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorRemoved,
-                validator.ValidatorId, activeValidators.Count - 1);
+                validator.ValidatorId, remainingCount);
         }
 
         // Invalidate list cache
@@ -892,6 +898,16 @@ public class ValidatorRegistry : IValidatorRegistry
             _operationalTtlCache[registerId] = (fallback, DateTimeOffset.UtcNow);
             return fallback;
         }
+    }
+
+    /// <summary>
+    /// Generates a 64-character hex transaction ID (SHA-256 hash).
+    /// </summary>
+    private static string GenerateTransactionId()
+    {
+        var input = Encoding.UTF8.GetBytes($"{Guid.NewGuid()}{DateTimeOffset.UtcNow.Ticks}");
+        var hash = SHA256.HashData(input);
+        return Convert.ToHexStringLower(hash);
     }
 
     private class LocalCacheEntry
