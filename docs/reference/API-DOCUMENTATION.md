@@ -709,6 +709,132 @@ POST /api/registers/{id}/dockets/seal
 }
 ```
 
+#### 6. Register Policy API (Feature 048)
+
+##### Get Register Policy
+
+```http
+GET /api/registers/{registerId}/policy
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "aabbccdd11223344aabbccdd11223344",
+  "policy": {
+    "version": 1,
+    "governance": { "quorumFormula": "strict-majority", "proposalTtlDays": 7 },
+    "validators": { "registrationMode": "public", "minValidators": 1, "maxValidators": 100, "operationalTtlSeconds": 60 },
+    "consensus": { "signatureThresholdMin": 2, "signatureThresholdMax": 10, "maxTransactionsPerDocket": 1000 },
+    "leaderElection": { "mechanism": "rotating", "heartbeatIntervalMs": 1000, "leaderTimeoutMs": 5000 }
+  },
+  "isDefault": false
+}
+```
+
+##### Propose Policy Update
+
+```http
+POST /api/registers/{registerId}/policy/update
+```
+
+**Request Body:**
+```json
+{
+  "policy": { "version": 2, "governance": { "quorumFormula": "supermajority" }, "..." : "..." },
+  "updatedBy": "did:sorcha:w:addr123",
+  "transitionMode": "immediate"
+}
+```
+
+**Response:** `202 Accepted`
+```json
+{
+  "txId": "aabbcc...64hex",
+  "registerId": "aabbccdd11223344aabbccdd11223344",
+  "newVersion": 2,
+  "status": "submitted"
+}
+```
+
+##### Get Policy History
+
+```http
+GET /api/registers/{registerId}/policy/history?page=1&pageSize=20
+```
+
+##### List Approved Validators
+
+```http
+GET /api/registers/{registerId}/validators/approved
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "aabbccdd11223344aabbccdd11223344",
+  "registrationMode": "consent",
+  "validators": [
+    { "did": "did:sorcha:w:validator1", "publicKey": "base64...", "approvedAt": "2026-03-01T00:00:00Z" }
+  ],
+  "count": 1
+}
+```
+
+##### List Operational Validators
+
+```http
+GET /api/registers/{registerId}/validators/operational
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "aabbccdd11223344aabbccdd11223344",
+  "validators": [
+    { "validatorId": "val-001", "did": "did:sorcha:w:validator1", "status": "active", "ttlRemainingSeconds": 45 }
+  ],
+  "count": 1
+}
+```
+
+#### 7. System Register API (Feature 048)
+
+##### Get System Register
+
+```http
+GET /api/system-register
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "00000000000000000000000000000001",
+  "name": "Sorcha System Register",
+  "status": "online",
+  "blueprintCount": 1,
+  "createdAt": "2026-03-01T00:00:00Z"
+}
+```
+
+##### List System Blueprints
+
+```http
+GET /api/system-register/blueprints?page=1&pageSize=20
+```
+
+##### Get System Blueprint
+
+```http
+GET /api/system-register/blueprints/{blueprintId}
+```
+
+##### Get System Blueprint Version
+
+```http
+GET /api/system-register/blueprints/{blueprintId}/versions/{version}
+```
+
 ---
 
 ## Action Workflow API

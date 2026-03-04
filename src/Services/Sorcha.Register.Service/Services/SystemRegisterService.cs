@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using MongoDB.Bson;
+using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Service.Repositories;
 
 namespace Sorcha.Register.Service.Services;
@@ -370,4 +371,157 @@ public class SystemRegisterService
     {
         return await _repository.GetLatestVersionAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Publishes a new version of an existing blueprint (or a brand-new blueprint)
+    /// to the system register via the <c>control.blueprint.publish</c> governance action.
+    /// </summary>
+    /// <param name="blueprintId">Unique identifier for the new blueprint entry</param>
+    /// <param name="blueprintDocument">Blueprint JSON document</param>
+    /// <param name="publishedBy">Publisher identity</param>
+    /// <param name="previousBlueprintId">ID of the previous version being superseded (null for new blueprints)</param>
+    /// <param name="metadata">Optional metadata</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Published blueprint entry</returns>
+    /// <exception cref="InvalidOperationException">Thrown if previousBlueprintId references a non-existent blueprint</exception>
+    public async Task<SystemRegisterEntry> PublishBlueprintVersionAsync(
+        string blueprintId,
+        BsonDocument blueprintDocument,
+        string publishedBy,
+        string? previousBlueprintId = null,
+        Dictionary<string, string>? metadata = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+        ArgumentNullException.ThrowIfNull(blueprintDocument);
+        ArgumentException.ThrowIfNullOrWhiteSpace(publishedBy);
+
+        // Validate the previous version exists if specified
+        if (!string.IsNullOrEmpty(previousBlueprintId))
+        {
+            var previousEntry = await _repository.GetBlueprintByIdAsync(previousBlueprintId, cancellationToken);
+            if (previousEntry is null)
+            {
+                throw new InvalidOperationException(
+                    $"Previous blueprint version '{previousBlueprintId}' not found in system register");
+            }
+
+            if (!previousEntry.IsActive)
+            {
+                _logger.LogWarning(
+                    "Previous blueprint version '{PreviousBlueprintId}' is deprecated — publishing new version anyway",
+                    previousBlueprintId);
+            }
+        }
+
+        // Merge previousBlueprintId into metadata for traceability
+        var effectiveMetadata = metadata ?? new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(previousBlueprintId))
+        {
+            effectiveMetadata["previousVersionId"] = previousBlueprintId;
+        }
+
+        _logger.LogInformation(
+            "Publishing blueprint version {BlueprintId} to system register (previous: {PreviousId})",
+            blueprintId, previousBlueprintId ?? "none");
+
+        var entry = await _repository.PublishBlueprintAsync(
+            blueprintId,
+            blueprintDocument,
+            publishedBy,
+            effectiveMetadata,
+            cancellationToken);
+
+        _logger.LogInformation(
+            "Blueprint version {BlueprintId} published with global version {Version}",
+            blueprintId, entry.Version);
+
+        return entry;
+    }
+
+    /// <summary>
+    /// Checks whether a blueprint exists in the system register
+    /// </summary>
+    /// <param name="blueprintId">Blueprint identifier to check</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if the blueprint exists and is active</returns>
+    public async Task<bool> BlueprintExistsAsync(string blueprintId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(blueprintId);
+
+        var entry = await _repository.GetBlueprintByIdAsync(blueprintId, cancellationToken);
+        return entry is not null && entry.IsActive;
+    }
+
+    /// <summary>
+    /// Gets summary information about the system register including its identity,
+    /// current status, blueprint count, and initialization timestamp.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>System register info record</returns>
+    public async Task<SystemRegisterInfo> GetSystemRegisterInfoAsync(CancellationToken cancellationToken = default)
+    {
+        var isInitialized = await _repository.IsSystemRegisterInitializedAsync(cancellationToken);
+        var blueprintCount = isInitialized
+            ? await _repository.GetBlueprintCountAsync(cancellationToken)
+            : 0;
+        var currentVersion = isInitialized
+            ? await _repository.GetLatestVersionAsync(cancellationToken)
+            : 0;
+
+        // Get earliest blueprint's PublishedAt as the "created" timestamp
+        DateTime? createdAt = null;
+        if (isInitialized)
+        {
+            var blueprints = await _repository.GetAllBlueprintsAsync(cancellationToken);
+            createdAt = blueprints.MinBy(b => b.PublishedAt)?.PublishedAt;
+        }
+
+        return new SystemRegisterInfo
+        {
+            RegisterId = SystemRegisterConstants.SystemRegisterId,
+            Name = SystemRegisterConstants.SystemRegisterName,
+            Status = isInitialized ? "initialized" : "not_initialized",
+            BlueprintCount = blueprintCount,
+            CurrentVersion = currentVersion,
+            CreatedAt = createdAt
+        };
+    }
+}
+
+/// <summary>
+/// Summary information about the system register.
+/// </summary>
+public record SystemRegisterInfo
+{
+    /// <summary>
+    /// Deterministic system register identifier.
+    /// </summary>
+    public required string RegisterId { get; init; }
+
+    /// <summary>
+    /// Human-readable display name.
+    /// </summary>
+    public required string Name { get; init; }
+
+    /// <summary>
+    /// Current status: "initialized" or "not_initialized".
+    /// </summary>
+    public required string Status { get; init; }
+
+    /// <summary>
+    /// Number of active blueprints in the system register.
+    /// </summary>
+    public int BlueprintCount { get; init; }
+
+    /// <summary>
+    /// Latest blueprint version number.
+    /// </summary>
+    public long CurrentVersion { get; init; }
+
+    /// <summary>
+    /// UTC timestamp when the system register was first initialized (earliest blueprint).
+    /// Null if not yet initialized.
+    /// </summary>
+    public DateTime? CreatedAt { get; init; }
 }

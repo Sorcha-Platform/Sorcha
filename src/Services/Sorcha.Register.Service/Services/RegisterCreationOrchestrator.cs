@@ -190,6 +190,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                 TenantId = request.TenantId,
                 CreatedAt = createdAt,
                 Metadata = request.Metadata,
+                RegisterPolicy = request.Policy ?? RegisterPolicy.CreateDefault(),
                 Attestations = new List<RegisterAttestation>() // Will be filled during finalization
             },
             ControlRecordHash = string.Empty,
@@ -270,6 +271,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             CreatedAt = pending.ControlRecord.CreatedAt,
             Metadata = pending.ControlRecord.Metadata,
             CryptoPolicy = CryptoPolicy.CreateDefault(),
+            RegisterPolicy = pending.ControlRecord.RegisterPolicy,
             Attestations = request.SignedAttestations.Select(sa => new RegisterAttestation
             {
                 Role = sa.AttestationData.Role,

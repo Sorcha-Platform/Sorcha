@@ -308,6 +308,20 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     // =========================================================================
+    // System Register Operations
+    // =========================================================================
+
+    /// <summary>
+    /// Checks whether a blueprint exists in the system register
+    /// </summary>
+    /// <param name="blueprintId">Blueprint identifier to check</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if the blueprint exists and is active in the system register</returns>
+    Task<bool> SystemRegisterBlueprintExistsAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
     // Register Management (All Services)
     // =========================================================================
 
@@ -338,6 +352,34 @@ public interface IRegisterServiceClient
         string owner,
         string tenant,
         CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Policy Operations
+    // =========================================================================
+
+    /// <summary>
+    /// Gets the current policy for a register
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Register policy response, or null if not found</returns>
+    Task<RegisterPolicyResponse?> GetRegisterPolicyAsync(
+        string registerId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the policy version history for a register
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="page">Page number (1-based)</param>
+    /// <param name="pageSize">Number of versions per page</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Policy history response, or null if not found</returns>
+    Task<PolicyHistoryResponse?> GetPolicyHistoryAsync(
+        string registerId,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -412,4 +454,87 @@ public class RosterMember
     public string Role { get; set; } = string.Empty;
     public string Algorithm { get; set; } = string.Empty;
     public DateTimeOffset GrantedAt { get; set; }
+}
+
+/// <summary>
+/// Response containing the current policy for a register
+/// </summary>
+public class RegisterPolicyResponse
+{
+    /// <summary>
+    /// Register ID the policy belongs to
+    /// </summary>
+    public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The current register policy, or null if no policy is set
+    /// </summary>
+    public RegisterPolicy? Policy { get; set; }
+
+    /// <summary>
+    /// Whether this is the default policy (no custom policy has been set)
+    /// </summary>
+    public bool IsDefault { get; set; }
+}
+
+/// <summary>
+/// Paginated response containing policy version history for a register
+/// </summary>
+public class PolicyHistoryResponse
+{
+    /// <summary>
+    /// Register ID the policy history belongs to
+    /// </summary>
+    public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// List of policy version entries
+    /// </summary>
+    public List<PolicyVersionEntry> Versions { get; set; } = [];
+
+    /// <summary>
+    /// Current page number (1-based)
+    /// </summary>
+    public int Page { get; set; }
+
+    /// <summary>
+    /// Number of items per page
+    /// </summary>
+    public int PageSize { get; set; }
+
+    /// <summary>
+    /// Total number of versions across all pages
+    /// </summary>
+    public int TotalCount { get; set; }
+
+    /// <summary>
+    /// Total number of pages
+    /// </summary>
+    public int TotalPages { get; set; }
+}
+
+/// <summary>
+/// A single version entry in the policy history
+/// </summary>
+public class PolicyVersionEntry
+{
+    /// <summary>
+    /// Policy version number
+    /// </summary>
+    public int Version { get; set; }
+
+    /// <summary>
+    /// The policy at this version
+    /// </summary>
+    public RegisterPolicy? Policy { get; set; }
+
+    /// <summary>
+    /// Transaction ID that committed this policy version
+    /// </summary>
+    public string? TxId { get; set; }
+
+    /// <summary>
+    /// When this policy version was committed
+    /// </summary>
+    public DateTimeOffset CommittedAt { get; set; }
 }

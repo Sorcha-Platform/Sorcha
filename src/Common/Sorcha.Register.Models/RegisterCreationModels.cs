@@ -62,6 +62,12 @@ public class InitiateRegisterCreationRequest
     /// </summary>
     [JsonPropertyName("advertise")]
     public bool Advertise { get; set; }
+
+    /// <summary>
+    /// Optional operational policy for the register. When omitted, default policy is applied at genesis.
+    /// </summary>
+    [JsonPropertyName("policy")]
+    public RegisterPolicy? Policy { get; set; }
 }
 
 /// <summary>

@@ -242,6 +242,8 @@ services:
       ServiceAuth__ClientSecret: register-service-secret
       ServiceAuth__Scopes: "wallets:sign validator:write"
       ServiceClients__TenantService__Address: http://tenant-service:8080
+      # System Register bootstrap (Feature 048) — reads from .env
+      SORCHA_SEED_SYSTEM_REGISTER: ${SORCHA_SEED_SYSTEM_REGISTER:-false}
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:

@@ -375,15 +375,25 @@ public class GenesisConfigService : IGenesisConfigService
                 {
                     var payloadData = JsonSerializer.Deserialize<JsonElement>(firstPayload.Data, _jsonOptions);
 
-                    // Look for control blueprint configuration in payload
+                    // Tier 1: Check for RegisterPolicy on the control record (Feature 048)
+                    if (payloadData.TryGetProperty("registerPolicy", out var registerPolicyElement))
+                    {
+                        _logger.LogDebug(
+                            "Found RegisterPolicy on control record for register {RegisterId}",
+                            registerId);
+                        return ParseFromRegisterPolicy(registerId, genesisTransaction, genesisDocket, registerPolicyElement);
+                    }
+
+                    // Tier 2: Legacy — look for control blueprint configuration in payload
                     if (payloadData.TryGetProperty("controlBlueprint", out var controlBlueprint) ||
                         payloadData.TryGetProperty("configuration", out controlBlueprint))
                     {
                         return ParseControlBlueprint(registerId, genesisTransaction, genesisDocket, controlBlueprint);
                     }
 
-                    // Check if the payload itself is the control record
-                    if (payloadData.TryGetProperty("consensus", out _))
+                    // Check if the payload itself is the control record with legacy consensus config
+                    if (payloadData.TryGetProperty("consensus", out _) &&
+                        !payloadData.TryGetProperty("registerPolicy", out _))
                     {
                         return ParseControlBlueprint(registerId, genesisTransaction, genesisDocket, payloadData);
                     }
@@ -456,6 +466,91 @@ public class GenesisConfigService : IGenesisConfigService
             RegisterId = registerId,
             GenesisTransactionId = genesisTransaction.TxId ?? genesisTransaction.Id ?? $"genesis-{registerId}",
             ControlBlueprintVersionId = genesisDocket.DocketId,
+            Consensus = consensusConfig,
+            Validators = validatorConfig,
+            LeaderElection = leaderElectionConfig,
+            LoadedAt = DateTimeOffset.UtcNow,
+            CacheTtl = TimeSpan.FromMinutes(30)
+        };
+    }
+
+    /// <summary>
+    /// Parses GenesisConfiguration from the new RegisterPolicy model (Feature 048 - Tier 1)
+    /// </summary>
+    private GenesisConfiguration ParseFromRegisterPolicy(
+        string registerId,
+        TransactionModel genesisTransaction,
+        DocketModel genesisDocket,
+        JsonElement registerPolicy)
+    {
+        var consensusConfig = CreateDefaultConsensusConfig();
+        var validatorConfig = CreateDefaultValidatorConfig();
+        var leaderElectionConfig = CreateDefaultLeaderElectionConfig();
+
+        // Parse consensus from RegisterPolicy
+        if (registerPolicy.TryGetProperty("consensus", out var consensus))
+        {
+            if (consensus.TryGetProperty("signatureThresholdMin", out var sigMin) && sigMin.TryGetInt32(out var sigMinVal))
+                consensusConfig = consensusConfig with { SignatureThresholdMin = sigMinVal };
+            if (consensus.TryGetProperty("signatureThresholdMax", out var sigMax) && sigMax.TryGetInt32(out var sigMaxVal))
+                consensusConfig = consensusConfig with { SignatureThresholdMax = sigMaxVal };
+            if (consensus.TryGetProperty("maxTransactionsPerDocket", out var maxTx) && maxTx.TryGetInt32(out var maxTxVal))
+                consensusConfig = consensusConfig with { MaxTransactionsPerDocket = maxTxVal };
+            if (consensus.TryGetProperty("docketBuildIntervalMs", out var buildInterval) && buildInterval.TryGetInt32(out var buildIntervalVal))
+                consensusConfig = consensusConfig with { DocketBuildInterval = TimeSpan.FromMilliseconds(buildIntervalVal) };
+            if (consensus.TryGetProperty("docketTimeoutSeconds", out var timeout) && timeout.TryGetInt32(out var timeoutVal))
+                consensusConfig = consensusConfig with { DocketTimeout = TimeSpan.FromSeconds(timeoutVal) };
+        }
+
+        // Parse validators from RegisterPolicy
+        if (registerPolicy.TryGetProperty("validators", out var validators))
+        {
+            if (validators.TryGetProperty("registrationMode", out var mode))
+            {
+                var modeStr = mode.ValueKind == JsonValueKind.String
+                    ? mode.GetString()?.ToLowerInvariant()
+                    : mode.GetInt32() == 0 ? "public" : "consent";
+                validatorConfig = validatorConfig with { RegistrationMode = modeStr ?? "public" };
+            }
+            if (validators.TryGetProperty("minValidators", out var min) && min.TryGetInt32(out var minVal))
+                validatorConfig = validatorConfig with { MinValidators = minVal };
+            if (validators.TryGetProperty("maxValidators", out var max) && max.TryGetInt32(out var maxVal))
+                validatorConfig = validatorConfig with { MaxValidators = maxVal };
+            if (validators.TryGetProperty("requireStake", out var stake))
+                validatorConfig = validatorConfig with { RequireStake = stake.GetBoolean() };
+            if (validators.TryGetProperty("stakeAmount", out var stakeAmt) && stakeAmt.ValueKind == JsonValueKind.Number)
+                validatorConfig = validatorConfig with { StakeAmount = stakeAmt.GetDecimal() };
+        }
+
+        // Parse leader election from RegisterPolicy
+        if (registerPolicy.TryGetProperty("leaderElection", out var leaderElection))
+        {
+            if (leaderElection.TryGetProperty("mechanism", out var mechanism))
+            {
+                var mechStr = mechanism.ValueKind == JsonValueKind.String
+                    ? mechanism.GetString()?.ToLowerInvariant()
+                    : mechanism.GetInt32() switch { 0 => "rotating", 1 => "raft", 2 => "stake-weighted", _ => "rotating" };
+                leaderElectionConfig = leaderElectionConfig with { Mechanism = mechStr ?? "rotating" };
+            }
+            if (leaderElection.TryGetProperty("heartbeatIntervalMs", out var heartbeat) && heartbeat.TryGetInt32(out var heartbeatVal))
+                leaderElectionConfig = leaderElectionConfig with { HeartbeatInterval = TimeSpan.FromMilliseconds(heartbeatVal) };
+            if (leaderElection.TryGetProperty("leaderTimeoutMs", out var leaderTimeout) && leaderTimeout.TryGetInt32(out var leaderTimeoutVal))
+                leaderElectionConfig = leaderElectionConfig with { LeaderTimeout = TimeSpan.FromMilliseconds(leaderTimeoutVal) };
+            if (leaderElection.TryGetProperty("termDurationSeconds", out var termDuration) && termDuration.TryGetInt32(out var termDurationVal))
+                leaderElectionConfig = leaderElectionConfig with { TermDuration = TimeSpan.FromSeconds(termDurationVal) };
+        }
+
+        var versionId = "policy-v1";
+        if (registerPolicy.TryGetProperty("version", out var version))
+        {
+            versionId = $"policy-v{version.GetUInt32()}";
+        }
+
+        return new GenesisConfiguration
+        {
+            RegisterId = registerId,
+            GenesisTransactionId = genesisTransaction.TxId ?? genesisTransaction.Id ?? $"genesis-{registerId}",
+            ControlBlueprintVersionId = versionId,
             Consensus = consensusConfig,
             Validators = validatorConfig,
             LeaderElection = leaderElectionConfig,

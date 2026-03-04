@@ -844,6 +844,36 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     // =========================================================================
+    // System Register Operations
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<bool> SystemRegisterBlueprintExistsAsync(
+        string blueprintId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Checking system register for blueprint {BlueprintId}", blueprintId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/system-register/blueprints/{Uri.EscapeDataString(blueprintId)}",
+                cancellationToken);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to check system register for blueprint {BlueprintId} — assuming not found",
+                blueprintId);
+            return false;
+        }
+    }
+
+    // =========================================================================
     // Register Management
     // =========================================================================
 
@@ -1133,6 +1163,100 @@ public class RegisterServiceClient : IRegisterServiceClient
         {
             _logger.LogError(ex, "Failed to batch resolve public keys for register {RegisterId}", registerId);
             throw;
+        }
+    }
+
+    // =========================================================================
+    // Policy Operations
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<RegisterPolicyResponse?> GetRegisterPolicyAsync(
+        string registerId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug("Getting policy for register {RegisterId}", registerId);
+
+            await SetAuthHeaderAsync(ct);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/policy",
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogDebug("No policy found for register {RegisterId}", registerId);
+                    return null;
+                }
+
+                _logger.LogWarning(
+                    "Failed to get policy for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterPolicyResponse>(JsonOptions, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error getting policy for register {RegisterId}", registerId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get policy for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<PolicyHistoryResponse?> GetPolicyHistoryAsync(
+        string registerId,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Getting policy history for register {RegisterId} (page {Page})",
+                registerId, page);
+
+            await SetAuthHeaderAsync(ct);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/policy/history?page={page}&pageSize={pageSize}",
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogDebug("No policy history found for register {RegisterId}", registerId);
+                    return null;
+                }
+
+                _logger.LogWarning(
+                    "Failed to get policy history for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<PolicyHistoryResponse>(JsonOptions, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error getting policy history for register {RegisterId}", registerId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get policy history for register {RegisterId}", registerId);
+            return null;
         }
     }
 

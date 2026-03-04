@@ -52,4 +52,11 @@ public class ValidatorRegistryConfiguration
     /// How often to refresh validator list from source
     /// </summary>
     public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Default operational TTL in seconds for validator heartbeat presence.
+    /// Used when the register policy is unavailable. Policy value takes precedence.
+    /// Must be >= 10.
+    /// </summary>
+    public int DefaultOperationalTtlSeconds { get; set; } = 60;
 }

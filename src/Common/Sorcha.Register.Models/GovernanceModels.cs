@@ -195,3 +195,81 @@ public class ControlTransactionPayload
     [JsonPropertyName("operation")]
     public GovernanceOperation? Operation { get; set; }
 }
+
+/// <summary>
+/// Formula used to calculate the quorum threshold for governance proposals
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum QuorumFormula
+{
+    /// <summary>
+    /// Strict majority: floor(m/2) + 1
+    /// </summary>
+    StrictMajority = 0,
+
+    /// <summary>
+    /// Supermajority: floor(2*m/3) + 1
+    /// </summary>
+    Supermajority = 1,
+
+    /// <summary>
+    /// Unanimous: m (all voting members must approve)
+    /// </summary>
+    Unanimous = 2
+}
+
+/// <summary>
+/// Controls how new validators join a register's peer network
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum RegistrationMode
+{
+    /// <summary>
+    /// Any validator can register without approval
+    /// </summary>
+    Public = 0,
+
+    /// <summary>
+    /// Only approved validators can register (requires admin consent)
+    /// </summary>
+    Consent = 1
+}
+
+/// <summary>
+/// Mechanism used to elect the next block proposer among validators
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ElectionMechanism
+{
+    /// <summary>
+    /// Round-robin rotation among validators (current implementation)
+    /// </summary>
+    Rotating = 0,
+
+    /// <summary>
+    /// Raft consensus leader election (future)
+    /// </summary>
+    Raft = 1,
+
+    /// <summary>
+    /// Stake-weighted election based on validator stake (future)
+    /// </summary>
+    StakeWeighted = 2
+}
+
+/// <summary>
+/// Controls how unapproved validators are handled during a public-to-consent mode transition
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TransitionMode
+{
+    /// <summary>
+    /// Unapproved validators are ejected immediately at commit
+    /// </summary>
+    Immediate = 0,
+
+    /// <summary>
+    /// Unapproved validators continue operating for one TTL cycle before ejection
+    /// </summary>
+    GracePeriod = 1
+}

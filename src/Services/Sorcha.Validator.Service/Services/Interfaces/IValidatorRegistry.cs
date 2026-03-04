@@ -119,6 +119,22 @@ public interface IValidatorRegistry
         CancellationToken ct = default);
 
     /// <summary>
+    /// Enforces a registration mode transition from public to consent.
+    /// In Immediate mode, unapproved validators are removed at once.
+    /// In GracePeriod mode, unapproved validators keep their current TTL but are not refreshed.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="approvedValidators">List of approved validators from the new policy</param>
+    /// <param name="mode">Transition mode (Immediate or GracePeriod)</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Number of validators affected by the transition</returns>
+    Task<int> EnforceRegistrationModeTransitionAsync(
+        string registerId,
+        IReadOnlyList<Sorcha.Register.Models.ApprovedValidator> approvedValidators,
+        Sorcha.Register.Models.TransitionMode mode,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Event raised when validator list changes
     /// </summary>
     event EventHandler<ValidatorListChangedEventArgs>? ValidatorListChanged;

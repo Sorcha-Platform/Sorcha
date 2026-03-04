@@ -62,20 +62,23 @@ builder.Services.AddControllers()
 builder.AddSorchaOpenApi("Sorcha Register Service API", "Distributed ledger for storing immutable transaction records with cryptographic chain integrity, OData queries, SignalR real-time notifications, and wallet-based payload encryption.");
 
 // Register storage and event infrastructure
+// MongoDB client — shared by register storage (when configured) and system register
+builder.Services.Configure<MongoRegisterStorageConfiguration>(
+    builder.Configuration.GetSection("RegisterStorage:MongoDB"));
+
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
+    var connectionString = !string.IsNullOrWhiteSpace(config.ConnectionString)
+        ? config.ConnectionString
+        : builder.Configuration.GetConnectionString("MongoDB") ?? "mongodb://localhost:27017";
+    return new MongoClient(connectionString);
+});
+
 // Smart configuration: Use MongoDB if configured, otherwise InMemory
 var storageType = builder.Configuration["RegisterStorage:Type"] ?? "InMemory";
 if (storageType.Equals("MongoDB", StringComparison.OrdinalIgnoreCase))
 {
-    // Configure MongoDB storage
-    builder.Services.Configure<MongoRegisterStorageConfiguration>(
-        builder.Configuration.GetSection("RegisterStorage:MongoDB"));
-
-    builder.Services.AddSingleton<IMongoClient>(sp =>
-    {
-        var config = sp.GetRequiredService<IOptions<MongoRegisterStorageConfiguration>>().Value;
-        return new MongoClient(config.ConnectionString);
-    });
-
     builder.Services.AddSingleton<IRegisterRepository>(sp =>
     {
         var client = sp.GetRequiredService<IMongoClient>();
@@ -135,13 +138,13 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterServic
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IDIDResolver,
     Sorcha.Register.Core.Services.DIDResolver>();
 
-// Register MongoDB for system register
-builder.Services.AddSingleton<IMongoClient>(sp =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("MongoDB") ?? "mongodb://localhost:27017";
-    return new MongoClient(connectionString);
-});
+// Feature 048: Register policy service (reads policy from control chain via direct repository access)
+builder.Services.AddSingleton<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
+    Sorcha.Register.Service.Services.SystemBlueprintValidator>();
+builder.Services.AddSingleton<Sorcha.Register.Core.Services.IRegisterPolicyService,
+    Sorcha.Register.Core.Services.RegisterPolicyService>();
 
+// System register MongoDB database (reuses the shared IMongoClient)
 builder.Services.AddSingleton<IMongoDatabase>(sp =>
 {
     var client = sp.GetRequiredService<IMongoClient>();
@@ -152,6 +155,23 @@ builder.Services.AddSingleton<IMongoDatabase>(sp =>
 // Register system register services
 builder.Services.AddSingleton<ISystemRegisterRepository, MongoSystemRegisterRepository>();
 builder.Services.AddSingleton<SystemRegisterService>();
+
+// Feature 048: System register bootstrap configuration and background service
+builder.Services.Configure<Sorcha.Register.Service.Configuration.SystemRegisterConfiguration>(config =>
+{
+    // Default is false (no seeding). Set SORCHA_SEED_SYSTEM_REGISTER=true in .env to enable.
+    var seedFlag = builder.Configuration["SORCHA_SEED_SYSTEM_REGISTER"]
+        ?? Environment.GetEnvironmentVariable("SORCHA_SEED_SYSTEM_REGISTER");
+    if (seedFlag is not null && bool.TryParse(seedFlag, out var seed))
+    {
+        config.SeedSystemRegister = seed;
+    }
+    // else: keep default (false)
+
+    config.SystemRegisterBlueprint = builder.Configuration["SORCHA_SYSTEM_REGISTER_BLUEPRINT"]
+        ?? Environment.GetEnvironmentVariable("SORCHA_SYSTEM_REGISTER_BLUEPRINT");
+});
+builder.Services.AddHostedService<SystemRegisterBootstrapper>();
 
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();
@@ -221,6 +241,15 @@ app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcServi
 
 // Feature 047: Map recovery health endpoints (US4)
 app.MapRecoveryHealthEndpoints();
+
+// Feature 048: System register query and blueprint endpoints
+app.MapSystemRegisterEndpoints();
+
+// Feature 048: Map register policy endpoints (US1)
+app.MapRegisterPolicyEndpoints();
+
+// Feature 048: Map validator query endpoints (US3)
+app.MapValidatorQueryEndpoints();
 
 // Add authentication and authorization middleware (AUTH-002)
 app.UseAuthentication();

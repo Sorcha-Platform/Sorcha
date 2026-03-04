@@ -943,7 +943,7 @@ public class ValidationEngineTests
 
         // Assert
         result.IsValid.Should().BeFalse();
-        result.Errors.Where(e => e.Code == "VAL_SCHEMA_004").Should().HaveCountGreaterOrEqualTo(2);
+        result.Errors.Where(e => e.Code == "VAL_SCHEMA_004").Should().HaveCountGreaterThanOrEqualTo(2);
     }
 
     [Fact]

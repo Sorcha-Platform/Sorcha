@@ -280,6 +280,29 @@ All transactions MUST go through the Validator Service mempool before being seal
 
 ---
 
+## 048 — Register Policy Model & System Register
+
+> **Priority:** P1 (Architecture)
+> **Status:** ✅ Complete
+> **Branch:** `048-register-policy-model`
+> **Spec:** [specs/048-register-policy-model/](../specs/048-register-policy-model/)
+
+Unified register policy model (RegisterPolicy) embedded in genesis control records, System Register singleton, approved validator lists, policy updates via control transactions, governance quorum formulas, and policy-driven operational TTL for validator heartbeat.
+
+| Phase | Description | Tasks | Status |
+|-------|-------------|-------|--------|
+| 1 | Setup (models, enums, constants) | T001-T003 | ✅ |
+| 2 | Foundational (validation, service client, YARP) | T004-T011 | ✅ |
+| 3 | US1: Genesis policy on creation | T012-T018 | ✅ |
+| 4 | US2: System Register bootstrap | T019-T025 | ✅ |
+| 5 | US3: Approved validators (consent mode) | T026-T031 | ✅ |
+| 6 | US4: Policy updates via control tx | T032-T039 | ✅ |
+| 7 | US5: Blueprint dissemination | T040-T043 | ✅ |
+| 8 | US6: Validator operational presence | T044-T047 | ✅ |
+| 9 | Polish (docs, logging, validation) | T048-T054 | ✅ |
+
+---
+
 ## 046 — UI Polish & Blueprint Designer
 
 > **Priority:** P2 (Polish)

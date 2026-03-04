@@ -73,6 +73,14 @@ public class RegisterControlRecord
     public CryptoPolicy? CryptoPolicy { get; set; }
 
     /// <summary>
+    /// Operational policy governing validators, consensus, governance, and leader election.
+    /// Null for backward compatibility with pre-feature registers (defaults apply at read time).
+    /// </summary>
+    [JsonPropertyName("registerPolicy")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RegisterPolicy? RegisterPolicy { get; set; }
+
+    /// <summary>
     /// Additional register metadata (tags, category, etc.)
     /// </summary>
     [JsonPropertyName("metadata")]
@@ -105,12 +113,12 @@ public class RegisterControlRecord
     }
 
     /// <summary>
-    /// Calculates the quorum threshold (strict majority: floor(m/2) + 1)
-    /// for a given voting pool size.
+    /// Calculates the quorum threshold for the voting pool using the specified formula.
     /// </summary>
     /// <param name="excludeDid">Optional DID to exclude from the voting pool (e.g., removal target)</param>
+    /// <param name="formula">Quorum formula to apply (defaults to StrictMajority for backward compatibility)</param>
     /// <returns>The number of approvals required for quorum</returns>
-    public int GetQuorumThreshold(string? excludeDid = null)
+    public int GetQuorumThreshold(string? excludeDid = null, QuorumFormula formula = QuorumFormula.StrictMajority)
     {
         var votingMembers = GetVotingMembers();
         if (excludeDid is not null)
@@ -119,8 +127,26 @@ public class RegisterControlRecord
         }
 
         var m = votingMembers.Count();
-        if (m <= 0) return 1;
-        return (m / 2) + 1;
+        return CalculateQuorum(m, formula);
+    }
+
+    /// <summary>
+    /// Calculates the quorum threshold for a given voting pool size and formula.
+    /// </summary>
+    /// <param name="votingPoolSize">Number of eligible voting members</param>
+    /// <param name="formula">Quorum formula to apply</param>
+    /// <returns>The number of approvals required for quorum (minimum 1)</returns>
+    public static int CalculateQuorum(int votingPoolSize, QuorumFormula formula)
+    {
+        if (votingPoolSize <= 0) return 1;
+
+        return formula switch
+        {
+            QuorumFormula.StrictMajority => (votingPoolSize / 2) + 1,
+            QuorumFormula.Supermajority => ((2 * votingPoolSize) / 3) + 1,
+            QuorumFormula.Unanimous => votingPoolSize,
+            _ => (votingPoolSize / 2) + 1
+        };
     }
 }
 

@@ -21,7 +21,7 @@ public class AuthenticationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddAuthorizationPolicies();
+        services.AddAuthorization();
         var provider = services.BuildServiceProvider();
         _authorizationService = provider.GetRequiredService<IAuthorizationService>();
     }

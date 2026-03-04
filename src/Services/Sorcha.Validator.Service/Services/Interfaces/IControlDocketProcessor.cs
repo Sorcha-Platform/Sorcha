@@ -117,7 +117,10 @@ public enum ControlActionType
     RegisterUpdateMetadata,
 
     /// <summary>Update the register's cryptographic policy</summary>
-    CryptoPolicyUpdate
+    CryptoPolicyUpdate,
+
+    /// <summary>Update the register's operational policy (governance, validators, consensus, leader election)</summary>
+    PolicyUpdate
 }
 
 /// <summary>
@@ -235,6 +238,21 @@ public record RegisterMetadataUpdatePayload : ControlPayload
 
     /// <summary>New value</summary>
     public required string NewValue { get; init; }
+}
+
+/// <summary>
+/// Payload for register operational policy update (governance, validators, consensus, leader election)
+/// </summary>
+public record PolicyUpdatePayload : ControlPayload
+{
+    /// <summary>Full policy snapshot with version incremented</summary>
+    public required Sorcha.Register.Models.RegisterPolicy Policy { get; init; }
+
+    /// <summary>Transition mode when changing registrationMode from public to consent</summary>
+    public Sorcha.Register.Models.TransitionMode? TransitionMode { get; init; }
+
+    /// <summary>DID of the proposer</summary>
+    public required string UpdatedBy { get; init; }
 }
 
 /// <summary>
