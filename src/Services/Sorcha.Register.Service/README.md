@@ -290,6 +290,29 @@ GET /odata/Transactions?$count=true
 GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2025-01-01
 ```
 
+### Register Policy (Feature 048)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/registers/{registerId}/policy` | Get current register policy (defaults if none set) |
+| POST | `/api/registers/{registerId}/policy/update` | Propose policy update (governance-controlled) |
+| GET | `/api/registers/{registerId}/policy/history` | Get policy version history (paginated) |
+| GET | `/api/registers/{registerId}/validators/approved` | List on-chain approved validators |
+| GET | `/api/registers/{registerId}/validators/operational` | List operationally active validators (Redis TTL) |
+
+> **Register Creation** now accepts an optional `policy` field in the creation request. If omitted, default policy values are applied at genesis.
+
+### System Register (Feature 048)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/system-register` | Get System Register metadata and status |
+| GET | `/api/system-register/blueprints` | List system blueprints (paginated) |
+| GET | `/api/system-register/blueprints/{blueprintId}` | Get specific system blueprint |
+| GET | `/api/system-register/blueprints/{blueprintId}/versions/{version}` | Get specific blueprint version |
+
+> The **System Register** is a deterministic, singleton register bootstrapped on first startup. It stores governance blueprints and system-level templates available to all registers.
+
 ### SignalR Hub
 
 | Hub | Endpoint | Events |

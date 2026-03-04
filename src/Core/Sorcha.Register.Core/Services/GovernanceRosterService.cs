@@ -106,7 +106,9 @@ public class GovernanceRosterService : IGovernanceRosterService
             ? operation.TargetDid
             : null;
 
-        var threshold = controlRecord.GetQuorumThreshold(excludeDid);
+        // Read quorum formula from register policy (default to StrictMajority for backward compatibility)
+        var formula = controlRecord.RegisterPolicy?.Governance?.QuorumFormula ?? QuorumFormula.StrictMajority;
+        var threshold = controlRecord.GetQuorumThreshold(excludeDid, formula);
         var votingMembers = controlRecord.GetVotingMembers();
 
         if (excludeDid != null)

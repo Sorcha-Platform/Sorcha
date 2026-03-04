@@ -135,6 +135,12 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IGovernanceRosterServic
 builder.Services.AddScoped<Sorcha.Register.Core.Services.IDIDResolver,
     Sorcha.Register.Core.Services.DIDResolver>();
 
+// Feature 048: Register policy service (reads policy from control chain via direct repository access)
+builder.Services.AddSingleton<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
+    Sorcha.Register.Service.Services.SystemBlueprintValidator>();
+builder.Services.AddSingleton<Sorcha.Register.Core.Services.IRegisterPolicyService,
+    Sorcha.Register.Core.Services.RegisterPolicyService>();
+
 // Register MongoDB for system register
 builder.Services.AddSingleton<IMongoClient>(sp =>
 {
@@ -152,6 +158,23 @@ builder.Services.AddSingleton<IMongoDatabase>(sp =>
 // Register system register services
 builder.Services.AddSingleton<ISystemRegisterRepository, MongoSystemRegisterRepository>();
 builder.Services.AddSingleton<SystemRegisterService>();
+
+// Feature 048: System register bootstrap configuration and background service
+builder.Services.Configure<Sorcha.Register.Service.Configuration.SystemRegisterConfiguration>(config =>
+{
+    // Default is false (no seeding). Set SORCHA_SEED_SYSTEM_REGISTER=true in .env to enable.
+    var seedFlag = builder.Configuration["SORCHA_SEED_SYSTEM_REGISTER"]
+        ?? Environment.GetEnvironmentVariable("SORCHA_SEED_SYSTEM_REGISTER");
+    if (seedFlag is not null && bool.TryParse(seedFlag, out var seed))
+    {
+        config.SeedSystemRegister = seed;
+    }
+    // else: keep default (false)
+
+    config.SystemRegisterBlueprint = builder.Configuration["SORCHA_SYSTEM_REGISTER_BLUEPRINT"]
+        ?? Environment.GetEnvironmentVariable("SORCHA_SYSTEM_REGISTER_BLUEPRINT");
+});
+builder.Services.AddHostedService<SystemRegisterBootstrapper>();
 
 // Participant index service (in-memory address → participant mapping)
 builder.Services.AddSingleton<ParticipantIndexService>();
@@ -221,6 +244,15 @@ app.MapGrpcService<Sorcha.Register.Service.GrpcServices.RegisterAddressGrpcServi
 
 // Feature 047: Map recovery health endpoints (US4)
 app.MapRecoveryHealthEndpoints();
+
+// Feature 048: System register query and blueprint endpoints
+app.MapSystemRegisterEndpoints();
+
+// Feature 048: Map register policy endpoints (US1)
+app.MapRegisterPolicyEndpoints();
+
+// Feature 048: Map validator query endpoints (US3)
+app.MapValidatorQueryEndpoints();
 
 // Add authentication and authorization middleware (AUTH-002)
 app.UseAuthentication();

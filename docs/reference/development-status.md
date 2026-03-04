@@ -91,6 +91,19 @@ For detailed implementation status, see the individual section files:
 
 ## Recent Completions
 
+### 2026-03-04
+- **048-Register-Policy-Model** (54 tasks, 9 phases — unified register policy & system register)
+  - **RegisterPolicy model**: Governance (quorum formula), Validators (registration mode, approved list, operational TTL), Consensus (thresholds, docket limits), LeaderElection (mechanism, heartbeat, term duration)
+  - **Policy on genesis**: RegisterCreationOrchestrator embeds RegisterPolicy in control record; GenesisConfigService reads policy with 3-tier fallback (policy → legacy → defaults)
+  - **System Register**: Deterministic singleton register bootstrapped on startup with governance blueprints; SystemRegisterBootstrapper + SystemRegisterEndpoints
+  - **Approved validators**: Consent-mode registration with on-chain approved validator list; ValidatorRegistry checks DID/PublicKey against policy
+  - **Policy updates**: control.policy.update Control transactions; ControlDocketProcessor validates version, transition rules, min/max constraints
+  - **Governance quorum**: Parameterized quorum calculation (strict-majority, supermajority, unanimous) on RegisterControlRecord
+  - **Operational presence**: Policy-driven TTL for validator heartbeat (OperationalTtlSeconds); DocketBuildTriggerService enforces minValidators before building
+  - **FluentValidation**: RegisterPolicyValidator with nested validators for all policy sections
+  - **YARP routes**: 9 new routes for policy, system register, and validator query endpoints
+  - Test results: 25+ new tests across Register and Validator test projects
+
 ### 2026-03-02
 - **045-Encrypted-Payload-Integration** (67 tasks, 10 phases — envelope encryption for action transactions)
   - **Envelope encryption**: XChaCha20-Poly1305 symmetric + per-recipient asymmetric key wrapping (ED25519, P-256, RSA-4096, ML-KEM-768)

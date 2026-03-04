@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Polly.CircuitBreaker;
 using StackExchange.Redis;
+using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services.Interfaces;
@@ -30,6 +31,9 @@ public class ValidatorRegistry : IValidatorRegistry
 
     // L1 local cache
     private readonly ConcurrentDictionary<string, LocalCacheEntry> _localCache = new();
+
+    // Cached per-register operational TTL (avoids repeated policy lookups)
+    private readonly ConcurrentDictionary<string, (TimeSpan Ttl, DateTimeOffset CachedAt)> _operationalTtlCache = new();
 
     /// <inheritdoc/>
     public event EventHandler<ValidatorListChangedEventArgs>? ValidatorListChanged;
@@ -230,6 +234,28 @@ public class ValidatorRegistry : IValidatorRegistry
 
             // Check if validator configuration allows registration
             var validatorConfig = await _genesisConfig.GetValidatorConfigAsync(registerId, ct);
+
+            // Consent-mode: check on-chain approved validators list
+            if (!validatorConfig.IsPublicRegistration)
+            {
+                var policyResponse = await _registerClient.GetRegisterPolicyAsync(registerId, ct);
+                var approvedList = policyResponse?.Policy?.Validators?.ApprovedValidators;
+
+                if (approvedList == null || !approvedList.Any(v =>
+                    v.Did.Equals(registration.ValidatorId, StringComparison.OrdinalIgnoreCase) ||
+                    v.PublicKey.Equals(registration.PublicKey, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogWarning(
+                        "Validator {ValidatorId} rejected: not on approved list for consent-mode register {RegisterId}",
+                        registration.ValidatorId, registerId);
+                    return ValidatorRegistrationResult.Failed(
+                        "Validator is not on the approved list for this consent-mode register");
+                }
+
+                _logger.LogInformation(
+                    "Validator {ValidatorId} found on approved list for consent-mode register {RegisterId}",
+                    registration.ValidatorId, registerId);
+            }
 
             // Check max validators
             var currentCount = await GetActiveCountAsync(registerId, ct);
@@ -584,6 +610,93 @@ public class ValidatorRegistry : IValidatorRegistry
     }
 
 
+    /// <inheritdoc/>
+    public async Task<int> EnforceRegistrationModeTransitionAsync(
+        string registerId,
+        IReadOnlyList<ApprovedValidator> approvedValidators,
+        TransitionMode mode,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(approvedValidators);
+
+        _logger.LogInformation(
+            "Enforcing registration mode transition to consent for register {RegisterId} (mode={TransitionMode}, approved={ApprovedCount})",
+            registerId, mode, approvedValidators.Count);
+
+        var activeValidators = await GetActiveValidatorsAsync(registerId, ct);
+        var approvedSet = new HashSet<string>(
+            approvedValidators.SelectMany(v => new[] { v.Did, v.PublicKey }),
+            StringComparer.OrdinalIgnoreCase);
+
+        var unapproved = activeValidators
+            .Where(v => !approvedSet.Contains(v.ValidatorId) && !approvedSet.Contains(v.PublicKey))
+            .ToList();
+
+        if (unapproved.Count == 0)
+        {
+            _logger.LogInformation(
+                "No unapproved validators to eject for register {RegisterId}", registerId);
+            return 0;
+        }
+
+        _logger.LogWarning(
+            "Found {UnapprovedCount} unapproved validators for register {RegisterId} during transition",
+            unapproved.Count, registerId);
+
+        foreach (var validator in unapproved)
+        {
+            switch (mode)
+            {
+                case TransitionMode.Immediate:
+                    // Remove the validator key immediately
+                    var key = GetValidatorKey(registerId, validator.ValidatorId);
+                    await _database.KeyDeleteAsync(key);
+
+                    _logger.LogInformation(
+                        "Ejected unapproved validator {ValidatorId} immediately from register {RegisterId}",
+                        validator.ValidatorId, registerId);
+                    break;
+
+                case TransitionMode.GracePeriod:
+                    // Set a short TTL so the key expires after one cycle instead of being refreshed
+                    var graceKey = GetValidatorKey(registerId, validator.ValidatorId);
+                    var currentTtl = await _database.KeyTimeToLiveAsync(graceKey);
+                    // If already has a TTL, let it expire naturally; otherwise set one cycle
+                    if (currentTtl == null || currentTtl < TimeSpan.Zero)
+                    {
+                        await _database.KeyExpireAsync(graceKey, _config.CacheTtl);
+                    }
+                    // Mark in metadata that this validator is in grace period (won't be refreshed)
+                    var updated = validator with
+                    {
+                        Metadata = new Dictionary<string, string>(validator.Metadata ?? new())
+                        {
+                            ["transitionGracePeriod"] = "true",
+                            ["gracePeriodStartedAt"] = DateTimeOffset.UtcNow.ToString("O")
+                        }
+                    };
+                    await StoreValidatorAsync(registerId, updated, ct);
+
+                    _logger.LogInformation(
+                        "Set grace period for unapproved validator {ValidatorId} in register {RegisterId} (TTL={Ttl})",
+                        validator.ValidatorId, registerId, currentTtl ?? _config.CacheTtl);
+                    break;
+            }
+
+            RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorRemoved,
+                validator.ValidatorId, activeValidators.Count - 1);
+        }
+
+        // Invalidate list cache
+        _localCache.TryRemove(registerId, out _);
+        var listKey = GetValidatorsKey(registerId);
+        await _database.KeyDeleteAsync(listKey);
+
+        return unapproved.Count;
+    }
+
+
     private async Task<List<ValidatorInfo>> GetValidatorsFromRedisAsync(
         string registerId,
         CancellationToken ct)
@@ -633,14 +746,15 @@ public class ValidatorRegistry : IValidatorRegistry
             }
         }
 
-        // Cache the list
+        // Cache the list using operational TTL
         if (validators.Count > 0)
         {
             var listKey = GetValidatorsKey(registerId);
+            var ttl = await ResolveOperationalTtlAsync(registerId, ct);
             await _database.StringSetAsync(
                 listKey,
                 JsonSerializer.Serialize(validators, _jsonOptions),
-                _config.CacheTtl);
+                ttl);
         }
 
         return validators;
@@ -649,13 +763,16 @@ public class ValidatorRegistry : IValidatorRegistry
     private async Task StoreValidatorAsync(
         string registerId,
         ValidatorInfo validator,
-        CancellationToken ct)
+        CancellationToken ct,
+        TimeSpan? ttlOverride = null)
     {
+        var ttl = ttlOverride ?? await ResolveOperationalTtlAsync(registerId, ct);
+
         await _pipeline.ExecuteAsync(async token =>
         {
             var key = GetValidatorKey(registerId, validator.ValidatorId);
             var json = JsonSerializer.Serialize(validator, _jsonOptions);
-            await _database.StringSetAsync(key, json, _config.CacheTtl);
+            await _database.StringSetAsync(key, json, ttl);
 
             // Invalidate list cache
             var listKey = GetValidatorsKey(registerId);
@@ -736,6 +853,46 @@ public class ValidatorRegistry : IValidatorRegistry
         ValidatorListChanged?.Invoke(this, args);
     }
 
+
+    /// <summary>
+    /// Resolves the operational TTL for a register from its policy, with fallback to config default.
+    /// Caches the result for 60 seconds to avoid repeated policy lookups.
+    /// </summary>
+    internal async Task<TimeSpan> ResolveOperationalTtlAsync(string registerId, CancellationToken ct = default)
+    {
+        // Check TTL cache (valid for 60 seconds)
+        if (_operationalTtlCache.TryGetValue(registerId, out var cached)
+            && cached.CachedAt.AddSeconds(60) > DateTimeOffset.UtcNow)
+        {
+            return cached.Ttl;
+        }
+
+        try
+        {
+            var policyResponse = await _registerClient.GetRegisterPolicyAsync(registerId, ct);
+            var ttlSeconds = policyResponse?.Policy?.Validators?.OperationalTtlSeconds
+                ?? _config.DefaultOperationalTtlSeconds;
+
+            var ttl = TimeSpan.FromSeconds(ttlSeconds);
+            _operationalTtlCache[registerId] = (ttl, DateTimeOffset.UtcNow);
+
+            _logger.LogDebug(
+                "Resolved operational TTL for register {RegisterId}: {TtlSeconds}s",
+                registerId, ttlSeconds);
+
+            return ttl;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to resolve operational TTL for register {RegisterId}, using default {DefaultTtl}s",
+                registerId, _config.DefaultOperationalTtlSeconds);
+
+            var fallback = TimeSpan.FromSeconds(_config.DefaultOperationalTtlSeconds);
+            _operationalTtlCache[registerId] = (fallback, DateTimeOffset.UtcNow);
+            return fallback;
+        }
+    }
 
     private class LocalCacheEntry
     {

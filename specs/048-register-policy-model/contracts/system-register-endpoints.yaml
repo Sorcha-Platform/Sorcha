@@ -1,0 +1,190 @@
+# System Register API Contracts
+# Feature: 048-register-policy-model
+# These endpoints are served by the Register Service and proxied via API Gateway
+
+openapi: 3.1.0
+info:
+  title: System Register API
+  version: 1.0.0
+  description: Endpoints for the System Register (system blueprints and templates)
+
+paths:
+  /api/system-register:
+    get:
+      summary: Get System Register info
+      description: >
+        Returns the System Register metadata including its deterministic ID,
+        status, and list of published system blueprints.
+      operationId: GetSystemRegister
+      tags: [System Register]
+      responses:
+        '200':
+          description: System Register info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemRegisterInfoResponse'
+        '404':
+          description: System Register not initialized
+
+  /api/system-register/blueprints:
+    get:
+      summary: List system blueprints
+      description: >
+        Returns all blueprints published on the System Register.
+        These are system-level blueprints (governance, creation, etc.)
+        available for reference by all registers.
+      operationId: ListSystemBlueprints
+      tags: [System Register]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of system blueprints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemBlueprintsResponse'
+
+  /api/system-register/blueprints/{blueprintId}:
+    get:
+      summary: Get a specific system blueprint
+      description: >
+        Returns a specific system blueprint by ID, including all versions.
+      operationId: GetSystemBlueprint
+      tags: [System Register]
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Blueprint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemBlueprintResponse'
+        '404':
+          description: Blueprint not found
+
+  /api/system-register/blueprints/{blueprintId}/versions/{version}:
+    get:
+      summary: Get a specific blueprint version
+      description: Returns a specific version of a system blueprint.
+      operationId: GetSystemBlueprintVersion
+      tags: [System Register]
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Blueprint version details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemBlueprintVersionResponse'
+        '404':
+          description: Version not found
+
+components:
+  schemas:
+    SystemRegisterInfoResponse:
+      type: object
+      properties:
+        registerId:
+          type: string
+          description: Deterministic 32-char hex ID
+        name:
+          type: string
+          example: Sorcha System Register
+        status:
+          type: string
+          enum: [online, offline]
+        ownerId:
+          type: string
+          description: DID of the system-setup wallet
+        blueprintCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        policy:
+          description: The System Register's own RegisterPolicy
+          type: object
+
+    SystemBlueprintsResponse:
+      type: object
+      properties:
+        blueprints:
+          type: array
+          items:
+            $ref: '#/components/schemas/SystemBlueprintSummary'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalCount:
+          type: integer
+
+    SystemBlueprintSummary:
+      type: object
+      properties:
+        blueprintId:
+          type: string
+        latestVersion:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        publishedBy:
+          type: string
+        versionCount:
+          type: integer
+
+    SystemBlueprintResponse:
+      type: object
+      properties:
+        blueprintId:
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SystemBlueprintVersionResponse'
+
+    SystemBlueprintVersionResponse:
+      type: object
+      properties:
+        blueprintId:
+          type: string
+        version:
+          type: string
+        blueprintJson:
+          type: object
+          description: The full blueprint document
+        publishedBy:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        txId:
+          type: string
+          description: Control transaction ID that published this version

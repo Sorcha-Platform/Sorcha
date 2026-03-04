@@ -29,6 +29,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
     private const string BlueprintPublishAction = "control.blueprint.publish";
     private const string RegisterUpdateMetadataAction = "control.register.updatemetadata";
     private const string CryptoPolicyUpdateAction = "control.crypto.update";
+    private const string PolicyUpdateAction = "control.policy.update";
 
     /// <inheritdoc/>
     public event EventHandler<ControlActionAppliedEventArgs>? ControlActionApplied;
@@ -164,6 +165,10 @@ public class ControlDocketProcessor : IControlDocketProcessor
                     txErrors.AddRange(ValidateCryptoPolicyUpdate(controlTx));
                     break;
 
+                case ControlActionType.PolicyUpdate:
+                    txErrors.AddRange(ValidatePolicyUpdate(controlTx, config));
+                    break;
+
                 default:
                     txErrors.Add($"Unknown control action type: {controlTx.ActionType}");
                     break;
@@ -232,7 +237,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
 
                 if (result.Success)
                 {
-                    if (result.ActionType is ControlActionType.ConfigUpdate or ControlActionType.CryptoPolicyUpdate)
+                    if (result.ActionType is ControlActionType.ConfigUpdate or ControlActionType.CryptoPolicyUpdate or ControlActionType.PolicyUpdate)
                     {
                         configUpdated = true;
                     }
@@ -340,6 +345,10 @@ public class ControlDocketProcessor : IControlDocketProcessor
                     changeDescription = ApplyCryptoPolicyUpdate(registerId, controlTransaction);
                     break;
 
+                case ControlActionType.PolicyUpdate:
+                    changeDescription = await ApplyPolicyUpdateAsync(registerId, controlTransaction, ct);
+                    break;
+
                 default:
                     return new ControlActionResult
                     {
@@ -399,6 +408,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
             BlueprintPublishAction => ControlActionType.BlueprintPublish,
             RegisterUpdateMetadataAction => ControlActionType.RegisterUpdateMetadata,
             CryptoPolicyUpdateAction => ControlActionType.CryptoPolicyUpdate,
+            PolicyUpdateAction => ControlActionType.PolicyUpdate,
             _ when actionId.StartsWith(ControlActionPrefix, StringComparison.OrdinalIgnoreCase) => ControlActionType.Unknown,
             _ => ControlActionType.Unknown
         };
@@ -451,6 +461,10 @@ public class ControlDocketProcessor : IControlDocketProcessor
             ControlActionType.CryptoPolicyUpdate =>
                 JsonSerializer.Deserialize<CryptoPolicyUpdatePayload>(payloadJson, _jsonOptions)
                 ?? throw new InvalidOperationException("Failed to parse crypto policy update payload"),
+
+            ControlActionType.PolicyUpdate =>
+                JsonSerializer.Deserialize<PolicyUpdatePayload>(payloadJson, _jsonOptions)
+                ?? throw new InvalidOperationException("Failed to parse policy update payload"),
 
             _ => throw new InvalidOperationException($"Unknown control action type: {actionType}")
         };
@@ -735,6 +749,55 @@ public class ControlDocketProcessor : IControlDocketProcessor
         return errors;
     }
 
+    private static List<string> ValidatePolicyUpdate(
+        ControlTransaction controlTx,
+        GenesisConfiguration config)
+    {
+        var errors = new List<string>();
+        var payload = controlTx.Payload as PolicyUpdatePayload;
+
+        if (payload == null)
+        {
+            errors.Add("Invalid policy update payload");
+            return errors;
+        }
+
+        if (payload.Policy == null)
+        {
+            errors.Add("Policy is required");
+            return errors;
+        }
+
+        if (payload.Policy.Version < 1)
+            errors.Add("Policy version must be >= 1");
+
+        if (string.IsNullOrWhiteSpace(payload.UpdatedBy))
+            errors.Add("UpdatedBy is required");
+
+        if (payload.Policy.Validators.MinValidators < 1)
+            errors.Add("MinValidators must be >= 1");
+
+        if (payload.Policy.Validators.MaxValidators < payload.Policy.Validators.MinValidators)
+            errors.Add("MaxValidators must be >= MinValidators");
+
+        if (payload.Policy.Consensus.SignatureThresholdMin < 1)
+            errors.Add("SignatureThresholdMin must be >= 1");
+
+        if (payload.Policy.Consensus.SignatureThresholdMax < payload.Policy.Consensus.SignatureThresholdMin)
+            errors.Add("SignatureThresholdMax must be >= SignatureThresholdMin");
+
+        // If registration mode is changing from Public to Consent, TransitionMode is required
+        var currentMode = config.Validators.RegistrationMode;
+        var newMode = payload.Policy.Validators.RegistrationMode;
+        if (currentMode.Equals("public", StringComparison.OrdinalIgnoreCase) &&
+            newMode == Sorcha.Register.Models.RegistrationMode.Consent &&
+            payload.TransitionMode == null)
+        {
+            errors.Add("TransitionMode is required when changing RegistrationMode from Public to Consent");
+        }
+
+        return errors;
+    }
 
 
     private async Task<string> ApplyValidatorRegisterAsync(
@@ -898,6 +961,39 @@ public class ControlDocketProcessor : IControlDocketProcessor
         return $"Crypto policy updated to version {payload.Version} ({payload.EnforcementMode} mode, {payload.AcceptedSignatureAlgorithms.Length} accepted algorithms)";
     }
 
+    private async Task<string> ApplyPolicyUpdateAsync(
+        string registerId,
+        ControlTransaction controlTransaction,
+        CancellationToken ct)
+    {
+        var payload = (PolicyUpdatePayload)controlTransaction.Payload;
+
+        _logger.LogInformation(
+            "Register policy updated for register {RegisterId}: version {Version} by {UpdatedBy}",
+            registerId, payload.Policy.Version, payload.UpdatedBy);
+
+        // Enforce registration mode transition if changing from public to consent
+        if (payload.TransitionMode.HasValue &&
+            payload.Policy.Validators.RegistrationMode == Sorcha.Register.Models.RegistrationMode.Consent)
+        {
+            var ejected = await _validatorRegistry.EnforceRegistrationModeTransitionAsync(
+                registerId,
+                payload.Policy.Validators.ApprovedValidators,
+                payload.TransitionMode.Value,
+                ct);
+
+            if (ejected > 0)
+            {
+                _logger.LogWarning(
+                    "Transition enforcement ejected {EjectedCount} unapproved validators from register {RegisterId} (mode={TransitionMode})",
+                    ejected, registerId, payload.TransitionMode.Value);
+            }
+
+            return $"Register policy updated to version {payload.Policy.Version} by {payload.UpdatedBy} ({ejected} validators affected by transition)";
+        }
+
+        return $"Register policy updated to version {payload.Policy.Version} by {payload.UpdatedBy}";
+    }
 
 
     private void RaiseControlActionApplied(
