@@ -1,0 +1,208 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+
+@inject IRegisterService RegisterService
+@inject IDialogService DialogService
+
+<div data-testid="register-policy-tab">
+    @if (_isLoading)
+    {
+        <MudStack Spacing="3" Class="pa-3">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="200px" />
+            <MudStack Row="true" Spacing="2">
+                <MudSkeleton Width="120px" Height="36px" />
+                <MudSkeleton Width="140px" Height="36px" />
+            </MudStack>
+        </MudStack>
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="ma-3" data-testid="policy-error">
+            @_error
+            <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                       OnClick="LoadPolicyAsync" Class="ml-2">
+                Retry
+            </MudButton>
+        </MudAlert>
+    }
+    else if (_policy is null)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-3" data-testid="policy-empty">
+            No policy configured for this register.
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="0" Class="pa-4" data-testid="policy-card">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Filled.Policy" Color="Color.Primary" />
+                    <MudText Typo="Typo.h6">Effective Policy</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" data-testid="policy-version">
+                        v@(_policy.Version)
+                    </MudChip>
+                </MudStack>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" data-testid="policy-updated">
+                    Updated @_policy.UpdatedAt.ToString("yyyy-MM-dd HH:mm") by @_policy.UpdatedBy
+                </MudText>
+            </MudStack>
+
+            <MudGrid Spacing="3">
+                <MudItem xs="6" sm="4" md="2">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Min Validators</MudText>
+                        <MudText Typo="Typo.h6" data-testid="policy-min-validators">@_policy.MinValidators</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Max Validators</MudText>
+                        <MudText Typo="Typo.h6" data-testid="policy-max-validators">@_policy.MaxValidators</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Signature Threshold</MudText>
+                        <MudText Typo="Typo.h6" data-testid="policy-signature-threshold">@_policy.SignatureThreshold</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="3">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Registration Mode</MudText>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(_policy.RegistrationMode == "Open" ? Color.Success : Color.Warning)"
+                                 data-testid="policy-registration-mode">
+                            @_policy.RegistrationMode
+                        </MudChip>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="3">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Transition Mode</MudText>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(_policy.TransitionMode == "Immediate" ? Color.Info : Color.Secondary)"
+                                 data-testid="policy-transition-mode">
+                            @_policy.TransitionMode
+                        </MudChip>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+
+            @if (_policy.ApprovedValidators.Count > 0)
+            {
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    Approved Validators (@_policy.ApprovedValidators.Count)
+                </MudText>
+                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                    @foreach (var validator in _policy.ApprovedValidators)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                            @validator.Name
+                        </MudChip>
+                    }
+                </MudStack>
+            }
+        </MudPaper>
+
+        <MudStack Row="true" Spacing="2" Class="pa-4">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.History"
+                       OnClick="OpenHistoryDialogAsync"
+                       data-testid="view-history-button">
+                View History
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="OpenDiffDialogAsync"
+                       data-testid="propose-update-button">
+                Propose Update
+            </MudButton>
+        </MudStack>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Register ID to display policy for.
+    /// </summary>
+    [Parameter]
+    public string RegisterId { get; set; } = string.Empty;
+
+    private RegisterPolicyViewModel? _policy;
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPolicyAsync();
+    }
+
+    private async Task LoadPolicyAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+
+            _policy = await RegisterService.GetPolicyAsync(RegisterId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load policy: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenHistoryDialogAsync()
+    {
+        var parameters = new DialogParameters<PolicyHistoryDialog>
+        {
+            { x => x.RegisterId, RegisterId }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<PolicyHistoryDialog>("Policy History", parameters, options);
+    }
+
+    private async Task OpenDiffDialogAsync()
+    {
+        if (_policy is null) return;
+
+        var parameters = new DialogParameters<PolicyDiffDialog>
+        {
+            { x => x.RegisterId, RegisterId },
+            { x => x.CurrentPolicy, _policy }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<PolicyDiffDialog>("Propose Policy Update", parameters, options);
+        var result = await dialog.Result;
+
+        // Refresh policy if a proposal was submitted
+        if (result is not null && !result.Canceled)
+        {
+            await LoadPolicyAsync();
+        }
+    }
+}

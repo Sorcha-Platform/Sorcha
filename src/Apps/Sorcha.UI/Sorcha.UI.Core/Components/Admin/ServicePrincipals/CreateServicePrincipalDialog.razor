@@ -1,0 +1,116 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@inject IServicePrincipalService ServicePrincipalService
+@inject IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
+            Create Service Principal
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 480px;">
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" CloseIconClicked="() => _error = null" ShowCloseIcon="true">
+                    @_error
+                </MudAlert>
+            }
+
+            <MudTextField T="string" @bind-Value="_request.ServiceName" Label="Service Name"
+                          Required="true" RequiredError="Service name is required"
+                          Variant="Variant.Outlined" Placeholder="e.g., My Integration Service" />
+
+            <MudSelect T="string" Label="Scopes" MultiSelection="true" @bind-SelectedValues="_selectedScopes"
+                       Variant="Variant.Outlined" SelectAll="true" SelectAllText="Select All">
+                @foreach (var scope in AvailableScopes)
+                {
+                    <MudSelectItem T="string" Value="@scope">@scope</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ExpirationPreset" @bind-Value="_request.ExpirationDuration" Label="Expiration"
+                       Variant="Variant.Outlined">
+                <MudSelectItem T="ExpirationPreset" Value="ExpirationPreset.ThirtyDays">30 Days</MudSelectItem>
+                <MudSelectItem T="ExpirationPreset" Value="ExpirationPreset.NinetyDays">90 Days</MudSelectItem>
+                <MudSelectItem T="ExpirationPreset" Value="ExpirationPreset.OneYear">1 Year</MudSelectItem>
+                <MudSelectItem T="ExpirationPreset" Value="ExpirationPreset.NoExpiry">No Expiry</MudSelectItem>
+            </MudSelect>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+        <MudButton OnClick="SubmitAsync" Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_isSubmitting || string.IsNullOrWhiteSpace(_request.ServiceName))">
+            @if (_isSubmitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Create
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private static readonly string[] AvailableScopes =
+    [
+        "blueprints:read", "blueprints:write",
+        "registers:read", "registers:write",
+        "wallets:manage", "signing:execute",
+        "transactions:validate", "consensus:participate",
+        "peers:manage", "sync:replicate",
+        "instances:manage"
+    ];
+
+    private readonly CreateServicePrincipalRequest _request = new();
+    private IReadOnlyCollection<string> _selectedScopes = new HashSet<string>();
+    private bool _isSubmitting;
+    private string? _error;
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_request.ServiceName))
+            return;
+
+        _isSubmitting = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _request.Scopes = _selectedScopes.ToArray();
+            var secret = await ServicePrincipalService.CreateAsync(_request);
+
+            // Close the create dialog
+            MudDialog.Close(DialogResult.Ok(true));
+
+            // Open the secret display dialog
+            var parameters = new DialogParameters<SecretDisplayDialog>
+            {
+                { x => x.Secret, secret }
+            };
+            await DialogService.ShowAsync<SecretDisplayDialog>("Credentials Created", parameters,
+                new DialogOptions { CloseOnEscapeKey = false, BackdropClick = false, MaxWidth = MaxWidth.Small, FullWidth = true });
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to create service principal: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

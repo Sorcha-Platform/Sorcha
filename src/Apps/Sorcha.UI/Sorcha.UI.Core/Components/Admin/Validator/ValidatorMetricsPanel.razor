@@ -1,0 +1,318 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Models.Admin
+@inject IValidatorAdminService ValidatorService
+@implements IDisposable
+
+@if (_hasError && !_hasEverLoaded)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        Failed to load validator metrics.
+        <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="LoadAllMetricsAsync" Class="ml-2">
+            Retry
+        </MudButton>
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        @* Auto-refresh toggle *@
+        <div class="d-flex align-center justify-end gap-2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Auto-refresh</MudText>
+            <MudSwitch T="bool" Value="_autoRefresh" ValueChanged="ToggleAutoRefresh"
+                       Color="Color.Primary" Size="Size.Small" />
+        </div>
+
+        @* KPI Summary Cards *@
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        @if (_isLoading && !_hasEverLoaded)
+                        {
+                            <MudSkeleton Width="80px" Height="32px" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h4">@_aggregated.ValidationSuccessRate.ToString("P1")</MudText>
+                        }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Success Rate</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        @if (_isLoading && !_hasEverLoaded)
+                        {
+                            <MudSkeleton Width="60px" Height="32px" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h4">@_aggregated.DocketsProposed</MudText>
+                        }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Dockets Proposed</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        @if (_isLoading && !_hasEverLoaded)
+                        {
+                            <MudSkeleton Width="60px" Height="32px" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h4">@_aggregated.QueueDepth</MudText>
+                        }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Queue Depth</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        @if (_isLoading && !_hasEverLoaded)
+                        {
+                            <MudSkeleton Width="80px" Height="32px" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.h4">@_aggregated.CacheHitRatio.ToString("P1")</MudText>
+                        }
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Cache Hit Ratio</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Expandable Detail Sections *@
+        <MudExpansionPanels MultiExpansion="true">
+            @* Validation Metrics *@
+            <MudExpansionPanel Text="Validation" Icon="@Icons.Material.Filled.CheckCircle">
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Total Validated</td>
+                            <td>@_validation.TotalValidated.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Total Failed</td>
+                            <td>@_validation.TotalFailed.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Average Latency</td>
+                            <td>@_validation.AverageLatencyMs.ToString("F1") ms</td>
+                        </tr>
+                        <tr>
+                            <td>Peak Latency</td>
+                            <td>@_validation.PeakLatencyMs.ToString("F1") ms</td>
+                        </tr>
+                        <tr>
+                            <td>Validations / Minute</td>
+                            <td>@_validation.ValidationsPerMinute.ToString("F1")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudExpansionPanel>
+
+            @* Consensus Metrics *@
+            <MudExpansionPanel Text="Consensus" Icon="@Icons.Material.Filled.HowToVote">
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Rounds Completed</td>
+                            <td>@_consensus.RoundsCompleted.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Rounds Failed</td>
+                            <td>@_consensus.RoundsFailed.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Average Round Time</td>
+                            <td>@_consensus.AverageRoundTimeMs.ToString("F1") ms</td>
+                        </tr>
+                        <tr>
+                            <td>Dockets Proposed</td>
+                            <td>@_consensus.DocketsProposed.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Dockets Accepted</td>
+                            <td>@_consensus.DocketsAccepted.ToString("N0")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudExpansionPanel>
+
+            @* Pool Metrics *@
+            <MudExpansionPanel Text="Pools" Icon="@Icons.Material.Filled.Pool">
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Active Pool Count</td>
+                            <td>@_pools.ActivePoolCount.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Total Pool Transactions</td>
+                            <td>@_pools.TotalPoolTransactions.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Average Pool Size</td>
+                            <td>@_pools.AveragePoolSize.ToString("F1")</td>
+                        </tr>
+                        <tr>
+                            <td>Peak Pool Size</td>
+                            <td>@_pools.PeakPoolSize.ToString("N0")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudExpansionPanel>
+
+            @* Cache Metrics *@
+            <MudExpansionPanel Text="Caches" Icon="@Icons.Material.Filled.Cached">
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Total Hits</td>
+                            <td>@_cache.TotalHits.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Total Misses</td>
+                            <td>@_cache.TotalMisses.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Hit Ratio</td>
+                            <td>@_cache.HitRatio.ToString("P1")</td>
+                        </tr>
+                        <tr>
+                            <td>Evictions</td>
+                            <td>@_cache.Evictions.ToString("N0")</td>
+                        </tr>
+                        <tr>
+                            <td>Current Size</td>
+                            <td>@_cache.CurrentSize.ToString("N0")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudStack>
+}
+
+@code {
+    private AggregatedMetricsViewModel _aggregated = new();
+    private ValidationSummaryViewModel _validation = new();
+    private ConsensusSummaryViewModel _consensus = new();
+    private PoolSummaryViewModel _pools = new();
+    private CacheSummaryViewModel _cache = new();
+
+    private bool _isLoading = true;
+    private bool _hasEverLoaded;
+    private bool _hasError;
+    private bool _autoRefresh = true;
+    private System.Threading.Timer? _refreshTimer;
+    private bool _disposed;
+
+    private const int RefreshIntervalSeconds = 5;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllMetricsAsync();
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        _refreshTimer?.Dispose();
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (_disposed || !_autoRefresh) return;
+            await InvokeAsync(async () =>
+            {
+                await LoadAllMetricsAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(RefreshIntervalSeconds), TimeSpan.FromSeconds(RefreshIntervalSeconds));
+    }
+
+    private void ToggleAutoRefresh(bool value)
+    {
+        _autoRefresh = value;
+        if (_autoRefresh)
+        {
+            StartPolling();
+        }
+        else
+        {
+            _refreshTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+    }
+
+    private async Task LoadAllMetricsAsync()
+    {
+        _isLoading = true;
+        _hasError = false;
+        StateHasChanged();
+
+        try
+        {
+            var aggregatedTask = ValidatorService.GetAggregatedMetricsAsync();
+            var validationTask = ValidatorService.GetValidationMetricsAsync();
+            var consensusTask = ValidatorService.GetConsensusMetricsAsync();
+            var poolsTask = ValidatorService.GetPoolMetricsAsync();
+            var cacheTask = ValidatorService.GetCacheMetricsAsync();
+
+            await Task.WhenAll(aggregatedTask, validationTask, consensusTask, poolsTask, cacheTask);
+
+            _aggregated = aggregatedTask.Result;
+            _validation = validationTask.Result;
+            _consensus = consensusTask.Result;
+            _pools = poolsTask.Result;
+            _cache = cacheTask.Result;
+
+            _hasEverLoaded = true;
+        }
+        catch
+        {
+            _hasError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _refreshTimer?.Dispose();
+    }
+}

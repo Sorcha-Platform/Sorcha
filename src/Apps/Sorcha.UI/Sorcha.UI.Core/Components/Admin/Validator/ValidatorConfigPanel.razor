@@ -1,0 +1,88 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+@inject IValidatorAdminService ValidatorService
+
+<MudStack Spacing="4" Class="pa-4">
+    @if (_isLoading)
+    {
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="() => _error = null">
+            @_error
+        </MudAlert>
+    }
+    else if (_config.Fields.Count == 0)
+    {
+        <EmptyState Icon="@Icons.Material.Filled.Settings"
+                    Title="No configuration available"
+                    Description="No configuration available" />
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Elevation="2">
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var kvp in _config.Fields)
+                {
+                    <tr>
+                        <td><strong>@kvp.Key</strong></td>
+                        <td>
+                            @if (_redactedKeys.Contains(kvp.Key))
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">***</MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2">@kvp.Value</MudText>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudStack>
+
+@code {
+    private ValidatorConfigViewModel _config = new();
+    private HashSet<string> _redactedKeys = [];
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _config = await ValidatorService.GetConfigAsync();
+            _redactedKeys = new HashSet<string>(_config.RedactedKeys, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load configuration: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

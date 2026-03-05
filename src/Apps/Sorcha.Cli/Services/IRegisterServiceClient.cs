@@ -168,6 +168,40 @@ public interface IRegisterServiceClient
         [Query("$count")] bool? count,
         [Header("Authorization")] string authorization);
 
+    // --- Policy ---
+
+    /// <summary>
+    /// Gets the current register policy.
+    /// </summary>
+    [Get("/api/registers/{registerId}/policy")]
+    Task<HttpResponseMessage> GetPolicyAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets the register policy version history.
+    /// </summary>
+    [Get("/api/registers/{registerId}/policy/history")]
+    Task<HttpResponseMessage> GetPolicyHistoryAsync(string registerId, [Query] int? page, [Query] int? pageSize, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Proposes a policy update for the register.
+    /// </summary>
+    [Post("/api/registers/{registerId}/policy/update")]
+    Task<HttpResponseMessage> ProposePolicyUpdateAsync(string registerId, [Body] PolicyUpdateRequest request, [Header("Authorization")] string authorization);
+
+    // --- System Register ---
+
+    /// <summary>
+    /// Gets the system register status.
+    /// </summary>
+    [Get("/api/system-register")]
+    Task<HttpResponseMessage> GetSystemRegisterStatusAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets blueprints published to the system register.
+    /// </summary>
+    [Get("/api/system-register/blueprints")]
+    Task<HttpResponseMessage> GetSystemRegisterBlueprintsAsync([Query] int? page, [Query] int? pageSize, [Header("Authorization")] string authorization);
+
 }
 
 // --- Request/Response DTOs ---
@@ -233,5 +267,17 @@ public class QueryStatsResponse
     public long TotalTransactions { get; set; }
     public int TotalRegisters { get; set; }
     public int TotalDockets { get; set; }
+}
+
+/// <summary>
+/// Request to propose a policy update.
+/// </summary>
+public class PolicyUpdateRequest
+{
+    public int? MinValidators { get; set; }
+    public int? MaxValidators { get; set; }
+    public int? SignatureThreshold { get; set; }
+    public string? RegistrationMode { get; set; }
+    public string? TransitionMode { get; set; }
 }
 

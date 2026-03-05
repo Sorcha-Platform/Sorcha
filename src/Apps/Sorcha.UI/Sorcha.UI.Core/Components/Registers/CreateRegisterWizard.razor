@@ -2,6 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.Register.Models.Enums
+@using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Wallet
 @using Sorcha.UI.Core.Services
@@ -31,6 +32,9 @@
             </MudStep>
             <MudStep Title="Options" data-testid="step-options">
                 <MudText Typo="Typo.body2">Configure register settings</MudText>
+            </MudStep>
+            <MudStep Title="Policy" data-testid="step-policy">
+                <MudText Typo="Typo.body2">Set validator policy</MudText>
             </MudStep>
             <MudStep Title="Create" data-testid="step-create">
                 <MudText Typo="Typo.body2">Review and create</MudText>
@@ -220,8 +224,15 @@
                         break;
 
                     case 3:
-                        @* Step 4: Review and create *@
-                        <MudStack Spacing="4" data-testid="wizard-step-4">
+                        @* Step 4: Validator policy *@
+                        <MudStack Spacing="4" data-testid="wizard-step-4-policy">
+                            <RegisterPolicyStep @bind-Policy="_policyFields" />
+                        </MudStack>
+                        break;
+
+                    case 4:
+                        @* Step 5: Review and create *@
+                        <MudStack Spacing="4" data-testid="wizard-step-5">
                             <MudText Typo="Typo.h6">Review Your Register</MudText>
 
                             <MudPaper Elevation="1" Class="pa-4">
@@ -300,7 +311,7 @@
                 Back
             </MudButton>
         }
-        @if (_activeStep < 3)
+        @if (_activeStep < 4)
         {
             <MudButton OnClick="NextStep"
                        Variant="Variant.Filled"
@@ -353,6 +364,14 @@
     private bool _isFullReplica = true;
     private RegisterCreationState _state = new();
     private List<WalletViewModel> _wallets = [];
+    private RegisterPolicyFields _policyFields = new()
+    {
+        MinValidators = 1,
+        MaxValidators = 10,
+        SignatureThreshold = 1,
+        RegistrationMode = "Open",
+        TransitionMode = "Immediate"
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -413,7 +432,8 @@
         0 => !string.IsNullOrWhiteSpace(_name) && _name.Length >= 1 && _name.Length <= 38,
         1 => HasValidWallet(),
         2 => true,
-        3 => true,
+        3 => true, // Policy step
+        4 => true, // Review step
         _ => false
     };
 
@@ -450,7 +470,7 @@
 
     private void NextStep()
     {
-        if (CanProceed() && _activeStep < 3)
+        if (CanProceed() && _activeStep < 4)
         {
             _activeStep++;
         }

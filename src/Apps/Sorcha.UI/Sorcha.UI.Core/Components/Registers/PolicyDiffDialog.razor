@@ -1,0 +1,251 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+
+@inject IRegisterService RegisterService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CompareArrows" Class="mr-2" />
+            Propose Policy Update
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_proposal is not null)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4" data-testid="proposal-success">
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.body1">Proposal submitted successfully!</MudText>
+                    <MudText Typo="Typo.body2">Proposal ID: <strong>@_proposal.ProposalId</strong></MudText>
+                    <MudText Typo="Typo.body2">
+                        Status: @_proposal.Status | Votes: @_proposal.CurrentVotes / @_proposal.RequiredVotes required
+                    </MudText>
+                </MudStack>
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" data-testid="governance-warning">
+                <MudText Typo="Typo.body2">
+                    Policy changes require a governance vote. Once submitted, validators will vote on this proposal
+                    before it takes effect.
+                </MudText>
+            </MudAlert>
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="proposal-error">
+                    @_error
+                </MudAlert>
+            }
+
+            <MudGrid Spacing="3">
+                @* Current values (left) *@
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2" Color="Color.Secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.Policy" Size="Size.Small" Class="mr-1" />
+                        Current Policy (v@(CurrentPolicy.Version))
+                    </MudText>
+                    <MudPaper Elevation="0" Class="pa-3 mud-theme-secondary" Style="border-radius: 8px;">
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Min Validators</MudText>
+                                <MudText Typo="Typo.body1">@CurrentPolicy.MinValidators</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Max Validators</MudText>
+                                <MudText Typo="Typo.body1">@CurrentPolicy.MaxValidators</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Signature Threshold</MudText>
+                                <MudText Typo="Typo.body1">@CurrentPolicy.SignatureThreshold</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Registration Mode</MudText>
+                                <MudText Typo="Typo.body1">@CurrentPolicy.RegistrationMode</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Transition Mode</MudText>
+                                <MudText Typo="Typo.body1">@CurrentPolicy.TransitionMode</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* Proposed values (right, editable) *@
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2" Color="Color.Primary">
+                        <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Class="mr-1" />
+                        Proposed Changes
+                    </MudText>
+                    <MudPaper Elevation="1" Class="pa-3" Style="border-radius: 8px;">
+                        <MudStack Spacing="2">
+                            <MudNumericField T="int"
+                                             @bind-Value="_proposed.MinValidators"
+                                             Label="Min Validators"
+                                             Min="1"
+                                             Variant="Variant.Outlined"
+                                             Dense="true"
+                                             data-testid="proposed-min-validators" />
+                            <MudNumericField T="int"
+                                             @bind-Value="_proposed.MaxValidators"
+                                             Label="Max Validators"
+                                             Min="@_proposed.MinValidators"
+                                             Variant="Variant.Outlined"
+                                             Dense="true"
+                                             data-testid="proposed-max-validators" />
+                            <MudNumericField T="int"
+                                             @bind-Value="_proposed.SignatureThreshold"
+                                             Label="Signature Threshold"
+                                             Min="1"
+                                             Max="@_proposed.MaxValidators"
+                                             Variant="Variant.Outlined"
+                                             Dense="true"
+                                             data-testid="proposed-signature-threshold" />
+                            <MudSelect T="string"
+                                       @bind-Value="_proposed.RegistrationMode"
+                                       Label="Registration Mode"
+                                       Variant="Variant.Outlined"
+                                       Dense="true"
+                                       data-testid="proposed-registration-mode">
+                                <MudSelectItem Value="@("Open")">Open</MudSelectItem>
+                                <MudSelectItem Value="@("Consent")">Consent</MudSelectItem>
+                            </MudSelect>
+                            <MudSelect T="string"
+                                       @bind-Value="_proposed.TransitionMode"
+                                       Label="Transition Mode"
+                                       Variant="Variant.Outlined"
+                                       Dense="true"
+                                       data-testid="proposed-transition-mode">
+                                <MudSelectItem Value="@("Immediate")">Immediate</MudSelectItem>
+                                <MudSelectItem Value="@("Epoch")">Epoch</MudSelectItem>
+                            </MudSelect>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_proposal is not null)
+        {
+            <MudButton OnClick="Close" Color="Color.Primary" data-testid="diff-done">Done</MudButton>
+        }
+        else
+        {
+            <MudButton OnClick="Close" Disabled="@_isSubmitting" data-testid="diff-cancel">Cancel</MudButton>
+            <MudButton OnClick="SubmitProposalAsync"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@_isSubmitting"
+                       data-testid="diff-submit">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                    @:Submitting...
+                }
+                else
+                {
+                    @:Submit Proposal
+                }
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance? MudDialog { get; set; }
+
+    /// <summary>
+    /// Register ID for the policy update.
+    /// </summary>
+    [Parameter]
+    public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Current policy to show for comparison.
+    /// </summary>
+    [Parameter]
+    public RegisterPolicyViewModel CurrentPolicy { get; set; } = new();
+
+    private RegisterPolicyFields _proposed = new();
+    private PolicyUpdateProposalViewModel? _proposal;
+    private bool _isSubmitting;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        // Pre-fill proposed fields with current values
+        _proposed = new RegisterPolicyFields
+        {
+            MinValidators = CurrentPolicy.MinValidators,
+            MaxValidators = CurrentPolicy.MaxValidators,
+            SignatureThreshold = CurrentPolicy.SignatureThreshold,
+            RegistrationMode = CurrentPolicy.RegistrationMode,
+            TransitionMode = CurrentPolicy.TransitionMode
+        };
+    }
+
+    private async Task SubmitProposalAsync()
+    {
+        _isSubmitting = true;
+        _error = null;
+
+        try
+        {
+            // Validate
+            if (_proposed.MinValidators < 1)
+            {
+                _error = "Minimum validators must be at least 1.";
+                return;
+            }
+
+            if (_proposed.MaxValidators < _proposed.MinValidators)
+            {
+                _error = "Maximum validators must be greater than or equal to minimum.";
+                return;
+            }
+
+            if (_proposed.SignatureThreshold < 1 || _proposed.SignatureThreshold > _proposed.MaxValidators)
+            {
+                _error = $"Signature threshold must be between 1 and {_proposed.MaxValidators}.";
+                return;
+            }
+
+            _proposal = await RegisterService.ProposePolicyUpdateAsync(RegisterId, _proposed);
+
+            if (_proposal is null)
+            {
+                _error = "Failed to submit proposal. The server returned an error.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to submit proposal: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Close()
+    {
+        if (_proposal is not null)
+        {
+            MudDialog?.Close(DialogResult.Ok(_proposal));
+        }
+        else
+        {
+            MudDialog?.Cancel();
+        }
+    }
+}

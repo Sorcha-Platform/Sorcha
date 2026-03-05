@@ -20,7 +20,7 @@ The administrator navigates to `/admin/principals`, sees a live DataGrid of all 
 **Acceptance Scenarios**:
 
 1. **Given** an authenticated administrator, **When** they navigate to `/admin/principals`, **Then** they see a paginated DataGrid with all service principals showing name, client ID, status, scopes, and last used date.
-2. **Given** the service principals page, **When** the administrator clicks "Create Service Principal" and fills in name and scopes, **Then** a modal displays the generated client ID and secret with a copy-to-clipboard button and a warning that the secret will not be shown again.
+2. **Given** the service principals page, **When** the administrator clicks "Create Service Principal" and fills in name, scopes, and expiration duration (30 days, 90 days, 1 year, or no expiry), **Then** a modal displays the generated client ID and secret with a copy-to-clipboard button and a warning that the secret will not be shown again.
 3. **Given** an active service principal, **When** the administrator clicks "Rotate Secret", **Then** a confirmation dialog appears, and upon confirmation a new secret is displayed in the one-time modal.
 4. **Given** an active service principal, **When** the administrator clicks "Suspend", **Then** the principal's status changes to Suspended and it can no longer authenticate.
 5. **Given** a suspended service principal, **When** the administrator clicks "Reactivate", **Then** the principal's status returns to Active.
@@ -62,9 +62,9 @@ A new "Consent Queue" tab on the Validator admin page shows pending validator re
 
 **Acceptance Scenarios**:
 
-1. **Given** the Validator admin page, **When** the administrator selects the "Consent Queue" tab, **Then** pending validator requests are displayed grouped by register, showing validator ID, requested date, and register name.
-2. **Given** a pending validator, **When** the administrator clicks "Approve", **Then** a confirmation dialog appears, and upon confirmation the validator moves to the approved list.
-3. **Given** a pending validator, **When** the administrator clicks "Reject", **Then** a confirmation dialog with optional reason field appears, and upon confirmation the validator is removed from the pending list.
+1. **Given** the Validator admin page, **When** the administrator selects the "Consent Queue" tab, **Then** pending validator requests are displayed grouped by register with selectable checkboxes, showing validator ID, requested date, and register name.
+2. **Given** one or more selected pending validators, **When** the administrator clicks "Approve Selected", **Then** a confirmation dialog appears listing the selected validators, and upon confirmation they move to the approved list.
+3. **Given** one or more selected pending validators, **When** the administrator clicks "Reject Selected", **Then** a confirmation dialog with optional reason field appears listing the selected validators, and upon confirmation they are removed from the pending list.
 4. **Given** the Consent Queue tab, **When** there are no pending requests, **Then** an empty state message is displayed: "No pending validator requests."
 5. **Given** an approved validators section, **When** the administrator clicks "Refresh from Chain", **Then** the approved validator list is re-synchronized from the on-chain policy record.
 6. **Given** a register in Open registration mode, **When** viewing the Consent Queue for that register, **Then** a notice explains that consent approval is not required for open-mode registers.
@@ -166,7 +166,7 @@ A platform operator using the CLI needs commands to manage register policies, vi
 ### Functional Requirements
 
 - **FR-001**: System MUST display a live DataGrid of service principals with name, client ID, status, scopes, last used date, and expiration.
-- **FR-002**: System MUST allow creation of service principals with a one-time secret displayed in a copy-to-clipboard modal.
+- **FR-002**: System MUST allow creation of service principals with name, scopes, and expiration duration (preset options: 30 days, 90 days, 1 year, no expiry) — with a one-time secret displayed in a copy-to-clipboard modal.
 - **FR-003**: System MUST support editing service principal scopes via inline dialog.
 - **FR-004**: System MUST support suspend, reactivate, and permanent revocation of service principals with appropriate confirmation dialogs.
 - **FR-005**: System MUST support secret rotation with one-time display of the new secret.
@@ -175,7 +175,7 @@ A platform operator using the CLI needs commands to manage register policies, vi
 - **FR-008**: System MUST show paginated policy version history with version number, author, and timestamp.
 - **FR-009**: System MUST allow proposing policy updates through a form that shows the diff between current and proposed values.
 - **FR-010**: System MUST display pending validator requests grouped by register in a Consent Queue tab on the Validator admin page.
-- **FR-011**: System MUST allow approving or rejecting pending validators with confirmation dialogs.
+- **FR-011**: System MUST allow approving or rejecting pending validators individually or in bulk (multi-select checkboxes) with confirmation dialogs.
 - **FR-012**: System MUST allow refreshing the approved validator list from on-chain records.
 - **FR-013**: System MUST display aggregated and per-subsystem validator metrics (validation, consensus, pools, caches) with auto-refresh.
 - **FR-014**: System MUST display the system register's initialization status, metadata, and disseminated blueprint catalog on a dedicated admin page.
@@ -211,6 +211,13 @@ A platform operator using the CLI needs commands to manage register policies, vi
 - **SC-006**: CLI commands for all 5 new command groups execute successfully and produce formatted output (table and JSON).
 - **SC-007**: All new admin UI components follow existing MudBlazor patterns (loading states, error handling, empty states, polling where appropriate).
 - **SC-008**: All new UI pages are restricted to Administrator/SystemAdmin roles — unauthorized users see no navigation links and receive 403 if accessing directly.
+
+## Clarifications
+
+### Session 2026-03-05
+
+- Q: How is service principal expiration set? → A: Admin chooses from preset durations (30d, 90d, 1yr, no expiry) at creation time.
+- Q: Should consent queue support bulk operations? → A: Yes, multi-select checkboxes with bulk approve/reject.
 
 ## Assumptions
 

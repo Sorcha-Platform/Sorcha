@@ -5,53 +5,61 @@ using System.Text.Json.Serialization;
 
 namespace Sorcha.UI.Core.Models.Admin;
 
+/// <summary>
+/// Aggregated high-level metrics for the validator service.
+/// </summary>
 public record AggregatedMetricsViewModel
 {
-    [JsonPropertyName("timestamp")] public DateTimeOffset Timestamp { get; init; }
-    [JsonPropertyName("validation")] public ValidationSummaryViewModel Validation { get; init; } = new();
-    [JsonPropertyName("consensus")] public ConsensusSummaryViewModel Consensus { get; init; } = new();
-    [JsonPropertyName("pools")] public PoolSummaryViewModel Pools { get; init; } = new();
-    [JsonPropertyName("caches")] public CacheSummaryViewModel Caches { get; init; } = new();
+    [JsonPropertyName("validationSuccessRate")] public double ValidationSuccessRate { get; init; }
+    [JsonPropertyName("docketsProposed")] public long DocketsProposed { get; init; }
+    [JsonPropertyName("queueDepth")] public int QueueDepth { get; init; }
+    [JsonPropertyName("cacheHitRatio")] public double CacheHitRatio { get; init; }
+    [JsonPropertyName("uptimeSeconds")] public long UptimeSeconds { get; init; }
 }
 
+/// <summary>
+/// Summary of validation activity metrics.
+/// </summary>
 public record ValidationSummaryViewModel
 {
     [JsonPropertyName("totalValidated")] public long TotalValidated { get; init; }
-    [JsonPropertyName("totalSuccessful")] public long TotalSuccessful { get; init; }
     [JsonPropertyName("totalFailed")] public long TotalFailed { get; init; }
-    [JsonPropertyName("successRate")] public double SuccessRate { get; init; }
-    [JsonPropertyName("averageValidationTimeMs")] public double AverageValidationTimeMs { get; init; }
-    [JsonPropertyName("inProgress")] public int InProgress { get; init; }
-    [JsonPropertyName("errorsByCategory")] public Dictionary<string, long> ErrorsByCategory { get; init; } = new();
+    [JsonPropertyName("averageLatencyMs")] public double AverageLatencyMs { get; init; }
+    [JsonPropertyName("peakLatencyMs")] public double PeakLatencyMs { get; init; }
+    [JsonPropertyName("validationsPerMinute")] public double ValidationsPerMinute { get; init; }
 }
 
+/// <summary>
+/// Summary of consensus round metrics.
+/// </summary>
 public record ConsensusSummaryViewModel
 {
+    [JsonPropertyName("roundsCompleted")] public long RoundsCompleted { get; init; }
+    [JsonPropertyName("roundsFailed")] public long RoundsFailed { get; init; }
+    [JsonPropertyName("averageRoundTimeMs")] public double AverageRoundTimeMs { get; init; }
     [JsonPropertyName("docketsProposed")] public long DocketsProposed { get; init; }
-    [JsonPropertyName("docketsDistributed")] public long DocketsDistributed { get; init; }
-    [JsonPropertyName("registerSubmissions")] public long RegisterSubmissions { get; init; }
-    [JsonPropertyName("failedSubmissions")] public long FailedSubmissions { get; init; }
-    [JsonPropertyName("consensusFailures")] public long ConsensusFailures { get; init; }
-    [JsonPropertyName("successfulRecoveries")] public long SuccessfulRecoveries { get; init; }
-    [JsonPropertyName("docketsAbandoned")] public long DocketsAbandoned { get; init; }
-    [JsonPropertyName("pendingDockets")] public int PendingDockets { get; init; }
+    [JsonPropertyName("docketsAccepted")] public long DocketsAccepted { get; init; }
 }
 
+/// <summary>
+/// Summary of transaction pool metrics.
+/// </summary>
 public record PoolSummaryViewModel
 {
-    [JsonPropertyName("queueSizes")] public Dictionary<string, int> QueueSizes { get; init; } = new();
-    [JsonPropertyName("oldestTransaction")] public DateTimeOffset? OldestTransaction { get; init; }
-    [JsonPropertyName("newestTransaction")] public DateTimeOffset? NewestTransaction { get; init; }
-    [JsonPropertyName("totalEnqueued")] public long TotalEnqueued { get; init; }
-    [JsonPropertyName("totalDequeued")] public long TotalDequeued { get; init; }
-    [JsonPropertyName("totalExpired")] public long TotalExpired { get; init; }
+    [JsonPropertyName("activePoolCount")] public int ActivePoolCount { get; init; }
+    [JsonPropertyName("totalPoolTransactions")] public long TotalPoolTransactions { get; init; }
+    [JsonPropertyName("averagePoolSize")] public double AveragePoolSize { get; init; }
+    [JsonPropertyName("peakPoolSize")] public int PeakPoolSize { get; init; }
 }
 
+/// <summary>
+/// Summary of cache performance metrics.
+/// </summary>
 public record CacheSummaryViewModel
 {
-    [JsonPropertyName("blueprintCacheHits")] public long BlueprintCacheHits { get; init; }
-    [JsonPropertyName("blueprintCacheMisses")] public long BlueprintCacheMisses { get; init; }
+    [JsonPropertyName("totalHits")] public long TotalHits { get; init; }
+    [JsonPropertyName("totalMisses")] public long TotalMisses { get; init; }
     [JsonPropertyName("hitRatio")] public double HitRatio { get; init; }
-    [JsonPropertyName("localEntryCount")] public int LocalEntryCount { get; init; }
-    [JsonPropertyName("distributedEntryCount")] public int DistributedEntryCount { get; init; }
+    [JsonPropertyName("evictions")] public long Evictions { get; init; }
+    [JsonPropertyName("currentSize")] public long CurrentSize { get; init; }
 }

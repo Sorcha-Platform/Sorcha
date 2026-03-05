@@ -40,4 +40,82 @@ public interface IValidatorServiceClient
     /// </summary>
     [Post("/api/validator/registers/{registerId}/integrity-check")]
     Task<IntegrityCheckResult> IntegrityCheckAsync(string registerId, [Header("Authorization")] string authorization);
+
+    // --- Metrics ---
+
+    /// <summary>
+    /// Gets aggregated validator metrics.
+    /// </summary>
+    [Get("/api/validator/metrics")]
+    Task<HttpResponseMessage> GetAggregatedMetricsAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets validation-specific metrics.
+    /// </summary>
+    [Get("/api/validator/metrics/validation")]
+    Task<HttpResponseMessage> GetValidationMetricsAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets consensus metrics.
+    /// </summary>
+    [Get("/api/validator/metrics/consensus")]
+    Task<HttpResponseMessage> GetConsensusMetricsAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets pool metrics.
+    /// </summary>
+    [Get("/api/validator/metrics/pools")]
+    Task<HttpResponseMessage> GetPoolMetricsAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets cache metrics.
+    /// </summary>
+    [Get("/api/validator/metrics/caches")]
+    Task<HttpResponseMessage> GetCacheMetricsAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets configuration metrics.
+    /// </summary>
+    [Get("/api/validator/metrics/config")]
+    Task<HttpResponseMessage> GetConfigMetricsAsync([Header("Authorization")] string authorization);
+
+    // --- Consent ---
+
+    /// <summary>
+    /// Gets pending validator registrations for a register.
+    /// </summary>
+    [Get("/api/validators/{registerId}/pending")]
+    Task<HttpResponseMessage> GetPendingValidatorsAsync(string registerId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Approves a pending validator registration.
+    /// </summary>
+    [Post("/api/validators/{registerId}/{validatorId}/approve")]
+    Task<HttpResponseMessage> ApproveValidatorAsync(string registerId, string validatorId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Rejects a pending validator registration.
+    /// </summary>
+    [Post("/api/validators/{registerId}/{validatorId}/reject")]
+    Task<HttpResponseMessage> RejectValidatorAsync(string registerId, string validatorId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Refreshes the validator list for a register.
+    /// </summary>
+    [Post("/api/validators/{registerId}/refresh")]
+    Task<HttpResponseMessage> RefreshValidatorsAsync(string registerId, [Header("Authorization")] string authorization);
+
+    // --- Threshold ---
+
+    /// <summary>
+    /// Gets the threshold signing status.
+    /// </summary>
+    [Get("/api/v1/validators/threshold/status")]
+    Task<HttpResponseMessage> GetThresholdStatusAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Sets up threshold signing for a register.
+    /// </summary>
+    [Post("/api/v1/validators/threshold/setup")]
+    Task<HttpResponseMessage> SetupThresholdAsync([Body] object request, [Header("Authorization")] string authorization);
 }

@@ -32,6 +32,8 @@ public class RegisterCommand : Command
         Subcommands.Add(new RegisterDeleteCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterUpdateCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterStatsCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterPolicyCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterSystemCommand(clientFactory, authService, configService));
     }
 }
 
@@ -818,5 +820,636 @@ public class RegisterStatsCommand : Command
                 return ExitCodes.GeneralError;
             }
         });
+    }
+}
+
+/// <summary>
+/// Register policy management commands.
+/// </summary>
+public class RegisterPolicyCommand : Command
+{
+    public RegisterPolicyCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("policy", "Manage register policies")
+    {
+        Subcommands.Add(new RegisterPolicyGetCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterPolicyHistoryCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterPolicyUpdateCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Gets the current register policy.
+/// </summary>
+public class RegisterPolicyGetCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+
+    public RegisterPolicyGetCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("get", "Get current register policy")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        Options.Add(_registerIdOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var response = await client.GetPolicyAsync(registerId, $"Bearer {token}");
+                var content = await response.Content.ReadAsStringAsync(ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ConsoleHelper.WriteError($"API error ({response.StatusCode}): {content}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(content);
+                    return ExitCodes.Success;
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+
+                ConsoleHelper.WriteSuccess("Register policy:");
+                Console.WriteLine();
+                Console.WriteLine($"  Register ID:        {RegisterJsonHelper.GetString(root, "registerId")}");
+                Console.WriteLine($"  Min Validators:     {RegisterJsonHelper.GetString(root, "minValidators")}");
+                Console.WriteLine($"  Max Validators:     {RegisterJsonHelper.GetString(root, "maxValidators")}");
+                Console.WriteLine($"  Signature Threshold:{RegisterJsonHelper.GetString(root, "signatureThreshold")}");
+                Console.WriteLine($"  Registration Mode:  {RegisterJsonHelper.GetString(root, "registrationMode")}");
+                Console.WriteLine($"  Transition Mode:    {RegisterJsonHelper.GetString(root, "transitionMode")}");
+                Console.WriteLine($"  Version:            {RegisterJsonHelper.GetString(root, "version")}");
+                Console.WriteLine($"  Updated At:         {RegisterJsonHelper.GetString(root, "updatedAt")}");
+                Console.WriteLine($"  Updated By:         {RegisterJsonHelper.GetString(root, "updatedBy")}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Register '{registerId}' not found or has no policy.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get register policy: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Gets the register policy version history.
+/// </summary>
+public class RegisterPolicyHistoryCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<int?> _pageOption;
+    private readonly Option<int?> _pageSizeOption;
+
+    public RegisterPolicyHistoryCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("history", "Get register policy version history")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _pageOption = new Option<int?>("--page")
+        {
+            Description = "Page number (default: 1)"
+        };
+
+        _pageSizeOption = new Option<int?>("--page-size")
+        {
+            Description = "Page size (default: 20)"
+        };
+
+        Options.Add(_registerIdOption);
+        Options.Add(_pageOption);
+        Options.Add(_pageSizeOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var page = parseResult.GetValue(_pageOption);
+            var pageSize = parseResult.GetValue(_pageSizeOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var response = await client.GetPolicyHistoryAsync(registerId, page, pageSize, $"Bearer {token}");
+                var content = await response.Content.ReadAsStringAsync(ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ConsoleHelper.WriteError($"API error ({response.StatusCode}): {content}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(content);
+                    return ExitCodes.Success;
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+
+                ConsoleHelper.WriteSuccess($"Policy history for register '{registerId}':");
+                Console.WriteLine();
+
+                if (root.TryGetProperty("versions", out var versions) && versions.GetArrayLength() > 0)
+                {
+                    Console.WriteLine($"{"Version",-10} {"Updated By",-30} {"Updated At"}");
+                    Console.WriteLine(new string('-', 70));
+
+                    foreach (var version in versions.EnumerateArray())
+                    {
+                        Console.WriteLine($"{RegisterJsonHelper.GetString(version, "version"),-10} {RegisterJsonHelper.GetString(version, "updatedBy"),-30} {RegisterJsonHelper.GetString(version, "updatedAt")}");
+                    }
+
+                    if (root.TryGetProperty("totalCount", out var totalCount))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine($"  Total: {totalCount}");
+                    }
+                }
+                else
+                {
+                    ConsoleHelper.WriteInfo("No policy history found.");
+                }
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get policy history: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Proposes a policy update for a register.
+/// </summary>
+public class RegisterPolicyUpdateCommand : Command
+{
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<int?> _minValidatorsOption;
+    private readonly Option<int?> _maxValidatorsOption;
+    private readonly Option<int?> _signatureThresholdOption;
+    private readonly Option<string?> _registrationModeOption;
+    private readonly Option<bool> _confirmOption;
+
+    public RegisterPolicyUpdateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("update", "Propose a register policy update")
+    {
+        _registerIdOption = new Option<string>("--register-id", "-r")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _minValidatorsOption = new Option<int?>("--min-validators")
+        {
+            Description = "Minimum number of validators"
+        };
+
+        _maxValidatorsOption = new Option<int?>("--max-validators")
+        {
+            Description = "Maximum number of validators"
+        };
+
+        _signatureThresholdOption = new Option<int?>("--signature-threshold")
+        {
+            Description = "Signature threshold for consensus"
+        };
+
+        _registrationModeOption = new Option<string?>("--registration-mode")
+        {
+            Description = "Registration mode (open or consent)"
+        };
+
+        _confirmOption = new Option<bool>("--yes", "-y")
+        {
+            Description = "Skip confirmation prompt"
+        };
+
+        Options.Add(_registerIdOption);
+        Options.Add(_minValidatorsOption);
+        Options.Add(_maxValidatorsOption);
+        Options.Add(_signatureThresholdOption);
+        Options.Add(_registrationModeOption);
+        Options.Add(_confirmOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var minValidators = parseResult.GetValue(_minValidatorsOption);
+            var maxValidators = parseResult.GetValue(_maxValidatorsOption);
+            var signatureThreshold = parseResult.GetValue(_signatureThresholdOption);
+            var registrationMode = parseResult.GetValue(_registrationModeOption);
+            var confirm = parseResult.GetValue(_confirmOption);
+
+            if (minValidators == null && maxValidators == null && signatureThreshold == null && registrationMode == null)
+            {
+                ConsoleHelper.WriteError("At least one policy field must be specified (--min-validators, --max-validators, --signature-threshold, --registration-mode).");
+                return ExitCodes.ValidationError;
+            }
+
+            try
+            {
+                if (!confirm)
+                {
+                    ConsoleHelper.WriteWarning("You are about to propose a policy update:");
+                    if (minValidators.HasValue) Console.WriteLine($"  Min Validators:     {minValidators}");
+                    if (maxValidators.HasValue) Console.WriteLine($"  Max Validators:     {maxValidators}");
+                    if (signatureThreshold.HasValue) Console.WriteLine($"  Signature Threshold:{signatureThreshold}");
+                    if (registrationMode != null) Console.WriteLine($"  Registration Mode:  {registrationMode}");
+
+                    if (!ConsoleHelper.Confirm("Propose policy update?", defaultYes: false))
+                    {
+                        ConsoleHelper.WriteInfo("Policy update cancelled.");
+                        return ExitCodes.Success;
+                    }
+                }
+
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+
+                var request = new PolicyUpdateRequest
+                {
+                    MinValidators = minValidators,
+                    MaxValidators = maxValidators,
+                    SignatureThreshold = signatureThreshold,
+                    RegistrationMode = registrationMode
+                };
+
+                var response = await client.ProposePolicyUpdateAsync(registerId, request, $"Bearer {token}");
+                var content = await response.Content.ReadAsStringAsync(ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ConsoleHelper.WriteError($"API error ({response.StatusCode}): {content}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(content);
+                    return ExitCodes.Success;
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+
+                ConsoleHelper.WriteSuccess("Policy update proposed!");
+                Console.WriteLine();
+                Console.WriteLine($"  Proposal ID:       {RegisterJsonHelper.GetString(root, "proposalId")}");
+                Console.WriteLine($"  Proposed Version:  {RegisterJsonHelper.GetString(root, "proposedVersion")}");
+                Console.WriteLine($"  Status:            {RegisterJsonHelper.GetString(root, "status")}");
+                Console.WriteLine($"  Required Votes:    {RegisterJsonHelper.GetString(root, "requiredVotes")}");
+                Console.WriteLine($"  Current Votes:     {RegisterJsonHelper.GetString(root, "currentVotes")}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("You do not have permission to update this register's policy.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to propose policy update: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// System register management commands.
+/// </summary>
+public class RegisterSystemCommand : Command
+{
+    public RegisterSystemCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("system", "Manage the system register")
+    {
+        Subcommands.Add(new RegisterSystemStatusCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterSystemBlueprintsCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Gets the system register status.
+/// </summary>
+public class RegisterSystemStatusCommand : Command
+{
+    public RegisterSystemStatusCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("status", "Get system register status")
+    {
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var response = await client.GetSystemRegisterStatusAsync($"Bearer {token}");
+                var content = await response.Content.ReadAsStringAsync(ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ConsoleHelper.WriteError($"API error ({response.StatusCode}): {content}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(content);
+                    return ExitCodes.Success;
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+
+                ConsoleHelper.WriteSuccess("System register status:");
+                Console.WriteLine();
+
+                foreach (var prop in root.EnumerateObject())
+                {
+                    Console.WriteLine($"  {prop.Name,-25} {prop.Value}");
+                }
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get system register status: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Gets blueprints published to the system register.
+/// </summary>
+public class RegisterSystemBlueprintsCommand : Command
+{
+    private readonly Option<int?> _pageOption;
+    private readonly Option<int?> _pageSizeOption;
+
+    public RegisterSystemBlueprintsCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("blueprints", "List blueprints on the system register")
+    {
+        _pageOption = new Option<int?>("--page")
+        {
+            Description = "Page number (default: 1)"
+        };
+
+        _pageSizeOption = new Option<int?>("--page-size")
+        {
+            Description = "Page size (default: 20)"
+        };
+
+        Options.Add(_pageOption);
+        Options.Add(_pageSizeOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var page = parseResult.GetValue(_pageOption);
+            var pageSize = parseResult.GetValue(_pageSizeOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+                var response = await client.GetSystemRegisterBlueprintsAsync(page, pageSize, $"Bearer {token}");
+                var content = await response.Content.ReadAsStringAsync(ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    ConsoleHelper.WriteError($"API error ({response.StatusCode}): {content}");
+                    return ExitCodes.GeneralError;
+                }
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(content);
+                    return ExitCodes.Success;
+                }
+
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+
+                ConsoleHelper.WriteSuccess("System register blueprints:");
+                Console.WriteLine();
+
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    if (root.GetArrayLength() == 0)
+                    {
+                        ConsoleHelper.WriteInfo("No blueprints found.");
+                        return ExitCodes.Success;
+                    }
+
+                    Console.WriteLine($"{"ID",-38} {"Title",-30} {"Status",-12} {"Published"}");
+                    Console.WriteLine(new string('-', 90));
+
+                    foreach (var item in root.EnumerateArray())
+                    {
+                        Console.WriteLine($"{RegisterJsonHelper.GetString(item, "id"),-38} {RegisterJsonHelper.GetString(item, "title"),-30} {RegisterJsonHelper.GetString(item, "status"),-12} {RegisterJsonHelper.GetString(item, "publishedAt")}");
+                    }
+                }
+                else if (root.TryGetProperty("items", out var items))
+                {
+                    if (items.GetArrayLength() == 0)
+                    {
+                        ConsoleHelper.WriteInfo("No blueprints found.");
+                        return ExitCodes.Success;
+                    }
+
+                    Console.WriteLine($"{"ID",-38} {"Title",-30} {"Status",-12} {"Published"}");
+                    Console.WriteLine(new string('-', 90));
+
+                    foreach (var item in items.EnumerateArray())
+                    {
+                        Console.WriteLine($"{RegisterJsonHelper.GetString(item, "id"),-38} {RegisterJsonHelper.GetString(item, "title"),-30} {RegisterJsonHelper.GetString(item, "status"),-12} {RegisterJsonHelper.GetString(item, "publishedAt")}");
+                    }
+
+                    if (root.TryGetProperty("totalCount", out var totalCount))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine($"  Total: {totalCount}");
+                    }
+                }
+                else
+                {
+                    // Fallback: display raw properties
+                    foreach (var prop in root.EnumerateObject())
+                    {
+                        Console.WriteLine($"  {prop.Name,-25} {prop.Value}");
+                    }
+                }
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get system register blueprints: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Helper to safely extract a string from a JsonElement (file-local).
+/// </summary>
+file static class RegisterJsonHelper
+{
+    public static string GetString(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var value))
+        {
+            return value.ToString();
+        }
+        return "-";
     }
 }

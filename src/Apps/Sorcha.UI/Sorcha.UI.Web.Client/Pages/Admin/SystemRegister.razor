@@ -1,31 +1,30 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
-@page "/admin/principals"
+@page "/admin/system-register"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize(Roles = "Administrator")]
 @using Microsoft.AspNetCore.Authorization
-@using Sorcha.UI.Core.Components.Admin.ServicePrincipals
+@using Sorcha.UI.Core.Components.Admin.SystemRegister
 
-<PageTitle>Service Principals - Sorcha Platform</PageTitle>
+<PageTitle>System Register - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
     <MudText Typo="Typo.h4" Class="mb-2">
-        <MudIcon Icon="@Icons.Material.Filled.VpnKey" Class="mr-2" />
-        Service Principals
+        <MudIcon Icon="@Icons.Material.Filled.Storage" Class="mr-2" />
+        System Register
     </MudText>
     <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
-        Manage service-to-service authentication credentials
+        Platform system register status and blueprint catalog
     </MudText>
-
-    <ServicePrincipalCrud />
+    <SystemRegisterDashboard />
 </MudContainer>
 
 @code {
     private readonly List<BreadcrumbItem> _breadcrumbs =
     [
         new("Admin", href: "/admin/health"),
-        new("Service Principals", href: null, disabled: true)
+        new("System Register", href: null, disabled: true)
     ];
 }

@@ -1,0 +1,160 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+
+<MudDialog>
+    <DialogContent>
+        @if (Blueprint is not null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-2">
+                        @Blueprint.Description
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Blueprint ID</MudText>
+                        <MudText Typo="Typo.body2">@Blueprint.BlueprintId</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Published By</MudText>
+                        <MudText Typo="Typo.body2">@Blueprint.PublishedBy</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Published At</MudText>
+                        <MudText Typo="Typo.body2">@Blueprint.PublishedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Color="@(Blueprint.IsActive ? Color.Success : Color.Default)">
+                            @(Blueprint.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                </MudItem>
+
+                <MudItem xs="6" sm="3">
+                    <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@Blueprint.ParticipantCount</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Participants</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="6" sm="3">
+                    <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@Blueprint.ActionCount</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Actions</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="6" sm="3">
+                    <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@Blueprint.Version</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Current Version</MudText>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="6" sm="3">
+                    <MudStack Spacing="0" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@Blueprint.AvailableVersions.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Versions</MudText>
+                    </MudStack>
+                </MudItem>
+
+                @if (Blueprint.AvailableVersions.Count > 1)
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSelect T="long" Label="View Version" Value="_selectedVersion" ValueChanged="OnVersionChanged"
+                                   Variant="Variant.Outlined" Dense="true">
+                            @foreach (var v in Blueprint.AvailableVersions.OrderByDescending(x => x))
+                            {
+                                <MudSelectItem T="long" Value="v">
+                                    Version @v @(v == Blueprint.Version ? "(current)" : "")
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @if (_loadingVersion)
+                    {
+                        <MudItem xs="12">
+                            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                        </MudItem>
+                    }
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Color="Color.Default">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public BlueprintDetailViewModel? Blueprint { get; set; }
+
+    [Parameter]
+    public ISystemRegisterService? RegisterService { get; set; }
+
+    private long _selectedVersion;
+    private bool _loadingVersion;
+
+    protected override void OnParametersSet()
+    {
+        if (Blueprint is not null)
+        {
+            _selectedVersion = Blueprint.Version;
+        }
+    }
+
+    private async Task OnVersionChanged(long version)
+    {
+        if (version == _selectedVersion || RegisterService is null || Blueprint is null) return;
+
+        _selectedVersion = version;
+        _loadingVersion = true;
+
+        try
+        {
+            var versionDetail = await RegisterService.GetBlueprintVersionAsync(
+                Blueprint.BlueprintId, version);
+
+            if (versionDetail is not null)
+            {
+                Blueprint = versionDetail;
+            }
+        }
+        finally
+        {
+            _loadingVersion = false;
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

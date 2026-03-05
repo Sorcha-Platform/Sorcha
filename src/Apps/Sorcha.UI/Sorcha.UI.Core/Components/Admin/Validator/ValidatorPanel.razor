@@ -6,180 +6,201 @@
 @inject IValidatorAdminService ValidatorService
 @implements IDisposable
 
-@if (!_status.IsLoaded && !_isLoading && !_hasEverLoaded)
-{
-    <ServiceUnavailable ServiceName="Validator Service" OnRetry="LoadStatusAsync" />
-}
-else
-{
-    <MudStack Spacing="4">
-        @* Overall Health Summary Card *@
-        <MudCard Elevation="2">
-            <MudCardContent Class="d-flex align-center justify-space-between pa-4">
-                <div class="d-flex align-center gap-3">
-                    <MudIcon Icon="@GetHealthIcon()" Color="@GetHealthColor()" Size="Size.Large" />
-                    <div>
-                        <MudText Typo="Typo.h6">Validator Health</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">
-                            @GetHealthDescription()
-                        </MudText>
-                    </div>
-                </div>
-                <div class="d-flex align-center gap-3">
-                    @* Polling state indicator *@
-                    <MudChip T="string" Size="Size.Small"
-                             Color="@(_isPollingActive ? Color.Success : Color.Default)"
-                             Icon="@(_isPollingActive ? Icons.Material.Filled.SyncAlt : Icons.Material.Filled.SyncDisabled)">
-                        @(_isPollingActive ? "Polling Active" : "Polling Paused")
-                    </MudChip>
-                    <MudToggleIconButton Toggled="@_isPollingActive"
-                                         ToggledChanged="TogglePolling"
-                                         Icon="@Icons.Material.Filled.PlayArrow"
-                                         ToggledIcon="@Icons.Material.Filled.Pause"
-                                         Size="Size.Small"
-                                         Title="@(_isPollingActive ? "Pause polling" : "Resume polling")" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
-                                   Size="Size.Small"
-                                   OnClick="LoadStatusAsync"
-                                   Disabled="_isLoading"
-                                   Title="Refresh now" />
-                </div>
-            </MudCardContent>
-        </MudCard>
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mt-2">
+    <MudTabPanel Text="Mempool" Icon="@Icons.Material.Filled.Storage">
+        @* === Mempool Tab (existing content) === *@
+        @if (!_status.IsLoaded && !_isLoading && !_hasEverLoaded)
+        {
+            <ServiceUnavailable ServiceName="Validator Service" OnRetry="LoadStatusAsync" />
+        }
+        else
+        {
+            <MudStack Spacing="4" Class="pa-4">
+                @* Overall Health Summary Card *@
+                <MudCard Elevation="2">
+                    <MudCardContent Class="d-flex align-center justify-space-between pa-4">
+                        <div class="d-flex align-center gap-3">
+                            <MudIcon Icon="@GetHealthIcon()" Color="@GetHealthColor()" Size="Size.Large" />
+                            <div>
+                                <MudText Typo="Typo.h6">Validator Health</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    @GetHealthDescription()
+                                </MudText>
+                            </div>
+                        </div>
+                        <div class="d-flex align-center gap-3">
+                            @* Polling state indicator *@
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@(_isPollingActive ? Color.Success : Color.Default)"
+                                     Icon="@(_isPollingActive ? Icons.Material.Filled.SyncAlt : Icons.Material.Filled.SyncDisabled)">
+                                @(_isPollingActive ? "Polling Active" : "Polling Paused")
+                            </MudChip>
+                            <MudToggleIconButton Toggled="@_isPollingActive"
+                                                 ToggledChanged="TogglePolling"
+                                                 Icon="@Icons.Material.Filled.PlayArrow"
+                                                 ToggledIcon="@Icons.Material.Filled.Pause"
+                                                 Size="Size.Small"
+                                                 title="@(_isPollingActive ? "Pause polling" : "Resume polling")" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                           Size="Size.Small"
+                                           OnClick="LoadStatusAsync"
+                                           Disabled="_isLoading"
+                                           title="Refresh now" />
+                        </div>
+                    </MudCardContent>
+                </MudCard>
 
-        @* Summary Stats Cards *@
-        <MudGrid>
-            <MudItem xs="12" sm="6" md="3">
-                <MudCard>
-                    <MudCardContent Class="d-flex flex-column align-center pa-4">
-                        @if (_isLoading && !_hasEverLoaded)
-                        {
-                            <MudSkeleton Width="60px" Height="32px" />
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.h4">@_status.TotalPendingTransactions</MudText>
-                        }
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Pending Transactions</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="3">
-                <MudCard>
-                    <MudCardContent Class="d-flex flex-column align-center pa-4">
-                        @if (_isLoading && !_hasEverLoaded)
-                        {
-                            <MudSkeleton Width="60px" Height="32px" />
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.h4">@_status.QueueDepth</MudText>
-                        }
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Queue Depth</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="3">
-                <MudCard>
-                    <MudCardContent Class="d-flex flex-column align-center pa-4">
-                        @if (_isLoading && !_hasEverLoaded)
-                        {
-                            <MudSkeleton Width="60px" Height="32px" />
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.h4">@_status.RegisterMempoolStats.Count</MudText>
-                        }
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Active Registers</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="3">
-                <MudCard>
-                    <MudCardContent Class="d-flex flex-column align-center pa-4">
-                        @if (_isLoading && !_hasEverLoaded)
-                        {
-                            <MudSkeleton Width="60px" Height="32px" />
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.body2">@FormatLastProcessed()</MudText>
-                        }
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Last Processed</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Tertiary">
-                            Updated @_status.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
-                        </MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
+                @* Summary Stats Cards *@
+                <MudGrid>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudCard>
+                            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                                @if (_isLoading && !_hasEverLoaded)
+                                {
+                                    <MudSkeleton Width="60px" Height="32px" />
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.h4">@_status.TotalPendingTransactions</MudText>
+                                }
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Pending Transactions</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudCard>
+                            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                                @if (_isLoading && !_hasEverLoaded)
+                                {
+                                    <MudSkeleton Width="60px" Height="32px" />
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.h4">@_status.QueueDepth</MudText>
+                                }
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Queue Depth</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudCard>
+                            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                                @if (_isLoading && !_hasEverLoaded)
+                                {
+                                    <MudSkeleton Width="60px" Height="32px" />
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.h4">@_status.RegisterMempoolStats.Count</MudText>
+                                }
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Active Registers</MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudCard>
+                            <MudCardContent Class="d-flex flex-column align-center pa-4">
+                                @if (_isLoading && !_hasEverLoaded)
+                                {
+                                    <MudSkeleton Width="60px" Height="32px" />
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2">@FormatLastProcessed()</MudText>
+                                }
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Last Processed</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                    Updated @_status.LastUpdated.ToLocalTime().ToString("HH:mm:ss")
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudItem>
+                </MudGrid>
 
-        @* Throughput visualization *@
-        <MudCard>
-            <MudCardContent>
-                <div class="d-flex align-center justify-space-between mb-2">
-                    <MudText Typo="Typo.subtitle1">Throughput</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        @_status.DocketsPerMinute.ToString("F1") dockets/min
-                    </MudText>
-                </div>
-                <MudProgressLinear Color="@GetThroughputColor()" Value="@GetThroughputPercentage()" Class="mb-2" />
-                @if (IsIdle())
+                @* Throughput visualization *@
+                <MudCard>
+                    <MudCardContent>
+                        <div class="d-flex align-center justify-space-between mb-2">
+                            <MudText Typo="Typo.subtitle1">Throughput</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @_status.DocketsPerMinute.ToString("F1") dockets/min
+                            </MudText>
+                        </div>
+                        <MudProgressLinear Color="@GetThroughputColor()" Value="@GetThroughputPercentage()" Class="mb-2" />
+                        @if (IsIdle())
+                        {
+                            <MudAlert Severity="Severity.Info" Dense="true" NoIcon="false" Class="mt-2">
+                                <MudText Typo="Typo.body2">
+                                    Idle — @FormatTimeSinceLastActivity() since last activity
+                                </MudText>
+                            </MudAlert>
+                        }
+                    </MudCardContent>
+                </MudCard>
+
+                @* Per-Register Breakdown Table *@
+                @if (_status.RegisterMempoolStats.Count > 0)
                 {
-                    <MudAlert Severity="Severity.Info" Dense="true" NoIcon="false" Class="mt-2">
-                        <MudText Typo="Typo.body2">
-                            Idle — @FormatTimeSinceLastActivity() since last activity
-                        </MudText>
-                    </MudAlert>
+                    <MudText Typo="Typo.h6" Class="mt-2">Monitored Registers</MudText>
+                    <MudTable Items="_status.RegisterMempoolStats" Dense="true" Hover="true" Striped="true"
+                              Elevation="2" Loading="_isLoading && !_hasEverLoaded">
+                        <HeaderContent>
+                            <MudTh>Register Name</MudTh>
+                            <MudTh>Chain Height</MudTh>
+                            <MudTh>Last Validated Block</MudTh>
+                            <MudTh>Processing Status</MudTh>
+                            <MudTh>Pending</MudTh>
+                            <MudTh>Last Activity</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Register Name">
+                                <MudText Typo="Typo.body2">@(string.IsNullOrEmpty(context.RegisterName) ? "—" : context.RegisterName)</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <TruncatedId Value="@context.RegisterId" />
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Chain Height">@context.ChainHeight</MudTd>
+                            <MudTd DataLabel="Last Validated Block">@context.LastValidatedBlock</MudTd>
+                            <MudTd DataLabel="Processing Status">
+                                <MudChip T="string" Size="Size.Small" Color="@GetProcessingStatusColor(context.ProcessingStatus)">
+                                    @context.ProcessingStatus
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Pending">
+                                <MudChip T="string" Size="Size.Small" Color="@GetPendingColor(context.PendingCount)">
+                                    @context.PendingCount
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Last Activity">@FormatActivity(context.LastActivity)</MudTd>
+                        </RowTemplate>
+                    </MudTable>
                 }
-            </MudCardContent>
-        </MudCard>
+                else if (!_isLoading)
+                {
+                    <EmptyState Icon="@Icons.Material.Filled.CheckCircle"
+                                Title="Mempool is empty"
+                                Description="No pending transactions across any registers" />
+                }
+            </MudStack>
+        }
+    </MudTabPanel>
 
-        @* Per-Register Breakdown Table *@
-        @if (_status.RegisterMempoolStats.Count > 0)
-        {
-            <MudText Typo="Typo.h6" Class="mt-2">Monitored Registers</MudText>
-            <MudTable Items="_status.RegisterMempoolStats" Dense="true" Hover="true" Striped="true"
-                      Elevation="2" Loading="_isLoading && !_hasEverLoaded">
-                <HeaderContent>
-                    <MudTh>Register Name</MudTh>
-                    <MudTh>Chain Height</MudTh>
-                    <MudTh>Last Validated Block</MudTh>
-                    <MudTh>Processing Status</MudTh>
-                    <MudTh>Pending</MudTh>
-                    <MudTh>Last Activity</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Register Name">
-                        <MudText Typo="Typo.body2">@(string.IsNullOrEmpty(context.RegisterName) ? "—" : context.RegisterName)</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            <TruncatedId Value="@context.RegisterId" />
-                        </MudText>
-                    </MudTd>
-                    <MudTd DataLabel="Chain Height">@context.ChainHeight</MudTd>
-                    <MudTd DataLabel="Last Validated Block">@context.LastValidatedBlock</MudTd>
-                    <MudTd DataLabel="Processing Status">
-                        <MudChip T="string" Size="Size.Small" Color="@GetProcessingStatusColor(context.ProcessingStatus)">
-                            @context.ProcessingStatus
-                        </MudChip>
-                    </MudTd>
-                    <MudTd DataLabel="Pending">
-                        <MudChip T="string" Size="Size.Small" Color="@GetPendingColor(context.PendingCount)">
-                            @context.PendingCount
-                        </MudChip>
-                    </MudTd>
-                    <MudTd DataLabel="Last Activity">@FormatActivity(context.LastActivity)</MudTd>
-                </RowTemplate>
-            </MudTable>
-        }
-        else if (!_isLoading)
-        {
-            <EmptyState Icon="@Icons.Material.Filled.CheckCircle"
-                        Title="Mempool is empty"
-                        Description="No pending transactions across any registers" />
-        }
-    </MudStack>
-}
+    <MudTabPanel Text="Consent Queue" Icon="@Icons.Material.Filled.HowToVote">
+        <ValidatorConsentPanel />
+    </MudTabPanel>
+
+    <MudTabPanel Text="Metrics" Icon="@Icons.Material.Filled.BarChart">
+        <ValidatorMetricsPanel />
+    </MudTabPanel>
+
+    <MudTabPanel Text="Threshold" Icon="@Icons.Material.Filled.Security">
+        <ValidatorThresholdPanel />
+    </MudTabPanel>
+
+    <MudTabPanel Text="Config" Icon="@Icons.Material.Filled.Settings">
+        <ValidatorConfigPanel />
+    </MudTabPanel>
+</MudTabs>
 
 @code {
     private ValidatorStatusViewModel _status = new();
