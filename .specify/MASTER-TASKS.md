@@ -306,8 +306,8 @@ Unified register policy model (RegisterPolicy) embedded in genesis control recor
 ## 049 — System Administration Tooling
 
 > **Priority:** P1 (Admin UX)
-> **Status:** 🚧 In Progress (Phases 1-9 complete, Phase 10 tests in progress)
-> **Branch:** `049-system-admin-tooling`
+> **Status:** ✅ Complete
+> **Branch:** `049-system-admin-tooling` (merged PR #11)
 > **Spec:** [specs/049-system-admin-tooling/](../specs/049-system-admin-tooling/)
 
 7 user stories: Service Principal CRUD (US1), Register Policy management (US2), Validator Consent Queue (US3), Validator Metrics Dashboard (US4), System Register visibility (US5), Threshold Signing & Config (US6), CLI Commands (US7). 29 new Blazor components, 17 new CLI subcommands. All projects build with 0 errors.
@@ -323,7 +323,7 @@ Unified register policy model (RegisterPolicy) embedded in genesis control recor
 | 7 | US5: System Register | T034-T036 | ✅ |
 | 8 | US6: Threshold & Config | T037-T039 | ✅ |
 | 9 | US7: CLI Commands | T040-T056 | ✅ |
-| 10 | Tests & Polish | T057-T072 | 🚧 |
+| 10 | Tests & Polish | T057-T072 | ✅ |
 
 ---
 
