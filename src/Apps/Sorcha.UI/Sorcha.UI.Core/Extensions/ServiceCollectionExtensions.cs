@@ -529,6 +529,24 @@ public static class ServiceCollectionExtensions
             return new AlertService(httpClient, logger);
         });
 
+        // Presentation Admin Service (050 - authenticated)
+        services.AddScoped<IPresentationAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<PresentationAdminService>>();
+            return new PresentationAdminService(httpClient, logger);
+        });
+
+        // Status List Service (050 - public endpoint, no auth needed)
+        services.AddScoped<IStatusListService>(sp =>
+        {
+            var httpClient = new HttpClient { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<StatusListService>>();
+            return new StatusListService(httpClient, logger);
+        });
+
         return services;
     }
 

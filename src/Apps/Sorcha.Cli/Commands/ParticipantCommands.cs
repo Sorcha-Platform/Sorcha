@@ -29,6 +29,10 @@ public class ParticipantCommand : Command
         Subcommands.Add(new ParticipantUpdateCommand(clientFactory, authService, configService));
         Subcommands.Add(new ParticipantSearchCommand(clientFactory, authService, configService));
         Subcommands.Add(new ParticipantWalletLinkCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ParticipantSuspendCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ParticipantReactivateCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ParticipantPublishCommand(clientFactory, authService, configService));
+        Subcommands.Add(new ParticipantUnpublishCommand(clientFactory, authService, configService));
     }
 }
 
@@ -649,6 +653,441 @@ public class ParticipantWalletLinkCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to initiate wallet link: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Suspends an active participant.
+/// </summary>
+public class ParticipantSuspendCommand : Command
+{
+    private readonly Option<string> _orgIdOption;
+    private readonly Option<string> _idOption;
+
+    public ParticipantSuspendCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("suspend", "Suspend an active participant")
+    {
+        _orgIdOption = new Option<string>("--org-id")
+        {
+            Description = "Organization ID",
+            Required = true
+        };
+
+        _idOption = new Option<string>("--id")
+        {
+            Description = "Participant ID",
+            Required = true
+        };
+
+        Options.Add(_orgIdOption);
+        Options.Add(_idOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdOption)!;
+            var id = parseResult.GetValue(_idOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
+                await client.SuspendParticipantAsync(orgId, id, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Suspended" }, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Participant '{id}' suspended successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Participant ID:  {id}");
+                Console.WriteLine($"  Status:          Suspended");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Participant '{id}' not found in organization '{orgId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to suspend participant: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Reactivates a suspended participant.
+/// </summary>
+public class ParticipantReactivateCommand : Command
+{
+    private readonly Option<string> _orgIdOption;
+    private readonly Option<string> _idOption;
+
+    public ParticipantReactivateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("reactivate", "Reactivate a suspended participant")
+    {
+        _orgIdOption = new Option<string>("--org-id")
+        {
+            Description = "Organization ID",
+            Required = true
+        };
+
+        _idOption = new Option<string>("--id")
+        {
+            Description = "Participant ID",
+            Required = true
+        };
+
+        Options.Add(_orgIdOption);
+        Options.Add(_idOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdOption)!;
+            var id = parseResult.GetValue(_idOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
+                await client.ReactivateParticipantAsync(orgId, id, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Active" }, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Participant '{id}' reactivated successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Participant ID:  {id}");
+                Console.WriteLine($"  Status:          Active");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Participant '{id}' not found in organization '{orgId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to reactivate participant: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Publishes a participant to a register.
+/// </summary>
+public class ParticipantPublishCommand : Command
+{
+    private readonly Option<string> _orgIdOption;
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _nameOption;
+    private readonly Option<string> _orgNameOption;
+    private readonly Option<string> _walletOption;
+    private readonly Option<string> _signerOption;
+
+    public ParticipantPublishCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("publish", "Publish a participant to a register")
+    {
+        _orgIdOption = new Option<string>("--org-id")
+        {
+            Description = "Organization ID",
+            Required = true
+        };
+
+        _registerIdOption = new Option<string>("--register-id")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _nameOption = new Option<string>("--name")
+        {
+            Description = "Participant name",
+            Required = true
+        };
+
+        _orgNameOption = new Option<string>("--org-name")
+        {
+            Description = "Organization name",
+            Required = true
+        };
+
+        _walletOption = new Option<string>("--wallet")
+        {
+            Description = "Wallet address",
+            Required = true
+        };
+
+        _signerOption = new Option<string>("--signer")
+        {
+            Description = "Signer wallet address",
+            Required = true
+        };
+
+        Options.Add(_orgIdOption);
+        Options.Add(_registerIdOption);
+        Options.Add(_nameOption);
+        Options.Add(_orgNameOption);
+        Options.Add(_walletOption);
+        Options.Add(_signerOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdOption)!;
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var name = parseResult.GetValue(_nameOption)!;
+            var orgName = parseResult.GetValue(_orgNameOption)!;
+            var wallet = parseResult.GetValue(_walletOption)!;
+            var signer = parseResult.GetValue(_signerOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
+
+                var request = new PublishParticipantRequest
+                {
+                    RegisterId = registerId,
+                    Name = name,
+                    OrganizationName = orgName,
+                    WalletAddresses = [wallet],
+                    SignerWalletAddress = signer
+                };
+
+                var result = await client.PublishParticipantAsync(orgId, request, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Participant published successfully!");
+                Console.WriteLine();
+                Console.WriteLine($"  Participant ID:  {result.ParticipantId}");
+                Console.WriteLine($"  Register ID:     {result.RegisterId}");
+                Console.WriteLine($"  Status:          {result.Status}");
+                Console.WriteLine($"  Transaction ID:  {result.TransactionId}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Organization '{orgId}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to publish participant: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Revokes a published participant record from a register.
+/// </summary>
+public class ParticipantUnpublishCommand : Command
+{
+    private readonly Option<string> _orgIdOption;
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _registerIdOption;
+    private readonly Option<string> _signerOption;
+
+    public ParticipantUnpublishCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("unpublish", "Revoke a published participant record")
+    {
+        _orgIdOption = new Option<string>("--org-id")
+        {
+            Description = "Organization ID",
+            Required = true
+        };
+
+        _idOption = new Option<string>("--id")
+        {
+            Description = "Participant ID",
+            Required = true
+        };
+
+        _registerIdOption = new Option<string>("--register-id")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _signerOption = new Option<string>("--signer")
+        {
+            Description = "Signer wallet address",
+            Required = true
+        };
+
+        Options.Add(_orgIdOption);
+        Options.Add(_idOption);
+        Options.Add(_registerIdOption);
+        Options.Add(_signerOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var orgId = parseResult.GetValue(_orgIdOption)!;
+            var id = parseResult.GetValue(_idOption)!;
+            var registerId = parseResult.GetValue(_registerIdOption)!;
+            var signer = parseResult.GetValue(_signerOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
+                var result = await client.UnpublishParticipantAsync(orgId, id, registerId, signer, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Participant '{id}' unpublished from register '{registerId}' successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Participant ID:  {result.ParticipantId}");
+                Console.WriteLine($"  Register ID:     {result.RegisterId}");
+                Console.WriteLine($"  Status:          {result.Status}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Participant '{id}' not found in organization '{orgId}'.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to unpublish participant: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

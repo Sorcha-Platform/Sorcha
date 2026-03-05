@@ -105,6 +105,45 @@ public class WalletLinkChallengeResponse
 }
 
 /// <summary>
+/// Request to publish a participant to a register.
+/// </summary>
+public class PublishParticipantRequest
+{
+    [JsonPropertyName("registerId")]
+    public string RegisterId { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("organizationName")]
+    public string OrganizationName { get; set; } = string.Empty;
+
+    [JsonPropertyName("walletAddresses")]
+    public List<string> WalletAddresses { get; set; } = new();
+
+    [JsonPropertyName("signerWalletAddress")]
+    public string SignerWalletAddress { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Result from publishing or unpublishing a participant.
+/// </summary>
+public class PublishParticipantResult
+{
+    [JsonPropertyName("participantId")]
+    public string ParticipantId { get; set; } = string.Empty;
+
+    [JsonPropertyName("registerId")]
+    public string RegisterId { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+
+    [JsonPropertyName("transactionId")]
+    public string? TransactionId { get; set; }
+}
+
+/// <summary>
 /// Request to initiate a wallet link.
 /// </summary>
 public class InitiateWalletLinkRequest

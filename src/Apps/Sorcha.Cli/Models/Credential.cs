@@ -147,6 +147,90 @@ public class VerifyCredentialResponse
 }
 
 /// <summary>
+/// Request body for credential suspend/reinstate operations.
+/// </summary>
+public class LifecycleCredentialRequest
+{
+    [JsonPropertyName("issuerWallet")]
+    public string IssuerWallet { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Request body for credential refresh operations.
+/// </summary>
+public class RefreshCredentialRequest
+{
+    [JsonPropertyName("issuerWallet")]
+    public string IssuerWallet { get; set; } = string.Empty;
+
+    [JsonPropertyName("newExpiryDuration")]
+    public string? NewExpiryDuration { get; set; }
+}
+
+/// <summary>
+/// Response from credential lifecycle operations (suspend/reinstate/revoke).
+/// </summary>
+public class CredentialLifecycleResponse
+{
+    [JsonPropertyName("credentialId")]
+    public string CredentialId { get; set; } = string.Empty;
+
+    [JsonPropertyName("newStatus")]
+    public string NewStatus { get; set; } = string.Empty;
+
+    [JsonPropertyName("performedBy")]
+    public string PerformedBy { get; set; } = string.Empty;
+
+    [JsonPropertyName("performedAt")]
+    public DateTimeOffset PerformedAt { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Response from credential refresh operations.
+/// </summary>
+public class RefreshCredentialResponse
+{
+    [JsonPropertyName("oldCredentialId")]
+    public string OldCredentialId { get; set; } = string.Empty;
+
+    [JsonPropertyName("newCredentialId")]
+    public string NewCredentialId { get; set; } = string.Empty;
+
+    [JsonPropertyName("newExpiresAt")]
+    public DateTimeOffset NewExpiresAt { get; set; }
+}
+
+/// <summary>
+/// W3C Bitstring Status List response.
+/// </summary>
+public class StatusListResponse
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("purpose")]
+    public string Purpose { get; set; } = string.Empty;
+
+    [JsonPropertyName("issuer")]
+    public string Issuer { get; set; } = string.Empty;
+
+    [JsonPropertyName("validFrom")]
+    public DateTimeOffset ValidFrom { get; set; }
+
+    [JsonPropertyName("encodedList")]
+    public string EncodedList { get; set; } = string.Empty;
+
+    [JsonPropertyName("@context")]
+    public string[] ContextUrls { get; set; } = [];
+}
+
+/// <summary>
 /// Credential status response.
 /// </summary>
 public class CredentialStatusResponse

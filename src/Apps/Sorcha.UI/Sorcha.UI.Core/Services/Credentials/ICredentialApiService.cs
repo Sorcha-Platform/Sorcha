@@ -57,4 +57,22 @@ public interface ICredentialApiService
     /// Denies a presentation request.
     /// </summary>
     Task<bool> DenyPresentationAsync(string requestId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Suspends an active credential.
+    /// </summary>
+    Task<CredentialLifecycleResult?> SuspendCredentialAsync(
+        string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reinstates a suspended credential.
+    /// </summary>
+    Task<CredentialLifecycleResult?> ReinstateCredentialAsync(
+        string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Refreshes an expired credential with a new expiry.
+    /// </summary>
+    Task<CredentialLifecycleResult?> RefreshCredentialAsync(
+        string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken ct = default);
 }

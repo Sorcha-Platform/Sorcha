@@ -19,9 +19,9 @@
 
 **Purpose**: Create view models and request/response types shared across user stories
 
-- [ ] T001 [P] Create CredentialLifecycleRequest and CredentialLifecycleResult models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/CredentialLifecycleModels.cs`
-- [ ] T002 [P] Create StatusListViewModel in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/StatusListViewModel.cs`
-- [ ] T003 [P] Create CreatePresentationRequestViewModel and PresentationRequestResultViewModel in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/PresentationAdminModels.cs`
+- [X] T001 [P] Create CredentialLifecycleRequest and CredentialLifecycleResult models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/CredentialLifecycleModels.cs`
+- [X] T002 [P] Create StatusListViewModel in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/StatusListViewModel.cs`
+- [X] T003 [P] Create CreatePresentationRequestViewModel and PresentationRequestResultViewModel in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Credentials/PresentationAdminModels.cs`
 
 ---
 
@@ -31,14 +31,14 @@
 
 ### CLI Refit Interface Extensions
 
-- [ ] T004 [P] Add SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync, GetStatusListAsync Refit methods to `src/Apps/Sorcha.Cli/Services/ICredentialServiceClient.cs`
-- [ ] T005 [P] Add SuspendParticipantAsync, ReactivateParticipantAsync, PublishParticipantAsync, UnpublishParticipantAsync Refit methods to `src/Apps/Sorcha.Cli/Services/IParticipantServiceClient.cs`
+- [X] T004 [P] Add SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync, GetStatusListAsync Refit methods to `src/Apps/Sorcha.Cli/Services/ICredentialServiceClient.cs`
+- [X] T005 [P] Add SuspendParticipantAsync, ReactivateParticipantAsync, PublishParticipantAsync, UnpublishParticipantAsync Refit methods to `src/Apps/Sorcha.Cli/Services/IParticipantServiceClient.cs`
 
 ### UI Service Interface Extensions
 
-- [ ] T006 Add SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/ICredentialApiService.cs`
-- [ ] T007 [P] Create IStatusListService interface with GetStatusListAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/IStatusListService.cs`
-- [ ] T008 [P] Create IPresentationAdminService interface with CreatePresentationRequestAsync and GetPresentationResultAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/IPresentationAdminService.cs`
+- [X] T006 Add SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/ICredentialApiService.cs`
+- [X] T007 [P] Create IStatusListService interface with GetStatusListAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/IStatusListService.cs`
+- [X] T008 [P] Create IPresentationAdminService interface with CreatePresentationRequestAsync and GetPresentationResultAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/IPresentationAdminService.cs`
 
 **Checkpoint**: All interfaces defined — story implementation can begin
 
@@ -57,10 +57,10 @@
 
 ### Implementation for US1
 
-- [ ] T011 [US1] Implement SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/CredentialApiService.cs` — POST to `/api/v1/credentials/{id}/suspend|reinstate|refresh` with LifecycleCredentialRequest body containing IssuerWallet and optional Reason/NewExpiryDuration
+- [X] T011 [US1] Implement SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/CredentialApiService.cs` — POST to `/api/v1/credentials/{id}/suspend|reinstate|refresh` with LifecycleCredentialRequest body containing IssuerWallet and optional Reason/NewExpiryDuration
 - [ ] T012 [US1] Create CredentialLifecycleDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialLifecycleDialog.razor` — parameterized by action type (Suspend/Reinstate/Revoke/Refresh), includes MudSelect wallet picker populated from user's linked wallets, optional MudTextField for reason (suspend/reinstate/revoke) or expiry duration (refresh), irreversibility MudAlert warning for Revoke, confirm/cancel MudButtons
 - [ ] T013 [US1] Modify CredentialDetailView.razor to add lifecycle action buttons in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialDetailView.razor` — Active status: show Suspend + Revoke buttons; Suspended: show Reinstate + Revoke; Expired: show Refresh; Revoked: no buttons; No wallets: show MudAlert explaining linked wallet required. Each button opens CredentialLifecycleDialog via DialogService.
-- [ ] T014 [US1] Add `credential suspend`, `credential reinstate`, `credential refresh` CLI commands in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — each with `--id` (required), `--wallet` (required), `--reason` (optional for suspend/reinstate), `--expires-in-days` (optional for refresh). Use BaseCommand.OutputOption for table/JSON output. Call corresponding ICredentialServiceClient Refit methods.
+- [X] T014 [US1] Add `credential suspend`, `credential reinstate`, `credential refresh` CLI commands in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — each with `--id` (required), `--wallet` (required), `--reason` (optional for suspend/reinstate), `--expires-in-days` (optional for refresh). Use BaseCommand.OutputOption for table/JSON output. Call corresponding ICredentialServiceClient Refit methods.
 
 **Checkpoint**: Credential lifecycle fully functional via UI and CLI
 
@@ -78,9 +78,9 @@
 
 ### Implementation for US2
 
-- [ ] T016 [US2] Modify ParticipantDetail.razor to add suspend/reactivate buttons in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantDetail.razor` — Active: show MudButton "Suspend" (Color.Warning); Suspended: show MudButton "Reactivate" (Color.Success); Inactive: no buttons. Both require MudMessageBox confirmation dialog. Call existing IParticipantApiService.SuspendParticipantAsync / ReactivateParticipantAsync.
-- [ ] T017 [US2] Modify ParticipantList.razor to add status chips in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantList.razor` — add MudChip per participant row: Color.Success for Active, Color.Warning for Suspended, Color.Default for Inactive
-- [ ] T018 [US2] Add `participant suspend` and `participant reactivate` CLI commands in `src/Apps/Sorcha.Cli/Commands/ParticipantCommands.cs` — each with `--org-id` (required), `--id` (required). Use BaseCommand.OutputOption for table/JSON output. Call IParticipantServiceClient.SuspendParticipantAsync / ReactivateParticipantAsync.
+- [X] T016 [US2] Modify ParticipantDetail.razor to add suspend/reactivate buttons in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantDetail.razor` — Active: show MudButton "Suspend" (Color.Warning); Suspended: show MudButton "Reactivate" (Color.Success); Inactive: no buttons. Both require MudMessageBox confirmation dialog. Call existing IParticipantApiService.SuspendParticipantAsync / ReactivateParticipantAsync.
+- [X] T017 [US2] Modify ParticipantList.razor to add status chips in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantList.razor` — add MudChip per participant row: Color.Success for Active, Color.Warning for Suspended, Color.Default for Inactive
+- [X] T018 [US2] Add `participant suspend` and `participant reactivate` CLI commands in `src/Apps/Sorcha.Cli/Commands/ParticipantCommands.cs` — each with `--org-id` (required), `--id` (required). Use BaseCommand.OutputOption for table/JSON output. Call IParticipantServiceClient.SuspendParticipantAsync / ReactivateParticipantAsync.
 
 **Checkpoint**: Participant suspend/reactivate fully functional via UI and CLI
 
@@ -99,8 +99,8 @@
 ### Implementation for US3
 
 - [ ] T020 [US3] Create ParticipantPublishDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantPublishDialog.razor` — MudDialog with: MudTextField for register ID (required), pre-filled MudTextField for participant name and org name (from CascadingParameter or dialog parameter), MudSelect multi-select for wallet addresses (from participant's linked wallets, max 10), MudSelect for signer wallet, submit/cancel MudButtons. On submit: call IParticipantPublishingService.PublishAsync with PublishParticipantRequest body.
-- [ ] T021 [US3] Modify ParticipantDetail.razor to add publish button and published register indicators in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantDetail.razor` — show "Publish to Register" MudButton for Active participants with Administrator role (use AuthorizeView). Display published registers section with MudChips showing register IDs, with "Update" and "Revoke" options per published record. Opens ParticipantPublishDialog via DialogService.
-- [ ] T022 [US3] Add `participant publish` and `participant unpublish` CLI commands in `src/Apps/Sorcha.Cli/Commands/ParticipantCommands.cs` — publish: `--org-id`, `--register-id`, `--name`, `--org-name`, `--wallet` (required), `--signer` (required). unpublish: `--org-id`, `--id`, `--register-id`, `--signer` (required). Call IParticipantServiceClient.PublishParticipantAsync / UnpublishParticipantAsync.
+- [X] T021 [US3] Modify ParticipantDetail.razor to add publish button and published register indicators in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantDetail.razor` — show "Publish to Register" MudButton for Active participants with Administrator role (use AuthorizeView). Display published registers section with MudChips showing register IDs, with "Update" and "Revoke" options per published record. Opens ParticipantPublishDialog via DialogService.
+- [X] T022 [US3] Add `participant publish` and `participant unpublish` CLI commands in `src/Apps/Sorcha.Cli/Commands/ParticipantCommands.cs` — publish: `--org-id`, `--register-id`, `--name`, `--org-name`, `--wallet` (required), `--signer` (required). unpublish: `--org-id`, `--id`, `--register-id`, `--signer` (required). Call IParticipantServiceClient.PublishParticipantAsync / UnpublishParticipantAsync.
 
 **Checkpoint**: Participant publishing fully functional via UI and CLI
 
@@ -118,8 +118,8 @@
 
 ### Implementation for US4
 
-- [ ] T024 [US4] Implement PresentationAdminService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/PresentationAdminService.cs` — CreatePresentationRequestAsync: POST `/api/v1/presentations/request` with CreatePresentationRequestViewModel body, returns PresentationRequestResultViewModel. GetPresentationResultAsync: GET `/api/v1/presentations/{requestId}/result`, returns result or 202 (pending) or 410 (expired). Inject ILogger<PresentationAdminService> and add structured log statements for request creation and result retrieval (LogInformation for success, LogWarning for 4xx responses).
-- [ ] T025 [US4] Register IPresentationAdminService/PresentationAdminService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method using same HttpClient + AuthenticatedHttpMessageHandler pattern as existing services
+- [X] T024 [US4] Implement PresentationAdminService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/PresentationAdminService.cs` — CreatePresentationRequestAsync: POST `/api/v1/presentations/request` with CreatePresentationRequestViewModel body, returns PresentationRequestResultViewModel. GetPresentationResultAsync: GET `/api/v1/presentations/{requestId}/result`, returns result or 202 (pending) or 410 (expired). Inject ILogger<PresentationAdminService> and add structured log statements for request creation and result retrieval (LogInformation for success, LogWarning for 4xx responses).
+- [X] T025 [US4] Register IPresentationAdminService/PresentationAdminService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method using same HttpClient + AuthenticatedHttpMessageHandler pattern as existing services
 - [ ] T026 [US4] Create PresentationRequestList.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestList.razor` — holder-side component showing pending presentation requests from existing ICredentialApiService.GetPresentationRequestsAsync. MudTable with columns: Verifier, Credential Type, Expiry, Status. Click row navigates to detail.
 - [ ] T027 [US4] Create PresentationRequestDetail.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestDetail.razor` — shows verifier identity, required claims, matching credentials from wallet, expiry countdown. MudButton "Approve" opens PresentationSubmitDialog. MudButton "Deny" with confirmation calls ICredentialApiService.DenyPresentation. Expired requests show MudAlert with disabled actions.
 - [ ] T028 [US4] Create PresentationSubmitDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationSubmitDialog.razor` — MudDialog with: credential selector (MudSelect from matching credentials), claim checkboxes (MudCheckBox per claim, required claims pre-checked and disabled), confirm/cancel. On submit: call ICredentialApiService.SubmitPresentationAsync.
@@ -143,10 +143,10 @@
 
 ### Implementation for US5
 
-- [ ] T033 [US5] Implement StatusListService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/StatusListService.cs` — GetStatusListAsync: GET `/api/v1/credentials/status-lists/{listId}` (public, no auth), returns StatusListViewModel. Handle 404 → null. Inject ILogger<StatusListService> and add structured log statements for lookups (LogInformation for success, LogWarning for not found).
-- [ ] T034 [US5] Register IStatusListService/StatusListService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method (no auth required for this service)
+- [X] T033 [US5] Implement StatusListService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/StatusListService.cs` — GetStatusListAsync: GET `/api/v1/credentials/status-lists/{listId}` (public, no auth), returns StatusListViewModel. Handle 404 → null. Inject ILogger<StatusListService> and add structured log statements for lookups (LogInformation for success, LogWarning for not found).
+- [X] T034 [US5] Register IStatusListService/StatusListService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method (no auth required for this service)
 - [ ] T035 [US5] Create StatusLists.razor admin page in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/StatusLists.razor` — @page "/admin/status-lists". MudTextField for list ID + MudButton "Lookup". Results: MudCard with metadata fields (ID, Purpose, Issuer DID, Valid From). Expandable MudExpansionPanel with raw JSON viewer (MudText with Typo.Body2 and pre formatting). Recently-viewed list from localStorage (max 10) displayed as MudChips for quick re-lookup. Empty state MudAlert when no lists viewed yet. Handle not-found with MudAlert Severity.Warning.
-- [ ] T036 [US5] Add `credential status-list get` CLI command in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — `--id` (required). Table output: List ID, Purpose, Issuer, Valid From. JSON output: full W3C BitstringStatusListCredential document. Call ICredentialServiceClient.GetStatusListAsync.
+- [X] T036 [US5] Add `credential status-list get` CLI command in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — `--id` (required). Table output: List ID, Purpose, Issuer, Valid From. JSON output: full W3C BitstringStatusListCredential document. Call ICredentialServiceClient.GetStatusListAsync.
 
 **Checkpoint**: Status list viewer fully functional via UI and CLI
 

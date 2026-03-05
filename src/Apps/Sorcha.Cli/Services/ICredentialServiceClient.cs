@@ -53,4 +53,28 @@ public interface ICredentialServiceClient
     /// </summary>
     [Get("/api/v1/credentials/{id}/status")]
     Task<CredentialStatusResponse> GetCredentialStatusAsync(string id, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Suspends an active credential.
+    /// </summary>
+    [Post("/api/v1/credentials/{credentialId}/suspend")]
+    Task<CredentialLifecycleResponse> SuspendCredentialAsync(string credentialId, [Body] LifecycleCredentialRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Reinstates a suspended credential.
+    /// </summary>
+    [Post("/api/v1/credentials/{credentialId}/reinstate")]
+    Task<CredentialLifecycleResponse> ReinstateCredentialAsync(string credentialId, [Body] LifecycleCredentialRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Refreshes an expired credential with a new expiry.
+    /// </summary>
+    [Post("/api/v1/credentials/{credentialId}/refresh")]
+    Task<RefreshCredentialResponse> RefreshCredentialAsync(string credentialId, [Body] RefreshCredentialRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets a W3C Bitstring Status List by ID.
+    /// </summary>
+    [Get("/api/v1/credentials/status-lists/{listId}")]
+    Task<StatusListResponse> GetStatusListAsync(string listId);
 }
