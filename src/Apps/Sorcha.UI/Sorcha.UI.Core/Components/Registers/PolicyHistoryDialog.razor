@@ -1,0 +1,132 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+
+@inject IRegisterService RegisterService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />
+            Policy Version History
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="py-4">
+                <MudProgressCircular Indeterminate="true" Size="Size.Medium" Color="Color.Primary" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Loading history...</MudText>
+            </MudStack>
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" data-testid="history-error">
+                @_error
+                <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                           OnClick="LoadHistoryAsync" Class="ml-2">
+                    Retry
+                </MudButton>
+            </MudAlert>
+        }
+        else if (_history is null || _history.Versions.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" data-testid="history-empty">
+                No policy history available for this register.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@_history.Versions"
+                      Dense="true"
+                      Hover="true"
+                      Striped="true"
+                      data-testid="history-table">
+                <HeaderContent>
+                    <MudTh>Version</MudTh>
+                    <MudTh>Updated By</MudTh>
+                    <MudTh>Updated At</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Version">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">
+                            v@(context.Version)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Updated By">@context.UpdatedBy</MudTd>
+                    <MudTd DataLabel="Updated At">@context.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_history.TotalCount > _history.PageSize)
+            {
+                <MudStack Row="true" Justify="Justify.Center" Class="mt-4">
+                    <MudPagination Count="@TotalPages"
+                                   Selected="@_page"
+                                   SelectedChanged="OnPageChanged"
+                                   Color="Color.Primary"
+                                   data-testid="history-pagination" />
+                </MudStack>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" data-testid="history-close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance? MudDialog { get; set; }
+
+    /// <summary>
+    /// Register ID to load history for.
+    /// </summary>
+    [Parameter]
+    public string RegisterId { get; set; } = string.Empty;
+
+    private PolicyHistoryViewModel? _history;
+    private bool _isLoading = true;
+    private string? _error;
+    private int _page = 1;
+    private const int PageSize = 20;
+
+    private int TotalPages => _history is null ? 1 : (int)Math.Ceiling((double)_history.TotalCount / _history.PageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+
+            _history = await RegisterService.GetPolicyHistoryAsync(RegisterId, _page, PageSize);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load policy history: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _page = page;
+        await LoadHistoryAsync();
+    }
+
+    private void Close()
+    {
+        MudDialog?.Cancel();
+    }
+}

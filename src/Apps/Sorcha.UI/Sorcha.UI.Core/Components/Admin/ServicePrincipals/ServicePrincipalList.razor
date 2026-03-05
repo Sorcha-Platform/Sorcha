@@ -12,7 +12,7 @@
         <MudTh>Permissions</MudTh>
     </HeaderContent>
     <RowTemplate>
-        <MudTd>@context.Name</MudTd>
+        <MudTd>@context.ServiceName</MudTd>
         <MudTd>
             <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
                 @context.Status
@@ -48,7 +48,7 @@
         </MudTd>
         <MudTd>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
-                @context.Permissions.Count permissions
+                @context.Scopes.Length scopes
             </MudChip>
         </MudTd>
     </RowTemplate>

@@ -186,6 +186,10 @@
                     <DocketChain RegisterId="@RegisterId" @ref="_docketChainRef" />
                 </div>
             </MudTabPanel>
+
+            <MudTabPanel Text="Policy" Icon="@Icons.Material.Filled.Policy">
+                <RegisterPolicyTab RegisterId="@RegisterId" />
+            </MudTabPanel>
         </MudTabs>
     }
 </MudContainer>

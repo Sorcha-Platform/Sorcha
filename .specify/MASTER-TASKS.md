@@ -303,6 +303,30 @@ Unified register policy model (RegisterPolicy) embedded in genesis control recor
 
 ---
 
+## 049 — System Administration Tooling
+
+> **Priority:** P1 (Admin UX)
+> **Status:** 🚧 In Progress (Phases 1-9 complete, Phase 10 tests in progress)
+> **Branch:** `049-system-admin-tooling`
+> **Spec:** [specs/049-system-admin-tooling/](../specs/049-system-admin-tooling/)
+
+7 user stories: Service Principal CRUD (US1), Register Policy management (US2), Validator Consent Queue (US3), Validator Metrics Dashboard (US4), System Register visibility (US5), Threshold Signing & Config (US6), CLI Commands (US7). 29 new Blazor components, 17 new CLI subcommands. All projects build with 0 errors.
+
+| Phase | Description | Tasks | Status |
+|-------|-------------|-------|--------|
+| 1 | Setup (YARP route) | T001 | ✅ |
+| 2 | Foundational (view models, services, DI, tab refactor) | T002-T018 | ✅ |
+| 3 | US1: Service Principal CRUD | T019-T023 | ✅ |
+| 4 | US2: Register Policy | T024-T029 | ✅ |
+| 5 | US3: Validator Consent Queue | T030-T031 | ✅ |
+| 6 | US4: Validator Metrics | T032-T033 | ✅ |
+| 7 | US5: System Register | T034-T036 | ✅ |
+| 8 | US6: Threshold & Config | T037-T039 | ✅ |
+| 9 | US7: CLI Commands | T040-T056 | ✅ |
+| 10 | Tests & Polish | T057-T072 | 🚧 |
+
+---
+
 ## 046 — UI Polish & Blueprint Designer
 
 > **Priority:** P2 (Polish)

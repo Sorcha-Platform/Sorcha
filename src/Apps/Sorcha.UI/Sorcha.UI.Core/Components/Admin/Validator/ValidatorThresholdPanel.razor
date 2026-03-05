@@ -1,0 +1,181 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+@inject IValidatorAdminService ValidatorService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="pa-4">
+    @if (_isLoading)
+    {
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" />
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="() => _error = null">
+            @_error
+        </MudAlert>
+    }
+    else if (_configs.Count == 0)
+    {
+        <EmptyState Icon="@Icons.Material.Filled.Security"
+                    Title="No threshold signing configured"
+                    Description="No registers have threshold signing configured" />
+    }
+    else
+    {
+        <MudGrid Spacing="3">
+            @foreach (var config in _configs)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@config.RegisterName</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <TruncatedId Value="@config.RegisterId" />
+                                </MudText>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(config.IsConfigured ? Color.Success : Color.Warning)">
+                                    @(config.IsConfigured ? "Configured" : "Not Configured")
+                                </MudChip>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudSimpleTable Dense="true">
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Group Public Key</strong></td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(config.GroupPublicKey))
+                                            {
+                                                <TruncatedId Value="@config.GroupPublicKey" />
+                                            }
+                                            else
+                                            {
+                                                <MudText Color="Color.Secondary">—</MudText>
+                                            }
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Threshold</strong></td>
+                                        <td>@config.Threshold of @config.TotalValidators</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Validators</strong></td>
+                                        <td>
+                                            @if (config.ValidatorIds.Length > 0)
+                                            {
+                                                @foreach (var vid in config.ValidatorIds)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Class="mr-1 mb-1">
+                                                        <TruncatedId Value="@vid" />
+                                                    </MudChip>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <MudText Color="Color.Secondary">None</MudText>
+                                            }
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Collected Shares</strong></td>
+                                        <td>
+                                            <MudChip T="string" Size="Size.Small"
+                                                     Color="@(config.CollectedShares >= config.Threshold ? Color.Success : Color.Info)">
+                                                @config.CollectedShares / @config.Threshold
+                                            </MudChip>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
+                        </MudCardContent>
+                        @if (!config.IsConfigured)
+                        {
+                            <MudCardActions>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.Settings"
+                                           OnClick="@(() => OpenSetupDialog(config))">
+                                    Setup Threshold Signing
+                                </MudButton>
+                            </MudCardActions>
+                        }
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudStack>
+
+@code {
+    private List<ThresholdConfigViewModel> _configs = [];
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _configs = await ValidatorService.GetThresholdStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load threshold status: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenSetupDialog(ThresholdConfigViewModel config)
+    {
+        var parameters = new DialogParameters<ThresholdSetupDialog>
+        {
+            { x => x.RegisterId, config.RegisterId },
+            { x => x.RegisterName, config.RegisterName },
+            { x => x.CurrentTotalValidators, config.TotalValidators }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<ThresholdSetupDialog>(
+            "Setup Threshold Signing", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled && result.Data is ThresholdSetupRequest request)
+        {
+            try
+            {
+                await ValidatorService.SetupThresholdAsync(request);
+                Snackbar.Add("Threshold signing configured successfully", Severity.Success);
+                await LoadAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to setup threshold: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

@@ -494,6 +494,26 @@ public static class ServiceCollectionExtensions
             return new ValidatorAdminService(httpClient, logger);
         });
 
+        // Service Principal Service (049)
+        services.AddScoped<IServicePrincipalService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<ServicePrincipalService>>();
+            return new ServicePrincipalService(httpClient, logger);
+        });
+
+        // System Register Service (049)
+        services.AddScoped<ISystemRegisterService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<SystemRegisterService>>();
+            return new SystemRegisterService(httpClient, logger);
+        });
+
         // Alert Service
         services.AddScoped<IAlertService>(sp =>
         {

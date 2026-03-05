@@ -1,0 +1,143 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+
+<MudStack Spacing="4" data-testid="policy-step">
+    <MudText Typo="Typo.body1" Class="mb-2">
+        Configure the validator policy for this register.
+    </MudText>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="int"
+                             Value="Policy.MinValidators"
+                             ValueChanged="OnMinValidatorsChanged"
+                             Label="Min Validators"
+                             Min="1"
+                             Variant="Variant.Outlined"
+                             HelperText="Minimum validators required (>= 1)"
+                             data-testid="min-validators-input" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="int"
+                             Value="Policy.MaxValidators"
+                             ValueChanged="OnMaxValidatorsChanged"
+                             Label="Max Validators"
+                             Min="@Policy.MinValidators"
+                             Variant="Variant.Outlined"
+                             HelperText="@($"Maximum validators allowed (>= {Policy.MinValidators})")"
+                             data-testid="max-validators-input" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudNumericField T="int"
+                             Value="Policy.SignatureThreshold"
+                             ValueChanged="OnSignatureThresholdChanged"
+                             Label="Signature Threshold"
+                             Min="1"
+                             Max="@Policy.MaxValidators"
+                             Variant="Variant.Outlined"
+                             HelperText="@($"Signatures needed for consensus (1-{Policy.MaxValidators})")"
+                             data-testid="signature-threshold-input" />
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string"
+                       Value="Policy.RegistrationMode"
+                       ValueChanged="OnRegistrationModeChanged"
+                       Label="Registration Mode"
+                       Variant="Variant.Outlined"
+                       HelperText="How validators join this register"
+                       data-testid="registration-mode-select">
+                <MudSelectItem Value="@("Open")">Open</MudSelectItem>
+                <MudSelectItem Value="@("Consent")">Consent</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="string"
+                       Value="Policy.TransitionMode"
+                       ValueChanged="OnTransitionModeChanged"
+                       Label="Transition Mode"
+                       Variant="Variant.Outlined"
+                       HelperText="When policy changes take effect"
+                       data-testid="transition-mode-select">
+                <MudSelectItem Value="@("Immediate")">Immediate</MudSelectItem>
+                <MudSelectItem Value="@("Epoch")">Epoch</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+        <MudText Typo="Typo.body2">
+            The validator policy determines how consensus is achieved on this register.
+            These settings can be updated later through governance proposals.
+        </MudText>
+    </MudAlert>
+</MudStack>
+
+@code {
+    /// <summary>
+    /// The policy fields being edited.
+    /// </summary>
+    [Parameter]
+    public RegisterPolicyFields Policy { get; set; } = new()
+    {
+        MinValidators = 1,
+        MaxValidators = 10,
+        SignatureThreshold = 1,
+        RegistrationMode = "Open",
+        TransitionMode = "Immediate"
+    };
+
+    /// <summary>
+    /// Callback when policy fields change.
+    /// </summary>
+    [Parameter]
+    public EventCallback<RegisterPolicyFields> PolicyChanged { get; set; }
+
+    private async Task NotifyChanged()
+    {
+        await PolicyChanged.InvokeAsync(Policy);
+    }
+
+    private async Task OnMinValidatorsChanged(int value)
+    {
+        Policy.MinValidators = Math.Max(1, value);
+        // Ensure max >= min
+        if (Policy.MaxValidators < Policy.MinValidators)
+            Policy.MaxValidators = Policy.MinValidators;
+        // Ensure threshold <= max
+        if (Policy.SignatureThreshold > Policy.MaxValidators)
+            Policy.SignatureThreshold = Policy.MaxValidators;
+        await NotifyChanged();
+    }
+
+    private async Task OnMaxValidatorsChanged(int value)
+    {
+        Policy.MaxValidators = Math.Max(Policy.MinValidators, value);
+        // Ensure threshold <= max
+        if (Policy.SignatureThreshold > Policy.MaxValidators)
+            Policy.SignatureThreshold = Policy.MaxValidators;
+        await NotifyChanged();
+    }
+
+    private async Task OnSignatureThresholdChanged(int value)
+    {
+        Policy.SignatureThreshold = Math.Clamp(value, 1, Policy.MaxValidators);
+        await NotifyChanged();
+    }
+
+    private async Task OnRegistrationModeChanged(string value)
+    {
+        Policy.RegistrationMode = value;
+        await NotifyChanged();
+    }
+
+    private async Task OnTransitionModeChanged(string value)
+    {
+        Policy.TransitionMode = value;
+        await NotifyChanged();
+    }
+}

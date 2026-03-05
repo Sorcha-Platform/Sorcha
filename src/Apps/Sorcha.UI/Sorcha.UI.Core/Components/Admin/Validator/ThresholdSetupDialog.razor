@@ -1,0 +1,110 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Security" Class="mr-2" />
+            Setup Threshold Signing
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField T="string" Label="Register" Value="@RegisterName"
+                          ReadOnly="true" Variant="Variant.Outlined" />
+
+            <MudNumericField T="int" Label="Threshold (t)" @bind-Value="_threshold"
+                             Min="1" Max="@_totalValidators"
+                             Variant="Variant.Outlined"
+                             HelperText="Minimum number of validators required to sign" />
+
+            <MudNumericField T="int" Label="Total Validators (n)" @bind-Value="_totalValidators"
+                             Min="1" Max="100"
+                             Variant="Variant.Outlined"
+                             HelperText="Total number of validators in the signing group" />
+
+            <MudTextField T="string" Label="Validator IDs" @bind-Value="_validatorIdsText"
+                          Variant="Variant.Outlined" Lines="3"
+                          HelperText="Comma-separated list of validator identifiers" />
+
+            @if (_validationError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_validationError</MudAlert>
+            }
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Configuration: @_threshold of @_totalValidators validators required
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">
+            Configure
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string RegisterId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string RegisterName { get; set; } = string.Empty;
+
+    [Parameter]
+    public int CurrentTotalValidators { get; set; }
+
+    private int _threshold = 2;
+    private int _totalValidators = 3;
+    private string _validatorIdsText = string.Empty;
+    private string? _validationError;
+
+    protected override void OnParametersSet()
+    {
+        if (CurrentTotalValidators > 0)
+        {
+            _totalValidators = CurrentTotalValidators;
+            _threshold = Math.Max(1, (_totalValidators / 2) + 1);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        _validationError = null;
+
+        if (_threshold < 1)
+        {
+            _validationError = "Threshold must be at least 1.";
+            return;
+        }
+
+        if (_threshold > _totalValidators)
+        {
+            _validationError = "Threshold cannot exceed total validators.";
+            return;
+        }
+
+        var validatorIds = _validatorIdsText
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToArray();
+
+        var request = new ThresholdSetupRequest
+        {
+            RegisterId = RegisterId,
+            Threshold = _threshold,
+            TotalValidators = _totalValidators,
+            ValidatorIds = validatorIds
+        };
+
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+}

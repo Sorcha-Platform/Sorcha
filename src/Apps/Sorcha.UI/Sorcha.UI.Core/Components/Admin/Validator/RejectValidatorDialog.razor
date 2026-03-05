@@ -1,0 +1,41 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Cancel" Class="mr-2" />
+            Reject Validators
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Reject @ValidatorCount validator(s) for register '@RegisterName'?
+        </MudText>
+        <MudTextField @bind-Value="_reason"
+                      Label="Reason (optional)"
+                      Variant="Variant.Outlined"
+                      Lines="3"
+                      Placeholder="Provide an optional reason for rejection..." />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Submit">Reject</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public int ValidatorCount { get; set; }
+
+    [Parameter]
+    public string RegisterName { get; set; } = string.Empty;
+
+    private string _reason = string.Empty;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(_reason));
+    private void Cancel() => MudDialog.Cancel();
+}

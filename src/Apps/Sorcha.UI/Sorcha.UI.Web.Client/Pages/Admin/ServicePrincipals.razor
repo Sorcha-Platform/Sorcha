@@ -6,7 +6,6 @@
 @attribute [Authorize(Roles = "Administrator")]
 @using Microsoft.AspNetCore.Authorization
 @using Sorcha.UI.Core.Components.Admin.ServicePrincipals
-@using Sorcha.UI.Core.Models.Admin
 
 <PageTitle>Service Principals - Sorcha Platform</PageTitle>
 
@@ -20,18 +19,7 @@
         Manage service-to-service authentication credentials
     </MudText>
 
-    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
-        Service principal management is currently read-only. Full CRUD operations will be available in a future update.
-    </MudAlert>
-
-    @if (_error != null)
-    {
-        <ServiceUnavailable ServiceName="Tenant Service" OnRetry="LoadPrincipalsAsync" />
-    }
-    else
-    {
-        <ServicePrincipalList Principals="_principals" IsLoading="_isLoading" />
-    }
+    <ServicePrincipalCrud />
 </MudContainer>
 
 @code {
@@ -40,78 +28,4 @@
         new("Admin", href: "/admin/health"),
         new("Service Principals", href: null, disabled: true)
     ];
-
-    private List<ServicePrincipalViewModel> _principals = [];
-    private bool _isLoading = true;
-    private string? _error;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadPrincipalsAsync();
-    }
-
-    private async Task LoadPrincipalsAsync()
-    {
-        _isLoading = true;
-        _error = null;
-
-        try
-        {
-            // Service principals are currently derived from known service configurations
-            // Full API integration planned for future release
-            _principals =
-            [
-                new ServicePrincipalViewModel
-                {
-                    Id = "blueprint-service",
-                    Name = "Blueprint Service",
-                    Status = "active",
-                    LastUsedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
-                    Permissions = ["blueprints:read", "blueprints:write", "instances:manage"]
-                },
-                new ServicePrincipalViewModel
-                {
-                    Id = "register-service",
-                    Name = "Register Service",
-                    Status = "active",
-                    LastUsedAt = DateTimeOffset.UtcNow.AddMinutes(-2),
-                    Permissions = ["registers:read", "registers:write", "transactions:validate"]
-                },
-                new ServicePrincipalViewModel
-                {
-                    Id = "wallet-service",
-                    Name = "Wallet Service",
-                    Status = "active",
-                    LastUsedAt = DateTimeOffset.UtcNow.AddMinutes(-8),
-                    Permissions = ["wallets:manage", "signing:execute"]
-                },
-                new ServicePrincipalViewModel
-                {
-                    Id = "validator-service",
-                    Name = "Validator Service",
-                    Status = "active",
-                    LastUsedAt = DateTimeOffset.UtcNow.AddMinutes(-1),
-                    Permissions = ["transactions:validate", "consensus:participate"]
-                },
-                new ServicePrincipalViewModel
-                {
-                    Id = "peer-service",
-                    Name = "Peer Service",
-                    Status = "active",
-                    LastUsedAt = DateTimeOffset.UtcNow.AddMinutes(-3),
-                    Permissions = ["peers:manage", "sync:replicate"]
-                }
-            ];
-        }
-        catch (Exception)
-        {
-            _error = "Failed to load service principals";
-        }
-        finally
-        {
-            _isLoading = false;
-        }
-
-        await Task.CompletedTask;
-    }
 }

@@ -1,0 +1,279 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Models.Admin
+@inject IValidatorAdminService ValidatorService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_isLoading && !_hasEverLoaded)
+{
+    <MudStack Spacing="4" Class="pa-4">
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" />
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+    </MudStack>
+}
+else if (_error is not null)
+{
+    <MudStack Spacing="4" Class="pa-4">
+        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="() => _error = null">
+            @_error
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadConsentQueueAsync">
+            Retry
+        </MudButton>
+    </MudStack>
+}
+else if (_queue.Registers.Count == 0)
+{
+    <MudStack Spacing="4" Class="pa-4">
+        <EmptyState Icon="@Icons.Material.Filled.HowToVote"
+                    Title="No pending validator requests"
+                    Description="There are no validators waiting for consent approval" />
+    </MudStack>
+}
+else
+{
+    <MudStack Spacing="4" Class="pa-4">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @_queue.TotalPending pending request(s) across @_queue.Registers.Count register(s)
+        </MudText>
+
+        @foreach (var group in _queue.Registers)
+        {
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-3">
+                        <div>
+                            <MudText Typo="Typo.h6">@group.RegisterName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                <TruncatedId Value="@group.RegisterId" />
+                            </MudText>
+                        </div>
+                        <MudButton Variant="Variant.Outlined"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="() => RefreshFromChainAsync(group.RegisterId)"
+                                   Disabled="_isProcessing">
+                            Refresh from Chain
+                        </MudButton>
+                    </div>
+
+                    @if (string.Equals(group.RegistrationMode, "Open", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                            This register uses open registration — validators join automatically
+                        </MudAlert>
+                    }
+
+                    <MudTable Items="group.PendingValidators" Dense="true" Hover="true" Striped="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh Style="width: 50px;">
+                                <MudCheckBox T="bool"
+                                             Value="@AreAllSelected(group)"
+                                             ValueChanged="@(v => ToggleSelectAll(group, v))"
+                                             Dense="true" />
+                            </MudTh>
+                            <MudTh>Validator ID</MudTh>
+                            <MudTh>Endpoint</MudTh>
+                            <MudTh>Requested At</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudCheckBox T="bool"
+                                             Value="@context.IsSelected"
+                                             ValueChanged="@(v => { context.IsSelected = v; StateHasChanged(); })"
+                                             Dense="true" />
+                            </MudTd>
+                            <MudTd DataLabel="Validator ID">
+                                <TruncatedId Value="@context.ValidatorId" />
+                            </MudTd>
+                            <MudTd DataLabel="Endpoint">@context.Endpoint</MudTd>
+                            <MudTd DataLabel="Requested At">@context.RequestedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.CheckCircle"
+                                   OnClick="() => ApproveSelectedAsync(group)"
+                                   Disabled="@(!HasSelected(group) || _isProcessing)">
+                            Approve Selected
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Error"
+                                   StartIcon="@Icons.Material.Filled.Cancel"
+                                   OnClick="() => RejectSelectedAsync(group)"
+                                   Disabled="@(!HasSelected(group) || _isProcessing)">
+                            Reject Selected
+                        </MudButton>
+                    </div>
+                </MudCardContent>
+            </MudCard>
+        }
+
+        <div class="d-flex justify-end">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadConsentQueueAsync"
+                       Disabled="_isLoading">
+                Refresh Queue
+            </MudButton>
+        </div>
+    </MudStack>
+}
+
+@code {
+    private ConsentQueueViewModel _queue = new();
+    private bool _isLoading = true;
+    private bool _hasEverLoaded;
+    private bool _isProcessing;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConsentQueueAsync();
+    }
+
+    private async Task LoadConsentQueueAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _queue = await ValidatorService.GetConsentQueueAsync();
+            _hasEverLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load consent queue: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static bool HasSelected(RegisterConsentGroup group)
+        => group.PendingValidators.Any(v => v.IsSelected);
+
+    private static bool AreAllSelected(RegisterConsentGroup group)
+        => group.PendingValidators.Count > 0 && group.PendingValidators.All(v => v.IsSelected);
+
+    private void ToggleSelectAll(RegisterConsentGroup group, bool selected)
+    {
+        foreach (var v in group.PendingValidators)
+            v.IsSelected = selected;
+        StateHasChanged();
+    }
+
+    private async Task ApproveSelectedAsync(RegisterConsentGroup group)
+    {
+        var selected = group.PendingValidators.Where(v => v.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Confirm Approval",
+            $"Approve {selected.Count} validator(s) for register '{group.RegisterName}'?",
+            yesText: "Approve", cancelText: "Cancel");
+
+        if (confirm != true) return;
+
+        _isProcessing = true;
+        StateHasChanged();
+
+        var succeeded = 0;
+        var conflictCount = 0;
+
+        foreach (var validator in selected)
+        {
+            var result = await ValidatorService.ApproveValidatorAsync(group.RegisterId, validator.ValidatorId);
+            if (result)
+            {
+                succeeded++;
+            }
+            else
+            {
+                conflictCount++;
+            }
+        }
+
+        _isProcessing = false;
+
+        if (conflictCount > 0)
+        {
+            Snackbar.Add($"Approved {succeeded} validator(s). {conflictCount} failed — maximum validator count may have been reached.",
+                Severity.Warning);
+        }
+        else
+        {
+            Snackbar.Add($"Successfully approved {succeeded} validator(s).", Severity.Success);
+        }
+
+        await LoadConsentQueueAsync();
+    }
+
+    private async Task RejectSelectedAsync(RegisterConsentGroup group)
+    {
+        var selected = group.PendingValidators.Where(v => v.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var reason = string.Empty;
+        var parameters = new DialogParameters<RejectValidatorDialog>
+        {
+            { x => x.ValidatorCount, selected.Count },
+            { x => x.RegisterName, group.RegisterName }
+        };
+        var dialog = await DialogService.ShowAsync<RejectValidatorDialog>("Reject Validators", parameters);
+        var dialogResult = await dialog.Result;
+
+        if (dialogResult is null || dialogResult.Canceled)
+            return;
+
+        reason = dialogResult.Data as string;
+
+        _isProcessing = true;
+        StateHasChanged();
+
+        var succeeded = 0;
+        foreach (var validator in selected)
+        {
+            var result = await ValidatorService.RejectValidatorAsync(
+                group.RegisterId, validator.ValidatorId, string.IsNullOrWhiteSpace(reason) ? null : reason);
+            if (result) succeeded++;
+        }
+
+        _isProcessing = false;
+        Snackbar.Add($"Rejected {succeeded} of {selected.Count} validator(s).",
+            succeeded == selected.Count ? Severity.Info : Severity.Warning);
+
+        await LoadConsentQueueAsync();
+    }
+
+    private async Task RefreshFromChainAsync(string registerId)
+    {
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            var approved = await ValidatorService.RefreshApprovedValidatorsAsync(registerId);
+            Snackbar.Add($"Refreshed from chain — {approved.Count} approved validator(s) found.", Severity.Success);
+            await LoadConsentQueueAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh from chain: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+}

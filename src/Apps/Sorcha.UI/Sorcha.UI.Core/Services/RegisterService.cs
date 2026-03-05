@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
+using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Blueprints;
 using Sorcha.UI.Core.Models.Registers;
 
@@ -211,6 +212,42 @@ public class RegisterService : IRegisterService
             _logger.LogError(ex, "Error finalizing register creation");
             return null;
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<RegisterPolicyViewModel?> GetPolicyAsync(string registerId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy", ct);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadFromJsonAsync<RegisterPolicyViewModel>(JsonOptions, ct);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error fetching policy for register {RegisterId}", registerId); return null; }
+    }
+
+    /// <inheritdoc />
+    public async Task<PolicyHistoryViewModel> GetPolicyHistoryAsync(string registerId, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy/history?page={page}&pageSize={pageSize}", ct);
+            if (!response.IsSuccessStatusCode) return new PolicyHistoryViewModel { RegisterId = registerId };
+            return await response.Content.ReadFromJsonAsync<PolicyHistoryViewModel>(JsonOptions, ct) ?? new PolicyHistoryViewModel { RegisterId = registerId };
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error fetching policy history for register {RegisterId}", registerId); return new PolicyHistoryViewModel { RegisterId = registerId }; }
+    }
+
+    /// <inheritdoc />
+    public async Task<PolicyUpdateProposalViewModel?> ProposePolicyUpdateAsync(string registerId, RegisterPolicyFields policy, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync($"/api/registers/{Uri.EscapeDataString(registerId)}/policy/update", policy, JsonOptions, ct);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadFromJsonAsync<PolicyUpdateProposalViewModel>(JsonOptions, ct);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error proposing policy update for register {RegisterId}", registerId); return null; }
     }
 
     private static RegisterViewModel MapToViewModel(Register.Models.Register register)

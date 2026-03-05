@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json.Serialization;
+using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 
 namespace Sorcha.UI.Core.Services;
@@ -60,6 +61,11 @@ public interface IRegisterService
     Task<FinalizeRegisterResponse?> FinalizeRegisterAsync(
         FinalizeRegisterRequest request,
         CancellationToken cancellationToken = default);
+
+    // Policy
+    Task<RegisterPolicyViewModel?> GetPolicyAsync(string registerId, CancellationToken ct = default);
+    Task<PolicyHistoryViewModel> GetPolicyHistoryAsync(string registerId, int page = 1, int pageSize = 20, CancellationToken ct = default);
+    Task<PolicyUpdateProposalViewModel?> ProposePolicyUpdateAsync(string registerId, RegisterPolicyFields policy, CancellationToken ct = default);
 }
 
 /// <summary>

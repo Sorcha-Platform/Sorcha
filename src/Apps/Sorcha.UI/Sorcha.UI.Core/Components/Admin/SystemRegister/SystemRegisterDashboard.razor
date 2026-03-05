@@ -1,0 +1,237 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
+@inject ISystemRegisterService RegisterService
+@inject IDialogService DialogService
+
+@if (_loading)
+{
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardContent>
+                    <MudSkeleton Width="40%" Height="32px" />
+                    <MudSkeleton Width="60%" Class="mt-2" />
+                    <MudSkeleton Width="30%" Class="mt-2" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+        </MudItem>
+    </MudGrid>
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="@(() => _error = null)">
+        @_error
+    </MudAlert>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadDataAsync"
+               StartIcon="@Icons.Material.Filled.Refresh">
+        Retry
+    </MudButton>
+}
+else if (_status is null)
+{
+    <MudAlert Severity="Severity.Info">
+        System register information is not available.
+    </MudAlert>
+}
+else
+{
+    @* Status Card *@
+    <MudCard Elevation="2" Class="mb-4">
+        <MudCardContent>
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack>
+                    <MudText Typo="Typo.h6">@_status.DisplayName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Register ID: @_status.RegisterId
+                    </MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string"
+                             Color="@(_status.IsInitialized ? Color.Success : Color.Error)"
+                             Icon="@(_status.IsInitialized ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)">
+                        @(_status.IsInitialized ? "Initialized" : "Not Initialized")
+                    </MudChip>
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   OnClick="LoadDataAsync"
+                                   Size="Size.Small"
+                                   Color="Color.Primary" />
+                </MudStack>
+            </MudStack>
+            <MudDivider Class="my-3" />
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Blueprint Count</MudText>
+                        <MudText Typo="Typo.h5">@_status.BlueprintCount</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Created</MudText>
+                        <MudText Typo="Typo.body1">
+                            @(_status.CreatedAt?.ToString("yyyy-MM-dd HH:mm") ?? "N/A")
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                        <MudText Typo="Typo.body1">
+                            @(_status.IsInitialized ? "Active" : "Pending Initialization")
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    @if (!_status.IsInitialized)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            System register has not been initialized. Blueprint publishing and validation features are unavailable until the register is initialized.
+        </MudAlert>
+    }
+
+    @* Blueprint Data Grid *@
+    <MudText Typo="Typo.h6" Class="mb-2">Published Blueprints</MudText>
+    <MudDataGrid T="BlueprintSummaryViewModel"
+                 ServerData="LoadBlueprintsAsync"
+                 @ref="_dataGrid"
+                 Dense="true"
+                 Hover="true"
+                 RowClick="OnRowClick"
+                 RowStyle="cursor: pointer;"
+                 Loading="@_gridLoading">
+        <Columns>
+            <PropertyColumn Property="x => x.BlueprintId" Title="Blueprint ID" />
+            <PropertyColumn Property="x => x.Version" Title="Version" />
+            <TemplateColumn Title="Published At">
+                <CellTemplate>
+                    @context.Item.PublishedAt.ToString("yyyy-MM-dd HH:mm")
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="x => x.PublishedBy" Title="Published By" />
+            <TemplateColumn Title="Status">
+                <CellTemplate>
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                        @(context.Item.IsActive ? "Active" : "Inactive")
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="pa-4">
+                No blueprints have been published to the system register yet.
+            </MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudDataGridPager T="BlueprintSummaryViewModel" />
+        </PagerContent>
+    </MudDataGrid>
+}
+
+@code {
+    private SystemRegisterViewModel? _status;
+    private bool _loading = true;
+    private bool _gridLoading;
+    private string? _error;
+    private MudDataGrid<BlueprintSummaryViewModel>? _dataGrid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _status = await RegisterService.GetStatusAsync();
+            if (_status is null)
+            {
+                _error = "Unable to retrieve system register status. The service may be unavailable.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load system register: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task<GridData<BlueprintSummaryViewModel>> LoadBlueprintsAsync(GridState<BlueprintSummaryViewModel> state, CancellationToken cancellationToken)
+    {
+        _gridLoading = true;
+
+        try
+        {
+            var page = state.Page + 1; // MudDataGrid is 0-based, API is 1-based
+            var pageSize = state.PageSize;
+
+            var result = await RegisterService.GetBlueprintsAsync(page, pageSize);
+
+            return new GridData<BlueprintSummaryViewModel>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load blueprints: {ex.Message}";
+            return new GridData<BlueprintSummaryViewModel>
+            {
+                Items = [],
+                TotalItems = 0
+            };
+        }
+        finally
+        {
+            _gridLoading = false;
+        }
+    }
+
+    private async Task OnRowClick(DataGridRowClickEventArgs<BlueprintSummaryViewModel> args)
+    {
+        var blueprint = args.Item;
+        if (blueprint is null) return;
+
+        var detail = await RegisterService.GetBlueprintAsync(blueprint.BlueprintId);
+        if (detail is null)
+        {
+            _error = $"Could not load details for blueprint {blueprint.BlueprintId}.";
+            StateHasChanged();
+            return;
+        }
+
+        var parameters = new DialogParameters<BlueprintDetailDialog>
+        {
+            { x => x.Blueprint, detail },
+            { x => x.RegisterService, RegisterService }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<BlueprintDetailDialog>(
+            detail.Title, parameters, options);
+    }
+}

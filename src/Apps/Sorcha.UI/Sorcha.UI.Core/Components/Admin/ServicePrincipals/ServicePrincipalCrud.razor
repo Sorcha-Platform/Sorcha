@@ -1,0 +1,305 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@inject IServicePrincipalService ServicePrincipalService
+@inject IDialogService DialogService
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4" ShowCloseIcon="true"
+              CloseIconClicked="() => _error = null">
+        @_error
+        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Class="ml-2"
+                   OnClick="LoadAsync">
+            Retry
+        </MudButton>
+    </MudAlert>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudSwitch T="bool" Value="_includeInactive" Label="Include Inactive"
+               Color="Color.Primary" ThumbIcon="@(_includeInactive ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+               ThumbIconColor="@(_includeInactive ? Color.Primary : Color.Default)"
+               ValueChanged="OnIncludeInactiveChanged" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialogAsync">
+        Create Service Principal
+    </MudButton>
+</MudStack>
+
+@if (_isLoading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="400px" />
+}
+else if (_principals.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Filled.VpnKey"
+                Title="No service principals"
+                Description="No service-to-service credentials configured. Create one to get started." />
+}
+else
+{
+    <MudDataGrid T="ServicePrincipalViewModel" Items="_principals" Dense="true" Hover="true" Striped="true"
+                 RowsPerPage="10">
+        <Columns>
+            <PropertyColumn Property="x => x.ServiceName" Title="Service Name" />
+            <PropertyColumn Property="x => x.ClientId" Title="Client ID" />
+            <TemplateColumn Title="Status">
+                <CellTemplate>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                        @context.Item.Status
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Scopes">
+                <CellTemplate>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                        @context.Item.Scopes.Length scopes
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Last Used">
+                <CellTemplate>
+                    @if (context.Item.LastUsedAt.HasValue)
+                    {
+                        @context.Item.LastUsedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Never</MudText>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Expiration">
+                <CellTemplate>
+                    @if (context.Item.ExpiresAt.HasValue)
+                    {
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            @if (context.Item.IsNearExpiration)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                            }
+                            <MudText Typo="Typo.body2" Color="@(context.Item.IsNearExpiration ? Color.Warning : Color.Default)">
+                                @context.Item.ExpiresAt.Value.ToLocalTime().ToString("yyyy-MM-dd")
+                            </MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No expiration</MudText>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Actions" CellStyle="width: 80px; text-align: right;">
+                <CellTemplate>
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Dense="true" AnchorOrigin="Origin.BottomRight"
+                             TransformOrigin="Origin.TopRight">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                                     OnClick="@(() => OpenEditScopesDialogAsync(context.Item))">
+                            Edit Scopes
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Refresh"
+                                     OnClick="@(() => RotateSecretAsync(context.Item))">
+                            Rotate Secret
+                        </MudMenuItem>
+                        @if (context.Item.Status == "Active")
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Pause" IconColor="Color.Warning"
+                                         OnClick="@(() => SuspendAsync(context.Item))">
+                                Suspend
+                            </MudMenuItem>
+                        }
+                        else if (context.Item.Status == "Suspended")
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.PlayArrow" IconColor="Color.Success"
+                                         OnClick="@(() => ReactivateAsync(context.Item))">
+                                Reactivate
+                            </MudMenuItem>
+                        }
+                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                     OnClick="@(() => RevokeAsync(context.Item))">
+                            Revoke
+                        </MudMenuItem>
+                    </MudMenu>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+        <PagerContent>
+            <MudDataGridPager T="ServicePrincipalViewModel" />
+        </PagerContent>
+    </MudDataGrid>
+}
+
+@code {
+    private List<ServicePrincipalViewModel> _principals = [];
+    private bool _isLoading = true;
+    private bool _includeInactive;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ServicePrincipalService.ListAsync(_includeInactive);
+            _principals = result.Items;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load service principals: {ex.Message}";
+            _principals = [];
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnIncludeInactiveChanged(bool value)
+    {
+        _includeInactive = value;
+        await LoadAsync();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CreateServicePrincipalDialog>(
+            "Create Service Principal",
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task OpenEditScopesDialogAsync(ServicePrincipalViewModel principal)
+    {
+        var parameters = new DialogParameters<EditScopesDialog>
+        {
+            { x => x.PrincipalId, principal.Id },
+            { x => x.PrincipalName, principal.ServiceName },
+            { x => x.CurrentScopes, principal.Scopes }
+        };
+
+        var dialog = await DialogService.ShowAsync<EditScopesDialog>(
+            "Edit Scopes", parameters,
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task RotateSecretAsync(ServicePrincipalViewModel principal)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Rotate Secret",
+            $"Are you sure you want to rotate the secret for \"{principal.ServiceName}\"? The current secret will be invalidated immediately.",
+            yesText: "Rotate", cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            var secret = await ServicePrincipalService.RotateSecretAsync(principal.Id);
+
+            var parameters = new DialogParameters<SecretDisplayDialog>
+            {
+                { x => x.Secret, secret }
+            };
+            await DialogService.ShowAsync<SecretDisplayDialog>("New Credentials", parameters,
+                new DialogOptions { CloseOnEscapeKey = false, BackdropClick = false, MaxWidth = MaxWidth.Small, FullWidth = true });
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to rotate secret: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task SuspendAsync(ServicePrincipalViewModel principal)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Suspend Service Principal",
+            $"Are you sure you want to suspend \"{principal.ServiceName}\"? It will not be able to authenticate until reactivated.",
+            yesText: "Suspend", cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await ServicePrincipalService.SuspendAsync(principal.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to suspend: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReactivateAsync(ServicePrincipalViewModel principal)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Reactivate Service Principal",
+            $"Are you sure you want to reactivate \"{principal.ServiceName}\"?",
+            yesText: "Reactivate", cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await ServicePrincipalService.ReactivateAsync(principal.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to reactivate: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task RevokeAsync(ServicePrincipalViewModel principal)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Revoke Service Principal",
+            $"Are you sure you want to permanently revoke \"{principal.ServiceName}\"? This action cannot be undone.",
+            yesText: "Revoke", cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await ServicePrincipalService.RevokeAsync(principal.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to revoke: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "Active" => Color.Success,
+        "Suspended" => Color.Warning,
+        "Revoked" => Color.Error,
+        "Expired" => Color.Dark,
+        _ => Color.Default
+    };
+}
