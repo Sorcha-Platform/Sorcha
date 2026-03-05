@@ -97,9 +97,9 @@ An administrator needs to inspect W3C Bitstring Status Lists to audit credential
 
 **Acceptance Scenarios**:
 
-1. **Given** the admin navigation, **When** the administrator navigates to Admin > Credentials > Status Lists, **Then** they see a table of status lists with ID, purpose, issuer, and last updated date
-2. **Given** the status list table, **When** the administrator clicks on a list, **Then** they see the full W3C BitstringStatusListCredential document in a readable format
-3. **Given** no status lists exist, **When** the administrator views the page, **Then** they see an empty state message explaining that status lists are created automatically when credentials are issued
+1. **Given** the admin navigation, **When** the administrator navigates to Admin > Credentials > Status Lists, **Then** they see a lookup field for entering a status list ID, plus a list of recently-viewed status lists (stored in browser)
+2. **Given** a valid status list ID, **When** the administrator enters it and clicks "Lookup", **Then** they see the list metadata (ID, purpose, issuer, valid from) and can expand the full W3C BitstringStatusListCredential document
+3. **Given** no recently-viewed status lists, **When** the administrator first visits the page, **Then** they see an empty state message explaining that status lists are created automatically when credentials are issued
 4. **Given** a CLI user, **When** they run `credential status-list get --id <listId>`, **Then** the status list document is displayed in table or JSON format
 
 ---
@@ -145,7 +145,7 @@ An administrator needs to inspect W3C Bitstring Status Lists to audit credential
 
 **Status List Viewer**
 
-- **FR-016**: System MUST provide a read-only admin page showing status lists with their metadata (ID, purpose, issuer, last updated)
+- **FR-016**: System MUST provide a read-only admin page with a lookup-by-ID field and recently-viewed history (browser localStorage, max 10), displaying status list metadata (ID, purpose, issuer, valid from) when found
 - **FR-017**: System MUST allow administrators to view the full W3C BitstringStatusListCredential document for any list
 - **FR-018**: System MUST display an empty state when no status lists exist
 - **FR-019**: System MUST provide a CLI command to retrieve a status list by ID
