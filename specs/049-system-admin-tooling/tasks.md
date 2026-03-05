@@ -209,18 +209,18 @@
 
 ### Unit Tests — UI Services
 
-- [ ] T057 [P] Create unit tests for `ServicePrincipalService` (all 8 methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/ServicePrincipalServiceTests.cs`
-- [ ] T058 [P] Create unit tests for `SystemRegisterService` (all 4 methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/SystemRegisterServiceTests.cs`
-- [ ] T059 [P] Create unit tests for `ValidatorAdminService` extensions (14 new methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/ValidatorAdminServiceTests.cs`
-- [ ] T060 [P] Create unit tests for `RegisterService` extensions (3 new policy methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/RegisterServiceTests.cs`
+- [X] T057 [P] Create unit tests for `ServicePrincipalService` (all 8 methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/ServicePrincipalServiceTests.cs`
+- [X] T058 [P] Create unit tests for `SystemRegisterService` (all 4 methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/SystemRegisterServiceTests.cs`
+- [X] T059 [P] Create unit tests for `ValidatorAdminService` extensions (14 new methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/ValidatorAdminServiceTests.cs`
+- [X] T060 [P] Create unit tests for `RegisterService` extensions (3 new policy methods, mock HttpClient) in `tests/Sorcha.UI.Core.Tests/Services/RegisterServiceTests.cs`
 
 ### Unit Tests — CLI Commands
 
-- [ ] T061 [P] Create unit tests for `register policy` commands (get, history, update) in `tests/Sorcha.Cli.Tests/Commands/RegisterPolicyCommandTests.cs`
-- [ ] T062 [P] Create unit tests for `register system` commands (status, blueprints) in `tests/Sorcha.Cli.Tests/Commands/RegisterSystemCommandTests.cs`
-- [ ] T063 [P] Create unit tests for `validator consent` commands (pending, approve, reject, refresh) in `tests/Sorcha.Cli.Tests/Commands/ValidatorConsentCommandTests.cs`
-- [ ] T064 [P] Create unit tests for `validator metrics` commands (aggregated + 5 subsystems) in `tests/Sorcha.Cli.Tests/Commands/ValidatorMetricsCommandTests.cs`
-- [ ] T065 [P] Create unit tests for `validator threshold` commands (status, setup) in `tests/Sorcha.Cli.Tests/Commands/ValidatorThresholdCommandTests.cs`
+- [X] T061 [P] Create unit tests for `register policy` commands (get, history, update) in `tests/Sorcha.Cli.Tests/Commands/RegisterPolicyCommandTests.cs`
+- [X] T062 [P] Create unit tests for `register system` commands (status, blueprints) in `tests/Sorcha.Cli.Tests/Commands/RegisterSystemCommandTests.cs`
+- [X] T063 [P] Create unit tests for `validator consent` commands (pending, approve, reject, refresh) in `tests/Sorcha.Cli.Tests/Commands/ValidatorConsentCommandTests.cs`
+- [X] T064 [P] Create unit tests for `validator metrics` commands (aggregated + 5 subsystems) in `tests/Sorcha.Cli.Tests/Commands/ValidatorMetricsCommandTests.cs`
+- [X] T065 [P] Create unit tests for `validator threshold` commands (status, setup) in `tests/Sorcha.Cli.Tests/Commands/ValidatorThresholdCommandTests.cs`
 
 ### E2E Tests (if Playwright infrastructure available)
 
@@ -231,9 +231,9 @@
 
 ### Documentation & Cleanup
 
-- [ ] T070 Update `docs/reference/development-status.md` with Feature 049 completion status
-- [ ] T071 Update `.specify/MASTER-TASKS.md` with Feature 049 task completion
-- [ ] T072 Run `quickstart.md` verification steps (build, test, manual UI + CLI checks)
+- [X] T070 Update `docs/reference/development-status.md` with Feature 049 completion status
+- [X] T071 Update `.specify/MASTER-TASKS.md` with Feature 049 task completion
+- [X] T072 Run `quickstart.md` verification steps (build, test, manual UI + CLI checks)
 
 ---
 

@@ -19,6 +19,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **Tenant Service 100% MVD**: Auth, orgs, service principals (includeInactive), user count stats
 - **AUTH-002 complete**: All services now have JWT Bearer authentication with authorization policies
 - **Quantum-Safe Cryptography 100% complete**: ML-DSA-65, ML-KEM-768, SLH-DSA-128s, BLS12-381 threshold signatures, ZK proofs (Pedersen commitments, range proofs), per-register crypto policy, ws2 Bech32m addresses (270+ new tests)
+- **System Admin Tooling (Feature 049)**: Service principal CRUD, register policy management, validator consent/metrics/threshold, system register page, 17 CLI subcommands (29 new components)
 - **UI Modernization 100% complete**: Comprehensive overhaul — admin panels, workflow management, cloud persistence, dashboard stats, wallet/transaction integration, template library, explorer enhancements, consistent ID truncation
 - **UI Register Management 100% complete**: Wallet selection wizard, search/filter, transaction query
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
