@@ -180,6 +180,7 @@ internal class Program
         rootCommand.Subcommands.Add(new AdminCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new SchemaCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new OperationCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new ActionCommand(clientFactory, authService, configService));
 
         // Configuration management commands
         rootCommand.Subcommands.Add(new ConfigCommand());

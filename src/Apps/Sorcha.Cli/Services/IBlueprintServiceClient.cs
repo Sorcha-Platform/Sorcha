@@ -70,4 +70,14 @@ public interface IBlueprintServiceClient
     /// </summary>
     [Get("/api/operations/{operationId}")]
     Task<EncryptionOperationStatus> GetOperationStatusAsync(string operationId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Submits an action execution request.
+    /// </summary>
+    [Post("/api/instances/{instanceId}/actions/{actionId}/execute")]
+    Task<ActionExecuteCliResponse> SubmitActionAsync(
+        string instanceId,
+        string actionId,
+        [Body] ActionExecuteCliRequest request,
+        [Header("Authorization")] string authorization);
 }
