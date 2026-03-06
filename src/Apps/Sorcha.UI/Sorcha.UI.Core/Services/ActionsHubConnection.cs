@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Actions;
+using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
@@ -21,6 +22,9 @@ namespace Sorcha.UI.Core.Services;
 /// - ActionConfirmed: Action has been confirmed/completed
 /// - ActionRejected: Action was rejected and routed elsewhere
 /// - WorkflowCompleted: Entire workflow has completed
+/// - EncryptionProgress: Encryption operation progress update
+/// - EncryptionComplete: Encryption operation completed successfully
+/// - EncryptionFailed: Encryption operation failed
 ///
 /// Client can subscribe to:
 /// - Wallet-based notifications (SubscribeToWallet)
@@ -59,6 +63,21 @@ public class ActionsHubConnection : IAsyncDisposable
     /// Parameters: WorkflowCompletedNotification
     /// </summary>
     public event Func<WorkflowCompletedNotification, Task>? OnWorkflowCompleted;
+
+    /// <summary>
+    /// Event raised when encryption progress is updated.
+    /// </summary>
+    public event Func<EncryptionProgressUpdate, Task>? OnEncryptionProgress;
+
+    /// <summary>
+    /// Event raised when encryption completes successfully.
+    /// </summary>
+    public event Func<EncryptionCompleteUpdate, Task>? OnEncryptionComplete;
+
+    /// <summary>
+    /// Event raised when encryption fails.
+    /// </summary>
+    public event Func<EncryptionFailedUpdate, Task>? OnEncryptionFailed;
 
     /// <summary>
     /// Event raised when connection state changes.
@@ -305,6 +324,45 @@ public class ActionsHubConnection : IAsyncDisposable
             if (OnWorkflowCompleted != null)
             {
                 await OnWorkflowCompleted(notification);
+            }
+        });
+
+        // EncryptionProgress
+        _hubConnection.On<EncryptionProgressUpdate>("EncryptionProgress", async update =>
+        {
+            _logger.LogDebug(
+                "Encryption progress: Operation={OperationId}, Step={Step}/{TotalSteps} ({Percent}%)",
+                update.OperationId, update.Step, update.TotalSteps, update.PercentComplete);
+
+            if (OnEncryptionProgress != null)
+            {
+                await OnEncryptionProgress(update);
+            }
+        });
+
+        // EncryptionComplete
+        _hubConnection.On<EncryptionCompleteUpdate>("EncryptionComplete", async update =>
+        {
+            _logger.LogDebug(
+                "Encryption complete: Operation={OperationId}, TxHash={TxHash}",
+                update.OperationId, update.TransactionHash);
+
+            if (OnEncryptionComplete != null)
+            {
+                await OnEncryptionComplete(update);
+            }
+        });
+
+        // EncryptionFailed
+        _hubConnection.On<EncryptionFailedUpdate>("EncryptionFailed", async update =>
+        {
+            _logger.LogDebug(
+                "Encryption failed: Operation={OperationId}, Error={Error}",
+                update.OperationId, update.Error);
+
+            if (OnEncryptionFailed != null)
+            {
+                await OnEncryptionFailed(update);
             }
         });
     }
