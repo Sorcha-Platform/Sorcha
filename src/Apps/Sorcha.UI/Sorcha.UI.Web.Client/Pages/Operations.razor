@@ -1,0 +1,163 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/operations"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Components.Shared
+@using Sorcha.UI.Core.Services.Admin
+@using Sorcha.UI.Core.Services.Wallet
+@using Sorcha.UI.Core.Services
+@inject IOperationStatusService OperationService
+@inject IWalletApiService WalletService
+@inject IWalletPreferenceService WalletPreferenceService
+@inject ISnackbar Snackbar
+@inject ILogger<Operations> Logger
+
+<PageTitle>Encryption Operations - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Lock" Class="mr-2" />
+        Encryption Operations
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Track your encryption operation history
+    </MudText>
+
+    @if (_serviceError)
+    {
+        <ServiceUnavailable ServiceName="Encryption Service" OnRetry="InitializeAsync" />
+    }
+    else if (_initializing)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="400px" />
+    }
+    else if (string.IsNullOrEmpty(_walletAddress))
+    {
+        <EmptyState Icon="@Icons.Material.Filled.AccountBalanceWallet"
+                    Title="No Wallet Found"
+                    Description="You need a wallet to view encryption operations. Create one from the Wallets page." />
+    }
+    else
+    {
+        <MudTable T="OperationHistoryItem" ServerData="LoadServerData"
+                  @ref="_table" Dense="true" Hover="true" Striped="true"
+                  RowsPerPage="10">
+            <HeaderContent>
+                <MudTh>Status</MudTh>
+                <MudTh>Blueprint</MudTh>
+                <MudTh>Action</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh>Completed</MudTh>
+                <MudTh>Transaction / Error</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Status">
+                    @switch (context.Status.ToLowerInvariant())
+                    {
+                        case "completed":
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" Title="Completed" />
+                            break;
+                        case "failed":
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Small" Title="Failed" />
+                            break;
+                        default:
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" />
+                            break;
+                    }
+                </MudTd>
+                <MudTd DataLabel="Blueprint">
+                    <TruncatedId Value="@context.BlueprintId" />
+                </MudTd>
+                <MudTd DataLabel="Action">@context.ActionTitle</MudTd>
+                <MudTd DataLabel="Created">@context.CreatedAt.ToString("MMM dd, yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Completed">
+                    @if (context.CompletedAt != default)
+                    {
+                        @context.CompletedAt.ToString("MMM dd, yyyy HH:mm")
+                    }
+                </MudTd>
+                <MudTd DataLabel="Transaction / Error">
+                    @if (!string.IsNullOrEmpty(context.TransactionHash))
+                    {
+                        <TruncatedId Value="@context.TransactionHash" />
+                    }
+                    else if (!string.IsNullOrEmpty(context.ErrorMessage))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Error">@context.ErrorMessage</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Filled.Lock"
+                            Title="No Operations"
+                            Description="No encryption operations found for your wallet." />
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+            </PagerContent>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    private string _walletAddress = string.Empty;
+    private bool _initializing = true;
+    private bool _serviceError;
+    private MudTable<OperationHistoryItem>? _table;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        _initializing = true;
+        _serviceError = false;
+
+        try
+        {
+            var wallets = await WalletService.GetWalletsAsync();
+            _walletAddress = await WalletPreferenceService.GetSmartDefaultAsync(wallets) ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to resolve wallet for operations page");
+            _serviceError = true;
+        }
+        finally
+        {
+            _initializing = false;
+        }
+    }
+
+    private async Task<TableData<OperationHistoryItem>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        var page = state.Page + 1; // MudTable is 0-based, API is 1-based
+        var pageSize = state.PageSize;
+
+        try
+        {
+            var result = await OperationService.ListOperationsAsync(_walletAddress, page, pageSize, ct);
+            if (result == null)
+            {
+                Snackbar.Add("Failed to load operations", Severity.Error);
+                return new TableData<OperationHistoryItem> { Items = [], TotalItems = 0 };
+            }
+
+            return new TableData<OperationHistoryItem> { Items = result.Items, TotalItems = result.TotalCount };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error loading operations page {Page}", page);
+            Snackbar.Add("Failed to load operations", Severity.Error);
+            return new TableData<OperationHistoryItem> { Items = [], TotalItems = 0 };
+        }
+    }
+}

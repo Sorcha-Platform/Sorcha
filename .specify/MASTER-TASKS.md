@@ -20,6 +20,16 @@ This document tracks **active work only**. Completed phases and historical updat
 
 ---
 
+## Feature 052: Encryption Integration — ✅ COMPLETE
+
+> **Priority:** P2 (UX Integration)
+> **Branch:** `052-encryption-integration`
+> **Tasks:** 40/40 complete
+
+End-to-end async encryption pipeline wired to UI and CLI. Core flow: OperationId/IsAsync on ActionSubmissionResultViewModel, EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, paginated operations history page, CLI `action execute` with blocking spinner and `--no-wait` mode, navigation warning banner. 63+ new tests across 6 user stories.
+
+---
+
 ## Feature 051: Operations & Monitoring Admin — ✅ COMPLETE
 
 > **Priority:** P2 (Operational Tooling)

@@ -94,8 +94,8 @@
 
 ### Tests for User Story 6
 
-- [ ] T017 [P] [US6] Write tests for ActionsHubConnection encryption event handlers — `EncryptionProgress`, `EncryptionComplete`, `EncryptionFailed` handler registration and callback invocation in tests/Sorcha.UI.Core.Tests/Services/ActionsHubConnectionTests.cs (new or modify existing)
-- [ ] T018 [P] [US6] Write tests for EncryptionProgressIndicator SignalR mode — prefers SignalR over polling, falls back to polling when disconnected in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
+- [X] T017 [P] [US6] Write tests for ActionsHubConnection encryption event handlers — `EncryptionProgress`, `EncryptionComplete`, `EncryptionFailed` handler registration and callback invocation in tests/Sorcha.UI.Core.Tests/Services/ActionsHubConnectionTests.cs (new or modify existing)
+- [X] T018 [P] [US6] Write tests for EncryptionProgressIndicator SignalR mode — prefers SignalR over polling, falls back to polling when disconnected in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
 
 ### Implementation for User Story 6
 
@@ -116,14 +116,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Write tests for `OperationNotificationListener` — subscribes to EventsHub, shows snackbar on completion/failure, navigates on click in tests/Sorcha.UI.Core.Tests/Components/OperationNotificationListenerTests.cs
-- [ ] T022 [P] [US3] Write tests for `NotificationService` EventsHub integration — verify `EncryptionOperationCompleted` event is sent via EventsHub on operation completion and failure in tests/Sorcha.Blueprint.Service.Tests/Services/NotificationServiceTests.cs
+- [X] T021 [P] [US3] Write tests for `OperationNotificationListener` — subscribes to EventsHub, shows snackbar on completion/failure, navigates on click in tests/Sorcha.UI.Core.Tests/Components/OperationNotificationListenerTests.cs
+- [X] T022 [P] [US3] Write tests for `NotificationService` EventsHub integration — verify `EncryptionOperationCompleted` event is sent via EventsHub on operation completion and failure in tests/Sorcha.Blueprint.Service.Tests/Services/NotificationServiceTests.cs
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Update `NotificationService` in Blueprint Service to send `EncryptionOperationCompleted` event via EventsHub (user-scoped group) when encryption completes or fails, in addition to existing ActionsHub events in src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs
-- [ ] T024 [US3] Create `OperationNotificationListener.razor` component — subscribes to EventsHub `EncryptionOperationCompleted` events, shows MudBlazor `ISnackbar` toast with operation result and navigation link in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor
-- [ ] T025 [US3] Add `OperationNotificationListener` to `MainLayout.razor` so it is active on all pages in src/Apps/Sorcha.UI/Sorcha.UI.Web/Components/Layout/MainLayout.razor
+- [X] T023 [US3] Update `NotificationService` in Blueprint Service to send `EncryptionOperationCompleted` event via EventsHub (user-scoped group) when encryption completes or fails, in addition to existing ActionsHub events in src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs
+- [X] T024 [US3] Create `OperationNotificationListener.razor` component — subscribes to EventsHub `EncryptionOperationCompleted` events, shows MudBlazor `ISnackbar` toast with operation result and navigation link in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor
+- [X] T025 [US3] Add `OperationNotificationListener` to `MainLayout.razor` so it is active on all pages in src/Apps/Sorcha.UI/Sorcha.UI.Web/Components/Layout/MainLayout.razor
 - [X] T026 [US3] Add navigation warning banner to `MyActions.razor` — when encryption is in progress and user navigates away, show non-blocking `MudAlert` informing them they'll be notified on completion in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
 
 **Checkpoint**: User Story 3 complete — toast notifications work cross-page, navigation warning displays
@@ -140,13 +140,13 @@
 
 ### Tests for User Story 4
 
-- [ ] T027 [P] [US4] Write tests for `OperationStatusService.ListOperationsAsync` — pagination, mapping, empty results in tests/Sorcha.UI.Core.Tests/Services/OperationStatusServiceTests.cs
+- [X] T027 [P] [US4] Write tests for `OperationStatusService.ListOperationsAsync` — pagination, mapping, empty results in tests/Sorcha.UI.Core.Tests/Services/OperationStatusServiceTests.cs
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Add `ListOperationsAsync(string walletAddress, int page, int pageSize)` to `IOperationStatusService` interface and implement in `OperationStatusService` — call `GET /api/operations` endpoint, return `OperationHistoryPage` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IOperationStatusService.cs and src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/OperationStatusService.cs
-- [ ] T029 [US4] Create `Operations.razor` page — `@page "/operations"`, inject `IOperationStatusService`, display `MudTable` with pagination, status icons (spinner/check/X), timestamps, drill-down to transaction reference or error details with retry button in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Operations.razor
-- [ ] T030 [US4] Add "Operations" navigation entry to the sidebar/nav menu in src/Apps/Sorcha.UI/Sorcha.UI.Web/Components/Layout/NavMenu.razor
+- [X] T028 [US4] Add `ListOperationsAsync(string walletAddress, int page, int pageSize)` to `IOperationStatusService` interface and implement in `OperationStatusService` — call `GET /api/operations` endpoint, return `OperationHistoryPage` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IOperationStatusService.cs and src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/OperationStatusService.cs
+- [X] T029 [US4] Create `Operations.razor` page — `@page "/operations"`, inject `IOperationStatusService`, display `MudTable` with pagination, status icons (spinner/check/X), timestamps, drill-down to transaction reference or error details with retry button in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Operations.razor
+- [X] T030 [US4] Add "Operations" navigation entry to the sidebar/nav menu in src/Apps/Sorcha.UI/Sorcha.UI.Web/Components/Layout/NavMenu.razor
 
 **Checkpoint**: User Story 4 complete — operations history page shows all operations with pagination and drill-down
 
@@ -180,10 +180,10 @@
 
 **Purpose**: Documentation, validation, and quality improvements across all stories
 
-- [ ] T037 Update API documentation for new `GET /api/operations` list endpoint in docs/reference/API-DOCUMENTATION.md
-- [ ] T038 [P] Update development status to reflect encryption integration completion in docs/reference/development-status.md
-- [ ] T039 [P] Update MASTER-TASKS.md task status for Feature 052 in .specify/MASTER-TASKS.md
-- [ ] T040 Run quickstart.md validation scenarios end-to-end (all 7 scenarios from specs/052-encryption-integration/quickstart.md)
+- [X] T037 Update API documentation for new `GET /api/operations` list endpoint in docs/reference/API-DOCUMENTATION.md
+- [X] T038 [P] Update development status to reflect encryption integration completion in docs/reference/development-status.md
+- [X] T039 [P] Update MASTER-TASKS.md task status for Feature 052 in .specify/MASTER-TASKS.md
+- [X] T040 Run quickstart.md validation scenarios end-to-end (all 7 scenarios from specs/052-encryption-integration/quickstart.md)
 
 ---
 

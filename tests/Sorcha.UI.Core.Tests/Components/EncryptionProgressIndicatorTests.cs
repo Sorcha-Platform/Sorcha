@@ -4,6 +4,7 @@
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
 using MudBlazor.Services;
 using Sorcha.UI.Core.Components.Admin;
@@ -398,6 +399,106 @@ public class EncryptionProgressIndicatorTests : BunitContext
 
         var emptyId = new ActionSubmissionResultViewModel { IsAsync = true, OperationId = "" };
         emptyId.HasAsyncOperation.Should().BeFalse();
+    }
+
+    // ---------------------------------------------------------------
+    // T018: SignalR mode tests
+    // ---------------------------------------------------------------
+
+    [Fact]
+    public void ActionsHub_IsNullByDefault()
+    {
+        // Arrange — render without ActionsHub parameter
+        var operation = CreateOperation(
+            stage: OperationStage.EncryptingPerRecipient,
+            percentComplete: 25,
+            recipientCount: 4,
+            processedRecipients: 1);
+
+        _operationServiceMock
+            .Setup(s => s.GetStatusAsync("op-nohub", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(operation);
+
+        // Act
+        var cut = Render<EncryptionProgressIndicator>(parameters => parameters
+            .Add(p => p.OperationId, "op-nohub"));
+
+        // Assert — component renders in polling mode (no SignalR)
+        cut.Markup.Should().Contain("1 of 4 recipients processed");
+        cut.Instance.ActionsHub.Should().BeNull();
+    }
+
+    [Fact]
+    public void FormatStage_HyphenatedInput_ConvertedToTitleCase()
+    {
+        // Arrange — use a hyphenated stage name
+        var operation = CreateOperation(
+            stage: "key-generation",
+            percentComplete: 30,
+            recipientCount: 2,
+            processedRecipients: 0);
+
+        _operationServiceMock
+            .Setup(s => s.GetStatusAsync("op-stage1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(operation);
+
+        // Act
+        var cut = Render<EncryptionProgressIndicator>(parameters => parameters
+            .Add(p => p.OperationId, "op-stage1"));
+
+        // Assert — "key-generation" becomes "Key Generation"
+        cut.Markup.Should().Contain("Key Generation");
+    }
+
+    [Fact]
+    public void FormatStage_MultiWordHyphenated_AllWordsCapitalized()
+    {
+        // Arrange
+        var operation = CreateOperation(
+            stage: "recipient-encryption",
+            percentComplete: 60,
+            recipientCount: 5,
+            processedRecipients: 3);
+
+        _operationServiceMock
+            .Setup(s => s.GetStatusAsync("op-stage2", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(operation);
+
+        // Act
+        var cut = Render<EncryptionProgressIndicator>(parameters => parameters
+            .Add(p => p.OperationId, "op-stage2"));
+
+        // Assert — "recipient-encryption" becomes "Recipient Encryption"
+        cut.Markup.Should().Contain("Recipient Encryption");
+    }
+
+    [Fact]
+    public void Dispose_WithActionsHub_UnsubscribesFromEvents()
+    {
+        // Arrange — create a real ActionsHubConnection (unconnected) and pass it
+        var authService = new Mock<Sorcha.UI.Core.Services.Authentication.IAuthenticationService>();
+        var configService = new Mock<Sorcha.UI.Core.Services.Configuration.IConfigurationService>();
+        var logger = new Mock<Microsoft.Extensions.Logging.ILogger<ActionsHubConnection>>();
+        var hub = new ActionsHubConnection("http://localhost", authService.Object, configService.Object, logger.Object);
+
+        var operation = CreateOperation(
+            stage: OperationStage.EncryptingPerRecipient,
+            percentComplete: 50,
+            recipientCount: 4,
+            processedRecipients: 2);
+
+        _operationServiceMock
+            .Setup(s => s.GetStatusAsync("op-hub-dispose", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(operation);
+
+        // Act
+        var cut = Render<EncryptionProgressIndicator>(parameters => parameters
+            .Add(p => p.OperationId, "op-hub-dispose")
+            .Add(p => p.ActionsHub, hub));
+
+        // Assert — Dispose should not throw even when ActionsHub was subscribed
+        var act = () => cut.Instance.Dispose();
+        act.Should().NotThrow();
     }
 
     // ---------------------------------------------------------------

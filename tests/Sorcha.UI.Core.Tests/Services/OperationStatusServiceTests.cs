@@ -41,6 +41,8 @@ public class OperationStatusServiceTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private HttpRequestMessage? _capturedRequest;
+
     private void SetupResponse(HttpStatusCode statusCode, object? content = null)
     {
         var response = new HttpResponseMessage(statusCode)
@@ -51,6 +53,7 @@ public class OperationStatusServiceTests : IDisposable
         _handlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>("SendAsync",
                 ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((req, _) => _capturedRequest = req)
             .ReturnsAsync(response);
     }
 
@@ -153,5 +156,108 @@ public class OperationStatusServiceTests : IDisposable
         var result = await _service.GetStatusAsync("op-123");
 
         result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ListOperationsAsync_ValidResponse_ReturnsMappedPage()
+    {
+        var page = new OperationHistoryPage
+        {
+            Items =
+            [
+                new OperationHistoryItem
+                {
+                    OperationId = "op-1",
+                    Status = "completed",
+                    BlueprintId = "bp-001",
+                    ActionTitle = "Submit",
+                    TransactionHash = "abc123"
+                },
+                new OperationHistoryItem
+                {
+                    OperationId = "op-2",
+                    Status = "failed",
+                    BlueprintId = "bp-002",
+                    ActionTitle = "Review",
+                    ErrorMessage = "Key not found"
+                }
+            ],
+            Page = 1,
+            PageSize = 10,
+            TotalCount = 2,
+            HasMore = false
+        };
+        SetupResponse(HttpStatusCode.OK, page);
+
+        var result = await _service.ListOperationsAsync("did:sorcha:w:wallet1");
+
+        result.Should().NotBeNull();
+        result!.Items.Should().HaveCount(2);
+        result.Page.Should().Be(1);
+        result.PageSize.Should().Be(10);
+        result.TotalCount.Should().Be(2);
+        result.HasMore.Should().BeFalse();
+        result.Items[0].OperationId.Should().Be("op-1");
+        result.Items[0].Status.Should().Be("completed");
+        result.Items[1].ErrorMessage.Should().Be("Key not found");
+    }
+
+    [Fact]
+    public async Task ListOperationsAsync_EmptyResults_ReturnsEmptyPage()
+    {
+        var page = new OperationHistoryPage
+        {
+            Items = [],
+            Page = 1,
+            PageSize = 10,
+            TotalCount = 0,
+            HasMore = false
+        };
+        SetupResponse(HttpStatusCode.OK, page);
+
+        var result = await _service.ListOperationsAsync("did:sorcha:w:wallet1");
+
+        result.Should().NotBeNull();
+        result!.Items.Should().BeEmpty();
+        result.TotalCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ListOperationsAsync_ServerError_ReturnsNull()
+    {
+        SetupResponse(HttpStatusCode.InternalServerError);
+
+        var result = await _service.ListOperationsAsync("did:sorcha:w:wallet1");
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ListOperationsAsync_DefaultPagination_UsesCorrectUrl()
+    {
+        var page = new OperationHistoryPage { Items = [], Page = 1, PageSize = 10, TotalCount = 0 };
+        SetupResponse(HttpStatusCode.OK, page);
+
+        await _service.ListOperationsAsync("did:sorcha:w:wallet1");
+
+        _capturedRequest.Should().NotBeNull();
+        var url = _capturedRequest!.RequestUri!.ToString();
+        url.Should().Contain("page=1");
+        url.Should().Contain("pageSize=10");
+        url.Should().Contain("wallet=did%3Asorcha%3Aw%3Awallet1");
+    }
+
+    [Fact]
+    public async Task ListOperationsAsync_CustomPagination_UsesCorrectUrl()
+    {
+        var page = new OperationHistoryPage { Items = [], Page = 3, PageSize = 25, TotalCount = 0 };
+        SetupResponse(HttpStatusCode.OK, page);
+
+        await _service.ListOperationsAsync("did:sorcha:w:wallet1", page: 3, pageSize: 25);
+
+        _capturedRequest.Should().NotBeNull();
+        var url = _capturedRequest!.RequestUri!.ToString();
+        url.Should().Contain("page=3");
+        url.Should().Contain("pageSize=25");
     }
 }

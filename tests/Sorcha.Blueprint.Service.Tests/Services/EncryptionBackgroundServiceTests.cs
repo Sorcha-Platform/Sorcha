@@ -207,6 +207,7 @@ public class EncryptionBackgroundServiceTests
             It.Is<EncryptionCompleteNotification>(c =>
                 c.OperationId == "op123" &&
                 !string.IsNullOrEmpty(c.TransactionHash)),
+            It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -244,6 +245,7 @@ public class EncryptionBackgroundServiceTests
                 f.OperationId == "op123" &&
                 f.Error.Contains("P-256 key error") &&
                 f.FailedRecipient == "wallet-recipient-001"),
+            It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Operation store should be updated with failure (the same object is mutated across steps)

@@ -1125,6 +1125,47 @@ Authorization: Bearer {token}
 
 **Status values:** `Pending`, `ResolvingKeys`, `Encrypting`, `BuildingTransaction`, `Submitting`, `Complete`, `Failed`
 
+#### List Operations (Feature 052)
+
+```http
+GET /api/operations?wallet={walletAddress}&page={page}&pageSize={pageSize}
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `wallet` | string | required | Wallet address to filter operations |
+| `page` | int | 1 | Page number (1-based) |
+| `pageSize` | int | 10 | Items per page (max 50) |
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {
+      "operationId": "op-uuid-123",
+      "status": "complete",
+      "blueprintId": "bp-001",
+      "actionTitle": "Submit Disclosure",
+      "instanceId": "inst-001",
+      "walletAddress": "did:sorcha:w:abc123",
+      "recipientCount": 3,
+      "transactionHash": "a1b2c3...",
+      "errorMessage": null,
+      "createdAt": "2026-03-02T10:00:00Z",
+      "completedAt": "2026-03-02T10:00:15Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 10,
+  "totalCount": 25,
+  "hasMore": true
+}
+```
+
+**Authorization:** JWT `wallet_address` claim must match the requested wallet address (403 if mismatch).
+
 ### Batch Public Key Resolution
 
 ```http

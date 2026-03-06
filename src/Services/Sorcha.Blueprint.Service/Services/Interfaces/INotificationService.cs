@@ -81,17 +81,21 @@ public interface INotificationService
 
     /// <summary>
     /// Notify a wallet that encryption completed successfully.
+    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
     /// <param name="notification">The completion notification</param>
+    /// <param name="userId">Optional user ID for EventsHub notification</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionCompleteNotification notification, CancellationToken ct = default);
+    Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionCompleteNotification notification, string? userId = null, CancellationToken ct = default);
 
     /// <summary>
     /// Notify a wallet that encryption failed.
+    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
     /// <param name="notification">The failure notification</param>
+    /// <param name="userId">Optional user ID for EventsHub notification</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionFailedNotification notification, CancellationToken ct = default);
+    Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionFailedNotification notification, string? userId = null, CancellationToken ct = default);
 }

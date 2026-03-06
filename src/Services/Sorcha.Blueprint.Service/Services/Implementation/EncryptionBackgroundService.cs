@@ -226,7 +226,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 {
                     OperationId = operationId,
                     TransactionHash = txHash
-                }, ct);
+                }, userId: null, ct: ct);
 
             // Store persistent activity event for disconnected users (T047)
             await StoreActivityEventAsync(scope.ServiceProvider, workItem, txHash, success: true, error: null);
@@ -303,7 +303,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 Error = error,
                 FailedRecipient = failedRecipient,
                 Step = step
-            }, ct);
+            }, userId: null, ct: ct);
 
         await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
 

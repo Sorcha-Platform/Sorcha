@@ -15,8 +15,11 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 public class EncryptionNotificationTests
 {
     private readonly Mock<IHubContext<ActionsHub>> _hubContext = new();
+    private readonly Mock<IHubContext<EventsHub>> _eventsHubContext = new();
     private readonly Mock<IHubClients> _hubClients = new();
+    private readonly Mock<IHubClients> _eventsHubClients = new();
     private readonly Mock<IClientProxy> _clientProxy = new();
+    private readonly Mock<IClientProxy> _eventsClientProxy = new();
     private readonly NotificationService _service;
 
     private readonly List<(string Method, object?[] Args)> _sentMessages = [];
@@ -30,8 +33,15 @@ public class EncryptionNotificationTests
             .Callback<string, object?[], CancellationToken>((method, args, _) => _sentMessages.Add((method, args)))
             .Returns(Task.CompletedTask);
 
+        _eventsHubContext.Setup(h => h.Clients).Returns(_eventsHubClients.Object);
+        _eventsHubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_eventsClientProxy.Object);
+        _eventsClientProxy.Setup(c => c.SendCoreAsync(
+                It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
         _service = new NotificationService(
             _hubContext.Object,
+            _eventsHubContext.Object,
             NullLogger<NotificationService>.Instance);
     }
 

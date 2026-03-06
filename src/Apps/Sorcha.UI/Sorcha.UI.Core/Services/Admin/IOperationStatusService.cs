@@ -14,4 +14,9 @@ public interface IOperationStatusService
     /// Gets the current status of an encryption operation.
     /// </summary>
     Task<EncryptionOperationViewModel?> GetStatusAsync(string operationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists encryption operations for a wallet address with pagination.
+    /// </summary>
+    Task<OperationHistoryPage?> ListOperationsAsync(string walletAddress, int page = 1, int pageSize = 10, CancellationToken ct = default);
 }

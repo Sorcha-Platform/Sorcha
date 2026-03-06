@@ -89,6 +89,9 @@
                     <MudNavLink Href="my-transactions" Icon="@Icons.Material.Filled.Receipt">
                         @Loc.T("nav.myTransactions")
                     </MudNavLink>
+                    <MudNavLink Href="operations" Icon="@Icons.Material.Filled.Lock">
+                        Encryption Operations
+                    </MudNavLink>
                     @if (_drawerOpen)
                     {
                         <MudDivider Class="my-2" />
@@ -202,6 +205,7 @@
     </MudMainContent>
     <StatusFooter />
     <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
+    <OperationNotificationListener />
 </MudLayout>
 
 </CascadingAuthenticationState>
