@@ -50,6 +50,31 @@ public record EncryptionOperationViewModel
     public string? ErrorMessage { get; init; }
 
     /// <summary>
+    /// Result transaction hash on success.
+    /// </summary>
+    public string? TransactionHash { get; init; }
+
+    /// <summary>
+    /// Source blueprint for context display.
+    /// </summary>
+    public string? BlueprintId { get; init; }
+
+    /// <summary>
+    /// Action name for context display.
+    /// </summary>
+    public string? ActionTitle { get; init; }
+
+    /// <summary>
+    /// Operation start time.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>
+    /// Operation end time (null if still in progress).
+    /// </summary>
+    public DateTimeOffset? CompletedAt { get; init; }
+
+    /// <summary>
     /// Whether the operation has completed (successfully or with failure).
     /// </summary>
     public bool IsComplete => Stage is OperationStage.Complete or OperationStage.Failed;

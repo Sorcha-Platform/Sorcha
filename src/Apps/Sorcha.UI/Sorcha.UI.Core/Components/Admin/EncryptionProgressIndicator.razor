@@ -3,6 +3,8 @@
 
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Admin
 @implements IDisposable
 @inject IOperationStatusService OperationService
@@ -22,13 +24,33 @@
         {
             @if (_operation.IsComplete && _operation.IsSuccess)
             {
-                <MudAlert Severity="Severity.Success" Dense="true">Encryption complete</MudAlert>
+                <MudAlert Severity="Severity.Success" Dense="true">
+                    Encryption complete
+                    @if (!string.IsNullOrWhiteSpace(_operation.TransactionHash))
+                    {
+                        <span> — Transaction: <code>@_operation.TransactionHash</code></span>
+                    }
+                </MudAlert>
             }
             else if (_operation.IsComplete && !_operation.IsSuccess)
             {
                 <MudAlert Severity="Severity.Error" Dense="true">
                     Encryption failed@(!string.IsNullOrWhiteSpace(_operation.ErrorMessage) ? $": {_operation.ErrorMessage}" : "")
                 </MudAlert>
+
+                @if (OriginalRequest is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="RetryAsync"
+                               Disabled="_isRetrying">
+                        @if (_isRetrying)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                        }
+                        Retry
+                    </MudButton>
+                }
             }
             else
             {
@@ -59,13 +81,32 @@
     [Parameter]
     public EventCallback OnCompleted { get; set; }
 
+    [Parameter]
+    public EventCallback OnFailed { get; set; }
+
+    /// <summary>
+    /// Original action request for retry capability. When provided and operation fails,
+    /// a retry button is shown.
+    /// </summary>
+    [Parameter]
+    public ActionExecuteRequest? OriginalRequest { get; set; }
+
+    /// <summary>
+    /// Optional WorkflowService for retry submissions.
+    /// </summary>
+    [Parameter]
+    public IWorkflowService? WorkflowService { get; set; }
+
     private EncryptionOperationViewModel? _operation;
     private System.Timers.Timer? _pollTimer;
     private bool _isLoading = true;
+    private bool _isRetrying;
     private bool _disposed;
+    private string _currentOperationId = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
+        _currentOperationId = OperationId;
         await PollStatusAsync();
         if (_operation != null && !_operation.IsComplete)
         {
@@ -81,21 +122,72 @@
         _pollTimer.Start();
     }
 
+    private void StopPolling()
+    {
+        _pollTimer?.Stop();
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
     private async Task PollStatusAsync()
     {
         if (_disposed) return;
-        _operation = await OperationService.GetStatusAsync(OperationId);
+        _operation = await OperationService.GetStatusAsync(_currentOperationId);
         _isLoading = false;
 
         if (_operation?.IsComplete == true)
         {
-            _pollTimer?.Stop();
-            _pollTimer?.Dispose();
-            _pollTimer = null;
-            await OnCompleted.InvokeAsync();
+            StopPolling();
+            if (_operation.IsSuccess)
+            {
+                await OnCompleted.InvokeAsync();
+            }
+            else
+            {
+                await OnFailed.InvokeAsync();
+            }
         }
 
         StateHasChanged();
+    }
+
+    private async Task RetryAsync()
+    {
+        if (OriginalRequest is null || WorkflowService is null) return;
+
+        _isRetrying = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await WorkflowService.SubmitActionExecuteAsync(OriginalRequest);
+            if (result?.HasAsyncOperation == true)
+            {
+                // Reset state for new operation
+                _currentOperationId = result.OperationId!;
+                _operation = null;
+                _isLoading = true;
+                _isRetrying = false;
+                StateHasChanged();
+
+                await PollStatusAsync();
+                if (_operation != null && !_operation.IsComplete)
+                {
+                    StartPolling();
+                }
+            }
+            else
+            {
+                _isRetrying = false;
+                // Sync result — operation completed immediately
+                await OnCompleted.InvokeAsync();
+            }
+        }
+        catch
+        {
+            _isRetrying = false;
+            StateHasChanged();
+        }
     }
 
     private static string FormatStage(string stage) =>
@@ -105,7 +197,6 @@
     public void Dispose()
     {
         _disposed = true;
-        _pollTimer?.Stop();
-        _pollTimer?.Dispose();
+        StopPolling();
     }
 }

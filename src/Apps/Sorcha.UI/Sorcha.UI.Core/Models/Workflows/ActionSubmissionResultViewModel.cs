@@ -14,6 +14,21 @@ public record ActionSubmissionResultViewModel
     public bool IsComplete { get; init; }
     public List<NextActionInfo>? NextActions { get; init; }
     public List<string>? Warnings { get; init; }
+
+    /// <summary>
+    /// Operation ID for async encryption tracking. Null for synchronous operations.
+    /// </summary>
+    public string? OperationId { get; init; }
+
+    /// <summary>
+    /// True when encryption is processed asynchronously (HTTP 202 response).
+    /// </summary>
+    public bool IsAsync { get; init; }
+
+    /// <summary>
+    /// Whether this result has an active async encryption operation to track.
+    /// </summary>
+    public bool HasAsyncOperation => IsAsync && !string.IsNullOrEmpty(OperationId);
 }
 
 /// <summary>
