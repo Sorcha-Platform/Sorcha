@@ -74,7 +74,7 @@ public static class OperationsEndpoints
                     operationId = activeOp.OperationId,
                     status = activeOp.Status.ToString().ToLowerInvariant(),
                     blueprintId = activeOp.BlueprintId,
-                    actionTitle = activeOp.StepName,
+                    actionTitle = $"Action {activeOp.ActionId}",
                     instanceId = activeOp.InstanceId,
                     walletAddress = activeOp.SubmittingWalletAddress,
                     recipientCount = activeOp.TotalRecipients,
@@ -90,7 +90,7 @@ public static class OperationsEndpoints
             {
                 // Fetch a generous page of events; we filter by type afterwards.
                 var (events, _) = await eventService.GetEventsAsync(
-                    userId, 1, 200, since: null, ct: httpContext.RequestAborted);
+                    userId, 1, 1000, since: null, ct: httpContext.RequestAborted);
 
                 var encryptionEvents = events
                     .Where(e => e.EntityType == "EncryptionOperation")

@@ -222,17 +222,17 @@ public class ActionExecuteCommand : Command
                         task.Description = $"[cyan]{status.Stage}[/]";
                         task.Value = status.PercentComplete;
 
-                        if (status.PercentComplete >= 100)
-                        {
-                            task.StopTask();
-                            break;
-                        }
-
                         if (!string.IsNullOrEmpty(status.ErrorMessage))
                         {
                             task.Description = $"[red]Failed: {status.ErrorMessage}[/]";
                             task.StopTask();
                             exitCode = ExitCodes.GeneralError;
+                            break;
+                        }
+
+                        if (status.PercentComplete >= 100)
+                        {
+                            task.StopTask();
                             break;
                         }
                     }
