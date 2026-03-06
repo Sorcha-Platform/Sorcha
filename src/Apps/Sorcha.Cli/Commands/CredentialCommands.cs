@@ -30,6 +30,10 @@ public class CredentialCommand : Command
         Subcommands.Add(new CredentialVerifyCommand(clientFactory, authService, configService));
         Subcommands.Add(new CredentialRevokeCommand(clientFactory, authService, configService));
         Subcommands.Add(new CredentialStatusCommand(clientFactory, authService, configService));
+        Subcommands.Add(new CredentialSuspendCommand(clientFactory, authService, configService));
+        Subcommands.Add(new CredentialReinstateCommand(clientFactory, authService, configService));
+        Subcommands.Add(new CredentialRefreshCommand(clientFactory, authService, configService));
+        Subcommands.Add(new CredentialStatusListCommand(clientFactory, authService, configService));
     }
 }
 
@@ -729,6 +733,426 @@ public class CredentialStatusCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to get credential status: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Suspends an active credential.
+/// </summary>
+public class CredentialSuspendCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _walletOption;
+    private readonly Option<string?> _reasonOption;
+
+    public CredentialSuspendCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("suspend", "Suspend an active credential")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Credential ID",
+            Required = true
+        };
+
+        _walletOption = new Option<string>("--wallet", "-w")
+        {
+            Description = "Issuer wallet address",
+            Required = true
+        };
+
+        _reasonOption = new Option<string?>("--reason", "-r")
+        {
+            Description = "Reason for suspension"
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_walletOption);
+        Options.Add(_reasonOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var wallet = parseResult.GetValue(_walletOption)!;
+            var reason = parseResult.GetValue(_reasonOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
+                var response = await client.SuspendCredentialAsync(id, new LifecycleCredentialRequest
+                {
+                    IssuerWallet = wallet,
+                    Reason = reason
+                }, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Credential '{id}' suspended successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Credential ID: {response.CredentialId}");
+                Console.WriteLine($"  New Status:    {response.NewStatus}");
+                Console.WriteLine($"  Performed By:  {response.PerformedBy}");
+                Console.WriteLine($"  Reason:        {response.Reason}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Credential '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to suspend credential: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Reinstates a suspended credential.
+/// </summary>
+public class CredentialReinstateCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _walletOption;
+    private readonly Option<string?> _reasonOption;
+
+    public CredentialReinstateCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("reinstate", "Reinstate a suspended credential")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Credential ID",
+            Required = true
+        };
+
+        _walletOption = new Option<string>("--wallet", "-w")
+        {
+            Description = "Issuer wallet address",
+            Required = true
+        };
+
+        _reasonOption = new Option<string?>("--reason", "-r")
+        {
+            Description = "Reason for reinstatement"
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_walletOption);
+        Options.Add(_reasonOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var wallet = parseResult.GetValue(_walletOption)!;
+            var reason = parseResult.GetValue(_reasonOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
+                var response = await client.ReinstateCredentialAsync(id, new LifecycleCredentialRequest
+                {
+                    IssuerWallet = wallet,
+                    Reason = reason
+                }, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Credential '{id}' reinstated successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Credential ID: {response.CredentialId}");
+                Console.WriteLine($"  New Status:    {response.NewStatus}");
+                Console.WriteLine($"  Performed By:  {response.PerformedBy}");
+                Console.WriteLine($"  Reason:        {response.Reason}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Credential '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to reinstate credential: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Refreshes an expired credential.
+/// </summary>
+public class CredentialRefreshCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _walletOption;
+    private readonly Option<int?> _expiresInDaysOption;
+
+    public CredentialRefreshCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("refresh", "Refresh an expired credential")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Credential ID",
+            Required = true
+        };
+
+        _walletOption = new Option<string>("--wallet", "-w")
+        {
+            Description = "Issuer wallet address",
+            Required = true
+        };
+
+        _expiresInDaysOption = new Option<int?>("--expires-in-days", "-e")
+        {
+            Description = "Number of days until the refreshed credential expires"
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_walletOption);
+        Options.Add(_expiresInDaysOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var wallet = parseResult.GetValue(_walletOption)!;
+            var expiresInDays = parseResult.GetValue(_expiresInDaysOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
+                var response = await client.RefreshCredentialAsync(id, new RefreshCredentialRequest
+                {
+                    IssuerWallet = wallet,
+                    NewExpiryDuration = expiresInDays.HasValue ? $"P{expiresInDays}D" : null
+                }, $"Bearer {token}");
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Credential '{id}' refreshed successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Old Credential ID: {response.OldCredentialId}");
+                Console.WriteLine($"  New Credential ID: {response.NewCredentialId}");
+                Console.WriteLine($"  New Expires At:    {response.NewExpiresAt:yyyy-MM-dd HH:mm:ss}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Credential '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                ConsoleHelper.WriteError($"Invalid request: {ex.Content}");
+                return ExitCodes.ValidationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to refresh credential: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Status list operations for W3C Bitstring Status Lists.
+/// </summary>
+public class CredentialStatusListCommand : Command
+{
+    public CredentialStatusListCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("status-list", "Status list operations")
+    {
+        Subcommands.Add(new CredentialStatusListGetCommand(clientFactory, authService, configService));
+    }
+}
+
+/// <summary>
+/// Gets a W3C Bitstring Status List by ID.
+/// </summary>
+public class CredentialStatusListGetCommand : Command
+{
+    private readonly Option<string> _idOption;
+
+    public CredentialStatusListGetCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("get", "Get a W3C Bitstring Status List")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Status list ID",
+            Required = true
+        };
+
+        Options.Add(_idOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var listId = parseResult.GetValue(_idOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
+                var response = await client.GetStatusListAsync(listId);
+
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess("Status list details:");
+                Console.WriteLine();
+                Console.WriteLine($"  List ID:    {response.Id}");
+                Console.WriteLine($"  Purpose:    {response.Purpose}");
+                Console.WriteLine($"  Issuer:     {response.Issuer}");
+                Console.WriteLine($"  Valid From:  {response.ValidFrom:yyyy-MM-dd HH:mm:ss}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Status list '{listId}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: insufficient access to view this status list.");
+                return ExitCodes.AuthorizationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to get status list: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

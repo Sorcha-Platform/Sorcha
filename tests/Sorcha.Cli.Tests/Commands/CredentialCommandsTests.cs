@@ -47,12 +47,12 @@ public class CredentialCommandsTests
     }
 
     [Fact]
-    public void CredentialCommand_ShouldHaveSevenSubcommands()
+    public void CredentialCommand_ShouldHaveElevenSubcommands()
     {
         var command = new CredentialCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(7);
+        command.Subcommands.Should().HaveCount(11);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "list", "get", "issue", "present", "verify", "revoke", "status" });
+            new[] { "list", "get", "issue", "present", "verify", "revoke", "status", "suspend", "reinstate", "refresh", "status-list" });
     }
 
     #region CredentialListCommand Tests

@@ -208,6 +208,78 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
+    public async Task<CredentialLifecycleResult?> SuspendCredentialAsync(
+        string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/credentials/{credentialId}/suspend",
+                new { issuerWallet, reason }, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to suspend credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Network error suspending credential {CredentialId}", credentialId);
+            return null;
+        }
+    }
+
+    public async Task<CredentialLifecycleResult?> ReinstateCredentialAsync(
+        string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/credentials/{credentialId}/reinstate",
+                new { issuerWallet, reason }, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to reinstate credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Network error reinstating credential {CredentialId}", credentialId);
+            return null;
+        }
+    }
+
+    public async Task<CredentialLifecycleResult?> RefreshCredentialAsync(
+        string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/credentials/{credentialId}/refresh",
+                new { issuerWallet, newExpiryDuration }, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to refresh credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Network error refreshing credential {CredentialId}", credentialId);
+            return null;
+        }
+    }
+
     private static PresentationRequestViewModel MapToPresentationViewModel(PresentationRequestItem item)
     {
         return new PresentationRequestViewModel

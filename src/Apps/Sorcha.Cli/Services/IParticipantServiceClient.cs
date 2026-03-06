@@ -58,4 +58,28 @@ public interface IParticipantServiceClient
     /// </summary>
     [Get("/api/participants/{id}/wallet-links")]
     Task<List<LinkedWalletAddress>> ListWalletLinksAsync(string id, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Suspends an active participant.
+    /// </summary>
+    [Post("/api/organizations/{orgId}/participants/{id}/suspend")]
+    Task SuspendParticipantAsync(string orgId, string id, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Reactivates a suspended participant.
+    /// </summary>
+    [Post("/api/organizations/{orgId}/participants/{id}/reactivate")]
+    Task ReactivateParticipantAsync(string orgId, string id, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Publishes a participant identity record to a register.
+    /// </summary>
+    [Post("/api/organizations/{orgId}/participants/publish")]
+    Task<PublishParticipantResult> PublishParticipantAsync(string orgId, [Body] PublishParticipantRequest request, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Revokes a published participant record from a register.
+    /// </summary>
+    [Delete("/api/organizations/{orgId}/participants/publish/{id}")]
+    Task<PublishParticipantResult> UnpublishParticipantAsync(string orgId, string id, [Query] string registerId, [Query] string signerWalletAddress, [Header("Authorization")] string authorization);
 }

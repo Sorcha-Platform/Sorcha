@@ -1,0 +1,182 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/status-lists"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.UI.Core.Models.Credentials
+@using Sorcha.UI.Core.Services.Credentials
+@inject IStatusListService StatusListService
+
+<PageTitle>Status Lists - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.FactCheck" Class="mr-2" />
+        Status Lists
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Look up W3C Bitstring Status Lists by ID
+    </MudText>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="9" md="10">
+                <MudTextField @bind-Value="_listId"
+                              Label="Status List ID"
+                              Placeholder="Enter a status list identifier"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              OnKeyUp="HandleKeyUp" />
+            </MudItem>
+            <MudItem xs="12" sm="3" md="2" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Disabled="_loading"
+                           OnClick="LookupAsync">
+                    @if (_loading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Lookup
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" Class="d-block mx-auto my-8" />
+    }
+    else if (_notFound)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            Status list not found for ID: @_searchedId
+        </MudAlert>
+    }
+    else if (_result is not null)
+    {
+        <MudCard Class="mb-4" Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Status List Details</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudSimpleTable Hover="true" Dense="true">
+                    <thead>
+                        <tr>
+                            <th style="width: 200px;">Property</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>ID</strong></td>
+                            <td><MudText Typo="Typo.body2" Style="font-family: monospace;">@_result.Id</MudText></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Purpose</strong></td>
+                            <td>@_result.Purpose</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Issuer DID</strong></td>
+                            <td><MudText Typo="Typo.body2" Style="font-family: monospace;">@_result.IssuerDid</MudText></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Valid From</strong></td>
+                            <td>@_result.ValidFrom.ToString("yyyy-MM-dd HH:mm:ss zzz")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Context URLs</strong></td>
+                            <td>
+                                @if (_result.ContextUrls.Length > 0)
+                                {
+                                    @foreach (var url in _result.ContextUrls)
+                                    {
+                                        <MudText Typo="Typo.body2">@url</MudText>
+                                    }
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">None</MudText>
+                                }
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudExpansionPanels Class="mt-4">
+                    <MudExpansionPanel Text="Raw Data">
+                        <MudText Typo="Typo.body2"
+                                 Style="font-family: monospace; white-space: pre-wrap; word-break: break-all;"
+                                 Class="pa-2">
+                            @_result.EncodedList
+                        </MudText>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </MudCardContent>
+        </MudCard>
+    }
+    else if (!_hasSearched)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Enter a status list ID to look up
+        </MudAlert>
+    }
+</MudContainer>
+
+@code {
+    private string _listId = string.Empty;
+    private string _searchedId = string.Empty;
+    private bool _loading;
+    private bool _notFound;
+    private bool _hasSearched;
+    private StatusListViewModel? _result;
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Status Lists", href: null, disabled: true)
+    ];
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await LookupAsync();
+        }
+    }
+
+    private async Task LookupAsync()
+    {
+        var id = _listId?.Trim();
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+
+        _loading = true;
+        _notFound = false;
+        _result = null;
+        _hasSearched = true;
+        _searchedId = id;
+
+        try
+        {
+            _result = await StatusListService.GetStatusListAsync(id);
+            _notFound = _result is null;
+        }
+        catch (HttpRequestException)
+        {
+            _notFound = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
