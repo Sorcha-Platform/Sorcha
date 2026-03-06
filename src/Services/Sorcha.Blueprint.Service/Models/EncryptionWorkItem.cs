@@ -67,6 +67,11 @@ public sealed record EncryptionWorkItem
     public EncryptedPayloadGroup[]? PreComputedGroups { get; init; }
 
     /// <summary>
+    /// Authenticated user ID (from JWT sub claim) for EventsHub notifications.
+    /// </summary>
+    public string? UserId { get; init; }
+
+    /// <summary>
     /// Delegation token for downstream service calls.
     /// </summary>
     public required string DelegationToken { get; init; }

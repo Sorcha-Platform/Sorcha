@@ -14,13 +14,16 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public class NotificationService : INotificationService
 {
     private readonly IHubContext<ActionsHub> _hubContext;
+    private readonly IHubContext<EventsHub> _eventsHubContext;
     private readonly ILogger<NotificationService> _logger;
 
     public NotificationService(
         IHubContext<ActionsHub> hubContext,
+        IHubContext<EventsHub> eventsHubContext,
         ILogger<NotificationService> logger)
     {
         _hubContext = hubContext;
+        _eventsHubContext = eventsHubContext;
         _logger = logger;
     }
 
@@ -241,9 +244,10 @@ public class NotificationService : INotificationService
 
     /// <summary>
     /// Notify a wallet that encryption completed successfully.
+    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
     /// </summary>
     public async Task NotifyEncryptionCompleteAsync(
-        string walletAddress, EncryptionCompleteNotification notification, CancellationToken ct = default)
+        string walletAddress, EncryptionCompleteNotification notification, string? userId = null, CancellationToken ct = default)
     {
         try
         {
@@ -263,13 +267,18 @@ public class NotificationService : INotificationService
                 "Failed to send EncryptionComplete notification to wallet {Wallet}",
                 walletAddress);
         }
+
+        // Send to EventsHub for UI toast notifications (separate try/catch to not affect ActionsHub delivery)
+        await SendEncryptionOperationCompletedToEventsHubAsync(
+            userId, notification.OperationId, isSuccess: true, notification.TransactionHash, errorMessage: null, ct);
     }
 
     /// <summary>
     /// Notify a wallet that encryption failed.
+    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
     /// </summary>
     public async Task NotifyEncryptionFailedAsync(
-        string walletAddress, EncryptionFailedNotification notification, CancellationToken ct = default)
+        string walletAddress, EncryptionFailedNotification notification, string? userId = null, CancellationToken ct = default)
     {
         try
         {
@@ -288,6 +297,51 @@ public class NotificationService : INotificationService
             _logger.LogError(ex,
                 "Failed to send EncryptionFailed notification to wallet {Wallet}",
                 walletAddress);
+        }
+
+        // Send to EventsHub for UI toast notifications (separate try/catch to not affect ActionsHub delivery)
+        await SendEncryptionOperationCompletedToEventsHubAsync(
+            userId, notification.OperationId, isSuccess: false, transactionHash: null, notification.Error, ct);
+    }
+
+    /// <summary>
+    /// Sends an EncryptionOperationCompleted event to the EventsHub for the specified user.
+    /// Isolated in its own try/catch so ActionsHub delivery is never affected.
+    /// </summary>
+    private async Task SendEncryptionOperationCompletedToEventsHubAsync(
+        string? userId, string operationId, bool isSuccess, string? transactionHash, string? errorMessage, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogDebug(
+                "No userId provided for EventsHub EncryptionOperationCompleted notification. Operation: {OperationId}",
+                operationId);
+            return;
+        }
+
+        try
+        {
+            var userGroup = $"user:{userId}";
+            await _eventsHubContext.Clients
+                .Group(userGroup)
+                .SendAsync("EncryptionOperationCompleted", new
+                {
+                    OperationId = operationId,
+                    IsSuccess = isSuccess,
+                    TransactionHash = transactionHash,
+                    ErrorMessage = errorMessage,
+                    Timestamp = DateTimeOffset.UtcNow
+                }, ct);
+
+            _logger.LogInformation(
+                "Sent EncryptionOperationCompleted to EventsHub user:{UserId}. Operation: {OperationId}, Success: {IsSuccess}",
+                userId, operationId, isSuccess);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionOperationCompleted to EventsHub for user {UserId}. Operation: {OperationId}",
+                userId, operationId);
         }
     }
 

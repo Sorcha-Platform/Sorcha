@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models;
+using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
@@ -42,6 +43,11 @@ public class EventsHubConnection : IAsyncDisposable
     /// Event raised when the unread count is updated.
     /// </summary>
     public event Action<int>? OnUnreadCountUpdated;
+
+    /// <summary>
+    /// Event raised when an encryption operation completes (success or failure).
+    /// </summary>
+    public event Action<EncryptionOperationCompletedDto>? OnEncryptionOperationCompleted;
 
     /// <summary>
     /// Event raised when connection state changes.
@@ -221,6 +227,17 @@ public class EventsHubConnection : IAsyncDisposable
             _logger.LogDebug("Unread count updated: {Count}", count);
 
             OnUnreadCountUpdated?.Invoke(count);
+        });
+
+        // EncryptionOperationCompleted - encryption operation finished (success or failure)
+        _hubConnection.On<EncryptionOperationCompletedDto>("EncryptionOperationCompleted", dto =>
+        {
+            _logger.LogDebug(
+                "Encryption operation completed: Id={OperationId}, Success={IsSuccess}",
+                dto.OperationId,
+                dto.IsSuccess);
+
+            OnEncryptionOperationCompleted?.Invoke(dto);
         });
     }
 

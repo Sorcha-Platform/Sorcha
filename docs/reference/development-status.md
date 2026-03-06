@@ -24,6 +24,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **UI Register Management 100% complete**: Wallet selection wizard, search/filter, transaction query
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
+- **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
 - Total actual completion: 100% MVD (all feature gaps closed, auth policies on all API routes)
 
 ---

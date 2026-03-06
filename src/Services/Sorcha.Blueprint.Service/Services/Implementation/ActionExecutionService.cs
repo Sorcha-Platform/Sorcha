@@ -341,6 +341,8 @@ public class ActionExecutionService : IActionExecutionService
                         PayloadWithCalculations = payloadWithCalculations,
                         DisclosedPayloads = disclosedPayloads,
                         PreviousTransactionId = accumulatedState.PreviousTransactionId,
+                        UserId = caller?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                            ?? caller?.FindFirst("sub")?.Value,
                         DelegationToken = delegationToken
                     };
 

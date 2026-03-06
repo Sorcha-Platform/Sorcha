@@ -3,6 +3,9 @@
 
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Admin
 @implements IDisposable
 @inject IOperationStatusService OperationService
@@ -22,13 +25,33 @@
         {
             @if (_operation.IsComplete && _operation.IsSuccess)
             {
-                <MudAlert Severity="Severity.Success" Dense="true">Encryption complete</MudAlert>
+                <MudAlert Severity="Severity.Success" Dense="true">
+                    Encryption complete
+                    @if (!string.IsNullOrWhiteSpace(_operation.TransactionHash))
+                    {
+                        <span> — Transaction: <code>@_operation.TransactionHash</code></span>
+                    }
+                </MudAlert>
             }
             else if (_operation.IsComplete && !_operation.IsSuccess)
             {
                 <MudAlert Severity="Severity.Error" Dense="true">
                     Encryption failed@(!string.IsNullOrWhiteSpace(_operation.ErrorMessage) ? $": {_operation.ErrorMessage}" : "")
                 </MudAlert>
+
+                @if (OriginalRequest is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="RetryAsync"
+                               Disabled="_isRetrying">
+                        @if (_isRetrying)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                        }
+                        Retry
+                    </MudButton>
+                }
             }
             else
             {
@@ -59,15 +82,46 @@
     [Parameter]
     public EventCallback OnCompleted { get; set; }
 
+    [Parameter]
+    public EventCallback OnFailed { get; set; }
+
+    /// <summary>
+    /// Original action request for retry capability. When provided and operation fails,
+    /// a retry button is shown.
+    /// </summary>
+    [Parameter]
+    public ActionExecuteRequest? OriginalRequest { get; set; }
+
+    /// <summary>
+    /// Optional WorkflowService for retry submissions.
+    /// </summary>
+    [Parameter]
+    public IWorkflowService? WorkflowService { get; set; }
+
+    /// <summary>
+    /// Optional ActionsHub for real-time push updates. Falls back to polling when null or disconnected.
+    /// </summary>
+    [Parameter]
+    public ActionsHubConnection? ActionsHub { get; set; }
+
     private EncryptionOperationViewModel? _operation;
     private System.Timers.Timer? _pollTimer;
     private bool _isLoading = true;
+    private bool _isRetrying;
     private bool _disposed;
+    private string _currentOperationId = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
+        _currentOperationId = OperationId;
         await PollStatusAsync();
-        if (_operation != null && !_operation.IsComplete)
+
+        // If SignalR is available and connected, prefer push updates over polling
+        if (ActionsHub != null)
+        {
+            SubscribeToSignalR();
+        }
+        else if (_operation != null && !_operation.IsComplete)
         {
             StartPolling();
         }
@@ -81,31 +135,177 @@
         _pollTimer.Start();
     }
 
+    private void StopPolling()
+    {
+        _pollTimer?.Stop();
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
     private async Task PollStatusAsync()
     {
         if (_disposed) return;
-        _operation = await OperationService.GetStatusAsync(OperationId);
+        _operation = await OperationService.GetStatusAsync(_currentOperationId);
         _isLoading = false;
 
         if (_operation?.IsComplete == true)
         {
-            _pollTimer?.Stop();
-            _pollTimer?.Dispose();
-            _pollTimer = null;
-            await OnCompleted.InvokeAsync();
+            StopPolling();
+            if (_operation.IsSuccess)
+            {
+                await OnCompleted.InvokeAsync();
+            }
+            else
+            {
+                await OnFailed.InvokeAsync();
+            }
         }
 
         StateHasChanged();
+    }
+
+    private async Task RetryAsync()
+    {
+        if (OriginalRequest is null || WorkflowService is null) return;
+
+        _isRetrying = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await WorkflowService.SubmitActionExecuteAsync(OriginalRequest);
+            if (result?.HasAsyncOperation == true)
+            {
+                // Reset state for new operation
+                _currentOperationId = result.OperationId!;
+                _operation = null;
+                _isLoading = true;
+                _isRetrying = false;
+                StateHasChanged();
+
+                await PollStatusAsync();
+                if (_operation != null && !_operation.IsComplete)
+                {
+                    StartPolling();
+                }
+            }
+            else
+            {
+                _isRetrying = false;
+                // Sync result — operation completed immediately
+                await OnCompleted.InvokeAsync();
+            }
+        }
+        catch
+        {
+            _isRetrying = false;
+            StateHasChanged();
+        }
     }
 
     private static string FormatStage(string stage) =>
         string.Join(' ', stage.Replace("-", " ").Split(' ')
             .Select(w => w.Length > 0 ? char.ToUpperInvariant(w[0]) + w[1..] : w));
 
+    private void SubscribeToSignalR()
+    {
+        if (ActionsHub == null) return;
+
+        ActionsHub.OnEncryptionProgress += HandleSignalRProgress;
+        ActionsHub.OnEncryptionComplete += HandleSignalRComplete;
+        ActionsHub.OnEncryptionFailed += HandleSignalRFailed;
+        ActionsHub.OnConnectionStateChanged += HandleHubConnectionChanged;
+
+        // If connected, stop polling (SignalR is preferred)
+        if (ActionsHub.ConnectionState.Status == ConnectionStatus.Connected)
+        {
+            StopPolling();
+        }
+        else if (_operation != null && !_operation.IsComplete && _pollTimer == null)
+        {
+            // SignalR not connected yet — use polling as fallback
+            StartPolling();
+        }
+    }
+
+    private void UnsubscribeFromSignalR()
+    {
+        if (ActionsHub == null) return;
+
+        ActionsHub.OnEncryptionProgress -= HandleSignalRProgress;
+        ActionsHub.OnEncryptionComplete -= HandleSignalRComplete;
+        ActionsHub.OnEncryptionFailed -= HandleSignalRFailed;
+        ActionsHub.OnConnectionStateChanged -= HandleHubConnectionChanged;
+    }
+
+    private Task HandleSignalRProgress(EncryptionProgressUpdate update)
+    {
+        if (update.OperationId != _currentOperationId) return Task.CompletedTask;
+
+        _operation = _operation with
+        {
+            Stage = update.StepName,
+            PercentComplete = update.PercentComplete
+        };
+        _isLoading = false;
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleSignalRComplete(EncryptionCompleteUpdate update)
+    {
+        if (update.OperationId != _currentOperationId) return;
+
+        _operation = _operation with
+        {
+            Stage = OperationStage.Complete,
+            PercentComplete = 100,
+            TransactionHash = update.TransactionHash
+        };
+        _isLoading = false;
+
+        StopPolling();
+        await OnCompleted.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleSignalRFailed(EncryptionFailedUpdate update)
+    {
+        if (update.OperationId != _currentOperationId) return;
+
+        _operation = _operation with
+        {
+            Stage = OperationStage.Failed,
+            ErrorMessage = update.Error
+        };
+        _isLoading = false;
+
+        StopPolling();
+        await OnFailed.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleHubConnectionChanged(ConnectionState state)
+    {
+        if (state.Status == ConnectionStatus.Connected)
+        {
+            // SignalR reconnected — stop polling
+            StopPolling();
+        }
+        else if (state.Status is ConnectionStatus.Disconnected or ConnectionStatus.Reconnecting)
+        {
+            // SignalR lost — start polling fallback
+            if (_operation != null && !_operation.IsComplete && _pollTimer == null)
+            {
+                StartPolling();
+            }
+        }
+    }
+
     public void Dispose()
     {
         _disposed = true;
-        _pollTimer?.Stop();
-        _pollTimer?.Dispose();
+        StopPolling();
+        UnsubscribeFromSignalR();
     }
 }

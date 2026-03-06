@@ -43,4 +43,27 @@ public class OperationStatusService : IOperationStatusService
             return null;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<OperationHistoryPage?> ListOperationsAsync(string walletAddress, int page = 1, int pageSize = 10, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"/api/operations?wallet={Uri.EscapeDataString(walletAddress)}&page={page}&pageSize={pageSize}";
+            var response = await _httpClient.GetAsync(url, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to list operations for {Wallet}: {StatusCode}", walletAddress, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<OperationHistoryPage>(JsonDefaults.Api, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Network error listing operations for {Wallet}", walletAddress);
+            return null;
+        }
+    }
 }

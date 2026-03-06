@@ -9,6 +9,7 @@
 @using Sorcha.UI.Core.Models.Actions
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Components.Admin
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Workflows
 @using Sorcha.UI.Core.Services
@@ -51,6 +52,27 @@
             </MudButton>
         </MudStack>
     </MudStack>
+
+    @* Encryption progress indicator (shown during async operations) *@
+    @if (_activeEncryptionOperationId is not null)
+    {
+        <MudItem xs="12" Class="mb-4">
+            <EncryptionProgressIndicator OperationId="@_activeEncryptionOperationId"
+                                          OriginalRequest="@_activeEncryptionRequest"
+                                          WorkflowService="@WorkflowService"
+                                          OnCompleted="HandleEncryptionCompleted"
+                                          OnFailed="HandleEncryptionFailed" />
+        </MudItem>
+    }
+
+    @* Navigation warning banner when encryption is in progress *@
+    @if (_activeEncryptionOperationId is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="true"
+                  Icon="@Icons.Material.Filled.Warning">
+            Encryption in progress — if you navigate away, you'll be notified when it completes.
+        </MudAlert>
+    }
 
     @* Real-time notifications banner *@
     @if (_recentNotifications.Count > 0)
@@ -165,6 +187,8 @@
     private ActionsHubConnection? _actionsHub = null;
     private bool _loading = true;
     private bool _serviceError;
+    private string? _activeEncryptionOperationId;
+    private ActionExecuteRequest? _activeEncryptionRequest;
 
     protected override async Task OnInitializedAsync()
     {
@@ -253,7 +277,15 @@
                 };
 
                 var submitResult = await WorkflowService.SubmitActionExecuteAsync(executeRequest);
-                if (submitResult != null)
+                if (submitResult is { HasAsyncOperation: true })
+                {
+                    // Async encryption — show progress indicator
+                    _activeEncryptionOperationId = submitResult.OperationId;
+                    _activeEncryptionRequest = executeRequest;
+                    Snackbar.Add("Encryption started — tracking progress...", Severity.Info);
+                    StateHasChanged();
+                }
+                else if (submitResult != null)
                 {
                     Snackbar.Add("Action submitted successfully", Severity.Success);
                     _actions.Remove(action);
@@ -270,6 +302,22 @@
                 Snackbar.Add("An error occurred while submitting the action.", Severity.Error);
             }
         }
+    }
+
+    private async Task HandleEncryptionCompleted()
+    {
+        _activeEncryptionOperationId = null;
+        _activeEncryptionRequest = null;
+        Snackbar.Add("Encryption completed successfully!", Severity.Success);
+        await LoadActionsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleEncryptionFailed()
+    {
+        // Keep the progress indicator visible so user can see error and retry
+        Snackbar.Add("Encryption failed. See details above.", Severity.Error);
+        return InvokeAsync(StateHasChanged);
     }
 
     private Color GetPriorityColor(string priority) => priority.ToLower() switch
