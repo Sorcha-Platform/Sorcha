@@ -2,8 +2,8 @@
 
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for completed phases, historical updates, critical path, and task summaries.
 
-**Version:** 6.3
-**Last Updated:** 2026-03-02
+**Version:** 6.4
+**Last Updated:** 2026-03-06
 **Status:** Active - Production Packaging & CI/CD (Phase D complete)
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
@@ -17,6 +17,16 @@ This document tracks **active work only**. Completed phases and historical updat
 **Completed:** 244 (63%)
 **In Progress:** 4 (1%)
 **Not Started:** 138 (36%)
+
+---
+
+## Feature 051: Operations & Monitoring Admin — ✅ COMPLETE
+
+> **Priority:** P2 (Operational Tooling)
+> **Branch:** `051-operations-monitoring-admin`
+> **Tasks:** 51/65 complete (14 deferred: CLI tests T019/T026/T031/T045, T051 EncryptionProgress integration)
+
+Dashboard auto-refresh, wallet access delegation, schema provider CLI, events admin, push notifications, encryption progress indicators, presentation admin UX improvements (chip inputs, auto-refresh), credential lifecycle typed errors.
 
 ---
 

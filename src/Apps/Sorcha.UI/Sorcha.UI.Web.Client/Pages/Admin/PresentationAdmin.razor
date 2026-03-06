@@ -4,6 +4,7 @@
 @page "/admin/presentations"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize(Roles = "Administrator")]
+@implements IDisposable
 @using Microsoft.AspNetCore.Authorization
 @using Sorcha.UI.Core.Models.Credentials
 @using Sorcha.UI.Core.Services.Credentials
@@ -40,18 +41,64 @@
                               Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_acceptedIssuers"
-                              Label="Accepted Issuers"
-                              Placeholder="Comma-separated DIDs"
-                              HelperText="Comma-separated list of accepted issuer DIDs"
-                              Variant="Variant.Outlined" />
+                <MudText Typo="Typo.body2" Class="mb-1">Accepted Issuers</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudTextField @bind-Value="_newIssuerInput"
+                                  Placeholder="Enter issuer DID and press Enter"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  OnKeyUp="OnIssuerKeyUp"
+                                  Immediate="true" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   OnClick="AddIssuer"
+                                   Disabled="@string.IsNullOrWhiteSpace(_newIssuerInput)"
+                                   Title="Add issuer" />
+                </MudStack>
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                    @foreach (var issuer in _acceptedIssuersList)
+                    {
+                        var capturedIssuer = issuer;
+                        <MudChip T="string"
+                                 Color="Color.Primary"
+                                 Variant="Variant.Outlined"
+                                 Size="Size.Small"
+                                 OnClose="@(_ => RemoveIssuer(capturedIssuer))">
+                            @issuer
+                        </MudChip>
+                    }
+                </MudStack>
             </MudItem>
             <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_requiredClaims"
-                              Label="Required Claims"
-                              Placeholder="Comma-separated claim names"
-                              HelperText="Comma-separated list of required claim names"
-                              Variant="Variant.Outlined" />
+                <MudText Typo="Typo.body2" Class="mb-1">Required Claims</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudTextField @bind-Value="_newClaimInput"
+                                  Placeholder="Enter claim name and press Enter"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  OnKeyUp="OnClaimKeyUp"
+                                  Immediate="true" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   OnClick="AddClaim"
+                                   Disabled="@string.IsNullOrWhiteSpace(_newClaimInput)"
+                                   Title="Add claim" />
+                </MudStack>
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                    @foreach (var claim in _requiredClaimsList)
+                    {
+                        var capturedClaim = claim;
+                        <MudChip T="string"
+                                 Color="Color.Secondary"
+                                 Variant="Variant.Outlined"
+                                 Size="Size.Small"
+                                 OnClose="@(_ => RemoveClaim(capturedClaim))">
+                            @claim
+                        </MudChip>
+                    }
+                </MudStack>
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="_targetWalletAddress"
@@ -102,7 +149,14 @@
         <MudCard Class="mb-4" Elevation="2">
             <MudCardHeader>
                 <CardHeaderContent>
-                    <MudText Typo="Typo.h6">Presentation Request Created</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h6">Presentation Request Created</MudText>
+                        @if (_result.Status == "Pending")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Info" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Auto-refreshing...</MudText>
+                        }
+                    </MudStack>
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
@@ -180,8 +234,10 @@
 
 @code {
     private string _credentialType = string.Empty;
-    private string _acceptedIssuers = string.Empty;
-    private string _requiredClaims = string.Empty;
+    private string _newIssuerInput = string.Empty;
+    private string _newClaimInput = string.Empty;
+    private readonly List<string> _acceptedIssuersList = [];
+    private readonly List<string> _requiredClaimsList = [];
     private string? _targetWalletAddress;
     private string _callbackUrl = string.Empty;
     private string? _verifierIdentity;
@@ -189,12 +245,99 @@
     private bool _creating;
     private string? _errorMessage;
     private PresentationRequestResultViewModel? _result;
+    private System.Timers.Timer? _refreshTimer;
 
     private readonly List<BreadcrumbItem> _breadcrumbs =
     [
         new("Admin", href: "/admin/health"),
         new("Presentations", href: null, disabled: true)
     ];
+
+    // --- Chip input handlers for Accepted Issuers ---
+
+    private void OnIssuerKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddIssuer();
+    }
+
+    private void AddIssuer()
+    {
+        var value = _newIssuerInput?.Trim();
+        if (!string.IsNullOrEmpty(value) && !_acceptedIssuersList.Contains(value))
+        {
+            _acceptedIssuersList.Add(value);
+            _newIssuerInput = string.Empty;
+        }
+    }
+
+    private void RemoveIssuer(string issuer) => _acceptedIssuersList.Remove(issuer);
+
+    // --- Chip input handlers for Required Claims ---
+
+    private void OnClaimKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddClaim();
+    }
+
+    private void AddClaim()
+    {
+        var value = _newClaimInput?.Trim();
+        if (!string.IsNullOrEmpty(value) && !_requiredClaimsList.Contains(value))
+        {
+            _requiredClaimsList.Add(value);
+            _newClaimInput = string.Empty;
+        }
+    }
+
+    private void RemoveClaim(string claim) => _requiredClaimsList.Remove(claim);
+
+    // --- Auto-refresh for pending requests ---
+
+    private void StartAutoRefresh()
+    {
+        StopAutoRefresh();
+        if (_result is { Status: "Pending" })
+        {
+            _refreshTimer = new System.Timers.Timer(5000);
+            _refreshTimer.Elapsed += async (_, _) => await PollResultAsync();
+            _refreshTimer.AutoReset = true;
+            _refreshTimer.Start();
+        }
+    }
+
+    private void StopAutoRefresh()
+    {
+        _refreshTimer?.Stop();
+        _refreshTimer?.Dispose();
+        _refreshTimer = null;
+    }
+
+    private async Task PollResultAsync()
+    {
+        if (_result is null) return;
+
+        try
+        {
+            var updated = await PresentationAdminService.GetPresentationResultAsync(_result.RequestId);
+            if (updated is not null)
+            {
+                _result = updated;
+                if (updated.Status != "Pending")
+                {
+                    StopAutoRefresh();
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch
+        {
+            // Resilience: polling failure is non-critical — next tick will retry
+        }
+    }
+
+    // --- Create request ---
 
     private async Task CreateRequestAsync()
     {
@@ -204,14 +347,15 @@
         _creating = true;
         _errorMessage = null;
         _result = null;
+        StopAutoRefresh();
 
         try
         {
             var request = new CreatePresentationRequestViewModel
             {
                 CredentialType = _credentialType.Trim(),
-                AcceptedIssuers = ParseCommaSeparated(_acceptedIssuers),
-                RequiredClaims = ParseCommaSeparated(_requiredClaims),
+                AcceptedIssuers = _acceptedIssuersList.ToArray(),
+                RequiredClaims = _requiredClaimsList.ToArray(),
                 CallbackUrl = _callbackUrl.Trim(),
                 TargetWalletAddress = string.IsNullOrWhiteSpace(_targetWalletAddress) ? null : _targetWalletAddress.Trim(),
                 TtlSeconds = _ttlSeconds,
@@ -224,6 +368,10 @@
             {
                 _errorMessage = "Failed to create presentation request. The service returned no result.";
             }
+            else
+            {
+                StartAutoRefresh();
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -235,14 +383,6 @@
         }
     }
 
-    private static string[] ParseCommaSeparated(string? input)
-    {
-        if (string.IsNullOrWhiteSpace(input))
-            return [];
-
-        return input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
-
     private static Color GetStatusColor(string status) => status switch
     {
         "Pending" => Color.Info,
@@ -251,4 +391,9 @@
         "Rejected" or "Failed" => Color.Error,
         _ => Color.Default
     };
+
+    public void Dispose()
+    {
+        StopAutoRefresh();
+    }
 }

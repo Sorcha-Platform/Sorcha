@@ -102,6 +102,10 @@ public static class TestConstants
         public const string AdminValidator = $"{AppBase}/admin/validator";
         public const string AdminPrincipals = $"{AppBase}/admin/principals";
         public const string Settings = $"{AppBase}/settings";
+        public const string AdminEvents = $"{AppBase}/admin/events";
+        public const string AdminPresentations = $"{AppBase}/admin/presentations";
+        public const string NotificationSettings = $"{AppBase}/settings/notifications";
+        public const string Credentials = $"{AppBase}/credentials";
         public const string Help = $"{AppBase}/help";
     }
 }

@@ -191,14 +191,14 @@
 
 ### Tests for User Story 7
 
-- [ ] T052 [P] [US7] Write unit tests for presentation request auto-refresh polling in `tests/Sorcha.UI.Core.Tests/Services/PresentationAdminAutoRefreshTests.cs`
+- [x] T052 [P] [US7] Write unit tests for presentation request auto-refresh polling in `tests/Sorcha.UI.Core.Tests/Services/PresentationAdminAutoRefreshTests.cs`
 
 ### Implementation for User Story 7
 
-- [ ] T053 [US7] Replace comma-separated `AcceptedIssuers` input with MudChipSet tag input on `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PresentationAdmin.razor` — allow adding/removing individual issuers
-- [ ] T054 [US7] Replace comma-separated `RequiredClaims` input with MudChipSet tag input on `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PresentationAdmin.razor`
-- [ ] T055 [US7] Add 5-second auto-refresh timer for pending presentation requests on `PresentationAdmin.razor` — poll `GetPresentationResultAsync` for requests with Status=="Pending", stop when status changes
-- [ ] T056 [US7] Verify all credential lifecycle error messages render correctly in `CredentialLifecycleDialog.razor` for each error type (403, 404, 409, 500) — integration verification of Phase 2 foundation work
+- [x] T053 [US7] Replace comma-separated `AcceptedIssuers` input with MudChipSet tag input on `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PresentationAdmin.razor` — allow adding/removing individual issuers
+- [x] T054 [US7] Replace comma-separated `RequiredClaims` input with MudChipSet tag input on `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PresentationAdmin.razor`
+- [x] T055 [US7] Add 5-second auto-refresh timer for pending presentation requests on `PresentationAdmin.razor` — poll `GetPresentationResultAsync` for requests with Status=="Pending", stop when status changes
+- [x] T056 [US7] Verify all credential lifecycle error messages render correctly in `CredentialLifecycleDialog.razor` for each error type (403, 404, 409, 500) — integration verification of Phase 2 foundation work
 
 **Checkpoint**: Structured inputs replace comma-separated text. Presentation requests auto-refresh. Error messages are specific. Independently testable.
 
@@ -208,14 +208,14 @@
 
 **Purpose**: E2E tests, documentation, and integration verification.
 
-- [ ] T057 [P] Write E2E test for dashboard auto-refresh and alerts in `tests/Sorcha.UI.E2E.Tests/DashboardAlertsTests.cs`
-- [ ] T058 [P] Write E2E test for wallet access delegation tab in `tests/Sorcha.UI.E2E.Tests/WalletAccessTests.cs`
-- [ ] T059 [P] Write E2E test for events admin page in `tests/Sorcha.UI.E2E.Tests/EventsAdminTests.cs`
-- [ ] T060 [P] Write E2E test for push notification settings toggle in `tests/Sorcha.UI.E2E.Tests/PushNotificationTests.cs`
-- [ ] T061 Verify all new pages/tabs are accessible via nav menu and direct URL routing
-- [ ] T062 Update `docs/reference/development-status.md` with Feature 051 completion status
-- [ ] T063 Update `.specify/MASTER-TASKS.md` with Feature 051 task status
-- [ ] T064 Run full test suite (`dotnet test`) and verify >85% coverage on new code
+- [x] T057 [P] Write E2E test for dashboard auto-refresh and alerts in `tests/Sorcha.UI.E2E.Tests/Docker/DashboardAlertsTests.cs`
+- [x] T058 [P] Write E2E test for wallet access delegation tab in `tests/Sorcha.UI.E2E.Tests/Docker/WalletAccessTests.cs`
+- [x] T059 [P] Write E2E test for events admin page in `tests/Sorcha.UI.E2E.Tests/Docker/EventsAdminTests.cs`
+- [x] T060 [P] Write E2E test for push notification settings toggle in `tests/Sorcha.UI.E2E.Tests/Docker/PushNotificationTests.cs`
+- [x] T061 Verify all new pages/tabs are accessible via nav menu and direct URL routing
+- [x] T062 Update `docs/reference/development-status.md` with Feature 051 completion status
+- [x] T063 Update `.specify/MASTER-TASKS.md` with Feature 051 task status
+- [x] T064 Run full test suite (`dotnet test`) and verify >85% coverage on new code
 
 ---
 
