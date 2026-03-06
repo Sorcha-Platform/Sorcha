@@ -1,0 +1,108 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services.Admin
+@implements IDisposable
+@inject IOperationStatusService OperationService
+
+<MudPaper Elevation="2" Class="pa-4">
+    <MudStack Spacing="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle1">Encryption Progress</MudText>
+        </MudStack>
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else if (_operation is not null)
+        {
+            @if (_operation.IsComplete && _operation.IsSuccess)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">Encryption complete</MudAlert>
+            }
+            else if (_operation.IsComplete && !_operation.IsSuccess)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">
+                    Encryption failed@(!string.IsNullOrWhiteSpace(_operation.ErrorMessage) ? $": {_operation.ErrorMessage}" : "")
+                </MudAlert>
+            }
+            else
+            {
+                <MudProgressLinear Color="Color.Primary"
+                                   Value="@_operation.PercentComplete"
+                                   Max="100"
+                                   Indeterminate="@(_operation.PercentComplete == 0)" />
+
+                @if (!string.IsNullOrWhiteSpace(_operation.Stage))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @FormatStage(_operation.Stage)
+                    </MudText>
+                }
+
+                <MudText Typo="Typo.caption">
+                    @_operation.ProcessedRecipients of @_operation.RecipientCount recipients processed
+                </MudText>
+            }
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public string OperationId { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback OnCompleted { get; set; }
+
+    private EncryptionOperationViewModel? _operation;
+    private System.Timers.Timer? _pollTimer;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await PollStatusAsync();
+        if (_operation != null && !_operation.IsComplete)
+        {
+            StartPolling();
+        }
+    }
+
+    private void StartPolling()
+    {
+        _pollTimer = new System.Timers.Timer(2000);
+        _pollTimer.Elapsed += async (_, _) => await InvokeAsync(PollStatusAsync);
+        _pollTimer.AutoReset = true;
+        _pollTimer.Start();
+    }
+
+    private async Task PollStatusAsync()
+    {
+        _operation = await OperationService.GetStatusAsync(OperationId);
+        _isLoading = false;
+
+        if (_operation?.IsComplete == true)
+        {
+            _pollTimer?.Stop();
+            _pollTimer?.Dispose();
+            _pollTimer = null;
+            await OnCompleted.InvokeAsync();
+        }
+
+        StateHasChanged();
+    }
+
+    private static string FormatStage(string stage) =>
+        string.Join(' ', stage.Replace("-", " ").Split(' ')
+            .Select(w => w.Length > 0 ? char.ToUpperInvariant(w[0]) + w[1..] : w));
+
+    public void Dispose()
+    {
+        _pollTimer?.Stop();
+        _pollTimer?.Dispose();
+    }
+}

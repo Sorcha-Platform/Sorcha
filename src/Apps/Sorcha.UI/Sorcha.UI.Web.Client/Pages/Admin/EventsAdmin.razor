@@ -1,0 +1,202 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/events"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services.Admin
+@inject IEventAdminService EventAdminService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Events - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Event" Class="mr-2" />
+        System Events
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        View and manage system events across all services
+    </MudText>
+
+    @* Filter Bar *@
+    <MudPaper Elevation="1" Class="pa-4 mb-4">
+        <MudStack Row="true" Spacing="4" AlignItems="AlignItems.Center">
+            <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection"
+                        SelectedValue="_selectedSeverity"
+                        SelectedValueChanged="OnSeverityChanged">
+                <MudChip T="string" Value="@("All")" Default="true">All</MudChip>
+                <MudChip T="string" Value="@("Info")" Color="Color.Info">Info</MudChip>
+                <MudChip T="string" Value="@("Warning")" Color="Color.Warning">Warning</MudChip>
+                <MudChip T="string" Value="@("Error")" Color="Color.Error">Error</MudChip>
+                <MudChip T="string" Value="@("Critical")" Color="Color.Dark">Critical</MudChip>
+            </MudChipSet>
+            <MudDatePicker Label="Since" Date="_sinceDate" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Clearable="true"
+                           DateChanged="OnSinceDateChanged" />
+        </MudStack>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+
+    <MudTable T="SystemEventViewModel" ServerData="LoadServerData"
+              @ref="_table" Dense="true" Hover="true" Striped="true"
+              RowsPerPage="20">
+        <HeaderContent>
+            <MudTh>Severity</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Message</MudTh>
+            <MudTh>Source</MudTh>
+            <MudTh>User</MudTh>
+            <MudTh>Timestamp</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Severity">
+                <MudChip T="string" Color="@GetSeverityColor(context.Severity)" Size="Size.Small">
+                    @context.Severity
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Type">@context.Type</MudTd>
+            <MudTd DataLabel="Message">@context.Message</MudTd>
+            <MudTd DataLabel="Source">@context.Source</MudTd>
+            <MudTd DataLabel="User">@context.UserId</MudTd>
+            <MudTd DataLabel="Timestamp">@context.Timestamp.ToString("g")</MudTd>
+            <MudTd DataLabel="Actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Color="Color.Error" Size="Size.Small"
+                               OnClick="() => DeleteEventAsync(context)"
+                               Title="Delete event" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                No events found matching the current filters.
+            </MudAlert>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</MudContainer>
+
+@code {
+    private bool _loading;
+    private string _selectedSeverity = "All";
+    private DateTime? _sinceDate;
+    private MudTable<SystemEventViewModel>? _table;
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Events", href: null, disabled: true)
+    ];
+
+    private async Task<TableData<SystemEventViewModel>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var filter = new EventFilterModel
+            {
+                Severity = _selectedSeverity == "All" ? null : _selectedSeverity,
+                Since = _sinceDate,
+                Page = state.Page + 1,
+                PageSize = state.PageSize
+            };
+
+            var response = await EventAdminService.GetEventsAsync(filter);
+
+            return new TableData<SystemEventViewModel>
+            {
+                TotalItems = response.TotalCount,
+                Items = response.Events
+            };
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load events", Severity.Error);
+            return new TableData<SystemEventViewModel>
+            {
+                TotalItems = 0,
+                Items = []
+            };
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSeverityChanged(string value)
+    {
+        _selectedSeverity = value ?? "All";
+        if (_table is not null)
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task OnSinceDateChanged(DateTime? date)
+    {
+        _sinceDate = date;
+        if (_table is not null)
+        {
+            await _table.ReloadServerData();
+        }
+    }
+
+    private async Task DeleteEventAsync(SystemEventViewModel evt)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, "Are you sure you want to delete this event?" },
+            { x => x.ButtonText, "Delete" },
+            { x => x.Color, Color.Error }
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Event", parameters);
+        var result = await dialog.Result;
+        if (result == null || result.Canceled) return;
+
+        try
+        {
+            var success = await EventAdminService.DeleteEventAsync(evt.Id);
+            if (success)
+            {
+                Snackbar.Add("Event deleted", Severity.Success);
+                if (_table is not null)
+                {
+                    await _table.ReloadServerData();
+                }
+            }
+            else
+            {
+                Snackbar.Add("Failed to delete event", Severity.Error);
+            }
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to delete event", Severity.Error);
+        }
+    }
+
+    private static Color GetSeverityColor(string severity) => severity.ToLowerInvariant() switch
+    {
+        "info" => Color.Info,
+        "warning" => Color.Warning,
+        "error" => Color.Error,
+        "critical" => Color.Dark,
+        _ => Color.Default
+    };
+}

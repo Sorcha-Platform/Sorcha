@@ -100,14 +100,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Write unit tests for `schema providers` CLI commands in `tests/Sorcha.Cli.Tests/Commands/SchemaCommandTests.cs` — test list and refresh subcommands
+- [ ] T026 [P] [US3] Write unit tests for `schema providers` CLI commands in `tests/Sorcha.Cli.Tests/Commands/SchemaCommandTests.cs` — test list and refresh subcommands (DEFERRED to Phase 10 with T019)
 
 ### Implementation for User Story 3
 
-- [ ] T027 [P] [US3] Create Refit interface for schema provider endpoints in `src/Apps/Sorcha.Cli/Services/ISchemaProviderApiClient.cs` — `GetProvidersAsync()`, `RefreshProviderAsync(providerName)`
-- [ ] T028 [US3] Create `SchemaCommands.cs` in `src/Apps/Sorcha.Cli/Commands/SchemaCommands.cs` — `schema providers list` (table: Name, Status, SchemaCount, LastFetch) and `schema providers refresh --name <provider>` subcommands
-- [ ] T029 [US3] Register `SchemaCommands` in CLI root command in `src/Apps/Sorcha.Cli/Program.cs`
-- [ ] T029a [US3] Verify existing `SchemaProviderHealth.razor` satisfies FR-010 (displays providers with health, refresh time, count), FR-011 (manual refresh button), FR-012 (functional page, not placeholder) — document verification in commit message
+- [x] T027 [P] [US3] Create Refit interface for schema provider endpoints in `src/Apps/Sorcha.Cli/Services/IBlueprintServiceClient.cs` (added to existing Blueprint client) — `GetSchemaProvidersAsync()`, `RefreshSchemaProviderAsync(providerName)`
+- [x] T028 [US3] Create `SchemaCommands.cs` in `src/Apps/Sorcha.Cli/Commands/SchemaCommands.cs` — `schema providers list` (table: Name, Status, SchemaCount, LastFetch) and `schema providers refresh --name <provider>` subcommands
+- [x] T029 [US3] Register `SchemaCommands` in CLI root command in `src/Apps/Sorcha.Cli/Program.cs`
+- [x] T029a [US3] Verify existing `SchemaProviderHealth.razor` satisfies FR-010 (displays providers with health, refresh time, count), FR-011 (manual refresh button), FR-012 (functional page, not placeholder) — document verification in commit message
 
 **Checkpoint**: Schema provider CLI commands work. Existing UI verified as functional for FR-010/011/012.
 
@@ -121,17 +121,17 @@
 
 ### Tests for User Story 4
 
-- [ ] T030 [P] [US4] Write unit tests for `EventAdminService` in `tests/Sorcha.UI.Core.Tests/Services/EventAdminServiceTests.cs` — test list with filters, delete, pagination, network errors
-- [ ] T031 [P] [US4] Write unit tests for `admin events` CLI commands in `tests/Sorcha.Cli.Tests/Commands/EventAdminCommandTests.cs`
+- [x] T030 [P] [US4] Write unit tests for `EventAdminService` in `tests/Sorcha.UI.Core.Tests/Services/EventAdminServiceTests.cs` — test list with filters, delete, pagination, network errors
+- [ ] T031 [P] [US4] Write unit tests for `admin events` CLI commands in `tests/Sorcha.Cli.Tests/Commands/EventAdminCommandTests.cs` (DEFERRED to Phase 10 with T019/T026)
 
 ### Implementation for User Story 4
 
-- [ ] T032 [P] [US4] Create event admin models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EventAdminModels.cs` — `SystemEventViewModel`, `EventFilterModel` (severity, type, dateFrom, dateTo), `EventListResponse` (events, totalCount, page, pageSize)
-- [ ] T033 [P] [US4] Create `IEventAdminService` interface and `EventAdminService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IEventAdminService.cs` and `EventAdminService.cs` — list (GET `/api/events/admin`), delete (DELETE `/api/events/{id}`)
-- [ ] T034 [US4] Create `EventsAdmin.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/EventsAdmin.razor` — route `/admin/events`, MudTable with server-side pagination, severity filter chips, "since" date picker (no type filter — API does not support it), delete button per row with confirmation, empty state
-- [ ] T035 [US4] Add navigation menu entry for Events Admin in the admin nav section
-- [ ] T036 [US4] Add `admin events list|delete` subcommands to `src/Apps/Sorcha.Cli/Commands/AdminCommands.cs` — list with `--severity`, `--since`, `--page` options (no `--type` — API does not support it); delete by event ID
-- [ ] T037 [US4] Register `IEventAdminService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
+- [x] T032 [P] [US4] Create event admin models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EventAdminModels.cs` — `SystemEventViewModel`, `EventFilterModel` (severity, since), `EventListResponse` (events, totalCount, page, pageSize)
+- [x] T033 [P] [US4] Create `IEventAdminService` interface and `EventAdminService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IEventAdminService.cs` and `EventAdminService.cs` — list (GET `/api/events/admin`), delete (DELETE `/api/events/{id}`)
+- [x] T034 [US4] Create `EventsAdmin.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/EventsAdmin.razor` — route `/admin/events`, MudTable with server-side pagination, severity filter chips, "since" date picker (no type filter — API does not support it), delete button per row with confirmation, empty state
+- [x] T035 [US4] Add navigation menu entry for Events Admin in the admin nav section
+- [x] T036 [US4] Add `admin events list|delete` subcommands to `src/Apps/Sorcha.Cli/Commands/AdminCommands.cs` — list with `--severity`, `--since`, `--page` options (no `--type` — API does not support it); delete by event ID
+- [x] T037 [US4] Register `IEventAdminService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
 
 **Checkpoint**: Events admin page shows filtered, paginated events with delete. CLI equivalents work. Independently testable.
 
@@ -145,15 +145,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T038 [P] [US5] Write unit tests for `PushNotificationService` in `tests/Sorcha.UI.Core.Tests/Services/PushNotificationServiceTests.cs` — test subscribe, unsubscribe, get status, network errors
+- [x] T038 [P] [US5] Write unit tests for `PushNotificationService` in `tests/Sorcha.UI.Core.Tests/Services/PushNotificationServiceTests.cs` — test subscribe, unsubscribe, get status, network errors
 
 ### Implementation for User Story 5
 
-- [ ] T039 [P] [US5] Create push notification models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/PushNotificationModels.cs` — `PushSubscriptionStatus` (hasActiveSubscription), `PushSubscriptionRequest` (endpoint, p256dh, auth)
-- [ ] T040 [P] [US5] Create `IPushNotificationService` interface and `PushNotificationService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IPushNotificationService.cs` and `PushNotificationService.cs` — subscribe (POST), unsubscribe (DELETE), getStatus (GET) against `/api/push-subscriptions`
-- [ ] T041 [US5] Create `NotificationSettings.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Settings/NotificationSettings.razor` — route `/settings/notifications`, MudSwitch toggle, status chip (Active/Inactive), browser permission request via JS interop, guidance message on permission denial
-- [ ] T042 [US5] Register `IPushNotificationService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
-- [ ] T043 [US5] Add navigation link to Notification Settings in the Settings section of the nav menu
+- [x] T039 [P] [US5] Create push notification models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/PushNotificationModels.cs` — `PushSubscriptionStatus` (hasActiveSubscription), `PushSubscriptionRequest` (endpoint, p256dh, auth)
+- [x] T040 [P] [US5] Create `IPushNotificationService` interface and `PushNotificationService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IPushNotificationService.cs` and `PushNotificationService.cs` — subscribe (POST), unsubscribe (DELETE), getStatus (GET) against `/api/push-subscriptions`
+- [x] T041 [US5] Create `NotificationSettings.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/NotificationSettings.razor` — route `/settings/notifications`, MudSwitch toggle, status chip (Active/Inactive), browser permission request via JS interop, guidance message on permission denial
+- [x] T042 [US5] Register `IPushNotificationService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
+- [x] T043 [US5] Add navigation link to Notification Settings in the Settings section of the nav menu
 
 **Checkpoint**: Push notification toggle works end-to-end. Browser permission handling is graceful. Independently testable.
 
@@ -167,17 +167,17 @@
 
 ### Tests for User Story 6
 
-- [ ] T044 [P] [US6] Write unit tests for `OperationStatusService` in `tests/Sorcha.UI.Core.Tests/Services/OperationStatusServiceTests.cs` — test get status, polling, network errors
-- [ ] T045 [P] [US6] Write unit tests for `operation status` CLI command in `tests/Sorcha.Cli.Tests/Commands/OperationCommandTests.cs`
+- [x] T044 [P] [US6] Write unit tests for `OperationStatusService` in `tests/Sorcha.UI.Core.Tests/Services/OperationStatusServiceTests.cs` — test get status, polling, network errors
+- [ ] T045 [P] [US6] Write unit tests for `operation status` CLI command in `tests/Sorcha.Cli.Tests/Commands/OperationCommandTests.cs` (DEFERRED to Phase 10)
 
 ### Implementation for User Story 6
 
-- [ ] T046 [P] [US6] Create encryption operation models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionOperationModels.cs` — `EncryptionOperationViewModel` (operationId, stage, percentComplete, recipientCount, isComplete)
-- [ ] T047 [P] [US6] Create `IOperationStatusService` interface and `OperationStatusService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IOperationStatusService.cs` and `OperationStatusService.cs` — getStatus (GET `/api/operations/{operationId}`)
-- [ ] T048 [US6] Create `EncryptionProgressIndicator.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor` — MudProgressLinear with stage labels, auto-poll while in progress, stop on completion
-- [ ] T049 [US6] Create `OperationCommands.cs` in `src/Apps/Sorcha.Cli/Commands/OperationCommands.cs` — `operation status <operationId>` command showing stage, percentage, recipient count
-- [ ] T050 [US6] Register `IOperationStatusService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` and register `OperationCommands` in CLI root
-- [ ] T051 [US6] Integrate `EncryptionProgressIndicator` into the action submission flow where envelope encryption is triggered (identify appropriate host component from existing action submission UI)
+- [x] T046 [P] [US6] Create encryption operation models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionOperationModels.cs` — `EncryptionOperationViewModel` (operationId, stage, percentComplete, recipientCount, isComplete)
+- [x] T047 [P] [US6] Create `IOperationStatusService` interface and `OperationStatusService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Admin/IOperationStatusService.cs` and `OperationStatusService.cs` — getStatus (GET `/api/operations/{operationId}`)
+- [x] T048 [US6] Create `EncryptionProgressIndicator.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor` — MudProgressLinear with stage labels, auto-poll while in progress, stop on completion
+- [x] T049 [US6] Create `OperationCommands.cs` in `src/Apps/Sorcha.Cli/Commands/OperationCommands.cs` — `operation status <operationId>` command showing stage, percentage, recipient count
+- [x] T050 [US6] Register `IOperationStatusService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` and register `OperationCommands` in CLI root
+- [ ] T051 [US6] Integrate `EncryptionProgressIndicator` into the action submission flow where envelope encryption is triggered (DEFERRED — requires investigation of MyActions.razor action flow)
 
 **Checkpoint**: Encryption progress visible during operations. CLI status command works. Independently testable.
 

@@ -1,0 +1,153 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/settings/notifications"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services.Admin
+@inject IPushNotificationService PushService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Notification Settings - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Notifications" Class="mr-2" />
+        Notification Settings
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Manage your push notification preferences
+    </MudText>
+
+    @if (_isLoading)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="mt-8">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Checking notification status...</MudText>
+        </MudStack>
+    }
+    else
+    {
+        <MudPaper Elevation="2" Class="pa-6">
+            <MudStack Spacing="4">
+                <MudSwitch T="bool"
+                           Label="Enable Push Notifications"
+                           Color="Color.Primary"
+                           Value="_isEnabled"
+                           ValueChanged="OnToggleChanged" />
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Status:</MudText>
+                    @if (_isEnabled)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Check">
+                            Active
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.NotificationsOff">
+                            Inactive
+                        </MudChip>
+                    }
+                </MudStack>
+
+                @if (_permissionDenied)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-2">
+                        Push notifications are blocked by your browser. To enable them, click the lock icon in the address bar and allow notifications.
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private bool _isEnabled;
+    private bool _isLoading = true;
+    private bool _permissionDenied;
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Settings", href: "/settings"),
+        new("Notifications", href: null, disabled: true)
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatusAsync();
+    }
+
+    private async Task LoadStatusAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var status = await PushService.GetStatusAsync();
+            _isEnabled = status.HasActiveSubscription;
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load notification status", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnToggleChanged(bool value)
+    {
+        if (value)
+        {
+            // Request browser permission via JS interop
+            var permission = await JSRuntime.InvokeAsync<string>("Notification.requestPermission");
+            if (permission != "granted")
+            {
+                _permissionDenied = true;
+                _isEnabled = false;
+                Snackbar.Add("Browser notifications permission denied", Severity.Warning);
+                return;
+            }
+            _permissionDenied = false;
+
+            // Get push subscription from browser (simplified - real impl would use service worker)
+            // For now, create a placeholder subscription request
+            var request = new PushSubscriptionRequest
+            {
+                Endpoint = "browser-push-endpoint",
+                P256dh = "browser-p256dh-key",
+                Auth = "browser-auth-key"
+            };
+
+            var success = await PushService.SubscribeAsync(request);
+            if (success)
+            {
+                _isEnabled = true;
+                Snackbar.Add("Push notifications enabled", Severity.Success);
+            }
+            else
+            {
+                _isEnabled = false;
+                Snackbar.Add("Failed to enable push notifications", Severity.Error);
+            }
+        }
+        else
+        {
+            var success = await PushService.UnsubscribeAsync("browser-push-endpoint");
+            if (success)
+            {
+                _isEnabled = false;
+                Snackbar.Add("Push notifications disabled", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to disable push notifications", Severity.Error);
+            }
+        }
+    }
+}
