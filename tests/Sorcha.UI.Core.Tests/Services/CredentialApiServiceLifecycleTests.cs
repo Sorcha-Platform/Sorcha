@@ -98,13 +98,14 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.SuspendCredentialAsync("cred-123", "wallet-abc", "Policy violation");
 
         // Assert
-        result.Should().NotBeNull();
-        result!.CredentialId.Should().Be("cred-123");
-        result.NewStatus.Should().Be("Suspended");
-        result.PerformedBy.Should().Be("wallet-abc");
-        result.Reason.Should().Be("Policy violation");
-        result.StatusListUpdated.Should().BeTrue();
-        result.NewCredentialId.Should().BeNull();
+        result.Success.Should().BeTrue();
+        result.Data.Should().NotBeNull();
+        result.Data!.CredentialId.Should().Be("cred-123");
+        result.Data.NewStatus.Should().Be("Suspended");
+        result.Data.PerformedBy.Should().Be("wallet-abc");
+        result.Data.Reason.Should().Be("Policy violation");
+        result.Data.StatusListUpdated.Should().BeTrue();
+        result.Data.NewCredentialId.Should().BeNull();
     }
 
     [Fact]
@@ -117,7 +118,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.SuspendCredentialAsync("cred-123", "wallet-abc", "Already suspended");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -130,7 +131,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.SuspendCredentialAsync("cred-123", "wallet-abc");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -145,7 +146,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.SuspendCredentialAsync("cred-123", "wallet-abc");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     #endregion
@@ -172,13 +173,14 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.ReinstateCredentialAsync("cred-456", "wallet-def", "Issue resolved");
 
         // Assert
-        result.Should().NotBeNull();
-        result!.CredentialId.Should().Be("cred-456");
-        result.NewStatus.Should().Be("Active");
-        result.PerformedBy.Should().Be("wallet-def");
-        result.Reason.Should().Be("Issue resolved");
-        result.StatusListUpdated.Should().BeTrue();
-        result.NewCredentialId.Should().BeNull();
+        result.Success.Should().BeTrue();
+        result.Data.Should().NotBeNull();
+        result.Data!.CredentialId.Should().Be("cred-456");
+        result.Data.NewStatus.Should().Be("Active");
+        result.Data.PerformedBy.Should().Be("wallet-def");
+        result.Data.Reason.Should().Be("Issue resolved");
+        result.Data.StatusListUpdated.Should().BeTrue();
+        result.Data.NewCredentialId.Should().BeNull();
     }
 
     [Fact]
@@ -191,7 +193,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.ReinstateCredentialAsync("cred-456", "wallet-def", "Not suspended");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -204,7 +206,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.ReinstateCredentialAsync("cred-456", "wallet-def");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -219,7 +221,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.ReinstateCredentialAsync("cred-456", "wallet-def");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     #endregion
@@ -246,13 +248,14 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.RefreshCredentialAsync("cred-789", "wallet-ghi", "P30D");
 
         // Assert
-        result.Should().NotBeNull();
-        result!.CredentialId.Should().Be("cred-789");
-        result.NewStatus.Should().Be("Active");
-        result.PerformedBy.Should().Be("wallet-ghi");
-        result.Reason.Should().BeNull();
-        result.StatusListUpdated.Should().BeFalse();
-        result.NewCredentialId.Should().Be("cred-790");
+        result.Success.Should().BeTrue();
+        result.Data.Should().NotBeNull();
+        result.Data!.CredentialId.Should().Be("cred-789");
+        result.Data.NewStatus.Should().Be("Active");
+        result.Data.PerformedBy.Should().Be("wallet-ghi");
+        result.Data.Reason.Should().BeNull();
+        result.Data.StatusListUpdated.Should().BeFalse();
+        result.Data.NewCredentialId.Should().Be("cred-790");
     }
 
     [Fact]
@@ -265,7 +268,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.RefreshCredentialAsync("cred-789", "wallet-ghi");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -278,7 +281,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.RefreshCredentialAsync("cred-789", "wallet-ghi");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     [Fact]
@@ -293,7 +296,7 @@ public class CredentialApiServiceLifecycleTests : IDisposable
         var result = await _service.RefreshCredentialAsync("cred-789", "wallet-ghi");
 
         // Assert
-        result.Should().BeNull();
+        result.Success.Should().BeFalse();
     }
 
     #endregion

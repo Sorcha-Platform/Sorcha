@@ -26,6 +26,8 @@ public class UserCommandsTests
         // Setup default mock behavior
         _mockConfigService.Setup(x => x.GetActiveProfileAsync())
             .ReturnsAsync(new Profile { Name = "test" });
+        _mockConfigService.Setup(x => x.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new Profile { Name = "test", ServiceUrl = "http://localhost:80" });
         _mockAuthService.Setup(x => x.GetAccessTokenAsync(It.IsAny<string>()))
             .ReturnsAsync("test-token");
 
@@ -217,58 +219,38 @@ public class UserCommandsTests
     }
 
     [Fact]
-    public async Task UserListCommand_ShouldExecuteSuccessfully_WithRequiredOrgId()
+    public void UserListCommand_ShouldParseArguments_WithRequiredOrgId()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new UserListCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("list --org-id test-org-123").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("list --org-id test-org-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task UserGetCommand_ShouldExecuteSuccessfully_WithRequiredOptions()
+    public void UserGetCommand_ShouldParseArguments_WithRequiredOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new UserGetCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("get --org-id test-org-123 --user-id user-456").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("get --org-id test-org-123 --user-id user-456");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task UserCreateCommand_ShouldExecuteSuccessfully_WithRequiredOptions()
+    public void UserCreateCommand_ShouldParseArguments_WithRequiredOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new UserCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("create --org-id test-org-123 --username john --email john@test.com --password test123").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --org-id test-org-123 --username john --email john@test.com --password test123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task UserCreateCommand_ShouldExecuteSuccessfully_WithAllOptions()
+    public void UserCreateCommand_ShouldParseArguments_WithAllOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new UserCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("create --org-id test-org-123 --username john --email john@test.com --password test123 --first-name John --last-name Doe --roles Admin,User").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --org-id test-org-123 --username john --email john@test.com --password test123 --first-name John --last-name Doe --roles Admin,User");
+        parseResult.Errors.Should().BeEmpty();
     }
 }

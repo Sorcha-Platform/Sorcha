@@ -66,4 +66,42 @@ public interface IWalletServiceClient
         string address,
         [Body] SignTransactionRequest request,
         [Header("Authorization")] string authorization);
+
+    // --- Access Delegation ---
+
+    /// <summary>
+    /// Grants access to a wallet for a subject.
+    /// </summary>
+    [Post("/api/v1/wallets/{walletAddress}/access")]
+    Task<WalletAccessGrant> GrantAccessAsync(
+        string walletAddress,
+        [Body] GrantAccessRequest request,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Lists active access grants for a wallet.
+    /// </summary>
+    [Get("/api/v1/wallets/{walletAddress}/access")]
+    Task<List<WalletAccessGrant>> ListAccessAsync(
+        string walletAddress,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Revokes access for a subject from a wallet.
+    /// </summary>
+    [Delete("/api/v1/wallets/{walletAddress}/access/{subject}")]
+    Task RevokeAccessAsync(
+        string walletAddress,
+        string subject,
+        [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Checks if a subject has the required access right on a wallet.
+    /// </summary>
+    [Get("/api/v1/wallets/{walletAddress}/access/{subject}/check")]
+    Task<AccessCheckResponse> CheckAccessAsync(
+        string walletAddress,
+        string subject,
+        [Query] string requiredRight,
+        [Header("Authorization")] string authorization);
 }

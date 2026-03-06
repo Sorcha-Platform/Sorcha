@@ -52,4 +52,22 @@ public interface IBlueprintServiceClient
     /// </summary>
     [Get("/api/instances")]
     Task<List<BlueprintInstance>> ListInstancesAsync([Query] string? blueprintId, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Lists all schema providers.
+    /// </summary>
+    [Get("/api/v1/schemas/providers")]
+    Task<List<SchemaProviderDetail>> GetSchemaProvidersAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Refreshes a schema provider by name.
+    /// </summary>
+    [Post("/api/v1/schemas/providers/{providerName}/refresh")]
+    Task<SchemaProviderDetail> RefreshSchemaProviderAsync(string providerName, [Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets the status of an encryption operation.
+    /// </summary>
+    [Get("/api/operations/{operationId}")]
+    Task<EncryptionOperationStatus> GetOperationStatusAsync(string operationId, [Header("Authorization")] string authorization);
 }

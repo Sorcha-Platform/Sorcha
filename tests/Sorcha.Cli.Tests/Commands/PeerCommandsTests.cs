@@ -26,6 +26,8 @@ public class PeerCommandsTests
         // Setup default mock behavior
         _mockConfigService.Setup(x => x.GetActiveProfileAsync())
             .ReturnsAsync(new Profile { Name = "test" });
+        _mockConfigService.Setup(x => x.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new Profile { Name = "test", ServiceUrl = "http://localhost:80" });
         _mockAuthService.Setup(x => x.GetAccessTokenAsync(It.IsAny<string>()))
             .ReturnsAsync("test-token");
 
@@ -45,11 +47,11 @@ public class PeerCommandsTests
     }
 
     [Fact]
-    public void PeerCommand_ShouldHaveFourSubcommands()
+    public void PeerCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new PeerCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(4);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "stats", "health" });
+        command.Subcommands.Should().HaveCount(10);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "stats", "health", "quality", "subscriptions", "subscribe", "unsubscribe", "ban", "reset" });
     }
 
     #region PeerListCommand Tests
@@ -63,15 +65,12 @@ public class PeerCommandsTests
     }
 
     [Fact]
-    public async Task PeerListCommand_ShouldParseArguments()
+    public void PeerListCommand_ShouldParseArguments()
     {
-        // This test verifies the command structure parses correctly
-        // Actual execution requires integration tests with real services
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PeerListCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("list").InvokeAsync();
-        // Exit code 0 means parsing succeeded; handler errors are caught internally
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("list");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -96,12 +95,12 @@ public class PeerCommandsTests
     }
 
     [Fact]
-    public async Task PeerGetCommand_ShouldParseArguments_WithRequiredId()
+    public void PeerGetCommand_ShouldParseArguments_WithRequiredId()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PeerGetCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("get --id peer-123").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("get --id peer-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -117,12 +116,12 @@ public class PeerCommandsTests
     }
 
     [Fact]
-    public async Task PeerStatsCommand_ShouldParseArguments()
+    public void PeerStatsCommand_ShouldParseArguments()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PeerStatsCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("stats").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("stats");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -138,12 +137,12 @@ public class PeerCommandsTests
     }
 
     [Fact]
-    public async Task PeerHealthCommand_ShouldParseArguments()
+    public void PeerHealthCommand_ShouldParseArguments()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PeerHealthCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("health").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("health");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion

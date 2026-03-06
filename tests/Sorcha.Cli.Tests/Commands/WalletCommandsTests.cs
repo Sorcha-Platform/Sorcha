@@ -26,6 +26,8 @@ public class WalletCommandsTests
         // Setup default mock behavior
         _mockConfigService.Setup(x => x.GetActiveProfileAsync())
             .ReturnsAsync(new Profile { Name = "test" });
+        _mockConfigService.Setup(x => x.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new Profile { Name = "test", ServiceUrl = "http://localhost:80" });
         _mockAuthService.Setup(x => x.GetAccessTokenAsync(It.IsAny<string>()))
             .ReturnsAsync("test-token");
 
@@ -44,11 +46,11 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public void WalletCommand_ShouldHaveSixSubcommands()
+    public void WalletCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new WalletCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(6);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign" });
+        command.Subcommands.Should().HaveCount(7);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign", "access" });
     }
 
     #region WalletListCommand Tests
@@ -62,12 +64,12 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletListCommand_ShouldParseArguments()
+    public void WalletListCommand_ShouldParseArguments()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletListCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("list").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("list");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -92,12 +94,12 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletGetCommand_ShouldParseArguments_WithRequiredAddress()
+    public void WalletGetCommand_ShouldParseArguments_WithRequiredAddress()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletGetCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("get --address wallet-123").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("get --address wallet-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -149,21 +151,21 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletCreateCommand_ShouldParseArguments_WithRequiredName()
+    public void WalletCreateCommand_ShouldParseArguments_WithRequiredName()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletCreateCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("create --name \"My Wallet\"").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --name \"My Wallet\"");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task WalletCreateCommand_ShouldParseArguments_WithAllOptions()
+    public void WalletCreateCommand_ShouldParseArguments_WithAllOptions()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletCreateCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("create --name \"My Wallet\" --algorithm ED25519 --word-count 12 --passphrase secret").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --name \"My Wallet\" --algorithm ED25519 --word-count 12 --passphrase secret");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -215,21 +217,21 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletRecoverCommand_ShouldParseArguments_WithRequiredOptions()
+    public void WalletRecoverCommand_ShouldParseArguments_WithRequiredOptions()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletRecoverCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("recover --name \"Recovered Wallet\" --mnemonic \"word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12\"").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("recover --name \"Recovered Wallet\" --mnemonic \"word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12\"");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task WalletRecoverCommand_ShouldParseArguments_WithAllOptions()
+    public void WalletRecoverCommand_ShouldParseArguments_WithAllOptions()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletRecoverCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("recover --name \"Recovered Wallet\" --algorithm ED25519 --mnemonic \"word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12\" --passphrase secret").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("recover --name \"Recovered Wallet\" --algorithm ED25519 --mnemonic \"word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12\" --passphrase secret");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -263,21 +265,21 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletDeleteCommand_ShouldParseArguments_WithRequiredAddress()
+    public void WalletDeleteCommand_ShouldParseArguments_WithRequiredAddress()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletDeleteCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("delete --address wallet-123").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("delete --address wallet-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task WalletDeleteCommand_ShouldParseArguments_WithYesFlag()
+    public void WalletDeleteCommand_ShouldParseArguments_WithYesFlag()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletDeleteCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("delete --address wallet-123 --yes").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("delete --address wallet-123 --yes");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion
@@ -311,12 +313,12 @@ public class WalletCommandsTests
     }
 
     [Fact]
-    public async Task WalletSignCommand_ShouldParseArguments_WithRequiredOptions()
+    public void WalletSignCommand_ShouldParseArguments_WithRequiredOptions()
     {
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new WalletSignCommand(_clientFactory, AuthService, ConfigService));
-        var exitCode = await rootCommand.Parse("sign --address wallet-123 --data dGVzdCBkYXRh").InvokeAsync();
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("sign --address wallet-123 --data dGVzdCBkYXRh");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     #endregion

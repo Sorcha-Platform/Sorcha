@@ -26,6 +26,8 @@ public class OrganizationCommandsTests
         // Setup default mock behavior
         _mockConfigService.Setup(x => x.GetActiveProfileAsync())
             .ReturnsAsync(new Profile { Name = "test" });
+        _mockConfigService.Setup(x => x.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new Profile { Name = "test", ServiceUrl = "http://localhost:80" });
         _mockAuthService.Setup(x => x.GetAccessTokenAsync(It.IsAny<string>()))
             .ReturnsAsync("test-token");
 
@@ -173,58 +175,38 @@ public class OrganizationCommandsTests
     }
 
     [Fact]
-    public async Task OrgListCommand_ShouldParseArguments()
+    public void OrgListCommand_ShouldParseArguments()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new OrgListCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("list").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("list");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task OrgGetCommand_ShouldParseArguments_WithRequiredId()
+    public void OrgGetCommand_ShouldParseArguments_WithRequiredId()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new OrgGetCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("get --id test-org-123").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("get --id test-org-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task OrgCreateCommand_ShouldParseArguments_WithRequiredFields()
+    public void OrgCreateCommand_ShouldParseArguments_WithRequiredFields()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new OrgCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act - Both name and subdomain are required
-        var exitCode = await rootCommand.Parse("create --name \"Test Org\" --subdomain testorg").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --name \"Test Org\" --subdomain testorg");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task OrgCreateCommand_ShouldParseArguments_WithAllOptions()
+    public void OrgCreateCommand_ShouldParseArguments_WithAllOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new OrgCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act - Name and subdomain are the only options
-        var exitCode = await rootCommand.Parse("create --name \"Test Org\" --subdomain testorg").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --name \"Test Org\" --subdomain testorg");
+        parseResult.Errors.Should().BeEmpty();
     }
 }

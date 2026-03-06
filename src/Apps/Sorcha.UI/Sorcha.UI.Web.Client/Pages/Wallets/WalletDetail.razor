@@ -363,6 +363,11 @@
                     }
                 </MudPaper>
             </MudTabPanel>
+
+            @* Access Delegation Tab *@
+            <MudTabPanel Text="Access" Icon="@Icons.Material.Filled.Security">
+                <Sorcha.UI.Core.Components.Wallets.WalletAccessTab WalletAddress="@Address" />
+            </MudTabPanel>
         </MudTabs>
     }
 </MudContainer>

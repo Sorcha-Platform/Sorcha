@@ -1,0 +1,164 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@inject IWalletAccessService AccessService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudPaper Elevation="0" Class="pa-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h6">Access Grants</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PersonAdd"
+                   OnClick="() => _showGrantForm = !_showGrantForm">
+            Grant Access
+        </MudButton>
+    </MudStack>
+
+    @if (_showGrantForm)
+    {
+        <MudPaper Elevation="1" Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">Grant New Access</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudTextField T="string" Label="Subject (User ID)" @bind-Value="_form.Subject"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string" Label="Access Right" @bind-Value="_form.AccessRight"
+                               Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem T="string" Value="@("Owner")">Owner</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("ReadWrite")">Read/Write</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("ReadOnly")">Read Only</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField T="string" Label="Reason (optional)" @bind-Value="_form.Reason"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Disabled="@(string.IsNullOrWhiteSpace(_form.Subject))"
+                               OnClick="GrantAccessAsync">
+                        Grant
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+
+    @if (_isLoading)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
+    }
+    else if (_grants.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+            No access grants found for this wallet.
+        </MudAlert>
+    }
+    else
+    {
+        <MudTable Items="@_grants" Dense="true" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Subject</MudTh>
+                <MudTh>Access Right</MudTh>
+                <MudTh>Granted By</MudTh>
+                <MudTh>Reason</MudTh>
+                <MudTh>Granted At</MudTh>
+                <MudTh>Expires At</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Subject">@context.Subject</MudTd>
+                <MudTd DataLabel="Access Right">
+                    <MudChip T="string" Color="@GetAccessColor(context.AccessRight)" Size="Size.Small">
+                        @context.AccessRight
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Granted By">@context.GrantedBy</MudTd>
+                <MudTd DataLabel="Reason">@(context.Reason ?? "—")</MudTd>
+                <MudTd DataLabel="Granted At">@context.GrantedAt.ToString("g")</MudTd>
+                <MudTd DataLabel="Expires At">@(context.ExpiresAt?.ToString("g") ?? "Never")</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Color="Color.Error" Size="Size.Small"
+                                   OnClick="() => RevokeAccessAsync(context.Subject)"
+                                   Title="Revoke access" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public string WalletAddress { get; set; } = string.Empty;
+
+    private List<WalletAccessGrantViewModel> _grants = [];
+    private GrantAccessFormModel _form = new();
+    private bool _isLoading = true;
+    private bool _showGrantForm;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGrantsAsync();
+    }
+
+    private async Task LoadGrantsAsync()
+    {
+        _isLoading = true;
+        _grants = await AccessService.ListAccessAsync(WalletAddress);
+        _isLoading = false;
+    }
+
+    private async Task GrantAccessAsync()
+    {
+        var result = await AccessService.GrantAccessAsync(WalletAddress, _form);
+        if (result != null)
+        {
+            Snackbar.Add($"Access granted to {_form.Subject}", Severity.Success);
+            _form = new GrantAccessFormModel();
+            _showGrantForm = false;
+            await LoadGrantsAsync();
+        }
+        else
+        {
+            Snackbar.Add("Failed to grant access. You may not have permission.", Severity.Error);
+        }
+    }
+
+    private async Task RevokeAccessAsync(string subject)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.ContentText, $"Are you sure you want to revoke access for '{subject}'?" },
+            { x => x.ButtonText, "Revoke" },
+            { x => x.Color, Color.Error }
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Revoke Access", parameters);
+        var result = await dialog.Result;
+        if (result == null || result.Canceled) return;
+
+        var success = await AccessService.RevokeAccessAsync(WalletAddress, subject);
+        if (success)
+        {
+            Snackbar.Add($"Access revoked for {subject}", Severity.Success);
+            await LoadGrantsAsync();
+        }
+        else
+        {
+            Snackbar.Add("Failed to revoke access", Severity.Error);
+        }
+    }
+
+    private static Color GetAccessColor(string accessRight) => accessRight switch
+    {
+        "Owner" => Color.Error,
+        "ReadWrite" => Color.Warning,
+        "ReadOnly" => Color.Info,
+        _ => Color.Default
+    };
+}

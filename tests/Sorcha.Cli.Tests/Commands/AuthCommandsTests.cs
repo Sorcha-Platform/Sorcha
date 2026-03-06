@@ -197,10 +197,10 @@ public class AuthCommandsTests : IDisposable
         {
             AccessToken = "test-token",
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-            Profile = "dev",
+            Profile = "docker",
             Subject = "testuser"
         };
-        await _tokenCache.SetAsync("dev", cacheEntry);
+        await _tokenCache.SetAsync("docker", cacheEntry);
 
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new AuthLogoutCommand(_authService, _configService));
@@ -210,7 +210,7 @@ public class AuthCommandsTests : IDisposable
 
         // Assert
         exitCode.Should().Be(0);
-        var token = await _tokenCache.GetAsync("dev");
+        var token = await _tokenCache.GetAsync("docker");
         token.Should().BeNull();
     }
 
@@ -352,10 +352,10 @@ public class AuthCommandsTests : IDisposable
         };
 
         // Act
-        await _authService.LoginAsync(loginRequest, "dev");
+        await _authService.LoginAsync(loginRequest, "docker");
 
         // Assert
-        var cachedToken = await _tokenCache.GetAsync("dev");
+        var cachedToken = await _tokenCache.GetAsync("docker");
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("cached-access-token");
         cachedToken.Subject.Should().Be("cachetest");
@@ -393,11 +393,11 @@ public class AuthCommandsTests : IDisposable
             AccessToken = "expiring-token",
             RefreshToken = "valid-refresh-token",
             ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(3), // Expiring in 3 minutes
-            Profile = "dev",
+            Profile = "docker",
             Subject = "testuser"
         };
 
-        await _tokenCache.SetAsync("dev", cacheEntry);
+        await _tokenCache.SetAsync("docker", cacheEntry);
 
         var refreshResponse = new TokenResponse
         {
@@ -410,12 +410,12 @@ public class AuthCommandsTests : IDisposable
         _httpHandler.SetResponse(HttpStatusCode.OK, refreshResponse);
 
         // Act
-        var token = await _authService.GetAccessTokenAsync("dev");
+        var token = await _authService.GetAccessTokenAsync("docker");
 
         // Assert
         token.Should().Be("refreshed-access-token");
 
-        var cachedToken = await _tokenCache.GetAsync("dev");
+        var cachedToken = await _tokenCache.GetAsync("docker");
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("refreshed-access-token");
         cachedToken.RefreshToken.Should().Be("new-refresh-token");
@@ -447,13 +447,13 @@ public class AuthCommandsTests : IDisposable
         };
 
         // Act
-        var result = await _authService.LoginServicePrincipalAsync(loginRequest, "dev");
+        var result = await _authService.LoginServicePrincipalAsync(loginRequest, "docker");
 
         // Assert
         result.Should().NotBeNull();
         result.AccessToken.Should().Be("sp-access-token");
 
-        var cachedToken = await _tokenCache.GetAsync("dev");
+        var cachedToken = await _tokenCache.GetAsync("docker");
         cachedToken.Should().NotBeNull();
         cachedToken!.AccessToken.Should().Be("sp-access-token");
         cachedToken.Subject.Should().Be("test-sp-client");

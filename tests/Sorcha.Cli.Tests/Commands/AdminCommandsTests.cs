@@ -47,12 +47,12 @@ public class AdminCommandsTests
     }
 
     [Fact]
-    public void AdminCommand_ShouldHaveFourSubcommands()
+    public void AdminCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new AdminCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(4);
+        command.Subcommands.Should().HaveCount(3);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "health", "schema-sectors", "schema-providers", "alerts" });
+            new[] { "health", "alerts", "events" });
     }
 
     #region AdminHealthCommand Tests

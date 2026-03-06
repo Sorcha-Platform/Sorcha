@@ -92,6 +92,20 @@ For detailed implementation status, see the individual section files:
 
 ## Recent Completions
 
+### 2026-03-06
+- **051-Operations-Monitoring-Admin** (65 tasks, 10 phases — operational admin UI & CLI)
+  - **Dashboard auto-refresh**: 30-second timer on Home.razor with refresh indicator, graceful "data unavailable" states
+  - **Alert dismissal**: Per-user alert dismissal via localStorage-based AlertDismissalService
+  - **Wallet access delegation**: WalletAccessTab component (grant/list/revoke/check), CLI `wallet access` subcommands
+  - **Schema provider CLI**: `schema providers list|refresh` commands via IBlueprintServiceClient
+  - **Events admin**: EventsAdmin.razor with server-side pagination, severity filters, delete with confirmation; CLI `admin events list|delete`
+  - **Push notifications**: NotificationSettings.razor with MudSwitch toggle, browser permission request via JS interop, status chips
+  - **Encryption progress**: EncryptionProgressIndicator.razor with auto-poll timer, stage labels; CLI `operation status`
+  - **Presentation admin UX**: Replaced comma-separated text inputs with chip-based tag inputs for AcceptedIssuers and RequiredClaims; 5-second auto-refresh for pending presentation requests
+  - **Credential lifecycle errors**: Typed CredentialOperationResult with specific messages for 403/404/409/500; CredentialStatus constants replacing magic strings
+  - **Code quality**: Shared JsonSerializerOptions, CredentialStatus constants, CredentialOperationResult typed errors
+  - Test results: 38+ new unit tests (services, error handling, auto-refresh polling), 4 E2E test suites
+
 ### 2026-03-04
 - **048-Register-Policy-Model** (54 tasks, 9 phases — unified register policy & system register)
   - **RegisterPolicy model**: Governance (quorum formula), Validators (registration mode, approved list, operational TTL), Consensus (thresholds, docket limits), LeaderElection (mechanism, heartbeat, term duration)

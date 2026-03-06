@@ -16,6 +16,7 @@ using Sorcha.UI.Core.Services.Navigation;
 using Sorcha.UI.Core.Services.Participants;
 using Sorcha.UI.Core.Services.Forms;
 using Sorcha.UI.Core.Services.Credentials;
+using Sorcha.UI.Core.Services.Admin;
 using Sorcha.UI.Core.Services.Wallet;
 
 namespace Sorcha.UI.Core.Extensions;
@@ -529,6 +530,39 @@ public static class ServiceCollectionExtensions
             return new AlertService(httpClient, logger);
         });
 
+        // Alert Dismissal Service (per-user localStorage-based)
+        services.AddScoped<IAlertDismissalService, AlertDismissalService>();
+
+        // Wallet Access Service (051 - authenticated)
+        services.AddScoped<IWalletAccessService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<WalletAccessService>>();
+            return new WalletAccessService(httpClient, logger);
+        });
+
+        // Push Notification Service (051 - authenticated)
+        services.AddScoped<IPushNotificationService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<PushNotificationService>>();
+            return new PushNotificationService(httpClient, logger);
+        });
+
+        // Event Admin Service (051 - authenticated)
+        services.AddScoped<IEventAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<EventAdminService>>();
+            return new EventAdminService(httpClient, logger);
+        });
+
         // Presentation Admin Service (050 - authenticated)
         services.AddScoped<IPresentationAdminService>(sp =>
         {
@@ -537,6 +571,16 @@ public static class ServiceCollectionExtensions
             var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<PresentationAdminService>>();
             return new PresentationAdminService(httpClient, logger);
+        });
+
+        // Operation Status Service (051 - authenticated)
+        services.AddScoped<IOperationStatusService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<OperationStatusService>>();
+            return new OperationStatusService(httpClient, logger);
         });
 
         // Status List Service (050 - public endpoint, no auth needed)
