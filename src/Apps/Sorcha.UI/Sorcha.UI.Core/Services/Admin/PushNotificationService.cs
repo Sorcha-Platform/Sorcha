@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services.Admin;
@@ -34,7 +35,7 @@ public class PushNotificationService : IPushNotificationService
                 return new PushSubscriptionStatus(false);
             }
 
-            return await response.Content.ReadFromJsonAsync<PushSubscriptionStatus>(cancellationToken: ct)
+            return await response.Content.ReadFromJsonAsync<PushSubscriptionStatus>(JsonDefaults.Api, ct)
                    ?? new PushSubscriptionStatus(false);
         }
         catch (HttpRequestException ex)
@@ -57,7 +58,7 @@ public class PushNotificationService : IPushNotificationService
                 return false;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<PushSubscriptionResponse>(cancellationToken: ct);
+            var result = await response.Content.ReadFromJsonAsync<PushSubscriptionResponse>(JsonDefaults.Api, ct);
             return result?.Subscribed ?? false;
         }
         catch (HttpRequestException ex)

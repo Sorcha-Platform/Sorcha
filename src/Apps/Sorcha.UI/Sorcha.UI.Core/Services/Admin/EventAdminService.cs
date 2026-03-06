@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services.Admin;
@@ -34,7 +35,7 @@ public class EventAdminService : IEventAdminService
                     queryParams.Add($"severity={Uri.EscapeDataString(filter.Severity)}");
 
                 if (filter.Since.HasValue)
-                    queryParams.Add($"since={filter.Since.Value:O}");
+                    queryParams.Add($"since={Uri.EscapeDataString(filter.Since.Value.ToString("O"))}");
 
                 queryParams.Add($"page={filter.Page}");
                 queryParams.Add($"pageSize={filter.PageSize}");
@@ -49,7 +50,7 @@ public class EventAdminService : IEventAdminService
                 return new EventListResponse();
             }
 
-            return await response.Content.ReadFromJsonAsync<EventListResponse>(cancellationToken: ct)
+            return await response.Content.ReadFromJsonAsync<EventListResponse>(JsonDefaults.Api, ct)
                    ?? new EventListResponse();
         }
         catch (HttpRequestException ex)
@@ -64,7 +65,7 @@ public class EventAdminService : IEventAdminService
     {
         try
         {
-            var response = await _httpClient.DeleteAsync($"/api/events/{eventId}", ct);
+            var response = await _httpClient.DeleteAsync($"/api/events/{Uri.EscapeDataString(eventId)}", ct);
 
             if (!response.IsSuccessStatusCode)
             {

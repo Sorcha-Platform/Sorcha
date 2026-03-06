@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models;
 
 namespace Sorcha.UI.Core.Services;
@@ -27,7 +28,7 @@ public class WalletAccessService : IWalletAccessService
         try
         {
             var response = await _httpClient.PostAsJsonAsync(
-                $"/api/v1/wallets/{walletAddress}/access",
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/access",
                 new { form.Subject, form.AccessRight, form.Reason, form.ExpiresAt },
                 ct);
 
@@ -38,7 +39,7 @@ public class WalletAccessService : IWalletAccessService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<WalletAccessGrantViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<WalletAccessGrantViewModel>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -53,12 +54,12 @@ public class WalletAccessService : IWalletAccessService
         try
         {
             var response = await _httpClient.GetAsync(
-                $"/api/v1/wallets/{walletAddress}/access", ct);
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/access", ct);
 
             if (!response.IsSuccessStatusCode)
                 return [];
 
-            return await response.Content.ReadFromJsonAsync<List<WalletAccessGrantViewModel>>(cancellationToken: ct) ?? [];
+            return await response.Content.ReadFromJsonAsync<List<WalletAccessGrantViewModel>>(JsonDefaults.Api, ct) ?? [];
         }
         catch (HttpRequestException ex)
         {
@@ -73,7 +74,7 @@ public class WalletAccessService : IWalletAccessService
         try
         {
             var response = await _httpClient.DeleteAsync(
-                $"/api/v1/wallets/{walletAddress}/access/{subject}", ct);
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/access/{Uri.EscapeDataString(subject)}", ct);
 
             return response.IsSuccessStatusCode;
         }
@@ -91,12 +92,12 @@ public class WalletAccessService : IWalletAccessService
         try
         {
             var response = await _httpClient.GetAsync(
-                $"/api/v1/wallets/{walletAddress}/access/{subject}/check?requiredRight={requiredRight}", ct);
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/access/{Uri.EscapeDataString(subject)}/check?requiredRight={Uri.EscapeDataString(requiredRight)}", ct);
 
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            return await response.Content.ReadFromJsonAsync<AccessCheckResult>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<AccessCheckResult>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {

@@ -4,6 +4,17 @@
 namespace Sorcha.UI.Core.Models.Admin;
 
 /// <summary>
+/// Constants for encryption operation stage values.
+/// </summary>
+public static class OperationStage
+{
+    public const string Queued = "queued";
+    public const string EncryptingPerRecipient = "encrypting-per-recipient";
+    public const string Complete = "complete";
+    public const string Failed = "failed";
+}
+
+/// <summary>
 /// View model for encryption progress display.
 /// </summary>
 public record EncryptionOperationViewModel
@@ -41,10 +52,10 @@ public record EncryptionOperationViewModel
     /// <summary>
     /// Whether the operation has completed (successfully or with failure).
     /// </summary>
-    public bool IsComplete => Stage is "complete" or "failed";
+    public bool IsComplete => Stage is OperationStage.Complete or OperationStage.Failed;
 
     /// <summary>
     /// Whether the operation completed successfully.
     /// </summary>
-    public bool IsSuccess => Stage == "complete";
+    public bool IsSuccess => Stage == OperationStage.Complete;
 }

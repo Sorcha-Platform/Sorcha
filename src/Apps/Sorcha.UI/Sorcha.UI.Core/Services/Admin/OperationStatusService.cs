@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Admin;
 
 namespace Sorcha.UI.Core.Services.Admin;
@@ -34,7 +35,7 @@ public class OperationStatusService : IOperationStatusService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<EncryptionOperationViewModel>(cancellationToken: ct);
+            return await response.Content.ReadFromJsonAsync<EncryptionOperationViewModel>(JsonDefaults.Api, ct);
         }
         catch (HttpRequestException ex)
         {

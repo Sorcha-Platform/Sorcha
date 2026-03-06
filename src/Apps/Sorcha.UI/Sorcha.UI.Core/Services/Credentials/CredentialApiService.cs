@@ -355,7 +355,11 @@ public class CredentialApiService : ICredentialApiService
     {
         if (string.IsNullOrEmpty(issuerDid)) return "Unknown Issuer";
         if (issuerDid.StartsWith("did:web:")) return issuerDid["did:web:".Length..];
-        if (issuerDid.StartsWith("did:sorcha:w:")) return issuerDid["did:sorcha:w:".Length..][..8] + "...";
+        if (issuerDid.StartsWith("did:sorcha:w:"))
+        {
+            var suffix = issuerDid["did:sorcha:w:".Length..];
+            return (suffix.Length > 8 ? suffix[..8] : suffix) + "...";
+        }
         return issuerDid.Length > 20 ? issuerDid[..20] + "..." : issuerDid;
     }
 

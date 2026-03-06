@@ -760,6 +760,11 @@ public class WalletAccessListCommand : Command
                 }
                 return ExitCodes.Success;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: you are not the owner of this wallet.");
+                return ExitCodes.AuthenticationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -810,6 +815,11 @@ public class WalletAccessRevokeCommand : Command
                 await client.RevokeAccessAsync(address, subject, $"Bearer {token}");
                 ConsoleHelper.WriteSuccess($"Access revoked for {subject} on {address}");
                 return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: you are not the owner of this wallet.");
+                return ExitCodes.AuthenticationError;
             }
             catch (ApiException ex)
             {
@@ -870,6 +880,11 @@ public class WalletAccessCheckCommand : Command
                     ConsoleHelper.WriteWarning($"{subject} does NOT have {right} access to {address}");
 
                 return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: you are not the owner of this wallet.");
+                return ExitCodes.AuthenticationError;
             }
             catch (ApiException ex)
             {

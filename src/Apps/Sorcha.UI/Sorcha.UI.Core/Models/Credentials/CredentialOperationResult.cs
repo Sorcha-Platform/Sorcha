@@ -45,6 +45,8 @@ public class CredentialOperationResult
     /// </summary>
     public static CredentialOperationResult FromStatusCode(int statusCode, string? currentStatus = null) => statusCode switch
     {
+        401 => Fail(CredentialErrorType.PermissionDenied,
+            "Your session has expired. Please log in again."),
         403 => Fail(CredentialErrorType.PermissionDenied,
             "Permission denied: you are not the issuer of this credential"),
         404 => Fail(CredentialErrorType.NotFound,

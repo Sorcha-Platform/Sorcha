@@ -13,8 +13,12 @@ public static class JsonDefaults
     /// <summary>
     /// Standard options for deserializing API responses (case-insensitive property matching).
     /// </summary>
-    public static readonly JsonSerializerOptions Api = new()
+    public static readonly JsonSerializerOptions Api = CreateApiOptions();
+
+    private static JsonSerializerOptions CreateApiOptions()
     {
-        PropertyNameCaseInsensitive = true
-    };
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        options.MakeReadOnly(populateMissingResolver: true);
+        return options;
+    }
 }

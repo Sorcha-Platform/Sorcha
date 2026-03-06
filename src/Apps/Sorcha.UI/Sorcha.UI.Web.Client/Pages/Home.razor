@@ -221,6 +221,7 @@
     private bool _isRefreshing;
     private bool _hasDefaultWallet;
     private System.Timers.Timer? _refreshTimer;
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -247,6 +248,7 @@
 
     private async Task RefreshDashboardAsync()
     {
+        if (_disposed) return;
         _isRefreshing = true;
         StateHasChanged();
 
@@ -276,6 +278,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         _refreshTimer?.Stop();
         _refreshTimer?.Dispose();
         Loc.OnLanguageChanged -= OnLanguageChanged;
