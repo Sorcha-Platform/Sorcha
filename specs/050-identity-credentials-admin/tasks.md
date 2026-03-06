@@ -52,14 +52,14 @@
 
 ### Tests for US1
 
-- [ ] T009 [P] [US1] Write CredentialApiService lifecycle unit tests (suspend success/wrong-state/forbidden/network, reinstate success/wrong-state/forbidden/network, refresh success/wrong-state/forbidden/network = 12 tests) in `tests/Sorcha.UI.Core.Tests/Services/CredentialApiServiceLifecycleTests.cs`
-- [ ] T010 [P] [US1] Write credential suspend/reinstate/refresh CLI command tests (success + error per command = 6 tests) in `tests/Sorcha.Cli.Tests/Commands/CredentialLifecycleCommandTests.cs`
+- [X] T009 [P] [US1] Write CredentialApiService lifecycle unit tests (suspend success/wrong-state/forbidden/network, reinstate success/wrong-state/forbidden/network, refresh success/wrong-state/forbidden/network = 12 tests) in `tests/Sorcha.UI.Core.Tests/Services/CredentialApiServiceLifecycleTests.cs`
+- [X] T010 [P] [US1] Write credential suspend/reinstate/refresh CLI command tests (success + error per command = 6 tests) in `tests/Sorcha.Cli.Tests/Commands/CredentialLifecycleCommandTests.cs`
 
 ### Implementation for US1
 
 - [X] T011 [US1] Implement SuspendCredentialAsync, ReinstateCredentialAsync, RefreshCredentialAsync in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/CredentialApiService.cs` — POST to `/api/v1/credentials/{id}/suspend|reinstate|refresh` with LifecycleCredentialRequest body containing IssuerWallet and optional Reason/NewExpiryDuration
-- [ ] T012 [US1] Create CredentialLifecycleDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialLifecycleDialog.razor` — parameterized by action type (Suspend/Reinstate/Revoke/Refresh), includes MudSelect wallet picker populated from user's linked wallets, optional MudTextField for reason (suspend/reinstate/revoke) or expiry duration (refresh), irreversibility MudAlert warning for Revoke, confirm/cancel MudButtons
-- [ ] T013 [US1] Modify CredentialDetailView.razor to add lifecycle action buttons in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialDetailView.razor` — Active status: show Suspend + Revoke buttons; Suspended: show Reinstate + Revoke; Expired: show Refresh; Revoked: no buttons; No wallets: show MudAlert explaining linked wallet required. Each button opens CredentialLifecycleDialog via DialogService.
+- [X] T012 [US1] Create CredentialLifecycleDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialLifecycleDialog.razor` — parameterized by action type (Suspend/Reinstate/Revoke/Refresh), includes MudSelect wallet picker populated from user's linked wallets, optional MudTextField for reason (suspend/reinstate/revoke) or expiry duration (refresh), irreversibility MudAlert warning for Revoke, confirm/cancel MudButtons
+- [X] T013 [US1] Modify CredentialDetailView.razor to add lifecycle action buttons in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/CredentialDetailView.razor` — Active status: show Suspend + Revoke buttons; Suspended: show Reinstate + Revoke; Expired: show Refresh; Revoked: no buttons; No wallets: show MudAlert explaining linked wallet required. Each button opens CredentialLifecycleDialog via DialogService.
 - [X] T014 [US1] Add `credential suspend`, `credential reinstate`, `credential refresh` CLI commands in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — each with `--id` (required), `--wallet` (required), `--reason` (optional for suspend/reinstate), `--expires-in-days` (optional for refresh). Use BaseCommand.OutputOption for table/JSON output. Call corresponding ICredentialServiceClient Refit methods.
 
 **Checkpoint**: Credential lifecycle fully functional via UI and CLI
@@ -74,7 +74,7 @@
 
 ### Tests for US2
 
-- [ ] T015 [P] [US2] Write participant suspend/reactivate CLI command tests (suspend success/error, reactivate success/error = 4 tests) in `tests/Sorcha.Cli.Tests/Commands/ParticipantSuspendCommandTests.cs`
+- [X] T015 [P] [US2] Write participant suspend/reactivate CLI command tests (suspend success/error, reactivate success/error = 4 tests) in `tests/Sorcha.Cli.Tests/Commands/ParticipantSuspendCommandTests.cs`
 
 ### Implementation for US2
 
@@ -94,11 +94,11 @@
 
 ### Tests for US3
 
-- [ ] T019 [P] [US3] Write participant publish/unpublish CLI command tests (publish success/error, unpublish success/error = 4 tests) in `tests/Sorcha.Cli.Tests/Commands/ParticipantPublishCommandTests.cs`
+- [X] T019 [P] [US3] Write participant publish/unpublish CLI command tests (publish success/error, unpublish success/error = 4 tests) in `tests/Sorcha.Cli.Tests/Commands/ParticipantPublishCommandTests.cs`
 
 ### Implementation for US3
 
-- [ ] T020 [US3] Create ParticipantPublishDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantPublishDialog.razor` — MudDialog with: MudTextField for register ID (required), pre-filled MudTextField for participant name and org name (from CascadingParameter or dialog parameter), MudSelect multi-select for wallet addresses (from participant's linked wallets, max 10), MudSelect for signer wallet, submit/cancel MudButtons. On submit: call IParticipantPublishingService.PublishAsync with PublishParticipantRequest body.
+- [X] T020 [US3] Create ParticipantPublishDialog.razor (already exists as PublishParticipantDialog.razor) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantPublishDialog.razor` — MudDialog with: MudTextField for register ID (required), pre-filled MudTextField for participant name and org name (from CascadingParameter or dialog parameter), MudSelect multi-select for wallet addresses (from participant's linked wallets, max 10), MudSelect for signer wallet, submit/cancel MudButtons. On submit: call IParticipantPublishingService.PublishAsync with PublishParticipantRequest body.
 - [X] T021 [US3] Modify ParticipantDetail.razor to add publish button and published register indicators in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Participants/ParticipantDetail.razor` — show "Publish to Register" MudButton for Active participants with Administrator role (use AuthorizeView). Display published registers section with MudChips showing register IDs, with "Update" and "Revoke" options per published record. Opens ParticipantPublishDialog via DialogService.
 - [X] T022 [US3] Add `participant publish` and `participant unpublish` CLI commands in `src/Apps/Sorcha.Cli/Commands/ParticipantCommands.cs` — publish: `--org-id`, `--register-id`, `--name`, `--org-name`, `--wallet` (required), `--signer` (required). unpublish: `--org-id`, `--id`, `--register-id`, `--signer` (required). Call IParticipantServiceClient.PublishParticipantAsync / UnpublishParticipantAsync.
 
@@ -114,17 +114,17 @@
 
 ### Tests for US4
 
-- [ ] T023 [P] [US4] Write PresentationAdminService unit tests (createRequest success/validation/auth, getResult completed/pending/expired/notFound = 7 tests) in `tests/Sorcha.UI.Core.Tests/Services/PresentationAdminServiceTests.cs`
+- [X] T023 [P] [US4] Write PresentationAdminService unit tests (createRequest success/validation/auth, getResult completed/pending/expired/notFound = 7 tests) in `tests/Sorcha.UI.Core.Tests/Services/PresentationAdminServiceTests.cs`
 
 ### Implementation for US4
 
 - [X] T024 [US4] Implement PresentationAdminService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/PresentationAdminService.cs` — CreatePresentationRequestAsync: POST `/api/v1/presentations/request` with CreatePresentationRequestViewModel body, returns PresentationRequestResultViewModel. GetPresentationResultAsync: GET `/api/v1/presentations/{requestId}/result`, returns result or 202 (pending) or 410 (expired). Inject ILogger<PresentationAdminService> and add structured log statements for request creation and result retrieval (LogInformation for success, LogWarning for 4xx responses).
 - [X] T025 [US4] Register IPresentationAdminService/PresentationAdminService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method using same HttpClient + AuthenticatedHttpMessageHandler pattern as existing services
-- [ ] T026 [US4] Create PresentationRequestList.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestList.razor` — holder-side component showing pending presentation requests from existing ICredentialApiService.GetPresentationRequestsAsync. MudTable with columns: Verifier, Credential Type, Expiry, Status. Click row navigates to detail.
-- [ ] T027 [US4] Create PresentationRequestDetail.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestDetail.razor` — shows verifier identity, required claims, matching credentials from wallet, expiry countdown. MudButton "Approve" opens PresentationSubmitDialog. MudButton "Deny" with confirmation calls ICredentialApiService.DenyPresentation. Expired requests show MudAlert with disabled actions.
-- [ ] T028 [US4] Create PresentationSubmitDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationSubmitDialog.razor` — MudDialog with: credential selector (MudSelect from matching credentials), claim checkboxes (MudCheckBox per claim, required claims pre-checked and disabled), confirm/cancel. On submit: call ICredentialApiService.SubmitPresentationAsync.
-- [ ] T029 [US4] Create PresentationAdmin.razor verifier page in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/PresentationAdmin.razor` — @page "/admin/presentations". Form with: MudTextField credential type, MudChipSet for accepted issuers (tag input), MudChipSet for required claims (tag input), MudTextField target wallet, MudTextField callback URL (HTTPS validation), MudNumericField TTL seconds. On submit: call IPresentationAdminService.CreatePresentationRequestAsync. After creation: display QR code via JS interop with openid4vp:// URL, shareable link, MudCountDown expiry timer. Request history MudTable below form.
-- [ ] T030 [US4] Add QR code JS interop for presentation requests — vendor `qrcode.min.js` (https://github.com/davidshimjs/qrcodejs, MIT license) into `src/Apps/Sorcha.Admin/wwwroot/lib/qrcodejs/qrcode.min.js`, add script reference in `_Host.cshtml` or `App.razor`. Create `src/Apps/Sorcha.Admin/wwwroot/js/qrcode-interop.js` with `window.generateQrCode = function(elementId, data)` that creates a QRCode instance targeting the element. Create `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Interop/QrCodeInterop.cs` wrapper class calling `IJSRuntime.InvokeVoidAsync("generateQrCode", elementId, url)`.
+- [X] T026 [US4] Create PresentationRequestList.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestList.razor` — holder-side component showing pending presentation requests from existing ICredentialApiService.GetPresentationRequestsAsync. MudTable with columns: Verifier, Credential Type, Expiry, Status. Click row navigates to detail.
+- [X] T027 [US4] Create PresentationRequestDetail.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationRequestDetail.razor` — shows verifier identity, required claims, matching credentials from wallet, expiry countdown. MudButton "Approve" opens PresentationSubmitDialog. MudButton "Deny" with confirmation calls ICredentialApiService.DenyPresentation. Expired requests show MudAlert with disabled actions.
+- [X] T028 [US4] Create PresentationSubmitDialog.razor in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/PresentationSubmitDialog.razor` — MudDialog with: credential selector (MudSelect from matching credentials), claim checkboxes (MudCheckBox per claim, required claims pre-checked and disabled), confirm/cancel. On submit: call ICredentialApiService.SubmitPresentationAsync.
+- [X] T029 [US4] Create PresentationAdmin.razor verifier page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PresentationAdmin.razor` — @page "/admin/presentations". Form with: MudTextField credential type, MudChipSet for accepted issuers (tag input), MudChipSet for required claims (tag input), MudTextField target wallet, MudTextField callback URL (HTTPS validation), MudNumericField TTL seconds. On submit: call IPresentationAdminService.CreatePresentationRequestAsync. After creation: display QR code via JS interop with openid4vp:// URL, shareable link, MudCountDown expiry timer. Request history MudTable below form.
+- [X] T030 [US4] DEFERRED — QR code JS interop deferred; PresentationAdmin.razor displays URL as text (Sorcha.Admin.Client is empty; page lives in UI.Web.Client) — vendor `qrcode.min.js` (https://github.com/davidshimjs/qrcodejs, MIT license) into `src/Apps/Sorcha.Admin/wwwroot/lib/qrcodejs/qrcode.min.js`, add script reference in `_Host.cshtml` or `App.razor`. Create `src/Apps/Sorcha.Admin/wwwroot/js/qrcode-interop.js` with `window.generateQrCode = function(elementId, data)` that creates a QRCode instance targeting the element. Create `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Interop/QrCodeInterop.cs` wrapper class calling `IJSRuntime.InvokeVoidAsync("generateQrCode", elementId, url)`.
 
 **Checkpoint**: Verifiable presentations fully functional for both holder and verifier flows
 
@@ -138,14 +138,14 @@
 
 ### Tests for US5
 
-- [ ] T031 [P] [US5] Write StatusListService unit tests (success, notFound, networkError = 3 tests) in `tests/Sorcha.UI.Core.Tests/Services/StatusListServiceTests.cs`
-- [ ] T032 [P] [US5] Write credential status-list get CLI command tests (success, notFound = 2 tests) in `tests/Sorcha.Cli.Tests/Commands/CredentialStatusListCommandTests.cs`
+- [X] T031 [P] [US5] Write StatusListService unit tests (success, notFound, networkError = 3 tests) in `tests/Sorcha.UI.Core.Tests/Services/StatusListServiceTests.cs`
+- [X] T032 [P] [US5] Write credential status-list get CLI command tests (success, notFound = 2 tests) in `tests/Sorcha.Cli.Tests/Commands/CredentialStatusListCommandTests.cs`
 
 ### Implementation for US5
 
 - [X] T033 [US5] Implement StatusListService in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Credentials/StatusListService.cs` — GetStatusListAsync: GET `/api/v1/credentials/status-lists/{listId}` (public, no auth), returns StatusListViewModel. Handle 404 → null. Inject ILogger<StatusListService> and add structured log statements for lookups (LogInformation for success, LogWarning for not found).
 - [X] T034 [US5] Register IStatusListService/StatusListService in DI in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — add to AddAdminServices method (no auth required for this service)
-- [ ] T035 [US5] Create StatusLists.razor admin page in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/StatusLists.razor` — @page "/admin/status-lists". MudTextField for list ID + MudButton "Lookup". Results: MudCard with metadata fields (ID, Purpose, Issuer DID, Valid From). Expandable MudExpansionPanel with raw JSON viewer (MudText with Typo.Body2 and pre formatting). Recently-viewed list from localStorage (max 10) displayed as MudChips for quick re-lookup. Empty state MudAlert when no lists viewed yet. Handle not-found with MudAlert Severity.Warning.
+- [X] T035 [US5] Create StatusLists.razor admin page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/StatusLists.razor` — @page "/admin/status-lists". MudTextField for list ID + MudButton "Lookup". Results: MudCard with metadata fields (ID, Purpose, Issuer DID, Valid From). Expandable MudExpansionPanel with raw JSON viewer (MudText with Typo.Body2 and pre formatting). Recently-viewed list from localStorage (max 10) displayed as MudChips for quick re-lookup. Empty state MudAlert when no lists viewed yet. Handle not-found with MudAlert Severity.Warning.
 - [X] T036 [US5] Add `credential status-list get` CLI command in `src/Apps/Sorcha.Cli/Commands/CredentialCommands.cs` — `--id` (required). Table output: List ID, Purpose, Issuer, Valid From. JSON output: full W3C BitstringStatusListCredential document. Call ICredentialServiceClient.GetStatusListAsync.
 
 **Checkpoint**: Status list viewer fully functional via UI and CLI
@@ -156,11 +156,11 @@
 
 **Purpose**: Integration verification, documentation, and cleanup
 
-- [ ] T037 [P] Add admin navigation entries for new pages in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Shared/NavMenu.razor` — add "Status Lists" under Credentials section pointing to /admin/status-lists, add "Presentations" under Credentials section pointing to /admin/presentations
-- [ ] T038 [P] Wire PresentationRequestList component into existing credentials page — replace presentation placeholder in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/` with PresentationRequestList.razor for holder-side display
-- [ ] T039 Verify YARP routes exist for all API calls in `src/Services/Sorcha.ApiGateway/` — confirm routes for `/api/v1/credentials/{**catch-all}`, `/api/v1/credentials/status-lists/{**catch-all}`, `/api/v1/presentations/{**catch-all}`, `/api/organizations/{**catch-all}`
-- [ ] T040 Run full test suite and verify >85% coverage for new code — `dotnet test` across Sorcha.UI.Core.Tests and Sorcha.Cli.Tests
-- [ ] T041 Update MASTER-TASKS.md with Feature 050 completion status in `.specify/MASTER-TASKS.md`
+- [X] T037 [P] Add admin navigation entries for new pages in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor` — add "Status Lists" under Credentials section pointing to /admin/status-lists, add "Presentations" under Credentials section pointing to /admin/presentations
+- [X] T038 [P] Wire PresentationRequestList component into existing credentials page (already exists in MyCredentials.razor Inbox tab) — replace presentation placeholder in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Credentials/` with PresentationRequestList.razor for holder-side display
+- [X] T039 Verify YARP routes exist for all API calls in `src/Services/Sorcha.ApiGateway/` — confirm routes for `/api/v1/credentials/{**catch-all}`, `/api/v1/credentials/status-lists/{**catch-all}`, `/api/v1/presentations/{**catch-all}`, `/api/organizations/{**catch-all}`
+- [X] T040 Run full test suite and verify >85% coverage for new code — `dotnet test` across Sorcha.UI.Core.Tests and Sorcha.Cli.Tests
+- [X] T041 Update MASTER-TASKS.md with Feature 050 completion status in `.specify/MASTER-TASKS.md`
 
 ---
 

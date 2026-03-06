@@ -1,0 +1,254 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/presentations"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.UI.Core.Models.Credentials
+@using Sorcha.UI.Core.Services.Credentials
+@inject IPresentationAdminService PresentationAdminService
+
+<PageTitle>Presentations - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.PresentToAll" Class="mr-2" />
+        Presentation Requests
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Create and manage verifiable presentation requests
+    </MudText>
+
+    @* Form Section *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-3">Create Presentation Request</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_credentialType"
+                              Label="Credential Type"
+                              Placeholder="e.g. VerifiableCredential"
+                              Required="true"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_verifierIdentity"
+                              Label="Verifier Identity"
+                              Placeholder="e.g. did:example:verifier"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_acceptedIssuers"
+                              Label="Accepted Issuers"
+                              Placeholder="Comma-separated DIDs"
+                              HelperText="Comma-separated list of accepted issuer DIDs"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_requiredClaims"
+                              Label="Required Claims"
+                              Placeholder="Comma-separated claim names"
+                              HelperText="Comma-separated list of required claim names"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_targetWalletAddress"
+                              Label="Target Wallet Address"
+                              Placeholder="Optional wallet address"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_callbackUrl"
+                              Label="Callback URL"
+                              Placeholder="https://example.com/callback"
+                              Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField @bind-Value="_ttlSeconds"
+                                 Label="TTL (seconds)"
+                                 Min="30"
+                                 Max="86400"
+                                 Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@(_creating || string.IsNullOrWhiteSpace(_credentialType))"
+                           OnClick="CreateRequestAsync"
+                           StartIcon="@Icons.Material.Filled.Add">
+                    @if (_creating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Create Request
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* Error Display *@
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="() => _errorMessage = null">
+            @_errorMessage
+        </MudAlert>
+    }
+
+    @* Result Section *@
+    @if (_result is not null)
+    {
+        <MudCard Class="mb-4" Elevation="2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Presentation Request Created</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_result.IsExpired)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3">
+                        This presentation request has expired.
+                    </MudAlert>
+                }
+
+                <MudSimpleTable Hover="true" Dense="true" Class="mb-4">
+                    <thead>
+                        <tr>
+                            <th style="width: 200px;">Property</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Request ID</strong></td>
+                            <td><MudText Typo="Typo.body2" Style="font-family: monospace;">@_result.RequestId</MudText></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status</strong></td>
+                            <td>
+                                <MudChip T="string"
+                                         Color="@GetStatusColor(_result.Status)"
+                                         Size="Size.Small">
+                                    @_result.Status
+                                </MudChip>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Expires At</strong></td>
+                            <td>@_result.ExpiresAt.ToString("yyyy-MM-dd HH:mm:ss zzz")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Time Remaining</strong></td>
+                            <td>
+                                @if (_result.IsExpired)
+                                {
+                                    <MudText Color="Color.Error">Expired</MudText>
+                                }
+                                else
+                                {
+                                    @_result.TimeRemaining.ToString(@"hh\:mm\:ss")
+                                }
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudTextField Value="@_result.RequestUrl"
+                              Label="Request URL"
+                              ReadOnly="true"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                              Class="mb-3" />
+
+                @if (!string.IsNullOrEmpty(_result.QrCodeUrl))
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">QR Code URL</MudText>
+                    <MudText Typo="Typo.body2" Style="font-family: monospace; word-break: break-all;">
+                        @_result.QrCodeUrl
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                        QR code rendering will be available in a future update.
+                    </MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+</MudContainer>
+
+@code {
+    private string _credentialType = string.Empty;
+    private string _acceptedIssuers = string.Empty;
+    private string _requiredClaims = string.Empty;
+    private string? _targetWalletAddress;
+    private string _callbackUrl = string.Empty;
+    private string? _verifierIdentity;
+    private int _ttlSeconds = 300;
+    private bool _creating;
+    private string? _errorMessage;
+    private PresentationRequestResultViewModel? _result;
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Presentations", href: null, disabled: true)
+    ];
+
+    private async Task CreateRequestAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_credentialType))
+            return;
+
+        _creating = true;
+        _errorMessage = null;
+        _result = null;
+
+        try
+        {
+            var request = new CreatePresentationRequestViewModel
+            {
+                CredentialType = _credentialType.Trim(),
+                AcceptedIssuers = ParseCommaSeparated(_acceptedIssuers),
+                RequiredClaims = ParseCommaSeparated(_requiredClaims),
+                CallbackUrl = _callbackUrl.Trim(),
+                TargetWalletAddress = string.IsNullOrWhiteSpace(_targetWalletAddress) ? null : _targetWalletAddress.Trim(),
+                TtlSeconds = _ttlSeconds,
+                VerifierIdentity = string.IsNullOrWhiteSpace(_verifierIdentity) ? null : _verifierIdentity.Trim()
+            };
+
+            _result = await PresentationAdminService.CreatePresentationRequestAsync(request);
+
+            if (_result is null)
+            {
+                _errorMessage = "Failed to create presentation request. The service returned no result.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error creating presentation request: {ex.Message}";
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private static string[] ParseCommaSeparated(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return [];
+
+        return input.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "Pending" => Color.Info,
+        "Completed" or "Verified" => Color.Success,
+        "Expired" => Color.Warning,
+        "Rejected" or "Failed" => Color.Error,
+        _ => Color.Default
+    };
+}

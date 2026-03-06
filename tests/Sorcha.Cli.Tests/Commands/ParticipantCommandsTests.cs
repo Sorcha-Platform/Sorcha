@@ -47,12 +47,12 @@ public class ParticipantCommandsTests
     }
 
     [Fact]
-    public void ParticipantCommand_ShouldHaveSixSubcommands()
+    public void ParticipantCommand_ShouldHaveTenSubcommands()
     {
         var command = new ParticipantCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(6);
+        command.Subcommands.Should().HaveCount(10);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "register", "list", "get", "update", "search", "wallet-link" });
+            new[] { "register", "list", "get", "update", "search", "wallet-link", "suspend", "reactivate", "publish", "unpublish" });
     }
 
     #region ParticipantRegisterCommand Tests
