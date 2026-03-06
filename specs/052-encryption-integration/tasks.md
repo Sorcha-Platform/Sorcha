@@ -32,8 +32,8 @@
 
 **Blocks**: US4 (Operations History) only. All other stories can proceed in parallel after Setup.
 
-- [ ] T005 Add `GET /api/operations` list endpoint that queries `IActivityEventStore` for completed/failed encryption operations and merges with in-memory active operations from `IEncryptionOperationStore.GetByWalletAddressAsync`, with `wallet`, `page`, `pageSize` query parameters, wallet ownership validation, and Scalar docs in src/Services/Sorcha.Blueprint.Service/Endpoints/OperationsEndpoints.cs
-- [ ] T006 Write tests for the list endpoint (happy path, pagination, wallet auth, empty results, merge of active + completed operations) in tests/Sorcha.Blueprint.Service.Tests/Endpoints/OperationsEndpointTests.cs
+- [X] T005 Add `GET /api/operations` list endpoint that queries `IActivityEventStore` for completed/failed encryption operations and merges with in-memory active operations from `IEncryptionOperationStore.GetByWalletAddressAsync`, with `wallet`, `page`, `pageSize` query parameters, wallet ownership validation, and Scalar docs in src/Services/Sorcha.Blueprint.Service/Endpoints/OperationsEndpoints.cs
+- [X] T006 Write tests for the list endpoint (happy path, pagination, wallet auth, empty results, merge of active + completed operations) in tests/Sorcha.Blueprint.Service.Tests/Endpoints/OperationsEndpointTests.cs
 
 **Checkpoint**: Backend list endpoint functional — US4 (History) can proceed
 
@@ -55,7 +55,7 @@
 - [X] T009 [US1] Update `WorkflowService.SubmitActionExecuteAsync` to map `OperationId` and `IsAsync` from the Blueprint Service response into `ActionSubmissionResultViewModel` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/WorkflowService.cs
 - [X] T010 [US1] Update `EncryptionProgressIndicator.razor` to accept `OperationId` parameter, add `OnCompleted` EventCallback, and add `OnFailed` EventCallback in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
 - [X] T011 [US1] Wire `EncryptionProgressIndicator` into `MyActions.razor` — detect `IsAsync` on submission result, show inline progress indicator with `OperationId`, handle completion (refresh action list) and failure callbacks in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
-- [ ] T012 [US1] Write component integration tests for EncryptionProgressIndicator (renders with operationId, shows stages, calls OnCompleted) in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
+- [X] T012 [US1] Write component integration tests for EncryptionProgressIndicator (renders with operationId, shows stages, calls OnCompleted) in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
 
 **Checkpoint**: User Story 1 complete — submitting an async action shows real-time progress inline
 
@@ -71,13 +71,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Write tests for retry flow — EncryptionProgressIndicator shows retry button on failure, retry triggers new submission with original request data, verify failed action remains in pending list in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
+- [X] T013 [P] [US2] Write tests for retry flow — EncryptionProgressIndicator shows retry button on failure, retry triggers new submission with original request data, verify failed action remains in pending list in tests/Sorcha.UI.Core.Tests/Components/EncryptionProgressIndicatorTests.cs
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Add `OriginalRequest` (ActionExecuteRequest?) parameter to `EncryptionProgressIndicator.razor` — when provided and operation fails, render a "Retry" button in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
-- [ ] T015 [US2] Implement retry handler in `EncryptionProgressIndicator.razor` — on retry click, call `WorkflowService.SubmitActionExecuteAsync` with original request, reset progress state with new `OperationId` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
-- [ ] T016 [US2] Pass `OriginalRequest` from `MyActions.razor` to `EncryptionProgressIndicator` when showing progress after async submission in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
+- [X] T014 [US2] Add `OriginalRequest` (ActionExecuteRequest?) parameter to `EncryptionProgressIndicator.razor` — when provided and operation fails, render a "Retry" button in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
+- [X] T015 [US2] Implement retry handler in `EncryptionProgressIndicator.razor` — on retry click, call `WorkflowService.SubmitActionExecuteAsync` with original request, reset progress state with new `OperationId` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
+- [X] T016 [US2] Pass `OriginalRequest` from `MyActions.razor` to `EncryptionProgressIndicator` when showing progress after async submission in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
 
 **Checkpoint**: User Story 2 complete — failed operations show error + retry button, retry works without re-entry
 
@@ -99,8 +99,8 @@
 
 ### Implementation for User Story 6
 
-- [ ] T019 [US6] Add `OnEncryptionProgress`, `OnEncryptionComplete`, `OnEncryptionFailed` event handler registration methods to `ActionsHubConnection` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs
-- [ ] T020 [US6] Update `EncryptionProgressIndicator.razor` to subscribe to ActionsHubConnection encryption events — use SignalR when connected, fall back to polling timer when disconnected, handle reconnection in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
+- [X] T019 [US6] Add `OnEncryptionProgress`, `OnEncryptionComplete`, `OnEncryptionFailed` event handler registration methods to `ActionsHubConnection` in src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs
+- [X] T020 [US6] Update `EncryptionProgressIndicator.razor` to subscribe to ActionsHubConnection encryption events — use SignalR when connected, fall back to polling timer when disconnected, handle reconnection in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor
 
 **Checkpoint**: User Story 6 complete — progress updates arrive via push (<1s latency), polling fallback works
 
@@ -124,7 +124,7 @@
 - [ ] T023 [US3] Update `NotificationService` in Blueprint Service to send `EncryptionOperationCompleted` event via EventsHub (user-scoped group) when encryption completes or fails, in addition to existing ActionsHub events in src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs
 - [ ] T024 [US3] Create `OperationNotificationListener.razor` component — subscribes to EventsHub `EncryptionOperationCompleted` events, shows MudBlazor `ISnackbar` toast with operation result and navigation link in src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor
 - [ ] T025 [US3] Add `OperationNotificationListener` to `MainLayout.razor` so it is active on all pages in src/Apps/Sorcha.UI/Sorcha.UI.Web/Components/Layout/MainLayout.razor
-- [ ] T026 [US3] Add navigation warning banner to `MyActions.razor` — when encryption is in progress and user navigates away, show non-blocking `MudAlert` informing them they'll be notified on completion in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
+- [X] T026 [US3] Add navigation warning banner to `MyActions.razor` — when encryption is in progress and user navigates away, show non-blocking `MudAlert` informing them they'll be notified on completion in src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor
 
 **Checkpoint**: User Story 3 complete — toast notifications work cross-page, navigation warning displays
 
@@ -162,15 +162,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T031 [P] [US5] Write tests for `ActionCommand` — argument parsing (blueprint, action, instance, wallet, register, payload, --no-wait), help text, validation in tests/Sorcha.Cli.Tests/Commands/ActionCommandTests.cs
+- [X] T031 [P] [US5] Write tests for `ActionCommand` — argument parsing (blueprint, action, instance, wallet, register, payload, --no-wait), help text, validation in tests/Sorcha.Cli.Tests/Commands/ActionCommandTests.cs
 
 ### Implementation for User Story 5
 
-- [ ] T032 [P] [US5] Create CLI action request/response DTOs (`ActionExecuteCliRequest`, `ActionExecuteCliResponse`) in src/Apps/Sorcha.Cli/Models/ActionModels.cs
-- [ ] T033 [US5] Add `SubmitActionAsync` method to `IBlueprintServiceClient` Refit interface in src/Apps/Sorcha.Cli/Services/IBlueprintServiceClient.cs
-- [ ] T034 [US5] Create `ActionCommand` with `execute` subcommand — options for `--blueprint`, `--action`, `--instance`, `--wallet`, `--register`, `--payload` (JSON string), `--no-wait` flag in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
-- [ ] T035 [US5] Implement blocking mode handler — call `SubmitActionAsync`, if `IsAsync` then poll `GetOperationStatusAsync` with `Spectre.Console` `AnsiConsole.Progress()` showing stages, exit 0 on success / non-zero on failure in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
-- [ ] T036 [US5] Implement `--no-wait` mode handler — call `SubmitActionAsync`, print `OperationId`, print hint to use `sorcha operation status <id>`, exit 0 in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
+- [X] T032 [P] [US5] Create CLI action request/response DTOs (`ActionExecuteCliRequest`, `ActionExecuteCliResponse`) in src/Apps/Sorcha.Cli/Models/ActionModels.cs
+- [X] T033 [US5] Add `SubmitActionAsync` method to `IBlueprintServiceClient` Refit interface in src/Apps/Sorcha.Cli/Services/IBlueprintServiceClient.cs
+- [X] T034 [US5] Create `ActionCommand` with `execute` subcommand — options for `--blueprint`, `--action`, `--instance`, `--wallet`, `--register`, `--payload` (JSON string), `--no-wait` flag in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
+- [X] T035 [US5] Implement blocking mode handler — call `SubmitActionAsync`, if `IsAsync` then poll `GetOperationStatusAsync` with `Spectre.Console` `AnsiConsole.Progress()` showing stages, exit 0 on success / non-zero on failure in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
+- [X] T036 [US5] Implement `--no-wait` mode handler — call `SubmitActionAsync`, print `OperationId`, print hint to use `sorcha operation status <id>`, exit 0 in src/Apps/Sorcha.Cli/Commands/ActionCommands.cs
 
 **Checkpoint**: User Story 5 complete — CLI supports both blocking and non-blocking async action execution
 
