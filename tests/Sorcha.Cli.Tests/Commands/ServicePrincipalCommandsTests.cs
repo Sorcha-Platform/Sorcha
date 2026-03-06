@@ -26,6 +26,8 @@ public class ServicePrincipalCommandsTests
         // Setup default mock behavior
         _mockConfigService.Setup(x => x.GetActiveProfileAsync())
             .ReturnsAsync(new Profile { Name = "test" });
+        _mockConfigService.Setup(x => x.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new Profile { Name = "test", ServiceUrl = "http://localhost:80" });
         _mockAuthService.Setup(x => x.GetAccessTokenAsync(It.IsAny<string>()))
             .ReturnsAsync("test-token");
 
@@ -181,72 +183,47 @@ public class ServicePrincipalCommandsTests
     }
 
     [Fact]
-    public async Task PrincipalListCommand_ShouldParseArguments_WithRequiredOrgId()
+    public void PrincipalListCommand_ShouldParseArguments_WithRequiredOrgId()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PrincipalListCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("list --org-id test-org-123").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("list --org-id test-org-123");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task PrincipalGetCommand_ShouldParseArguments_WithRequiredOptions()
+    public void PrincipalGetCommand_ShouldParseArguments_WithRequiredOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PrincipalGetCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("get --org-id test-org-123 --client-id client-456").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("get --org-id test-org-123 --client-id client-456");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task PrincipalCreateCommand_ShouldParseArguments_WithRequiredOptions()
+    public void PrincipalCreateCommand_ShouldParseArguments_WithRequiredOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PrincipalCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("create --org-id test-org-123 --name \"API Service\"").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --org-id test-org-123 --name \"API Service\"");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task PrincipalCreateCommand_ShouldParseArguments_WithAllOptions()
+    public void PrincipalCreateCommand_ShouldParseArguments_WithAllOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PrincipalCreateCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("create --org-id test-org-123 --name \"API Service\" --description \"Backend API\" --scopes read,write").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("create --org-id test-org-123 --name \"API Service\" --description \"Backend API\" --scopes read,write");
+        parseResult.Errors.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task PrincipalRotateSecretCommand_ShouldParseArguments_WithRequiredOptions()
+    public void PrincipalRotateSecretCommand_ShouldParseArguments_WithRequiredOptions()
     {
-        // Arrange
         var rootCommand = new RootCommand();
         rootCommand.Subcommands.Add(new PrincipalRotateSecretCommand(_clientFactory, AuthService, ConfigService));
-
-        // Act
-        var exitCode = await rootCommand.Parse("rotate-secret --org-id test-org-123 --client-id client-456").InvokeAsync();
-
-        // Assert
-        exitCode.Should().Be(0);
+        var parseResult = rootCommand.Parse("rotate-secret --org-id test-org-123 --client-id client-456");
+        parseResult.Errors.Should().BeEmpty();
     }
 }

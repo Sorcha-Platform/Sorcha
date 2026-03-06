@@ -47,12 +47,12 @@ public class ValidatorCommandsTests
     }
 
     [Fact]
-    public void ValidatorCommand_ShouldHaveFiveSubcommands()
+    public void ValidatorCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new ValidatorCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(5);
+        command.Subcommands.Should().HaveCount(8);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "status", "start", "stop", "process", "integrity-check" });
+            new[] { "status", "start", "stop", "process", "integrity-check", "consent", "metrics", "threshold" });
     }
 
     #region ValidatorStatusCommand Tests

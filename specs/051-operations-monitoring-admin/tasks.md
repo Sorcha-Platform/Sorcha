@@ -77,7 +77,7 @@
 ### Tests for User Story 2
 
 - [x] T018 [P] [US2] Write unit tests for `WalletAccessService` (grant, list, revoke, check) in `tests/Sorcha.UI.Core.Tests/Services/WalletAccessServiceTests.cs` — mock HttpClient, test success/failure/network error for each operation
-- [ ] T019 [P] [US2] Write unit tests for `wallet access` CLI commands in `tests/Sorcha.Cli.Tests/Commands/WalletAccessCommandTests.cs` — test grant, list, revoke, check subcommands
+- [x] T019 [P] [US2] Write unit tests for `wallet access` CLI commands in `tests/Sorcha.Cli.Tests/Commands/WalletAccessCommandTests.cs` — test grant, list, revoke, check subcommands
 
 ### Implementation for User Story 2
 
@@ -100,7 +100,7 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Write unit tests for `schema providers` CLI commands in `tests/Sorcha.Cli.Tests/Commands/SchemaCommandTests.cs` — test list and refresh subcommands (DEFERRED to Phase 10 with T019)
+- [x] T026 [P] [US3] Write unit tests for `schema providers` CLI commands in `tests/Sorcha.Cli.Tests/Commands/SchemaCommandTests.cs` — test list and refresh subcommands
 
 ### Implementation for User Story 3
 
@@ -122,7 +122,7 @@
 ### Tests for User Story 4
 
 - [x] T030 [P] [US4] Write unit tests for `EventAdminService` in `tests/Sorcha.UI.Core.Tests/Services/EventAdminServiceTests.cs` — test list with filters, delete, pagination, network errors
-- [ ] T031 [P] [US4] Write unit tests for `admin events` CLI commands in `tests/Sorcha.Cli.Tests/Commands/EventAdminCommandTests.cs` (DEFERRED to Phase 10 with T019/T026)
+- [x] T031 [P] [US4] Write unit tests for `admin events` CLI commands in `tests/Sorcha.Cli.Tests/Commands/EventAdminCommandTests.cs`
 
 ### Implementation for User Story 4
 
@@ -168,7 +168,7 @@
 ### Tests for User Story 6
 
 - [x] T044 [P] [US6] Write unit tests for `OperationStatusService` in `tests/Sorcha.UI.Core.Tests/Services/OperationStatusServiceTests.cs` — test get status, polling, network errors
-- [ ] T045 [P] [US6] Write unit tests for `operation status` CLI command in `tests/Sorcha.Cli.Tests/Commands/OperationCommandTests.cs` (DEFERRED to Phase 10)
+- [x] T045 [P] [US6] Write unit tests for `operation status` CLI command in `tests/Sorcha.Cli.Tests/Commands/OperationCommandTests.cs`
 
 ### Implementation for User Story 6
 
@@ -177,7 +177,7 @@
 - [x] T048 [US6] Create `EncryptionProgressIndicator.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor` — MudProgressLinear with stage labels, auto-poll while in progress, stop on completion
 - [x] T049 [US6] Create `OperationCommands.cs` in `src/Apps/Sorcha.Cli/Commands/OperationCommands.cs` — `operation status <operationId>` command showing stage, percentage, recipient count
 - [x] T050 [US6] Register `IOperationStatusService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` and register `OperationCommands` in CLI root
-- [ ] T051 [US6] Integrate `EncryptionProgressIndicator` into the action submission flow where envelope encryption is triggered (DEFERRED — requires investigation of MyActions.razor action flow)
+- [ ] T051 [US6] Integrate `EncryptionProgressIndicator` into the action submission flow where envelope encryption is triggered (BACKLOG — requires Blueprint Service to return OperationId in action execution response; UI plumbing ready once backend supports it)
 
 **Checkpoint**: Encryption progress visible during operations. CLI status command works. Independently testable.
 
