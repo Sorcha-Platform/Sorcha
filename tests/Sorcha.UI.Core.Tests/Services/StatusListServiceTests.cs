@@ -22,6 +22,7 @@ public class StatusListServiceTests : IDisposable
     private readonly HttpClient _httpClient;
     private readonly Mock<ILogger<StatusListService>> _loggerMock;
     private readonly StatusListService _service;
+    private readonly List<HttpResponseMessage> _responses = [];
 
     public StatusListServiceTests()
     {
@@ -36,6 +37,8 @@ public class StatusListServiceTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var response in _responses)
+            response.Dispose();
         _httpClient?.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -48,6 +51,7 @@ public class StatusListServiceTests : IDisposable
         {
             Content = content != null ? JsonContent.Create(content) : new StringContent(statusCode.ToString())
         };
+        _responses.Add(response);
 
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(

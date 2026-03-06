@@ -170,7 +170,7 @@
             _result = await StatusListService.GetStatusListAsync(id);
             _notFound = _result is null;
         }
-        catch
+        catch (HttpRequestException)
         {
             _notFound = true;
         }

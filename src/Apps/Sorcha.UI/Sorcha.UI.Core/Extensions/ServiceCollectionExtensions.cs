@@ -542,7 +542,7 @@ public static class ServiceCollectionExtensions
         // Status List Service (050 - public endpoint, no auth needed)
         services.AddScoped<IStatusListService>(sp =>
         {
-            var httpClient = new HttpClient { BaseAddress = new Uri(baseAddress) };
+            var httpClient = new HttpClient(new HttpClientHandler()) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<StatusListService>>();
             return new StatusListService(httpClient, logger);
         });

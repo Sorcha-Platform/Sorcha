@@ -831,6 +831,11 @@ public class CredentialSuspendCommand : Command
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -937,6 +942,11 @@ public class CredentialReinstateCommand : Command
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -1042,6 +1052,11 @@ public class CredentialRefreshCommand : Command
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: you are not the issuer of credential '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -1124,6 +1139,11 @@ public class CredentialStatusListGetCommand : Command
             {
                 ConsoleHelper.WriteError($"Status list '{listId}' not found.");
                 return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: insufficient access to view this status list.");
+                return ExitCodes.AuthorizationError;
             }
             catch (ApiException ex)
             {

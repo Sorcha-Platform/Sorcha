@@ -22,6 +22,7 @@ public class PresentationAdminServiceTests : IDisposable
     private readonly HttpClient _httpClient;
     private readonly Mock<ILogger<PresentationAdminService>> _loggerMock;
     private readonly PresentationAdminService _service;
+    private readonly List<HttpResponseMessage> _responses = [];
 
     public PresentationAdminServiceTests()
     {
@@ -36,6 +37,8 @@ public class PresentationAdminServiceTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var response in _responses)
+            response.Dispose();
         _httpClient?.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -48,6 +51,7 @@ public class PresentationAdminServiceTests : IDisposable
         {
             Content = content != null ? JsonContent.Create(content) : new StringContent(statusCode.ToString())
         };
+        _responses.Add(response);
 
         _httpMessageHandlerMock.Protected()
             .Setup<Task<HttpResponseMessage>>(

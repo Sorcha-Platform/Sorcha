@@ -737,6 +737,11 @@ public class ParticipantSuspendCommand : Command
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: insufficient access to manage participant '{id}'.");
+                return ExitCodes.AuthorizationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -828,6 +833,11 @@ public class ParticipantReactivateCommand : Command
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: insufficient access to manage participant '{id}'.");
+                return ExitCodes.AuthorizationError;
             }
             catch (ApiException ex)
             {
@@ -969,6 +979,11 @@ public class ParticipantPublishCommand : Command
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
             }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: insufficient access to publish participant in organization '{orgId}'.");
+                return ExitCodes.AuthorizationError;
+            }
             catch (ApiException ex)
             {
                 ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
@@ -1079,6 +1094,11 @@ public class ParticipantUnpublishCommand : Command
             {
                 ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
                 return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError($"Permission denied: insufficient access to unpublish participant '{id}'.");
+                return ExitCodes.AuthorizationError;
             }
             catch (ApiException ex)
             {

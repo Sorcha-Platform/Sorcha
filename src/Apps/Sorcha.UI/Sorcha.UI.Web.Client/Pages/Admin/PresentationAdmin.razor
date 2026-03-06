@@ -225,7 +225,7 @@
                 _errorMessage = "Failed to create presentation request. The service returned no result.";
             }
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             _errorMessage = $"Error creating presentation request: {ex.Message}";
         }
