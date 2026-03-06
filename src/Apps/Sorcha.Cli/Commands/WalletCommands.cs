@@ -27,6 +27,7 @@ public class WalletCommand : Command
         Subcommands.Add(new WalletRecoverCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletDeleteCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletSignCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletAccessCommand(clientFactory, authService, configService));
     }
 }
 
@@ -616,6 +617,268 @@ public class WalletSignCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to sign data: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Wallet access delegation commands (grant, list, revoke, check).
+/// </summary>
+public class WalletAccessCommand : Command
+{
+    public WalletAccessCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("access", "Manage wallet access delegation")
+    {
+        Subcommands.Add(new WalletAccessGrantCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletAccessListCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletAccessRevokeCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletAccessCheckCommand(clientFactory, authService, configService));
+    }
+}
+
+public class WalletAccessGrantCommand : Command
+{
+    private readonly Option<string> _addressOption;
+    private readonly Option<string> _subjectOption;
+    private readonly Option<string> _rightOption;
+    private readonly Option<string?> _reasonOption;
+
+    public WalletAccessGrantCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("grant", "Grant access to a wallet")
+    {
+        _addressOption = new Option<string>("--address", "-a") { Description = "Wallet address", Required = true };
+        _subjectOption = new Option<string>("--subject", "-s") { Description = "Subject (user ID) to grant access to", Required = true };
+        _rightOption = new Option<string>("--right", "-r") { Description = "Access right: Owner, ReadWrite, ReadOnly", Required = true };
+        _reasonOption = new Option<string?>("--reason") { Description = "Reason for granting access" };
+
+        Options.Add(_addressOption);
+        Options.Add(_subjectOption);
+        Options.Add(_rightOption);
+        Options.Add(_reasonOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var address = parseResult.GetValue(_addressOption)!;
+            var subject = parseResult.GetValue(_subjectOption)!;
+            var right = parseResult.GetValue(_rightOption)!;
+            var reason = parseResult.GetValue(_reasonOption);
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var request = new Models.GrantAccessRequest
+                {
+                    Subject = subject,
+                    AccessRight = right,
+                    Reason = reason
+                };
+
+                var grant = await client.GrantAccessAsync(address, request, $"Bearer {token}");
+                ConsoleHelper.WriteSuccess($"Access granted: {grant.Subject} → {grant.AccessRight} on {address}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+            {
+                ConsoleHelper.WriteError("Permission denied: you are not the owner of this wallet.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to grant access: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+public class WalletAccessListCommand : Command
+{
+    private readonly Option<string> _addressOption;
+
+    public WalletAccessListCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("list", "List access grants for a wallet")
+    {
+        _addressOption = new Option<string>("--address", "-a") { Description = "Wallet address", Required = true };
+        Options.Add(_addressOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var address = parseResult.GetValue(_addressOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var grants = await client.ListAccessAsync(address, $"Bearer {token}");
+
+                if (grants.Count == 0)
+                {
+                    ConsoleHelper.WriteInfo("No access grants found.");
+                    return ExitCodes.Success;
+                }
+
+                ConsoleHelper.WriteSuccess($"Found {grants.Count} access grant(s):");
+                Console.WriteLine();
+                Console.WriteLine($"{"Subject",-25} {"Right",-12} {"Granted By",-20} {"Active",-8} {"Expires",-20}");
+                Console.WriteLine(new string('-', 90));
+                foreach (var g in grants)
+                {
+                    Console.WriteLine($"{g.Subject,-25} {g.AccessRight,-12} {g.GrantedBy,-20} {g.IsActive,-8} {g.ExpiresAt?.ToString("g") ?? "Never",-20}");
+                }
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to list access grants: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+public class WalletAccessRevokeCommand : Command
+{
+    private readonly Option<string> _addressOption;
+    private readonly Option<string> _subjectOption;
+
+    public WalletAccessRevokeCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("revoke", "Revoke access from a wallet")
+    {
+        _addressOption = new Option<string>("--address", "-a") { Description = "Wallet address", Required = true };
+        _subjectOption = new Option<string>("--subject", "-s") { Description = "Subject to revoke", Required = true };
+        Options.Add(_addressOption);
+        Options.Add(_subjectOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var address = parseResult.GetValue(_addressOption)!;
+            var subject = parseResult.GetValue(_subjectOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                await client.RevokeAccessAsync(address, subject, $"Bearer {token}");
+                ConsoleHelper.WriteSuccess($"Access revoked for {subject} on {address}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to revoke access: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+public class WalletAccessCheckCommand : Command
+{
+    private readonly Option<string> _addressOption;
+    private readonly Option<string> _subjectOption;
+    private readonly Option<string> _rightOption;
+
+    public WalletAccessCheckCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("check", "Check if a subject has access to a wallet")
+    {
+        _addressOption = new Option<string>("--address", "-a") { Description = "Wallet address", Required = true };
+        _subjectOption = new Option<string>("--subject", "-s") { Description = "Subject to check", Required = true };
+        _rightOption = new Option<string>("--right", "-r") { Description = "Required access right", Required = true };
+        Options.Add(_addressOption);
+        Options.Add(_subjectOption);
+        Options.Add(_rightOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var address = parseResult.GetValue(_addressOption)!;
+            var subject = parseResult.GetValue(_subjectOption)!;
+            var right = parseResult.GetValue(_rightOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+                var result = await client.CheckAccessAsync(address, subject, right, $"Bearer {token}");
+
+                if (result.HasAccess)
+                    ConsoleHelper.WriteSuccess($"{subject} HAS {right} access to {address}");
+                else
+                    ConsoleHelper.WriteWarning($"{subject} does NOT have {right} access to {address}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to check access: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

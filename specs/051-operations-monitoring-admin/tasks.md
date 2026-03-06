@@ -53,16 +53,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Write unit tests for alert dismissal service (localStorage-based per-user tracking) in `tests/Sorcha.UI.Core.Tests/Services/AlertDismissalServiceTests.cs`
-- [ ] T012 [P] [US1] Write unit tests for dashboard auto-refresh timer behavior in `tests/Sorcha.UI.Core.Tests/Services/DashboardServiceRefreshTests.cs`
+- [x] T011 [P] [US1] Write unit tests for alert dismissal service (localStorage-based per-user tracking) in `tests/Sorcha.UI.Core.Tests/Services/AlertDismissalServiceTests.cs`
+- [x] T012 [P] [US1] Write unit tests for dashboard auto-refresh timer behavior in `tests/Sorcha.UI.Core.Tests/Services/DashboardServiceRefreshTests.cs`
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Add 30-second auto-refresh timer to `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` — use `System.Timers.Timer`, dispose on page leave, show refresh indicator
-- [ ] T014 [US1] Integrate `AlertsPanel` component into `Home.razor` below the stats cards grid — pass `IAlertService.CurrentAlerts` and wire up dismiss callback
-- [ ] T015 [US1] Implement per-user alert dismissal using browser localStorage in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/AlertDismissalService.cs` — store dismissed alert IDs per user, filter alerts before display
-- [ ] T016 [US1] Handle graceful "data unavailable" state in `Home.razor` when `IDashboardService` returns null or throws — show "Data unavailable" text on affected cards instead of zeros
-- [ ] T017 [US1] Register `AlertDismissalService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
+- [x] T013 [US1] Add 30-second auto-refresh timer to `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Home.razor` — use `System.Timers.Timer`, dispose on page leave, show refresh indicator
+- [x] T014 [US1] Integrate `AlertsPanel` component into `Home.razor` below the stats cards grid — pass `IAlertService.CurrentAlerts` and wire up dismiss callback
+- [x] T015 [US1] Implement per-user alert dismissal using browser localStorage in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/AlertDismissalService.cs` — store dismissed alert IDs per user, filter alerts before display
+- [x] T016 [US1] Handle graceful "data unavailable" state in `Home.razor` when `IDashboardService` returns null or throws — show "Data unavailable" text on affected cards instead of zeros
+- [x] T017 [US1] Register `AlertDismissalService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
 
 **Checkpoint**: Dashboard auto-refreshes every 30s, alerts panel visible, per-user dismissal works. Independently testable.
 
@@ -76,17 +76,17 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Write unit tests for `WalletAccessService` (grant, list, revoke, check) in `tests/Sorcha.UI.Core.Tests/Services/WalletAccessServiceTests.cs` — mock HttpClient, test success/failure/network error for each operation
+- [x] T018 [P] [US2] Write unit tests for `WalletAccessService` (grant, list, revoke, check) in `tests/Sorcha.UI.Core.Tests/Services/WalletAccessServiceTests.cs` — mock HttpClient, test success/failure/network error for each operation
 - [ ] T019 [P] [US2] Write unit tests for `wallet access` CLI commands in `tests/Sorcha.Cli.Tests/Commands/WalletAccessCommandTests.cs` — test grant, list, revoke, check subcommands
 
 ### Implementation for User Story 2
 
-- [ ] T020 [P] [US2] Create `IWalletAccessService` interface and `WalletAccessService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/IWalletAccessService.cs` and `WalletAccessService.cs` — grant (POST), list (GET), revoke (DELETE), check (GET) against `/api/v1/wallets/{address}/access/*`
-- [ ] T021 [P] [US2] Create wallet access view models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/WalletAccessModels.cs` — `WalletAccessGrantViewModel`, `GrantAccessFormModel` with AccessRight selector
-- [ ] T022 [US2] Create `WalletAccessTab.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Wallets/WalletAccessTab.razor` — grants table, grant form with subject input + AccessRight dropdown, revoke button with confirmation, empty state message
-- [ ] T023 [US2] Add Access tab to `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor` — insert new MudTabPanel after Transactions tab
-- [ ] T024 [US2] Add `wallet access grant|list|revoke|check` subcommands to `src/Apps/Sorcha.Cli/Commands/WalletCommands.cs` — use Refit client for `/api/v1/wallets/{address}/access/*`, handle 403 with specific error
-- [ ] T025 [US2] Register `IWalletAccessService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` using standard `AuthenticatedHttpMessageHandler` pattern
+- [x] T020 [P] [US2] Create `IWalletAccessService` interface and `WalletAccessService` implementation in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/IWalletAccessService.cs` and `WalletAccessService.cs` — grant (POST), list (GET), revoke (DELETE), check (GET) against `/api/v1/wallets/{address}/access/*`
+- [x] T021 [P] [US2] Create wallet access view models in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/WalletAccessModels.cs` — `WalletAccessGrantViewModel`, `GrantAccessFormModel` with AccessRight selector
+- [x] T022 [US2] Create `WalletAccessTab.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Wallets/WalletAccessTab.razor` — grants table, grant form with subject input + AccessRight dropdown, revoke button with confirmation, empty state message
+- [x] T023 [US2] Add Access tab to `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Wallets/WalletDetail.razor` — insert new MudTabPanel after Transactions tab
+- [x] T024 [US2] Add `wallet access grant|list|revoke|check` subcommands to `src/Apps/Sorcha.Cli/Commands/WalletCommands.cs` — use Refit client for `/api/v1/wallets/{address}/access/*`, handle 403 with specific error
+- [x] T025 [US2] Register `IWalletAccessService` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` using standard `AuthenticatedHttpMessageHandler` pattern
 
 **Checkpoint**: Wallet Access tab functional with grant/list/revoke/check. CLI equivalents work. Independently testable.
 

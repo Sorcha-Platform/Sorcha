@@ -529,6 +529,19 @@ public static class ServiceCollectionExtensions
             return new AlertService(httpClient, logger);
         });
 
+        // Alert Dismissal Service (per-user localStorage-based)
+        services.AddScoped<IAlertDismissalService, AlertDismissalService>();
+
+        // Wallet Access Service (051 - authenticated)
+        services.AddScoped<IWalletAccessService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<WalletAccessService>>();
+            return new WalletAccessService(httpClient, logger);
+        });
+
         // Presentation Admin Service (050 - authenticated)
         services.AddScoped<IPresentationAdminService>(sp =>
         {

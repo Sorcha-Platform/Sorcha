@@ -150,3 +150,69 @@ public class UpdateWalletRequest
     [JsonPropertyName("tags")]
     public Dictionary<string, string>? Tags { get; set; }
 }
+
+/// <summary>
+/// Request model for granting wallet access.
+/// </summary>
+public class GrantAccessRequest
+{
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = string.Empty;
+
+    [JsonPropertyName("accessRight")]
+    public string AccessRight { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("expiresAt")]
+    public DateTime? ExpiresAt { get; set; }
+}
+
+/// <summary>
+/// Response model for a wallet access grant.
+/// </summary>
+public class WalletAccessGrant
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = string.Empty;
+
+    [JsonPropertyName("accessRight")]
+    public string AccessRight { get; set; } = string.Empty;
+
+    [JsonPropertyName("grantedBy")]
+    public string GrantedBy { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("grantedAt")]
+    public DateTimeOffset GrantedAt { get; set; }
+
+    [JsonPropertyName("expiresAt")]
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    [JsonPropertyName("isActive")]
+    public bool IsActive { get; set; }
+}
+
+/// <summary>
+/// Response model for an access check operation.
+/// </summary>
+public class AccessCheckResponse
+{
+    [JsonPropertyName("walletAddress")]
+    public string WalletAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = string.Empty;
+
+    [JsonPropertyName("requiredRight")]
+    public string RequiredRight { get; set; } = string.Empty;
+
+    [JsonPropertyName("hasAccess")]
+    public bool HasAccess { get; set; }
+}
