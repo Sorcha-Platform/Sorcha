@@ -13,7 +13,7 @@ public class CredentialCardViewModel
     public string IssuerDid { get; set; } = string.Empty;
     public string IssuerName { get; set; } = string.Empty;
     public string SubjectDid { get; set; } = string.Empty;
-    public string Status { get; set; } = "Active";
+    public string Status { get; set; } = CredentialStatus.Active;
     public DateTimeOffset IssuedAt { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
     public string UsagePolicy { get; set; } = "Reusable";
@@ -52,7 +52,7 @@ public class CredentialDetailViewModel
     public string Type { get; set; } = string.Empty;
     public string IssuerDid { get; set; } = string.Empty;
     public string SubjectDid { get; set; } = string.Empty;
-    public string Status { get; set; } = "Active";
+    public string Status { get; set; } = CredentialStatus.Active;
     public DateTimeOffset IssuedAt { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
     public string UsagePolicy { get; set; } = "Reusable";

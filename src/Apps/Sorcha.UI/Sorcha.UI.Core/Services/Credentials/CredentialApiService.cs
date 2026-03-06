@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Credentials;
 
 namespace Sorcha.UI.Core.Services.Credentials;
@@ -16,10 +17,7 @@ public class CredentialApiService : ICredentialApiService
     private readonly HttpClient _httpClient;
     private readonly ILogger<CredentialApiService> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = JsonDefaults.Api;
 
     public CredentialApiService(HttpClient httpClient, ILogger<CredentialApiService> logger)
     {
@@ -208,75 +206,57 @@ public class CredentialApiService : ICredentialApiService
         }
     }
 
-    public async Task<CredentialLifecycleResult?> SuspendCredentialAsync(
+    public async Task<CredentialOperationResult> SuspendCredentialAsync(
         string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
     {
-        try
-        {
-            var response = await _httpClient.PostAsJsonAsync(
-                $"/api/v1/credentials/{credentialId}/suspend",
-                new { issuerWallet, reason }, ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to suspend credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
-                return null;
-            }
-
-            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Network error suspending credential {CredentialId}", credentialId);
-            return null;
-        }
+        return await ExecuteLifecycleOperationAsync(
+            $"/api/v1/credentials/{credentialId}/suspend",
+            new { issuerWallet, reason },
+            credentialId, "suspend", ct);
     }
 
-    public async Task<CredentialLifecycleResult?> ReinstateCredentialAsync(
+    public async Task<CredentialOperationResult> ReinstateCredentialAsync(
         string credentialId, string issuerWallet, string? reason = null, CancellationToken ct = default)
     {
-        try
-        {
-            var response = await _httpClient.PostAsJsonAsync(
-                $"/api/v1/credentials/{credentialId}/reinstate",
-                new { issuerWallet, reason }, ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Failed to reinstate credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
-                return null;
-            }
-
-            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogWarning(ex, "Network error reinstating credential {CredentialId}", credentialId);
-            return null;
-        }
+        return await ExecuteLifecycleOperationAsync(
+            $"/api/v1/credentials/{credentialId}/reinstate",
+            new { issuerWallet, reason },
+            credentialId, "reinstate", ct);
     }
 
-    public async Task<CredentialLifecycleResult?> RefreshCredentialAsync(
+    public async Task<CredentialOperationResult> RefreshCredentialAsync(
         string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken ct = default)
     {
+        return await ExecuteLifecycleOperationAsync(
+            $"/api/v1/credentials/{credentialId}/refresh",
+            new { issuerWallet, newExpiryDuration },
+            credentialId, "refresh", ct);
+    }
+
+    private async Task<CredentialOperationResult> ExecuteLifecycleOperationAsync(
+        string url, object payload, string credentialId, string operation, CancellationToken ct)
+    {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(
-                $"/api/v1/credentials/{credentialId}/refresh",
-                new { issuerWallet, newExpiryDuration }, ct);
+            var response = await _httpClient.PostAsJsonAsync(url, payload, ct);
 
-            if (!response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Failed to refresh credential {CredentialId}: {StatusCode}", credentialId, response.StatusCode);
-                return null;
+                var result = await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
+                return result != null
+                    ? CredentialOperationResult.Ok(result)
+                    : CredentialOperationResult.Fail(CredentialErrorType.ServerError, "Empty response from server");
             }
 
-            return await response.Content.ReadFromJsonAsync<CredentialLifecycleResult>(JsonOptions, ct);
+            _logger.LogWarning("Failed to {Operation} credential {CredentialId}: {StatusCode}",
+                operation, credentialId, response.StatusCode);
+            return CredentialOperationResult.FromStatusCode((int)response.StatusCode);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Network error refreshing credential {CredentialId}", credentialId);
-            return null;
+            _logger.LogWarning(ex, "Network error during {Operation} for credential {CredentialId}",
+                operation, credentialId);
+            return CredentialOperationResult.NetworkError(ex.Message);
         }
     }
 
@@ -311,7 +291,7 @@ public class CredentialApiService : ICredentialApiService
             IssuerDid = item.IssuerDid ?? string.Empty,
             IssuerName = ExtractIssuerName(item.IssuerDid),
             SubjectDid = item.SubjectDid ?? string.Empty,
-            Status = item.Status ?? "Active",
+            Status = item.Status ?? CredentialStatus.Active,
             IssuedAt = item.IssuedAt,
             ExpiresAt = item.ExpiresAt
         };
@@ -358,7 +338,7 @@ public class CredentialApiService : ICredentialApiService
             Type = entity.Type ?? string.Empty,
             IssuerDid = entity.IssuerDid ?? string.Empty,
             SubjectDid = entity.SubjectDid ?? string.Empty,
-            Status = entity.Status ?? "Active",
+            Status = entity.Status ?? CredentialStatus.Active,
             IssuedAt = entity.IssuedAt,
             ExpiresAt = entity.ExpiresAt,
             UsagePolicy = entity.UsagePolicy ?? "Reusable",
@@ -381,11 +361,11 @@ public class CredentialApiService : ICredentialApiService
 
     private static List<string> GetAvailableActions(string status) => status switch
     {
-        "Active" => ["View", "Present", "Export", "Delete"],
-        "Suspended" => ["View", "Delete"],
-        "Revoked" => ["View", "Delete"],
-        "Expired" => ["View", "Delete"],
-        "Consumed" => ["View", "Delete"],
+        CredentialStatus.Active => ["View", "Present", "Export", "Delete"],
+        CredentialStatus.Suspended => ["View", "Delete"],
+        CredentialStatus.Revoked => ["View", "Delete"],
+        CredentialStatus.Expired => ["View", "Delete"],
+        CredentialStatus.Consumed => ["View", "Delete"],
         _ => ["View"]
     };
 
