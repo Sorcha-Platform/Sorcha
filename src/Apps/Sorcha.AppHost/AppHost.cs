@@ -15,6 +15,7 @@ var postgres = builder.AddPostgres("postgres")
 
 var tenantDb = postgres.AddDatabase("tenant-db", "sorcha_tenant");
 var walletDb = postgres.AddDatabase("wallet-db", "sorcha_wallet");
+var eventsDb = postgres.AddDatabase("EventsDb", "sorcha_events");
 
 // Add MongoDB for Register Service transaction storage
 var mongodb = builder.AddMongoDB("mongodb")
@@ -34,8 +35,9 @@ var tenantService = builder.AddProject<Projects.Sorcha_Tenant_Service>("tenant-s
     .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110")
     .WithEnvironment("JwtSettings__Audience__0", "https://sorcha.local");
 
-// Add Blueprint Service with Redis reference (internal only)
+// Add Blueprint Service with Redis and Events DB references (internal only)
 var blueprintService = builder.AddProject<Projects.Sorcha_Blueprint_Service>("blueprint-service")
+    .WithReference(eventsDb)
     .WithReference(redis)
     .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey)
     .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110")

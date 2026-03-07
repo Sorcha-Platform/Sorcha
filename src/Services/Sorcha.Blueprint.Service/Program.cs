@@ -130,7 +130,7 @@ builder.Services.AddDbContext<Sorcha.Blueprint.Service.Data.BlueprintEventsDbCon
     if (!string.IsNullOrEmpty(eventsConnStr))
         options.UseNpgsql(eventsConnStr, npgsql => npgsql.EnableRetryOnFailure(3));
     else
-        options.UseSqlite("DataSource=BlueprintEvents.db");
+        throw new InvalidOperationException("ConnectionStrings:EventsDb is required. Configure a PostgreSQL connection string.");
 });
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IEventService,
     Sorcha.Blueprint.Service.Services.Implementation.EventService>();
@@ -231,6 +231,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 var logger = app.Logger;
+
+// Ensure Activity Events database schema exists (043)
+using (var scope = app.Services.CreateScope())
+{
+    var eventsDb = scope.ServiceProvider.GetRequiredService<Sorcha.Blueprint.Service.Data.BlueprintEventsDbContext>();
+    eventsDb.Database.EnsureCreated();
+    logger.LogInformation("Activity Events database schema ensured");
+}
 
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
@@ -1442,6 +1450,34 @@ notificationGroup.MapPost("/transaction-confirmed", async (
 var instancesGroup = app.MapGroup("/api/instances")
     .WithTags("Instances")
     .RequireAuthorization("CanExecuteBlueprints");
+
+/// <summary>
+/// List workflow instances with optional status filter
+/// </summary>
+instancesGroup.MapGet("/", async (
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
+    string? status = null,
+    int page = 1,
+    int pageSize = 20) =>
+{
+    Sorcha.Blueprint.Service.Models.InstanceState? stateFilter = null;
+    if (!string.IsNullOrEmpty(status) && Enum.TryParse<Sorcha.Blueprint.Service.Models.InstanceState>(status, true, out var parsed))
+        stateFilter = parsed;
+
+    var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
+    var (items, totalCount) = await instanceStore.GetAllAsync(stateFilter, skip, Math.Clamp(pageSize, 1, 100));
+
+    return Results.Ok(new
+    {
+        items,
+        totalCount,
+        page,
+        pageSize
+    });
+})
+.WithName("ListInstances")
+.WithSummary("List workflow instances")
+.WithDescription("List workflow instances with optional status filter and pagination");
 
 /// <summary>
 /// Create a new workflow instance

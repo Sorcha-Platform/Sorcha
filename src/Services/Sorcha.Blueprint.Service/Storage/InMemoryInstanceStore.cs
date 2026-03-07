@@ -64,6 +64,29 @@ public class InMemoryInstanceStore : IInstanceStore
     }
 
     /// <inheritdoc/>
+    public Task<(IEnumerable<Instance> Items, int TotalCount)> GetAllAsync(
+        InstanceState? state = null,
+        int skip = 0,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _instances.Values.AsEnumerable();
+
+        if (state.HasValue)
+        {
+            query = query.Where(i => i.State == state.Value);
+        }
+
+        var totalCount = query.Count();
+        var items = query
+            .OrderByDescending(i => i.CreatedAt)
+            .Skip(skip)
+            .Take(take);
+
+        return Task.FromResult((items, totalCount));
+    }
+
+    /// <inheritdoc/>
     public Task<IEnumerable<Instance>> GetByBlueprintAsync(
         string blueprintId,
         InstanceState? state = null,
