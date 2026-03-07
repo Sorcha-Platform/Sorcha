@@ -112,7 +112,7 @@ services:
 │  ├── GET /peers               ← routing table     │
 │  ├── GET /events              ← event snapshot     │
 │  ├── GET /events?follow=true  ← SSE live stream   │
-│  └── GET /                    ← debug.html page    │
+│  └── GET /                    ← index.html page    │
 │                                                   │
 │  Core Services (in-memory, no external deps)      │
 │  ├── RoutingTable   (ConcurrentDictionary)        │
@@ -316,7 +316,7 @@ src/Apps/Sorcha.PeerRouter/
 │   ├── EventBuffer.cs                 # Circular buffer with SSE fan-out
 │   └── PeerTimeoutService.cs          # Background unhealthy peer sweep
 ├── wwwroot/
-│   └── debug.html                     # Browser debug page
+│   └── index.html                     # Browser debug page
 ├── Properties/
 │   └── launchSettings.json            # VS/Rider launch profiles
 ├── Dockerfile                         # Multi-stage Docker build

@@ -20,6 +20,7 @@ builder.Services.AddGrpc();
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // gRPC services
