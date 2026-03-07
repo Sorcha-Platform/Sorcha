@@ -4,6 +4,7 @@
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Observability;
@@ -27,11 +28,13 @@ namespace Sorcha.Peer.Service.Connection;
 public class PeerConnectionPool : IAsyncDisposable
 {
     private readonly ILogger<PeerConnectionPool> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly PeerListManager _peerListManager;
     private readonly PeerServiceMetrics _metrics;
     private readonly PeerServiceActivitySource _activitySource;
     private readonly PeerServiceConfiguration _configuration;
     private readonly ConcurrentDictionary<string, PeerConnection> _connections;
+    private readonly ConcurrentDictionary<string, CircuitBreaker> _circuitBreakers;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
     private bool _disposed;
 
@@ -47,12 +50,14 @@ public class PeerConnectionPool : IAsyncDisposable
 
     public PeerConnectionPool(
         ILogger<PeerConnectionPool> logger,
+        ILoggerFactory loggerFactory,
         PeerListManager peerListManager,
         IOptions<PeerServiceConfiguration> configuration,
         PeerServiceMetrics metrics,
         PeerServiceActivitySource activitySource)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _activitySource = activitySource ?? throw new ArgumentNullException(nameof(activitySource));
@@ -60,6 +65,7 @@ public class PeerConnectionPool : IAsyncDisposable
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         MaxConnections = _configuration.PeerDiscovery.MaxPeersInList;
         _connections = new ConcurrentDictionary<string, PeerConnection>();
+        _circuitBreakers = new ConcurrentDictionary<string, CircuitBreaker>();
     }
 
     /// <summary>
@@ -189,6 +195,19 @@ public class PeerConnectionPool : IAsyncDisposable
             return true;
         }
 
+        // Check circuit breaker before attempting connection
+        var breaker = GetOrCreateCircuitBreaker(peerId);
+        var breakerState = breaker.State;
+
+        if (breakerState == CircuitState.Open)
+        {
+            _logger.LogWarning(
+                "Circuit breaker is open for peer {PeerId} — connection attempt rejected",
+                peerId);
+            throw new CircuitBreakerOpenException(
+                $"Circuit breaker is open for peer {peerId}");
+        }
+
         await _connectLock.WaitAsync(cancellationToken);
         try
         {
@@ -219,11 +238,21 @@ public class PeerConnectionPool : IAsyncDisposable
                 return connection;
             });
 
+            // Record success on the circuit breaker
+            RecordCircuitBreakerSuccess(peerId);
+
             _logger.LogDebug("Connected to peer {PeerId} at {Address}", peerId, grpcAddress);
             return true;
         }
+        catch (CircuitBreakerOpenException)
+        {
+            throw; // Re-throw circuit breaker exceptions
+        }
         catch (Exception ex)
         {
+            // Record failure on the circuit breaker
+            RecordCircuitBreakerFailure(peerId);
+
             _logger.LogError(ex, "Failed to connect to peer {PeerId} at {Address}", peerId, grpcAddress);
             return false;
         }
@@ -363,6 +392,48 @@ public class PeerConnectionPool : IAsyncDisposable
     {
         return _connections
             .ToDictionary(c => c.Key, c => c.Value.IsConnected);
+    }
+
+    /// <summary>
+    /// Gets circuit breaker statistics for all peers in the connection pool.
+    /// </summary>
+    public IReadOnlyDictionary<string, CircuitBreakerStats> GetCircuitBreakerStats()
+    {
+        return _circuitBreakers.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.GetStats());
+    }
+
+    /// <summary>
+    /// Gets or creates a circuit breaker for the specified peer.
+    /// </summary>
+    internal CircuitBreaker GetOrCreateCircuitBreaker(string peerId)
+    {
+        return _circuitBreakers.GetOrAdd(peerId, _ =>
+        {
+            var logger = _loggerFactory.CreateLogger<CircuitBreaker>();
+            return new CircuitBreaker(
+                logger,
+                $"connection-{peerId}",
+                _configuration.Communication.CircuitBreakerThreshold,
+                TimeSpan.FromMinutes(_configuration.Communication.CircuitBreakerResetMinutes));
+        });
+    }
+
+    private void RecordCircuitBreakerSuccess(string peerId)
+    {
+        if (_circuitBreakers.TryGetValue(peerId, out var breaker))
+        {
+            breaker.OnSuccess();
+        }
+    }
+
+    private void RecordCircuitBreakerFailure(string peerId)
+    {
+        if (_circuitBreakers.TryGetValue(peerId, out var breaker))
+        {
+            breaker.OnFailure();
+        }
     }
 
     private GrpcChannel CreateChannel(string address)

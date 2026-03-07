@@ -79,8 +79,14 @@ public class PeerServiceTests : IDisposable
 
         var metrics = new PeerServiceMetrics();
         var activitySource = new PeerServiceActivitySource();
+        var loggerFactoryMock = new Mock<ILoggerFactory>();
+        loggerFactoryMock
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new Mock<ILogger>().Object);
+
         _connectionPool = new PeerConnectionPool(
             new Mock<ILogger<PeerConnectionPool>>().Object,
+            loggerFactoryMock.Object,
             _peerListManager,
             _config,
             metrics,
@@ -98,7 +104,8 @@ public class PeerServiceTests : IDisposable
             _peerListManager);
         var queueManager = new TransactionQueueManager(
             new Mock<ILogger<TransactionQueueManager>>().Object,
-            _config);
+            _config,
+            scopeFactory: null);
         _distributionService = new TransactionDistributionService(
             new Mock<ILogger<TransactionDistributionService>>().Object,
             _config,

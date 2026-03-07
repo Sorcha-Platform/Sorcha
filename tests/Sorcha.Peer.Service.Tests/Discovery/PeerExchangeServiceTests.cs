@@ -41,8 +41,14 @@ public class PeerExchangeServiceTests : IAsyncDisposable
         _metrics = new PeerServiceMetrics();
         _activitySource = new PeerServiceActivitySource();
 
+        var loggerFactoryMock = new Mock<ILoggerFactory>();
+        loggerFactoryMock
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new Mock<ILogger>().Object);
+
         _connectionPool = new PeerConnectionPool(
             new Mock<ILogger<PeerConnectionPool>>().Object,
+            loggerFactoryMock.Object,
             _peerListManager,
             peerConfig,
             _metrics,
