@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "PeerRouter": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PEERROUTER__PORT": "5500",
+        "PEERROUTER__HTTP_PORT": "8500",
+        "PEERROUTER__NODE_NAME": "dev-router"
+      },
+      "applicationUrl": "http://localhost:8500"
+    },
+    "PeerRouter-Relay": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "commandLineArgs": "--enable-relay",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PEERROUTER__PORT": "5500",
+        "PEERROUTER__HTTP_PORT": "8500",
+        "PEERROUTER__NODE_NAME": "dev-router-relay"
+      },
+      "applicationUrl": "http://localhost:8500"
+    }
+  }
+}

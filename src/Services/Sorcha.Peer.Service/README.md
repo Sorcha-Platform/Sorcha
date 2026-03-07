@@ -1,10 +1,10 @@
 # Sorcha Peer Service
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Complete (100% MVD)
 **Framework**: .NET 10.0
 **Architecture**: Microservice (gRPC + REST)
-**Last Updated**: 2026-03-01
+**Last Updated**: 2026-03-07
 
 ---
 
@@ -63,7 +63,8 @@ Peer Service
 │   ├── PeerListManager - Tracks local peer status
 │   └── SystemRegisterService - Initializes system register (hub nodes)
 ├── Data Layer
-│   └── MongoSystemRegisterRepository - MongoDB storage with auto-increment versioning
+│   ├── MongoSystemRegisterRepository - MongoDB storage with auto-increment versioning
+│   └── PeerDbContext (PostgreSQL) - Transaction queue, peer state, sync checkpoints
 └── Observability
     ├── PeerServiceMetrics - 7 OpenTelemetry metrics
     ├── PeerServiceActivitySource - 6 distributed traces
@@ -154,7 +155,8 @@ Resume normal operation
 ### Prerequisites
 
 - **.NET 10 SDK** or later
-- **MongoDB 8.0+** (for hub nodes)
+- **PostgreSQL 17+** (transaction queue, peer state)
+- **MongoDB 8.0+** (for hub nodes, system register)
 - **Git**
 
 ### 1. Clone and Navigate
@@ -570,6 +572,15 @@ Sorcha.Peer.Service/
 │   └── HeartbeatService.cs         # Heartbeat gRPC
 ├── Monitoring/
 │   └── HeartbeatMonitorService.cs  # Heartbeat sender (peer nodes)
+├── Data/
+│   ├── PeerDbContext.cs               # EF Core PostgreSQL context
+│   ├── PeerDbContextFactory.cs        # Design-time factory for migrations
+│   └── Migrations/                    # EF Core migrations
+├── Distribution/
+│   └── TransactionQueueManager.cs     # PostgreSQL-backed transaction queue
+├── Communication/
+│   ├── CircuitBreaker.cs              # Circuit breaker pattern (per-peer)
+│   └── CommunicationProtocolManager.cs  # Protocol management with circuit breaking
 ├── Resilience/
 │   └── ConnectionResiliencePipeline.cs  # Polly v8 retry pipeline
 ├── Observability/
@@ -979,6 +990,7 @@ Enable detailed logging:
 
 **Frameworks:**
 - gRPC for .NET (Grpc.AspNetCore 2.71.0)
+- Entity Framework Core 10 + Npgsql (PostgreSQL)
 - MongoDB.Driver 3.5.2
 - Polly 8.5.0 (resilience pipeline)
 - .NET Aspire 13.0+ for orchestration
@@ -1049,6 +1061,11 @@ Enable detailed logging:
 - Isolated mode for graceful degradation
 - Comprehensive observability (7 metrics, 6 traces, structured logs)
 
+✅ **Phase 4: Peer Router & Service Hardening (Feature 053)**
+- **Circuit breaker in PeerConnectionPool** (US5): Failed peers are automatically circuit-broken after a configurable failure threshold (default: 5 failures) with a cooldown period (default: 5 minutes). Per-peer `CircuitBreaker` instances track failure counts and transition through Closed/Open/HalfOpen states. Configure via `Communication:CircuitBreakerThreshold` and `Communication:CircuitBreakerResetMinutes` in appsettings.
+- **Transaction queue migrated to PostgreSQL** (US6/US7): The transaction queue previously backed by SQLite now uses `PeerDbContext` (Entity Framework Core + PostgreSQL), storing `QueuedTransactionEntity` records with indexed columns for `RegisterId`, `Status`, and `EnqueuedAt`. The same `PeerDbContext` also manages peer node state, register subscriptions, and sync checkpoints.
+- **PeerRouter app**: A standalone bootstrap/debug tool (`src/Apps/Sorcha.PeerRouter`) for the P2P network. Provides gRPC routing (discovery, heartbeat, relay), REST endpoints for peer/event inspection, and a peer timeout watchdog. Use it to bootstrap local multi-node topologies or diagnose network issues. Start via `dotnet run --project src/Apps/Sorcha.PeerRouter` or the Docker Compose `peer-router` service.
+
 ### Deferred (Post-MVD)
 
 - Performance optimization (MongoDB query benchmarking)
@@ -1065,7 +1082,7 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Version**: 1.1.0
-**Last Updated**: 2026-03-01
+**Version**: 1.2.0
+**Last Updated**: 2026-03-07
 **Maintained By**: Sorcha Contributors
 **Status**: ✅ Complete (100% MVD)

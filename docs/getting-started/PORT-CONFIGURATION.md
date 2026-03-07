@@ -1,7 +1,7 @@
 # Port Configuration Guide
 
-**Version:** 1.0
-**Last Updated:** 2025-12-15
+**Version:** 1.1
+**Last Updated:** 2026-03-07
 **Status:** Active
 
 ---
@@ -30,6 +30,13 @@ Sorcha uses a standardized port configuration across all development and deploym
 | **Register Service** | 5290 | 7290 | 5290 | 8080 |
 | **API Gateway** | 8080 | 7082 | 8080 | 8080 |
 | **Admin UI** | 8081 | 7083 | N/A | N/A |
+
+### Developer Tools
+
+| Service | gRPC Port (External/Internal) | HTTP Port (External/Internal) | Aspire | Environment Variables |
+|---------|-------------------------------|-------------------------------|--------|----------------------|
+| **PeerRouter** | 5500 / 5000 | 8500 / 8080 | Auto-assigned | `PEER_ROUTER_GRPC_PORT` (default 5500), `PEER_ROUTER_HTTP_PORT` (default 8500) |
+| **MCP Server** | N/A | N/A | N/A | N/A |
 
 ### Infrastructure Services
 
@@ -118,6 +125,8 @@ Blueprint Service: http://localhost:5000
 Wallet Service:    http://localhost:5001
 Register Service:  http://localhost:5290
 Peer Service:      http://localhost:5002
+PeerRouter (gRPC): http://localhost:5500
+PeerRouter (HTTP): http://localhost:8500
 ```
 
 **Authentication:**
@@ -229,6 +238,8 @@ sorcha --profile docker tenant list-organizations
 - **5002** (Peer): Sequential allocation after Wallet
 - **5110** (Tenant): Non-conflicting, memorable port
 - **5290** (Register): Non-conflicting, memorable port
+- **5500** (PeerRouter gRPC): Dedicated gRPC port for peer routing tool
+- **8500** (PeerRouter HTTP): Dedicated HTTP port for peer routing tool
 
 ### HTTPS Ports (7000-7300 range)
 
@@ -326,6 +337,8 @@ http://localhost:8080/blueprint - Blueprint (via Gateway)
 http://localhost:8080/wallet    - Wallet (via Gateway)
 http://localhost:8080/register  - Register (via Gateway)
 http://localhost:8080/peer      - Peer (via Gateway)
+http://localhost:5500           - PeerRouter (gRPC, direct)
+http://localhost:8500           - PeerRouter (HTTP, direct)
 http://localhost:18888          - Aspire Dashboard
 ```
 
@@ -344,6 +357,7 @@ https://peer.sorcha.io      - Peer
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-07 | 1.1 | Added PeerRouter port assignments (gRPC 5500, HTTP 8500) and Developer Tools section. |
 | 2025-12-15 | 1.0 | Initial standardized port configuration. Consolidated from 6 profiles to 3 environments. |
 
 ---

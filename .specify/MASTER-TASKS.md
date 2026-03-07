@@ -2,8 +2,8 @@
 
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for completed phases, historical updates, critical path, and task summaries.
 
-**Version:** 6.4
-**Last Updated:** 2026-03-06
+**Version:** 6.5
+**Last Updated:** 2026-03-07
 **Status:** Active - Production Packaging & CI/CD (Phase D complete)
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [TASK-AUDIT-REPORT.md](TASK-AUDIT-REPORT.md)
 
@@ -17,6 +17,27 @@ This document tracks **active work only**. Completed phases and historical updat
 **Completed:** 244 (63%)
 **In Progress:** 4 (1%)
 **Not Started:** 138 (36%)
+
+---
+
+## Feature 053: Peer Router App & Peer Service Completion — ✅ COMPLETE
+
+> **Priority:** P1 (P2P Networking)
+> **Branch:** `053-peer-router-completion` / `053-peer-router-phase7-8`
+> **Tasks:** 56/56 complete
+
+Standalone Peer Router application for P2P network bootstrapping and debugging. PeerRouter is independently deployed (not part of Sorcha docker-compose or Aspire) with gRPC peer discovery, heartbeat streaming, optional relay mode, SSE debug event stream, and browser debug page. Peer Service hardened with circuit breaking (PeerConnectionPool), SQLite-to-PostgreSQL queue migration (PeerDbContext), and EF Core integration. 77 tests across router and service.
+
+| Phase | Description | Tasks | Status |
+|-------|-------------|-------|--------|
+| 1 | Setup (project scaffolding) | T001-T005 | ✅ |
+| 2 | Foundational (routing table, event buffer, timeout) | T006-T015 | ✅ |
+| 3 | US1: Network bootstrap (gRPC discovery, heartbeat) | T016-T021 | ✅ |
+| 4 | US2: Real-time debug event stream (SSE, HTTP) | T022-T029 | ✅ |
+| 5 | US7/6: SQLite removal, PostgreSQL queue | T030-T038 | ✅ |
+| 6 | US5: Connection circuit breaking | T039-T043 | ✅ |
+| 7 | US3: Optional relay mode | T044-T046 | ✅ |
+| 8 | Polish (Dockerfile, docs, validation) | T047-T056 | ✅ |
 
 ---
 

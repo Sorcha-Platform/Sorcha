@@ -1,20 +1,20 @@
 # Sorcha Platform - Development Status Report
 
-**Date:** 2026-03-01
-**Version:** 4.0 (Updated after Phase E Feature Completion)
+**Date:** 2026-03-07
+**Version:** 4.1 (Updated after Feature 053 Peer Router & Peer Service Completion)
 **Overall Completion:** 100% MVD
 
 ---
 
 ## Executive Summary
 
-This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Phase E Feature Completion (all services 100% MVD) on 2026-03-01.
+This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 053 (Peer Router App & Peer Service Completion, Phases 1-8) on 2026-03-07.
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
 - Wallet Service is 95% complete with full API implementation, JWT authentication, and EF Core persistence
 - Register Service is 100% complete with comprehensive testing, JWT authentication, and decentralized governance (234 tests)
-- **Peer Service 100% MVD**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions
+- **Peer Service 95%**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions, circuit breaking, PostgreSQL queue
 - **Validator Service 100% MVD**: Memory pool, docket building, consensus, gRPC, duplicate detection cross-check (620+ tests)
 - **Tenant Service 100% MVD**: Auth, orgs, service principals (includeInactive), user count stats
 - **AUTH-002 complete**: All services now have JWT Bearer authentication with authorization policies
@@ -24,6 +24,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **UI Register Management 100% complete**: Wallet selection wizard, search/filter, transaction query
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
+- **Peer Router & Peer Service Completion (Feature 053) 100% complete**: PeerRouter standalone app, circuit breaking, SQLite removed, PostgreSQL queue migration, Phases 1-8 delivered
 - **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
 - Total actual completion: 100% MVD (all feature gaps closed, auth policies on all API routes)
 
@@ -38,7 +39,8 @@ For detailed implementation status, see the individual section files:
 | [Blueprint-Action Service](status/blueprint-service.md) | 100% | Full orchestration, SignalR, JWT auth |
 | [Wallet Service](status/wallet-service.md) | 95% | EF Core, API complete, HD wallets |
 | [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
-| [Peer Service](status/peer-service.md) | 100% MVD | P2P, 7 gRPC RPCs, replication, live subs |
+| [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
+| **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
 | [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
 | [Tenant Service](status/tenant-service.md) | 100% MVD | Auth, orgs, principals, user stats |
 | [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
@@ -58,7 +60,8 @@ For detailed implementation status, see the individual section files:
 | **Blueprint.Service** | 100% | Complete | None |
 | **Wallet.Service** | 95% | Nearly Complete | Azure Key Vault |
 | **Register.Service** | 100% | Complete | None |
-| **Peer.Service** | 100% MVD | Complete | None (deferred: BLS threshold) |
+| **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
+| **Sorcha.PeerRouter** | 100% | Complete | None |
 | **Validator.Service** | 100% MVD | Complete | None (deferred: enclave, fork detection) |
 | **Tenant.Service** | 100% MVD | Complete | None (deferred: Azure AD B2C) |
 | **Authentication (AUTH-002)** | 100% | Complete | None |
@@ -92,6 +95,12 @@ For detailed implementation status, see the individual section files:
 ---
 
 ## Recent Completions
+
+### 2026-03-07
+- **053-Peer-Router-App-and-Peer-Service-Completion** (Phases 1-8 complete)
+  - **Peer Service upgraded to 95%**: Circuit breaking wired, SQLite removed, PostgreSQL queue migration complete
+  - **PeerRouter application (100%)**: Standalone P2P network bootstrap and debug tool for peer network diagnostics
+  - All 8 phases delivered (T001-T056)
 
 ### 2026-03-06
 - **051-Operations-Monitoring-Admin** (65 tasks, 10 phases — operational admin UI & CLI)
@@ -320,8 +329,8 @@ The platform is feature-complete for MVD but requires the following for producti
 
 ---
 
-**Document Version:** 4.0
-**Last Updated:** 2026-03-01
+**Document Version:** 4.1
+**Last Updated:** 2026-03-07
 **Owner:** Sorcha Architecture Team
 
 **See Also:**

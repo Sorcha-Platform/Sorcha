@@ -26,6 +26,12 @@ app.UseStaticFiles();
 app.MapGrpcService<RouterDiscoveryService>();
 app.MapGrpcService<RouterHeartbeatService>();
 
+if (config.EnableRelay)
+{
+    app.MapGrpcService<RouterCommunicationService>();
+    app.Logger.LogInformation("Relay mode enabled — RouterCommunicationService mapped");
+}
+
 // HTTP endpoints
 app.MapEventStreamEndpoints();
 app.MapPeerEndpoints();
