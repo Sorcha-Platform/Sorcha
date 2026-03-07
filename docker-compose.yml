@@ -119,6 +119,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Redis: redis:6379
       ConnectionStrings__mongodb: mongodb://sorcha:sorcha_dev_password@mongodb:27017
+      ConnectionStrings__EventsDb: Host=postgres;Database=sorcha_events;Username=sorcha;Password=sorcha_dev_password;Timeout=30;Command Timeout=30
       # AI Provider configuration (Anthropic Claude API)
       AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
       AIProvider__Model: claude-sonnet-4-5-20250929
@@ -137,6 +138,8 @@ services:
       redis:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       wallet-service:
         condition: service_healthy

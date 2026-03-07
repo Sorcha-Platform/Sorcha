@@ -35,6 +35,20 @@ public interface IInstanceStore
     Task<Instance> UpdateAsync(Instance instance, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets all instances with optional state filter and pagination
+    /// </summary>
+    /// <param name="state">Optional state filter</param>
+    /// <param name="skip">Number of items to skip</param>
+    /// <param name="take">Number of items to take</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of instances and total count</returns>
+    Task<(IEnumerable<Instance> Items, int TotalCount)> GetAllAsync(
+        InstanceState? state = null,
+        int skip = 0,
+        int take = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets all instances for a blueprint
     /// </summary>
     /// <param name="blueprintId">The blueprint ID</param>

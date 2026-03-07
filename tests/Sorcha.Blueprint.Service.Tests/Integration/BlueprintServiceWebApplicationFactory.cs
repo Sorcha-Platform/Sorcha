@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +49,14 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
 
         builder.ConfigureServices(services =>
         {
+            // Replace BlueprintEventsDbContext with in-memory provider for testing
+            var eventsDescriptor = services.SingleOrDefault(
+                d => d.ServiceType == typeof(DbContextOptions<Data.BlueprintEventsDbContext>));
+            if (eventsDescriptor != null)
+                services.Remove(eventsDescriptor);
+            services.AddDbContext<Data.BlueprintEventsDbContext>(options =>
+                options.UseInMemoryDatabase($"TestEvents-{Guid.NewGuid()}"));
+
             // Remove the real Redis output caching
             services.RemoveAll<IDistributedCache>();
 
