@@ -84,7 +84,7 @@ public sealed class BLSThresholdProvider : IDisposable
             var masterSk = DeserializeFr(coeffBytes[0]);
             var g2Base = GetG2Generator();
             var masterPk = new mclBnG2();
-            Mcl.mclBnG2_mul(ref masterPk, ref g2Base, ref masterSk);
+            Mcl.mclBnG2_mul(ref masterPk, in g2Base, in masterSk);
             var groupPublicKey = SerializeG2(ref masterPk);
 
             // Generate key shares using Horner's method polynomial evaluation
@@ -99,7 +99,7 @@ public sealed class BLSThresholdProvider : IDisposable
                 // Public share = secretShare * G2
                 var secretShare = DeserializeFr(secretShareBytes);
                 var publicShare = new mclBnG2();
-                Mcl.mclBnG2_mul(ref publicShare, ref g2Base, ref secretShare);
+                Mcl.mclBnG2_mul(ref publicShare, in g2Base, in secretShare);
 
                 keyShares.Add(new BLSKeyShare
                 {
@@ -147,7 +147,7 @@ public sealed class BLSThresholdProvider : IDisposable
 
             // Partial signature = sk * H(msg)
             var sig = new mclBnG1();
-            Mcl.mclBnG1_mul(ref sig, ref h, ref sk);
+            Mcl.mclBnG1_mul(ref sig, in h, in sk);
 
             return CryptoResult<byte[]>.Success(SerializeG1(ref sig));
         }
@@ -192,11 +192,11 @@ public sealed class BLSThresholdProvider : IDisposable
 
                 // Weighted point: L_i * sig_i
                 var weighted = new mclBnG1();
-                Mcl.mclBnG1_mul(ref weighted, ref sigI, ref lagrangeCoeff);
+                Mcl.mclBnG1_mul(ref weighted, in sigI, in lagrangeCoeff);
 
                 // Accumulate: aggregated += weighted
                 var tmp = new mclBnG1();
-                Mcl.mclBnG1_add(ref tmp, ref aggregated, ref weighted);
+                Mcl.mclBnG1_add(ref tmp, in aggregated, in weighted);
                 aggregated = tmp;
             }
 
@@ -241,10 +241,10 @@ public sealed class BLSThresholdProvider : IDisposable
             // Verify: e(sig, G2) == e(H(msg), pk)
             var lhs = new mclBnGT();
             var rhs = new mclBnGT();
-            Mcl.mclBn_pairing(ref lhs, ref sig, ref g2);
-            Mcl.mclBn_pairing(ref rhs, ref h, ref pk);
+            Mcl.mclBn_pairing(ref lhs, in sig, in g2);
+            Mcl.mclBn_pairing(ref rhs, in h, in pk);
 
-            bool valid = Mcl.mclBnGT_isEqual(ref lhs, ref rhs) == 1;
+            bool valid = Mcl.mclBnGT_isEqual(in lhs, in rhs) == 1;
             return CryptoResult<bool>.Success(valid);
         }
         catch (Exception ex)
@@ -273,11 +273,11 @@ public sealed class BLSThresholdProvider : IDisposable
         {
             // result = result * x
             var mulResult = new mclBnFr();
-            Mcl.mclBnFr_mul(ref mulResult, ref result, ref xFr);
+            Mcl.mclBnFr_mul(ref mulResult, in result, in xFr);
 
             // result = result + a_i
             var coeff = DeserializeFr(coeffBytes[i]);
-            Mcl.mclBnFr_add(ref result, ref mulResult, ref coeff);
+            Mcl.mclBnFr_add(ref result, in mulResult, in coeff);
         }
 
         return SerializeFr(ref result);
@@ -305,15 +305,15 @@ public sealed class BLSThresholdProvider : IDisposable
             // numerator = x_j
             // denominator = x_j - x_i
             var denom = new mclBnFr();
-            Mcl.mclBnFr_sub(ref denom, ref xj, ref xi);
+            Mcl.mclBnFr_sub(ref denom, in xj, in xi);
 
             // fraction = x_j / (x_j - x_i)
             var fraction = new mclBnFr();
-            Mcl.mclBnFr_div(ref fraction, ref xj, ref denom);
+            Mcl.mclBnFr_div(ref fraction, in xj, in denom);
 
             // result *= fraction
             var tmp = new mclBnFr();
-            Mcl.mclBnFr_mul(ref tmp, ref result, ref fraction);
+            Mcl.mclBnFr_mul(ref tmp, in result, in fraction);
             result = tmp;
         }
 
@@ -327,7 +327,7 @@ public sealed class BLSThresholdProvider : IDisposable
         {
             fixed (byte* p = buf)
             {
-                var written = Mcl.mclBnG1_serialize((IntPtr)p, (UIntPtr)buf.Length, ref point);
+                var written = Mcl.mclBnG1_serialize((IntPtr)p, (UIntPtr)buf.Length, in point);
                 if ((int)written == 0)
                     throw new InvalidOperationException("Failed to serialize G1 point");
             }
@@ -357,7 +357,7 @@ public sealed class BLSThresholdProvider : IDisposable
         {
             fixed (byte* p = buf)
             {
-                var written = Mcl.mclBnG2_serialize((IntPtr)p, (UIntPtr)buf.Length, ref point);
+                var written = Mcl.mclBnG2_serialize((IntPtr)p, (UIntPtr)buf.Length, in point);
                 if ((int)written == 0)
                     throw new InvalidOperationException("Failed to serialize G2 point");
             }
@@ -387,7 +387,7 @@ public sealed class BLSThresholdProvider : IDisposable
         {
             fixed (byte* p = buf)
             {
-                var written = Mcl.mclBnFr_serialize((IntPtr)p, (UIntPtr)buf.Length, ref scalar);
+                var written = Mcl.mclBnFr_serialize((IntPtr)p, (UIntPtr)buf.Length, in scalar);
                 if ((int)written == 0)
                     throw new InvalidOperationException("Failed to serialize Fr scalar");
             }
