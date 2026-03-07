@@ -6,18 +6,19 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Sorcha.Register.Models;
+using Sorcha.Register.Service.Tests.Helpers;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
-public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
+public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactory>, IAsyncLifetime
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly RegisterServiceWebApplicationFactory _factory;
     private readonly HttpClient _client;
     private HubConnection? _hubConnection;
     private readonly List<string> _receivedMessages = new();
 
-    public SignalRHubTests(WebApplicationFactory<Program> factory)
+    public SignalRHubTests(RegisterServiceWebApplicationFactory factory)
     {
         _factory = factory;
         _client = factory.CreateClient();
@@ -128,23 +129,15 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
         await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
 
-        // Act
-        var createRequest = new
-        {
-            name = "SignalR Test Register",
-            tenantId = tenantId,
-            advertise = false,
-            isFullReplica = true
-        };
-        var response = await _client.PostAsJsonAsync("/api/registers", createRequest);
-        var register = await response.Content.ReadFromJsonAsync<RegisterResponse>();
+        // Act — create register via service layer (POST /api/registers was removed)
+        var register = await _factory.CreateTestRegisterAsync("SignalR Test Register", tenantId);
 
         // Wait for event
         await Task.Delay(1000);
 
         // Assert
         registerCreatedReceived.Should().BeTrue();
-        receivedRegisterId.Should().Be(register!.Id);
+        receivedRegisterId.Should().Be(register.Id);
         receivedName.Should().Be("SignalR Test Register");
     }
 
@@ -164,19 +157,13 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
         await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
 
-        // Create a register
-        var createRequest = new
-        {
-            name = "To Delete",
-            tenantId = tenantId
-        };
-        var createResponse = await _client.PostAsJsonAsync("/api/registers", createRequest);
-        var register = await createResponse.Content.ReadFromJsonAsync<RegisterResponse>();
+        // Create a register via service layer (POST /api/registers was removed)
+        var register = await _factory.CreateTestRegisterAsync("To Delete", tenantId);
 
         await Task.Delay(500); // Allow create event to process
 
         // Act
-        await _client.DeleteAsync($"/api/registers/{register!.Id}?tenantId={tenantId}");
+        await _client.DeleteAsync($"/api/registers/{register.Id}?tenantId={tenantId}");
 
         // Wait for event
         await Task.Delay(1000);
@@ -201,12 +188,10 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
             receivedTransactionId = transactionId;
         });
 
-        // Create a register
-        var createRequest = new { name = "SignalR Tx Test", tenantId = "tx-test-tenant" };
-        var createResponse = await _client.PostAsJsonAsync("/api/registers", createRequest);
-        var register = await createResponse.Content.ReadFromJsonAsync<RegisterResponse>();
+        // Create a register via service layer (POST /api/registers was removed)
+        var register = await _factory.CreateTestRegisterAsync("SignalR Tx Test", "tx-test-tenant");
 
-        await _hubConnection.InvokeAsync("SubscribeToRegister", register!.Id);
+        await _hubConnection!.InvokeAsync("SubscribeToRegister", register.Id);
 
         // Act
         var transaction = CreateValidTransaction(register.Id);
@@ -247,9 +232,8 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
         await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
         await hubConnection2.InvokeAsync("SubscribeToTenant", tenantId);
 
-        // Act
-        var createRequest = new { name = "Multi-Client Test", tenantId = tenantId };
-        await _client.PostAsJsonAsync("/api/registers", createRequest);
+        // Act — create register via service layer (POST /api/registers was removed)
+        await _factory.CreateTestRegisterAsync("Multi-Client Test", tenantId);
 
         // Wait for events
         await Task.Delay(1000);
@@ -273,9 +257,8 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
         // Don't subscribe to tenant
 
-        // Act
-        var createRequest = new { name = "Unsubscribed Test", tenantId = tenantId };
-        await _client.PostAsJsonAsync("/api/registers", createRequest);
+        // Act — create register via service layer (POST /api/registers was removed)
+        await _factory.CreateTestRegisterAsync("Unsubscribed Test", tenantId);
 
         // Wait
         await Task.Delay(1000);
@@ -288,18 +271,18 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
     public async Task RegisterSubscription_ShouldOnlyReceiveRegisterSpecificEvents()
     {
         // Arrange
+        // Create two registers first so we have their actual IDs
+        var reg1 = await CreateTestRegisterAsync("Register 1", "test-tenant");
+        var reg2 = await CreateTestRegisterAsync("Register 2", "test-tenant");
+
         var register1ReceivedEvent = false;
         var register2ReceivedEvent = false;
 
         _hubConnection!.On<string, string>("TransactionConfirmed", (registerId, _) =>
         {
-            if (registerId == "register1") register1ReceivedEvent = true;
-            if (registerId == "register2") register2ReceivedEvent = true;
+            if (registerId == reg1.Id) register1ReceivedEvent = true;
+            if (registerId == reg2.Id) register2ReceivedEvent = true;
         });
-
-        // Create two registers
-        var reg1 = await CreateTestRegisterAsync("Register 1", "test-tenant");
-        var reg2 = await CreateTestRegisterAsync("Register 2", "test-tenant");
 
         // Subscribe only to register 1
         await _hubConnection.InvokeAsync("SubscribeToRegister", reg1.Id);
@@ -317,9 +300,8 @@ public class SignalRHubTests : IClassFixture<WebApplicationFactory<Program>>, IA
 
     private async Task<RegisterResponse> CreateTestRegisterAsync(string name, string tenantId)
     {
-        var request = new { name, tenantId, advertise = false, isFullReplica = true };
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
-        return (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
+        var register = await _factory.CreateTestRegisterAsync(name, tenantId);
+        return new RegisterResponse(register.Id, register.Name, register.TenantId);
     }
 
     private TransactionModel CreateValidTransaction(string registerId)

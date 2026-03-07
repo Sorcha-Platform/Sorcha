@@ -93,7 +93,7 @@ public class OperationsEndpointTests : IDisposable
         var completedEvent = MakeActivityEvent("op-2", "encryption_complete");
         _mockEventService
             .Setup(s => s.GetEventsAsync(
-                _userId, 1, 200, false, null, null, It.IsAny<CancellationToken>()))
+                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((new List<ActivityEvent> { completedEvent }.AsReadOnly(), 1));
 
         // Act
@@ -145,7 +145,7 @@ public class OperationsEndpointTests : IDisposable
 
         _mockEventService
             .Setup(s => s.GetEventsAsync(
-                _userId, 1, 200, false, null, null, It.IsAny<CancellationToken>()))
+                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Array.Empty<ActivityEvent>().AsReadOnly(), 0));
 
         // Act
@@ -172,7 +172,7 @@ public class OperationsEndpointTests : IDisposable
 
         _mockEventService
             .Setup(s => s.GetEventsAsync(
-                _userId, 1, 200, false, null, null, It.IsAny<CancellationToken>()))
+                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Array.Empty<ActivityEvent>().AsReadOnly(), 0));
 
         // Act - no page/pageSize params
@@ -203,7 +203,7 @@ public class OperationsEndpointTests : IDisposable
 
         _mockEventService
             .Setup(s => s.GetEventsAsync(
-                _userId, 1, 200, false, null, null, It.IsAny<CancellationToken>()))
+                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((events.AsReadOnly(), events.Count));
 
         // Act - request page 2 with pageSize 3

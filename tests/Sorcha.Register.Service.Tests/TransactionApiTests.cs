@@ -6,19 +6,21 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Sorcha.Register.Models;
+using Sorcha.Register.Service.Tests.Helpers;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
-public class TransactionApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class TransactionApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private readonly string _testRegisterId;
 
-    public TransactionApiTests(WebApplicationFactory<Program> factory)
+    public TransactionApiTests(RegisterServiceWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
-        _testRegisterId = CreateTestRegisterAsync().Result;
+        var register = factory.CreateTestRegisterAsync("API Test Register", "api-test-tenant").Result;
+        _testRegisterId = register.Id;
     }
 
     [Fact]
@@ -34,8 +36,8 @@ public class TransactionApiTests : IClassFixture<WebApplicationFactory<Program>>
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var location = response.Headers.Location;
         location.Should().NotBeNull();
-        location!.PathAndQuery.Should().Contain(_testRegisterId);
-        location.PathAndQuery.Should().Contain("transactions");
+        location!.OriginalString.Should().Contain(_testRegisterId);
+        location.OriginalString.Should().Contain("transactions");
     }
 
     [Fact]
@@ -133,7 +135,7 @@ public class TransactionApiTests : IClassFixture<WebApplicationFactory<Program>>
         await SubmitTestTransactionAsync();
 
         // Act
-        var response = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions?page=1&pageSize=2");
+        var response = await _client.GetAsync($"/api/registers/{_testRegisterId}/transactions?$skip=0&$top=2");
         var result = await response.Content.ReadFromJsonAsync<PaginatedTransactionResponse>();
 
         // Assert
@@ -248,21 +250,6 @@ public class TransactionApiTests : IClassFixture<WebApplicationFactory<Program>>
         result.RecipientsWallets.Should().Contain("recipient1");
         result.RecipientsWallets.Should().Contain("recipient2");
         result.RecipientsWallets.Should().Contain("recipient3");
-    }
-
-    private async Task<string> CreateTestRegisterAsync()
-    {
-        var request = new
-        {
-            name = "API Test Register",
-            tenantId = "api-test-tenant",
-            advertise = false,
-            isFullReplica = true
-        };
-
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
-        var result = await response.Content.ReadFromJsonAsync<RegisterResponse>();
-        return result!.Id;
     }
 
     private async Task<TransactionModel> SubmitTestTransactionAsync()

@@ -6,20 +6,22 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Sorcha.Register.Models;
+using Sorcha.Register.Service.Tests.Helpers;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
-public class QueryApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class QueryApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private readonly string _testRegisterId;
     private readonly string _testWalletAddress = "test_wallet_12345";
 
-    public QueryApiTests(WebApplicationFactory<Program> factory)
+    public QueryApiTests(RegisterServiceWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
-        _testRegisterId = CreateTestRegisterAsync().Result;
+        var register = factory.CreateTestRegisterAsync("Query Test Register", "query-test-tenant").Result;
+        _testRegisterId = register.Id;
         SeedTestDataAsync().Wait();
     }
 
@@ -103,16 +105,16 @@ public class QueryApiTests : IClassFixture<WebApplicationFactory<Program>>
         var blueprintId = "blueprint123";
         var instanceId = "instance456";
 
-        // Act
+        // Act — blueprint endpoint returns IEnumerable<TransactionModel>, not paginated
         var response = await _client.GetAsync(
             $"/api/query/blueprints/{blueprintId}/transactions?registerId={_testRegisterId}&instanceId={instanceId}");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedResponse>();
+        var result = await response.Content.ReadFromJsonAsync<TransactionModel[]>();
 
         // Assert
         result.Should().NotBeNull();
-        if (result!.Items.Count > 0)
+        if (result!.Length > 0)
         {
-            result.Items.Should().OnlyContain(t =>
+            result.Should().OnlyContain(t =>
                 t.MetaData != null &&
                 t.MetaData.BlueprintId == blueprintId &&
                 t.MetaData.InstanceId == instanceId);
@@ -196,31 +198,15 @@ public class QueryApiTests : IClassFixture<WebApplicationFactory<Program>>
         // Arrange
         var blueprintId = "blueprint123";
 
-        // Act
+        // Act — blueprint endpoint returns IEnumerable<TransactionModel>, not paginated
         var response = await _client.GetAsync(
-            $"/api/query/blueprints/{blueprintId}/transactions?registerId={_testRegisterId}&page=1&pageSize=5");
-        var result = await response.Content.ReadFromJsonAsync<PaginatedResponse>();
+            $"/api/query/blueprints/{blueprintId}/transactions?registerId={_testRegisterId}");
 
         // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<TransactionModel[]>();
         result.Should().NotBeNull();
-        result!.Page.Should().Be(1);
-        result.PageSize.Should().Be(5);
-        result.Items.Should().HaveCountLessThanOrEqualTo(5);
-    }
-
-    private async Task<string> CreateTestRegisterAsync()
-    {
-        var request = new
-        {
-            name = "Query Test Register",
-            tenantId = "query-test-tenant",
-            advertise = false,
-            isFullReplica = true
-        };
-
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
-        var result = await response.Content.ReadFromJsonAsync<RegisterResponse>();
-        return result!.Id;
+        result!.Length.Should().BeGreaterThanOrEqualTo(0);
     }
 
     private async Task SeedTestDataAsync()

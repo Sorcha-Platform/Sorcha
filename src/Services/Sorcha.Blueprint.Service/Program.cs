@@ -299,10 +299,10 @@ var blueprintGroup = app.MapGroup("/api/blueprints")
     .WithTags("Blueprints")
     .RequireAuthorization("CanManageBlueprints");
 
-/// <summary>
-/// Get all blueprints with pagination
-/// Supports JSON-LD via Accept: application/ld+json header
-/// </summary>
+// <summary>
+// Get all blueprints with pagination
+// Supports JSON-LD via Accept: application/ld+json header
+// </summary>
 blueprintGroup.MapGet("/", async (
     HttpContext context,
     IBlueprintService service,
@@ -321,10 +321,10 @@ blueprintGroup.MapGet("/", async (
 .WithDescription("Retrieve a paginated list of blueprints with optional search and status filtering. Supports JSON-LD via Accept: application/ld+json header.")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
 
-/// <summary>
-/// Get blueprint by ID
-/// Supports JSON-LD via Accept: application/ld+json header
-/// </summary>
+// <summary>
+// Get blueprint by ID
+// Supports JSON-LD via Accept: application/ld+json header
+// </summary>
 blueprintGroup.MapGet("/{id}", async (HttpContext context, string id, IBlueprintService service) =>
 {
     var orgId = context.IsServiceToken() ? null : context.GetOrganizationId();
@@ -344,10 +344,10 @@ blueprintGroup.MapGet("/{id}", async (HttpContext context, string id, IBlueprint
 .WithDescription("Retrieve a specific blueprint by its unique identifier. Supports JSON-LD via Accept: application/ld+json header.")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
 
-/// <summary>
-/// Create new blueprint
-/// Supports JSON-LD via Accept: application/ld+json header
-/// </summary>
+// <summary>
+// Create new blueprint
+// Supports JSON-LD via Accept: application/ld+json header
+// </summary>
 blueprintGroup.MapPost("/", async (
     HttpContext context,
     BlueprintModel blueprint,
@@ -370,9 +370,9 @@ blueprintGroup.MapPost("/", async (
 .WithSummary("Create new blueprint")
 .WithDescription("Create a new blueprint with the provided details. Supports JSON-LD via Accept: application/ld+json header.");
 
-/// <summary>
-/// Update existing blueprint
-/// </summary>
+// <summary>
+// Update existing blueprint
+// </summary>
 blueprintGroup.MapPut("/{id}", async (HttpContext context, string id, BlueprintModel blueprint, IBlueprintService service, IOutputCacheStore cache) =>
 {
     var orgId = context.IsServiceToken() ? null : context.GetOrganizationId();
@@ -386,9 +386,9 @@ blueprintGroup.MapPut("/{id}", async (HttpContext context, string id, BlueprintM
 .WithSummary("Update blueprint")
 .WithDescription("Update an existing blueprint with new details");
 
-/// <summary>
-/// Delete blueprint (soft delete)
-/// </summary>
+// <summary>
+// Delete blueprint (soft delete)
+// </summary>
 blueprintGroup.MapDelete("/{id}", async (HttpContext context, string id, IBlueprintService service, IOutputCacheStore cache) =>
 {
     var orgId = context.IsServiceToken() ? null : context.GetOrganizationId();
@@ -406,9 +406,9 @@ blueprintGroup.MapDelete("/{id}", async (HttpContext context, string id, IBluepr
 // Blueprint Publishing Endpoints
 // ===========================
 
-/// <summary>
-/// Validate blueprint (no side effects)
-/// </summary>
+// <summary>
+// Validate blueprint (no side effects)
+// </summary>
 blueprintGroup.MapPost("/{id}/validate", async (string id, IPublishService service) =>
 {
     var result = await service.ValidateAsync(id);
@@ -419,9 +419,9 @@ blueprintGroup.MapPost("/{id}/validate", async (string id, IPublishService servi
 .WithDescription("Validate a blueprint without publishing. Returns validation errors and warnings.")
 .RequireAuthorization("CanPublishBlueprints");
 
-/// <summary>
-/// Publish blueprint, optionally to a register
-/// </summary>
+// <summary>
+// Publish blueprint, optionally to a register
+// </summary>
 blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService service, IOutputCacheStore cache, HttpRequest request) =>
 {
     // Read optional registerId from JSON body
@@ -468,9 +468,9 @@ blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService servic
 .WithDescription("Validate and publish a blueprint. Optionally publish to a register by providing { registerId } in the request body.")
 .RequireAuthorization("CanPublishBlueprints");
 
-/// <summary>
-/// Get all published versions of a blueprint
-/// </summary>
+// <summary>
+// Get all published versions of a blueprint
+// </summary>
 blueprintGroup.MapGet("/{id}/versions", async (string id, IPublishedBlueprintStore store) =>
 {
     var versions = await store.GetVersionsAsync(id);
@@ -481,9 +481,9 @@ blueprintGroup.MapGet("/{id}/versions", async (string id, IPublishedBlueprintSto
 .WithDescription("Retrieve all published versions of a blueprint")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(10)).Tag("published"));
 
-/// <summary>
-/// Get specific published version
-/// </summary>
+// <summary>
+// Get specific published version
+// </summary>
 blueprintGroup.MapGet("/{id}/versions/{version}", async (string id, int version, IPublishedBlueprintStore store) =>
 {
     var published = await store.GetVersionAsync(id, version);
@@ -518,9 +518,9 @@ var templateGroup = app.MapGroup("/api/templates")
     .WithTags("Templates")
     .RequireAuthorization();
 
-/// <summary>
-/// Get all published templates
-/// </summary>
+// <summary>
+// Get all published templates
+// </summary>
 templateGroup.MapGet("/", async (Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService service, string? category = null) =>
 {
     var templates = category != null
@@ -534,9 +534,9 @@ templateGroup.MapGet("/", async (Sorcha.Blueprint.Service.Templates.IBlueprintTe
 .WithDescription("Retrieve all published blueprint templates, optionally filtered by category")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(10)).Tag("templates"));
 
-/// <summary>
-/// Get template by ID
-/// </summary>
+// <summary>
+// Get template by ID
+// </summary>
 templateGroup.MapGet("/{id}", async (string id, Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService service) =>
 {
     var template = await service.GetTemplateAsync(id);
@@ -547,9 +547,9 @@ templateGroup.MapGet("/{id}", async (string id, Sorcha.Blueprint.Service.Templat
 .WithDescription("Retrieve a specific blueprint template by its unique identifier")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(10)).Tag("templates"));
 
-/// <summary>
-/// Create or update a template
-/// </summary>
+// <summary>
+// Create or update a template
+// </summary>
 templateGroup.MapPost("/", async (
     Sorcha.Blueprint.Models.BlueprintTemplate template,
     Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService service,
@@ -564,9 +564,9 @@ templateGroup.MapPost("/", async (
 .WithSummary("Create or update template")
 .WithDescription("Create a new template or update an existing one");
 
-/// <summary>
-/// Delete a template
-/// </summary>
+// <summary>
+// Delete a template
+// </summary>
 templateGroup.MapDelete("/{id}", async (
     string id,
     Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService service,
@@ -582,9 +582,9 @@ templateGroup.MapDelete("/{id}", async (
 .WithSummary("Delete template")
 .WithDescription("Delete a blueprint template");
 
-/// <summary>
-/// Evaluate a template with parameters to generate a blueprint
-/// </summary>
+// <summary>
+// Evaluate a template with parameters to generate a blueprint
+// </summary>
 templateGroup.MapPost("/evaluate", async (
     Sorcha.Blueprint.Models.TemplateEvaluationRequest request,
     Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService service) =>
@@ -602,9 +602,9 @@ templateGroup.MapPost("/evaluate", async (
 .WithSummary("Evaluate template")
 .WithDescription("Evaluate a blueprint template with specific parameters to generate a blueprint");
 
-/// <summary>
-/// Validate template parameters
-/// </summary>
+// <summary>
+// Validate template parameters
+// </summary>
 templateGroup.MapPost("/{id}/validate", async (
     string id,
     Dictionary<string, object> parameters,
@@ -623,9 +623,9 @@ templateGroup.MapPost("/{id}/validate", async (
 .WithSummary("Validate parameters")
 .WithDescription("Validate parameters against a template's parameter schema");
 
-/// <summary>
-/// Evaluate a template example
-/// </summary>
+// <summary>
+// Evaluate a template example
+// </summary>
 templateGroup.MapGet("/{id}/examples/{exampleName}", async (
     string id,
     string exampleName,
@@ -665,9 +665,9 @@ var actionsGroup = app.MapGroup("/api/actions")
     .WithTags("Actions")
     .RequireAuthorization("CanExecuteBlueprints");
 
-/// <summary>
-/// Get available blueprints for a wallet/register combination
-/// </summary>
+// <summary>
+// Get available blueprints for a wallet/register combination
+// </summary>
 actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
     string wallet,
     string register,
@@ -725,9 +725,9 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
 .WithDescription("Retrieve blueprints and actions available to a specific wallet/register combination")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
 
-/// <summary>
-/// Get actions for a wallet/register (paginated)
-/// </summary>
+// <summary>
+// Get actions for a wallet/register (paginated)
+// </summary>
 actionsGroup.MapGet("/{wallet}/{register}", async (
     string wallet,
     string register,
@@ -754,9 +754,9 @@ actionsGroup.MapGet("/{wallet}/{register}", async (
 .WithSummary("Get actions for wallet/register")
 .WithDescription("Retrieve paginated list of actions for a specific wallet and register");
 
-/// <summary>
-/// Get a specific action by transaction hash
-/// </summary>
+// <summary>
+// Get a specific action by transaction hash
+// </summary>
 actionsGroup.MapGet("/{wallet}/{register}/{tx}", async (
     string wallet,
     string register,
@@ -782,9 +782,9 @@ actionsGroup.MapGet("/{wallet}/{register}/{tx}", async (
 .WithSummary("Get action details")
 .WithDescription("Retrieve detailed information about a specific action transaction");
 
-/// <summary>
-/// Submit a new action
-/// </summary>
+// <summary>
+// Submit a new action
+// </summary>
 actionsGroup.MapPost("/", async (
     Sorcha.Blueprint.Service.Models.Requests.ActionSubmissionRequest request,
     HttpContext context,
@@ -1034,9 +1034,9 @@ actionsGroup.MapPost("/", async (
 .WithSummary("Submit an action")
 .WithDescription("Submit a new action for execution in a blueprint workflow");
 
-/// <summary>
-/// Reject a pending action
-/// </summary>
+// <summary>
+// Reject a pending action
+// </summary>
 actionsGroup.MapPost("/reject", async (
     Sorcha.Blueprint.Service.Models.Requests.ActionRejectionRequest request,
     Sorcha.Blueprint.Service.Services.Interfaces.ITransactionBuilderService txBuilder,
@@ -1137,9 +1137,9 @@ actionsGroup.MapPost("/reject", async (
 .WithSummary("Reject an action")
 .WithDescription("Reject a pending action with a reason");
 
-/// <summary>
-/// Get file content by file ID
-/// </summary>
+// <summary>
+// Get file content by file ID
+// </summary>
 app.MapGet("/api/files/{wallet}/{register}/{tx}/{fileId}", async (
     string wallet,
     string register,
@@ -1185,9 +1185,9 @@ var executionGroup = app.MapGroup("/api/execution")
     .WithTags("Execution")
     .RequireAuthorization("CanExecuteBlueprints");
 
-/// <summary>
-/// Validate action data against schema (helper endpoint)
-/// </summary>
+// <summary>
+// Validate action data against schema (helper endpoint)
+// </summary>
 executionGroup.MapPost("/validate", async (
     ValidateRequest request,
     IBlueprintStore blueprintStore,
@@ -1239,9 +1239,9 @@ executionGroup.MapPost("/validate", async (
 .WithSummary("Validate action data")
 .WithDescription("Validate action data against the action's JSON Schema without executing the full workflow");
 
-/// <summary>
-/// Apply calculations to action data (helper endpoint)
-/// </summary>
+// <summary>
+// Apply calculations to action data (helper endpoint)
+// </summary>
 executionGroup.MapPost("/calculate", async (
     CalculateRequest request,
     IBlueprintStore blueprintStore,
@@ -1287,9 +1287,9 @@ executionGroup.MapPost("/calculate", async (
 .WithSummary("Apply calculations")
 .WithDescription("Apply JSON Logic calculations to action data without executing the full workflow");
 
-/// <summary>
-/// Determine routing for action (helper endpoint)
-/// </summary>
+// <summary>
+// Determine routing for action (helper endpoint)
+// </summary>
 executionGroup.MapPost("/route", async (
     RouteRequest request,
     IBlueprintStore blueprintStore,
@@ -1338,9 +1338,9 @@ executionGroup.MapPost("/route", async (
 .WithSummary("Determine routing")
 .WithDescription("Determine the next action and participant based on routing conditions");
 
-/// <summary>
-/// Apply disclosure rules (helper endpoint)
-/// </summary>
+// <summary>
+// Apply disclosure rules (helper endpoint)
+// </summary>
 executionGroup.MapPost("/disclose", async (
     DiscloseRequest request,
     IBlueprintStore blueprintStore,
@@ -1399,9 +1399,9 @@ var notificationGroup = app.MapGroup("/api/notifications")
     .WithTags("Notifications")
     .RequireAuthorization("RequireService");
 
-/// <summary>
-/// Internal endpoint for Register Service to notify of transaction confirmations
-/// </summary>
+// <summary>
+// Internal endpoint for Register Service to notify of transaction confirmations
+// </summary>
 notificationGroup.MapPost("/transaction-confirmed", async (
     TransactionConfirmationNotification notification,
     Sorcha.Blueprint.Service.Services.Interfaces.INotificationService notificationService) =>
@@ -1443,9 +1443,9 @@ var instancesGroup = app.MapGroup("/api/instances")
     .WithTags("Instances")
     .RequireAuthorization("CanExecuteBlueprints");
 
-/// <summary>
-/// Create a new workflow instance
-/// </summary>
+// <summary>
+// Create a new workflow instance
+// </summary>
 instancesGroup.MapPost("/", async (
     CreateInstanceRequest request,
     Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
@@ -1538,9 +1538,9 @@ instancesGroup.MapPost("/", async (
 .WithSummary("Create workflow instance")
 .WithDescription("Create a new workflow instance for a published blueprint");
 
-/// <summary>
-/// Get workflow instance by ID
-/// </summary>
+// <summary>
+// Get workflow instance by ID
+// </summary>
 instancesGroup.MapGet("/{instanceId}", async (
     string instanceId,
     Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore) =>
@@ -1557,9 +1557,9 @@ instancesGroup.MapGet("/{instanceId}", async (
 .WithSummary("Get workflow instance")
 .WithDescription("Retrieve a workflow instance by its ID");
 
-/// <summary>
-/// Execute an action in a workflow instance (with orchestration)
-/// </summary>
+// <summary>
+// Execute an action in a workflow instance (with orchestration)
+// </summary>
 instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
     HttpContext context,
     string instanceId,
@@ -1607,9 +1607,9 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
 .WithSummary("Execute action with orchestration")
 .WithDescription("Execute an action in a workflow instance with full orchestration: state reconstruction, validation, routing, transaction building, and notification. Requires X-Delegation-Token header.");
 
-/// <summary>
-/// Reject an action in a workflow instance
-/// </summary>
+// <summary>
+// Reject an action in a workflow instance
+// </summary>
 instancesGroup.MapPost("/{instanceId}/actions/{actionId}/reject", async (
     HttpContext context,
     string instanceId,
@@ -1657,9 +1657,9 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/reject", async (
 .WithSummary("Reject action in workflow")
 .WithDescription("Reject an action in a workflow instance, routing to the configured rejection target. Requires X-Delegation-Token header.");
 
-/// <summary>
-/// Get accumulated state for a workflow instance
-/// </summary>
+// <summary>
+// Get accumulated state for a workflow instance
+// </summary>
 instancesGroup.MapGet("/{instanceId}/state", async (
     HttpContext context,
     string instanceId,
@@ -1729,9 +1729,9 @@ instancesGroup.MapGet("/{instanceId}/state", async (
 .WithSummary("Get accumulated state")
 .WithDescription("Get the accumulated state from all prior actions in the workflow. Requires X-Delegation-Token header.");
 
-/// <summary>
-/// Get next available actions for a workflow instance
-/// </summary>
+// <summary>
+// Get next available actions for a workflow instance
+// </summary>
 instancesGroup.MapGet("/{instanceId}/next-actions", async (
     string instanceId,
     Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,

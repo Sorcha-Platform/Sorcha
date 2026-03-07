@@ -210,7 +210,7 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         var register = "register-test-001";
         var blueprint = await CreateAndPublishBlueprint();
 
-        // Submit multiple actions
+        // Submit multiple actions with unique InstanceId to avoid idempotency-key collisions
         for (int i = 0; i < 5; i++)
         {
             var request = new ActionSubmissionRequest
@@ -219,13 +219,15 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
                 ActionId = "1", // Action ID 1 = Submit Loan Application
                 SenderWallet = wallet,
                 RegisterAddress = register,
+                InstanceId = $"instance-paginated-{i}",
                 PayloadData = new Dictionary<string, object>
                 {
                     ["iteration"] = i
                 }
             };
 
-            await _client.PostAsJsonAsync("/api/actions", request);
+            var postResponse = await _client.PostAsJsonAsync("/api/actions", request);
+            postResponse.EnsureSuccessStatusCode();
         }
 
         // Act

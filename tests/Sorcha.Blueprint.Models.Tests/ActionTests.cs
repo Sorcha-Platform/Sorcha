@@ -123,7 +123,11 @@ public class ActionTests
         {
             Id = 0,
             Title = "Valid Title",
-            Description = ""
+            Description = "",
+            Disclosures = new List<Disclosure>
+            {
+                new Disclosure { ParticipantAddress = "p1", DataPointers = new List<string> { "/data" } }
+            }
         };
         var context = new ValidationContext(action);
         var results = new List<ValidationResult>();
@@ -178,7 +182,11 @@ public class ActionTests
         {
             Id = 0,
             Title = "Valid Title",
-            Sender = ""
+            Sender = "",
+            Disclosures = new List<Disclosure>
+            {
+                new Disclosure { ParticipantAddress = "p1", DataPointers = new List<string> { "/data" } }
+            }
         };
         var context = new ValidationContext(action);
         var results = new List<ValidationResult>();
@@ -412,7 +420,11 @@ public class ActionTests
         var action = new Models.Action
         {
             Id = 0,
-            Title = "Action Title"
+            Title = "Action Title",
+            Disclosures = new List<Disclosure>
+            {
+                new Disclosure { ParticipantAddress = "p1", DataPointers = new List<string> { "/data" } }
+            }
         };
         var context = new ValidationContext(action);
         var results = new List<ValidationResult>();

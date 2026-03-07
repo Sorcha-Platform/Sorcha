@@ -101,6 +101,11 @@ public class EncryptionBackgroundServiceTests
         _operationStore.Setup(s => s.UpdateAsync(It.IsAny<EncryptionOperation>()))
             .ReturnsAsync((EncryptionOperation op) => op);
 
+        // CheckSizeLimit must return within-limit so the pipeline proceeds past the pre-flight check
+        _encryptionPipeline.Setup(e => e.CheckSizeLimit(
+                It.IsAny<DisclosureGroup[]>(), It.IsAny<long>()))
+            .Returns((true, 1024L, 4 * 1024 * 1024L));
+
         _encryptionPipeline.Setup(e => e.EncryptDisclosedPayloadsAsync(
                 It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(EncryptionResult.Succeeded([new EncryptedPayloadGroup
@@ -231,6 +236,11 @@ public class EncryptionBackgroundServiceTests
         _operationStore.Setup(s => s.UpdateAsync(It.IsAny<EncryptionOperation>()))
             .ReturnsAsync((EncryptionOperation op) => op);
 
+        // CheckSizeLimit must pass so the pipeline reaches the encryption step
+        _encryptionPipeline.Setup(e => e.CheckSizeLimit(
+                It.IsAny<DisclosureGroup[]>(), It.IsAny<long>()))
+            .Returns((true, 1024L, 4 * 1024 * 1024L));
+
         _encryptionPipeline.Setup(e => e.EncryptDisclosedPayloadsAsync(
                 It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(EncryptionResult.Failed("P-256 key error", "wallet-recipient-001"));
@@ -277,6 +287,11 @@ public class EncryptionBackgroundServiceTests
         _operationStore.Setup(s => s.GetByIdAsync("op123")).ReturnsAsync(testOperation);
         _operationStore.Setup(s => s.UpdateAsync(It.IsAny<EncryptionOperation>()))
             .ReturnsAsync((EncryptionOperation op) => op);
+
+        // CheckSizeLimit must pass so the pipeline reaches the encryption step
+        _encryptionPipeline.Setup(e => e.CheckSizeLimit(
+                It.IsAny<DisclosureGroup[]>(), It.IsAny<long>()))
+            .Returns((true, 1024L, 4 * 1024 * 1024L));
 
         _encryptionPipeline.Setup(e => e.EncryptDisclosedPayloadsAsync(
                 It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))
@@ -378,6 +393,11 @@ public class EncryptionBackgroundServiceTests
         _operationStore.Setup(s => s.GetByIdAsync("op123")).ReturnsAsync(testOperation);
         _operationStore.Setup(s => s.UpdateAsync(It.IsAny<EncryptionOperation>()))
             .ReturnsAsync((EncryptionOperation op) => op);
+
+        // CheckSizeLimit must pass so the pipeline reaches the encryption step
+        _encryptionPipeline.Setup(e => e.CheckSizeLimit(
+                It.IsAny<DisclosureGroup[]>(), It.IsAny<long>()))
+            .Returns((true, 1024L, 4 * 1024 * 1024L));
 
         _encryptionPipeline.Setup(e => e.EncryptDisclosedPayloadsAsync(
                 It.IsAny<DisclosureGroup[]>(), It.IsAny<CancellationToken>()))

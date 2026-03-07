@@ -270,9 +270,9 @@ var registersGroup = app.MapGroup("/api/registers")
 // All register creation must go through the two-phase initiate/finalize flow.
 // See register creation endpoints below (POST /api/registers/initiate and POST /api/registers/finalize).
 
-/// <summary>
-/// Get all registers
-/// </summary>
+// <summary>
+// Get all registers
+// </summary>
 registersGroup.MapGet("/", async (
     RegisterManager manager,
     string? tenantId = null) =>
@@ -287,9 +287,9 @@ registersGroup.MapGet("/", async (
 .WithSummary("Get all registers")
 .WithDescription("Retrieves all registers, optionally filtered by tenant.");
 
-/// <summary>
-/// Get register by ID
-/// </summary>
+// <summary>
+// Get register by ID
+// </summary>
 registersGroup.MapGet("/{id}", async (
     RegisterManager manager,
     string id) =>
@@ -301,9 +301,9 @@ registersGroup.MapGet("/{id}", async (
 .WithSummary("Get register by ID")
 .WithDescription("Retrieves a specific register by its unique identifier.");
 
-/// <summary>
-/// Update register
-/// </summary>
+// <summary>
+// Update register
+// </summary>
 registersGroup.MapPut("/{id}", async (
     RegisterManager manager,
     IPeerServiceClient peerClient,
@@ -350,9 +350,9 @@ registersGroup.MapPut("/{id}", async (
 .WithSummary("Update register")
 .WithDescription("Updates register metadata and settings.");
 
-/// <summary>
-/// Delete register
-/// </summary>
+// <summary>
+// Delete register
+// </summary>
 registersGroup.MapDelete("/{id}", async (
     RegisterManager manager,
     string id,
@@ -372,14 +372,18 @@ registersGroup.MapDelete("/{id}", async (
     {
         return Results.NotFound();
     }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+    {
+        return Results.NotFound();
+    }
 })
 .WithName("DeleteRegister")
 .WithSummary("Delete register")
 .WithDescription("Deletes a register and all associated data.");
 
-/// <summary>
-/// Get register count
-/// </summary>
+// <summary>
+// Get register count
+// </summary>
 registersGroup.MapGet("/stats/count", async (RegisterManager manager) =>
 {
     var count = await manager.GetRegisterCountAsync();
@@ -398,9 +402,9 @@ var registerCreationGroup = app.MapGroup("/api/registers")
     .WithTags("Register Creation")
     .AllowAnonymous();
 
-/// <summary>
-/// Initiate register creation (Phase 1): Generate unsigned control record
-/// </summary>
+// <summary>
+// Initiate register creation (Phase 1): Generate unsigned control record
+// </summary>
 registerCreationGroup.MapPost("/initiate", async (
     IRegisterCreationOrchestrator orchestrator,
     InitiateRegisterCreationRequest request,
@@ -453,9 +457,9 @@ The pending registration expires after 5 minutes. The client must finalize withi
 - `nonce`: Replay protection nonce
 ");
 
-/// <summary>
-/// Finalize register creation (Phase 2): Verify signatures and create register
-/// </summary>
+// <summary>
+// Finalize register creation (Phase 2): Verify signatures and create register
+// </summary>
 registerCreationGroup.MapPost("/finalize", async (
     IRegisterCreationOrchestrator orchestrator,
     FinalizeRegisterCreationRequest request,
@@ -539,9 +543,9 @@ an immutable audit trail of register creation and ownership.
 var transactionsGroup = app.MapGroup("/api/registers/{registerId}/transactions")
     .WithTags("Transactions");
 
-/// <summary>
-/// Submit a transaction
-/// </summary>
+// <summary>
+// Submit a transaction
+// </summary>
 transactionsGroup.MapPost("/", async (
     TransactionManager manager,
     IEventPublisher eventPublisher,
@@ -578,9 +582,9 @@ transactionsGroup.MapPost("/", async (
 .WithDescription("Stores a transaction directly in the register. Action transactions should be submitted via the Validator Service pipeline.")
 .RequireAuthorization("CanWriteDockets");
 
-/// <summary>
-/// Get transaction by ID
-/// </summary>
+// <summary>
+// Get transaction by ID
+// </summary>
 transactionsGroup.MapGet("/{txId}", async (
     TransactionManager manager,
     string registerId,
@@ -594,9 +598,9 @@ transactionsGroup.MapGet("/{txId}", async (
 .WithDescription("Retrieves a specific transaction by its ID.")
 .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Get all transactions for a register (queryable)
-/// </summary>
+// <summary>
+// Get all transactions for a register (queryable)
+// </summary>
 transactionsGroup.MapGet("/", async (
     TransactionManager manager,
     string registerId,
@@ -638,9 +642,9 @@ var queryGroup = app.MapGroup("/api/query")
     .WithTags("Query")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Query transactions by wallet address
-/// </summary>
+// <summary>
+// Query transactions by wallet address
+// </summary>
 queryGroup.MapGet("/wallets/{address}/transactions", async (
     QueryManager manager,
     string address,
@@ -665,9 +669,9 @@ queryGroup.MapGet("/wallets/{address}/transactions", async (
 .WithSummary("Query transactions by wallet")
 .WithDescription("Retrieves all transactions for a specific wallet address.");
 
-/// <summary>
-/// Query transactions by sender
-/// </summary>
+// <summary>
+// Query transactions by sender
+// </summary>
 queryGroup.MapGet("/senders/{address}/transactions", async (
     QueryManager manager,
     string address,
@@ -688,9 +692,9 @@ queryGroup.MapGet("/senders/{address}/transactions", async (
 .WithSummary("Query transactions by sender")
 .WithDescription("Retrieves all transactions sent by a specific address.");
 
-/// <summary>
-/// Query transactions by blueprint
-/// </summary>
+// <summary>
+// Query transactions by blueprint
+// </summary>
 queryGroup.MapGet("/blueprints/{blueprintId}/transactions", async (
     QueryManager manager,
     string blueprintId,
@@ -708,9 +712,9 @@ queryGroup.MapGet("/blueprints/{blueprintId}/transactions", async (
 .WithSummary("Query transactions by blueprint")
 .WithDescription("Retrieves all transactions for a specific blueprint.");
 
-/// <summary>
-/// Get transaction statistics
-/// </summary>
+// <summary>
+// Get transaction statistics
+// </summary>
 queryGroup.MapGet("/stats", async (
     QueryManager manager,
     string registerId) =>
@@ -722,9 +726,9 @@ queryGroup.MapGet("/stats", async (
 .WithSummary("Get transaction statistics")
 .WithDescription("Retrieves comprehensive statistics for a register.");
 
-/// <summary>
-/// Query transactions by previous transaction ID (for fork detection and chain traversal)
-/// </summary>
+// <summary>
+// Query transactions by previous transaction ID (for fork detection and chain traversal)
+// </summary>
 queryGroup.MapGet("/previous/{prevTxId}/transactions", async (
     QueryManager manager,
     string prevTxId,
@@ -761,9 +765,9 @@ var docketsGroup = app.MapGroup("/api/registers/{registerId}/dockets")
     .WithTags("Dockets")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Get all dockets for a register
-/// </summary>
+// <summary>
+// Get all dockets for a register
+// </summary>
 docketsGroup.MapGet("/", async (
     IRegisterRepository repository,
     string registerId) =>
@@ -775,9 +779,9 @@ docketsGroup.MapGet("/", async (
 .WithSummary("Get all dockets")
 .WithDescription("Retrieves all dockets for a register.");
 
-/// <summary>
-/// Get docket by ID
-/// </summary>
+// <summary>
+// Get docket by ID
+// </summary>
 docketsGroup.MapGet("/{docketId}", async (
     IRegisterRepository repository,
     string registerId,
@@ -790,9 +794,9 @@ docketsGroup.MapGet("/{docketId}", async (
 .WithSummary("Get docket by ID")
 .WithDescription("Retrieves a specific docket by its ID (docket height).");
 
-/// <summary>
-/// Get transactions in a docket
-/// </summary>
+// <summary>
+// Get transactions in a docket
+// </summary>
 docketsGroup.MapGet("/{docketId}/transactions", async (
     IRegisterRepository repository,
     string registerId,
@@ -805,9 +809,9 @@ docketsGroup.MapGet("/{docketId}/transactions", async (
 .WithSummary("Get docket transactions")
 .WithDescription("Retrieves all transactions sealed in a specific docket.");
 
-/// <summary>
-/// Get the latest docket for a register
-/// </summary>
+// <summary>
+// Get the latest docket for a register
+// </summary>
 docketsGroup.MapGet("/latest", async (
     IRegisterRepository repository,
     string registerId) =>
@@ -832,9 +836,9 @@ docketsGroup.MapGet("/latest", async (
 .WithSummary("Get latest docket")
 .WithDescription("Retrieves the most recent docket (block) for a register.");
 
-/// <summary>
-/// Write a confirmed docket to the register (Validator Service only)
-/// </summary>
+// <summary>
+// Write a confirmed docket to the register (Validator Service only)
+// </summary>
 docketsGroup.MapPost("/", async (
     IRegisterRepository repository,
     string registerId,
@@ -928,9 +932,9 @@ docketsGroup.MapPost("/", async (
 // Blueprint Publishing API
 // ===========================
 
-/// <summary>
-/// Publish a blueprint to a register
-/// </summary>
+// <summary>
+// Publish a blueprint to a register
+// </summary>
 app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
     string registerId,
     PublishBlueprintToRegisterRequest request,
@@ -1073,9 +1077,9 @@ var governanceGroup = app.MapGroup("/api/registers/{registerId}/governance")
     .WithTags("Governance")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Get the current admin roster for a register
-/// </summary>
+// <summary>
+// Get the current admin roster for a register
+// </summary>
 governanceGroup.MapGet("/roster", async (
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
     string registerId) =>
@@ -1105,9 +1109,9 @@ governanceGroup.MapGet("/roster", async (
 .WithSummary("Get current admin roster")
 .WithDescription("Reconstructs the current admin roster by replaying all Control transactions for the register.");
 
-/// <summary>
-/// Get governance history (Control transactions)
-/// </summary>
+// <summary>
+// Get governance history (Control transactions)
+// </summary>
 governanceGroup.MapGet("/history", async (
     IRegisterRepository repository,
     string registerId,
@@ -1143,9 +1147,9 @@ governanceGroup.MapGet("/history", async (
 .WithSummary("Get governance history")
 .WithDescription("Retrieves paginated Control transactions that make up the governance history for a register.");
 
-/// <summary>
-/// Submit a governance proposal (add/remove member, transfer ownership)
-/// </summary>
+// <summary>
+// Submit a governance proposal (add/remove member, transfer ownership)
+// </summary>
 governanceGroup.MapPost("/propose", async (
     string registerId,
     GovernanceProposalRequest request,
@@ -1332,9 +1336,9 @@ governanceGroup.MapPost("/propose", async (
 .WithDescription("Submits a governance operation (Add, Remove, Transfer) as a Control transaction. Owner can Add/Remove without quorum. Transfer requires quorum.")
 .RequireAuthorization("CanSubmitTransactions");
 
-/// <summary>
-/// List governance proposals from Control TX history
-/// </summary>
+// <summary>
+// List governance proposals from Control TX history
+// </summary>
 governanceGroup.MapGet("/proposals", async (
     IRegisterRepository repository,
     Sorcha.Register.Core.Services.IGovernanceRosterService rosterService,
@@ -1397,9 +1401,9 @@ var cryptoPolicyGroup = app.MapGroup("/api/registers/{registerId}/crypto-policy"
     .WithTags("CryptoPolicy")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Get the active crypto policy for a register
-/// </summary>
+// <summary>
+// Get the active crypto policy for a register
+// </summary>
 cryptoPolicyGroup.MapGet("/", async (
     Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
     string registerId,
@@ -1412,9 +1416,9 @@ cryptoPolicyGroup.MapGet("/", async (
 .WithSummary("Get active crypto policy")
 .WithDescription("Returns the active cryptographic policy for this register. If no explicit policy has been set, returns the default permissive policy accepting all algorithms.");
 
-/// <summary>
-/// Get crypto policy version history for a register
-/// </summary>
+// <summary>
+// Get crypto policy version history for a register
+// </summary>
 cryptoPolicyGroup.MapGet("/history", async (
     Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
     string registerId,
@@ -1427,9 +1431,9 @@ cryptoPolicyGroup.MapGet("/history", async (
 .WithSummary("Get crypto policy version history")
 .WithDescription("Returns all crypto policy versions for this register, ordered by version number. Includes the genesis policy and all subsequent updates.");
 
-/// <summary>
-/// Submit a crypto policy update as a control transaction
-/// </summary>
+// <summary>
+// Submit a crypto policy update as a control transaction
+// </summary>
 governanceGroup.MapPost("/crypto-policy", async (
     Sorcha.Register.Service.Services.CryptoPolicyService cryptoPolicyService,
     Sorcha.Register.Core.Managers.TransactionManager transactionManager,
@@ -1521,9 +1525,9 @@ var participantsGroup = app.MapGroup("/api/registers/{registerId}/participants")
     .WithTags("Participants")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// List published participants on a register
-/// </summary>
+// <summary>
+// List published participants on a register
+// </summary>
 participantsGroup.MapGet("/", (
     ParticipantIndexService index,
     string registerId,
@@ -1538,9 +1542,9 @@ participantsGroup.MapGet("/", (
 .WithSummary("List published participants")
 .WithDescription("Returns a paginated list of published participant records on this register. Defaults to active participants only. Use status=all to include deprecated/revoked.");
 
-/// <summary>
-/// Look up a participant by wallet address
-/// </summary>
+// <summary>
+// Look up a participant by wallet address
+// </summary>
 participantsGroup.MapGet("/by-address/{walletAddress}", (
     ParticipantIndexService index,
     string registerId,
@@ -1553,9 +1557,9 @@ participantsGroup.MapGet("/by-address/{walletAddress}", (
 .WithSummary("Look up participant by wallet address")
 .WithDescription("Returns the published participant record that owns the specified wallet address on this register.");
 
-/// <summary>
-/// Get a participant by ID
-/// </summary>
+// <summary>
+// Get a participant by ID
+// </summary>
 participantsGroup.MapGet("/{participantId}", (
     ParticipantIndexService index,
     string registerId,
@@ -1568,9 +1572,9 @@ participantsGroup.MapGet("/{participantId}", (
 .WithSummary("Get participant by ID")
 .WithDescription("Returns the latest published version of a participant record by participant ID.");
 
-/// <summary>
-/// Resolve a participant's public key by wallet address
-/// </summary>
+// <summary>
+// Resolve a participant's public key by wallet address
+// </summary>
 participantsGroup.MapGet("/by-address/{walletAddress}/public-key", (
     ParticipantIndexService index,
     string registerId,
@@ -1612,9 +1616,9 @@ participantsGroup.MapGet("/by-address/{walletAddress}/public-key", (
 .WithSummary("Resolve public key by wallet address")
 .WithDescription("Returns the public key for field-level encryption. Returns 410 Gone if participant is revoked.");
 
-/// <summary>
-/// Batch resolve public keys for multiple wallet addresses
-/// </summary>
+// <summary>
+// Batch resolve public keys for multiple wallet addresses
+// </summary>
 participantsGroup.MapPost("/resolve-public-keys", (
     ParticipantIndexService index,
     string registerId,
@@ -1687,9 +1691,9 @@ var proofsGroup = app.MapGroup("/api/registers/{registerId}/proofs")
     .WithTags("ZK Proofs")
     .RequireAuthorization("CanReadTransactions");
 
-/// <summary>
-/// Generate a ZK inclusion proof for a transaction in a docket
-/// </summary>
+// <summary>
+// Generate a ZK inclusion proof for a transaction in a docket
+// </summary>
 proofsGroup.MapPost("/inclusion", async (
     IRegisterRepository repository,
     IHashProvider hashProvider,
@@ -1748,9 +1752,9 @@ proofsGroup.MapPost("/inclusion", async (
 .WithSummary("Generate ZK inclusion proof")
 .WithDescription("Generates a zero-knowledge proof that a transaction is included in a docket's Merkle tree without revealing the transaction content.");
 
-/// <summary>
-/// Verify a ZK inclusion proof
-/// </summary>
+// <summary>
+// Verify a ZK inclusion proof
+// </summary>
 proofsGroup.MapPost("/verify-inclusion", (
     VerifyInclusionProofRequest request) =>
 {
@@ -1793,9 +1797,9 @@ var adminGroup = app.MapGroup("/api/admin/registers/{registerId}")
     .RequireAuthorization("RequireAdministrator")
     .WithTags("Admin");
 
-/// <summary>
-/// Detect orphan transactions (not referenced by any docket)
-/// </summary>
+// <summary>
+// Detect orphan transactions (not referenced by any docket)
+// </summary>
 adminGroup.MapGet("/orphan-transactions", async (
     IRegisterRepository repository,
     string registerId) =>
@@ -1846,9 +1850,9 @@ adminGroup.MapGet("/orphan-transactions", async (
 .WithDescription("Finds transactions not referenced by any sealed docket. These are remnants of legacy direct-write paths.")
 .RequireAuthorization("CanWriteDockets");
 
-/// <summary>
-/// Delete orphan transactions (not referenced by any docket)
-/// </summary>
+// <summary>
+// Delete orphan transactions (not referenced by any docket)
+// </summary>
 adminGroup.MapDelete("/orphan-transactions", async (
     IRegisterRepository repository,
     string registerId) =>
@@ -1962,7 +1966,7 @@ List<string> BuildMerkleProofPath(List<string> txIds, string targetTxId, IHashPr
 }
 
 // Feature 047: Bloom filter admin endpoint (US1)
-/// <summary>Trigger a full rebuild of the bloom filter for a register.</summary>
+// <summary>Trigger a full rebuild of the bloom filter for a register.</summary>
 adminGroup.MapPost("/rebuild-index", async (
     Sorcha.Register.Service.Services.Interfaces.ILocalAddressIndex addressIndex,
     Sorcha.ServiceClients.Grpc.IWalletNotificationClient walletClient,

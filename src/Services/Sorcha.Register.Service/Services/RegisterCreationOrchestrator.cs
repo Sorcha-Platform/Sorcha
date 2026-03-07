@@ -78,6 +78,11 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         InitiateRegisterCreationRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (request.Owners == null || request.Owners.Count == 0)
+        {
+            throw new ArgumentException("At least one owner is required to create a register.");
+        }
+
         _logger.LogInformation(
             "Initiating register creation for name '{Name}' in tenant '{TenantId}' with {OwnerCount} owner(s)",
             request.Name,

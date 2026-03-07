@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using AuthenticationOptions = Microsoft.AspNetCore.Authentication.AuthenticationOptions;
 using Moq;
 using Moq.Protected;
+using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using StackExchange.Redis;
@@ -58,8 +59,13 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             services.RemoveAll<IOutputCacheStore>();
             services.AddSingleton<IOutputCacheStore, NoOpOutputCacheStore>();
 
-            // Remove Redis connection multiplexer if registered
+            // Remove Redis connection multiplexer and replace with mock
+            // (required by EventsHubNotificationBridge and other Redis-dependent services)
             services.RemoveAll<IConnectionMultiplexer>();
+            var mockMultiplexer = new Mock<IConnectionMultiplexer>();
+            var mockSubscriber = new Mock<ISubscriber>();
+            mockMultiplexer.Setup(m => m.GetSubscriber(It.IsAny<object>())).Returns(mockSubscriber.Object);
+            services.AddSingleton<IConnectionMultiplexer>(mockMultiplexer.Object);
 
             // Remove the real HTTP clients for Wallet and Register services
             // and add mock implementations
@@ -99,6 +105,13 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
         {
             services.Remove(registerClientDescriptor);
         }
+
+        var participantClientDescriptor = services.FirstOrDefault(
+            d => d.ServiceType == typeof(IParticipantServiceClient));
+        if (participantClientDescriptor != null)
+        {
+            services.Remove(participantClientDescriptor);
+        }
     }
 
     private void AddMockHttpClients(IServiceCollection services)
@@ -134,6 +147,16 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                 CreatedAt = DateTime.UtcNow.AddDays(-1),
                 UpdatedAt = DateTime.UtcNow
             });
+
+        // Mock VerifySignatureAsync - required for action submission signature verification
+        mockWalletClient
+            .Setup(x => x.VerifySignatureAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         // Mock SignTransactionAsync - required for action submission
         mockWalletClient
@@ -182,9 +205,49 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                 Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
+        // Create mock participant service client
+        var mockParticipantClient = new Mock<IParticipantServiceClient>();
+        mockParticipantClient
+            .Setup(x => x.GetByUserAndOrgAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                OrganizationId = Guid.NewGuid(),
+                DisplayName = "Test Participant",
+                Email = "test@example.com",
+                Status = "Active"
+            });
+
+        mockParticipantClient
+            .Setup(x => x.GetLinkedWalletsAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<LinkedWalletInfo>
+            {
+                new LinkedWalletInfo
+                {
+                    Id = Guid.NewGuid(),
+                    WalletAddress = "0x1234567890abcdef",
+                    Algorithm = "ED25519",
+                    Status = "Active"
+                }
+            });
+
+        mockParticipantClient
+            .Setup(x => x.GetByWalletAddressAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ParticipantInfo
+            {
+                Id = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                OrganizationId = Guid.NewGuid(),
+                DisplayName = "Test Participant",
+                Email = "test@example.com",
+                Status = "Active"
+            });
+
         // Register mock clients
         services.AddSingleton<IWalletServiceClient>(mockWalletClient.Object);
         services.AddSingleton<IRegisterServiceClient>(mockRegisterClient.Object);
+        services.AddSingleton<IParticipantServiceClient>(mockParticipantClient.Object);
     }
 
     private void SetupDefaultWalletResponses()
@@ -391,10 +454,10 @@ internal class TestAuthenticationHandler : AuthenticationHandler<AuthenticationS
     {
         var claims = new[]
         {
-            new Claim(ClaimTypes.NameIdentifier, "test-user-123"),
+            new Claim(ClaimTypes.NameIdentifier, "00000000-0000-0000-0000-000000000123"),
             new Claim(ClaimTypes.Name, "Test User"),
             new Claim(ClaimTypes.Role, "Administrator"),
-            new Claim("org_id", "test-org-456"),
+            new Claim("org_id", "00000000-0000-0000-0000-000000000456"),
             new Claim("tenant_id", "test-tenant-789"),
             new Claim("can_publish_blueprint", "true"),
             new Claim("token_type", "service")
