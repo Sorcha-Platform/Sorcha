@@ -23,7 +23,7 @@
     },
     "status": {
       "type": "string",
-      "enum": ["Active", "Deprecated", "Revoked"],
+      "enum": ["active", "Active", "deprecated", "Deprecated", "revoked", "Revoked"],
       "description": "Lifecycle status"
     },
     "version": {

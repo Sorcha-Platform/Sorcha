@@ -516,15 +516,17 @@ public class ValidatorRegistryApprovalTests
         // Arrange
         SetupValidatorInCache(TestValidatorId, ValidatorStatus.Pending);
 
+        // StackExchange.Redis 2.11+ resolves StringSetAsync(key, value, timespan)
+        // to the Expiration-based overload: StringSetAsync(RedisKey, RedisValue, Expiration, ValueCondition, CommandFlags)
         string? storedJson = null;
-        _databaseMock.Setup(d => d.StringSetAsync(
+        _databaseMock
+            .Setup(d => d.StringSetAsync(
                 It.IsAny<RedisKey>(),
                 It.IsAny<RedisValue>(),
-                It.IsAny<TimeSpan?>(),
-                It.IsAny<bool>(),
-                It.IsAny<When>(),
+                It.IsAny<Expiration>(),
+                It.IsAny<ValueCondition>(),
                 It.IsAny<CommandFlags>()))
-            .Callback<RedisKey, RedisValue, TimeSpan?, bool, When, CommandFlags>((k, v, t, b, w, c) =>
+            .Callback<RedisKey, RedisValue, Expiration, ValueCondition, CommandFlags>((k, v, e, vc, c) =>
             {
                 if (k.ToString().Contains($":validator:{TestValidatorId}"))
                     storedJson = v.ToString();

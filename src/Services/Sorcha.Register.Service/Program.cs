@@ -372,6 +372,10 @@ registersGroup.MapDelete("/{id}", async (
     {
         return Results.NotFound();
     }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+    {
+        return Results.NotFound();
+    }
 })
 .WithName("DeleteRegister")
 .WithSummary("Delete register")

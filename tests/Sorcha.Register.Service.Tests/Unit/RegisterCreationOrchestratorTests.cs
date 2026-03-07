@@ -151,7 +151,7 @@ public class RegisterCreationOrchestratorTests
         response.RegisterId.Should().HaveLength(32); // GUID without hyphens
         response.AttestationsToSign.Should().HaveCount(1);
         response.AttestationsToSign[0].Role.Should().Be(RegisterRole.Owner);
-        response.AttestationsToSign[0].AttestationData.Subject.Should().Be("did:sorcha:user-001");
+        response.AttestationsToSign[0].AttestationData.Subject.Should().Be("did:sorcha:w:wallet-001");
         response.AttestationsToSign[0].DataToSign.Should().NotBeNullOrEmpty();
         response.Nonce.Should().NotBeNullOrEmpty();
         response.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow);
@@ -196,11 +196,11 @@ public class RegisterCreationOrchestratorTests
         // Assert
         response.AttestationsToSign.Should().HaveCount(3);
         response.AttestationsToSign[0].Role.Should().Be(RegisterRole.Owner);
-        response.AttestationsToSign[0].AttestationData.Subject.Should().Be("did:sorcha:user-001");
+        response.AttestationsToSign[0].AttestationData.Subject.Should().Be("did:sorcha:w:wallet-001");
         response.AttestationsToSign[1].Role.Should().Be(RegisterRole.Admin);
-        response.AttestationsToSign[1].AttestationData.Subject.Should().Be("did:sorcha:user-002");
+        response.AttestationsToSign[1].AttestationData.Subject.Should().Be("did:sorcha:w:wallet-002");
         response.AttestationsToSign[2].Role.Should().Be(RegisterRole.Auditor);
-        response.AttestationsToSign[2].AttestationData.Subject.Should().Be("did:sorcha:user-003");
+        response.AttestationsToSign[2].AttestationData.Subject.Should().Be("did:sorcha:w:wallet-003");
     }
 
     [Fact]

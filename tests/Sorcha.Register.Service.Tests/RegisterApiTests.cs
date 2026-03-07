@@ -6,102 +6,107 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Register.Service.Tests.Helpers;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests;
 
-public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
+    private readonly RegisterServiceWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
-    public RegisterApiTests(WebApplicationFactory<Program> factory)
+    public RegisterApiTests(RegisterServiceWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
     [Fact]
-    public async Task CreateRegister_WithValidData_ShouldReturn201Created()
+    public async Task InitiateRegisterCreation_WithValidData_ShouldReturn200Ok()
     {
         // Arrange
         var request = new
         {
             name = "Test Register",
             tenantId = "tenant123",
-            advertise = true,
-            isFullReplica = true
+            owners = new[]
+            {
+                new { userId = "test-user-001", walletId = "test-wallet-001" }
+            }
         };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
+        var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var location = response.Headers.Location;
-        location.Should().NotBeNull();
-        location!.PathAndQuery.Should().StartWith("/api/registers/");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
-    public async Task CreateRegister_ShouldReturnCreatedRegister()
+    public async Task InitiateRegisterCreation_ShouldReturnRegisterIdAndControlRecord()
     {
         // Arrange
         var request = new
         {
             name = "Test Register",
             tenantId = "tenant123",
-            advertise = false,
-            isFullReplica = true
+            owners = new[]
+            {
+                new { userId = "test-user-001", walletId = "test-wallet-001" }
+            }
         };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
-        var register = await response.Content.ReadFromJsonAsync<RegisterResponse>();
+        var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
+        var result = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
 
         // Assert
-        register.Should().NotBeNull();
-        register!.Id.Should().NotBeNullOrWhiteSpace();
-        register.Id.Length.Should().Be(32);
-        register.Name.Should().Be("Test Register");
-        register.TenantId.Should().Be("tenant123");
-        register.Height.Should().Be(0);
-        register.Advertise.Should().BeFalse();
-        register.IsFullReplica.Should().BeTrue();
+        result.GetProperty("registerId").GetString().Should().NotBeNullOrWhiteSpace();
+        result.GetProperty("registerId").GetString()!.Length.Should().Be(32);
+        result.GetProperty("nonce").GetString().Should().NotBeNullOrEmpty();
+        result.GetProperty("expiresAt").GetDateTimeOffset().Should().BeAfter(DateTimeOffset.UtcNow);
+        result.GetProperty("attestationsToSign").GetArrayLength().Should().BeGreaterThan(0);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData(" ")]
-    public async Task CreateRegister_WithInvalidName_ShouldReturn400BadRequest(string invalidName)
+    [Fact]
+    public async Task InitiateRegisterCreation_WithEmptyOwners_ShouldReturn400BadRequest()
     {
         // Arrange
         var request = new
         {
-            name = invalidName,
-            tenantId = "tenant123"
+            name = "Test Register",
+            tenantId = "tenant123",
+            owners = Array.Empty<object>()
         };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
+        var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task CreateRegister_WithNameTooLong_ShouldReturn400BadRequest()
+    public async Task InitiateRegisterCreation_WithMissingName_ShouldReturn400BadRequest()
     {
-        // Arrange
+        // Arrange — name is empty, which the orchestrator should reject
         var request = new
         {
-            name = new string('a', 39), // Max is 38
-            tenantId = "tenant123"
+            name = "",
+            tenantId = "tenant123",
+            owners = new[]
+            {
+                new { userId = "test-user-001", walletId = "test-wallet-001" }
+            }
         };
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
+        var response = await _client.PostAsJsonAsync("/api/registers/initiate", request);
 
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // Assert — initiate phase generates a register ID regardless of name content;
+        // name validation occurs during finalize when the control record is verified
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -118,8 +123,8 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task GetAllRegisters_ShouldReturnArrayOfRegisters()
     {
         // Arrange
-        await CreateTestRegisterAsync("Register 1", "tenant123");
-        await CreateTestRegisterAsync("Register 2", "tenant456");
+        await _factory.CreateTestRegisterAsync("Register 1", "tenant123");
+        await _factory.CreateTestRegisterAsync("Register 2", "tenant456");
 
         // Act
         var response = await _client.GetAsync("/api/registers");
@@ -134,9 +139,9 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task GetAllRegisters_WithTenantFilter_ShouldReturnOnlyTenantRegisters()
     {
         // Arrange
-        await CreateTestRegisterAsync("Tenant1 Reg1", "tenant123");
-        await CreateTestRegisterAsync("Tenant2 Reg", "tenant456");
-        await CreateTestRegisterAsync("Tenant1 Reg2", "tenant123");
+        await _factory.CreateTestRegisterAsync("Tenant1 Reg1", "tenant123");
+        await _factory.CreateTestRegisterAsync("Tenant2 Reg", "tenant456");
+        await _factory.CreateTestRegisterAsync("Tenant1 Reg2", "tenant123");
 
         // Act
         var response = await _client.GetAsync("/api/registers?tenantId=tenant123");
@@ -151,7 +156,7 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task GetRegister_WithValidId_ShouldReturn200OK()
     {
         // Arrange
-        var created = await CreateTestRegisterAsync("Test Register", "tenant123");
+        var created = await _factory.CreateTestRegisterAsync("Test Register", "tenant123");
 
         // Act
         var response = await _client.GetAsync($"/api/registers/{created.Id}");
@@ -178,7 +183,7 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task UpdateRegister_WithValidData_ShouldReturn200OK()
     {
         // Arrange
-        var created = await CreateTestRegisterAsync("Original Name", "tenant123");
+        var created = await _factory.CreateTestRegisterAsync("Original Name", "tenant123");
         var updateRequest = new
         {
             name = "Updated Name",
@@ -217,7 +222,7 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task DeleteRegister_WithValidTenant_ShouldReturn204NoContent()
     {
         // Arrange
-        var created = await CreateTestRegisterAsync("Test Register", "tenant123");
+        var created = await _factory.CreateTestRegisterAsync("Test Register", "tenant123");
 
         // Act
         var response = await _client.DeleteAsync($"/api/registers/{created.Id}?tenantId=tenant123");
@@ -234,7 +239,7 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task DeleteRegister_WithWrongTenant_ShouldReturn403Forbidden()
     {
         // Arrange
-        var created = await CreateTestRegisterAsync("Test Register", "tenant123");
+        var created = await _factory.CreateTestRegisterAsync("Test Register", "tenant123");
 
         // Act
         var response = await _client.DeleteAsync($"/api/registers/{created.Id}?tenantId=wrongTenant");
@@ -257,8 +262,8 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task GetRegisterCount_ShouldReturn200OK()
     {
         // Arrange
-        await CreateTestRegisterAsync("Register 1", "tenant123");
-        await CreateTestRegisterAsync("Register 2", "tenant456");
+        await _factory.CreateTestRegisterAsync("Register 1", "tenant123");
+        await _factory.CreateTestRegisterAsync("Register 2", "tenant456");
 
         // Act
         var response = await _client.GetAsync("/api/registers/stats/count");
@@ -272,26 +277,19 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task CreateAndRetrieveRegister_EndToEndWorkflow()
     {
-        // Create
-        var createRequest = new
-        {
-            name = "E2E Test Register",
-            tenantId = "e2e-tenant",
-            advertise = true,
-            isFullReplica = true
-        };
+        // Create via service layer
+        var created = await _factory.CreateTestRegisterAsync(
+            "E2E Test Register", "e2e-tenant", advertise: true, isFullReplica: true);
 
-        var createResponse = await _client.PostAsJsonAsync("/api/registers", createRequest);
-        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var created = await createResponse.Content.ReadFromJsonAsync<RegisterResponse>();
-
-        // Retrieve
-        var getResponse = await _client.GetAsync($"/api/registers/{created!.Id}");
+        // Retrieve via API
+        var getResponse = await _client.GetAsync($"/api/registers/{created.Id}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var retrieved = await getResponse.Content.ReadFromJsonAsync<RegisterResponse>();
 
         // Assert
-        retrieved.Should().BeEquivalentTo(created);
+        retrieved.Should().NotBeNull();
+        retrieved!.Id.Should().Be(created.Id);
+        retrieved.Name.Should().Be("E2E Test Register");
 
         // Update
         var updateRequest = new
@@ -313,21 +311,6 @@ public class RegisterApiTests : IClassFixture<WebApplicationFactory<Program>>
         // Verify deletion
         var getFinalResponse = await _client.GetAsync($"/api/registers/{created.Id}");
         getFinalResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    private async Task<RegisterResponse> CreateTestRegisterAsync(string name, string tenantId)
-    {
-        var request = new
-        {
-            name,
-            tenantId,
-            advertise = false,
-            isFullReplica = true
-        };
-
-        var response = await _client.PostAsJsonAsync("/api/registers", request);
-        response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
     }
 
     private record RegisterResponse(

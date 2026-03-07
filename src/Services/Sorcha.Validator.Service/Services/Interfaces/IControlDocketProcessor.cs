@@ -246,13 +246,13 @@ public record RegisterMetadataUpdatePayload : ControlPayload
 public record PolicyUpdatePayload : ControlPayload
 {
     /// <summary>Full policy snapshot with version incremented</summary>
-    public required Sorcha.Register.Models.RegisterPolicy Policy { get; init; }
+    public Sorcha.Register.Models.RegisterPolicy? Policy { get; init; }
 
     /// <summary>Transition mode when changing registrationMode from public to consent</summary>
     public Sorcha.Register.Models.TransitionMode? TransitionMode { get; init; }
 
     /// <summary>DID of the proposer</summary>
-    public required string UpdatedBy { get; init; }
+    public string? UpdatedBy { get; init; }
 }
 
 /// <summary>

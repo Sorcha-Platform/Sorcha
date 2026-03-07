@@ -8,6 +8,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Register.Service.Services;
+using Sorcha.Register.Service.Tests.Helpers;
 using Sorcha.ServiceClients.Register.Models;
 using Xunit;
 
@@ -17,9 +18,9 @@ namespace Sorcha.Register.Service.Tests;
 /// Integration tests for the batch public key resolution endpoint (T011).
 /// Tests the POST /api/registers/{registerId}/participants/resolve-public-keys endpoint.
 /// </summary>
-public class BatchPublicKeyResolutionTests : IClassFixture<WebApplicationFactory<Program>>
+public class BatchPublicKeyResolutionTests : IClassFixture<RegisterServiceWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly RegisterServiceWebApplicationFactory _factory;
     private readonly HttpClient _client;
     private readonly string _registerId = "test-register-batch";
 
@@ -29,7 +30,7 @@ public class BatchPublicKeyResolutionTests : IClassFixture<WebApplicationFactory
         PropertyNameCaseInsensitive = true
     };
 
-    public BatchPublicKeyResolutionTests(WebApplicationFactory<Program> factory)
+    public BatchPublicKeyResolutionTests(RegisterServiceWebApplicationFactory factory)
     {
         _factory = factory;
         _client = factory.CreateClient();
