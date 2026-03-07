@@ -5,36 +5,38 @@
 
 ## Summary
 
-Two-part feature: (1) New standalone Peer Router app — a lightweight gRPC rendezvous node for P2P network bootstrapping with a real-time debug event stream and optional relay mode. (2) Peer Service completion — wire circuit breaker into connection pool, migrate transaction queue from SQLite to PostgreSQL via PeerDbContext.
+Build a standalone Peer Router application (`src/Apps/Sorcha.PeerRouter`) that serves as a P2P network bootstrap/rendezvous point with real-time debug visibility. Simultaneously complete the Peer Service by wiring the existing circuit breaker into the connection pool and migrating the transaction queue from SQLite to PostgreSQL via the existing `PeerDbContext`. The router implements the same gRPC peer protocol (discovery, heartbeat, communication) so peers treat it identically to any other peer, while also exposing HTTP endpoints for SSE event streaming, a debug UI page, and health checks.
 
 ## Technical Context
 
-**Language/Version**: C# 13 / .NET 10
-**Primary Dependencies**: Grpc.AspNetCore, Google.Protobuf, Grpc.Tools (PeerRouter); existing Peer Service deps (Peer Service fixes)
-**Storage**: In-memory only (PeerRouter); PostgreSQL via EF Core (Peer Service queue migration)
-**Testing**: xUnit + FluentAssertions + Moq
-**Target Platform**: Linux containers (Docker), Windows development
-**Project Type**: Standalone web app (PeerRouter) + service modifications (Peer Service)
-**Performance Goals**: Peer discovery within 30 seconds of startup; event stream latency <1 second
-**Constraints**: PeerRouter has zero external dependencies (no DB, no Redis, no message broker)
-**Scale/Scope**: Tens to low hundreds of peers; 1 new project + modifications to 1 existing service
+**Language/Version**: C# 13 / .NET 10.0
+**Primary Dependencies**: Grpc.AspNetCore (gRPC server), ASP.NET Core Minimal APIs (HTTP/SSE), Entity Framework Core (PostgreSQL migration)
+**Storage**: None for PeerRouter (fully in-memory); PostgreSQL via PeerDbContext for Peer Service queue migration
+**Testing**: xUnit + FluentAssertions + Moq (unit), integration tests for gRPC services
+**Target Platform**: Linux containers (Docker), .NET Aspire orchestration for local dev
+**Project Type**: Multi-service (new app + existing service modifications)
+**Performance Goals**: Router handles tens to low hundreds of peers; SSE event stream at browser-interactive latency
+**Constraints**: PeerRouter must have zero external infrastructure dependencies (no DB, no Redis, no broker)
+**Scale/Scope**: 1 new app project + 1 new test project + modifications to Peer Service + Docker/Aspire integration
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| Gate | Status | Notes |
-|------|--------|-------|
-| I. Microservices-First | PASS | PeerRouter is independently deployable, no coupling to Peer Service at runtime |
-| II. Security First | PASS | PeerRouter is intentionally anonymous (network utility). Peer Service retains JWT auth |
-| III. API Documentation | PASS | PeerRouter endpoints documented with OpenAPI. Peer Service endpoints already documented |
-| IV. Testing Requirements | PASS | Tests planned for all new code (router + service fixes) |
-| V. Code Quality | PASS | async/await, DI, nullable enabled, C# 13 |
-| VI. Blueprint Standards | N/A | No blueprint changes |
-| VII. Domain-Driven Design | PASS | Uses existing domain language (Peer, Register, etc.) |
-| VIII. Observability | PASS | PeerRouter has structured event logging; Peer Service already has OpenTelemetry |
+| Principle | Status | Notes |
+|-----------|--------|-------|
+| I. Microservices-First | PASS | PeerRouter is independently deployable. No upward dependencies. |
+| II. Security First | PASS | Router accepts anonymous connections (spec FR-1.8) — appropriate for a dev/debug tool. No secrets stored. Relay mode is opt-in flag. |
+| III. API Documentation | PASS | HTTP endpoints use Minimal APIs. No Swagger. Debug page is static HTML. Health endpoint included. XML docs on public APIs. |
+| IV. Testing Requirements | PASS | Unit tests for routing table, event buffer, gRPC service handlers. Integration tests for SSE stream. Target >85% on new code. |
+| V. Code Quality | PASS | async/await for I/O, DI throughout, nullable reference types enabled, .NET 10/C# 13. |
+| VI. Blueprint Creation | N/A | No blueprints in this feature. |
+| VII. Domain-Driven Design | PASS | Uses ubiquitous language: Peer, Register, Participant. |
+| VIII. Observability | PASS | Structured logging, health endpoints (/health, /alive). Event stream itself provides observability. |
 
-**Post-Phase 1 re-check**: PeerRouter skips OpenTelemetry (not a production service). Justified — it's a debugging tool, and adding Aspire/OTel would add unnecessary dependencies. Event stream provides equivalent observability for its use case.
+**Post-Phase 1 re-check**: All gates still pass. The data model (RoutingEntry, RouterEvent, QueuedTransaction) and contracts (gRPC + HTTP) align with constitution principles. No Scalar needed for PeerRouter (it's a debug tool, not a documented API service).
+
+**Noted deviation**: PeerRouter does NOT use `Sorcha.ServiceDefaults` (no Aspire telemetry needed for a lightweight debug tool). This is consistent with the existing `Sorcha.Demo` and `Sorcha.McpServer` patterns.
 
 ## Project Structure
 
@@ -44,70 +46,98 @@ Two-part feature: (1) New standalone Peer Router app — a lightweight gRPC rend
 specs/053-peer-router-completion/
 ├── plan.md              # This file
 ├── spec.md              # Feature specification
-├── research.md          # Phase 0 research findings
-├── data-model.md        # Entity definitions
-├── quickstart.md        # Getting started guide
-├── contracts/           # API contracts
-│   └── peer-router-api.md
-├── checklists/
-│   └── requirements.md  # Spec quality checklist
-└── tasks.md             # Task list (generated by /speckit.tasks)
+├── research.md          # Phase 0: codebase exploration findings
+├── data-model.md        # Phase 1: entity definitions and state transitions
+├── quickstart.md        # Phase 1: running the router locally/Docker/Aspire
+├── contracts/
+│   └── peer-router-api.md  # Phase 1: HTTP + gRPC API contract
+└── tasks.md             # Phase 2: generated by /speckit.tasks
 ```
 
 ### Source Code (repository root)
 
 ```text
-src/Apps/Sorcha.PeerRouter/              # NEW — Standalone peer router app
-├── Sorcha.PeerRouter.csproj
-├── Program.cs                           # CLI args, Kestrel setup, gRPC + HTTP
-├── Routing/
-│   ├── PeerRoutingTable.cs              # ConcurrentDictionary-based routing table
-│   └── RelayForwarder.cs                # Optional gRPC message forwarding
-├── GrpcServices/
-│   ├── RouterDiscoveryService.cs        # Implements peer_discovery.proto
-│   ├── RouterHeartbeatService.cs        # Implements peer_heartbeat.proto
-│   └── RouterRelayService.cs            # Implements peer_communication.proto (relay mode)
-├── Events/
-│   ├── RouterEvent.cs                   # Structured event model
-│   ├── EventBuffer.cs                   # Ring buffer (ConcurrentQueue)
-│   └── EventStreamEndpoints.cs          # GET /events, GET /peers, GET /health
-├── wwwroot/
-│   └── index.html                       # Static debug page (embedded)
-├── Dockerfile                           # 2-stage build
-└── appsettings.json                     # Default configuration
+src/Apps/Sorcha.PeerRouter/              # NEW — Standalone peer router application
+├── Program.cs                           # Entry point, CLI arg parsing, service wiring
+├── Sorcha.PeerRouter.csproj             # Project file (Grpc.AspNetCore, no ServiceDefaults)
+├── Dockerfile                           # 2-stage build (build + runtime)
+├── Properties/
+│   └── launchSettings.json
+├── GrpcServices/                        # gRPC service implementations
+│   ├── RouterDiscoveryService.cs        # PeerDiscovery protocol (register, list, ping, exchange, find)
+│   ├── RouterHeartbeatService.cs        # PeerHeartbeat protocol (send, stream)
+│   └── RouterCommunicationService.cs    # PeerCommunication relay (send message, when enabled)
+├── Services/
+│   ├── RoutingTable.cs                  # In-memory ConcurrentDictionary<PeerId, RoutingEntry>
+│   ├── EventBuffer.cs                   # Circular ConcurrentQueue<RouterEvent> with SSE broadcast
+│   └── PeerTimeoutService.cs            # IHostedService — periodic health check sweep
+├── Models/
+│   ├── RoutingEntry.cs                  # Peer routing table entry
+│   ├── RouterEvent.cs                   # Debug event record
+│   ├── RouterEventType.cs              # Event type enum
+│   └── RouterConfiguration.cs           # CLI args → config POCO
+├── Endpoints/
+│   ├── EventStreamEndpoints.cs          # GET /events, GET /events?follow=true (SSE)
+│   ├── PeerEndpoints.cs                 # GET /peers
+│   └── HealthEndpoints.cs              # GET /health
+└── wwwroot/
+    └── debug.html                       # Static debug page (embedded, no framework)
 
 src/Services/Sorcha.Peer.Service/        # MODIFIED — Circuit breaker + SQLite removal
-├── Connection/
-│   └── PeerConnectionPool.cs            # MODIFIED — Add circuit breaker check
-├── Distribution/
-│   └── TransactionQueueManager.cs       # MODIFIED — Replace SQLite with EF Core
+├── Services/
+│   └── PeerConnectionPool.cs            # Add circuit breaker state check before connect
+├── Services/
+│   └── TransactionQueueManager.cs       # Replace SQLite with PeerDbContext
 ├── Data/
-│   └── PeerDbContext.cs                 # MODIFIED — Add QueuedTransaction entity
-│   └── Migrations/                      # NEW — Migration for queued_transactions table
-└── Sorcha.Peer.Service.csproj           # MODIFIED — Remove Microsoft.Data.Sqlite
+│   └── PeerDbContext.cs                 # Add QueuedTransaction DbSet
+├── Models/
+│   └── QueuedTransaction.cs             # New EF Core entity
+└── Sorcha.Peer.Service.csproj           # Remove Microsoft.Data.Sqlite reference
 
-tests/Sorcha.PeerRouter.Tests/           # NEW — Router tests
-├── Sorcha.PeerRouter.Tests.csproj
-├── Routing/
-│   └── PeerRoutingTableTests.cs
+tests/Sorcha.PeerRouter.Tests/           # NEW — Unit tests for router
+├── Services/
+│   ├── RoutingTableTests.cs
+│   └── EventBufferTests.cs
 ├── GrpcServices/
 │   ├── RouterDiscoveryServiceTests.cs
 │   └── RouterHeartbeatServiceTests.cs
-├── Events/
-│   ├── EventBufferTests.cs
-│   └── EventStreamEndpointTests.cs
-└── Integration/
-    └── PeerRouterIntegrationTests.cs
+└── Endpoints/
+    └── EventStreamEndpointTests.cs
 
-tests/Sorcha.Peer.Service.Tests/         # MODIFIED — Updated tests
-├── Connection/
-│   └── PeerConnectionPoolTests.cs       # MODIFIED — Circuit breaker tests
-└── Distribution/
-    └── TransactionQueueManagerTests.cs   # MODIFIED — PostgreSQL queue tests
+tests/Sorcha.Peer.Service.Tests/         # MODIFIED — Tests for queue migration + circuit breaker
+├── Services/
+│   ├── TransactionQueueManagerTests.cs  # Updated for PostgreSQL path
+│   └── PeerConnectionPoolTests.cs       # New circuit breaker integration tests
+
+docker-compose.yml                       # Add peer-router service (profiles: [tools])
+src/Apps/Sorcha.AppHost/Program.cs       # Add PeerRouter project reference
 ```
 
-**Structure Decision**: New standalone app under `src/Apps/` following the established pattern (McpServer, Demo). Peer Service modifications are surgical — two files changed, one entity added to existing DbContext. Test project follows standard naming convention.
+**Structure Decision**: PeerRouter follows the lightweight app pattern (like `Sorcha.McpServer`/`Sorcha.Demo`) — WebApplication with gRPC + Minimal APIs, no database, no ServiceDefaults. Peer Service modifications are surgical changes to existing files, plus one new entity and one EF Core migration.
+
+## Research Summary
+
+Key findings from Phase 0 research (see [research.md](research.md)):
+
+1. **Proto sharing**: PeerRouter references Peer Service protos via relative path with `GrpcServices="Server"` — established Sorcha pattern
+2. **Peer Service is ~90-95% complete**: StreamHeartbeat already implemented, circuit breaker partially wired, only connection pool integration and SQLite removal remain
+3. **App pattern**: Follows lightweight app pattern (no ServiceDefaults, no Aspire telemetry)
+4. **SSE**: ASP.NET Core minimal API with `text/event-stream` and `IAsyncEnumerable<RouterEvent>` — no SignalR needed
+5. **Event buffer**: `ConcurrentQueue` with configurable max size (default 1000), FIFO eviction
+6. **Peer timeout**: Configurable (default 60s), unhealthy peers retained in routing table for debug visibility
+7. **Relay mode**: Opt-in via `--enable-relay`, unary forwarding only, no queuing/persistence
+8. **SQLite→PostgreSQL**: Add `QueuedTransaction` entity to `PeerDbContext`, remove `Microsoft.Data.Sqlite`, keep `ConcurrentQueue` as hot path
+
+## Artifacts Generated
+
+| Artifact | Path | Status |
+|----------|------|--------|
+| Research | [research.md](research.md) | Complete |
+| Data Model | [data-model.md](data-model.md) | Complete |
+| API Contract | [contracts/peer-router-api.md](contracts/peer-router-api.md) | Complete |
+| Quickstart | [quickstart.md](quickstart.md) | Complete |
+| Tasks | tasks.md | Pending — run `/speckit.tasks` |
 
 ## Complexity Tracking
 
-No constitution violations. PeerRouter is a single project with minimal dependencies. Peer Service changes are contained within existing architecture.
+No constitution violations requiring justification. The feature introduces one new project (PeerRouter) which is warranted by the spec requirement for a standalone, zero-dependency debug tool that cannot be folded into the existing Peer Service.

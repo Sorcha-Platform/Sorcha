@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Sorcha.PeerRouter</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.AspNetCore.Server.Reflection" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference proto files from Peer Service with Server-only generation.
+         PeerRouter only receives gRPC calls from peers, it does not make outgoing calls. -->
+    <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\peer_discovery.proto"
+              GrpcServices="Server"
+              Link="Protos\peer_discovery.proto" />
+    <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\peer_heartbeat.proto"
+              GrpcServices="Server"
+              Link="Protos\peer_heartbeat.proto" />
+    <Protobuf Include="..\..\Services\Sorcha.Peer.Service\Protos\peer_communication.proto"
+              GrpcServices="Server"
+              Link="Protos\peer_communication.proto" />
+  </ItemGroup>
+
+</Project>
