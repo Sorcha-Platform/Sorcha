@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sorcha.Peer.Service.Data;
@@ -11,9 +12,11 @@ using Sorcha.Peer.Service.Data;
 namespace Sorcha.Peer.Service.Data.Migrations
 {
     [DbContext(typeof(PeerDbContext))]
-    partial class PeerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260307093048_AddQueuedTransactions")]
+    partial class AddQueuedTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

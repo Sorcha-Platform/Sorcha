@@ -38,8 +38,14 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
             new Mock<ILogger<PeerListManager>>().Object,
             Options.Create(_config));
 
+        var loggerFactoryMock = new Mock<ILoggerFactory>();
+        loggerFactoryMock
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new Mock<ILogger>().Object);
+
         var connectionPool = new PeerConnectionPool(
             new Mock<ILogger<PeerConnectionPool>>().Object,
+            loggerFactoryMock.Object,
             peerListManager,
             Options.Create(_config),
             new PeerServiceMetrics(),
@@ -203,8 +209,14 @@ public class RegisterSyncBackgroundServiceWithDbTests : IDisposable
             new Mock<ILogger<PeerListManager>>().Object,
             Options.Create(config));
 
+        var loggerFactoryMock2 = new Mock<ILoggerFactory>();
+        loggerFactoryMock2
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new Mock<ILogger>().Object);
+
         var connectionPool = new PeerConnectionPool(
             new Mock<ILogger<PeerConnectionPool>>().Object,
+            loggerFactoryMock2.Object,
             peerListManager,
             Options.Create(config),
             new PeerServiceMetrics(),

@@ -1,69 +1,38 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
+using Sorcha.Peer.Service.Data;
 using System.Collections.Concurrent;
 
 namespace Sorcha.Peer.Service.Distribution;
 
 /// <summary>
-/// Manages queuing of transactions for offline mode and retry logic
+/// Manages queuing of transactions for offline mode and retry logic.
+/// Persists queued transactions to PostgreSQL via PeerDbContext.
 /// </summary>
 public class TransactionQueueManager : IDisposable
 {
     private readonly ILogger<TransactionQueueManager> _logger;
     private readonly OfflineModeConfiguration _configuration;
     private readonly ConcurrentQueue<QueuedTransaction> _queue;
-    private readonly SqliteConnection? _dbConnection;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly SemaphoreSlim _dbLock = new(1, 1);
-    private readonly SemaphoreSlim _initLock = new(1, 1);
-    private bool _initialized;
     private bool _disposed;
 
     public TransactionQueueManager(
         ILogger<TransactionQueueManager> logger,
-        IOptions<PeerServiceConfiguration> configuration)
+        IOptions<PeerServiceConfiguration> configuration,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value?.OfflineMode ?? throw new ArgumentNullException(nameof(configuration));
         _queue = new ConcurrentQueue<QueuedTransaction>();
-
-        // Initialize persistence if enabled
-        if (_configuration.QueuePersistence)
-        {
-            var dbPath = _configuration.PersistencePath;
-            var directory = Path.GetDirectoryName(dbPath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            _dbConnection = new SqliteConnection($"Data Source={dbPath}");
-            _dbConnection.Open();
-        }
-    }
-
-    private async Task EnsureInitializedAsync()
-    {
-        if (_initialized)
-            return;
-
-        await _initLock.WaitAsync();
-        try
-        {
-            if (!_initialized)
-            {
-                await InitializeDatabaseAsync();
-                _initialized = true;
-            }
-        }
-        finally
-        {
-            _initLock.Release();
-        }
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -71,8 +40,6 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task<bool> EnqueueAsync(TransactionNotification transaction, CancellationToken cancellationToken = default)
     {
-        await EnsureInitializedAsync();
-
         if (transaction == null)
             throw new ArgumentNullException(nameof(transaction));
 
@@ -127,8 +94,6 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task MarkAsProcessedAsync(string id, CancellationToken cancellationToken = default)
     {
-        await EnsureInitializedAsync();
-
         _logger.LogDebug("Marked transaction {Id} as processed", id);
 
         if (_configuration.QueuePersistence)
@@ -142,8 +107,6 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task<bool> MarkAsFailedAsync(QueuedTransaction transaction, CancellationToken cancellationToken = default)
     {
-        await EnsureInitializedAsync();
-
         if (transaction == null)
             return false;
 
@@ -193,50 +156,24 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     public async Task LoadFromDatabaseAsync(CancellationToken cancellationToken = default)
     {
-        await EnsureInitializedAsync();
-
-        if (!_configuration.QueuePersistence || _dbConnection == null)
+        if (!_configuration.QueuePersistence || _scopeFactory == null)
             return;
 
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            using var command = _dbConnection.CreateCommand();
-            command.CommandText = @"
-                SELECT id, transaction_id, origin_peer_id, timestamp, data_size, data_hash,
-                       gossip_round, hop_count, ttl, has_full_data, transaction_data,
-                       enqueued_at, retry_count, status
-                FROM transaction_queue
-                WHERE status = 'Pending'
-                ORDER BY enqueued_at";
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<PeerDbContext>();
 
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            var entities = await context.QueuedTransactions
+                .Where(e => e.Status == QueueStatus.Pending.ToString())
+                .OrderBy(e => e.EnqueuedAt)
+                .ToListAsync(cancellationToken);
+
             var loadedCount = 0;
-
-            while (await reader.ReadAsync(cancellationToken))
+            foreach (var entity in entities)
             {
-                var queuedTx = new QueuedTransaction
-                {
-                    Id = reader.GetString(0),
-                    Transaction = new TransactionNotification
-                    {
-                        TransactionId = reader.GetString(1),
-                        OriginPeerId = reader.GetString(2),
-                        Timestamp = DateTimeOffset.Parse(reader.GetString(3)),
-                        DataSize = reader.GetInt32(4),
-                        DataHash = reader.GetString(5),
-                        GossipRound = reader.GetInt32(6),
-                        HopCount = reader.GetInt32(7),
-                        TTL = reader.GetInt32(8),
-                        HasFullData = reader.GetBoolean(9),
-                        TransactionData = reader.IsDBNull(10) ? null : (byte[])reader.GetValue(10)
-                    },
-                    EnqueuedAt = DateTimeOffset.Parse(reader.GetString(11)),
-                    RetryCount = reader.GetInt32(12),
-                    Status = Enum.Parse<QueueStatus>(reader.GetString(13))
-                };
-
-                _queue.Enqueue(queuedTx);
+                _queue.Enqueue(entity.ToDomain());
                 loadedCount++;
             }
 
@@ -253,82 +190,50 @@ public class TransactionQueueManager : IDisposable
     }
 
     /// <summary>
-    /// Initializes the database schema
-    /// </summary>
-    private async Task InitializeDatabaseAsync()
-    {
-        if (_dbConnection == null)
-            return;
-
-        await _dbLock.WaitAsync();
-        try
-        {
-            using var command = _dbConnection.CreateCommand();
-            command.CommandText = @"
-                CREATE TABLE IF NOT EXISTS transaction_queue (
-                    id TEXT PRIMARY KEY,
-                    transaction_id TEXT NOT NULL,
-                    origin_peer_id TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    data_size INTEGER NOT NULL,
-                    data_hash TEXT NOT NULL,
-                    gossip_round INTEGER NOT NULL,
-                    hop_count INTEGER NOT NULL,
-                    ttl INTEGER NOT NULL,
-                    has_full_data INTEGER NOT NULL,
-                    transaction_data BLOB,
-                    enqueued_at TEXT NOT NULL,
-                    retry_count INTEGER NOT NULL,
-                    status TEXT NOT NULL
-                )";
-
-            await command.ExecuteNonQueryAsync();
-            _logger.LogDebug("Transaction queue database initialized");
-        }
-        finally
-        {
-            _dbLock.Release();
-        }
-    }
-
-    /// <summary>
     /// Persists a transaction to the database
     /// </summary>
     private async Task PersistTransactionAsync(QueuedTransaction queuedTx, CancellationToken cancellationToken)
     {
-        if (_dbConnection == null)
+        if (_scopeFactory == null)
             return;
 
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            using var command = _dbConnection.CreateCommand();
-            command.CommandText = @"
-                INSERT OR REPLACE INTO transaction_queue
-                (id, transaction_id, origin_peer_id, timestamp, data_size, data_hash,
-                 gossip_round, hop_count, ttl, has_full_data, transaction_data,
-                 enqueued_at, retry_count, status)
-                VALUES ($id, $txId, $originPeer, $timestamp, $dataSize, $dataHash,
-                        $gossipRound, $hopCount, $ttl, $hasFullData, $txData,
-                        $enqueuedAt, $retryCount, $status)";
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<PeerDbContext>();
 
-            var tx = queuedTx.Transaction;
-            command.Parameters.AddWithValue("$id", queuedTx.Id);
-            command.Parameters.AddWithValue("$txId", tx.TransactionId);
-            command.Parameters.AddWithValue("$originPeer", tx.OriginPeerId);
-            command.Parameters.AddWithValue("$timestamp", tx.Timestamp.ToString("o"));
-            command.Parameters.AddWithValue("$dataSize", tx.DataSize);
-            command.Parameters.AddWithValue("$dataHash", tx.DataHash);
-            command.Parameters.AddWithValue("$gossipRound", tx.GossipRound);
-            command.Parameters.AddWithValue("$hopCount", tx.HopCount);
-            command.Parameters.AddWithValue("$ttl", tx.TTL);
-            command.Parameters.AddWithValue("$hasFullData", tx.HasFullData ? 1 : 0);
-            command.Parameters.AddWithValue("$txData", (object?)tx.TransactionData ?? DBNull.Value);
-            command.Parameters.AddWithValue("$enqueuedAt", queuedTx.EnqueuedAt.ToString("o"));
-            command.Parameters.AddWithValue("$retryCount", queuedTx.RetryCount);
-            command.Parameters.AddWithValue("$status", queuedTx.Status.ToString());
+            var entity = QueuedTransactionEntity.FromDomain(queuedTx);
+            var existing = await context.QueuedTransactions.FindAsync([entity.Id], cancellationToken);
 
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (existing != null)
+            {
+                existing.RetryCount = entity.RetryCount;
+                existing.LastAttemptAt = entity.LastAttemptAt;
+                existing.Status = entity.Status;
+            }
+            else
+            {
+                context.QueuedTransactions.Add(entity);
+            }
+
+            await context.SaveChangesAsync(cancellationToken);
+
+            // Enforce max queue size: trim oldest entries if over limit
+            var totalCount = await context.QueuedTransactions.CountAsync(cancellationToken);
+            if (totalCount > _configuration.MaxQueueSize)
+            {
+                var excess = totalCount - _configuration.MaxQueueSize;
+                var oldest = await context.QueuedTransactions
+                    .OrderBy(e => e.EnqueuedAt)
+                    .Take(excess)
+                    .ToListAsync(cancellationToken);
+
+                context.QueuedTransactions.RemoveRange(oldest);
+                await context.SaveChangesAsync(cancellationToken);
+
+                _logger.LogWarning("Trimmed {Count} oldest transactions from queue database to enforce max size", excess);
+            }
         }
         catch (Exception ex)
         {
@@ -345,16 +250,24 @@ public class TransactionQueueManager : IDisposable
     /// </summary>
     private async Task DeleteTransactionAsync(string id, CancellationToken cancellationToken)
     {
-        if (_dbConnection == null)
+        if (_scopeFactory == null)
             return;
 
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            using var command = _dbConnection.CreateCommand();
-            command.CommandText = "DELETE FROM transaction_queue WHERE id = $id";
-            command.Parameters.AddWithValue("$id", id);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<PeerDbContext>();
+
+            if (Guid.TryParse(id, out var guid))
+            {
+                var entity = await context.QueuedTransactions.FindAsync([guid], cancellationToken);
+                if (entity != null)
+                {
+                    context.QueuedTransactions.Remove(entity);
+                    await context.SaveChangesAsync(cancellationToken);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -370,9 +283,7 @@ public class TransactionQueueManager : IDisposable
     {
         if (!_disposed)
         {
-            _initLock.Dispose();
             _dbLock.Dispose();
-            _dbConnection?.Dispose();
             _disposed = true;
         }
     }

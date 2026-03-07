@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sorcha Peer Router - Debug Console</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Consolas, monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+        }
+
+        header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 18px;
+            color: #58a6ff;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-connected { background: #238636; color: #fff; }
+        .status-disconnected { background: #da3633; color: #fff; }
+        .status-connecting { background: #d29922; color: #fff; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 16px 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #30363d;
+            font-size: 14px;
+            font-weight: 600;
+            color: #8b949e;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-body {
+            padding: 0;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .health-card {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .health-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #58a6ff;
+        }
+
+        .health-card .label {
+            font-size: 11px;
+            color: #8b949e;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            text-align: left;
+            padding: 8px 12px;
+            background: #0d1117;
+            color: #8b949e;
+            font-weight: 600;
+            border-bottom: 1px solid #30363d;
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #21262d;
+        }
+
+        tr:hover td { background: #1c2128; }
+
+        .peer-healthy { color: #3fb950; }
+        .peer-unhealthy { color: #f85149; }
+
+        .event-row {
+            padding: 8px 12px;
+            border-bottom: 1px solid #21262d;
+            font-size: 13px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .event-row:hover { background: #1c2128; }
+
+        .event-type {
+            font-weight: 600;
+            min-width: 130px;
+            font-size: 12px;
+        }
+
+        .event-type-PeerConnected { color: #3fb950; }
+        .event-type-PeerDisconnected { color: #f85149; }
+        .event-type-PeerHeartbeat { color: #58a6ff; }
+        .event-type-RegisterAdvertised { color: #d2a8ff; }
+        .event-type-PeerListRequested { color: #79c0ff; }
+        .event-type-PeerExchanged { color: #d29922; }
+        .event-type-RelayForwarded { color: #f0883e; }
+        .event-type-Error { color: #ff7b72; }
+
+        .event-time {
+            color: #484f58;
+            font-size: 12px;
+            min-width: 80px;
+        }
+
+        .event-peer {
+            color: #c9d1d9;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+        }
+
+        .event-detail {
+            color: #8b949e;
+            font-size: 12px;
+            flex: 1;
+        }
+
+        .no-data {
+            padding: 24px;
+            text-align: center;
+            color: #484f58;
+            font-style: italic;
+        }
+
+        .event-count {
+            font-size: 12px;
+            color: #484f58;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sorcha Peer Router - Debug Console</h1>
+        <span id="sse-status" class="status-badge status-connecting">Connecting...</span>
+    </header>
+
+    <div class="dashboard">
+        <div class="panel full-width">
+            <div class="panel-header">Health Status</div>
+            <div class="health-grid" id="health-grid">
+                <div class="health-card">
+                    <div class="value" id="health-status">--</div>
+                    <div class="label">Status</div>
+                </div>
+                <div class="health-card">
+                    <div class="value" id="health-uptime">--</div>
+                    <div class="label">Uptime</div>
+                </div>
+                <div class="health-card">
+                    <div class="value" id="health-total">0</div>
+                    <div class="label">Total Peers</div>
+                </div>
+                <div class="health-card">
+                    <div class="value" id="health-healthy">0</div>
+                    <div class="label">Healthy Peers</div>
+                </div>
+                <div class="health-card">
+                    <div class="value" id="health-relay">--</div>
+                    <div class="label">Relay</div>
+                </div>
+                <div class="health-card">
+                    <div class="value" id="health-buffer">0</div>
+                    <div class="label">Buffered Events</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                Peer Table
+                <span class="event-count" id="peer-count">0 peers</span>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Peer ID</th>
+                            <th>Address</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                            <th>Heartbeats</th>
+                        </tr>
+                    </thead>
+                    <tbody id="peer-table-body">
+                        <tr><td colspan="5" class="no-data">No peers connected</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                Live Events
+                <span class="event-count" id="event-count">0 events</span>
+            </div>
+            <div class="panel-body" id="event-list">
+                <div class="no-data">Waiting for events...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var MAX_VISIBLE_EVENTS = 100;
+        var EVENT_TYPE_NAMES = [
+            'PeerConnected','PeerDisconnected','PeerHeartbeat',
+            'RegisterAdvertised','PeerListRequested','PeerExchanged',
+            'RelayForwarded','Error'
+        ];
+        var events = [];
+        var eventSource = null;
+        var reconnectDelay = 1000;
+
+        function formatTime(timestamp) {
+            var d = new Date(timestamp);
+            return d.toLocaleTimeString('en-GB', { hour12: false });
+        }
+
+        function formatUptime(uptimeStr) {
+            if (!uptimeStr) return '--';
+            var parts = uptimeStr.split(':');
+            if (parts.length < 2) return uptimeStr;
+            var hours = parseInt(parts[0], 10);
+            var minutes = parseInt(parts[1], 10);
+            var seconds = parseFloat(parts[2]) || 0;
+            if (hours >= 24) {
+                var days = Math.floor(hours / 24);
+                var h = hours % 24;
+                return days + 'd ' + h + 'h ' + minutes + 'm';
+            }
+            return hours + 'h ' + minutes + 'm ' + Math.floor(seconds) + 's';
+        }
+
+        function shortenPeerId(id) {
+            if (!id) return '--';
+            return id.length > 16 ? id.substring(0, 8) + '...' + id.substring(id.length - 6) : id;
+        }
+
+        function timeSince(timestamp) {
+            var seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+            if (seconds < 60) return seconds + 's ago';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            return Math.floor(seconds / 3600) + 'h ago';
+        }
+
+        function getTypeName(type) {
+            if (typeof type === 'number') return EVENT_TYPE_NAMES[type] || 'Unknown';
+            return type || 'Unknown';
+        }
+
+        function clearChildren(el) {
+            while (el.firstChild) el.removeChild(el.firstChild);
+        }
+
+        function createTextEl(tag, text, className) {
+            var el = document.createElement(tag);
+            el.textContent = text;
+            if (className) el.className = className;
+            return el;
+        }
+
+        function renderEvents() {
+            var container = document.getElementById('event-list');
+            var countEl = document.getElementById('event-count');
+            countEl.textContent = events.length + ' events';
+
+            clearChildren(container);
+
+            if (events.length === 0) {
+                container.appendChild(createTextEl('div', 'Waiting for events...', 'no-data'));
+                return;
+            }
+
+            for (var i = events.length - 1; i >= 0; i--) {
+                var evt = events[i];
+                var typeName = getTypeName(evt.type);
+
+                var row = document.createElement('div');
+                row.className = 'event-row';
+
+                row.appendChild(createTextEl('span', formatTime(evt.timestamp), 'event-time'));
+                row.appendChild(createTextEl('span', typeName, 'event-type event-type-' + typeName));
+
+                var peerSpan = createTextEl('span', shortenPeerId(evt.peerId), 'event-peer');
+                peerSpan.title = evt.peerId || '';
+                row.appendChild(peerSpan);
+
+                row.appendChild(createTextEl('span',
+                    (evt.ipAddress || '') + ':' + (evt.port || ''), 'event-detail'));
+
+                container.appendChild(row);
+            }
+        }
+
+        function renderPeers(data) {
+            var tbody = document.getElementById('peer-table-body');
+            var countEl = document.getElementById('peer-count');
+            var peers = data.peers || [];
+            countEl.textContent = peers.length + ' peers';
+
+            clearChildren(tbody);
+
+            if (peers.length === 0) {
+                var tr = document.createElement('tr');
+                var td = createTextEl('td', 'No peers connected', 'no-data');
+                td.colSpan = 5;
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
+            for (var p = 0; p < peers.length; p++) {
+                var peer = peers[p];
+                var row = document.createElement('tr');
+
+                var idCell = createTextEl('td', shortenPeerId(peer.peerId));
+                idCell.title = peer.peerId;
+                row.appendChild(idCell);
+
+                row.appendChild(createTextEl('td',
+                    (peer.ipAddress || peer.address || '--') + ':' + (peer.port || '')));
+
+                var statusText = peer.isHealthy ? 'Healthy' : 'Unhealthy';
+                var statusClass = peer.isHealthy ? 'peer-healthy' : 'peer-unhealthy';
+                row.appendChild(createTextEl('td', statusText, statusClass));
+
+                row.appendChild(createTextEl('td', timeSince(peer.lastSeen)));
+                row.appendChild(createTextEl('td', String(peer.heartbeatCount || 0)));
+
+                tbody.appendChild(row);
+            }
+        }
+
+        function renderHealth(data) {
+            document.getElementById('health-status').textContent = data.status || '--';
+            document.getElementById('health-uptime').textContent = formatUptime(data.uptime);
+            document.getElementById('health-total').textContent = data.totalPeers || 0;
+            document.getElementById('health-healthy').textContent = data.healthyPeers || 0;
+            document.getElementById('health-relay').textContent = data.relayEnabled ? 'Enabled' : 'Disabled';
+            document.getElementById('health-buffer').textContent = data.eventBufferSize || 0;
+        }
+
+        function connectSSE() {
+            var statusEl = document.getElementById('sse-status');
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'status-badge status-connecting';
+
+            eventSource = new EventSource('/events?follow');
+
+            eventSource.onopen = function() {
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status-badge status-connected';
+                reconnectDelay = 1000;
+            };
+
+            eventSource.onmessage = function(e) {
+                try {
+                    var evt = JSON.parse(e.data);
+                    events.push(evt);
+                    while (events.length > MAX_VISIBLE_EVENTS) {
+                        events.shift();
+                    }
+                    renderEvents();
+                } catch (err) {
+                    // Skip malformed events
+                }
+            };
+
+            eventSource.onerror = function() {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status-badge status-disconnected';
+                eventSource.close();
+                setTimeout(function() {
+                    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+                    connectSSE();
+                }, reconnectDelay);
+            };
+        }
+
+        function fetchPeers() {
+            fetch('/peers').then(function(resp) {
+                if (resp.ok) return resp.json();
+                return null;
+            }).then(function(data) {
+                if (data) renderPeers(data);
+            }).catch(function() {});
+        }
+
+        function fetchHealth() {
+            fetch('/health').then(function(resp) {
+                if (resp.ok) return resp.json();
+                return null;
+            }).then(function(data) {
+                if (data) renderHealth(data);
+            }).catch(function() {});
+        }
+
+        connectSSE();
+        fetchPeers();
+        fetchHealth();
+
+        setInterval(fetchPeers, 5000);
+        setInterval(fetchHealth, 5000);
+    </script>
+</body>
+</html>

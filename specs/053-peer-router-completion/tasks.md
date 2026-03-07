@@ -58,15 +58,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T016 [P] [US1] Write RouterDiscoveryService tests (RegisterPeer, GetPeerList, Ping, ExchangePeers, FindPeersForRegister) in tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterDiscoveryServiceTests.cs
-- [ ] T017 [P] [US1] Write RouterHeartbeatService tests (SendHeartbeat, StreamHeartbeat) in tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterHeartbeatServiceTests.cs
+- [x] T016 [P] [US1] Write RouterDiscoveryService tests (RegisterPeer, GetPeerList, Ping, ExchangePeers, FindPeersForRegister) in tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterDiscoveryServiceTests.cs
+- [x] T017 [P] [US1] Write RouterHeartbeatService tests (SendHeartbeat, StreamHeartbeat) in tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterHeartbeatServiceTests.cs
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Implement RouterDiscoveryService gRPC service (RegisterPeer → upsert routing entry + emit event, GetPeerList → return healthy entries, Ping → update LastSeen + emit event, ExchangePeers → merge peer lists + emit event, FindPeersForRegister → filter by register ID) in src/Apps/Sorcha.PeerRouter/GrpcServices/RouterDiscoveryService.cs
-- [ ] T019 [US1] Implement RouterHeartbeatService gRPC service (SendHeartbeat → update LastSeen + register versions, StreamHeartbeat → bidirectional stream updating routing table per heartbeat) in src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs
-- [ ] T020 [US1] Wire gRPC services and DI registrations in src/Apps/Sorcha.PeerRouter/Program.cs
-- [ ] T021 [US1] Add CLI argument parsing (--port, --peer-timeout) to Program.cs using args[] in src/Apps/Sorcha.PeerRouter/Program.cs
+- [x] T018 [US1] Implement RouterDiscoveryService gRPC service (RegisterPeer → upsert routing entry + emit event, GetPeerList → return healthy entries, Ping → update LastSeen + emit event, ExchangePeers → merge peer lists + emit event, FindPeersForRegister → filter by register ID) in src/Apps/Sorcha.PeerRouter/GrpcServices/RouterDiscoveryService.cs
+- [x] T019 [US1] Implement RouterHeartbeatService gRPC service (SendHeartbeat → update LastSeen + register versions, StreamHeartbeat → bidirectional stream updating routing table per heartbeat) in src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs
+- [x] T020 [US1] Wire gRPC services and DI registrations in src/Apps/Sorcha.PeerRouter/Program.cs
+- [x] T021 [US1] Add CLI argument parsing (--port, --peer-timeout) to Program.cs using args[] in src/Apps/Sorcha.PeerRouter/Program.cs
 
 **Checkpoint**: Router accepts peer registrations via gRPC, returns peer lists, handles heartbeats. Two peers can discover each other.
 
@@ -80,17 +80,17 @@
 
 ### Tests for User Story 2
 
-- [ ] T022 [P] [US2] Write EventStreamEndpoints tests (GET /events snapshot, GET /events?follow=true SSE format) in tests/Sorcha.PeerRouter.Tests/Endpoints/EventStreamEndpointTests.cs
-- [ ] T023 [P] [US2] Write PeerEndpoints tests (GET /peers returns routing table) in tests/Sorcha.PeerRouter.Tests/Endpoints/PeerEndpointTests.cs
-- [ ] T024 [P] [US2] Write HealthEndpoints tests (GET /health returns status, uptime, peer counts) in tests/Sorcha.PeerRouter.Tests/Endpoints/HealthEndpointTests.cs
+- [x] T022 [P] [US2] Write EventStreamEndpoints tests (GET /events snapshot, GET /events?follow=true SSE format) in tests/Sorcha.PeerRouter.Tests/Endpoints/EventStreamEndpointTests.cs
+- [x] T023 [P] [US2] Write PeerEndpoints tests (GET /peers returns routing table) in tests/Sorcha.PeerRouter.Tests/Endpoints/PeerEndpointTests.cs
+- [x] T024 [P] [US2] Write HealthEndpoints tests (GET /health returns status, uptime, peer counts) in tests/Sorcha.PeerRouter.Tests/Endpoints/HealthEndpointTests.cs
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Implement EventStreamEndpoints (GET /events returns JSON array snapshot, GET /events?follow=true returns text/event-stream with IAsyncEnumerable) in src/Apps/Sorcha.PeerRouter/Endpoints/EventStreamEndpoints.cs
-- [ ] T026 [P] [US2] Implement PeerEndpoints (GET /peers returns routing table with totalPeers, healthyPeers, peers array) in src/Apps/Sorcha.PeerRouter/Endpoints/PeerEndpoints.cs
-- [ ] T027 [P] [US2] Implement HealthEndpoints (GET /health returns status, uptime, peer/event counts, relay flag) in src/Apps/Sorcha.PeerRouter/Endpoints/HealthEndpoints.cs
-- [ ] T028 [US2] Create static debug.html page (EventSource connection, live event list, peer table, auto-reconnect) in src/Apps/Sorcha.PeerRouter/wwwroot/debug.html
-- [ ] T029 [US2] Wire HTTP endpoints, static files, and CLI args (--http-port, --event-buffer) in src/Apps/Sorcha.PeerRouter/Program.cs
+- [x] T025 [US2] Implement EventStreamEndpoints (GET /events returns JSON array snapshot, GET /events?follow=true returns text/event-stream with IAsyncEnumerable) in src/Apps/Sorcha.PeerRouter/Endpoints/EventStreamEndpoints.cs
+- [x] T026 [P] [US2] Implement PeerEndpoints (GET /peers returns routing table with totalPeers, healthyPeers, peers array) in src/Apps/Sorcha.PeerRouter/Endpoints/PeerEndpoints.cs
+- [x] T027 [P] [US2] Implement HealthEndpoints (GET /health returns status, uptime, peer/event counts, relay flag) in src/Apps/Sorcha.PeerRouter/Endpoints/HealthEndpoints.cs
+- [x] T028 [US2] Create static debug.html page (EventSource connection, live event list, peer table, auto-reconnect) in src/Apps/Sorcha.PeerRouter/wwwroot/debug.html
+- [x] T029 [US2] Wire HTTP endpoints, static files, and CLI args (--http-port, --event-buffer) in src/Apps/Sorcha.PeerRouter/Program.cs
 
 **Checkpoint**: Debug page shows live events in browser. curl to /events?follow=true streams JSON. /peers returns routing table. /health returns status.
 
@@ -104,18 +104,18 @@
 
 ### Tests for User Story 7/6
 
-- [ ] T030 [P] [US7] Write QueuedTransaction entity tests (validation, defaults) in tests/Sorcha.Peer.Service.Tests/Data/QueuedTransactionTests.cs
-- [ ] T031 [P] [US7] Write TransactionQueueManager PostgreSQL tests (enqueue persists, dequeue removes, startup loads, max size enforced) in tests/Sorcha.Peer.Service.Tests/Distribution/TransactionQueueManagerPgTests.cs
+- [x] T030 [P] [US7] Write QueuedTransaction entity tests (validation, defaults) in tests/Sorcha.Peer.Service.Tests/Data/QueuedTransactionTests.cs
+- [x] T031 [P] [US7] Write TransactionQueueManager PostgreSQL tests (enqueue persists, dequeue removes, startup loads, max size enforced) in tests/Sorcha.Peer.Service.Tests/Distribution/TransactionQueueManagerPgTests.cs
 
 ### Implementation for User Story 7/6
 
-- [ ] T032 [US7] Create QueuedTransaction entity class in src/Services/Sorcha.Peer.Service/Core/QueuedTransaction.cs
-- [ ] T033 [US7] Add QueuedTransaction DbSet and configuration to PeerDbContext in src/Services/Sorcha.Peer.Service/Data/PeerDbContext.cs
-- [ ] T034 [US7] Generate EF Core migration for queued_transactions table via dotnet ef migrations add AddQueuedTransactions
-- [ ] T035 [US7] Refactor TransactionQueueManager to replace SQLite with PeerDbContext (enqueue → SaveChangesAsync, dequeue → Remove, startup → LoadFromDatabaseAsync, max size → trim oldest) in src/Services/Sorcha.Peer.Service/Distribution/TransactionQueueManager.cs
-- [ ] T036 [US7] Remove Microsoft.Data.Sqlite package reference from src/Services/Sorcha.Peer.Service/Sorcha.Peer.Service.csproj
-- [ ] T037 [US7] Delete all SQLite connection/schema code from TransactionQueueManager (SqliteConnection, CREATE TABLE, etc.) in src/Services/Sorcha.Peer.Service/Distribution/TransactionQueueManager.cs
-- [ ] T038 [US7] Update existing TransactionQueueManager tests to use InMemory EF provider instead of SQLite in tests/Sorcha.Peer.Service.Tests/
+- [x] T032 [US7] Create QueuedTransaction entity class in src/Services/Sorcha.Peer.Service/Data/QueuedTransactionEntity.cs
+- [x] T033 [US7] Add QueuedTransaction DbSet and configuration to PeerDbContext in src/Services/Sorcha.Peer.Service/Data/PeerDbContext.cs
+- [x] T034 [US7] Generate EF Core migration for queued_transactions table via dotnet ef migrations add AddQueuedTransactions
+- [x] T035 [US7] Refactor TransactionQueueManager to replace SQLite with PeerDbContext (enqueue → SaveChangesAsync, dequeue → Remove, startup → LoadFromDatabaseAsync, max size → trim oldest) in src/Services/Sorcha.Peer.Service/Distribution/TransactionQueueManager.cs
+- [x] T036 [US7] Remove Microsoft.Data.Sqlite package reference from src/Services/Sorcha.Peer.Service/Sorcha.Peer.Service.csproj
+- [x] T037 [US7] Delete all SQLite connection/schema code from TransactionQueueManager (SqliteConnection, CREATE TABLE, etc.) in src/Services/Sorcha.Peer.Service/Distribution/TransactionQueueManager.cs
+- [x] T038 [US7] Update existing TransactionQueueManager tests to use InMemory EF provider instead of SQLite in tests/Sorcha.Peer.Service.Tests/
 
 **Checkpoint**: Queue persists to PostgreSQL. No SQLite references remain. Service restarts preserve queued notifications.
 
@@ -129,14 +129,14 @@
 
 ### Tests for User Story 5
 
-- [ ] T039 [P] [US5] Write PeerConnectionPool circuit breaker integration tests (open circuit → fail fast, half-open → probe, close → resume) in tests/Sorcha.Peer.Service.Tests/Connection/PeerConnectionPoolCircuitBreakerTests.cs
+- [x] T039 [P] [US5] Write PeerConnectionPool circuit breaker integration tests (open circuit → fail fast, half-open → probe, close → resume) in tests/Sorcha.Peer.Service.Tests/Connection/PeerConnectionPoolCircuitBreakerTests.cs
 
 ### Implementation for User Story 5
 
-- [ ] T040 [US5] Add circuit breaker state check to PeerConnectionPool.ConnectToPeerAsync() — check state before creating channel, throw CircuitBreakerOpenException if open, allow probe if half-open in src/Services/Sorcha.Peer.Service/Connection/PeerConnectionPool.cs
-- [ ] T041 [US5] Create CircuitBreakerOpenException class in src/Services/Sorcha.Peer.Service/Communication/CircuitBreakerOpenException.cs
-- [ ] T042 [US5] Wire CircuitBreaker instances from CommunicationProtocolManager into PeerConnectionPool via DI in src/Services/Sorcha.Peer.Service/Connection/PeerConnectionPool.cs
-- [ ] T043 [US5] Add structured logging for circuit state changes (open/half-open/closed with peer ID and failure count) in src/Services/Sorcha.Peer.Service/Communication/CircuitBreaker.cs
+- [x] T040 [US5] Add circuit breaker state check to PeerConnectionPool.ConnectToPeerAsync() — check state before creating channel, throw CircuitBreakerOpenException if open, allow probe if half-open in src/Services/Sorcha.Peer.Service/Connection/PeerConnectionPool.cs
+- [x] T041 [US5] CircuitBreakerOpenException already exists in CircuitBreaker.cs — verified, skipped
+- [x] T042 [US5] Wire CircuitBreaker instances from CommunicationProtocolManager into PeerConnectionPool via DI in src/Services/Sorcha.Peer.Service/Connection/PeerConnectionPool.cs
+- [x] T043 [US5] Add structured logging for circuit state changes (open/half-open/closed with peer ID and failure count) in src/Services/Sorcha.Peer.Service/Communication/CircuitBreaker.cs
 
 **Checkpoint**: Unreachable peers are circuit-broken. No wasted connection attempts during cooldown. Automatic recovery after cooldown probe succeeds.
 

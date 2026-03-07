@@ -45,7 +45,9 @@ public class CircuitBreaker
                 if (_state == CircuitState.Open &&
                     DateTimeOffset.UtcNow - _openedAt >= _resetTimeout)
                 {
-                    _logger.LogInformation("Circuit breaker {Name} transitioning to HalfOpen", _name);
+                    _logger.LogInformation(
+                    "Circuit breaker half-open for {Name}, allowing probe connection",
+                    _name);
                     _state = CircuitState.HalfOpen;
                     _failureCount = 0;
                 }
@@ -111,13 +113,15 @@ public class CircuitBreaker
     /// <summary>
     /// Records a successful operation
     /// </summary>
-    private void OnSuccess()
+    internal void OnSuccess()
     {
         lock (_lock)
         {
             if (_state == CircuitState.HalfOpen)
             {
-                _logger.LogInformation("Circuit breaker {Name} transitioning to Closed", _name);
+                _logger.LogInformation(
+                    "Circuit breaker closed for {Name}, connection restored",
+                    _name);
                 _state = CircuitState.Closed;
                 _failureCount = 0;
             }
@@ -132,7 +136,7 @@ public class CircuitBreaker
     /// <summary>
     /// Records a failed operation
     /// </summary>
-    private void OnFailure()
+    internal void OnFailure()
     {
         lock (_lock)
         {
@@ -145,13 +149,17 @@ public class CircuitBreaker
             if (_state == CircuitState.HalfOpen)
             {
                 // Immediate trip on failure in HalfOpen
-                _logger.LogWarning("Circuit breaker {Name} transitioning to Open (HalfOpen failure)", _name);
+                _logger.LogWarning(
+                    "Circuit breaker opened for {Name} after probe failure in half-open state",
+                    _name);
                 _state = CircuitState.Open;
                 _openedAt = DateTimeOffset.UtcNow;
             }
             else if (_state == CircuitState.Closed && _failureCount >= _failureThreshold)
             {
-                _logger.LogWarning("Circuit breaker {Name} transitioning to Open (threshold exceeded)", _name);
+                _logger.LogWarning(
+                    "Circuit breaker opened for {Name} after {FailureCount} failures",
+                    _name, _failureCount);
                 _state = CircuitState.Open;
                 _openedAt = DateTimeOffset.UtcNow;
             }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.PeerRouter.Endpoints;
+using Sorcha.PeerRouter.GrpcServices;
 using Sorcha.PeerRouter.Models;
 using Sorcha.PeerRouter.Services;
 
@@ -20,12 +22,13 @@ var app = builder.Build();
 
 app.UseStaticFiles();
 
-// gRPC services mapped in Phase 3 (US1)
-// app.MapGrpcService<Sorcha.PeerRouter.GrpcServices.RouterDiscoveryService>();
-// app.MapGrpcService<Sorcha.PeerRouter.GrpcServices.RouterHeartbeatService>();
+// gRPC services
+app.MapGrpcService<RouterDiscoveryService>();
+app.MapGrpcService<RouterHeartbeatService>();
 
-// HTTP endpoints mapped in Phase 4 (US2)
-// app.MapGet("/", ...);
-
+// HTTP endpoints
+app.MapEventStreamEndpoints();
+app.MapPeerEndpoints();
+app.MapHealthEndpoints();
 
 app.Run();

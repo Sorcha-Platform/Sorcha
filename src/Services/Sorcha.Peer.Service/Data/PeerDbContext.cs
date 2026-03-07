@@ -15,6 +15,7 @@ public class PeerDbContext : DbContext
     public DbSet<PeerNodeEntity> Peers => Set<PeerNodeEntity>();
     public DbSet<RegisterSubscriptionEntity> RegisterSubscriptions => Set<RegisterSubscriptionEntity>();
     public DbSet<SyncCheckpointEntity> SyncCheckpoints => Set<SyncCheckpointEntity>();
+    public DbSet<QueuedTransactionEntity> QueuedTransactions => Set<QueuedTransactionEntity>();
 
     public PeerDbContext(DbContextOptions<PeerDbContext> options) : base(options)
     {
@@ -33,6 +34,7 @@ public class PeerDbContext : DbContext
         ConfigurePeerNode(modelBuilder);
         ConfigureRegisterSubscription(modelBuilder);
         ConfigureSyncCheckpoint(modelBuilder);
+        ConfigureQueuedTransaction(modelBuilder);
     }
 
     private static void ConfigurePeerNode(ModelBuilder modelBuilder)
@@ -83,6 +85,28 @@ public class PeerDbContext : DbContext
             entity.Property(e => e.PeerId).HasMaxLength(64);
             entity.Property(e => e.RegisterId).HasMaxLength(255);
             entity.Property(e => e.SourcePeerId).HasMaxLength(64);
+        });
+    }
+
+    private static void ConfigureQueuedTransaction(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<QueuedTransactionEntity>(entity =>
+        {
+            entity.ToTable("queued_transactions");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.TransactionId).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.RegisterId).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.OriginPeerId).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.DataHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.TTL).HasDefaultValue(3600);
+            entity.Property(e => e.HasFullData).HasDefaultValue(false);
+            entity.Property(e => e.RetryCount).HasDefaultValue(0);
+
+            entity.HasIndex(e => e.RegisterId).HasDatabaseName("IX_QueuedTransactions_RegisterId");
+            entity.HasIndex(e => e.Status).HasDatabaseName("IX_QueuedTransactions_Status");
+            entity.HasIndex(e => e.EnqueuedAt).HasDatabaseName("IX_QueuedTransactions_EnqueuedAt");
         });
     }
 }
