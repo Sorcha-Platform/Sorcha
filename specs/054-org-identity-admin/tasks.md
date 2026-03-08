@@ -85,7 +85,7 @@
 
 ### Implementation for User Story 2
 
-- [ ] T029 [P] [US2] Create OIDC endpoint DTOs — `OidcInitiateRequest`, `OidcInitiateResponse`, `OidcCompleteProfileRequest`, `VerifyEmailRequest`, `ResendVerificationRequest` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/OidcDtos.cs`
+- [x] T029 [P] [US2] Create OIDC endpoint DTOs — `OidcInitiateRequest`, `OidcInitiateResponse`, `OidcCompleteProfileRequest`, `VerifyEmailRequest`, `ResendVerificationRequest` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/OidcDtos.cs`
 - [ ] T030 [US2] Implement `IOidcExchangeService` / `OidcExchangeService` — generate authorization URL (with state, nonce, PKCE), exchange authorization code for tokens via HttpClient, validate ID token (JWKS signature, issuer, audience, expiry, nonce) in `src/Services/Sorcha.Tenant.Service/Services/IOidcExchangeService.cs` and `src/Services/Sorcha.Tenant.Service/Services/OidcExchangeService.cs`
 - [ ] T031 [US2] Implement `IOidcProvisioningService` / `OidcProvisioningService` — extract claims (email, name, sub, email_verified), match returning users by ExternalIdpSubject, auto-provision new users with Member role and ProvisionedVia=Oidc, check domain restrictions, determine if profile completion needed in `src/Services/Sorcha.Tenant.Service/Services/IOidcProvisioningService.cs` and `src/Services/Sorcha.Tenant.Service/Services/OidcProvisioningService.cs`
 - [ ] T032 [US2] Create `OidcEndpoints` — POST `/api/auth/oidc/initiate` (AllowAnonymous), GET `/api/auth/callback/{orgSubdomain}` (AllowAnonymous, redirects), POST `/api/auth/oidc/complete-profile` (bearerAuth partial token) in `src/Services/Sorcha.Tenant.Service/Endpoints/OidcEndpoints.cs`
