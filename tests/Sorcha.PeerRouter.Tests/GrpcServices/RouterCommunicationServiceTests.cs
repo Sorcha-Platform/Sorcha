@@ -28,7 +28,7 @@ public sealed class RouterCommunicationServiceTests
         _relayEnabledConfig = new RouterConfiguration { EnableRelay = true };
         _relayDisabledConfig = new RouterConfiguration { EnableRelay = false };
         _eventBuffer = new EventBuffer(_relayEnabledConfig);
-        _routingTable = new RoutingTable(_eventBuffer);
+        _routingTable = new RoutingTable(_eventBuffer, _relayEnabledConfig);
     }
 
     private RouterCommunicationService CreateService(RouterConfiguration config) =>

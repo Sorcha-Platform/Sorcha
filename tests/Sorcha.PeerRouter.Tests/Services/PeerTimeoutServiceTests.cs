@@ -19,7 +19,7 @@ public class PeerTimeoutServiceTests
         // Use a very short timeout so the sweep interval is minimal (5s floor)
         var config = new RouterConfiguration { PeerTimeoutSeconds = 1 };
         var eventBuffer = new EventBuffer(config);
-        var routingTable = new RoutingTable(eventBuffer);
+        var routingTable = new RoutingTable(eventBuffer, config);
 
         var peerInfo = new PeerInfo { PeerId = "peer-1", Address = "192.168.1.10:5000", Port = 5000 };
         routingTable.RegisterPeer(peerInfo);
@@ -43,7 +43,7 @@ public class PeerTimeoutServiceTests
     {
         var config = new RouterConfiguration { PeerTimeoutSeconds = 60 };
         var eventBuffer = new EventBuffer(config);
-        var routingTable = new RoutingTable(eventBuffer);
+        var routingTable = new RoutingTable(eventBuffer, config);
 
         var peerInfo = new PeerInfo { PeerId = "peer-1", Address = "192.168.1.10:5000", Port = 5000 };
         routingTable.RegisterPeer(peerInfo);

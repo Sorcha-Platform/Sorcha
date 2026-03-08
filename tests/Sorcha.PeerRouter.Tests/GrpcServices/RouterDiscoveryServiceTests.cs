@@ -14,18 +14,20 @@ namespace Sorcha.PeerRouter.Tests.GrpcServices;
 
 public sealed class RouterDiscoveryServiceTests
 {
+    private readonly RouterConfiguration _config;
     private readonly RoutingTable _routingTable;
     private readonly EventBuffer _eventBuffer;
     private readonly RouterDiscoveryService _service;
 
     public RouterDiscoveryServiceTests()
     {
-        var config = new RouterConfiguration();
-        _eventBuffer = new EventBuffer(config);
-        _routingTable = new RoutingTable(_eventBuffer);
+        _config = new RouterConfiguration { PeerId = "router-0" };
+        _eventBuffer = new EventBuffer(_config);
+        _routingTable = new RoutingTable(_eventBuffer, _config);
         _service = new RouterDiscoveryService(
             _routingTable,
             _eventBuffer,
+            _config,
             NullLogger<RouterDiscoveryService>.Instance);
     }
 
@@ -78,6 +80,21 @@ public sealed class RouterDiscoveryServiceTests
 
         response.Success.Should().BeFalse();
         response.Message.Should().Contain("required");
+    }
+
+    [Fact]
+    public async Task RegisterPeer_SelfPeerId_ReturnsSuccessButIgnored()
+    {
+        var request = new RegisterPeerRequest
+        {
+            PeerInfo = CreatePeerInfo("router-0", "n0.sorcha.dev", 443)
+        };
+
+        var response = await _service.RegisterPeer(request, TestServerCallContext.Create());
+
+        response.Success.Should().BeTrue();
+        response.Message.Should().Contain("ignored");
+        _routingTable.TotalCount.Should().Be(0);
     }
 
     #endregion
@@ -239,6 +256,24 @@ public sealed class RouterDiscoveryServiceTests
         response.Success.Should().BeTrue();
         response.KnownPeers.Should().HaveCount(1);
         response.KnownPeers[0].PeerId.Should().Be("peer-1");
+    }
+
+    [Fact]
+    public async Task ExchangePeers_FiltersSelfFromIncomingPeers()
+    {
+        var request = new PeerExchangeRequest
+        {
+            PeerId = "exchanger",
+            MaxPeers = 10
+        };
+        request.KnownPeers.Add(CreatePeerInfo("router-0", "n0.sorcha.dev", 443)); // self
+        request.KnownPeers.Add(CreatePeerInfo("real-peer", "10.0.0.1", 5001));
+
+        var response = await _service.ExchangePeers(request, TestServerCallContext.Create());
+
+        response.Success.Should().BeTrue();
+        _routingTable.GetPeer("router-0").Should().BeNull("router should not register itself");
+        _routingTable.GetPeer("real-peer").Should().NotBeNull();
     }
 
     [Fact]

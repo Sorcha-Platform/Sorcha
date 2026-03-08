@@ -16,8 +16,9 @@ public class HealthEndpointTests
 
     private static RoutingTable CreateTable()
     {
-        var buffer = CreateBuffer();
-        return new RoutingTable(buffer);
+        var config = new RouterConfiguration();
+        var buffer = new EventBuffer(config);
+        return new RoutingTable(buffer, config);
     }
 
     private static PeerInfo CreatePeerInfo(string peerId, string address = "10.0.0.1:5000", int port = 5000) =>
@@ -65,11 +66,11 @@ public class HealthEndpointTests
     public void HandleGetHealth_WithPeers_ReportsCorrectCounts()
     {
         // Arrange
-        var buffer = CreateBuffer();
-        var table = new RoutingTable(buffer);
+        var config = new RouterConfiguration();
+        var buffer = new EventBuffer(config);
+        var table = new RoutingTable(buffer, config);
         table.RegisterPeer(CreatePeerInfo("peer-1"));
         table.RegisterPeer(CreatePeerInfo("peer-2", "10.0.0.2:5000"));
-        var config = new RouterConfiguration();
 
         // Act
         table.TotalCount.Should().Be(2);

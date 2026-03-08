@@ -340,7 +340,7 @@ services:
       PeerService__Port: "5000"
       PeerService__EnableTls: "false"
       # Azure-hosted PeerRouter seed node (n0.sorcha.dev)
-      PeerService__SeedNodes__SeedNodes__0__NodeId: "n0"
+      PeerService__SeedNodes__SeedNodes__0__NodeId: "n0.sorcha.dev"
       PeerService__SeedNodes__SeedNodes__0__Hostname: "n0.sorcha.dev"
       PeerService__SeedNodes__SeedNodes__0__Port: "443"
       PeerService__SeedNodes__SeedNodes__0__EnableTls: "true"
