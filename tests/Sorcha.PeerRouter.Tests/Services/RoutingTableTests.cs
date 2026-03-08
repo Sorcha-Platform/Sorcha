@@ -11,12 +11,14 @@ namespace Sorcha.PeerRouter.Tests.Services;
 
 public class RoutingTableTests
 {
-    private readonly EventBuffer _eventBuffer = new(new RouterConfiguration());
+    private readonly RouterConfiguration _config = new();
+    private readonly EventBuffer _eventBuffer;
     private readonly RoutingTable _sut;
 
     public RoutingTableTests()
     {
-        _sut = new RoutingTable(_eventBuffer);
+        _eventBuffer = new EventBuffer(_config);
+        _sut = new RoutingTable(_eventBuffer, _config);
     }
 
     private static PeerInfo CreatePeerInfo(string peerId = "peer-1", string address = "192.168.1.10", int port = 5000)
@@ -215,6 +217,40 @@ public class RoutingTableTests
 
         var result = _sut.GetAllPeers();
         result.Should().ContainSingle(p => p.PeerId == "peer-1");
+    }
+
+    [Fact]
+    public void RegisterPeer_SelfPeerId_IsRejected()
+    {
+        var config = new RouterConfiguration { PeerId = "n0" };
+        var table = new RoutingTable(new EventBuffer(config), config);
+
+        var result = table.RegisterPeer(CreatePeerInfo("n0", "n0.sorcha.dev", 443));
+
+        result.Should().BeFalse();
+        table.TotalCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void RegisterPeer_SelfPeerId_CaseInsensitive()
+    {
+        var config = new RouterConfiguration { PeerId = "N0" };
+        var table = new RoutingTable(new EventBuffer(config), config);
+
+        var result = table.RegisterPeer(CreatePeerInfo("n0", "n0.sorcha.dev", 443));
+
+        result.Should().BeFalse();
+        table.TotalCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void RegisterPeer_EmptyPeerId_AllowsAll()
+    {
+        // Default config has empty PeerId — no self-filtering
+        var result = _sut.RegisterPeer(CreatePeerInfo("any-peer"));
+
+        result.Should().BeTrue();
+        _sut.TotalCount.Should().Be(1);
     }
 
     [Fact]

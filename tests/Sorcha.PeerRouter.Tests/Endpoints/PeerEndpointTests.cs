@@ -16,8 +16,9 @@ public class PeerEndpointTests
 
     private static RoutingTable CreateTable()
     {
-        var buffer = CreateBuffer();
-        return new RoutingTable(buffer);
+        var config = new RouterConfiguration();
+        var buffer = new EventBuffer(config);
+        return new RoutingTable(buffer, config);
     }
 
     private static PeerInfo CreatePeerInfo(string peerId, string address = "10.0.0.1:5000", int port = 5000) =>

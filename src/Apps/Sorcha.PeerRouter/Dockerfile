@@ -52,6 +52,7 @@ COPY --from=publish /app/publish .
 # Set environment variables
 ENV PEERROUTER__PORT=5000
 ENV PEERROUTER__HTTP_PORT=8080
+ENV PEERROUTER__PEER_ID=n0
 
 # Run as non-root user (chiseled images are minimal and secure)
 USER $APP_UID

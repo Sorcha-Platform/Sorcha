@@ -17,15 +17,18 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
 {
     private readonly RoutingTable _routingTable;
     private readonly EventBuffer _eventBuffer;
+    private readonly RouterConfiguration _config;
     private readonly ILogger<RouterDiscoveryService> _logger;
 
     public RouterDiscoveryService(
         RoutingTable routingTable,
         EventBuffer eventBuffer,
+        RouterConfiguration config,
         ILogger<RouterDiscoveryService> logger)
     {
         _routingTable = routingTable;
         _eventBuffer = eventBuffer;
+        _config = config;
         _logger = logger;
     }
 
@@ -44,6 +47,16 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
             {
                 Success = false,
                 Message = "PeerInfo is required"
+            });
+        }
+
+        if (IsSelf(peerInfo.PeerId))
+        {
+            _logger.LogDebug("Rejected self-registration for PeerId {PeerId}", peerInfo.PeerId);
+            return Task.FromResult(new RegisterPeerResponse
+            {
+                Success = true,
+                Message = "Self-registration ignored"
             });
         }
 
@@ -128,6 +141,9 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
         var registeredCount = 0;
         foreach (var peerInfo in request.KnownPeers)
         {
+            if (IsSelf(peerInfo.PeerId))
+                continue;
+
             _routingTable.RegisterPeer(peerInfo);
             registeredCount++;
         }
@@ -189,6 +205,13 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
 
         return Task.FromResult(response);
     }
+
+    /// <summary>
+    /// Returns true if the given peerId matches this router's own identity.
+    /// </summary>
+    private bool IsSelf(string peerId) =>
+        !string.IsNullOrEmpty(_config.PeerId) &&
+        string.Equals(peerId, _config.PeerId, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Maps a RoutingEntry to a PeerInfo protobuf message.

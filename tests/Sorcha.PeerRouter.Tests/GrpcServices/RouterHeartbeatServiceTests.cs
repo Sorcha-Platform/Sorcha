@@ -22,7 +22,7 @@ public sealed class RouterHeartbeatServiceTests
     {
         var config = new RouterConfiguration();
         _eventBuffer = new EventBuffer(config);
-        _routingTable = new RoutingTable(_eventBuffer);
+        _routingTable = new RoutingTable(_eventBuffer, config);
         _service = new RouterHeartbeatService(
             _routingTable,
             _eventBuffer,

@@ -15,10 +15,12 @@ public sealed class RoutingTable
 {
     private readonly ConcurrentDictionary<string, RoutingEntry> _entries = new();
     private readonly EventBuffer _eventBuffer;
+    private readonly string _selfPeerId;
 
-    public RoutingTable(EventBuffer eventBuffer)
+    public RoutingTable(EventBuffer eventBuffer, RouterConfiguration config)
     {
         _eventBuffer = eventBuffer;
+        _selfPeerId = config.PeerId;
     }
 
     /// <summary>
@@ -27,6 +29,13 @@ public sealed class RoutingTable
     /// </summary>
     public bool RegisterPeer(PeerInfo peerInfo)
     {
+        // Prevent the router from appearing in its own peer table
+        if (!string.IsNullOrEmpty(_selfPeerId) &&
+            string.Equals(peerInfo.PeerId, _selfPeerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         var isNew = false;
         _entries.AddOrUpdate(
             peerInfo.PeerId,

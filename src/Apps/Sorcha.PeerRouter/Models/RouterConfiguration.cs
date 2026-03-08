@@ -15,6 +15,7 @@ namespace Sorcha.PeerRouter.Models;
 /// <item><term>PEERROUTER__ENABLE_RELAY</term><description>Enable relay mode (default: false)</description></item>
 /// <item><term>PEERROUTER__EVENT_BUFFER</term><description>Event buffer size (default: 1000)</description></item>
 /// <item><term>PEERROUTER__PEER_TIMEOUT</term><description>Peer timeout seconds (default: 60)</description></item>
+/// <item><term>PEERROUTER__PEER_ID</term><description>Router's peer network identity for self-registration prevention</description></item>
 /// <item><term>PEERROUTER__NODE_NAME</term><description>Router node name (default: peer-router)</description></item>
 /// </list>
 /// </remarks>
@@ -34,6 +35,12 @@ public sealed record RouterConfiguration
 
     /// <summary>Seconds without a heartbeat before a peer is marked unhealthy.</summary>
     public int PeerTimeoutSeconds { get; init; } = 60;
+
+    /// <summary>
+    /// The router's peer identity on the network. Peers using this ID will be rejected
+    /// from registration to prevent the router from appearing in its own peer table.
+    /// </summary>
+    public string PeerId { get; init; } = "";
 
     /// <summary>Human-readable name for this router instance.</summary>
     public string NodeName { get; init; } = "peer-router";
@@ -67,6 +74,9 @@ public sealed record RouterConfiguration
                 case "--peer-timeout" when i + 1 < args.Length:
                     config = config with { PeerTimeoutSeconds = int.Parse(args[++i]) };
                     break;
+                case "--peer-id" when i + 1 < args.Length:
+                    config = config with { PeerId = args[++i] };
+                    break;
                 case "--node-name" when i + 1 < args.Length:
                     config = config with { NodeName = args[++i] };
                     break;
@@ -94,6 +104,10 @@ public sealed record RouterConfiguration
 
         if (int.TryParse(Environment.GetEnvironmentVariable("PEERROUTER__PEER_TIMEOUT"), out var timeout))
             config = config with { PeerTimeoutSeconds = timeout };
+
+        var peerId = Environment.GetEnvironmentVariable("PEERROUTER__PEER_ID");
+        if (!string.IsNullOrEmpty(peerId))
+            config = config with { PeerId = peerId };
 
         var nodeName = Environment.GetEnvironmentVariable("PEERROUTER__NODE_NAME");
         if (!string.IsNullOrEmpty(nodeName))
