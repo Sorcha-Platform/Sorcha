@@ -1,7 +1,74 @@
 # Sorcha Platform - Master Task List (Archived Phases)
 
 > **This file contains completed phases archived from [MASTER-TASKS.md](MASTER-TASKS.md).**
-> **Archived:** 2026-02-27
+> **Archived:** 2026-03-08 (latest batch)
+
+---
+
+## Archived 2026-03-08: All Active Features & Production Packaging
+
+All remaining active features moved to archive during release preparation cleanup.
+
+### Feature 053: Peer Router App & Peer Service Completion — ✅ (56/56 tasks)
+
+Standalone PeerRouter application for P2P network bootstrapping with gRPC peer discovery, heartbeat streaming, optional relay mode, SSE debug events, browser debug page. Peer Service hardened with circuit breaking (PeerConnectionPool), SQLite→PostgreSQL queue migration (PeerDbContext), EF Core integration. 77 tests. 8 phases delivered (T001-T056). Post-merge: self-registration guard, client IP logging, h2c transport. Deployed to Azure Container Apps at `n0.sorcha.dev`.
+
+### Feature 052: Encryption Integration — ✅ (40/40 tasks)
+
+End-to-end async encryption pipeline wired to UI and CLI. OperationId/IsAsync on ActionSubmissionResultViewModel, EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, paginated operations history, CLI `action execute` with blocking spinner and `--no-wait` mode. 63+ new tests.
+
+### Feature 051: Operations & Monitoring Admin — ✅ (51/65 tasks, 14 deferred)
+
+Dashboard auto-refresh, wallet access delegation, schema provider CLI, events admin, push notifications, encryption progress indicators, presentation admin UX improvements (chip inputs, auto-refresh), credential lifecycle typed errors. **14 deferred tasks** carried forward to remaining work: CLI tests (T019/T026/T031/T045), EncryptionProgress integration (T051), and 9 additional test/polish items.
+
+### Feature 045: Encrypted Payload Integration — ✅ (67/67 tasks)
+
+Envelope encryption for action transaction payloads — XChaCha20-Poly1305 symmetric + per-recipient asymmetric key wrapping, disclosure grouping, async pipeline with SignalR progress, recipient decryption. 10 phases (T001-T067).
+
+### Feature 048: Register Policy Model & System Register — ✅ (54/54 tasks)
+
+RegisterPolicy embedded in genesis control records, System Register singleton, approved validator lists, policy updates via control transactions, governance quorum formulas, policy-driven operational TTL. 9 phases.
+
+### Feature 049: System Administration Tooling — ✅ (72/72 tasks)
+
+Service Principal CRUD, Register Policy management, Validator Consent Queue, Validator Metrics Dashboard, System Register page, Threshold Signing & Config, 17 CLI subcommands, 29 new Blazor components. 10 phases.
+
+### Feature 046: UI Polish & Blueprint Designer — ✅ (43/43 tasks)
+
+Dashboard wizard/GUID fix, notification panel overflow, dark mode, stale labels, blueprint designer save/load, EventsHub real-time notifications, i18n wiring. 618 bUnit tests pass.
+
+### P0: Transaction Pipeline Audit — ✅ (8/8 tasks)
+
+All transactions routed through Validator mempool. Blueprint publish via validator, governance operations via validator. Legacy direct-write paths eliminated.
+
+### P0: Production Packaging & Version Control — ✅ (Phases A-E)
+
+- **Phase A** (58 tasks): CPM for 69 projects, 15 Common libraries NuGet v2.0.0, GitHub Actions overhaul, 25 critical/important code quality fixes, 6 major package upgrades
+- **Phase B** (49 tasks): 8 Core libraries NuGet v2.0.0, 44 code quality fixes (10 critical, 14 important, 20 minor), 1,055 tests
+- **Phase C** (6 tasks): 7 service csproj standardization, Docker CI/CD matrix, 21 service code quality findings fixed
+- **Phase D** (5 tasks): Apps build standardization, Docker CI/CD, Playwright E2E pipeline
+- **Phase E** (14 tasks): 98%→100% MVD feature completion — Tenant/CLI/Peer test stabilization, Peer EF Core, gRPC RPCs, YARP auth policies on all 48 routes
+
+### Summary of Archived Work
+
+| Feature/Phase | Tasks Complete | Tasks Deferred |
+|---------------|---------------|----------------|
+| 053 Peer Router | 56 | 0 |
+| 052 Encryption Integration | 40 | 0 |
+| 051 Operations & Monitoring | 51 | 14 |
+| 045 Encrypted Payloads | 67 | 0 |
+| 048 Register Policy | 54 | 0 |
+| 049 System Admin Tooling | 72 | 0 |
+| 046 UI Polish & Designer | 43 | 0 |
+| P0 Transaction Audit | 8 | 0 |
+| P0 Packaging Phase A | 58 | 0 |
+| P0 Packaging Phase B | 49 | 0 |
+| P0 Packaging Phase C | 6 | 0 |
+| P0 Packaging Phase D | 5 | 0 |
+| P0 Packaging Phase E | 14 | 0 |
+| **Total** | **523** | **14** |
+
+Combined with previously archived work (Features 031-043, Sprints 3-10, Wallet API, Register Service, Validator Service, Auth Integration, Quantum-Safe Crypto, Verifiable Presentations, Content-Type Payload, UI Modernization, etc.), this represents the full MVD development effort.
 
 ---
 
