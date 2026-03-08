@@ -170,6 +170,9 @@
     <!-- Crypto - BLS -->
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
 
+    <!-- Email -->
+    <PackageVersion Include="MailKit" Version="4.12.0" />
+
     <!-- JSON Serialization -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
 

@@ -55,6 +55,12 @@ public static class ServiceCollectionExtensions
         // Add Redis and token revocation
         services.AddTenantRedis(configuration);
 
+        // Add email sender
+        services.AddTenantEmail(configuration);
+
+        // Add in-memory cache (used by OIDC discovery, password breach check, etc.)
+        services.AddMemoryCache();
+
         return services;
     }
 
@@ -156,6 +162,19 @@ public static class ServiceCollectionExtensions
             configuration.GetSection("TokenRevocation"));
 
         services.AddScoped<ITokenRevocationService, TokenRevocationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds email sending services with SMTP configuration.
+    /// </summary>
+    public static IServiceCollection AddTenantEmail(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<EmailSettings>(configuration.GetSection("Email"));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
         return services;
     }

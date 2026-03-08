@@ -102,9 +102,9 @@ public static class AuthorizationPolicyExtensions
                     return isService && hasDelegatedUserId;
                 }));
 
-            // 5. RequireAdministrator — Administrator role
+            // 5. RequireAdministrator — Administrator or SystemAdmin role
             options.AddPolicy(AuthorizationPolicies.RequireAdministrator, policy =>
-                policy.RequireRole("Administrator"));
+                policy.RequireRole("SystemAdmin", "Administrator"));
 
             // 6. CanWriteDockets — service token required (Validator/Register docket writes).
             //    Currently mirrors RequireService; kept as a separate semantic policy so

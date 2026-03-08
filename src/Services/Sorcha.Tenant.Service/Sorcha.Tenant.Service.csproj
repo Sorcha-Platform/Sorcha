@@ -16,6 +16,7 @@
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <PackageReference Include="BCrypt.Net-Next" />
+    <PackageReference Include="MailKit" />
     <PackageReference Include="BouncyCastle.Cryptography" />
     <PackageReference Include="Fido2.AspNet" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
