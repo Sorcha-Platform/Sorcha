@@ -315,17 +315,18 @@ These items are explicitly **out of scope for MVD** and deferred to production r
 
 ## Production Readiness (~30%)
 
-The platform is feature-complete for MVD but requires the following for production deployment:
+The platform is feature-complete for MVD but requires the following for production deployment. See [MASTER-TASKS.md](../../.specify/MASTER-TASKS.md) v7.0 for the full release task list (44 tasks across 6 themes).
 
-| Area | Status | Priority |
-|------|--------|----------|
-| Security hardening | Pending | P0 |
-| Azure AD B2C integration | Pending | P1 |
-| Azure Key Vault for key storage | Pending | P1 |
-| Production database tuning | Pending | P1 |
-| Load testing at scale | Pending | P2 |
-| Monitoring and alerting | Pending | P2 |
-| Deployment automation | Partial | P2 |
+| Area | Status | Priority | MASTER-TASKS Theme |
+|------|--------|----------|-------------------|
+| Security hardening (HTTPS, validation, audit) | Pending | P0 | Theme 1 |
+| Azure Key Vault for key storage | Pending | P0 | Theme 1 |
+| Deployment documentation & automation | Pending | P1 | Theme 2 |
+| Backup and disaster recovery | Pending | P1 | Theme 2 |
+| Production database tuning | Pending | P1 | Theme 2 |
+| Monitoring and alerting | Pending | P2 | Theme 2 |
+| Load testing at scale | Pending | P2 | Theme 2 |
+| Azure AD B2C integration | Pending | P2 | Theme 5 |
 
 ---
 
