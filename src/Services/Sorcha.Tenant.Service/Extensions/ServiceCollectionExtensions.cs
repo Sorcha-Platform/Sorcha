@@ -61,6 +61,9 @@ public static class ServiceCollectionExtensions
         // Add in-memory cache (used by OIDC discovery, password breach check, etc.)
         services.AddMemoryCache();
 
+        // Add distributed cache for OIDC flow state (upgraded to Redis in production via Aspire)
+        services.AddDistributedMemoryCache();
+
         return services;
     }
 
@@ -119,6 +122,11 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
         services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();
         services.AddHttpClient();
+
+        // OIDC authentication flow services
+        services.AddScoped<IOidcExchangeService, OidcExchangeService>();
+        services.AddScoped<IOidcProvisioningService, OidcProvisioningService>();
+        services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 
         return services;
     }

@@ -107,6 +107,25 @@ public static class TestDataSeeder
 
         context.ServicePrincipals.Add(servicePrincipal);
 
+        // Create test IDP configuration for OIDC tests
+        var idpConfig = new IdentityProviderConfiguration
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = TestOrganizationId,
+            ProviderPreset = IdentityProviderType.GenericOidc,
+            IssuerUrl = "https://login.example.com/tenant-id/v2.0",
+            ClientId = "test-client-id",
+            ClientSecretEncrypted = System.Text.Encoding.UTF8.GetBytes("encrypted-secret"),
+            Scopes = ["openid", "profile", "email"],
+            AuthorizationEndpoint = "https://login.example.com/authorize",
+            TokenEndpoint = "https://login.example.com/token",
+            JwksUri = "https://login.example.com/.well-known/jwks.json",
+            IsEnabled = true,
+            DisplayName = "Test IDP"
+        };
+
+        context.IdentityProviderConfigurations.Add(idpConfig);
+
         await context.SaveChangesAsync();
     }
 
