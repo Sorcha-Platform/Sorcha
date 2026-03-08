@@ -175,6 +175,16 @@ public record OidcUserClaims
     /// Profile picture URL (picture claim).
     /// </summary>
     public string? Picture { get; init; }
+
+    /// <summary>
+    /// Preferred username (preferred_username claim). Used as email fallback.
+    /// </summary>
+    public string? PreferredUsername { get; init; }
+
+    /// <summary>
+    /// User principal name (upn claim). Azure AD specific email fallback.
+    /// </summary>
+    public string? Upn { get; init; }
 }
 
 /// <summary>

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-// TODO: Interface IOidcExchangeService to be created in Sorcha.Tenant.Service.Services
-// TODO: Implementation OidcExchangeService to be created in Sorcha.Tenant.Service.Services
-
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
@@ -65,13 +62,8 @@ public class OidcExchangeServiceTests : IDisposable
 
     #region Helper Methods
 
-    /// <summary>
-    /// Creates the service under test.
-    /// TODO: Uncomment once OidcExchangeService implementation exists.
-    /// </summary>
     private OidcExchangeService CreateService()
     {
-        // TODO: Replace with actual constructor once implementation is created
         return new OidcExchangeService(
             _dbContext,
             _discoveryServiceMock.Object,
@@ -215,21 +207,33 @@ public class OidcExchangeServiceTests : IDisposable
     {
         // Arrange
         var state = Guid.NewGuid().ToString("N");
+        var nonce = Guid.NewGuid().ToString("N");
+
+        // Use the proper OidcFlowState shape (matching the internal record)
         var stateData = new
         {
             OrgId = TestOrgId,
-            Nonce = Guid.NewGuid().ToString("N"),
+            Nonce = nonce,
             CodeVerifier = "test-code-verifier-with-sufficient-length-for-pkce",
             RedirectUri = "https://app.example.com/callback",
+            PostLoginRedirectUrl = (string?)null,
             CreatedAt = DateTimeOffset.UtcNow
         };
         SetupCacheWithState(state, stateData);
 
-        // Mock HTTP client for token endpoint
+        // Create a valid ID token matching the test IDP config
+        var validIdToken = CreateTestJwt(
+            sub: "user123",
+            email: "user@example.com",
+            name: "Test User",
+            issuer: TestIdpConfig.IssuerUrl,
+            audience: TestIdpConfig.ClientId,
+            expiry: DateTimeOffset.UtcNow.AddHours(1));
+
         var tokenResponse = new
         {
             access_token = "external-access-token",
-            id_token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5hbWUiOiJUZXN0IFVzZXIifQ.fake-signature",
+            id_token = validIdToken,
             token_type = "Bearer",
             expires_in = 3600
         };
@@ -288,6 +292,7 @@ public class OidcExchangeServiceTests : IDisposable
             Nonce = Guid.NewGuid().ToString("N"),
             CodeVerifier = "test-code-verifier-with-sufficient-length-for-pkce",
             RedirectUri = "https://app.example.com/callback",
+            PostLoginRedirectUrl = (string?)null,
             CreatedAt = DateTimeOffset.UtcNow
         };
         SetupCacheWithState(state, stateData);

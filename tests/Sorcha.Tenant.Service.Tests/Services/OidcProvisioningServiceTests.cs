@@ -7,6 +7,7 @@ using Moq;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Service.Services;
 using Sorcha.Tenant.Service.Tests.Helpers;
 using Xunit;
 
@@ -42,8 +43,7 @@ public class OidcProvisioningServiceTests : IDisposable
         _dbContext.Dispose();
     }
 
-    // TODO: Replace with actual OidcProvisioningService once implemented
-    // private OidcProvisioningService CreateService() => new(_dbContext, _loggerMock.Object);
+    private OidcProvisioningService CreateService() => new(_dbContext, _loggerMock.Object);
 
     #region ProvisionOrMatchUserAsync Tests
 
@@ -84,7 +84,7 @@ public class OidcProvisioningServiceTests : IDisposable
             ProvisionedVia = ProvisioningMethod.Oidc,
             LastLoginAt = DateTimeOffset.UtcNow.AddDays(-7)
         };
-        _dbContext.Users.Add(existingUser);
+        _dbContext.UserIdentities.Add(existingUser);
         await _dbContext.SaveChangesAsync();
 
         var claims = CreateClaims(sub: "oidc|existing", email: "bob@example.com", name: "Bob Jones");
@@ -270,17 +270,6 @@ public class OidcProvisioningServiceTests : IDisposable
     #region Helpers
 
     /// <summary>
-    /// Creates the service under test.
-    /// TODO: Uncomment once OidcProvisioningService is implemented in Sorcha.Tenant.Service.Services
-    /// </summary>
-    private OidcProvisioningService CreateService()
-    {
-        // TODO: Replace with actual implementation
-        // return new OidcProvisioningService(_dbContext, _loggerMock.Object);
-        throw new NotImplementedException("OidcProvisioningService not yet implemented — create the service to enable these tests.");
-    }
-
-    /// <summary>
     /// Creates an OidcUserClaims instance for testing with the specified claim values.
     /// </summary>
     private static OidcUserClaims CreateClaims(
@@ -293,12 +282,11 @@ public class OidcProvisioningServiceTests : IDisposable
         string? familyName = null,
         bool emailVerified = false)
     {
-        // TODO: Adjust construction once OidcUserClaims shape is finalized
         return new OidcUserClaims
         {
-            Sub = sub,
+            Subject = sub,
             Email = email,
-            Name = name,
+            DisplayName = name,
             PreferredUsername = preferredUsername,
             Upn = upn,
             GivenName = givenName,
