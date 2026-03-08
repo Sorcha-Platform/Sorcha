@@ -81,7 +81,7 @@
 - [x] T025 [P] [US2] Create `OidcExchangeServiceTests` — test authorization URL generation (with state/nonce), code exchange, token validation (signature, issuer, audience, expiry), error handling in `tests/Sorcha.Tenant.Service.Tests/Services/OidcExchangeServiceTests.cs`
 - [x] T026 [P] [US2] Create `OidcProvisioningServiceTests` — test claim mapping (email from email/preferred_username/upn, name from name/given_name+family_name), auto-provisioning with Member role, returning user matching by sub, domain restriction check, profile completion redirect in `tests/Sorcha.Tenant.Service.Tests/Services/OidcProvisioningServiceTests.cs`
 - [x] T027 [P] [US2] Create `OidcEndpointTests` — test POST /api/auth/oidc/initiate, GET /api/auth/callback/{orgSubdomain}, POST /api/auth/oidc/complete-profile, POST /api/auth/verify-email, POST /api/auth/resend-verification in `tests/Sorcha.Tenant.Service.Tests/Endpoints/OidcEndpointTests.cs`
-- [ ] T028 [P] [US2] Create `OidcIntegrationTests` — full flow integration test with mocked IDP: initiate → callback → provision → JWT in `tests/Sorcha.Tenant.Service.Tests/Integration/OidcIntegrationTests.cs`
+- [x] T028 [P] [US2] Create `OidcIntegrationTests` — full flow integration test with mocked IDP: initiate → callback → provision → JWT in `tests/Sorcha.Tenant.Service.Tests/Integration/OidcIntegrationTests.cs`
 
 ### Implementation for User Story 2
 
@@ -110,15 +110,15 @@
 
 ### Tests for User Story 3
 
-- [ ] T036 [P] [US3] Create `PasswordPolicyServiceTests` — test min 12 chars enforcement, no complexity rules, HIBP k-Anonymity breach check (SHA-1 prefix lookup, response parsing), negative result caching (24h) in `tests/Sorcha.Tenant.Service.Tests/Services/PasswordPolicyServiceTests.cs`
+- [x] T036 [P] [US3] Create `PasswordPolicyServiceTests` — test min 12 chars enforcement, no complexity rules, HIBP k-Anonymity breach check (SHA-1 prefix lookup, response parsing), negative result caching (24h) in `tests/Sorcha.Tenant.Service.Tests/Services/PasswordPolicyServiceTests.cs`
 
 ### Implementation for User Story 3
 
-- [ ] T037 [US3] Implement `IPasswordPolicyService` / `PasswordPolicyService` — validate min 12 chars, HIBP k-Anonymity API breach check (SHA-1 hash, send 5-char prefix to api.pwnedpasswords.com/range/{prefix}, check suffix), cache negative results 24h in `src/Services/Sorcha.Tenant.Service/Services/IPasswordPolicyService.cs` and `src/Services/Sorcha.Tenant.Service/Services/PasswordPolicyService.cs`
-- [ ] T038 [US3] Create self-registration endpoint — POST `/api/auth/register` (AllowAnonymous): validate org is Public and SelfRegistrationEnabled, validate password policy, check email uniqueness, create user with ProvisionedVia=Local, send verification email in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T039 [US3] Update `OrgSettingsEndpoints` — GET/PUT `/api/organizations/{orgId}/settings` to manage OrgType and SelfRegistrationEnabled in `src/Services/Sorcha.Tenant.Service/Endpoints/OrgSettingsEndpoints.cs`
-- [ ] T040 [US3] Wire audit events — SelfRegistration event on successful local registration
-- [ ] T041 [US3] Register US3 services in DI and add YARP routes for register and org settings endpoints
+- [x] T037 [US3] Implement `IPasswordPolicyService` / `PasswordPolicyService` — validate min 12 chars, HIBP k-Anonymity API breach check (SHA-1 hash, send 5-char prefix to api.pwnedpasswords.com/range/{prefix}, check suffix), cache negative results 24h in `src/Services/Sorcha.Tenant.Service/Services/IPasswordPolicyService.cs` and `src/Services/Sorcha.Tenant.Service/Services/PasswordPolicyService.cs`
+- [x] T038 [US3] Create self-registration endpoint — POST `/api/auth/register` (AllowAnonymous): validate org is Public and SelfRegistrationEnabled, validate password policy, check email uniqueness, create user with ProvisionedVia=Local, send verification email in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
+- [x] T039 [US3] Update `OrgSettingsEndpoints` — GET/PUT `/api/organizations/{orgId}/settings` to manage OrgType and SelfRegistrationEnabled in `src/Services/Sorcha.Tenant.Service/Endpoints/OrgSettingsEndpoints.cs`
+- [x] T040 [US3] Wire audit events — SelfRegistration event on successful local registration
+- [x] T041 [US3] Register US3 services in DI and add YARP routes for register and org settings endpoints
 
 **Checkpoint**: Public orgs support social login + local registration. Password policy enforced. Email verification works.
 

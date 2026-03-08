@@ -128,6 +128,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOidcProvisioningService, OidcProvisioningService>();
         services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 
+        // Password policy service (NIST + HIBP breach check)
+        services.AddHttpClient<IPasswordPolicyService, PasswordPolicyService>();
+
         return services;
     }
 

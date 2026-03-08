@@ -23,6 +23,9 @@ public static class TestDataSeeder
     // Well-known test organization ID
     public static readonly Guid TestOrganizationId = new("00000000-0000-0000-0000-000000000001");
 
+    // Public organization for self-registration tests
+    public static readonly Guid PublicOrganizationId = new("00000000-0000-0000-0000-000000000002");
+
     // Well-known test user IDs
     public static readonly Guid AdminUserId = new("00000000-0000-0000-0001-000000000001");
     public static readonly Guid MemberUserId = new("00000000-0000-0000-0001-000000000002");
@@ -106,6 +109,20 @@ public static class TestDataSeeder
         };
 
         context.ServicePrincipals.Add(servicePrincipal);
+
+        // Create public organization for self-registration tests
+        var publicOrg = new Organization
+        {
+            Id = PublicOrganizationId,
+            Name = "Public Test Org",
+            Subdomain = "public-org",
+            Status = OrganizationStatus.Active,
+            OrgType = OrgType.Public,
+            SelfRegistrationEnabled = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        context.Organizations.Add(publicOrg);
 
         // Create test IDP configuration for OIDC tests
         var idpConfig = new IdentityProviderConfiguration

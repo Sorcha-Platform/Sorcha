@@ -199,6 +199,28 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IEmailVerificationService>();
             services.AddSingleton(mockEmailVerification.Object);
 
+            // Mock password policy service
+            var mockPasswordPolicy = new Mock<IPasswordPolicyService>();
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult { IsValid = true, Errors = [] });
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync("short", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult
+                {
+                    IsValid = false,
+                    Errors = ["Password must be at least 12 characters."]
+                });
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync("breachedpass1234", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult
+                {
+                    IsValid = false,
+                    Errors = ["This password has appeared in a data breach and cannot be used."]
+                });
+            services.RemoveAll<IPasswordPolicyService>();
+            services.AddSingleton(mockPasswordPolicy.Object);
+
             // Add test authentication scheme
             services.AddAuthentication("Test")
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", options => { });
