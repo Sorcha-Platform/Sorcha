@@ -1,0 +1,708 @@
+# Organization Admin Endpoints
+# Added to Tenant Service under /api/organizations/{orgId}/admin/
+
+paths:
+  # ── IDP Configuration ──────────────────────────────────
+  /api/organizations/{orgId}/idp:
+    get:
+      summary: Get IDP configuration
+      description: Returns the current identity provider configuration for the org.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdpConfigurationResponse'
+        404:
+          description: No IDP configured
+
+    put:
+      summary: Create or update IDP configuration
+      description: |
+        Sets up the external identity provider. If a preset is selected,
+        the issuer URL template is pre-filled. Discovery is automatically
+        triggered to populate endpoints.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdpConfigurationRequest'
+      responses:
+        200:
+          description: IDP configuration saved
+        400:
+          description: Validation error or discovery failed
+
+    delete:
+      summary: Remove IDP configuration
+      description: Removes the external IDP. Users with OIDC accounts can no longer sign in externally.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        204:
+          description: IDP removed
+
+  /api/organizations/{orgId}/idp/discover:
+    post:
+      summary: Discover IDP endpoints
+      description: Fetches the .well-known/openid-configuration document and populates endpoints.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuerUrl]
+              properties:
+                issuerUrl:
+                  type: string
+                  format: uri
+      responses:
+        200:
+          description: Discovery successful, endpoints populated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoveryResponse'
+        400:
+          description: Discovery failed (unreachable, invalid document)
+
+  /api/organizations/{orgId}/idp/test:
+    post:
+      summary: Test IDP connection
+      description: Validates the client credentials against the configured IDP.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  discoveredScopes:
+                    type: array
+                    items:
+                      type: string
+
+  /api/organizations/{orgId}/idp/toggle:
+    post:
+      summary: Enable or disable IDP
+      description: Toggles the IDP between enabled and disabled state.
+      tags: [IDP Configuration]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        200:
+          description: IDP status updated
+
+  # ── Invitation Management ──────────────────────────────
+  /api/organizations/{orgId}/invitations:
+    post:
+      summary: Send invitation
+      description: Creates a time-limited invitation for an email address with a specified role.
+      tags: [Invitations]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [Administrator, Designer, Auditor, Member]
+                expiryDays:
+                  type: integer
+                  default: 7
+                  minimum: 1
+                  maximum: 30
+      responses:
+        201:
+          description: Invitation created and email sent
+        409:
+          description: Active invitation already exists for this email
+
+    get:
+      summary: List invitations
+      description: Returns all invitations for the org, filterable by status.
+      tags: [Invitations]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Accepted, Expired, Revoked]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvitationResponse'
+
+  /api/organizations/{orgId}/invitations/{invitationId}/revoke:
+    post:
+      summary: Revoke invitation
+      description: Invalidates a pending invitation.
+      tags: [Invitations]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Invitation revoked
+        404:
+          description: Invitation not found
+        400:
+          description: Invitation already accepted or expired
+
+  # ── Domain Restrictions ────────────────────────────────
+  /api/organizations/{orgId}/domain-restrictions:
+    get:
+      summary: Get allowed email domains
+      description: Returns the list of allowed email domains for auto-provisioning.
+      tags: [Domain Restrictions]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowedDomains:
+                    type: array
+                    items:
+                      type: string
+                  restrictionsActive:
+                    type: boolean
+
+    put:
+      summary: Update allowed email domains
+      description: Sets the list of allowed email domains. Empty array = no restrictions.
+      tags: [Domain Restrictions]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allowedDomains]
+              properties:
+                allowedDomains:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        200:
+          description: Domain restrictions updated
+
+  # ── Custom Domain ──────────────────────────────────────
+  /api/organizations/{orgId}/custom-domain:
+    get:
+      summary: Get custom domain configuration
+      description: Returns the custom domain setup and verification status.
+      tags: [Custom Domain]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomDomainResponse'
+
+    put:
+      summary: Configure custom domain
+      description: Sets or updates the custom domain. Returns CNAME instructions.
+      tags: [Custom Domain]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+      responses:
+        200:
+          description: Domain configured, CNAME instructions returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CnameInstructionsResponse'
+
+    delete:
+      summary: Remove custom domain
+      description: Removes the custom domain configuration.
+      tags: [Custom Domain]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        204:
+          description: Custom domain removed
+
+  /api/organizations/{orgId}/custom-domain/verify:
+    post:
+      summary: Verify custom domain CNAME
+      description: Checks DNS resolution for the configured custom domain.
+      tags: [Custom Domain]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  message:
+                    type: string
+
+  # ── Admin Dashboard ────────────────────────────────────
+  /api/organizations/{orgId}/dashboard:
+    get:
+      summary: Get admin dashboard stats
+      description: Returns overview statistics for the admin console dashboard.
+      tags: [Admin Dashboard]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResponse'
+
+  # ── User Management (extended) ─────────────────────────
+  /api/organizations/{orgId}/users/{userId}/role:
+    put:
+      summary: Change a user's role
+      description: Updates the user's role within the organization. Cannot target SystemAdmin users.
+      tags: [User Management]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [Administrator, Designer, Auditor, Member]
+      responses:
+        200:
+          description: Role updated
+        400:
+          description: Invalid role or cannot change SystemAdmin
+        404:
+          description: User not found
+
+  /api/organizations/{orgId}/users/{userId}/unlock:
+    post:
+      summary: Unlock a locked-out user account
+      description: Resets the failed login counter and removes any lockout.
+      tags: [User Management]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Account unlocked
+        404:
+          description: User not found
+
+  /api/organizations/{orgId}/users/{userId}/suspend:
+    post:
+      summary: Suspend a user account
+      description: Suspends the user and invalidates all their active sessions.
+      tags: [User Management]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Account suspended, sessions invalidated
+
+  /api/organizations/{orgId}/users/{userId}/reactivate:
+    post:
+      summary: Reactivate a suspended user
+      tags: [User Management]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          description: Account reactivated
+
+  # ── Audit Log ──────────────────────────────────────────
+  /api/organizations/{orgId}/audit:
+    get:
+      summary: Query audit log
+      description: Returns filtered, paginated audit events.
+      tags: [Audit Log]
+      security:
+        - bearerAuth: [RequireAuditor]
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEventResponse'
+                  totalCount:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+
+  /api/organizations/{orgId}/audit/retention:
+    get:
+      summary: Get audit retention settings
+      tags: [Audit Log]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  retentionMonths:
+                    type: integer
+
+    put:
+      summary: Update audit retention period
+      tags: [Audit Log]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [retentionMonths]
+              properties:
+                retentionMonths:
+                  type: integer
+                  minimum: 1
+                  maximum: 120
+      responses:
+        200:
+          description: Retention period updated
+
+  # ── Organization Settings ──────────────────────────────
+  /api/organizations/{orgId}/settings:
+    get:
+      summary: Get organization settings
+      description: Returns org type, self-registration status, and other settings.
+      tags: [Organization Settings]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgSettingsResponse'
+
+    put:
+      summary: Update organization settings
+      tags: [Organization Settings]
+      security:
+        - bearerAuth: [RequireAdministrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrgSettingsRequest'
+      responses:
+        200:
+          description: Settings updated
+
+components:
+  schemas:
+    IdpConfigurationRequest:
+      type: object
+      required: [providerPreset, issuerUrl, clientId, clientSecret]
+      properties:
+        providerPreset:
+          type: string
+          enum: [MicrosoftEntra, Google, Okta, Apple, AmazonCognito, GenericOidc]
+        issuerUrl:
+          type: string
+          format: uri
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+        displayName:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+          default: [openid, profile, email]
+
+    IdpConfigurationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        providerPreset:
+          type: string
+        displayName:
+          type: string
+        issuerUrl:
+          type: string
+        isEnabled:
+          type: boolean
+        scopes:
+          type: array
+          items:
+            type: string
+        authorizationEndpoint:
+          type: string
+        tokenEndpoint:
+          type: string
+        userInfoEndpoint:
+          type: string
+        discoveryFetchedAt:
+          type: string
+          format: date-time
+
+    DiscoveryResponse:
+      type: object
+      properties:
+        issuer:
+          type: string
+        authorizationEndpoint:
+          type: string
+        tokenEndpoint:
+          type: string
+        userInfoEndpoint:
+          type: string
+        jwksUri:
+          type: string
+        supportedScopes:
+          type: array
+          items:
+            type: string
+
+    InvitationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        assignedRole:
+          type: string
+        status:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        invitedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CustomDomainResponse:
+      type: object
+      properties:
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [None, Pending, Verified, Failed]
+        verifiedAt:
+          type: string
+          format: date-time
+        cnameTarget:
+          type: string
+
+    CnameInstructionsResponse:
+      type: object
+      properties:
+        domain:
+          type: string
+        cnameTarget:
+          type: string
+          description: "e.g., {subdomain}.sorcha.io"
+        instructions:
+          type: string
+
+    DashboardResponse:
+      type: object
+      properties:
+        activeUserCount:
+          type: integer
+        suspendedUserCount:
+          type: integer
+        usersByRole:
+          type: object
+          additionalProperties:
+            type: integer
+        recentLogins:
+          type: array
+          items:
+            type: object
+            properties:
+              userId:
+                type: string
+              displayName:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              method:
+                type: string
+        pendingInvitationCount:
+          type: integer
+        idpStatus:
+          type: object
+          properties:
+            configured:
+              type: boolean
+            enabled:
+              type: boolean
+            providerName:
+              type: string
+            lastLoginViaIdp:
+              type: string
+              format: date-time
+
+    AuditEventResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        eventType:
+          type: string
+        actorEmail:
+          type: string
+        actorDisplayName:
+          type: string
+        success:
+          type: boolean
+        ipAddress:
+          type: string
+        details:
+          type: object
+
+    OrgSettingsResponse:
+      type: object
+      properties:
+        orgType:
+          type: string
+          enum: [Standard, Public]
+        selfRegistrationEnabled:
+          type: boolean
+        allowedEmailDomains:
+          type: array
+          items:
+            type: string
+        auditRetentionMonths:
+          type: integer
+
+    OrgSettingsRequest:
+      type: object
+      properties:
+        selfRegistrationEnabled:
+          type: boolean
+        auditRetentionMonths:
+          type: integer
+          minimum: 1
+          maximum: 120

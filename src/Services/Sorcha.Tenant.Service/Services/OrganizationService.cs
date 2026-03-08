@@ -210,7 +210,7 @@ public partial class OrganizationService : IOrganizationService
             OrganizationId = organizationId,
             Email = request.Email,
             DisplayName = request.DisplayName,
-            ExternalIdpUserId = request.ExternalIdpUserId,
+            ExternalIdpSubject = request.ExternalIdpSubject,
             Roles = request.Roles,
             Status = IdentityStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow

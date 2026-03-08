@@ -151,5 +151,80 @@ public enum AuditEventType
     /// <summary>
     /// User was removed from an organization by an administrator.
     /// </summary>
-    UserRemovedFromOrganization
+    UserRemovedFromOrganization,
+
+    /// <summary>
+    /// Organization invitation was sent to an email address.
+    /// </summary>
+    InvitationSent,
+
+    /// <summary>
+    /// Organization invitation was accepted by a user.
+    /// </summary>
+    InvitationAccepted,
+
+    /// <summary>
+    /// Organization invitation was revoked by an administrator.
+    /// </summary>
+    InvitationRevoked,
+
+    /// <summary>
+    /// Organization invitation expired (past ExpiresAt timestamp).
+    /// </summary>
+    InvitationExpired,
+
+    /// <summary>
+    /// Allowed email domain restrictions were updated.
+    /// </summary>
+    DomainRestrictionUpdated,
+
+    /// <summary>
+    /// Custom domain was configured for an organization.
+    /// </summary>
+    CustomDomainConfigured,
+
+    /// <summary>
+    /// Custom domain CNAME verification succeeded.
+    /// </summary>
+    CustomDomainVerified,
+
+    /// <summary>
+    /// Custom domain CNAME verification failed.
+    /// </summary>
+    CustomDomainFailed,
+
+    /// <summary>
+    /// Email verification link was sent to a user.
+    /// </summary>
+    EmailVerificationSent,
+
+    /// <summary>
+    /// User's email address was verified via token.
+    /// </summary>
+    EmailVerified,
+
+    /// <summary>
+    /// User account was locked out due to excessive failed login attempts.
+    /// </summary>
+    AccountLockedOut,
+
+    /// <summary>
+    /// Locked user account was unlocked by an administrator.
+    /// </summary>
+    AccountUnlockedByAdmin,
+
+    /// <summary>
+    /// User self-registered with email/password on a public organization.
+    /// </summary>
+    SelfRegistration,
+
+    /// <summary>
+    /// User logged in for the first time via external OIDC provider (auto-provisioned).
+    /// </summary>
+    OidcFirstLogin,
+
+    /// <summary>
+    /// User completed their profile after OIDC login (provided missing email/name).
+    /// </summary>
+    ProfileCompleted
 }

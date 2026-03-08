@@ -19,9 +19,9 @@ public record AddUserToOrganizationRequest
     public required string DisplayName { get; init; }
 
     /// <summary>
-    /// External IDP user ID (from OIDC token).
+    /// External IDP subject claim (from OIDC token).
     /// </summary>
-    public required string ExternalIdpUserId { get; init; }
+    public required string ExternalIdpSubject { get; init; }
 
     /// <summary>
     /// Roles to assign to the user.

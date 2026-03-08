@@ -168,17 +168,15 @@ public class DatabaseInitializer
                 Email = adminEmail,
                 DisplayName = "System Administrator",
                 PasswordHash = passwordHash,
-                ExternalIdpUserId = null, // Local authentication
-                Roles = new[]
-                {
+                ExternalIdpSubject = null, // Local authentication
+                Roles =
+                [
                     UserRole.Administrator,
                     UserRole.SystemAdmin,
                     UserRole.Designer,
-                    UserRole.Developer,
-                    UserRole.User,
-                    UserRole.Consumer,
-                    UserRole.Auditor
-                },
+                    UserRole.Auditor,
+                    UserRole.Member
+                ],
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow
             };

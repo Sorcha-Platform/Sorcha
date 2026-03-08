@@ -130,7 +130,7 @@ public static class BootstrapEndpoints
                 Email = request.AdminEmail,
                 DisplayName = request.AdminName,
                 PasswordHash = passwordHash,
-                ExternalIdpUserId = null, // Local authentication user
+                ExternalIdpSubject = null, // Local authentication user
                 Roles = new[] { UserRole.Administrator },
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow

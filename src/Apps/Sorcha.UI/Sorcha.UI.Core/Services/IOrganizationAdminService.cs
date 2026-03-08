@@ -230,7 +230,7 @@ public record AddUserDto
 {
     public required string Email { get; init; }
     public required string DisplayName { get; init; }
-    public required string ExternalIdpUserId { get; init; }
+    public required string ExternalIdpSubject { get; init; }
     public string[] Roles { get; init; } = ["Member"];
 }
 
