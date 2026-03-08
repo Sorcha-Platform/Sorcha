@@ -62,11 +62,12 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
 
         var isNew = _routingTable.RegisterPeer(peerInfo);
         _logger.LogInformation(
-            "Peer {PeerId} {Action} at {Address}:{Port}",
+            "Peer {PeerId} {Action} at {Address}:{Port} from {ClientAddress}",
             peerInfo.PeerId,
             isNew ? "registered" : "updated",
             peerInfo.Address,
-            peerInfo.Port);
+            peerInfo.Port,
+            context.Peer);
 
         return Task.FromResult(new RegisterPeerResponse
         {
@@ -172,8 +173,9 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
         response.KnownPeers.AddRange(healthyPeers.Select(MapToPeerInfo));
 
         _logger.LogInformation(
-            "ExchangePeers with {PeerId}: received {Received}, returning {Returned}",
+            "ExchangePeers with {PeerId} from {ClientAddress}: received {Received}, returning {Returned}",
             request.PeerId,
+            context.Peer,
             registeredCount,
             healthyPeers.Count);
 
