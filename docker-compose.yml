@@ -339,11 +339,16 @@ services:
       PeerService__PublicAddress: "${PEER_PUBLIC_ADDRESS:-}"
       PeerService__Port: "5000"
       PeerService__EnableTls: "false"
-      # Cross-machine seed node (configured via .env for each machine)
-      PeerService__SeedNodes__SeedNodes__0__NodeId: "${SEED_PEER_NODE_ID:-}"
-      PeerService__SeedNodes__SeedNodes__0__Hostname: "${SEED_PEER_HOST:-}"
-      PeerService__SeedNodes__SeedNodes__0__Port: "${SEED_PEER_PORT:-50051}"
-      PeerService__SeedNodes__SeedNodes__0__EnableTls: "false"
+      # Azure-hosted PeerRouter seed node (n0.sorcha.dev)
+      PeerService__SeedNodes__SeedNodes__0__NodeId: "n0"
+      PeerService__SeedNodes__SeedNodes__0__Hostname: "n0.sorcha.dev"
+      PeerService__SeedNodes__SeedNodes__0__Port: "443"
+      PeerService__SeedNodes__SeedNodes__0__EnableTls: "true"
+      # Additional cross-machine seed node (configured via .env for each machine)
+      PeerService__SeedNodes__SeedNodes__1__NodeId: "${SEED_PEER_NODE_ID:-}"
+      PeerService__SeedNodes__SeedNodes__1__Hostname: "${SEED_PEER_HOST:-}"
+      PeerService__SeedNodes__SeedNodes__1__Port: "${SEED_PEER_PORT:-5000}"
+      PeerService__SeedNodes__SeedNodes__1__EnableTls: "false"
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
