@@ -52,6 +52,18 @@ public static class EventStreamEndpoints
 
         try
         {
+            // Send SSE comment to flush headers through reverse proxies (Envoy),
+            // then replay buffered events so clients get history on connect.
+            await ctx.Response.WriteAsync(": connected\n\n", ct);
+
+            foreach (var past in buffer.GetSnapshot())
+            {
+                var pastJson = JsonSerializer.Serialize(past, JsonOptions);
+                await ctx.Response.WriteAsync($"data: {pastJson}\n\n", ct);
+            }
+
+            await ctx.Response.Body.FlushAsync(ct);
+
             await foreach (var evt in buffer.FollowAsync(ct))
             {
                 var json = JsonSerializer.Serialize(evt, JsonOptions);
