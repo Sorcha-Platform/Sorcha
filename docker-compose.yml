@@ -344,11 +344,11 @@ services:
       PeerService__SeedNodes__SeedNodes__0__Hostname: "n0.sorcha.dev"
       PeerService__SeedNodes__SeedNodes__0__Port: "443"
       PeerService__SeedNodes__SeedNodes__0__EnableTls: "true"
-      # Additional cross-machine seed node (configured via .env for each machine)
-      PeerService__SeedNodes__SeedNodes__1__NodeId: "${SEED_PEER_NODE_ID:-}"
-      PeerService__SeedNodes__SeedNodes__1__Hostname: "${SEED_PEER_HOST:-}"
-      PeerService__SeedNodes__SeedNodes__1__Port: "${SEED_PEER_PORT:-5000}"
-      PeerService__SeedNodes__SeedNodes__1__EnableTls: "false"
+      # Additional cross-machine seed node (uncomment and configure via .env)
+      # PeerService__SeedNodes__SeedNodes__1__NodeId: "${SEED_PEER_NODE_ID}"
+      # PeerService__SeedNodes__SeedNodes__1__Hostname: "${SEED_PEER_HOST}"
+      # PeerService__SeedNodes__SeedNodes__1__Port: "${SEED_PEER_PORT:-5000}"
+      # PeerService__SeedNodes__SeedNodes__1__EnableTls: "false"
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
