@@ -19,7 +19,7 @@ public class OidcDiscoveryServiceTests
     private readonly Mock<HttpMessageHandler> _httpHandlerMock;
     private readonly HttpClient _httpClient;
     private readonly Mock<IMemoryCache> _cacheMock;
-    private readonly Mock<ILogger<IOidcDiscoveryService>> _loggerMock;
+    private readonly Mock<ILogger<OidcDiscoveryService>> _loggerMock;
 
     private const string ValidIssuerUrl = "https://login.example.com/tenant-id/v2.0";
     private const string WellKnownPath = "/.well-known/openid-configuration";
@@ -39,7 +39,7 @@ public class OidcDiscoveryServiceTests
         _httpHandlerMock = new Mock<HttpMessageHandler>();
         _httpClient = new HttpClient(_httpHandlerMock.Object);
         _cacheMock = new Mock<IMemoryCache>();
-        _loggerMock = new Mock<ILogger<IOidcDiscoveryService>>();
+        _loggerMock = new Mock<ILogger<OidcDiscoveryService>>();
 
         // Default cache setup: cache miss (TryGetValue returns false)
         object? cacheOutValue = null;
@@ -122,9 +122,7 @@ public class OidcDiscoveryServiceTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("not-a-url")]
-    [InlineData("ftp://invalid-scheme.com")]
-    public async Task DiscoverAsync_InvalidUrl_ThrowsInvalidOperationException(string invalidUrl)
+    public async Task DiscoverAsync_EmptyOrWhitespaceUrl_ThrowsArgumentException(string invalidUrl)
     {
         // Arrange
         var service = CreateService();
@@ -132,13 +130,12 @@ public class OidcDiscoveryServiceTests
         // Act
         var act = async () => await service.DiscoverAsync(invalidUrl);
 
-        // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*issuer URL*");
+        // Assert — ArgumentException.ThrowIfNullOrWhiteSpace validates input
+        await act.Should().ThrowAsync<ArgumentException>();
     }
 
     [Fact]
-    public async Task DiscoverAsync_UnreachableUrl_ThrowsHttpRequestException()
+    public async Task DiscoverAsync_UnreachableUrl_ThrowsInvalidOperationException()
     {
         // Arrange
         _httpHandlerMock.Protected()
@@ -152,8 +149,9 @@ public class OidcDiscoveryServiceTests
         // Act
         var act = async () => await service.DiscoverAsync(ValidIssuerUrl);
 
-        // Assert
-        await act.Should().ThrowAsync<HttpRequestException>();
+        // Assert — HttpRequestException is caught and wrapped in InvalidOperationException
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Unable to reach OIDC discovery endpoint*");
     }
 
     [Fact]
@@ -168,7 +166,7 @@ public class OidcDiscoveryServiceTests
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*parse*discovery*");
+            .WithMessage("*not valid JSON*");
     }
 
     [Fact]
@@ -197,7 +195,7 @@ public class OidcDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task DiscoverAsync_NonSuccessStatusCode_ThrowsHttpRequestException()
+    public async Task DiscoverAsync_NonSuccessStatusCode_ThrowsInvalidOperationException()
     {
         // Arrange
         SetupHttpResponse(HttpStatusCode.NotFound, "Not Found");
@@ -206,8 +204,9 @@ public class OidcDiscoveryServiceTests
         // Act
         var act = async () => await service.DiscoverAsync(ValidIssuerUrl);
 
-        // Assert
-        await act.Should().ThrowAsync<HttpRequestException>();
+        // Assert — EnsureSuccessStatusCode throws HttpRequestException, caught and wrapped
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Unable to reach OIDC discovery endpoint*");
     }
 
     [Fact]

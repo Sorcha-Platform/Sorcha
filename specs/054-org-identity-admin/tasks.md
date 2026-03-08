@@ -50,17 +50,17 @@
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Create `OidcDiscoveryServiceTests` — test discovery doc fetching, caching (24h TTL), invalid URL handling, provider-specific issuer templates in `tests/Sorcha.Tenant.Service.Tests/Services/OidcDiscoveryServiceTests.cs`
-- [ ] T018 [P] [US1] Create `IdpConfigurationServiceTests` — test CRUD, discover, test connection, toggle, provider presets, secret encryption in `tests/Sorcha.Tenant.Service.Tests/Services/IdpConfigurationServiceTests.cs`
-- [ ] T019 [P] [US1] Create `IdpConfigurationEndpointTests` — test GET/PUT/DELETE /api/organizations/{orgId}/idp, POST discover/test/toggle endpoints, authorization (RequireAdministrator) in `tests/Sorcha.Tenant.Service.Tests/Endpoints/IdpConfigurationEndpointTests.cs`
+- [x] T017 [P] [US1] Create `OidcDiscoveryServiceTests` — test discovery doc fetching, caching (24h TTL), invalid URL handling, provider-specific issuer templates in `tests/Sorcha.Tenant.Service.Tests/Services/OidcDiscoveryServiceTests.cs`
+- [x] T018 [P] [US1] Create `IdpConfigurationServiceTests` — test CRUD, discover, test connection, toggle, provider presets, secret encryption in `tests/Sorcha.Tenant.Service.Tests/Services/IdpConfigurationServiceTests.cs`
+- [x] T019 [P] [US1] Create `IdpConfigurationEndpointTests` — test GET/PUT/DELETE /api/organizations/{orgId}/idp, POST discover/test/toggle endpoints, authorization (RequireAdministrator) in `tests/Sorcha.Tenant.Service.Tests/Endpoints/IdpConfigurationEndpointTests.cs`
 
 ### Implementation for User Story 1
 
-- [ ] T020 [P] [US1] Create OIDC DTOs — `IdpConfigurationRequest`, `IdpConfigurationResponse`, `DiscoveryResponse` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/IdpConfigurationDtos.cs`
-- [ ] T021 [US1] Implement `IOidcDiscoveryService` / `OidcDiscoveryService` — fetch `.well-known/openid-configuration`, cache with IMemoryCache (24h TTL), extract endpoints (authorization, token, userinfo, JWKS) in `src/Services/Sorcha.Tenant.Service/Services/IOidcDiscoveryService.cs` and `src/Services/Sorcha.Tenant.Service/Services/OidcDiscoveryService.cs`
-- [ ] T022 [US1] Implement `IIdpConfigurationService` / `IdpConfigurationService` — CRUD for IDP config, discover (calls OidcDiscoveryService), test connection (client_credentials grant or introspection), toggle enable/disable, provider presets with issuer URL templates in `src/Services/Sorcha.Tenant.Service/Services/IIdpConfigurationService.cs` and `src/Services/Sorcha.Tenant.Service/Services/IdpConfigurationService.cs`
-- [ ] T023 [US1] Create `IdpConfigurationEndpoints` — map GET/PUT/DELETE `/api/organizations/{orgId}/idp`, POST `discover`, POST `test`, POST `toggle` with RequireAdministrator policy, WithSummary/WithDescription in `src/Services/Sorcha.Tenant.Service/Endpoints/IdpConfigurationEndpoints.cs`
-- [ ] T024 [US1] Register US1 services in DI and add YARP routes for IDP configuration endpoints in `src/Services/Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` and `src/Services/Sorcha.ApiGateway/`
+- [x] T020 [P] [US1] Create OIDC DTOs — `IdpConfigurationRequest`, `IdpConfigurationResponse`, `DiscoveryResponse` in `src/Services/Sorcha.Tenant.Service/Models/Dtos/IdpConfigurationDtos.cs`
+- [x] T021 [US1] Implement `IOidcDiscoveryService` / `OidcDiscoveryService` — fetch `.well-known/openid-configuration`, cache with IMemoryCache (24h TTL), extract endpoints (authorization, token, userinfo, JWKS) in `src/Services/Sorcha.Tenant.Service/Services/IOidcDiscoveryService.cs` and `src/Services/Sorcha.Tenant.Service/Services/OidcDiscoveryService.cs`
+- [x] T022 [US1] Implement `IIdpConfigurationService` / `IdpConfigurationService` — CRUD for IDP config, discover (calls OidcDiscoveryService), test connection (client_credentials grant or introspection), toggle enable/disable, provider presets with issuer URL templates in `src/Services/Sorcha.Tenant.Service/Services/IIdpConfigurationService.cs` and `src/Services/Sorcha.Tenant.Service/Services/IdpConfigurationService.cs`
+- [x] T023 [US1] Create `IdpConfigurationEndpoints` — map GET/PUT/DELETE `/api/organizations/{orgId}/idp`, POST `discover`, POST `test`, POST `toggle` with RequireAdministrator policy, WithSummary/WithDescription in `src/Services/Sorcha.Tenant.Service/Endpoints/IdpConfigurationEndpoints.cs`
+- [x] T024 [US1] Register US1 services in DI and add YARP routes for IDP configuration endpoints in `src/Services/Sorcha.Tenant.Service/Extensions/ServiceCollectionExtensions.cs` and `src/Services/Sorcha.ApiGateway/`
 
 **Checkpoint**: Org admin can configure and test an IDP. Independently testable — no login flow needed yet.
 

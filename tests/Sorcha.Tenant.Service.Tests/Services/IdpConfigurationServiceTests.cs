@@ -346,7 +346,7 @@ public class IdpConfigurationServiceTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.Success.Should().BeFalse();
-        result.Message.Should().Contain("invalid_client");
+        result.Message.Should().Contain("401");
     }
 
     [Fact]

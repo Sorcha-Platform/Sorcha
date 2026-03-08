@@ -115,6 +115,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
 
+        // IDP configuration services
+        services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
+        services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();
+        services.AddHttpClient();
+
         return services;
     }
 
