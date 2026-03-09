@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.EntityFrameworkCore;
-using Sorcha.Blueprint.Service.Data;
+using Sorcha.Tenant.Service.Data;
 
-namespace Sorcha.Blueprint.Service.Services.Implementation;
+namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
 /// Background service that deletes expired activity events daily.
@@ -49,7 +49,7 @@ public class EventCleanupService : BackgroundService
     private async Task CleanupExpiredEventsAsync(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BlueprintEventsDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
 
         var deleted = await db.ActivityEvents
             .Where(e => e.ExpiresAt < DateTime.UtcNow)

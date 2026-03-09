@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Sorcha.Blueprint.Service.Data;
-using Sorcha.Blueprint.Service.Models;
-using Sorcha.Blueprint.Service.Services.Implementation;
+using Moq;
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 
-namespace Sorcha.Blueprint.Service.Tests.Services;
+namespace Sorcha.Tenant.Service.Tests.Services;
 
 public class EventServiceTests : IDisposable
 {
     private readonly SqliteConnection _connection;
-    private readonly BlueprintEventsDbContext _db;
+    private readonly TenantDbContext _db;
     private readonly EventService _sut;
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _orgId = Guid.NewGuid();
@@ -22,10 +24,10 @@ public class EventServiceTests : IDisposable
     {
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
-        var options = new DbContextOptionsBuilder<BlueprintEventsDbContext>()
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseSqlite(_connection)
             .Options;
-        _db = new BlueprintEventsDbContext(options);
+        _db = new TenantDbContext(options);
         _db.Database.EnsureCreated();
         var logger = Mock.Of<ILogger<EventService>>();
         _sut = new EventService(_db, logger);

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-namespace Sorcha.Blueprint.Service.Models;
+namespace Sorcha.Tenant.Service.Models;
 
 /// <summary>
 /// Represents a user or system event captured for the activity log.
-/// Stored in PostgreSQL via BlueprintEventsDbContext.
+/// Stored in PostgreSQL via TenantDbContext.
 /// </summary>
 public class ActivityEvent
 {

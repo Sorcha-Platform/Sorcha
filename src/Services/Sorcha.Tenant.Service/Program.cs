@@ -90,6 +90,11 @@ builder.Services.AddDatabaseInitializer();
 // Add audit cleanup background service (daily purge of expired audit entries)
 builder.Services.AddAuditCleanup();
 
+// Add activity event services (event log and cleanup)
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventService,
+    Sorcha.Tenant.Service.Services.EventService>();
+builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
+
 var app = builder.Build();
 
 // Map default endpoints (OpenAPI, health checks)
@@ -137,6 +142,7 @@ app.MapDashboardEndpoints();
 app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
+app.MapEventEndpoints();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
 // The standard Aspire health endpoint returns plain text "Healthy" or "Unhealthy"

@@ -2,22 +2,22 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.EntityFrameworkCore;
-using Sorcha.Blueprint.Service.Data;
-using Sorcha.Blueprint.Service.Models;
-using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services.Interfaces;
 
-namespace Sorcha.Blueprint.Service.Services.Implementation;
+namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
 /// Manages activity events for the activity log system.
 /// </summary>
 public class EventService : IEventService
 {
-    private readonly BlueprintEventsDbContext _db;
+    private readonly TenantDbContext _db;
     private readonly ILogger<EventService> _logger;
     private const int RetentionDays = 90;
 
-    public EventService(BlueprintEventsDbContext db, ILogger<EventService> logger)
+    public EventService(TenantDbContext db, ILogger<EventService> logger)
     {
         _db = db;
         _logger = logger;

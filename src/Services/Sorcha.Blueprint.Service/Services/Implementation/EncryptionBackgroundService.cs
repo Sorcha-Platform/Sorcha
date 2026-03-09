@@ -3,9 +3,10 @@
 
 using System.Diagnostics;
 using System.Threading.Channels;
-using ActivityEvent = Sorcha.Blueprint.Service.Models.ActivityEvent;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.TransactionHandler.Encryption;
@@ -316,28 +317,25 @@ public sealed class EncryptionBackgroundService : BackgroundService
     {
         try
         {
-            var eventService = serviceProvider.GetService<IEventService>();
-            if (eventService == null) return;
+            var eventClient = serviceProvider.GetService<IEventServiceClient>();
+            if (eventClient == null) return;
 
-            var activityEvent = new ActivityEvent
-            {
-                OrganizationId = Guid.Empty, // System-level event
-                UserId = Guid.Empty,
-                EventType = success ? "EncryptionComplete" : "EncryptionFailed",
-                Severity = success ? EventSeverity.Info : EventSeverity.Error,
-                Title = success
+            var request = new CreateActivityEventRequest(
+                OrganizationId: Guid.Empty, // System-level event
+                UserId: Guid.Empty,
+                EventType: success ? "EncryptionComplete" : "EncryptionFailed",
+                Severity: success ? "Info" : "Error",
+                Title: success
                     ? $"Encryption completed for action {workItem.ActionId}"
                     : $"Encryption failed for action {workItem.ActionId}",
-                Message = success
+                Message: success
                     ? $"Transaction {txHash} submitted for instance {workItem.InstanceId}"
                     : $"Encryption failed for instance {workItem.InstanceId}: {error}",
-                SourceService = "Blueprint.EncryptionPipeline",
-                EntityId = workItem.OperationId,
-                EntityType = "EncryptionOperation",
-                ExpiresAt = DateTime.UtcNow.AddDays(30)
-            };
+                SourceService: "Blueprint.EncryptionPipeline",
+                EntityId: workItem.OperationId,
+                EntityType: "EncryptionOperation");
 
-            await eventService.CreateEventAsync(activityEvent);
+            await eventClient.CreateEventAsync(request);
         }
         catch (Exception ex)
         {

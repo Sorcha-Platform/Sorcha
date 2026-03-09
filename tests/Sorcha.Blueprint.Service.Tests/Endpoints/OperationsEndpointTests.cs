@@ -20,13 +20,11 @@ namespace Sorcha.Blueprint.Service.Tests.Endpoints;
 
 /// <summary>
 /// Unit tests for the GET /api/operations list endpoint.
-/// Uses a lightweight TestServer with mocked IEncryptionOperationStore and IEventService.
+/// Uses a lightweight TestServer with mocked IEncryptionOperationStore.
 /// </summary>
 public class OperationsEndpointTests : IDisposable
 {
     private readonly Mock<IEncryptionOperationStore> _mockStore;
-    private readonly Mock<IEventService> _mockEventService;
-    private readonly Guid _userId = Guid.NewGuid();
     private readonly string _walletAddress = "sorcha1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
     private readonly HttpClient _client;
     private readonly WebApplication _app;
@@ -39,9 +37,7 @@ public class OperationsEndpointTests : IDisposable
     public OperationsEndpointTests()
     {
         _mockStore = new Mock<IEncryptionOperationStore>();
-        _mockEventService = new Mock<IEventService>();
 
-        var userId = _userId;
         var walletAddress = _walletAddress;
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -52,12 +48,11 @@ public class OperationsEndpointTests : IDisposable
         builder.WebHost.UseTestServer();
 
         builder.Services.AddSingleton(_mockStore.Object);
-        builder.Services.AddSingleton(_mockEventService.Object);
 
         builder.Services.AddAuthentication("TestScheme")
             .AddScheme<OperationsTestAuthOptions, OperationsTestAuthHandler>("TestScheme", opts =>
             {
-                opts.UserId = userId;
+                opts.UserId = Guid.NewGuid();
                 opts.WalletAddress = walletAddress;
             });
 
@@ -90,12 +85,6 @@ public class OperationsEndpointTests : IDisposable
             .Setup(s => s.GetByWalletAddressAsync(_walletAddress))
             .ReturnsAsync(activeOp);
 
-        var completedEvent = MakeActivityEvent("op-2", "encryption_complete");
-        _mockEventService
-            .Setup(s => s.GetEventsAsync(
-                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((new List<ActivityEvent> { completedEvent }.AsReadOnly(), 1));
-
         // Act
         var response = await _client.GetAsync($"/api/operations?wallet={_walletAddress}");
 
@@ -105,21 +94,16 @@ public class OperationsEndpointTests : IDisposable
         var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        root.GetProperty("totalCount").GetInt32().Should().Be(2);
+        root.GetProperty("totalCount").GetInt32().Should().Be(1);
         root.GetProperty("page").GetInt32().Should().Be(1);
         root.GetProperty("pageSize").GetInt32().Should().Be(20);
         root.GetProperty("hasMore").GetBoolean().Should().BeFalse();
 
         var items = root.GetProperty("items").EnumerateArray().ToList();
-        items.Should().HaveCount(2);
+        items.Should().HaveCount(1);
 
-        // Active operation should be first
         items[0].GetProperty("operationId").GetString().Should().Be("op-1");
         items[0].GetProperty("status").GetString().Should().Be("encrypting");
-
-        // Completed event should be second
-        items[1].GetProperty("operationId").GetString().Should().Be("op-2");
-        items[1].GetProperty("status").GetString().Should().Be("complete");
     }
 
     [Fact]
@@ -143,11 +127,6 @@ public class OperationsEndpointTests : IDisposable
             .Setup(s => s.GetByWalletAddressAsync(_walletAddress))
             .ReturnsAsync((EncryptionOperation?)null);
 
-        _mockEventService
-            .Setup(s => s.GetEventsAsync(
-                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Array.Empty<ActivityEvent>().AsReadOnly(), 0));
-
         // Act
         var response = await _client.GetAsync($"/api/operations?wallet={_walletAddress}");
 
@@ -170,11 +149,6 @@ public class OperationsEndpointTests : IDisposable
             .Setup(s => s.GetByWalletAddressAsync(_walletAddress))
             .ReturnsAsync((EncryptionOperation?)null);
 
-        _mockEventService
-            .Setup(s => s.GetEventsAsync(
-                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Array.Empty<ActivityEvent>().AsReadOnly(), 0));
-
         // Act - no page/pageSize params
         var response = await _client.GetAsync($"/api/operations?wallet={_walletAddress}");
 
@@ -191,23 +165,14 @@ public class OperationsEndpointTests : IDisposable
     [Fact]
     public async Task ListOperations_CustomPagination_RespectsParameters()
     {
-        // Arrange
+        // Arrange - with one active operation
+        var activeOp = MakeOperation("op-1", EncryptionOperationStatus.Encrypting);
         _mockStore
             .Setup(s => s.GetByWalletAddressAsync(_walletAddress))
-            .ReturnsAsync((EncryptionOperation?)null);
+            .ReturnsAsync(activeOp);
 
-        // Create enough events to test pagination
-        var events = Enumerable.Range(1, 10)
-            .Select(i => MakeActivityEvent($"op-{i}", "encryption_complete"))
-            .ToList();
-
-        _mockEventService
-            .Setup(s => s.GetEventsAsync(
-                _userId, It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<EventSeverity?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((events.AsReadOnly(), events.Count));
-
-        // Act - request page 2 with pageSize 3
-        var response = await _client.GetAsync($"/api/operations?wallet={_walletAddress}&page=2&pageSize=3");
+        // Act - request page 1 with pageSize 3
+        var response = await _client.GetAsync($"/api/operations?wallet={_walletAddress}&page=1&pageSize=3");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -215,11 +180,11 @@ public class OperationsEndpointTests : IDisposable
         var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        root.GetProperty("page").GetInt32().Should().Be(2);
+        root.GetProperty("page").GetInt32().Should().Be(1);
         root.GetProperty("pageSize").GetInt32().Should().Be(3);
-        root.GetProperty("totalCount").GetInt32().Should().Be(10);
-        root.GetProperty("hasMore").GetBoolean().Should().BeTrue();
-        root.GetProperty("items").EnumerateArray().ToList().Should().HaveCount(3);
+        root.GetProperty("totalCount").GetInt32().Should().Be(1);
+        root.GetProperty("hasMore").GetBoolean().Should().BeFalse();
+        root.GetProperty("items").EnumerateArray().ToList().Should().HaveCount(1);
     }
 
     #region Helpers
@@ -238,18 +203,6 @@ public class OperationsEndpointTests : IDisposable
         TotalSteps = 5,
         StepName = "Encrypting payloads",
         PercentComplete = 40
-    };
-
-    private ActivityEvent MakeActivityEvent(string operationId, string eventType) => new()
-    {
-        UserId = _userId,
-        EventType = eventType,
-        Title = "Encryption operation completed",
-        Message = "All recipients encrypted successfully",
-        SourceService = "blueprint-service",
-        EntityId = operationId,
-        EntityType = "EncryptionOperation",
-        CreatedAt = DateTime.UtcNow.AddMinutes(-5)
     };
 
     #endregion
