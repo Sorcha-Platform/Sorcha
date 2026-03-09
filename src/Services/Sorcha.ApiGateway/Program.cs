@@ -25,7 +25,15 @@ builder.Services.AddReverseProxy()
 
 // Add health aggregation service
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<HealthAggregationService>();
+
+// Configure Tenant Service HTTP client for URL resolution
+builder.Services.AddHttpClient("TenantService", client =>
+{
+    var tenantServiceUrl = builder.Configuration.GetValue<string>("Services:TenantService:BaseUrl") ?? "http://tenant-service";
+    client.BaseAddress = new Uri(tenantServiceUrl);
+});
 
 // Add dashboard statistics service
 builder.Services.AddSingleton<DashboardStatisticsService>();
@@ -534,6 +542,9 @@ app.MapGet("/scalar/gateway", () =>
     return Results.Redirect("/scalar/v1");
 })
 .ExcludeFromDescription();
+
+// URL resolution middleware — resolves org subdomain from path/subdomain/custom domain
+app.UseMiddleware<UrlResolutionMiddleware>();
 
 // Map YARP reverse proxy (must be last)
 app.MapReverseProxy();

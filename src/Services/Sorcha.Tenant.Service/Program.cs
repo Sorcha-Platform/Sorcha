@@ -129,6 +129,8 @@ app.MapOidcEndpoints();
 app.MapOrgSettingsEndpoints();
 app.MapInvitationEndpoints();
 app.MapDashboardEndpoints();
+app.MapCustomDomainEndpoints();
+app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive

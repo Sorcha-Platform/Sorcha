@@ -165,18 +165,18 @@
 
 ### Tests for User Story 5
 
-- [ ] T054 [P] [US5] Create `CustomDomainServiceTests` — test configure (set domain, return CNAME instructions), verify (DNS CNAME lookup), status transitions (Pending→Verified/Failed), remove domain in `tests/Sorcha.Tenant.Service.Tests/Services/CustomDomainServiceTests.cs`
-- [ ] T054a [P] [US5] Create `UrlResolutionMiddlewareTests` — test path-based extraction (`/org/{subdomain}`), subdomain-based extraction from Host header (`{sub}.sorcha.io`), custom domain lookup via Redis cache, `X-Org-Subdomain` header propagation, unknown domain returns 404 in `tests/Sorcha.ApiGateway.Tests/` or `tests/Sorcha.Tenant.Service.Tests/Integration/UrlResolutionTests.cs`
+- [x] T054 [P] [US5] Create `CustomDomainServiceTests` — test configure (set domain, return CNAME instructions), verify (DNS CNAME lookup), status transitions (Pending→Verified/Failed), remove domain in `tests/Sorcha.Tenant.Service.Tests/Services/CustomDomainServiceTests.cs`
+- [x] T054a [P] [US5] Create `UrlResolutionMiddlewareTests` — test path-based extraction (`/org/{subdomain}`), subdomain-based extraction from Host header (`{sub}.sorcha.io`), custom domain lookup via Redis cache, `X-Org-Subdomain` header propagation, unknown domain returns 404 in `tests/Sorcha.ApiGateway.Tests/Services/UrlResolutionMiddlewareTests.cs`
 
 ### Implementation for User Story 5
 
-- [ ] T055 [P] [US5] Create `ICustomDomainRepository` / `CustomDomainRepository` in `src/Services/Sorcha.Tenant.Service/Data/Repositories/ICustomDomainRepository.cs` and `src/Services/Sorcha.Tenant.Service/Data/Repositories/CustomDomainRepository.cs`
-- [ ] T056 [US5] Implement `ICustomDomainService` / `CustomDomainService` — configure domain (set CNAME target = `{subdomain}.sorcha.io`), verify via `System.Net.Dns.GetHostEntryAsync()`, status tracking, remove domain in `src/Services/Sorcha.Tenant.Service/Services/ICustomDomainService.cs` and `src/Services/Sorcha.Tenant.Service/Services/CustomDomainService.cs`
-- [ ] T057 [US5] Create `CustomDomainEndpoints` — GET/PUT/DELETE `/api/organizations/{orgId}/custom-domain`, POST `verify` with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/CustomDomainEndpoints.cs`
-- [ ] T058 [US5] Implement `CustomDomainVerificationService` (BackgroundService) — daily CNAME check for all verified domains, update status to Failed if CNAME removed, log status changes in `src/Services/Sorcha.Tenant.Service/Services/CustomDomainVerificationService.cs`
-- [ ] T059 [US5] Implement URL resolution middleware in API Gateway — path-based (`/org/{subdomain}`) extraction, subdomain-based (`{sub}.sorcha.io`) extraction from Host header, custom domain lookup via `CustomDomainMapping` (Redis cached, 5min TTL), add `X-Org-Subdomain` header to downstream requests in `src/Services/Sorcha.ApiGateway/`
-- [ ] T060 [US5] Wire audit events — CustomDomainConfigured, CustomDomainVerified, CustomDomainFailed
-- [ ] T061 [US5] Register US5 services/repos in DI and add YARP routes for custom domain endpoints
+- [x] T055 [P] [US5] Create `ICustomDomainRepository` / `CustomDomainRepository` in `src/Services/Sorcha.Tenant.Service/Data/Repositories/ICustomDomainRepository.cs` and `src/Services/Sorcha.Tenant.Service/Data/Repositories/CustomDomainRepository.cs`
+- [x] T056 [US5] Implement `ICustomDomainService` / `CustomDomainService` — configure domain (set CNAME target = `{subdomain}.sorcha.io`), verify via `IDnsResolver` abstraction, status tracking, remove domain in `src/Services/Sorcha.Tenant.Service/Services/ICustomDomainService.cs` and `src/Services/Sorcha.Tenant.Service/Services/CustomDomainService.cs`
+- [x] T057 [US5] Create `CustomDomainEndpoints` — GET/PUT/DELETE `/api/organizations/{orgId}/custom-domain`, POST `verify` with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/CustomDomainEndpoints.cs`
+- [x] T058 [US5] Implement `CustomDomainVerificationService` (BackgroundService) — daily CNAME check for all verified domains, update status to Failed if CNAME removed, log status changes in `src/Services/Sorcha.Tenant.Service/Services/CustomDomainVerificationService.cs`
+- [x] T059 [US5] Implement URL resolution middleware in API Gateway — path-based (`/org/{subdomain}`) extraction, subdomain-based (`{sub}.sorcha.io`) extraction from Host header, custom domain lookup via Tenant Service (IMemoryCache 5min TTL), add `X-Org-Subdomain` header to downstream requests in `src/Services/Sorcha.ApiGateway/Services/UrlResolutionMiddleware.cs`
+- [x] T060 [US5] Wire audit events — CustomDomainConfigured, CustomDomainVerified, CustomDomainFailed (inline in CustomDomainService)
+- [x] T061 [US5] Register US5 services/repos in DI and add YARP routes for custom domain endpoints
 
 **Checkpoint**: All three URL resolution tiers work. Custom domain lifecycle (configure → verify → monitor) functional.
 

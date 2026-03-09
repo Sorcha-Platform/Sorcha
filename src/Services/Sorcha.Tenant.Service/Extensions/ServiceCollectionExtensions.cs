@@ -136,6 +136,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IInvitationService, InvitationService>();
         services.AddScoped<IDashboardService, DashboardService>();
 
+        // Custom domain services
+        services.AddScoped<ICustomDomainRepository, CustomDomainRepository>();
+        services.AddScoped<ICustomDomainService, CustomDomainService>();
+        services.AddSingleton<IDnsResolver, DnsResolver>();
+        services.AddHostedService<CustomDomainVerificationService>();
+
         return services;
     }
 
