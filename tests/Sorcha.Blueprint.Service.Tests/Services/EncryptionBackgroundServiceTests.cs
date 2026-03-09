@@ -12,6 +12,8 @@ using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.TransactionHandler.Encryption;
@@ -30,7 +32,7 @@ public class EncryptionBackgroundServiceTests
     private readonly Mock<IActionResolverService> _actionResolver = new();
     private readonly Mock<IInstanceStore> _instanceStore = new();
     private readonly Mock<IEncryptionOperationStore> _operationStore = new();
-    private readonly Mock<IEventService> _eventService = new();
+    private readonly Mock<IEventServiceClient> _eventServiceClient = new();
 
     private EncryptionBackgroundService CreateService(Channel<EncryptionWorkItem> channel)
     {
@@ -42,7 +44,7 @@ public class EncryptionBackgroundServiceTests
         services.AddSingleton(_validatorClient.Object);
         services.AddSingleton(_actionResolver.Object);
         services.AddSingleton(_instanceStore.Object);
-        services.AddSingleton(_eventService.Object);
+        services.AddSingleton(_eventServiceClient.Object);
         var serviceProvider = services.BuildServiceProvider();
 
         return new EncryptionBackgroundService(
@@ -169,8 +171,8 @@ public class EncryptionBackgroundServiceTests
                 TransactionId = "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
             });
 
-        _eventService.Setup(e => e.CreateEventAsync(It.IsAny<ActivityEvent>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ActivityEvent ev, CancellationToken _) => ev);
+        _eventServiceClient.Setup(e => e.CreateEventAsync(It.IsAny<CreateActivityEventRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     [Fact]
@@ -364,10 +366,10 @@ public class EncryptionBackgroundServiceTests
         await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
 
         // Assert
-        _eventService.Verify(e => e.CreateEventAsync(
-            It.Is<ActivityEvent>(ev =>
+        _eventServiceClient.Verify(e => e.CreateEventAsync(
+            It.Is<CreateActivityEventRequest>(ev =>
                 ev.EventType == "EncryptionComplete" &&
-                ev.Severity == EventSeverity.Info &&
+                ev.Severity == "Info" &&
                 ev.SourceService == "Blueprint.EncryptionPipeline" &&
                 ev.EntityId == "op123" &&
                 ev.EntityType == "EncryptionOperation"),
@@ -407,10 +409,10 @@ public class EncryptionBackgroundServiceTests
         await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
 
         // Assert
-        _eventService.Verify(e => e.CreateEventAsync(
-            It.Is<ActivityEvent>(ev =>
+        _eventServiceClient.Verify(e => e.CreateEventAsync(
+            It.Is<CreateActivityEventRequest>(ev =>
                 ev.EventType == "EncryptionFailed" &&
-                ev.Severity == EventSeverity.Error),
+                ev.Severity == "Error"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }

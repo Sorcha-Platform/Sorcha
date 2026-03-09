@@ -1,7 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 Sorcha Contributors
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -19,6 +16,30 @@ namespace Sorcha.Tenant.Service.Migrations
         {
             migrationBuilder.EnsureSchema(
                 name: "public");
+
+            migrationBuilder.CreateTable(
+                name: "ActivityEvents",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    EventType = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Severity = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Message = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    SourceService = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    EntityId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    EntityType = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    IsRead = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ActivityEvents", x => x.Id);
+                });
 
             migrationBuilder.CreateTable(
                 name: "AuditLogEntries",
@@ -400,6 +421,33 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_ActivityEvent_ExpiresAt",
+                schema: "public",
+                table: "ActivityEvents",
+                column: "ExpiresAt");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ActivityEvent_OrgId_CreatedAt",
+                schema: "public",
+                table: "ActivityEvents",
+                columns: new[] { "OrganizationId", "CreatedAt" },
+                descending: new[] { false, true });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ActivityEvent_UserId_CreatedAt",
+                schema: "public",
+                table: "ActivityEvents",
+                columns: new[] { "UserId", "CreatedAt" },
+                descending: new[] { false, true });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ActivityEvent_UserId_IsRead",
+                schema: "public",
+                table: "ActivityEvents",
+                columns: new[] { "UserId", "IsRead" },
+                filter: "\"IsRead\" = false");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AuditLogEntries_EventType",
                 schema: "public",
                 table: "AuditLogEntries",
@@ -621,6 +669,10 @@ namespace Sorcha.Tenant.Service.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "ActivityEvents",
+                schema: "public");
+
             migrationBuilder.DropTable(
                 name: "AuditLogEntries",
                 schema: "public");

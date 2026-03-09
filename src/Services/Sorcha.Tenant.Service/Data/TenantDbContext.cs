@@ -51,6 +51,9 @@ public class TenantDbContext : DbContext
     // Public schema entities for push notifications
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
+    // Public schema entities for activity event log
+    public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
+
     // Public schema entities for platform-level configuration
     public DbSet<SystemConfiguration> SystemConfigurations => Set<SystemConfiguration>();
 
@@ -59,8 +62,9 @@ public class TenantDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         // Set default schema (public or org_{id})
-        // Note: InMemory provider doesn't support schemas, so only set for relational databases
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        // Note: InMemory and SQLite providers don't support schemas, so only set for PostgreSQL
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
         if (!isInMemory)
         {
             modelBuilder.HasDefaultSchema(_currentSchema);
@@ -116,11 +120,15 @@ public class TenantDbContext : DbContext
 
         // Configure CustomDomainMapping entity (public schema)
         ConfigureCustomDomainMapping(modelBuilder);
+
+        // Configure ActivityEvent entity (public schema)
+        ConfigureActivityEvent(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<Organization>(entity =>
         {
@@ -174,7 +182,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureIdentityProviderConfiguration(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<IdentityProviderConfiguration>(entity =>
         {
@@ -224,7 +233,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigurePublicIdentity(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<PublicIdentity>(entity =>
         {
@@ -247,7 +257,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureServicePrincipal(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<ServicePrincipal>(entity =>
         {
@@ -354,7 +365,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureAuditLogEntry(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<AuditLogEntry>(entity =>
         {
@@ -442,7 +454,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureParticipantAuditEntry(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<ParticipantAuditEntry>(entity =>
         {
@@ -501,7 +514,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureLinkedWalletAddress(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<LinkedWalletAddress>(entity =>
         {
@@ -554,7 +568,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureWalletLinkChallenge(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<WalletLinkChallenge>(entity =>
         {
@@ -655,7 +670,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigurePushSubscription(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<PushSubscription>(entity =>
         {
@@ -689,7 +705,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureSystemConfiguration(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<SystemConfiguration>(entity =>
         {
@@ -729,7 +746,8 @@ public class TenantDbContext : DbContext
 
     private void ConfigureCustomDomainMapping(ModelBuilder modelBuilder)
     {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
 
         modelBuilder.Entity<CustomDomainMapping>(entity =>
         {
@@ -745,6 +763,52 @@ public class TenantDbContext : DbContext
 
             entity.HasIndex(e => e.Domain).IsUnique();
             entity.HasIndex(e => e.OrganizationId).IsUnique();
+        });
+    }
+
+    private void ConfigureActivityEvent(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<ActivityEvent>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("ActivityEvents");
+            else
+                entity.ToTable("ActivityEvents", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.EventType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Severity).IsRequired()
+                .HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.SourceService).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.EntityId).HasMaxLength(200);
+            entity.Property(e => e.EntityType).HasMaxLength(50);
+
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt })
+                .HasDatabaseName("IX_ActivityEvent_UserId_CreatedAt")
+                .IsDescending(false, true);
+            entity.HasIndex(e => new { e.OrganizationId, e.CreatedAt })
+                .HasDatabaseName("IX_ActivityEvent_OrgId_CreatedAt")
+                .IsDescending(false, true);
+            entity.HasIndex(e => e.ExpiresAt)
+                .HasDatabaseName("IX_ActivityEvent_ExpiresAt");
+
+            if (!isInMemory)
+            {
+                entity.HasIndex(e => new { e.UserId, e.IsRead })
+                    .HasDatabaseName("IX_ActivityEvent_UserId_IsRead")
+                    .HasFilter("\"IsRead\" = false");
+            }
+            else
+            {
+                entity.HasIndex(e => new { e.UserId, e.IsRead })
+                    .HasDatabaseName("IX_ActivityEvent_UserId_IsRead");
+            }
         });
     }
 }

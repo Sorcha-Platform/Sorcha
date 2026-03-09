@@ -11,6 +11,7 @@ using Sorcha.ServiceClients.Grpc;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Did;
+using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.Register.Service.Grpc;
 using Sorcha.Wallet.Service.Grpc;
@@ -94,6 +95,9 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<ParticipantServiceClient>();
         services.AddScoped<IParticipantServiceClient, ParticipantServiceClient>();
+
+        services.AddHttpClient<EventServiceClient>();
+        services.AddScoped<IEventServiceClient, EventServiceClient>();
 
         // Feature 047: Inbound transaction routing gRPC clients via GrpcClientFactory.
         // Named clients are resolved per-call via GrpcClientFactory.CreateClient<T>(name),

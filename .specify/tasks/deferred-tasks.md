@@ -23,6 +23,7 @@
 | TENANT-1 | Multi-tenant data isolation | P3 | 16h | 📋 Deferred | Use simple provider for MVD |
 | TENANT-2 | Azure AD integration | P3 | 12h | 📋 Deferred | Full identity federation |
 | TENANT-3 | Billing and metering | P3 | 20h | 📋 Deferred | Enterprise feature |
+| TENANT-4 | Activity event multi-tenant isolation | P3 | 8h | 📋 Deferred | Events currently in public schema; consider per-org schema isolation when TENANT-1 is implemented |
 
 ---
 

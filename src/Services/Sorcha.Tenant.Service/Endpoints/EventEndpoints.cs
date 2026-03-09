@@ -3,10 +3,10 @@
 
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using Sorcha.Blueprint.Service.Models;
-using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services.Interfaces;
 
-namespace Sorcha.Blueprint.Service.Endpoints;
+namespace Sorcha.Tenant.Service.Endpoints;
 
 /// <summary>
 /// Activity events REST API endpoints.
@@ -203,8 +203,14 @@ public static class EventEndpoints
     };
 }
 
+/// <summary>
+/// Request to mark events as read. If EventIds is null or empty, all events are marked read.
+/// </summary>
 public record MarkReadRequest(Guid[]? EventIds);
 
+/// <summary>
+/// Request to create a new activity event.
+/// </summary>
 public record CreateEventRequest(
     Guid OrganizationId,
     Guid UserId,

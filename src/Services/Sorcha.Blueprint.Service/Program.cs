@@ -8,7 +8,6 @@ using Polly.Extensions.Http;
 using Scalar.AspNetCore;
 using System.Buffers.Text;
 using System.Collections.Concurrent;
-using Microsoft.EntityFrameworkCore;
 using Sorcha.Blueprint.Service.Endpoints;
 using Sorcha.Blueprint.Service.Extensions;
 using Sorcha.Blueprint.Service.Hubs;
@@ -122,19 +121,6 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionE
 // Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
-
-// Add Activity Events PostgreSQL context (043)
-builder.Services.AddDbContext<Sorcha.Blueprint.Service.Data.BlueprintEventsDbContext>(options =>
-{
-    var eventsConnStr = builder.Configuration.GetConnectionString("EventsDb");
-    if (!string.IsNullOrEmpty(eventsConnStr))
-        options.UseNpgsql(eventsConnStr, npgsql => npgsql.EnableRetryOnFailure(3));
-    else
-        options.UseSqlite("DataSource=BlueprintEvents.db");
-});
-builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IEventService,
-    Sorcha.Blueprint.Service.Services.Implementation.EventService>();
-builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventCleanupService>();
 
 // Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
@@ -284,9 +270,6 @@ app.UseMiddleware<Sorcha.Blueprint.Service.Middleware.DelegationTokenMiddleware>
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ActionsHub>("/actionshub").RequireAuthorization();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<Sorcha.Blueprint.Service.Hubs.EventsHub>("/hubs/events").RequireAuthorization();
-
-// Map Activity Events endpoints (043)
-app.MapEventEndpoints();
 
 // Map Operations endpoints (045 Phase 7 - async encryption status)
 app.MapOperationsEndpoints();
