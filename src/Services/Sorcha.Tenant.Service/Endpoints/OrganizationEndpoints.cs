@@ -4,6 +4,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -147,7 +150,224 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
+        // User lifecycle management
+        group.MapPost("/{organizationId:guid}/users/{userId:guid}/unlock", UnlockUser)
+            .WithName("UnlockUser")
+            .WithSummary("Unlock a locked user account")
+            .WithDescription("Resets the failed login counter and removes lockout for a user account.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/{organizationId:guid}/users/{userId:guid}/suspend", SuspendUser)
+            .WithName("SuspendUser")
+            .WithSummary("Suspend a user account")
+            .WithDescription("Suspends a user account, preventing authentication. Active sessions are invalidated.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPost("/{organizationId:guid}/users/{userId:guid}/reactivate", ReactivateUser)
+            .WithName("ReactivateUser")
+            .WithSummary("Reactivate a suspended user account")
+            .WithDescription("Reactivates a previously suspended user account.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        group.MapPut("/{organizationId:guid}/users/{userId:guid}/role", ChangeUserRole)
+            .WithName("ChangeUserRole")
+            .WithSummary("Change a user's role")
+            .WithDescription("Changes a user's role. Cannot target SystemAdmin users or assign SystemAdmin role.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         return app;
+    }
+
+    private static async Task<Results<Ok, NotFound>> UnlockUser(
+        Guid organizationId,
+        Guid userId,
+        IIdentityRepository identityRepository,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var targetUser = await identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (targetUser == null || targetUser.OrganizationId != organizationId)
+        {
+            return TypedResults.NotFound();
+        }
+
+        targetUser.FailedLoginCount = 0;
+        targetUser.LockedUntil = null;
+        targetUser.LockedPermanently = false;
+        await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
+
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = GetUserId(user),
+            EventType = AuditEventType.AccountUnlockedByAdmin,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["targetUserId"] = userId.ToString(),
+                ["targetEmail"] = targetUser.Email
+            }
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok, NotFound>> SuspendUser(
+        Guid organizationId,
+        Guid userId,
+        IIdentityRepository identityRepository,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var targetUser = await identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (targetUser == null || targetUser.OrganizationId != organizationId)
+        {
+            return TypedResults.NotFound();
+        }
+
+        targetUser.Status = IdentityStatus.Suspended;
+        await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
+
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = GetUserId(user),
+            EventType = AuditEventType.UserUpdatedInOrganization,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["targetUserId"] = userId.ToString(),
+                ["action"] = "Suspended"
+            }
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok, BadRequest<ProblemDetails>, NotFound>> ReactivateUser(
+        Guid organizationId,
+        Guid userId,
+        IIdentityRepository identityRepository,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var targetUser = await identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (targetUser == null || targetUser.OrganizationId != organizationId)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (targetUser.Status != IdentityStatus.Suspended)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Invalid Operation",
+                Detail = $"User is {targetUser.Status}, not Suspended. Only suspended users can be reactivated.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        targetUser.Status = IdentityStatus.Active;
+        await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
+
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = GetUserId(user),
+            EventType = AuditEventType.UserUpdatedInOrganization,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["targetUserId"] = userId.ToString(),
+                ["action"] = "Reactivated"
+            }
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok, ValidationProblem, NotFound>> ChangeUserRole(
+        Guid organizationId,
+        Guid userId,
+        ChangeUserRoleRequest request,
+        IIdentityRepository identityRepository,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        // Validate requested role
+        if (request.Role == UserRole.SystemAdmin)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["role"] = ["Cannot assign SystemAdmin role."]
+            });
+        }
+
+        var targetUser = await identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (targetUser == null || targetUser.OrganizationId != organizationId)
+        {
+            return TypedResults.NotFound();
+        }
+
+        // Cannot change role of SystemAdmin users
+        if (targetUser.Roles.Contains(UserRole.SystemAdmin))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["userId"] = ["Cannot change role of a SystemAdmin user."]
+            });
+        }
+
+        var previousRole = targetUser.Roles.FirstOrDefault().ToString();
+        targetUser.Roles = [request.Role];
+        await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
+
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            IdentityId = GetUserId(user),
+            EventType = AuditEventType.UserUpdatedInOrganization,
+            Timestamp = DateTimeOffset.UtcNow,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["targetUserId"] = userId.ToString(),
+                ["action"] = "RoleChanged",
+                ["previousRole"] = previousRole,
+                ["newRole"] = request.Role.ToString()
+            }
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
     }
 
     private static async Task<Results<Created<OrganizationResponse>, Conflict<ProblemDetails>, ValidationProblem>> CreateOrganization(

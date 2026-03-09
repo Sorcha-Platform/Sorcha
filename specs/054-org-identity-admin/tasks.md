@@ -134,22 +134,22 @@
 
 ### Tests for User Story 4
 
-- [ ] T042 [P] [US4] Create `InvitationServiceTests` — test create (with email, role, 7-day expiry, 32-byte token), accept (consume token, provision user with role, bypass domain restrictions), revoke (set Revoked status), expire (status transition), duplicate prevention in `tests/Sorcha.Tenant.Service.Tests/Services/InvitationServiceTests.cs`
-- [ ] T043 [P] [US4] Create `DashboardServiceTests` — test active/suspended user counts, users-by-role, recent logins, pending invitation count, IDP status in `tests/Sorcha.Tenant.Service.Tests/Services/DashboardServiceTests.cs`
-- [ ] T044 [P] [US4] Create `InvitationEndpointTests` — test POST/GET /api/organizations/{orgId}/invitations, POST revoke, authorization (RequireAdministrator) in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InvitationEndpointTests.cs`
+- [x] T042 [P] [US4] Create `InvitationServiceTests` — test create (with email, role, 7-day expiry, 32-byte token), accept (consume token, provision user with role, bypass domain restrictions), revoke (set Revoked status), expire (status transition), duplicate prevention in `tests/Sorcha.Tenant.Service.Tests/Services/InvitationServiceTests.cs`
+- [x] T043 [P] [US4] Create `DashboardServiceTests` — test active/suspended user counts, users-by-role, recent logins, pending invitation count, IDP status in `tests/Sorcha.Tenant.Service.Tests/Services/DashboardServiceTests.cs`
+- [x] T044 [P] [US4] Create `InvitationEndpointTests` — test POST/GET /api/organizations/{orgId}/invitations, POST revoke, authorization (RequireAdministrator) in `tests/Sorcha.Tenant.Service.Tests/Endpoints/InvitationEndpointTests.cs`
 
 ### Implementation for User Story 4
 
-- [ ] T045 [P] [US4] Create Invitation DTOs in `src/Services/Sorcha.Tenant.Service/Models/Dtos/InvitationDtos.cs` and Dashboard DTOs in `src/Services/Sorcha.Tenant.Service/Models/Dtos/DashboardDtos.cs`
-- [ ] T046 [P] [US4] Create `IInvitationRepository` / `InvitationRepository` in `src/Services/Sorcha.Tenant.Service/Data/Repositories/IInvitationRepository.cs` and `src/Services/Sorcha.Tenant.Service/Data/Repositories/InvitationRepository.cs`
-- [ ] T047 [US4] Implement `IInvitationService` / `InvitationService` — create invitation (generate 32-byte token, 7-day expiry, send email via IEmailSender), accept (authenticate, provision with role, bypass domain restrictions), revoke, list by status, check expiry in `src/Services/Sorcha.Tenant.Service/Services/IInvitationService.cs` and `src/Services/Sorcha.Tenant.Service/Services/InvitationService.cs`
-- [ ] T048 [US4] Implement `IDashboardService` / `DashboardService` — aggregate active/suspended user counts, users-by-role breakdown, recent logins (last 10), pending invitation count, IDP status (configured/enabled/provider name/last IDP login) in `src/Services/Sorcha.Tenant.Service/Services/IDashboardService.cs` and `src/Services/Sorcha.Tenant.Service/Services/DashboardService.cs`
-- [ ] T049 [US4] Create `InvitationEndpoints` — POST `/api/organizations/{orgId}/invitations` (201 + email sent), GET (list with status filter), POST `/{invitationId}/revoke` in `src/Services/Sorcha.Tenant.Service/Endpoints/InvitationEndpoints.cs`
-- [ ] T050 [US4] Create `DashboardEndpoints` — GET `/api/organizations/{orgId}/dashboard` with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/DashboardEndpoints.cs`
-- [ ] T051 [US4] Add user management endpoints — POST `/api/organizations/{orgId}/users/{userId}/unlock`, `/suspend`, `/reactivate` to existing `OrganizationEndpoints.cs` with RequireAdministrator policy, session invalidation on suspend in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs`
-- [ ] T051a [US4] Add role change endpoint — PUT `/api/organizations/{orgId}/users/{userId}/role` with RequireAdministrator policy, validate target is not SystemAdmin, validate role is one of (Administrator, Designer, Auditor, Member), record role change in audit log (FR-026, FR-037) in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs`
-- [ ] T052 [US4] Wire audit events — InvitationSent, InvitationAccepted, InvitationRevoked, AccountUnlockedByAdmin, role change events
-- [ ] T053 [US4] Register US4 services/repos in DI and add YARP routes for invitation, dashboard, and user management endpoints
+- [x] T045 [P] [US4] Create Invitation DTOs in `src/Services/Sorcha.Tenant.Service/Models/Dtos/InvitationDtos.cs` and Dashboard DTOs in `src/Services/Sorcha.Tenant.Service/Models/Dtos/DashboardDtos.cs`
+- [x] T046 [P] [US4] Create `IInvitationRepository` / `InvitationRepository` in `src/Services/Sorcha.Tenant.Service/Data/Repositories/IInvitationRepository.cs` and `src/Services/Sorcha.Tenant.Service/Data/Repositories/InvitationRepository.cs`
+- [x] T047 [US4] Implement `IInvitationService` / `InvitationService` — create invitation (generate 32-byte token, 7-day expiry, send email via IEmailSender), accept (authenticate, provision with role, bypass domain restrictions), revoke, list by status, check expiry in `src/Services/Sorcha.Tenant.Service/Services/IInvitationService.cs` and `src/Services/Sorcha.Tenant.Service/Services/InvitationService.cs`
+- [x] T048 [US4] Implement `IDashboardService` / `DashboardService` — aggregate active/suspended user counts, users-by-role breakdown, recent logins (last 10), pending invitation count, IDP status (configured/enabled/provider name/last IDP login) in `src/Services/Sorcha.Tenant.Service/Services/IDashboardService.cs` and `src/Services/Sorcha.Tenant.Service/Services/DashboardService.cs`
+- [x] T049 [US4] Create `InvitationEndpoints` — POST `/api/organizations/{orgId}/invitations` (201 + email sent), GET (list with status filter), POST `/{invitationId}/revoke` in `src/Services/Sorcha.Tenant.Service/Endpoints/InvitationEndpoints.cs`
+- [x] T050 [US4] Create `DashboardEndpoints` — GET `/api/organizations/{orgId}/dashboard` with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/DashboardEndpoints.cs`
+- [x] T051 [US4] Add user management endpoints — POST `/api/organizations/{orgId}/users/{userId}/unlock`, `/suspend`, `/reactivate` to existing `OrganizationEndpoints.cs` with RequireAdministrator policy, session invalidation on suspend in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs`
+- [x] T051a [US4] Add role change endpoint — PUT `/api/organizations/{orgId}/users/{userId}/role` with RequireAdministrator policy, validate target is not SystemAdmin, validate role is one of (Administrator, Designer, Auditor, Member), record role change in audit log (FR-026, FR-037) in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs`
+- [x] T052 [US4] Wire audit events — InvitationSent, InvitationAccepted, InvitationRevoked, AccountUnlockedByAdmin, role change events
+- [x] T053 [US4] Register US4 services/repos in DI and add YARP routes for invitation, dashboard, and user management endpoints
 
 **Checkpoint**: Full admin console backend ready — dashboard, user management, invitation system all functional.
 

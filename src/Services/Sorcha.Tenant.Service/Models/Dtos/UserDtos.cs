@@ -112,6 +112,17 @@ public record UserResponse
 }
 
 /// <summary>
+/// Request to change a user's role.
+/// </summary>
+public record ChangeUserRoleRequest
+{
+    /// <summary>
+    /// New role to assign (Administrator, Designer, Auditor, Member). SystemAdmin not allowed.
+    /// </summary>
+    public required UserRole Role { get; init; }
+}
+
+/// <summary>
 /// User list response with pagination.
 /// </summary>
 public record UserListResponse

@@ -131,6 +131,11 @@ public static class ServiceCollectionExtensions
         // Password policy service (NIST + HIBP breach check)
         services.AddHttpClient<IPasswordPolicyService, PasswordPolicyService>();
 
+        // Invitation and dashboard services
+        services.AddScoped<IInvitationRepository, InvitationRepository>();
+        services.AddScoped<IInvitationService, InvitationService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+
         return services;
     }
 

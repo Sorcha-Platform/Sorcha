@@ -221,6 +221,14 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IPasswordPolicyService>();
             services.AddSingleton(mockPasswordPolicy.Object);
 
+            // Mock email sender (avoid SMTP in tests)
+            var mockEmailSender = new Mock<IEmailSender>();
+            mockEmailSender
+                .Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton(mockEmailSender.Object);
+
             // Add test authentication scheme
             services.AddAuthentication("Test")
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", options => { });
