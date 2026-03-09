@@ -35,7 +35,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "ext_user_123",
+            ExternalIdpSubject = "ext_user_123",
             Email = "alice@example.com",
             DisplayName = "Alice Johnson",
             Roles = new[] { UserRole.Member },
@@ -64,7 +64,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "ext_user_456",
+            ExternalIdpSubject = "ext_user_456",
             Email = "bob@example.com",
             DisplayName = "Bob Smith",
             Status = IdentityStatus.Active
@@ -100,7 +100,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "azure_entra_user_789",
+            ExternalIdpSubject = "azure_entra_user_789",
             Email = "charlie@example.com",
             DisplayName = "Charlie Brown",
             Status = IdentityStatus.Active
@@ -112,7 +112,7 @@ public class IdentityRepositoryTests : IDisposable
 
         // Assert
         result.Should().NotBeNull();
-        result!.ExternalIdpUserId.Should().Be("azure_entra_user_789");
+        result!.ExternalIdpSubject.Should().Be("azure_entra_user_789");
         result.Email.Should().Be("charlie@example.com");
     }
 
@@ -133,7 +133,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "ext_user_email_test",
+            ExternalIdpSubject = "ext_user_email_test",
             Email = "diana@example.com",
             DisplayName = "Diana Prince",
             Status = IdentityStatus.Active
@@ -166,7 +166,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpUserId = "user1",
+            ExternalIdpSubject = "user1",
             Email = "user1@example.com",
             DisplayName = "User One",
             Status = IdentityStatus.Active
@@ -174,7 +174,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpUserId = "user2",
+            ExternalIdpSubject = "user2",
             Email = "user2@example.com",
             DisplayName = "User Two",
             Status = IdentityStatus.Active
@@ -182,7 +182,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpUserId = "user3",
+            ExternalIdpSubject = "user3",
             Email = "user3@example.com",
             DisplayName = "User Three",
             Status = IdentityStatus.Suspended
@@ -204,7 +204,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpUserId = "user_all_1",
+            ExternalIdpSubject = "user_all_1",
             Email = "all1@example.com",
             DisplayName = "All User One",
             Status = IdentityStatus.Active
@@ -212,7 +212,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpUserId = "user_all_2",
+            ExternalIdpSubject = "user_all_2",
             Email = "all2@example.com",
             DisplayName = "All User Two",
             Status = IdentityStatus.Suspended
@@ -232,7 +232,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "update_test_user",
+            ExternalIdpSubject = "update_test_user",
             Email = "original@example.com",
             DisplayName = "Original Name",
             Roles = new[] { UserRole.Member },
@@ -263,7 +263,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpUserId = "deactivate_test",
+            ExternalIdpSubject = "deactivate_test",
             Email = "deactivate@example.com",
             DisplayName = "Deactivate User",
             Status = IdentityStatus.Active

@@ -10,11 +10,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Caching.Distributed;
 using Moq;
 using Serilog;
 using Serilog.Events;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 using StackExchange.Redis;
 
@@ -138,6 +141,121 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
 
             // Remove database initializer (we'll seed manually in tests)
             services.RemoveAll<IHostedService>();
+
+            // Add distributed memory cache for OIDC flow state
+            services.AddDistributedMemoryCache();
+
+            // Mock OIDC exchange service for endpoint tests
+            var mockExchangeService = new Mock<IOidcExchangeService>();
+            mockExchangeService
+                .Setup(s => s.GenerateAuthorizationUrlAsync(
+                    It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OidcInitiateResponse
+                {
+                    AuthorizationUrl = "https://login.example.com/authorize?response_type=code&client_id=test&state=test-state",
+                    State = "test-state"
+                });
+            mockExchangeService
+                .Setup(s => s.ExchangeCodeAsync(
+                    "valid-auth-code", "valid-state-token", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OidcExchangeResult
+                {
+                    Success = true,
+                    OrgId = TestDataSeeder.TestOrganizationId,
+                    Claims = new OidcUserClaims
+                    {
+                        Subject = "oidc-subject-member",
+                        Email = "member@test-org.sorcha.io",
+                        DisplayName = "Member User",
+                        EmailVerified = true
+                    }
+                });
+            mockExchangeService
+                .Setup(s => s.ExchangeCodeAsync(
+                    It.IsAny<string>(), "invalid-or-tampered-state", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Invalid or expired state parameter."));
+            services.RemoveAll<IOidcExchangeService>();
+            services.AddSingleton(mockExchangeService.Object);
+
+            // Mock OIDC provisioning service
+            var mockProvisioningService = new Mock<IOidcProvisioningService>();
+            mockProvisioningService
+                .Setup(s => s.CheckDomainRestrictionsAsync(
+                    It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true); // Domain allowed
+            mockProvisioningService
+                .Setup(s => s.ProvisionOrMatchUserAsync(
+                    It.IsAny<Guid>(), It.IsAny<OidcUserClaims>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid orgId, OidcUserClaims claims, CancellationToken _) =>
+                {
+                    var user = new UserIdentity
+                    {
+                        Id = TestDataSeeder.MemberUserId,
+                        Email = claims.Email ?? "member@test-org.sorcha.io",
+                        DisplayName = claims.DisplayName ?? "Member User",
+                        Status = IdentityStatus.Active,
+                        Roles = [UserRole.Member],
+                        OrganizationId = orgId,
+                        ProfileCompleted = true,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    return (user, false);
+                });
+            mockProvisioningService
+                .Setup(s => s.DetermineProfileCompletionAsync(It.IsAny<UserIdentity>()))
+                .ReturnsAsync(false); // Profile is complete
+            services.RemoveAll<IOidcProvisioningService>();
+            services.AddSingleton(mockProvisioningService.Object);
+
+            // Mock email verification service
+            var mockEmailVerification = new Mock<IEmailVerificationService>();
+            mockEmailVerification
+                .Setup(s => s.VerifyTokenAsync("valid-verification-token", It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, (string?)null));
+            mockEmailVerification
+                .Setup(s => s.VerifyTokenAsync("invalid-or-expired-token", It.IsAny<CancellationToken>()))
+                .ReturnsAsync((false, "Invalid verification token."));
+            mockEmailVerification
+                .Setup(s => s.VerifyTokenAsync("expired-verification-token", It.IsAny<CancellationToken>()))
+                .ReturnsAsync((false, "Verification token has expired."));
+            mockEmailVerification
+                .Setup(s => s.CanResendAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+            mockEmailVerification
+                .Setup(s => s.GenerateAndSendVerificationAsync(It.IsAny<UserIdentity>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("new-verification-token");
+            services.RemoveAll<IEmailVerificationService>();
+            services.AddSingleton(mockEmailVerification.Object);
+
+            // Mock password policy service
+            var mockPasswordPolicy = new Mock<IPasswordPolicyService>();
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult { IsValid = true, Errors = [] });
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync("short", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult
+                {
+                    IsValid = false,
+                    Errors = ["Password must be at least 12 characters."]
+                });
+            mockPasswordPolicy
+                .Setup(s => s.ValidateAsync("breachedpass1234", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PasswordValidationResult
+                {
+                    IsValid = false,
+                    Errors = ["This password has appeared in a data breach and cannot be used."]
+                });
+            services.RemoveAll<IPasswordPolicyService>();
+            services.AddSingleton(mockPasswordPolicy.Object);
+
+            // Mock email sender (avoid SMTP in tests)
+            var mockEmailSender = new Mock<IEmailSender>();
+            mockEmailSender
+                .Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton(mockEmailSender.Object);
 
             // Add test authentication scheme
             services.AddAuthentication("Test")

@@ -17,6 +17,7 @@ using Sorcha.UI.Core.Services.Participants;
 using Sorcha.UI.Core.Services.Forms;
 using Sorcha.UI.Core.Services.Credentials;
 using Sorcha.UI.Core.Services.Admin;
+using Sorcha.UI.Core.Services.Identity;
 using Sorcha.UI.Core.Services.Wallet;
 
 namespace Sorcha.UI.Core.Extensions;
@@ -581,6 +582,36 @@ public static class ServiceCollectionExtensions
             var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<OperationStatusService>>();
             return new OperationStatusService(httpClient, logger);
+        });
+
+        // IDP Configuration Client Service (054 - authenticated)
+        services.AddScoped<IIdpConfigurationClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<IdpConfigurationClientService>>();
+            return new IdpConfigurationClientService(httpClient, logger);
+        });
+
+        // Invitation Client Service (054 - authenticated)
+        services.AddScoped<IInvitationClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<InvitationClientService>>();
+            return new InvitationClientService(httpClient, logger);
+        });
+
+        // Domain Restriction Client Service (054 - authenticated)
+        services.AddScoped<IDomainRestrictionClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<DomainRestrictionClientService>>();
+            return new DomainRestrictionClientService(httpClient, logger);
         });
 
         // Status List Service (050 - public endpoint, no auth needed)

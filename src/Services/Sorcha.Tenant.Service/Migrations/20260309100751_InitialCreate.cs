@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -41,6 +42,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "CustomDomainMappings",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Domain = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    VerifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    LastCheckedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CustomDomainMappings", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "OrganizationPermissionConfigurations",
                 schema: "public",
                 columns: table => new
@@ -68,11 +87,40 @@ namespace Sorcha.Tenant.Service.Migrations
                     Status = table.Column<string>(type: "text", nullable: false),
                     CreatorIdentityId = table.Column<Guid>(type: "uuid", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    OrgType = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    SelfRegistrationEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    AllowedEmailDomains = table.Column<string[]>(type: "text[]", nullable: false),
+                    CustomDomain = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    CustomDomainStatus = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    AuditRetentionMonths = table.Column<int>(type: "integer", nullable: false),
                     Branding = table.Column<string>(type: "jsonb", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Organizations", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OrgInvitations",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    AssignedRole = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    Token = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    InvitedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    AcceptedByUserId = table.Column<Guid>(type: "uuid", nullable: true),
+                    AcceptedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrgInvitations", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -189,14 +237,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
-                    ExternalIdpUserId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    ExternalIdpSubject = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     PasswordHash = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     Email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     DisplayName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Roles = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "text", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    LastLoginAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    LastLoginAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    EmailVerified = table.Column<bool>(type: "boolean", nullable: false),
+                    EmailVerifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    VerificationToken = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    VerificationTokenExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    ProvisionedVia = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    InvitedByUserId = table.Column<Guid>(type: "uuid", nullable: true),
+                    ProfileCompleted = table.Column<bool>(type: "boolean", nullable: false),
+                    FailedLoginCount = table.Column<int>(type: "integer", nullable: false),
+                    LockedUntil = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    LockedPermanently = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -215,6 +273,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     TimeFormat = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
                     DefaultWalletAddress = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     NotificationsEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    NotificationMethod = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "InApp"),
+                    NotificationFrequency = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "RealTime"),
                     TwoFactorEnabled = table.Column<bool>(type: "boolean", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -230,14 +290,20 @@ namespace Sorcha.Tenant.Service.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
-                    ProviderType = table.Column<string>(type: "text", nullable: false),
+                    ProviderPreset = table.Column<string>(type: "text", nullable: false),
                     IssuerUrl = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     ClientId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     ClientSecretEncrypted = table.Column<byte[]>(type: "bytea", nullable: false),
                     Scopes = table.Column<string[]>(type: "text[]", nullable: false),
                     AuthorizationEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     TokenEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    UserInfoEndpoint = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    JwksUri = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     MetadataUrl = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    DiscoveryDocumentJson = table.Column<string>(type: "text", nullable: true),
+                    DiscoveryFetchedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -358,6 +424,20 @@ namespace Sorcha.Tenant.Service.Migrations
                 column: "Timestamp");
 
             migrationBuilder.CreateIndex(
+                name: "IX_CustomDomainMappings_Domain",
+                schema: "public",
+                table: "CustomDomainMappings",
+                column: "Domain",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CustomDomainMappings_OrganizationId",
+                schema: "public",
+                table: "CustomDomainMappings",
+                column: "OrganizationId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_IdentityProviderConfigurations_OrganizationId",
                 schema: "public",
                 table: "IdentityProviderConfigurations",
@@ -365,10 +445,10 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_IdentityProviderConfigurations_ProviderType",
+                name: "IX_IdentityProviderConfigurations_ProviderPreset",
                 schema: "public",
                 table: "IdentityProviderConfigurations",
-                column: "ProviderType");
+                column: "ProviderPreset");
 
             migrationBuilder.CreateIndex(
                 name: "IX_WalletLink_Address",
@@ -402,6 +482,19 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "Organizations",
                 column: "Subdomain",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgInvitations_OrganizationId_Email_Status",
+                schema: "public",
+                table: "OrgInvitations",
+                columns: new[] { "OrganizationId", "Email", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgInvitations_Token",
+                schema: "public",
+                table: "OrgInvitations",
+                column: "Token",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -486,12 +579,12 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_UserIdentities_ExternalIdpUserId",
+                name: "IX_UserIdentities_ExternalIdpSubject",
                 schema: "public",
                 table: "UserIdentities",
-                column: "ExternalIdpUserId",
+                column: "ExternalIdpSubject",
                 unique: true,
-                filter: "\"ExternalIdpUserId\" IS NOT NULL");
+                filter: "\"ExternalIdpSubject\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserIdentities_OrganizationId",
@@ -533,6 +626,10 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
+                name: "CustomDomainMappings",
+                schema: "public");
+
+            migrationBuilder.DropTable(
                 name: "IdentityProviderConfigurations",
                 schema: "public");
 
@@ -542,6 +639,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "OrganizationPermissionConfigurations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "OrgInvitations",
                 schema: "public");
 
             migrationBuilder.DropTable(

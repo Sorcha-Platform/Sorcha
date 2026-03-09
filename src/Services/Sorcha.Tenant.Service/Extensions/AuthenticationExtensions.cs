@@ -161,9 +161,13 @@ public static class AuthenticationExtensions
 
         services.AddAuthorization(options =>
         {
-            // Policy for auditors (read-only)
+            // Policy for auditors — SystemAdmin and Administrator also have audit access
             options.AddPolicy("RequireAuditor", policy =>
-                policy.RequireRole("Administrator", "Auditor"));
+                policy.RequireRole("SystemAdmin", "Administrator", "Auditor"));
+
+            // Policy for designers — SystemAdmin and Administrator also have designer access
+            options.AddPolicy("RequireDesigner", policy =>
+                policy.RequireRole("SystemAdmin", "Administrator", "Designer"));
 
             // Policy for public users (PassKey authenticated)
             options.AddPolicy("RequirePublicUser", policy =>
@@ -176,6 +180,10 @@ public static class AuthenticationExtensions
             // Policy for blueprint publishing
             options.AddPolicy("CanPublishBlueprint", policy =>
                 policy.RequireClaim("can_publish_blueprint", "true"));
+
+            // Policy for system administrators only (platform-level operations)
+            options.AddPolicy("RequireSystemAdmin", policy =>
+                policy.RequireRole("SystemAdmin"));
         });
 
         return services;

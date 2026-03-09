@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.Tenant.Service.Models;
@@ -16,6 +18,7 @@ public partial class OrganizationService : IOrganizationService
 {
     private readonly IOrganizationRepository _organizationRepository;
     private readonly IIdentityRepository _identityRepository;
+    private readonly TenantDbContext _dbContext;
     private readonly ILogger<OrganizationService> _logger;
 
     // Reserved subdomains that cannot be used
@@ -31,10 +34,12 @@ public partial class OrganizationService : IOrganizationService
     public OrganizationService(
         IOrganizationRepository organizationRepository,
         IIdentityRepository identityRepository,
+        TenantDbContext dbContext,
         ILogger<OrganizationService> logger)
     {
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
+        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -210,7 +215,7 @@ public partial class OrganizationService : IOrganizationService
             OrganizationId = organizationId,
             Email = request.Email,
             DisplayName = request.DisplayName,
-            ExternalIdpUserId = request.ExternalIdpUserId,
+            ExternalIdpSubject = request.ExternalIdpSubject,
             Roles = request.Roles,
             Status = IdentityStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow
@@ -316,6 +321,72 @@ public partial class OrganizationService : IOrganizationService
             userId, user.Email, organizationId);
 
         return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<DomainRestrictionsResponse?> GetDomainRestrictionsAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await _organizationRepository.GetByIdAsync(organizationId, cancellationToken);
+        if (org is null)
+            return null;
+
+        return new DomainRestrictionsResponse
+        {
+            AllowedDomains = org.AllowedEmailDomains ?? [],
+            RestrictionsActive = org.AllowedEmailDomains is { Length: > 0 }
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<DomainRestrictionsResponse?> UpdateDomainRestrictionsAsync(
+        Guid organizationId,
+        string[] allowedDomains,
+        Guid updatedByUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await _dbContext.Organizations
+            .FirstOrDefaultAsync(o => o.Id == organizationId, cancellationToken);
+
+        if (org is null)
+            return null;
+
+        // Normalize domains to lowercase and trim whitespace
+        var normalizedDomains = allowedDomains
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Select(d => d.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToArray();
+
+        var previousDomains = org.AllowedEmailDomains ?? [];
+        org.AllowedEmailDomains = normalizedDomains;
+
+        // Write DomainRestrictionUpdated audit event
+        _dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            EventType = AuditEventType.DomainRestrictionUpdated,
+            IdentityId = updatedByUserId,
+            OrganizationId = organizationId,
+            Details = new Dictionary<string, object>
+            {
+                ["previousDomains"] = previousDomains,
+                ["newDomains"] = normalizedDomains
+            }
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Domain restrictions updated for org {OrgId}: {DomainCount} domains configured by user {UserId}",
+            organizationId, normalizedDomains.Length, updatedByUserId);
+
+        return new DomainRestrictionsResponse
+        {
+            AllowedDomains = normalizedDomains,
+            RestrictionsActive = normalizedDomains.Length > 0
+        };
     }
 
     /// <inheritdoc />

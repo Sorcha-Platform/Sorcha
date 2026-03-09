@@ -155,4 +155,29 @@ public interface IOrganizationService
     /// <returns>Organization statistics.</returns>
     Task<OrganizationStatsResponse> GetOrganizationStatsAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the allowed email domains for auto-provisioning.
+    /// </summary>
+    /// <param name="organizationId">Organization ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Allowed domains and whether restrictions are active, or null if org not found.</returns>
+    Task<DomainRestrictionsResponse?> GetDomainRestrictionsAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the allowed email domains for auto-provisioning.
+    /// Empty array disables restrictions.
+    /// </summary>
+    /// <param name="organizationId">Organization ID.</param>
+    /// <param name="allowedDomains">List of allowed email domains.</param>
+    /// <param name="updatedByUserId">ID of the admin making the change.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Updated restrictions, or null if org not found.</returns>
+    Task<DomainRestrictionsResponse?> UpdateDomainRestrictionsAsync(
+        Guid organizationId,
+        string[] allowedDomains,
+        Guid updatedByUserId,
+        CancellationToken cancellationToken = default);
 }

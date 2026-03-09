@@ -22,9 +22,9 @@ public class IdentityProviderConfiguration
     public Guid OrganizationId { get; set; }
 
     /// <summary>
-    /// Type of identity provider.
+    /// Provider preset for configuration shortcuts.
     /// </summary>
-    public IdentityProviderType ProviderType { get; set; }
+    public IdentityProviderType ProviderPreset { get; set; }
 
     /// <summary>
     /// OIDC issuer URL (e.g., https://login.microsoftonline.com/{tenant-id}/v2.0).
@@ -40,29 +40,58 @@ public class IdentityProviderConfiguration
     /// AES-256-GCM encrypted client secret.
     /// Encrypted using Sorcha.Cryptography library.
     /// </summary>
-    public byte[] ClientSecretEncrypted { get; set; } = Array.Empty<byte>();
+    public byte[] ClientSecretEncrypted { get; set; } = [];
 
     /// <summary>
     /// OAuth2 scopes (e.g., openid, profile, email).
     /// Must include at least "openid" scope.
     /// </summary>
-    public string[] Scopes { get; set; } = Array.Empty<string>();
+    public string[] Scopes { get; set; } = [];
 
     /// <summary>
-    /// Optional override for authorization endpoint (non-standard IDPs).
+    /// Authorization endpoint URL. Auto-discovered from OIDC discovery document.
     /// </summary>
     public string? AuthorizationEndpoint { get; set; }
 
     /// <summary>
-    /// Optional override for token endpoint (non-standard IDPs).
+    /// Token endpoint URL. Auto-discovered from OIDC discovery document.
     /// </summary>
     public string? TokenEndpoint { get; set; }
 
     /// <summary>
+    /// UserInfo endpoint URL. Auto-discovered from OIDC discovery document.
+    /// </summary>
+    public string? UserInfoEndpoint { get; set; }
+
+    /// <summary>
+    /// JSON Web Key Set URI for token signature validation.
+    /// </summary>
+    public string? JwksUri { get; set; }
+
+    /// <summary>
     /// OIDC discovery URL (/.well-known/openid-configuration).
-    /// Used to auto-discover endpoints if not manually specified.
     /// </summary>
     public string? MetadataUrl { get; set; }
+
+    /// <summary>
+    /// Whether this IDP is currently enabled for user authentication.
+    /// </summary>
+    public bool IsEnabled { get; set; }
+
+    /// <summary>
+    /// UI display name for this provider (e.g., "Google Workspace", "Corporate SSO").
+    /// </summary>
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Cached raw OIDC discovery document JSON.
+    /// </summary>
+    public string? DiscoveryDocumentJson { get; set; }
+
+    /// <summary>
+    /// Timestamp when the discovery document was last fetched.
+    /// </summary>
+    public DateTimeOffset? DiscoveryFetchedAt { get; set; }
 
     /// <summary>
     /// Configuration creation timestamp (UTC).
@@ -81,20 +110,35 @@ public class IdentityProviderConfiguration
 }
 
 /// <summary>
-/// Supported external identity provider types.
+/// Supported external identity provider types with configuration presets.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum IdentityProviderType
 {
     /// <summary>
-    /// Microsoft Azure Entra ID (formerly Azure AD).
+    /// Microsoft Entra ID (formerly Azure AD).
     /// </summary>
-    AzureEntra,
+    MicrosoftEntra,
 
     /// <summary>
-    /// Amazon Web Services Cognito.
+    /// Google Workspace / Google Cloud Identity.
     /// </summary>
-    AwsCognito,
+    Google,
+
+    /// <summary>
+    /// Okta Identity Platform.
+    /// </summary>
+    Okta,
+
+    /// <summary>
+    /// Apple Sign In.
+    /// </summary>
+    Apple,
+
+    /// <summary>
+    /// Amazon Cognito User Pools.
+    /// </summary>
+    AmazonCognito,
 
     /// <summary>
     /// Generic OpenID Connect compliant provider.

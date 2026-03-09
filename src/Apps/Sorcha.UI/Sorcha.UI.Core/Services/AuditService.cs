@@ -58,6 +58,121 @@ public class AuditService : IAuditService
         await SendAuditEventAsync(eventType, organizationId, userId, enrichedDetails, cancellationToken);
     }
 
+    public async Task<AuditQueryResult> QueryAuditEventsAsync(
+        Guid organizationId,
+        DateTimeOffset? startDate = null,
+        DateTimeOffset? endDate = null,
+        string? eventType = null,
+        Guid? userId = null,
+        int page = 1,
+        int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var orgId = Uri.EscapeDataString(organizationId.ToString());
+            var url = $"/api/organizations/{orgId}/audit?page={page}&pageSize={pageSize}";
+
+            if (startDate.HasValue)
+            {
+                url += $"&startDate={Uri.EscapeDataString(startDate.Value.ToString("o"))}";
+            }
+
+            if (endDate.HasValue)
+            {
+                url += $"&endDate={Uri.EscapeDataString(endDate.Value.ToString("o"))}";
+            }
+
+            if (!string.IsNullOrEmpty(eventType))
+            {
+                url += $"&eventType={Uri.EscapeDataString(eventType)}";
+            }
+
+            if (userId.HasValue)
+            {
+                url += $"&userId={Uri.EscapeDataString(userId.Value.ToString())}";
+            }
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<AuditQueryResult>(cancellationToken: cancellationToken);
+            return result ?? new AuditQueryResult();
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Failed to query audit events for organization {OrganizationId}", organizationId);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error querying audit events for organization {OrganizationId}", organizationId);
+            throw;
+        }
+    }
+
+    public async Task<AuditRetentionDto> GetRetentionAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var orgId = Uri.EscapeDataString(organizationId.ToString());
+            var url = $"/api/organizations/{orgId}/audit/retention";
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<AuditRetentionDto>(cancellationToken: cancellationToken);
+            return result ?? new AuditRetentionDto { RetentionMonths = 12 };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Failed to get audit retention for organization {OrganizationId}", organizationId);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error getting audit retention for organization {OrganizationId}", organizationId);
+            throw;
+        }
+    }
+
+    public async Task<bool> UpdateRetentionAsync(
+        Guid organizationId,
+        int retentionMonths,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var orgId = Uri.EscapeDataString(organizationId.ToString());
+            var url = $"/api/organizations/{orgId}/audit/retention";
+
+            var payload = new AuditRetentionDto { RetentionMonths = retentionMonths };
+            var response = await _httpClient.PutAsJsonAsync(url, payload, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to update audit retention for organization {OrganizationId}: {StatusCode}",
+                    organizationId, response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to update audit retention for organization {OrganizationId}", organizationId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error updating audit retention for organization {OrganizationId}", organizationId);
+            return false;
+        }
+    }
+
     private async Task SendAuditEventAsync(
         AuditEventType eventType,
         Guid? organizationId,

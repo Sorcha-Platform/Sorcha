@@ -26,12 +26,13 @@ public class IdentityRepository : IIdentityRepository
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
     }
 
-    public async Task<UserIdentity?> GetUserByExternalIdAsync(string externalIdpUserId, CancellationToken cancellationToken = default)
+    public async Task<UserIdentity?> GetUserByExternalIdAsync(string externalIdpSubject, CancellationToken cancellationToken = default)
     {
         return await _context.UserIdentities
-            .FirstOrDefaultAsync(u => u.ExternalIdpUserId == externalIdpUserId, cancellationToken);
+            .FirstOrDefaultAsync(u => u.ExternalIdpSubject == externalIdpSubject, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<UserIdentity?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         return await _context.UserIdentities

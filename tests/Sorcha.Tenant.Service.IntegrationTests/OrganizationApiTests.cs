@@ -467,7 +467,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "user@example.com",
             DisplayName = "Test User",
-            ExternalIdpUserId = "external-user-123",
+            ExternalIdpSubject = "external-user-123",
             Roles = [Models.UserRole.Member]
         };
 
@@ -500,7 +500,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "user@example.com",
             DisplayName = "Test User",
-            ExternalIdpUserId = "ext-1"
+            ExternalIdpSubject = "ext-1"
         };
 
         // Act - Use non-admin client
@@ -526,14 +526,14 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "user1@example.com",
             DisplayName = "User One",
-            ExternalIdpUserId = $"ext-{Guid.NewGuid()}"
+            ExternalIdpSubject = $"ext-{Guid.NewGuid()}"
         });
 
         await _adminClient.PostAsJsonAsync($"/api/organizations/{org.Id}/users", new AddUserToOrganizationRequest
         {
             Email = "user2@example.com",
             DisplayName = "User Two",
-            ExternalIdpUserId = $"ext-{Guid.NewGuid()}"
+            ExternalIdpSubject = $"ext-{Guid.NewGuid()}"
         });
 
         // Act
@@ -564,7 +564,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "getme@example.com",
             DisplayName = "Get Me User",
-            ExternalIdpUserId = $"ext-{Guid.NewGuid()}"
+            ExternalIdpSubject = $"ext-{Guid.NewGuid()}"
         });
         var user = await addUserResponse.Content.ReadFromJsonAsync<UserResponse>();
 
@@ -595,7 +595,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "updateme@example.com",
             DisplayName = "Original Name",
-            ExternalIdpUserId = $"ext-{Guid.NewGuid()}",
+            ExternalIdpSubject = $"ext-{Guid.NewGuid()}",
             Roles = [Models.UserRole.Member]
         });
         var user = await addUserResponse.Content.ReadFromJsonAsync<UserResponse>();
@@ -633,7 +633,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
         {
             Email = "removeme@example.com",
             DisplayName = "Remove Me",
-            ExternalIdpUserId = $"ext-{Guid.NewGuid()}"
+            ExternalIdpSubject = $"ext-{Guid.NewGuid()}"
         });
         var user = await addUserResponse.Content.ReadFromJsonAsync<UserResponse>();
 

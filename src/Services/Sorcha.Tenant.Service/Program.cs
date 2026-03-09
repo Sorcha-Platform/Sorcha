@@ -87,6 +87,9 @@ builder.Services.AddTenantHealthChecks(builder.Configuration);
 // Creates default organization (sorcha.local) and admin user on startup
 builder.Services.AddDatabaseInitializer();
 
+// Add audit cleanup background service (daily purge of expired audit entries)
+builder.Services.AddAuditCleanup();
+
 var app = builder.Build();
 
 // Map default endpoints (OpenAPI, health checks)
@@ -124,6 +127,15 @@ app.MapAuthEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapTotpEndpoints();
+app.MapIdpConfigurationEndpoints();
+app.MapOidcEndpoints();
+app.MapOrgSettingsEndpoints();
+app.MapDomainRestrictionEndpoints();
+app.MapAuditEndpoints();
+app.MapInvitationEndpoints();
+app.MapDashboardEndpoints();
+app.MapCustomDomainEndpoints();
+app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive

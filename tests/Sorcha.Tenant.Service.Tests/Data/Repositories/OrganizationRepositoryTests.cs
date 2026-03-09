@@ -236,7 +236,7 @@ public class OrganizationRepositoryTests : IDisposable
             Status = OrganizationStatus.Active,
             IdentityProvider = new IdentityProviderConfiguration
             {
-                ProviderType = IdentityProviderType.AzureEntra,
+                ProviderPreset = IdentityProviderType.MicrosoftEntra,
                 IssuerUrl = "https://login.microsoftonline.com/tenant-id/v2.0",
                 ClientId = "client-id",
                 ClientSecretEncrypted = new byte[] { 1, 2, 3 },
@@ -251,6 +251,6 @@ public class OrganizationRepositoryTests : IDisposable
         var fetched = await _repository.GetByIdAsync(created.Id);
         fetched.Should().NotBeNull();
         fetched!.IdentityProvider.Should().NotBeNull();
-        fetched.IdentityProvider!.ProviderType.Should().Be(IdentityProviderType.AzureEntra);
+        fetched.IdentityProvider!.ProviderPreset.Should().Be(IdentityProviderType.MicrosoftEntra);
     }
 }

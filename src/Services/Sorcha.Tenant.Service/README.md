@@ -1,7 +1,7 @@
 # Sorcha Tenant Service
 
-**Version**: 1.0.0
-**Status**: Complete (100% MVD)
+**Version**: 2.0.0
+**Status**: 95% Complete
 **Framework**: .NET 10.0
 **Architecture**: Microservice
 
@@ -9,19 +9,31 @@
 
 ## Overview
 
-The **Sorcha Tenant Service** is a multi-tenant authentication and authorization service that acts as a Secure Token Service (STS) for the Sorcha platform. It enables organizations to bring their own identity providers (Azure Entra ID, AWS Cognito, etc.) and provides passwordless authentication via FIDO2/WebAuthn PassKeys.
+The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, and organization management service that acts as a Secure Token Service (STS) for the Sorcha platform. It enables organizations to bring their own identity providers via OIDC federation, supports local email/password authentication with TOTP 2FA, and provides comprehensive organization administration capabilities.
 
 ### Key Features
 
-- **Multi-Organization Support**: Each organization has its own identity provider configuration
-- **External Identity Federation**: Integrate with Azure Entra ID, AWS Cognito, Google Workspace, or any OIDC-compliant provider
+- **Multi-Organization Support**: Each organization has its own identity provider configuration, subdomain, and user management
+- **OIDC Identity Federation**: Integrate with Microsoft Entra ID, Google, Okta, Apple, Amazon Cognito, or any OIDC-compliant provider with automatic discovery
+- **Full Token Exchange**: External IDP tokens are exchanged for Sorcha JWTs; downstream services never see external tokens
+- **Local Authentication**: Email/password login with NIST-compliant password policy and HIBP breach list checking
+- **TOTP Two-Factor Authentication**: Authenticator app-based 2FA with backup codes
+- **Self-Registration**: Public organizations can allow users to self-register with email verification
 - **PassKey Authentication**: FIDO2/WebAuthn passwordless authentication for enhanced security
 - **Service-to-Service Authentication**: OAuth2 client credentials flow for microservice communication
 - **JWT Token Issuance**: RS256-signed tokens with configurable lifetimes
 - **Token Revocation**: Redis-backed token blacklist with automatic TTL cleanup
 - **Multi-Tenant Data Isolation**: PostgreSQL schema-based tenant isolation
-- **Audit Logging**: Comprehensive audit trail of all authentication events
-- **Rate Limiting**: Protect against brute force attacks
+- **Organization Invitations**: Invite users by email with configurable roles and expiry
+- **Domain Restrictions**: Restrict auto-provisioning to specific email domains
+- **Custom Domain Support**: Organizations can configure custom domains with CNAME verification
+- **Consolidated Roles**: 5 roles (SystemAdmin, Administrator, Designer, Auditor, Member)
+- **User Lifecycle Management**: Unlock, suspend, reactivate, and role change operations
+- **Admin Dashboard**: Aggregated KPIs including user counts, role distribution, and login statistics
+- **Audit Logging**: Comprehensive audit trail with configurable retention (1-120 months)
+- **Rate Limiting & Progressive Lockout**: 5 fails=5min, 10=30min, 15=24h, 25=admin unlock
+- **Email Verification**: Required for all users; trusts IDP `email_verified` claim for OIDC users
+- **Multi-Tenant URL Resolution**: 3-tier URL routing (path, subdomain, custom domain)
 
 ---
 
@@ -34,15 +46,21 @@ The **Sorcha Tenant Service** is a multi-tenant authentication and authorization
 │  ┌──────────────┐  ┌───────────────┐  ┌────────────────┐  │
 │  │   Auth API   │  │   Admin API   │  │   Audit API    │  │
 │  │              │  │               │  │                │  │
-│  │ • OAuth2     │  │ • Org Mgmt    │  │ • Log Query    │  │
-│  │ • PassKey    │  │ • IDP Config  │  │ • Analytics    │  │
-│  │ • Token Mgmt │  │ • User Mgmt   │  │                │  │
+│  │ • OIDC SSO   │  │ • Org Mgmt    │  │ • Log Query    │  │
+│  │ • Local Auth │  │ • IDP Config  │  │ • Retention    │  │
+│  │ • TOTP 2FA   │  │ • User Mgmt   │  │ • Dashboard    │  │
+│  │ • PassKey    │  │ • Invitations │  │                │  │
+│  │ • Token Mgmt │  │ • Domains     │  │                │  │
 │  └──────────────┘  └───────────────┘  └────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │             Service Layer                            │  │
 │  │  • OrganizationService  • TokenService               │  │
-│  │  • AuthenticationService • PassKeyService            │  │
+│  │  • OidcExchangeService  • OidcProvisioningService    │  │
+│  │  • IdpConfigurationService • TotpService             │  │
+│  │  • InvitationService    • CustomDomainService        │  │
+│  │  • PasswordPolicyService • EmailVerificationService  │  │
+│  │  • DashboardService     • PassKeyService             │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -153,9 +171,38 @@ Service will start at:
   "Fido2": {
     "ServerDomain": "localhost",
     "ServerName": "Sorcha Tenant Service"
+  },
+  "EmailSettings": {
+    "SmtpHost": "localhost",
+    "SmtpPort": 587,
+    "SmtpUser": "",
+    "SmtpPassword": "",
+    "FromAddress": "noreply@sorcha.example.com",
+    "FromName": "Sorcha Platform",
+    "EnableSsl": true
+  },
+  "OidcSettings": {
+    "CallbackBaseUrl": "https://localhost:7080",
+    "StateTokenLifetimeMinutes": 10,
+    "LoginTokenLifetimeMinutes": 5
   }
 }
 ```
+
+### New Configuration Settings (054)
+
+| Section | Key | Default | Purpose |
+|---------|-----|---------|---------|
+| `EmailSettings:SmtpHost` | — | SMTP server hostname |
+| `EmailSettings:SmtpPort` | 587 | SMTP server port |
+| `EmailSettings:SmtpUser` | — | SMTP authentication username |
+| `EmailSettings:SmtpPassword` | — | SMTP authentication password (use secrets) |
+| `EmailSettings:FromAddress` | — | Sender email address |
+| `EmailSettings:FromName` | Sorcha Platform | Sender display name |
+| `EmailSettings:EnableSsl` | true | Enable TLS/SSL for SMTP |
+| `OidcSettings:CallbackBaseUrl` | — | Base URL for OIDC callback redirects |
+| `OidcSettings:StateTokenLifetimeMinutes` | 10 | OIDC state token expiry |
+| `OidcSettings:LoginTokenLifetimeMinutes` | 5 | 2FA login token expiry |
 
 ### Environment Variables
 
@@ -167,6 +214,10 @@ Redis__ConnectionString="prod-redis:6379"
 JwtSettings__Issuer="https://api.sorcha.example.com"
 AzureKeyVault__Enabled="true"
 AzureKeyVault__VaultUri="https://sorcha-kv.vault.azure.net/"
+EmailSettings__SmtpHost="smtp.example.com"
+EmailSettings__SmtpPassword="your-smtp-password"
+EmailSettings__FromAddress="noreply@sorcha.example.com"
+OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 ```
 
 ---
@@ -177,36 +228,147 @@ AzureKeyVault__VaultUri="https://sorcha-kv.vault.azure.net/"
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/login` | GET | Initiate OAuth2 login flow |
-| `/api/auth/callback` | GET | OAuth2 callback handler |
-| `/api/auth/logout` | POST | End user session |
+| `/api/auth/login` | POST | Login with email and password (returns 2FA challenge if enabled) |
+| `/api/auth/verify-2fa` | POST | Verify TOTP code or backup code to complete login |
+| `/api/auth/register` | POST | Self-register with email/password (public orgs only) |
+| `/api/auth/logout` | POST | Logout and revoke current token |
+| `/api/auth/me` | GET | Get current authenticated user info |
+| `/api/auth/token/refresh` | POST | Refresh access token |
+| `/api/auth/token/revoke` | POST | Revoke a specific token |
+| `/api/auth/token/introspect` | POST | Introspect a token (service-to-service) |
+| `/api/auth/token/revoke-user` | POST | Revoke all tokens for a user (admin) |
+| `/api/auth/token/revoke-organization` | POST | Revoke all tokens for an organization (admin) |
+
+### OIDC Authentication API (`/api/auth`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/oidc/initiate` | POST | Initiate OIDC login flow (generates authorization URL) |
+| `/api/auth/callback/{orgSubdomain}` | GET | OIDC callback - exchange authorization code for Sorcha JWT |
+| `/api/auth/oidc/complete-profile` | POST | Complete user profile after OIDC provisioning |
+| `/api/auth/verify-email` | POST | Verify email address with token |
+| `/api/auth/resend-verification` | POST | Resend email verification (rate limited: 3/hour) |
+
+### PassKey Authentication API (`/api/auth/passkey`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/auth/passkey/register-options` | POST | Get PassKey registration options |
 | `/api/auth/passkey/register` | POST | Complete PassKey registration |
 | `/api/auth/passkey/login-options` | POST | Get PassKey login options |
 | `/api/auth/passkey/login` | POST | Complete PassKey login |
-| `/api/auth/token/refresh` | POST | Refresh access token |
-| `/api/auth/token/revoke` | POST | Revoke token |
-| `/api/auth/token/validate` | POST | Validate token |
-| `/api/auth/token/service` | POST | Service-to-service token |
 
-### Admin API (`/api/admin`)
+### Organization API (`/api/organizations`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/admin/organizations` | GET | List organizations |
-| `/api/admin/organizations` | POST | Create organization |
-| `/api/admin/organizations/{id}` | GET | Get organization details |
-| `/api/admin/organizations/{id}` | PUT | Update organization |
-| `/api/admin/organizations/{id}/idp` | PUT | Configure identity provider |
-| `/api/admin/organizations/{id}/users` | GET | List organization users |
-| `/api/admin/organizations/{id}/permissions` | PUT | Configure permissions |
+| `/api/organizations` | POST | Create a new organization |
+| `/api/organizations` | GET | List organizations (admin) |
+| `/api/organizations/{id}` | GET | Get organization details |
+| `/api/organizations/{id}` | PUT | Update organization (admin) |
+| `/api/organizations/{id}` | DELETE | Deactivate organization (admin, soft delete) |
+| `/api/organizations/by-subdomain/{subdomain}` | GET | Get organization by subdomain (public) |
+| `/api/organizations/validate-subdomain/{subdomain}` | GET | Validate subdomain availability (public) |
+| `/api/organizations/stats` | GET | Get organization statistics (public) |
 
-### Audit API (`/api/audit`)
+### User Management API (`/api/organizations/{orgId}/users`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/audit/logs` | GET | Query audit logs |
-| `/api/audit/logs/{orgId}` | GET | Organization-specific logs |
+| `/api/organizations/{orgId}/users` | POST | Add user to organization (admin) |
+| `/api/organizations/{orgId}/users` | GET | List organization users |
+| `/api/organizations/{orgId}/users/{userId}` | GET | Get user details |
+| `/api/organizations/{orgId}/users/{userId}` | PUT | Update user (admin) |
+| `/api/organizations/{orgId}/users/{userId}` | DELETE | Remove user from organization (admin) |
+| `/api/organizations/{orgId}/users/{userId}/unlock` | POST | Unlock a locked user account (admin) |
+| `/api/organizations/{orgId}/users/{userId}/suspend` | POST | Suspend a user account (admin) |
+| `/api/organizations/{orgId}/users/{userId}/reactivate` | POST | Reactivate a suspended account (admin) |
+| `/api/organizations/{orgId}/users/{userId}/role` | PUT | Change a user's role (admin) |
+
+### IDP Configuration API (`/api/organizations/{orgId}/idp`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/idp` | GET | Get IDP configuration |
+| `/api/organizations/{orgId}/idp` | PUT | Create or update IDP configuration |
+| `/api/organizations/{orgId}/idp` | DELETE | Delete IDP configuration |
+| `/api/organizations/{orgId}/idp/discover` | POST | Discover OIDC endpoints from issuer URL |
+| `/api/organizations/{orgId}/idp/test` | POST | Test IDP connection (client_credentials grant) |
+| `/api/organizations/{orgId}/idp/toggle` | POST | Enable or disable IDP |
+
+**Supported provider presets:** Microsoft Entra, Google, Okta, Apple, Amazon Cognito, Generic OIDC
+
+### Invitation API (`/api/organizations/{orgId}/invitations`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/invitations` | POST | Send an organization invitation (admin) |
+| `/api/organizations/{orgId}/invitations` | GET | List invitations (filter by status) |
+| `/api/organizations/{orgId}/invitations/{id}/revoke` | POST | Revoke a pending invitation (admin) |
+
+**Invitation details:** 32-byte cryptographic token, configurable expiry (1-30 days, default 7). Invited users bypass domain restrictions.
+
+### Domain Restrictions API (`/api/organizations/{orgId}/domain-restrictions`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/domain-restrictions` | GET | Get allowed email domains for auto-provisioning |
+| `/api/organizations/{orgId}/domain-restrictions` | PUT | Update allowed email domains (admin) |
+
+**Note:** An empty array disables restrictions (all domains allowed).
+
+### TOTP Two-Factor Authentication API (`/api/totp`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/totp/setup` | POST | Initiate TOTP setup (generates secret, QR URI, backup codes) |
+| `/api/totp/verify` | POST | Verify initial TOTP code to complete enrollment |
+| `/api/totp/validate` | POST | Validate TOTP code during login (uses loginToken) |
+| `/api/totp/backup-validate` | POST | Validate and consume a one-time backup code |
+| `/api/totp` | DELETE | Disable TOTP 2FA |
+| `/api/totp/status` | GET | Get TOTP 2FA status |
+
+**Rate limiting:** 5 attempts per minute per user/IP on validation endpoints.
+
+### Organization Settings API (`/api/organizations/{orgId}/settings`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/settings` | GET | Get org settings (type, self-registration, domains, audit retention) |
+| `/api/organizations/{orgId}/settings` | PUT | Update settings (self-registration, audit retention 1-120 months) |
+
+### Custom Domain API (`/api/organizations/{orgId}/custom-domain`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/custom-domain` | GET | Get custom domain configuration and verification status |
+| `/api/organizations/{orgId}/custom-domain` | PUT | Configure custom domain (returns CNAME instructions) |
+| `/api/organizations/{orgId}/custom-domain` | DELETE | Remove custom domain configuration |
+| `/api/organizations/{orgId}/custom-domain/verify` | POST | Verify custom domain CNAME DNS resolution |
+
+### Admin Dashboard API (`/api/organizations/{orgId}/dashboard`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/dashboard` | GET | Get admin dashboard KPIs (user counts, roles, logins, invitations, IDP status) |
+
+### Audit API (`/api/organizations/{orgId}/audit`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/audit` | GET | Query audit events (paginated, filterable by date/type/user) |
+| `/api/organizations/{orgId}/audit/retention` | GET | Get audit retention configuration |
+| `/api/organizations/{orgId}/audit/retention` | PUT | Update audit retention period (1-120 months) |
+
+**Max page size:** 200 events. Audit events older than the retention period are automatically purged daily.
+
+### Internal API (`/api/internal`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/internal/resolve-domain/{domain}` | GET | Resolve custom domain to organization subdomain (API Gateway use only) |
+
+**Note:** Internal endpoints are excluded from public API documentation.
 
 For full API documentation, open **Scalar UI** at `https://localhost:7080/scalar`.
 
@@ -219,25 +381,54 @@ For full API documentation, open **Scalar UI** at `https://localhost:7080/scalar
 ```
 src/Services/Sorcha.Tenant.Service/
 ├── Endpoints/              # Minimal API endpoint groups
-│   ├── AuthEndpoints.cs
-│   ├── AdminEndpoints.cs
-│   └── AuditEndpoints.cs
+│   ├── AuthEndpoints.cs              # Login, register, logout, token management
+│   ├── OidcEndpoints.cs              # OIDC initiate, callback, profile, email verification
+│   ├── OrganizationEndpoints.cs      # Org CRUD, user management, lifecycle
+│   ├── IdpConfigurationEndpoints.cs  # IDP CRUD, discover, test, toggle
+│   ├── InvitationEndpoints.cs        # Create, list, revoke invitations
+│   ├── DomainRestrictionEndpoints.cs # Email domain restrictions
+│   ├── TotpEndpoints.cs              # TOTP 2FA setup, verify, validate, backup
+│   ├── OrgSettingsEndpoints.cs       # Org settings management
+│   ├── CustomDomainEndpoints.cs      # Custom domain CNAME management
+│   ├── DashboardEndpoints.cs         # Admin dashboard KPIs
+│   ├── AuditEndpoints.cs             # Audit log query and retention
+│   ├── InternalEndpoints.cs          # Domain resolution (API Gateway internal)
+│   ├── BootstrapEndpoints.cs         # Initial system bootstrap
+│   ├── ServiceAuthEndpoints.cs       # Service-to-service auth
+│   ├── ParticipantEndpoints.cs       # Participant identity management
+│   ├── PushSubscriptionEndpoints.cs  # Push notification subscriptions
+│   └── UserPreferenceEndpoints.cs    # User preference management
 ├── Services/               # Business logic services
 │   ├── OrganizationService.cs
-│   ├── AuthenticationService.cs
 │   ├── TokenService.cs
-│   └── PassKeyService.cs
+│   ├── TotpService.cs
+│   ├── IdpConfigurationService.cs
+│   ├── OidcExchangeService.cs
+│   ├── OidcProvisioningService.cs
+│   ├── InvitationService.cs
+│   ├── CustomDomainService.cs
+│   ├── DashboardService.cs
+│   ├── PasswordPolicyService.cs
+│   ├── EmailVerificationService.cs
+│   ├── PassKeyService.cs
+│   └── ...
 ├── Data/                   # Data access layer
 │   ├── TenantDbContext.cs
 │   ├── Repositories/
 │   │   ├── IOrganizationRepository.cs
-│   │   ├── OrganizationRepository.cs
+│   │   ├── IIdentityRepository.cs
+│   │   ├── ICustomDomainRepository.cs
 │   │   └── ...
 │   └── Migrations/
-├── Models/                 # Request/response DTOs
-│   ├── Requests/
-│   ├── Responses/
-│   └── Configuration/
+├── Models/                 # Domain models and DTOs
+│   ├── Dtos/               # Request/response DTOs
+│   ├── UserIdentity.cs
+│   ├── Organization.cs
+│   ├── IdentityProviderConfiguration.cs
+│   ├── Invitation.cs
+│   ├── CustomDomainMapping.cs
+│   ├── AuditLogEntry.cs
+│   └── ...
 ├── Extensions/             # Service extensions
 │   ├── ServiceCollectionExtensions.cs
 │   └── ApplicationBuilderExtensions.cs
@@ -305,11 +496,91 @@ dotnet ef migrations script --output migrations.sql
 - **Row-Level Security**: EF Core query filters prevent cross-tenant data access
 - **Audit Logging**: All operations logged with organization context
 
-### Rate Limiting
+### Password Policy (NIST SP 800-63B)
 
-- **Login Attempts**: 5 attempts per 5 minutes per IP
+- **Minimum Length**: 12 characters
+- **No Complexity Rules**: No forced uppercase/numbers/symbols
+- **Breach List Check**: Validates against HIBP (Have I Been Pwned) database
+- **BCrypt Hashing**: Passwords stored as BCrypt hashes
+
+### Two-Factor Authentication
+
+- **TOTP**: Time-based One-Time Password (RFC 6238) via authenticator apps
+- **Backup Codes**: 8-character alphanumeric one-time recovery codes
+- **Login Flow**: Password verification issues a short-lived loginToken, then TOTP validation issues full JWT
+
+### Rate Limiting & Progressive Lockout
+
+- **Login Attempts**: Progressive lockout (5 fails=5min, 10=30min, 15=24h, 25=permanent admin unlock)
 - **Token Requests**: 100 requests per minute per client
 - **Admin Operations**: 20 requests per minute per user
+- **TOTP Validation**: 5 attempts per minute per user/IP
+- **Email Verification Resend**: 3 per hour per user
+
+---
+
+## Authorization Roles
+
+The Tenant Service uses 5 consolidated roles for access control:
+
+| Role | Description | Key Permissions |
+|------|-------------|-----------------|
+| **SystemAdmin** | Platform-level administrator | Full access, cannot be assigned via API |
+| **Administrator** | Organization administrator | IDP config, user management, invitations, settings, dashboard |
+| **Designer** | Blueprint designer | Create/manage blueprints and workflows |
+| **Auditor** | Compliance/audit reviewer | Read-only access to audit logs and reports |
+| **Member** | Standard organization member | Basic access, participate in workflows |
+
+### Authorization Policies
+
+| Policy | Required Role(s) |
+|--------|-------------------|
+| `RequireAdministrator` | SystemAdmin or Administrator |
+| `RequireAuditor` | SystemAdmin, Administrator, or Auditor |
+| `RequireOrganizationMember` | Any authenticated organization member |
+| `RequireService` | Service-to-service tokens only |
+
+---
+
+## OIDC Integration Flow
+
+The service implements a full authorization code + PKCE exchange flow:
+
+1. **Initiate** (`POST /api/auth/oidc/initiate`): Client sends org subdomain, receives authorization URL
+2. **Redirect**: User is redirected to the external IDP (Microsoft Entra, Google, etc.)
+3. **Callback** (`GET /api/auth/callback/{orgSubdomain}`): IDP redirects back with authorization code
+4. **Exchange**: Service exchanges code for external tokens, validates ID token
+5. **Provision**: Auto-provisions new users or matches existing users
+6. **JWT Issuance**: Issues Sorcha JWT (downstream services never see external tokens)
+7. **2FA Check**: If TOTP is enabled, returns a loginToken for second-factor validation
+8. **Profile Completion**: If required claims are missing, prompts for profile completion
+
+### Provider Presets
+
+The IDP configuration supports auto-discovery and presets for top providers:
+
+| Provider | Preset Name | Discovery URL Pattern |
+|----------|-------------|----------------------|
+| Microsoft Entra ID | `MicrosoftEntra` | `https://login.microsoftonline.com/{tenantId}/v2.0` |
+| Google | `Google` | `https://accounts.google.com` |
+| Okta | `Okta` | `https://{domain}.okta.com` |
+| Apple | `Apple` | `https://appleid.apple.com` |
+| Amazon Cognito | `AmazonCognito` | `https://cognito-idp.{region}.amazonaws.com/{poolId}` |
+| Generic OIDC | `GenericOidc` | Any `.well-known/openid-configuration` URL |
+
+---
+
+## Multi-Tenant URL Resolution
+
+The service supports 3-tier URL resolution for organizations:
+
+| Tier | Pattern | Example |
+|------|---------|---------|
+| **Path** | `/org/{subdomain}` | `https://sorcha.io/org/acme` |
+| **Subdomain** | `{subdomain}.sorcha.io` | `https://acme.sorcha.io` |
+| **Custom Domain** | CNAME to platform | `https://id.acme.com` |
+
+Custom domains require CNAME DNS configuration and verification. The internal `/api/internal/resolve-domain/{domain}` endpoint is used by the API Gateway for domain-based routing.
 
 ---
 
@@ -436,7 +707,9 @@ redis-cli ping  # Should return: PONG
 
 ## Resources
 
-- **Specification**: [specs/001-tenant-auth/spec.md](../../../specs/001-tenant-auth/spec.md)
+- **Original Specification**: [specs/001-tenant-auth/spec.md](../../../specs/001-tenant-auth/spec.md)
+- **Org Identity Admin Spec (054)**: [specs/054-org-identity-admin/spec.md](../../../specs/054-org-identity-admin/spec.md)
+- **054 Design Document**: [docs/plans/2026-03-08-org-identity-admin-design.md](../../../docs/plans/2026-03-08-org-identity-admin-design.md)
 - **Implementation Plan**: [specs/001-tenant-auth/plan.md](../../../specs/001-tenant-auth/plan.md)
 - **Secrets Setup**: [specs/001-tenant-auth/secrets-setup.md](../../../specs/001-tenant-auth/secrets-setup.md)
 - **Quickstart Guide**: [specs/001-tenant-auth/quickstart.md](../../../specs/001-tenant-auth/quickstart.md)
@@ -459,6 +732,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: 2026-03-01
+**Last Updated**: 2026-03-09
 **Maintained By**: Sorcha Contributors
 **Deferred (Post-MVD)**: Azure AD B2C integration

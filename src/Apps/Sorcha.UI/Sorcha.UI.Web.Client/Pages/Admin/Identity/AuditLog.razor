@@ -1,0 +1,180 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/identity/audit"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator,SystemAdmin,Auditor")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Sorcha.UI.Core.Services
+
+@inject IAuditService AuditService
+@inject ISnackbar Snackbar
+
+<PageTitle>Audit Log - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />
+        Audit Log
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Review security-relevant audit events
+    </MudText>
+
+    <!-- Filters -->
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_startDate" Label="Start Date" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_endDate" Label="End Date" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_eventTypeFilter" Label="Event Type" Clearable="true">
+                    <MudSelectItem T="string" Value="@("Login")">Login</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("TokenIssued")">Token Issued</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("PermissionDenied")">Permission Denied</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("InvitationSent")">Invitation Sent</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("InvitationAccepted")">Invitation Accepted</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("DomainRestrictionUpdated")">Domain Restriction Updated</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("EmailVerified")">Email Verified</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("AccountLockedOut")">Account Locked</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("OidcFirstLogin")">OIDC First Login</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("SelfRegistration")">Self Registration</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="SearchAsync"
+                           FullWidth="true">
+                    Search
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Results -->
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            @_totalCount events found
+        </MudText>
+        <MudTable Items="_events" Hover="true" Striped="true" Dense="true" Elevation="2">
+            <HeaderContent>
+                <MudTh>Time</MudTh>
+                <MudTh>Event</MudTh>
+                <MudTh>User</MudTh>
+                <MudTh>IP Address</MudTh>
+                <MudTh>Success</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Timestamp.LocalDateTime.ToString("g")</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small">@context.EventType</MudChip></MudTd>
+                <MudTd>@(context.IdentityId?.ToString("N")[..8] ?? "---")</MudTd>
+                <MudTd>@(context.IpAddress ?? "---")</MudTd>
+                <MudTd>
+                    <MudIcon Icon="@(context.Success ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(context.Success ? Color.Success : Color.Error)"
+                             Size="Size.Small" />
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+
+        @if (_totalCount > _pageSize)
+        {
+            <MudPagination Count="@((int)Math.Ceiling((double)_totalCount / _pageSize))"
+                           Selected="_currentPage"
+                           SelectedChanged="OnPageChanged"
+                           Class="mt-4 d-flex justify-center" />
+        }
+    }
+</MudContainer>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Identity", href: "/admin/identity"),
+        new("Audit Log", href: null, disabled: true)
+    ];
+
+    private bool _loading = true;
+    private Guid _organizationId;
+    private List<AuditEventDto> _events = [];
+    private int _totalCount;
+    private int _currentPage = 1;
+    private int _pageSize = 50;
+
+    // Filters
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private string? _eventTypeFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState != null)
+        {
+            var authState = await AuthenticationState;
+            var orgIdClaim = authState.User.Claims
+                .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+            if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var orgId))
+                _organizationId = orgId;
+        }
+
+        await LoadEventsAsync();
+        _loading = false;
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _currentPage = 1;
+        await LoadEventsAsync();
+        _loading = false;
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        try
+        {
+            DateTimeOffset? start = _startDate.HasValue
+                ? new DateTimeOffset(_startDate.Value, TimeSpan.Zero)
+                : null;
+            DateTimeOffset? end = _endDate.HasValue
+                ? new DateTimeOffset(_endDate.Value.AddDays(1), TimeSpan.Zero)
+                : null;
+
+            var result = await AuditService.QueryAuditEventsAsync(
+                _organizationId, start, end, _eventTypeFilter, null,
+                _currentPage, _pageSize);
+
+            _events = result.Events.ToList();
+            _totalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load audit events: {ex.Message}", Severity.Error);
+        }
+    }
+}

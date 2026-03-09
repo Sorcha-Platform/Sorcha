@@ -52,6 +52,37 @@ public class Organization
     /// Each organization can have one external IDP configured.
     /// </summary>
     public IdentityProviderConfiguration? IdentityProvider { get; set; }
+
+    /// <summary>
+    /// Organization type (Standard = invitation-only, Public = self-registration enabled).
+    /// </summary>
+    public OrgType OrgType { get; set; } = OrgType.Standard;
+
+    /// <summary>
+    /// Whether self-registration is enabled for this organization.
+    /// Only applicable when OrgType is Public.
+    /// </summary>
+    public bool SelfRegistrationEnabled { get; set; }
+
+    /// <summary>
+    /// Allowed email domains for auto-provisioning. Empty array means no restrictions.
+    /// </summary>
+    public string[] AllowedEmailDomains { get; set; } = [];
+
+    /// <summary>
+    /// Custom domain for this organization (e.g., "login.acmestores.com").
+    /// </summary>
+    public string? CustomDomain { get; set; }
+
+    /// <summary>
+    /// Verification status for the custom domain CNAME record.
+    /// </summary>
+    public CustomDomainStatus CustomDomainStatus { get; set; } = CustomDomainStatus.None;
+
+    /// <summary>
+    /// Number of months to retain audit log entries. Default: 12. Range: 1-120.
+    /// </summary>
+    public int AuditRetentionMonths { get; set; } = 12;
 }
 
 /// <summary>

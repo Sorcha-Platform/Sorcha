@@ -1,14 +1,14 @@
 # Sorcha Platform - Development Status Report
 
-**Date:** 2026-03-07
-**Version:** 4.1 (Updated after Feature 053 Peer Router & Peer Service Completion)
+**Date:** 2026-03-09
+**Version:** 4.2 (Updated after Feature 054 Organization Admin & Identity Management)
 **Overall Completion:** 100% MVD
 
 ---
 
 ## Executive Summary
 
-This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 053 (Peer Router App & Peer Service Completion, Phases 1-8) on 2026-03-07.
+This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 054 (Organization Admin & Identity Management, Phases 1-9) on 2026-03-09.
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
@@ -16,7 +16,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - Register Service is 100% complete with comprehensive testing, JWT authentication, and decentralized governance (234 tests)
 - **Peer Service 95%**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions, circuit breaking, PostgreSQL queue
 - **Validator Service 100% MVD**: Memory pool, docket building, consensus, gRPC, duplicate detection cross-check (620+ tests)
-- **Tenant Service 100% MVD**: Auth, orgs, service principals (includeInactive), user count stats
+- **Tenant Service 95%**: Auth, orgs, OIDC integration, identity management, role consolidation, admin console (7 pages)
 - **AUTH-002 complete**: All services now have JWT Bearer authentication with authorization policies
 - **Quantum-Safe Cryptography 100% complete**: ML-DSA-65, ML-KEM-768, SLH-DSA-128s, BLS12-381 threshold signatures, ZK proofs (Pedersen commitments, range proofs), per-register crypto policy, ws2 Bech32m addresses (270+ new tests)
 - **System Admin Tooling (Feature 049)**: Service principal CRUD, register policy management, validator consent/metrics/threshold, system register page, 17 CLI subcommands (29 new components)
@@ -25,6 +25,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **Verifiable Credentials 100% complete**: SD-JWT VC format, credential gating on actions, blueprint-as-issuer, cross-blueprint composability, selective disclosure, revocation (53 engine + 6 crypto + 4 endpoint tests)
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
 - **Peer Router & Peer Service Completion (Feature 053) 100% complete**: PeerRouter standalone app, circuit breaking, SQLite removed, PostgreSQL queue migration, Phases 1-8 delivered
+- **Organization Admin & Identity Management (Feature 054) complete**: OIDC discovery-first integration, multi-tenant URL resolution, 5-role model, 7 Blazor admin pages, social login, TOTP 2FA, invitation system, progressive lockout
 - **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
 - Total actual completion: 100% MVD (all feature gaps closed, auth policies on all API routes)
 
@@ -42,7 +43,7 @@ For detailed implementation status, see the individual section files:
 | [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
 | **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
 | [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
-| [Tenant Service](status/tenant-service.md) | 100% MVD | Auth, orgs, principals, user stats |
+| [Tenant Service](status/tenant-service.md) | 95% | Auth, orgs, OIDC, identity mgmt, admin console |
 | [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
 | [Core Libraries & Infrastructure](status/core-libraries.md) | 95% | Engine, Crypto, Gateway |
 | **Sorcha.UI (Unified)** | 100% | Register management, designer, consumer pages |
@@ -63,7 +64,7 @@ For detailed implementation status, see the individual section files:
 | **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
 | **Sorcha.PeerRouter** | 100% | Complete | None |
 | **Validator.Service** | 100% MVD | Complete | None (deferred: enclave, fork detection) |
-| **Tenant.Service** | 100% MVD | Complete | None (deferred: Azure AD B2C) |
+| **Tenant.Service** | 95% | Complete | None (deferred: Phase 10 polish) |
 | **Authentication (AUTH-002)** | 100% | Complete | None |
 | **Sorcha.Cryptography (PQC)** | 100% | Complete | None |
 | **ApiGateway** | 100% MVD | Complete | None |
@@ -90,11 +91,28 @@ For detailed implementation status, see the individual section files:
 | Wallet.Service | 60+ tests | 20+ tests | >85% |
 | Register.Service | 112 tests | Comprehensive | >85% |
 | Validator.Service | 16 test files | Comprehensive | ~80% |
-| Tenant.Service | N/A | 67 tests (91% passing) | ~85% |
+| Tenant.Service | N/A | 479+ tests | ~85% |
 
 ---
 
 ## Recent Completions
+
+### 2026-03-09
+- **054-Org-Identity-Admin** (Phases 1-9 complete, T001-T082)
+  - **Tenant Service upgraded to 95%**: Full organization admin and identity management
+  - **OIDC integration**: Discovery-first configuration with top-5 provider shortcuts (Microsoft Entra, Google, Okta, Apple, Cognito)
+  - **Multi-tenant URL resolution**: 3-tier scheme — path (`/org/{sub}`), subdomain (`{sub}.sorcha.io`), custom domain (CNAME)
+  - **Role consolidation**: 8 roles reduced to 5 (SystemAdmin, Administrator, Designer, Auditor, Member)
+  - **Admin console**: 7 Blazor WASM pages for identity management (dashboard, users, IDP config, invitations, domains, audit, org settings)
+  - **Auto-provisioning**: Automatic user provisioning on first OIDC login with configurable domain restrictions
+  - **Email verification**: Required for all users; trusts IDP `email_verified` claim
+  - **Social login support**: Microsoft, Google, Apple + optional email/password registration
+  - **TOTP 2FA**: Time-based one-time password with setup/verify/disable flow
+  - **Invitation system**: Email-based invitations with role assignment and expiration
+  - **Progressive account lockout**: 5 fails=5min, 10=30min, 15=24h, 25=admin unlock
+  - **NIST password policy**: Min 12 chars, no complexity rules, breach list check
+  - **Audit retention**: 12 months default, admin-configurable
+  - Test results: 479 Tenant tests pass, 27 Gateway tests pass
 
 ### 2026-03-07
 - **053-Peer-Router-App-and-Peer-Service-Completion** (Phases 1-8 complete)
@@ -304,7 +322,7 @@ For detailed implementation status, see the individual section files:
 
 These items are explicitly **out of scope for MVD** and deferred to production readiness phases:
 
-1. **Azure AD B2C** — External identity provider for Tenant Service
+1. **Azure AD B2C** — Dedicated Azure AD B2C provider (generic OIDC integration now available via Feature 054)
 2. **Azure Key Vault** — Production key management for Wallet Service
 3. **Fork Detection** — Validator Service chain fork handling
 4. **Enclave Support** — Trusted execution environment for Validator
@@ -326,12 +344,12 @@ The platform is feature-complete for MVD but requires the following for producti
 | Production database tuning | Pending | P1 | Theme 2 |
 | Monitoring and alerting | Pending | P2 | Theme 2 |
 | Load testing at scale | Pending | P2 | Theme 2 |
-| Azure AD B2C integration | Pending | P2 | Theme 5 |
+| Azure AD B2C integration | Partially addressed (OIDC) | P2 | Theme 5 |
 
 ---
 
-**Document Version:** 4.1
-**Last Updated:** 2026-03-07
+**Document Version:** 4.2
+**Last Updated:** 2026-03-09
 **Owner:** Sorcha Architecture Team
 
 **See Also:**

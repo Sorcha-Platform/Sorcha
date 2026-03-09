@@ -356,6 +356,261 @@ echo "YOUR_TOKEN" | jwt decode -
 - [ ] JWT Bearer package installed on all services
 - [ ] `app.UseAuthentication()` called before `app.UseAuthorization()`
 
+---
+
+## OIDC Identity Provider Configuration
+
+The Tenant Service supports external identity provider (IDP) integration using OpenID Connect (OIDC). Organizations can connect their existing corporate identity system so users sign in with their existing credentials. The platform performs a full token exchange: external OIDC tokens are exchanged for Sorcha-native JWTs, and downstream services never see external tokens.
+
+### Discovery-First Approach
+
+Configuration follows a discovery-first workflow. The administrator provides an issuer URL and the system automatically fetches the provider's `.well-known/openid-configuration` document to populate endpoints.
+
+**Configuration Flow:**
+
+1. **Discover** — Enter the issuer URL (or select a provider preset). The system fetches the discovery document and auto-populates endpoints.
+2. **Create** — Provide the Client ID and Client Secret obtained from the IDP's developer console.
+3. **Test** — Click "Test Connection" to validate credentials against the provider.
+4. **Enable** — Activate the configuration so it appears as a sign-in option on the organization's login page.
+
+### Provider Presets
+
+The following well-known providers have pre-configured issuer URL templates:
+
+| Provider | Issuer URL Template |
+|----------|-------------------|
+| Microsoft Entra ID | `https://login.microsoftonline.com/{tenant-id}/v2.0` |
+| Google | `https://accounts.google.com` |
+| Okta | `https://{domain}.okta.com` |
+| Apple | `https://appleid.apple.com` |
+| Amazon Cognito | `https://cognito-idp.{region}.amazonaws.com/{user-pool-id}` |
+| Custom | Any OIDC-compliant issuer URL |
+
+### Required and Auto-Discovered Fields
+
+**Required (admin must provide):**
+
+| Field | Description |
+|-------|-------------|
+| `ClientId` | Application/client ID from the IDP's developer console |
+| `ClientSecret` | Client secret from the IDP's developer console (encrypted at rest) |
+| `Issuer` | The IDP's issuer URL |
+| `Scopes` | Requested scopes (default: `openid profile email`) |
+
+**Auto-discovered from `.well-known/openid-configuration`:**
+
+| Field | Description |
+|-------|-------------|
+| `AuthorizationEndpoint` | URL for the authorization request |
+| `TokenEndpoint` | URL for token exchange |
+| `UserInfoEndpoint` | URL for user info retrieval |
+| `JwksUri` | URL for JSON Web Key Set (signature verification) |
+
+Discovery documents are cached and refreshed every 24 hours.
+
+### Token Exchange Flow
+
+When a user authenticates through an external IDP, the following exchange occurs:
+
+```
+┌──────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Browser  │     │  Tenant Service  │     │  External    │     │  Downstream  │
+│           │     │                  │     │  IDP         │     │  Services    │
+└─────┬─────┘     └────────┬─────────┘     └──────┬───────┘     └──────┬───────┘
+      │                    │                       │                    │
+      │ 1. Click           │                       │                    │
+      │    "Sign in with   │                       │                    │
+      │     [Provider]"    │                       │                    │
+      │───────────────────▶│                       │                    │
+      │                    │                       │                    │
+      │ 2. Redirect to IDP │                       │                    │
+      │◀───────────────────│                       │                    │
+      │                    │                       │                    │
+      │ 3. Authenticate    │                       │                    │
+      │    at IDP          │                       │                    │
+      │───────────────────────────────────────────▶│                    │
+      │                    │                       │                    │
+      │ 4. Redirect back   │                       │                    │
+      │    with auth code  │                       │                    │
+      │◀──────────────────────────────────────────│                    │
+      │                    │                       │                    │
+      │ 5. Auth code       │                       │                    │
+      │───────────────────▶│                       │                    │
+      │                    │ 6. Exchange code       │                    │
+      │                    │    for tokens          │                    │
+      │                    │    (server-side)       │                    │
+      │                    │──────────────────────▶│                    │
+      │                    │                       │                    │
+      │                    │ 7. External ID token   │                    │
+      │                    │◀──────────────────────│                    │
+      │                    │                       │                    │
+      │                    │ 8. Validate external   │                    │
+      │                    │    token (sig, iss,    │                    │
+      │                    │    aud, exp, nonce)    │                    │
+      │                    │                       │                    │
+      │ 9. Issue Sorcha    │                       │                    │
+      │    JWT (native)    │                       │                    │
+      │◀───────────────────│                       │                    │
+      │                    │                       │                    │
+      │ 10. Call API with  │                       │                    │
+      │     Sorcha JWT     │                       │                    │
+      │─────────────────────────────────────────────────────────────▶│
+      │                    │                       │                    │
+```
+
+Key points:
+- Authorization codes are exchanged server-side (step 6) — tokens are never exposed to the browser.
+- The external ID token is validated (signature via JWKS, issuer, audience, expiry, nonce) before a Sorcha JWT is issued.
+- Downstream services only ever see Sorcha-native JWTs. They do not need to know about external IDPs.
+- Users are matched by the IDP's `sub` (subject) claim, not by email address.
+
+### IDP Configuration via API
+
+```http
+POST https://tenant.sorcha.io/api/organizations/{orgId}/idp-config
+Content-Type: application/json
+Authorization: Bearer <admin-token>
+
+{
+  "providerType": "MicrosoftEntra",
+  "issuerUrl": "https://login.microsoftonline.com/{tenant-id}/v2.0",
+  "clientId": "your-app-client-id",
+  "clientSecret": "your-app-client-secret",
+  "scopes": "openid profile email"
+}
+```
+
+### IDP Configuration via Admin UI
+
+Navigate to **Identity > Identity Providers** in the admin console. Select a provider preset or enter a custom issuer URL, fill in the client credentials, test the connection, and enable it.
+
+---
+
+## Auto-Provisioning
+
+When an external IDP is configured and active, user accounts are created automatically on first OIDC login. No administrator action is required for day-to-day user onboarding.
+
+### How It Works
+
+1. A user authenticates through the organization's configured IDP.
+2. The Tenant Service checks whether a user record exists for the IDP's `sub` claim.
+3. If no record exists, a new `UserIdentity` is created with:
+   - **Role**: `Member` (default for all auto-provisioned users)
+   - **Email**: Extracted from `email`, `preferred_username`, or `upn` claims
+   - **Display name**: Extracted from `name` or `given_name` + `family_name` claims
+   - **Status**: `Active` (if email is verified by the IDP) or `PendingVerification`
+4. A Sorcha JWT is issued for the new or existing user.
+
+### Domain Restrictions
+
+By default, organizations have no domain restrictions and any email address can auto-provision. Administrators can restrict auto-provisioning to specific email domains.
+
+| Scenario | Behavior |
+|----------|----------|
+| No restrictions configured | Any user who authenticates via the IDP is auto-provisioned |
+| Restrictions active, email matches | User is auto-provisioned normally |
+| Restrictions active, email does not match | User is denied with a message to contact the org administrator |
+| User has an explicit invitation | User can join regardless of domain restrictions |
+
+Configure domain restrictions via the admin console under **Identity > Domain Restrictions**, or via the API:
+
+```http
+POST https://tenant.sorcha.io/api/organizations/{orgId}/domain-restrictions
+Content-Type: application/json
+Authorization: Bearer <admin-token>
+
+{
+  "domain": "contoso.com"
+}
+```
+
+---
+
+## Email Verification
+
+All users must have a verified email address before accessing the platform.
+
+### Verification Paths
+
+| Authentication Method | Verification Approach |
+|-----------------------|----------------------|
+| OIDC (IDP returns `email_verified: true`) | Email is trusted and marked as verified immediately — no additional verification required |
+| OIDC (no `email_verified` claim, or `false`) | User is redirected to a "Complete your profile" page and must verify their email via a token-based flow |
+| Local email/password account | A verification email is sent on registration with a time-limited token (24 hours) |
+
+### Token-Based Verification Flow
+
+1. User registers or is prompted to verify their email.
+2. The system sends an email containing a verification link with a unique token.
+3. The user clicks the link within 24 hours.
+4. The email is marked as verified and the account is fully activated.
+5. If the token expires, the user can request a new verification email.
+
+Users with unverified emails cannot access platform features. They will be redirected to the verification prompt on each login attempt.
+
+---
+
+## Password Policy (NIST SP 800-63B)
+
+Local email/password accounts follow a modern password policy aligned with NIST SP 800-63B recommendations.
+
+### Rules
+
+| Rule | Value |
+|------|-------|
+| Minimum length | 12 characters |
+| Maximum length | No limit (practical cap at 256 characters) |
+| Complexity rules | None — no mandatory uppercase, lowercase, number, or special character requirements |
+| Breach list check | Passwords are checked against known breached password lists and rejected if found |
+| Password history | Not enforced |
+
+### Progressive Account Lockout
+
+Failed login attempts trigger progressive lockout to protect against brute-force attacks:
+
+| Failed Attempts | Lockout Duration |
+|-----------------|-----------------|
+| 5 | 5 minutes |
+| 10 | 30 minutes |
+| 15 | 24 hours |
+| 25 | Locked until admin unlock |
+
+- Failed attempt counters reset after a successful login.
+- Lockout events are recorded in the organization's audit log.
+- Administrators can manually unlock accounts from the admin console under **Identity > Users**.
+
+---
+
+## TOTP Two-Factor Authentication
+
+Organizations can enable TOTP (Time-based One-Time Password) two-factor authentication. When enabled, users must complete a TOTP challenge after primary authentication (whether local login or OIDC) before receiving their Sorcha JWT.
+
+### Setup Flow
+
+1. **Generate secret** — The user navigates to their security settings and initiates 2FA setup. The system generates a TOTP secret.
+2. **Scan QR code** — The user scans the QR code with an authenticator app (e.g., Google Authenticator, Microsoft Authenticator, Authy).
+3. **Verify** — The user enters the current TOTP code from their authenticator app to confirm setup.
+4. **Backup codes** — The system generates a set of one-time backup codes for account recovery. The user must store these securely.
+
+### Authentication with 2FA
+
+When 2FA is enabled:
+
+1. User completes primary authentication (password or OIDC).
+2. The system returns a partial authentication response requiring a TOTP challenge.
+3. User enters the current TOTP code from their authenticator app.
+4. If the code is valid, the Sorcha JWT is issued.
+5. If the user has lost their authenticator, they can use a one-time backup code instead.
+
+### Configuration
+
+2FA is configured at the organization level. Administrators can:
+- Enable or disable 2FA requirement for all users in the organization
+- View which users have completed 2FA setup
+- Reset a user's 2FA configuration (e.g., if they lose their device)
+
+---
+
 ## Next Steps
 
 After authentication is configured:
@@ -593,6 +848,6 @@ app.MapPost("/api/wallets/{id}/sign", SignWithWallet)
 
 ---
 
-**Status**: ✅ AUTH-002 Complete (All services integrated)
-**Last Updated**: 2026-02-25
-**Version**: 1.2
+**Status**: ✅ AUTH-002 Complete (All services integrated) | OIDC Identity Management (054) documented
+**Last Updated**: 2026-03-09
+**Version**: 1.3

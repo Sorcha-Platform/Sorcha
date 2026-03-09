@@ -26,6 +26,15 @@ public static class WebApplicationExtensions
         services.AddHostedService<DatabaseInitializerHostedService>();
         return services;
     }
+
+    /// <summary>
+    /// Adds the audit cleanup background service for automatic purge of expired audit entries.
+    /// </summary>
+    public static IServiceCollection AddAuditCleanup(this IServiceCollection services)
+    {
+        services.AddHostedService<AuditCleanupService>();
+        return services;
+    }
 }
 
 /// <summary>
@@ -54,6 +63,15 @@ public static class ServiceCollectionExtensions
 
         // Add Redis and token revocation
         services.AddTenantRedis(configuration);
+
+        // Add email sender
+        services.AddTenantEmail(configuration);
+
+        // Add in-memory cache (used by OIDC discovery, password breach check, etc.)
+        services.AddMemoryCache();
+
+        // Add distributed cache for OIDC flow state (upgraded to Redis in production via Aspire)
+        services.AddDistributedMemoryCache();
 
         return services;
     }
@@ -109,6 +127,30 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
 
+        // IDP configuration services
+        services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
+        services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();
+        services.AddHttpClient();
+
+        // OIDC authentication flow services
+        services.AddScoped<IOidcExchangeService, OidcExchangeService>();
+        services.AddScoped<IOidcProvisioningService, OidcProvisioningService>();
+        services.AddScoped<IEmailVerificationService, EmailVerificationService>();
+
+        // Password policy service (NIST + HIBP breach check)
+        services.AddHttpClient<IPasswordPolicyService, PasswordPolicyService>();
+
+        // Invitation and dashboard services
+        services.AddScoped<IInvitationRepository, InvitationRepository>();
+        services.AddScoped<IInvitationService, InvitationService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+
+        // Custom domain services
+        services.AddScoped<ICustomDomainRepository, CustomDomainRepository>();
+        services.AddScoped<ICustomDomainService, CustomDomainService>();
+        services.AddSingleton<IDnsResolver, DnsResolver>();
+        services.AddHostedService<CustomDomainVerificationService>();
+
         return services;
     }
 
@@ -156,6 +198,19 @@ public static class ServiceCollectionExtensions
             configuration.GetSection("TokenRevocation"));
 
         services.AddScoped<ITokenRevocationService, TokenRevocationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds email sending services with SMTP configuration.
+    /// </summary>
+    public static IServiceCollection AddTenantEmail(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.Configure<EmailSettings>(configuration.GetSection("Email"));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
         return services;
     }

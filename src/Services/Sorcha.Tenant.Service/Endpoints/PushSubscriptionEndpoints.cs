@@ -25,15 +25,20 @@ public static class PushSubscriptionEndpoints
 
         group.MapPost("/", Subscribe)
             .WithName("SubscribePush")
-            .WithSummary("Register a push notification subscription for the authenticated user");
+            .WithSummary("Register a push notification subscription")
+            .WithDescription("Registers or updates a Web Push API subscription for the authenticated user. "
+                + "Requires the push endpoint URL and VAPID keys (p256dh and auth).");
 
         group.MapDelete("/", Unsubscribe)
             .WithName("UnsubscribePush")
-            .WithSummary("Remove a push notification subscription");
+            .WithSummary("Remove a push notification subscription")
+            .WithDescription("Removes an existing push notification subscription by endpoint URL. "
+                + "The user will no longer receive push notifications on that browser/device.");
 
         group.MapGet("/status", GetStatus)
             .WithName("GetPushStatus")
-            .WithSummary("Check if user has an active push subscription");
+            .WithSummary("Check if user has an active push subscription")
+            .WithDescription("Returns whether the authenticated user has at least one active push notification subscription.");
 
         return app;
     }

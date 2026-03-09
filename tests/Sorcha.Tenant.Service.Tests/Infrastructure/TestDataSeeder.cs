@@ -23,6 +23,9 @@ public static class TestDataSeeder
     // Well-known test organization ID
     public static readonly Guid TestOrganizationId = new("00000000-0000-0000-0000-000000000001");
 
+    // Public organization for self-registration tests
+    public static readonly Guid PublicOrganizationId = new("00000000-0000-0000-0000-000000000002");
+
     // Well-known test user IDs
     public static readonly Guid AdminUserId = new("00000000-0000-0000-0001-000000000001");
     public static readonly Guid MemberUserId = new("00000000-0000-0000-0001-000000000002");
@@ -106,6 +109,39 @@ public static class TestDataSeeder
         };
 
         context.ServicePrincipals.Add(servicePrincipal);
+
+        // Create public organization for self-registration tests
+        var publicOrg = new Organization
+        {
+            Id = PublicOrganizationId,
+            Name = "Public Test Org",
+            Subdomain = "public-org",
+            Status = OrganizationStatus.Active,
+            OrgType = OrgType.Public,
+            SelfRegistrationEnabled = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        context.Organizations.Add(publicOrg);
+
+        // Create test IDP configuration for OIDC tests
+        var idpConfig = new IdentityProviderConfiguration
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = TestOrganizationId,
+            ProviderPreset = IdentityProviderType.GenericOidc,
+            IssuerUrl = "https://login.example.com/tenant-id/v2.0",
+            ClientId = "test-client-id",
+            ClientSecretEncrypted = System.Text.Encoding.UTF8.GetBytes("encrypted-secret"),
+            Scopes = ["openid", "profile", "email"],
+            AuthorizationEndpoint = "https://login.example.com/authorize",
+            TokenEndpoint = "https://login.example.com/token",
+            JwksUri = "https://login.example.com/.well-known/jwks.json",
+            IsEnabled = true,
+            DisplayName = "Test IDP"
+        };
+
+        context.IdentityProviderConfigurations.Add(idpConfig);
 
         await context.SaveChangesAsync();
     }

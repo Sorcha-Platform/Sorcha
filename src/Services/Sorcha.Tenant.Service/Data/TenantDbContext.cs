@@ -31,8 +31,12 @@ public class TenantDbContext : DbContext
     public DbSet<PublicIdentity> PublicIdentities => Set<PublicIdentity>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
 
+    // Public schema entities for custom domain resolution
+    public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
+
     // Per-tenant schema entities (isolated per organization)
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
+    public DbSet<OrgInvitation> OrgInvitations => Set<OrgInvitation>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<TotpConfiguration> TotpConfigurations => Set<TotpConfiguration>();
     public DbSet<OrganizationPermissionConfiguration> OrganizationPermissionConfigurations => Set<OrganizationPermissionConfiguration>();
@@ -106,6 +110,12 @@ public class TenantDbContext : DbContext
 
         // Configure SystemConfiguration entity (public schema)
         ConfigureSystemConfiguration(modelBuilder);
+
+        // Configure OrgInvitation entity (per-org schema)
+        ConfigureOrgInvitation(modelBuilder);
+
+        // Configure CustomDomainMapping entity (public schema)
+        ConfigureCustomDomainMapping(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -150,6 +160,10 @@ public class TenantDbContext : DbContext
                 branding.Property(b => b.CompanyTagline).HasMaxLength(500);
             });
 
+            entity.Property(e => e.OrgType).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.CustomDomain).HasMaxLength(500);
+            entity.Property(e => e.CustomDomainStatus).HasConversion<string>().HasMaxLength(20);
+
             // One-to-one relationship with IdentityProviderConfiguration
             entity.HasOne(e => e.IdentityProvider)
                 .WithOne(i => i.Organization)
@@ -193,14 +207,18 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.MetadataUrl)
                 .HasMaxLength(500);
 
-            entity.Property(e => e.ProviderType)
+            entity.Property(e => e.ProviderPreset)
                 .HasConversion<string>()
                 .IsRequired();
+
+            entity.Property(e => e.UserInfoEndpoint).HasMaxLength(500);
+            entity.Property(e => e.JwksUri).HasMaxLength(500);
+            entity.Property(e => e.DisplayName).HasMaxLength(200);
 
             entity.HasIndex(e => e.OrganizationId)
                 .IsUnique();
 
-            entity.HasIndex(e => e.ProviderType);
+            entity.HasIndex(e => e.ProviderPreset);
         });
     }
 
@@ -272,8 +290,8 @@ public class TenantDbContext : DbContext
             entity.ToTable("UserIdentities");
             entity.HasKey(e => e.Id);
 
-            // ExternalIdpUserId is nullable (null for local auth users)
-            entity.Property(e => e.ExternalIdpUserId)
+            // ExternalIdpSubject is nullable (null for local auth users)
+            entity.Property(e => e.ExternalIdpSubject)
                 .IsRequired(false)
                 .HasMaxLength(200);
 
@@ -302,10 +320,14 @@ public class TenantDbContext : DbContext
                 .HasConversion<string>()
                 .IsRequired();
 
-            // Unique index on ExternalIdpUserId only for non-null values
-            entity.HasIndex(e => e.ExternalIdpUserId)
+            // Unique index on ExternalIdpSubject only for non-null values
+            entity.HasIndex(e => e.ExternalIdpSubject)
                 .IsUnique()
-                .HasFilter("\"ExternalIdpUserId\" IS NOT NULL");
+                .HasFilter("\"ExternalIdpSubject\" IS NOT NULL");
+
+            // New fields for org identity management
+            entity.Property(e => e.VerificationToken).HasMaxLength(100);
+            entity.Property(e => e.ProvisionedVia).HasConversion<string>().HasMaxLength(20);
 
             entity.HasIndex(e => e.Email)
                 .IsUnique();  // Email must be unique within organization
@@ -685,6 +707,44 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Value)
                 .IsRequired()
                 .HasMaxLength(500);
+        });
+    }
+
+    private void ConfigureOrgInvitation(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OrgInvitation>(entity =>
+        {
+            entity.ToTable("OrgInvitations");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.Token).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.AssignedRole).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(e => e.Token).IsUnique();
+            entity.HasIndex(e => new { e.OrganizationId, e.Email, e.Status });
+        });
+    }
+
+    private void ConfigureCustomDomainMapping(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory";
+
+        modelBuilder.Entity<CustomDomainMapping>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("CustomDomainMappings");
+            else
+                entity.ToTable("CustomDomainMappings", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Domain).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(e => e.Domain).IsUnique();
+            entity.HasIndex(e => e.OrganizationId).IsUnique();
         });
     }
 }

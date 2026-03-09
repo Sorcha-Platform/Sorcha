@@ -91,7 +91,7 @@ public static class TestDataSeeder
             {
                 Id = TestAdminUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = TestAdminExternalId,
+                ExternalIdpSubject = TestAdminExternalId,
                 Email = TestAdminEmail,
                 DisplayName = TestAdminName,
                 Roles = [UserRole.Administrator],
@@ -109,7 +109,7 @@ public static class TestDataSeeder
             {
                 Id = TestMemberUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = TestMemberExternalId,
+                ExternalIdpSubject = TestMemberExternalId,
                 Email = TestMemberEmail,
                 DisplayName = TestMemberName,
                 Roles = [UserRole.Member],
@@ -127,7 +127,7 @@ public static class TestDataSeeder
             {
                 Id = TestAuditorUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = TestAuditorExternalId,
+                ExternalIdpSubject = TestAuditorExternalId,
                 Email = TestAuditorEmail,
                 DisplayName = TestAuditorName,
                 Roles = [UserRole.Auditor],
@@ -146,7 +146,7 @@ public static class TestDataSeeder
             {
                 Id = TestLocalAdminUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = null, // Local auth - no external IDP
+                ExternalIdpSubject = null, // Local auth - no external IDP
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(TestLocalAdminPassword),
                 Email = TestLocalAdminEmail,
                 DisplayName = "Local Admin",
@@ -165,7 +165,7 @@ public static class TestDataSeeder
             {
                 Id = TestLocalMemberUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = null, // Local auth - no external IDP
+                ExternalIdpSubject = null, // Local auth - no external IDP
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(TestLocalMemberPassword),
                 Email = TestLocalMemberEmail,
                 DisplayName = "Local Member",
@@ -184,7 +184,7 @@ public static class TestDataSeeder
             {
                 Id = TestInactiveUserId,
                 OrganizationId = TestOrganizationId,
-                ExternalIdpUserId = null, // Local auth - no external IDP
+                ExternalIdpSubject = null, // Local auth - no external IDP
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(TestInactivePassword),
                 Email = TestInactiveEmail,
                 DisplayName = "Inactive User",

@@ -1,0 +1,171 @@
+# OIDC Authentication Endpoints
+# Added to Tenant Service under /api/auth/oidc/
+
+paths:
+  /api/auth/oidc/initiate:
+    post:
+      summary: Initiate OIDC login flow
+      description: Generates authorization URL for the org's configured IDP. Returns redirect URL for the browser.
+      tags: [OIDC Authentication]
+      security: []  # AllowAnonymous
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orgSubdomain]
+              properties:
+                orgSubdomain:
+                  type: string
+                  description: Organization subdomain to authenticate against
+                returnUrl:
+                  type: string
+                  description: URL to redirect to after successful auth
+      responses:
+        200:
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorizationUrl:
+                    type: string
+                    format: uri
+                  state:
+                    type: string
+                    description: CSRF protection state parameter
+        404:
+          description: Organization not found or has no configured IDP
+
+  /api/auth/callback/{orgSubdomain}:
+    get:
+      summary: OIDC callback handler
+      description: |
+        Handles the authorization code callback from the external IDP.
+        Exchanges code for tokens, validates, provisions user if needed,
+        issues Sorcha JWT. Redirects to app or profile completion page.
+      tags: [OIDC Authentication]
+      security: []  # AllowAnonymous
+      parameters:
+        - name: orgSubdomain
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        302:
+          description: Redirect to app (success) or profile completion (missing claims)
+        400:
+          description: Invalid state or code exchange failed
+        403:
+          description: Domain restriction violation
+
+  /api/auth/oidc/complete-profile:
+    post:
+      summary: Complete user profile after OIDC login
+      description: Provides missing email/name when IDP didn't return them. Triggers email verification.
+      tags: [OIDC Authentication]
+      security:
+        - bearerAuth: []  # Temporary partial-auth token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                displayName:
+                  type: string
+      responses:
+        200:
+          description: Profile updated, verification email sent if needed
+        400:
+          description: Validation error
+
+  /api/auth/verify-email:
+    post:
+      summary: Verify email address via token
+      description: Validates the email verification token sent via email link.
+      tags: [OIDC Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                orgSubdomain:
+                  type: string
+      responses:
+        200:
+          description: Email verified successfully
+        400:
+          description: Token invalid or expired
+        410:
+          description: Token expired, request new verification
+
+  /api/auth/resend-verification:
+    post:
+      summary: Resend email verification
+      description: Generates a new verification token and sends verification email.
+      tags: [OIDC Authentication]
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Verification email sent
+        429:
+          description: Rate limited (max 3 per hour)
+
+  /api/auth/register:
+    post:
+      summary: Self-register with email/password (local account)
+      description: Creates a local account for public orgs. Sends verification email.
+      tags: [OIDC Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orgSubdomain, email, password, displayName]
+              properties:
+                orgSubdomain:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 12
+                displayName:
+                  type: string
+      responses:
+        201:
+          description: Account created, verification email sent
+        400:
+          description: Validation error (weak password, breached password)
+        403:
+          description: Self-registration disabled for this org
+        409:
+          description: Email already registered

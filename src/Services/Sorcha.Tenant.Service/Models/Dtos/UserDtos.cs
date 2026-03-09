@@ -19,9 +19,9 @@ public record AddUserToOrganizationRequest
     public required string DisplayName { get; init; }
 
     /// <summary>
-    /// External IDP user ID (from OIDC token).
+    /// External IDP subject claim (from OIDC token).
     /// </summary>
-    public required string ExternalIdpUserId { get; init; }
+    public required string ExternalIdpSubject { get; init; }
 
     /// <summary>
     /// Roles to assign to the user.
@@ -109,6 +109,17 @@ public record UserResponse
         CreatedAt = user.CreatedAt,
         LastLoginAt = user.LastLoginAt
     };
+}
+
+/// <summary>
+/// Request to change a user's role.
+/// </summary>
+public record ChangeUserRoleRequest
+{
+    /// <summary>
+    /// New role to assign (Administrator, Designer, Auditor, Member). SystemAdmin not allowed.
+    /// </summary>
+    public required UserRole Role { get; init; }
 }
 
 /// <summary>

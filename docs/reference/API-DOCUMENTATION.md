@@ -1,8 +1,8 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 1.0.0
-**Last Updated:** 2025-11-17
-**Status:** Sprint 7 Complete
+**Version:** 2.0.0
+**Last Updated:** 2026-03-09
+**Status:** MVD Complete
 
 ---
 
@@ -11,17 +11,18 @@
 1. [Overview](#overview)
 2. [Getting Started](#getting-started)
 3. [Authentication](#authentication)
-4. [Tenant Service API](#tenant-service-api) ⭐ **New**
-5. [Peer Service API](#peer-service-api) ⭐ **New**
-6. [Blueprint Service API](#blueprint-service-api)
-7. [Wallet Service API](#wallet-service-api)
-8. [Register Service API](#register-service-api)
-9. [Action Workflow API](#action-workflow-api)
-10. [Execution Helper API](#execution-helper-api)
-11. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
-12. [Error Handling](#error-handling)
-13. [Rate Limiting](#rate-limiting)
-14. [Code Examples](#code-examples)
+4. [Tenant Service API](#tenant-service-api)
+5. [Organization Identity & Admin API](#organization-identity--admin-api)
+6. [Peer Service API](#peer-service-api)
+7. [Blueprint Service API](#blueprint-service-api)
+8. [Wallet Service API](#wallet-service-api)
+9. [Register Service API](#register-service-api)
+10. [Action Workflow API](#action-workflow-api)
+11. [Execution Helper API](#execution-helper-api)
+12. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
+13. [Error Handling](#error-handling)
+14. [Rate Limiting](#rate-limiting)
+15. [Code Examples](#code-examples)
 
 ---
 
@@ -242,6 +243,155 @@ Authorization: Bearer {token}
 ```
 
 **Response:** `200 OK`
+
+---
+
+## Organization Identity & Admin API
+
+Feature 054 adds comprehensive organization identity management, OIDC single sign-on, user authentication, two-factor authentication, invitations, domain restrictions, custom domains, audit logging, and admin dashboard capabilities to the Tenant Service.
+
+### IDP Configuration
+
+Manages external identity provider configuration for OIDC-based single sign-on. Supports provider presets: MicrosoftEntra, Google, Okta, Apple, AmazonCognito, GenericOidc.
+
+**Base Path:** `/api/organizations/{orgId}/idp`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/organizations/{orgId}/idp` | Get IDP configuration including discovered endpoints and enabled status |
+| PUT | `/api/organizations/{orgId}/idp` | Create or update IDP configuration (triggers OIDC discovery) |
+| DELETE | `/api/organizations/{orgId}/idp` | Delete IDP configuration (disables SSO) |
+| POST | `/api/organizations/{orgId}/idp/discover` | Discover IDP endpoints via .well-known/openid-configuration |
+| POST | `/api/organizations/{orgId}/idp/test` | Test IDP connection with client_credentials grant |
+| POST | `/api/organizations/{orgId}/idp/toggle` | Enable or disable IDP without removing configuration |
+
+### OIDC Authentication
+
+Handles the full OIDC authorization code + PKCE exchange, user provisioning, and Sorcha JWT issuance.
+
+**Base Path:** `/api/auth`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/oidc/initiate` | Anonymous | Generate authorization URL for org's configured IDP |
+| GET | `/api/auth/callback/{orgSubdomain}` | Anonymous | OIDC callback: exchange authorization code for Sorcha JWT |
+| POST | `/api/auth/oidc/complete-profile` | Authenticated | Complete missing profile fields after OIDC provisioning |
+
+### Email Verification
+
+**Base Path:** `/api/auth`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/verify-email` | Anonymous | Verify email address with token |
+| POST | `/api/auth/resend-verification` | Authenticated | Resend verification email (rate limited: 3/hour) |
+
+### Authentication & Token Management
+
+Local email/password authentication with progressive lockout, token lifecycle management, and self-registration.
+
+**Base Path:** `/api/auth`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/login` | Anonymous | Login with email/password (returns JWT or 2FA challenge) |
+| POST | `/api/auth/verify-2fa` | Anonymous | Verify TOTP code to complete login (rate limited) |
+| POST | `/api/auth/register` | Anonymous | Self-register with email/password (public orgs only, NIST password policy) |
+| POST | `/api/auth/token/refresh` | Anonymous | Exchange refresh token for new access token |
+| POST | `/api/auth/token/revoke` | Authenticated | Revoke an access or refresh token |
+| POST | `/api/auth/token/introspect` | Service | Introspect a token (service-to-service only) |
+| POST | `/api/auth/token/revoke-user` | Administrator | Revoke all tokens for a specific user |
+| POST | `/api/auth/token/revoke-organization` | Administrator | Revoke all tokens for all users in an organization |
+| GET | `/api/auth/me` | Authenticated | Get current user information from token claims |
+| POST | `/api/auth/logout` | Authenticated | Logout and revoke current access token |
+
+### TOTP Two-Factor Authentication
+
+TOTP-based 2FA with authenticator app support, QR code provisioning, and backup codes.
+
+**Base Path:** `/api/totp`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/totp/setup` | Authenticated | Initiate TOTP setup (generates secret, QR URI, backup codes) |
+| POST | `/api/totp/verify` | Authenticated | Verify initial TOTP code to complete enrollment |
+| POST | `/api/totp/validate` | Anonymous | Validate TOTP code during login (requires loginToken, rate limited) |
+| POST | `/api/totp/backup-validate` | Anonymous | Validate and consume backup code during login (rate limited) |
+| DELETE | `/api/totp` | Authenticated | Disable TOTP 2FA for current user |
+| GET | `/api/totp/status` | Authenticated | Get TOTP 2FA status for current user |
+
+### Invitations
+
+Organization invitation management for onboarding users with specific roles.
+
+**Base Path:** `/api/organizations/{organizationId}/invitations`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/organizations/{organizationId}/invitations` | Send invitation with role (generates 32-byte token, 1-30 day expiry) |
+| GET | `/api/organizations/{organizationId}/invitations` | List invitations (optional status filter: Pending, Accepted, Expired, Revoked) |
+| POST | `/api/organizations/{organizationId}/invitations/{invitationId}/revoke` | Revoke a pending invitation |
+
+### Domain Restrictions
+
+Controls which email domains are allowed for OIDC auto-provisioning and self-registration.
+
+**Base Path:** `/api/organizations/{organizationId}/domain-restrictions`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/organizations/{organizationId}/domain-restrictions` | Get allowed email domains and restriction status |
+| PUT | `/api/organizations/{organizationId}/domain-restrictions` | Update allowed domains (empty array disables restrictions) |
+
+### Organization Settings
+
+Manage organization type, self-registration, and audit retention configuration.
+
+**Base Path:** `/api/organizations/{orgId}/settings`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/organizations/{orgId}/settings` | Get org type, self-registration status, allowed domains, audit retention |
+| PUT | `/api/organizations/{orgId}/settings` | Update self-registration and audit retention (1-120 months) |
+
+### Custom Domain
+
+Configure custom domains with CNAME verification for organization URL resolution.
+
+**Base Path:** `/api/organizations/{organizationId}/custom-domain`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/organizations/{organizationId}/custom-domain` | Get custom domain configuration and verification status |
+| PUT | `/api/organizations/{organizationId}/custom-domain` | Configure custom domain (returns CNAME instructions) |
+| DELETE | `/api/organizations/{organizationId}/custom-domain` | Remove custom domain configuration |
+| POST | `/api/organizations/{organizationId}/custom-domain/verify` | Verify custom domain DNS/CNAME resolution |
+
+### Audit Log
+
+Query audit events and manage retention policy for the organization.
+
+**Base Path:** `/api/organizations/{organizationId}/audit`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/organizations/{organizationId}/audit` | Auditor | Query audit events (filter by date, event type, user; max 200/page) |
+| GET | `/api/organizations/{organizationId}/audit/retention` | Administrator | Get audit retention period (months) |
+| PUT | `/api/organizations/{organizationId}/audit/retention` | Administrator | Update audit retention period (1-120 months) |
+
+### Admin Dashboard
+
+**Base Path:** `/api/organizations/{organizationId}/dashboard`
+**Authorization:** Administrator role required
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/organizations/{organizationId}/dashboard` | Get aggregated stats: user counts, role distribution, recent logins, pending invitations, IDP status |
 
 ---
 
@@ -1396,6 +1546,6 @@ connection.on("EncryptionFailed", (notification) => {
 
 ---
 
-**Last Updated:** 2025-11-17
-**Document Version:** 1.0.0
-**Sprint:** 7
+**Last Updated:** 2026-03-09
+**Document Version:** 2.0.0
+**Feature:** 054 - Organization Identity & Admin
