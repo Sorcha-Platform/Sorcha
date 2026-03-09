@@ -106,7 +106,7 @@ public class OidcExchangeService : IOidcExchangeService
     }
 
     /// <inheritdoc />
-    public async Task<OidcCallbackResult> ExchangeCodeAsync(
+    public async Task<OidcExchangeResult> ExchangeCodeAsync(
         string code, string state, string orgSubdomain, CancellationToken cancellationToken = default)
     {
         // Retrieve and validate flow state from cache
@@ -146,10 +146,11 @@ public class OidcExchangeService : IOidcExchangeService
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Failed to reach token endpoint for org {OrgId}", flowState.OrgId);
-            return new OidcCallbackResult
+            return new OidcExchangeResult
             {
                 Success = false,
-                Error = "Unable to reach the identity provider's token endpoint."
+                Error = "Unable to reach the identity provider's token endpoint.",
+                OrgId = flowState.OrgId
             };
         }
 
@@ -175,10 +176,11 @@ public class OidcExchangeService : IOidcExchangeService
                 // Use default error message
             }
 
-            return new OidcCallbackResult
+            return new OidcExchangeResult
             {
                 Success = false,
-                Error = errorMessage
+                Error = errorMessage,
+                OrgId = flowState.OrgId
             };
         }
 
@@ -189,26 +191,28 @@ public class OidcExchangeService : IOidcExchangeService
 
         if (string.IsNullOrEmpty(idToken))
         {
-            return new OidcCallbackResult
+            return new OidcExchangeResult
             {
                 Success = false,
-                Error = "Identity provider did not return an ID token."
+                Error = "Identity provider did not return an ID token.",
+                OrgId = flowState.OrgId
             };
         }
 
-        // Validate ID token and extract claims
+        // Validate ID token (including nonce) and extract claims
         OidcUserClaims claims;
         try
         {
-            claims = await ValidateIdTokenAsync(idToken, config, cancellationToken);
+            claims = await ValidateIdTokenAsync(idToken, config, flowState.Nonce, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "ID token validation failed for org {OrgId}", flowState.OrgId);
-            return new OidcCallbackResult
+            return new OidcExchangeResult
             {
                 Success = false,
-                Error = $"ID token validation failed: {ex.Message}"
+                Error = $"ID token validation failed: {ex.Message}",
+                OrgId = flowState.OrgId
             };
         }
 
@@ -216,17 +220,17 @@ public class OidcExchangeService : IOidcExchangeService
             "OIDC code exchange successful for org {OrgId}, subject {Subject}",
             flowState.OrgId, claims.Subject);
 
-        return new OidcCallbackResult
+        return new OidcExchangeResult
         {
             Success = true,
-            UserId = null, // Set by provisioning service
-            IsFirstLogin = false // Set by provisioning service
+            Claims = claims,
+            OrgId = flowState.OrgId
         };
     }
 
     /// <inheritdoc />
     public Task<OidcUserClaims> ValidateIdTokenAsync(
-        string idToken, IdentityProviderConfiguration config, CancellationToken cancellationToken = default)
+        string idToken, IdentityProviderConfiguration config, string expectedNonce, CancellationToken cancellationToken = default)
     {
         // Parse JWT payload (base64url-encoded JSON)
         var parts = idToken.Split('.');
@@ -254,10 +258,10 @@ public class OidcExchangeService : IOidcExchangeService
                 $"ID token issuer mismatch. Expected '{config.IssuerUrl}', got '{issuer}'.");
         }
 
-        // Validate audience
-        var audience = GetAudience(payload);
-        if (audience != config.ClientId)
+        // Validate audience (check all elements when aud is an array)
+        if (!AudienceMatches(payload, config.ClientId))
         {
+            var audience = GetAudience(payload);
             throw new InvalidOperationException(
                 $"ID token audience mismatch. Expected '{config.ClientId}', got '{audience}'.");
         }
@@ -271,6 +275,20 @@ public class OidcExchangeService : IOidcExchangeService
                 throw new InvalidOperationException(
                     $"ID token has expired at {expiry:O}.");
             }
+        }
+
+        // Validate nonce to prevent ID token replay attacks
+        var tokenNonce = GetStringClaim(payload, "nonce");
+        if (string.IsNullOrEmpty(tokenNonce))
+        {
+            throw new InvalidOperationException(
+                "ID token is missing the 'nonce' claim.");
+        }
+
+        if (!string.Equals(tokenNonce, expectedNonce, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "ID token nonce mismatch. Possible replay attack.");
         }
 
         // TODO: Validate JWT signature against JWKS endpoint in production.
@@ -386,8 +404,25 @@ public class OidcExchangeService : IOidcExchangeService
         return audProp.ValueKind switch
         {
             JsonValueKind.String => audProp.GetString(),
-            JsonValueKind.Array => audProp.EnumerateArray().FirstOrDefault().GetString(),
+            JsonValueKind.Array => string.Join(", ", audProp.EnumerateArray().Select(a => a.GetString())),
             _ => null
+        };
+    }
+
+    /// <summary>
+    /// Checks whether the given audience payload contains the expected client ID.
+    /// When aud is an array, checks all elements (not just the first).
+    /// </summary>
+    private static bool AudienceMatches(JsonElement payload, string clientId)
+    {
+        if (!payload.TryGetProperty("aud", out var audProp))
+            return false;
+
+        return audProp.ValueKind switch
+        {
+            JsonValueKind.String => audProp.GetString() == clientId,
+            JsonValueKind.Array => audProp.EnumerateArray().Any(a => a.GetString() == clientId),
+            _ => false
         };
     }
 

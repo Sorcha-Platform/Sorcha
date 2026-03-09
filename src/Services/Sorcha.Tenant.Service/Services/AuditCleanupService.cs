@@ -95,19 +95,16 @@ public class AuditCleanupService : BackgroundService
             {
                 var cutoff = DateTimeOffset.UtcNow.AddMonths(-org.AuditRetentionMonths);
 
-                var expiredEntries = await dbContext.AuditLogEntries
+                var deleted = await dbContext.AuditLogEntries
                     .Where(a => a.OrganizationId == org.Id && a.Timestamp < cutoff)
-                    .ToListAsync(cancellationToken);
+                    .ExecuteDeleteAsync(cancellationToken);
 
-                if (expiredEntries.Count > 0)
+                if (deleted > 0)
                 {
-                    dbContext.AuditLogEntries.RemoveRange(expiredEntries);
-                    await dbContext.SaveChangesAsync(cancellationToken);
-
-                    totalPurged += expiredEntries.Count;
+                    totalPurged += deleted;
                     _logger.LogInformation(
-                        "Purged {Count} expired audit entries for org {OrgId} (retention: {Months}m)",
-                        expiredEntries.Count, org.Id, org.AuditRetentionMonths);
+                        "Deleted {Count} expired audit entries for org {OrgId} (retention: {Months}m)",
+                        deleted, org.Id, org.AuditRetentionMonths);
                 }
             }
             catch (Exception ex)

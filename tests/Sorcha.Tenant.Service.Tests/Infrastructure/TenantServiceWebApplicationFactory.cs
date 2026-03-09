@@ -158,11 +158,17 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
             mockExchangeService
                 .Setup(s => s.ExchangeCodeAsync(
                     "valid-auth-code", "valid-state-token", It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new OidcCallbackResult
+                .ReturnsAsync(new OidcExchangeResult
                 {
                     Success = true,
-                    UserId = TestDataSeeder.MemberUserId,
-                    IsFirstLogin = false
+                    OrgId = TestDataSeeder.TestOrganizationId,
+                    Claims = new OidcUserClaims
+                    {
+                        Subject = "oidc-subject-member",
+                        Email = "member@test-org.sorcha.io",
+                        DisplayName = "Member User",
+                        EmailVerified = true
+                    }
                 });
             mockExchangeService
                 .Setup(s => s.ExchangeCodeAsync(
@@ -173,6 +179,28 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
 
             // Mock OIDC provisioning service
             var mockProvisioningService = new Mock<IOidcProvisioningService>();
+            mockProvisioningService
+                .Setup(s => s.CheckDomainRestrictionsAsync(
+                    It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true); // Domain allowed
+            mockProvisioningService
+                .Setup(s => s.ProvisionOrMatchUserAsync(
+                    It.IsAny<Guid>(), It.IsAny<OidcUserClaims>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid orgId, OidcUserClaims claims, CancellationToken _) =>
+                {
+                    var user = new UserIdentity
+                    {
+                        Id = TestDataSeeder.MemberUserId,
+                        Email = claims.Email ?? "member@test-org.sorcha.io",
+                        DisplayName = claims.DisplayName ?? "Member User",
+                        Status = IdentityStatus.Active,
+                        Roles = [UserRole.Member],
+                        OrganizationId = orgId,
+                        ProfileCompleted = true,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    return (user, false);
+                });
             mockProvisioningService
                 .Setup(s => s.DetermineProfileCompletionAsync(It.IsAny<UserIdentity>()))
                 .ReturnsAsync(false); // Profile is complete

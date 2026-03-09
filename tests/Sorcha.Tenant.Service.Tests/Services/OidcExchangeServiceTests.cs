@@ -203,7 +203,7 @@ public class OidcExchangeServiceTests : IDisposable
     #region ExchangeCodeAsync Tests
 
     [Fact]
-    public async Task ExchangeCodeAsync_ValidCode_ReturnsSuccessResult()
+    public async Task ExchangeCodeAsync_ValidCode_ReturnsSuccessResultWithClaims()
     {
         // Arrange
         var state = Guid.NewGuid().ToString("N");
@@ -221,14 +221,15 @@ public class OidcExchangeServiceTests : IDisposable
         };
         SetupCacheWithState(state, stateData);
 
-        // Create a valid ID token matching the test IDP config
+        // Create a valid ID token matching the test IDP config (nonce must match flow state)
         var validIdToken = CreateTestJwt(
             sub: "user123",
             email: "user@example.com",
             name: "Test User",
             issuer: TestIdpConfig.IssuerUrl,
             audience: TestIdpConfig.ClientId,
-            expiry: DateTimeOffset.UtcNow.AddHours(1));
+            expiry: DateTimeOffset.UtcNow.AddHours(1),
+            nonce: nonce);
 
         var tokenResponse = new
         {
@@ -260,6 +261,10 @@ public class OidcExchangeServiceTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.Success.Should().BeTrue();
+        result.Claims.Should().NotBeNull();
+        result.Claims!.Subject.Should().Be("user123");
+        result.Claims.Email.Should().Be("user@example.com");
+        result.OrgId.Should().Be(TestOrgId);
     }
 
     [Fact]
@@ -334,6 +339,7 @@ public class OidcExchangeServiceTests : IDisposable
         // This test validates the happy path structure; actual JWT validation
         // requires a matching JWKS endpoint mock with real RSA keys.
         var service = CreateService();
+        var expectedNonce = Guid.NewGuid().ToString("N");
 
         // TODO: Create a properly signed test JWT once implementation exists.
         // For now, this test documents the expected behavior.
@@ -343,14 +349,15 @@ public class OidcExchangeServiceTests : IDisposable
             name: "Test User",
             issuer: TestIdpConfig.IssuerUrl,
             audience: TestIdpConfig.ClientId,
-            expiry: DateTimeOffset.UtcNow.AddHours(1));
+            expiry: DateTimeOffset.UtcNow.AddHours(1),
+            nonce: expectedNonce);
 
         // Mock JWKS endpoint for signature validation
         SetupJwksEndpoint();
 
         // Act & Assert — adjust once real implementation available
         // The test verifies the method returns OidcUserClaims with correct fields
-        var result = await service.ValidateIdTokenAsync(validIdToken, TestIdpConfig);
+        var result = await service.ValidateIdTokenAsync(validIdToken, TestIdpConfig, expectedNonce);
 
         result.Should().NotBeNull();
         result.Subject.Should().Be("user-123");
@@ -363,6 +370,7 @@ public class OidcExchangeServiceTests : IDisposable
     {
         // Arrange
         var service = CreateService();
+        var expectedNonce = Guid.NewGuid().ToString("N");
 
         var expiredToken = CreateTestJwt(
             sub: "user-123",
@@ -370,12 +378,13 @@ public class OidcExchangeServiceTests : IDisposable
             name: "Test User",
             issuer: TestIdpConfig.IssuerUrl,
             audience: TestIdpConfig.ClientId,
-            expiry: DateTimeOffset.UtcNow.AddHours(-1));
+            expiry: DateTimeOffset.UtcNow.AddHours(-1),
+            nonce: expectedNonce);
 
         SetupJwksEndpoint();
 
         // Act
-        var act = () => service.ValidateIdTokenAsync(expiredToken, TestIdpConfig);
+        var act = () => service.ValidateIdTokenAsync(expiredToken, TestIdpConfig, expectedNonce);
 
         // Assert
         await act.Should().ThrowAsync<Exception>()
@@ -387,6 +396,7 @@ public class OidcExchangeServiceTests : IDisposable
     {
         // Arrange
         var service = CreateService();
+        var expectedNonce = Guid.NewGuid().ToString("N");
 
         var wrongIssuerConfig = new IdentityProviderConfiguration
         {
@@ -406,12 +416,13 @@ public class OidcExchangeServiceTests : IDisposable
             name: "Test User",
             issuer: TestIdpConfig.IssuerUrl, // Issued by original, not wrong-issuer
             audience: TestIdpConfig.ClientId,
-            expiry: DateTimeOffset.UtcNow.AddHours(1));
+            expiry: DateTimeOffset.UtcNow.AddHours(1),
+            nonce: expectedNonce);
 
         SetupJwksEndpoint();
 
         // Act
-        var act = () => service.ValidateIdTokenAsync(token, wrongIssuerConfig);
+        var act = () => service.ValidateIdTokenAsync(token, wrongIssuerConfig, expectedNonce);
 
         // Assert
         await act.Should().ThrowAsync<Exception>()
@@ -433,7 +444,8 @@ public class OidcExchangeServiceTests : IDisposable
         string name,
         string issuer,
         string audience,
-        DateTimeOffset expiry)
+        DateTimeOffset expiry,
+        string? nonce = null)
     {
         var header = Convert.ToBase64String(
             Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { alg = "RS256", typ = "JWT" })))
@@ -450,7 +462,7 @@ public class OidcExchangeServiceTests : IDisposable
                 aud = audience,
                 exp = expiry.ToUnixTimeSeconds(),
                 iat = DateTimeOffset.UtcNow.AddMinutes(-5).ToUnixTimeSeconds(),
-                nonce = Guid.NewGuid().ToString("N")
+                nonce = nonce ?? Guid.NewGuid().ToString("N")
             })))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 

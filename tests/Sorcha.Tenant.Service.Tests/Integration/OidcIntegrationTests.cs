@@ -108,7 +108,7 @@ public class OidcIntegrationTests : IClassFixture<TenantServiceWebApplicationFac
         var result = await response.Content.ReadFromJsonAsync<OidcCallbackResult>();
         result.Should().NotBeNull();
         result!.Success.Should().BeFalse();
-        result.Error.Should().Contain("Invalid");
+        result.Error.Should().Contain("Authentication failed");
     }
 
     [Fact]

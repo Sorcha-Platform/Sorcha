@@ -38,6 +38,9 @@ public class UrlResolutionMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Remove any incoming X-Org-Subdomain header to prevent spoofing
+        context.Request.Headers.Remove("X-Org-Subdomain");
+
         var subdomain = ResolvePath(context)
                      ?? ResolveSubdomain(context)
                      ?? await ResolveCustomDomainAsync(context);

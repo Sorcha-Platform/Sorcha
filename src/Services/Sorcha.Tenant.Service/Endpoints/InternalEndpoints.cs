@@ -25,7 +25,8 @@ public static class InternalEndpoints
             .WithName("ResolveDomain")
             .WithSummary("Resolve custom domain to organization subdomain")
             .WithDescription("Looks up a verified custom domain mapping and returns the corresponding organization subdomain. "
-                + "Used internally by the API Gateway for domain-based routing.");
+                + "Used internally by the API Gateway for domain-based routing.")
+            .RequireAuthorization("RequireService");
 
         return app;
     }

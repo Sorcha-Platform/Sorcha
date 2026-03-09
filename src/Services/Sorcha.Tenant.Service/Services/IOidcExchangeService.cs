@@ -27,23 +27,25 @@ public interface IOidcExchangeService
     /// <summary>
     /// Exchanges an authorization code for tokens by calling the IDP's token endpoint.
     /// Validates the state parameter against cached flow state and sends the PKCE code_verifier.
+    /// Returns extracted claims and organization ID alongside the result for provisioning.
     /// </summary>
     /// <param name="code">Authorization code received from the IDP callback.</param>
     /// <param name="state">State parameter for CSRF validation.</param>
     /// <param name="orgSubdomain">Organization subdomain to resolve the IDP config.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Callback result with extracted user claims or error details.</returns>
-    Task<OidcCallbackResult> ExchangeCodeAsync(
+    /// <returns>Exchange result with extracted user claims, organization ID, and error details.</returns>
+    Task<OidcExchangeResult> ExchangeCodeAsync(
         string code, string state, string orgSubdomain, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Validates an ID token's structure, issuer, audience, and expiry, then extracts user claims.
+    /// Validates an ID token's structure, issuer, audience, expiry, and nonce, then extracts user claims.
     /// </summary>
     /// <param name="idToken">Raw JWT ID token string.</param>
     /// <param name="config">IDP configuration with expected issuer and audience (client ID).</param>
+    /// <param name="expectedNonce">Expected nonce from the OIDC flow state. Must match the token's nonce claim.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Extracted OIDC user claims.</returns>
-    /// <exception cref="InvalidOperationException">If the token is invalid, expired, or has wrong issuer/audience.</exception>
+    /// <exception cref="InvalidOperationException">If the token is invalid, expired, has wrong issuer/audience, or nonce mismatch.</exception>
     Task<OidcUserClaims> ValidateIdTokenAsync(
-        string idToken, IdentityProviderConfiguration config, CancellationToken cancellationToken = default);
+        string idToken, IdentityProviderConfiguration config, string expectedNonce, CancellationToken cancellationToken = default);
 }

@@ -157,8 +157,8 @@ public static class OidcEndpoints
             });
         }
 
-        // Exchange authorization code for tokens
-        OidcCallbackResult exchangeResult;
+        // Exchange authorization code for tokens and extract claims
+        OidcExchangeResult exchangeResult;
         try
         {
             exchangeResult = await exchangeService.ExchangeCodeAsync(
@@ -166,17 +166,21 @@ public static class OidcEndpoints
         }
         catch (InvalidOperationException ex)
         {
-            logger.LogWarning(ex, "OIDC code exchange failed for {OrgSubdomain}", orgSubdomain);
+            logger.LogError(ex, "OIDC callback failed for org {OrgSubdomain}", orgSubdomain);
             return TypedResults.BadRequest(new OidcCallbackResult
             {
                 Success = false,
-                Error = ex.Message
+                Error = "Authentication failed. Please try again."
             });
         }
 
         if (!exchangeResult.Success)
         {
-            return TypedResults.BadRequest(exchangeResult);
+            return TypedResults.BadRequest(new OidcCallbackResult
+            {
+                Success = false,
+                Error = exchangeResult.Error
+            });
         }
 
         // Resolve org for provisioning
@@ -192,97 +196,80 @@ public static class OidcEndpoints
             });
         }
 
-        // Extract claims from the ID token (already validated in ExchangeCodeAsync)
-        // Re-validate to get claims — the exchange service validated but we need the claims
-        var idpConfig = await dbContext.IdentityProviderConfigurations
-            .FirstOrDefaultAsync(c => c.OrganizationId == org.Id && c.IsEnabled, cancellationToken);
-
-        if (idpConfig is null)
+        // Check domain restrictions before provisioning
+        var email = exchangeResult.Claims!.Email;
+        if (!string.IsNullOrEmpty(email))
         {
-            return TypedResults.BadRequest(new OidcCallbackResult
+            var domainAllowed = await provisioningService.CheckDomainRestrictionsAsync(
+                org.Id, email, cancellationToken);
+            if (!domainAllowed)
             {
-                Success = false,
-                Error = "No IDP configured for this organization."
-            });
-        }
-
-        // For the callback flow, the ExchangeCodeAsync already validated the token.
-        // We need to provision the user. The exchange service should expose the claims.
-        // Since ExchangeCodeAsync currently returns a simple result, we'll re-extract from the flow.
-        // TODO: Refactor ExchangeCodeAsync to return claims alongside the result.
-
-        // For now, provision with the exchange result's userId if available,
-        // or create a minimal claims set from the callback
-        var callbackResult = new OidcCallbackResult
-        {
-            Success = true,
-            UserId = exchangeResult.UserId,
-            IsFirstLogin = exchangeResult.IsFirstLogin
-        };
-
-        // Generate Sorcha JWT
-        if (callbackResult.UserId.HasValue)
-        {
-            var user = await dbContext.UserIdentities
-                .FirstOrDefaultAsync(u => u.Id == callbackResult.UserId, cancellationToken);
-
-            if (user is not null)
-            {
-                // Check if 2FA is required
-                var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);
-                if (totpStatus.IsEnabled)
+                logger.LogWarning(
+                    "OIDC login blocked: email domain not allowed for org {OrgId}, email {Email}",
+                    org.Id, email);
+                return TypedResults.Json(new OidcCallbackResult
                 {
-                    var loginToken = await totpService.GenerateLoginTokenAsync(user.Id, cancellationToken);
-                    return TypedResults.Ok(new OidcCallbackResult
-                    {
-                        Success = true,
-                        Requires2FA = true,
-                        PartialToken = loginToken,
-                        UserId = user.Id,
-                        IsFirstLogin = callbackResult.IsFirstLogin
-                    });
-                }
-
-                // Check if profile completion is needed
-                var needsProfile = await provisioningService.DetermineProfileCompletionAsync(user);
-                if (needsProfile)
-                {
-                    return TypedResults.Ok(new OidcCallbackResult
-                    {
-                        Success = true,
-                        RequiresProfileCompletion = true,
-                        UserId = user.Id,
-                        IsFirstLogin = callbackResult.IsFirstLogin
-                    });
-                }
-
-                // Log audit event
-                dbContext.AuditLogEntries.Add(new AuditLogEntry
-                {
-                    EventType = callbackResult.IsFirstLogin
-                        ? AuditEventType.OidcFirstLogin
-                        : AuditEventType.Login,
-                    IdentityId = user.Id,
-                    OrganizationId = org.Id,
-                    Timestamp = DateTimeOffset.UtcNow
-                });
-                await dbContext.SaveChangesAsync(cancellationToken);
-
-                // Issue full JWT
-                var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
-                return TypedResults.Ok(new OidcCallbackResult
-                {
-                    Success = true,
-                    AccessToken = tokenResponse.AccessToken,
-                    RefreshToken = tokenResponse.RefreshToken,
-                    ExpiresIn = tokenResponse.ExpiresIn,
-                    UserId = user.Id,
-                    IsFirstLogin = callbackResult.IsFirstLogin
-                });
+                    Success = false,
+                    Error = "Your email domain is not allowed for this organization."
+                }, statusCode: StatusCodes.Status403Forbidden);
             }
         }
 
-        return TypedResults.Ok(callbackResult);
+        // Provision or match the user using the extracted claims
+        var (user, isFirstLogin) = await provisioningService.ProvisionOrMatchUserAsync(
+            org.Id, exchangeResult.Claims!, cancellationToken);
+
+        // Check if 2FA is required
+        var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);
+        if (totpStatus.IsEnabled)
+        {
+            var loginToken = await totpService.GenerateLoginTokenAsync(user.Id, cancellationToken);
+            return TypedResults.Ok(new OidcCallbackResult
+            {
+                Success = true,
+                Requires2FA = true,
+                PartialToken = loginToken,
+                UserId = user.Id,
+                IsFirstLogin = isFirstLogin
+            });
+        }
+
+        // Check if profile completion is needed
+        var needsProfile = await provisioningService.DetermineProfileCompletionAsync(user);
+        if (needsProfile)
+        {
+            return TypedResults.Ok(new OidcCallbackResult
+            {
+                Success = true,
+                RequiresProfileCompletion = true,
+                UserId = user.Id,
+                IsFirstLogin = isFirstLogin
+            });
+        }
+
+        // Log audit event
+        dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            EventType = isFirstLogin
+                ? AuditEventType.OidcFirstLogin
+                : AuditEventType.Login,
+            IdentityId = user.Id,
+            OrganizationId = org.Id,
+            Timestamp = DateTimeOffset.UtcNow
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Issue full JWT
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
+        return TypedResults.Ok(new OidcCallbackResult
+        {
+            Success = true,
+            AccessToken = tokenResponse.AccessToken,
+            RefreshToken = tokenResponse.RefreshToken,
+            ExpiresIn = tokenResponse.ExpiresIn,
+            UserId = user.Id,
+            IsFirstLogin = isFirstLogin
+        });
     }
 
     /// <summary>
@@ -311,6 +298,19 @@ public static class OidcEndpoints
             return TypedResults.Unauthorized();
         }
 
+        // Validate email domain restrictions before updating profile
+        var org = await organizationRepository.GetByIdAsync(user.OrganizationId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(request.Email) && org?.AllowedEmailDomains is { Length: > 0 })
+        {
+            var emailDomain = request.Email.Split('@').LastOrDefault();
+            if (emailDomain is null || !org.AllowedEmailDomains.Contains(emailDomain, StringComparer.OrdinalIgnoreCase))
+            {
+                return TypedResults.Problem(
+                    "Registration is restricted to specific email domains.",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+        }
+
         // Update profile fields
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
             user.DisplayName = request.DisplayName;
@@ -327,9 +327,6 @@ public static class OidcEndpoints
         logger.LogInformation(
             "Profile completed for user {UserId}",
             user.Id);
-
-        // Return updated result
-        var org = await organizationRepository.GetByIdAsync(user.OrganizationId, cancellationToken);
         if (org is not null)
         {
             var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);

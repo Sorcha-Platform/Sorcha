@@ -188,6 +188,35 @@ public record OidcUserClaims
 }
 
 /// <summary>
+/// Internal result from the OIDC code exchange flow.
+/// Carries extracted claims and organization ID alongside the callback result
+/// so the endpoint can perform user provisioning and domain restriction checks.
+/// </summary>
+public record OidcExchangeResult
+{
+    /// <summary>
+    /// Whether the token exchange and ID token validation succeeded.
+    /// </summary>
+    public bool Success { get; init; }
+
+    /// <summary>
+    /// Error message if the exchange failed.
+    /// </summary>
+    public string? Error { get; init; }
+
+    /// <summary>
+    /// Extracted OIDC user claims from the validated ID token.
+    /// Null when Success is false.
+    /// </summary>
+    public OidcUserClaims? Claims { get; init; }
+
+    /// <summary>
+    /// Organization ID from the flow state, needed for provisioning.
+    /// </summary>
+    public Guid OrgId { get; init; }
+}
+
+/// <summary>
 /// Response after email verification.
 /// </summary>
 public record EmailVerificationResponse
