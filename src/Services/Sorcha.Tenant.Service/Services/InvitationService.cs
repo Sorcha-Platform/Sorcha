@@ -38,6 +38,7 @@ public class InvitationService : IInvitationService
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<InvitationResponse> CreateInvitationAsync(
         Guid organizationId,
         CreateInvitationRequest request,
@@ -106,6 +107,7 @@ public class InvitationService : IInvitationService
         return MapToResponse(invitation, inviterName);
     }
 
+    /// <inheritdoc />
     public async Task<List<InvitationResponse>> ListInvitationsAsync(
         Guid organizationId,
         InvitationStatus? status = null,
@@ -131,6 +133,7 @@ public class InvitationService : IInvitationService
         return responses;
     }
 
+    /// <inheritdoc />
     public async Task<bool> RevokeInvitationAsync(
         Guid organizationId,
         Guid invitationId,

@@ -18,6 +18,9 @@ public class OidcProvisioningService : IOidcProvisioningService
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<OidcProvisioningService> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="OidcProvisioningService"/>.
+    /// </summary>
     public OidcProvisioningService(
         TenantDbContext dbContext,
         ILogger<OidcProvisioningService> logger)

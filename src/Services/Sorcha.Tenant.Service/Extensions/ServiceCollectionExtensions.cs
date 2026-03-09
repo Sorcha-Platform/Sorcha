@@ -26,6 +26,15 @@ public static class WebApplicationExtensions
         services.AddHostedService<DatabaseInitializerHostedService>();
         return services;
     }
+
+    /// <summary>
+    /// Adds the audit cleanup background service for automatic purge of expired audit entries.
+    /// </summary>
+    public static IServiceCollection AddAuditCleanup(this IServiceCollection services)
+    {
+        services.AddHostedService<AuditCleanupService>();
+        return services;
+    }
 }
 
 /// <summary>

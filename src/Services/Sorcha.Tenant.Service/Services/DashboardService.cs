@@ -22,6 +22,7 @@ public class DashboardService : IDashboardService
         _dbContext = dbContext;
     }
 
+    /// <inheritdoc />
     public async Task<DashboardResponse> GetDashboardAsync(
         Guid organizationId,
         CancellationToken cancellationToken = default)

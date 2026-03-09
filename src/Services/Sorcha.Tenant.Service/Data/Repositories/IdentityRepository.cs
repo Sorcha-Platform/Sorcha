@@ -32,6 +32,7 @@ public class IdentityRepository : IIdentityRepository
             .FirstOrDefaultAsync(u => u.ExternalIdpSubject == externalIdpSubject, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<UserIdentity?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         return await _context.UserIdentities

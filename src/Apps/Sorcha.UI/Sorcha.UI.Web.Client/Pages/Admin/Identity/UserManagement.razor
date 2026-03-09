@@ -1,0 +1,269 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/identity/users"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Sorcha.UI.Core.Services
+
+@inject IOrganizationAdminService OrgService
+@inject ISnackbar Snackbar
+
+<PageTitle>User Management - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-2" />
+        User Management
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Manage organization users, roles, and access
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+    else if (_error != null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    }
+    else
+    {
+        <!-- Filters -->
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_searchText" Label="Search" Placeholder="Search by name or email..."
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="OnSearchChanged" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" Value="_roleFilter" Label="Role" Clearable="true" ValueChanged="@((string v) => { _roleFilter = v; ApplyFilters(); })">
+                        <MudSelectItem T="string" Value="@("SystemAdmin")">System Admin</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Administrator")">Administrator</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Designer")">Designer</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Auditor")">Auditor</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Member")">Member</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" Value="_statusFilter" Label="Status" Clearable="true" ValueChanged="@((string v) => { _statusFilter = v; ApplyFilters(); })">
+                        <MudSelectItem T="string" Value="@("Active")">Active</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Suspended")">Suspended</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Locked")">Locked</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudTable Items="_filteredUsers" Hover="true" Striped="true" Dense="true" Elevation="2">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Roles</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Last Login</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.DisplayName</MudTd>
+                <MudTd>@context.Email</MudTd>
+                <MudTd>
+                    @foreach (var role in context.Roles)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="mr-1">@role</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+                </MudTd>
+                <MudTd>@(context.LastLoginAt?.LocalDateTime.ToString("g") ?? "Never")</MudTd>
+                <MudTd>
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                        <MudMenuItem OnClick="@(() => ChangeRoleAsync(context))">Change Role</MudMenuItem>
+                        @if (context.Status == "Active")
+                        {
+                            <MudMenuItem OnClick="@(() => SuspendUserAsync(context))">Suspend</MudMenuItem>
+                        }
+                        else if (context.Status == "Suspended")
+                        {
+                            <MudMenuItem OnClick="@(() => ReactivateUserAsync(context))">Reactivate</MudMenuItem>
+                        }
+                        @if (context.Status == "Locked")
+                        {
+                            <MudMenuItem OnClick="@(() => UnlockUserAsync(context))">Unlock</MudMenuItem>
+                        }
+                    </MudMenu>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Identity", href: "/admin/identity"),
+        new("Users", href: null, disabled: true)
+    ];
+
+    private bool _loading = true;
+    private string? _error;
+    private Guid _organizationId;
+    private List<UserDto> _allUsers = [];
+    private List<UserDto> _filteredUsers = [];
+    private string? _searchText;
+    private string? _roleFilter;
+    private string? _statusFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (AuthenticationState != null)
+            {
+                var authState = await AuthenticationState;
+                var orgIdClaim = authState.User.Claims
+                    .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+                if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var orgId))
+                    _organizationId = orgId;
+            }
+
+            if (_organizationId == Guid.Empty)
+            {
+                _error = "Organization context not available.";
+                _loading = false;
+                return;
+            }
+
+            var result = await OrgService.GetOrganizationUsersAsync(_organizationId, includeInactive: true);
+            _allUsers = result.Users.ToList();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load users: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnSearchChanged(string? _) => ApplyFilters();
+    private void OnFilterChanged(string? _) => ApplyFilters();
+
+    private void ApplyFilters()
+    {
+        _filteredUsers = _allUsers;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var search = _searchText.Trim().ToLowerInvariant();
+            _filteredUsers = _filteredUsers
+                .Where(u => u.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                            u.Email.Contains(search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(_roleFilter))
+            _filteredUsers = _filteredUsers.Where(u => u.Roles.Contains(_roleFilter)).ToList();
+
+        if (!string.IsNullOrWhiteSpace(_statusFilter))
+            _filteredUsers = _filteredUsers.Where(u => u.Status == _statusFilter).ToList();
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Active" => Color.Success,
+        "Suspended" => Color.Warning,
+        "Locked" => Color.Error,
+        _ => Color.Default
+    };
+
+    private async Task ChangeRoleAsync(UserDto user)
+    {
+        // Simple role change — cycle to next role for simplicity
+        var roles = new[] { "Member", "Designer", "Auditor", "Administrator" };
+        var currentRole = user.Roles.FirstOrDefault() ?? "Member";
+        var currentIdx = Array.IndexOf(roles, currentRole);
+        var nextRole = roles[(currentIdx + 1) % roles.Length];
+
+        try
+        {
+            await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
+                new UpdateUserDto { Roles = [nextRole] });
+            Snackbar.Add($"Role changed to {nextRole}", Severity.Success);
+            await ReloadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to change role: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SuspendUserAsync(UserDto user)
+    {
+        try
+        {
+            await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
+                new UpdateUserDto { Status = "Suspended" });
+            Snackbar.Add("User suspended", Severity.Success);
+            await ReloadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to suspend user: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReactivateUserAsync(UserDto user)
+    {
+        try
+        {
+            await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
+                new UpdateUserDto { Status = "Active" });
+            Snackbar.Add("User reactivated", Severity.Success);
+            await ReloadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to reactivate user: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task UnlockUserAsync(UserDto user)
+    {
+        try
+        {
+            await OrgService.UpdateOrganizationUserAsync(_organizationId, user.Id,
+                new UpdateUserDto { Status = "Active" });
+            Snackbar.Add("User unlocked", Severity.Success);
+            await ReloadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to unlock user: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReloadUsersAsync()
+    {
+        var result = await OrgService.GetOrganizationUsersAsync(_organizationId, includeInactive: true);
+        _allUsers = result.Users.ToList();
+        ApplyFilters();
+        StateHasChanged();
+    }
+}

@@ -28,6 +28,9 @@ public class OidcExchangeService : IOidcExchangeService
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(10);
     private const string StateCacheKeyPrefix = "oidc:state:";
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="OidcExchangeService"/>.
+    /// </summary>
     public OidcExchangeService(
         TenantDbContext dbContext,
         IOidcDiscoveryService discoveryService,

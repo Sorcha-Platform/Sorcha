@@ -19,6 +19,7 @@ public class DnsResolver : IDnsResolver
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<bool> VerifyCnameAsync(string domain, string expectedCnameTarget, CancellationToken cancellationToken = default)
     {
         try

@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.0
-**Last Updated:** 2026-03-08
+**Version:** 7.1
+**Last Updated:** 2026-03-09
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -18,8 +18,8 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
-**Completed (archived):** 523 tasks across 13 features/phases
-**Remaining:** 59 tasks across 6 themes
+**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054
+**Remaining:** 62 tasks across 6 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -118,17 +118,23 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ## Theme 5: Authentication & Identity — P2
 
-> **Priority:** P2 (Post-release enhancement)
-> **Estimated Effort:** 40-60h
+> **Priority:** P1-P3 (Production readiness + post-release enhancement)
+> **Estimated Effort:** 50-80h
 > **Goal:** Enterprise identity integration
+> **Feature 054 Status:** Phases 1-9 complete (82 tasks). Org admin, OIDC, roles, user mgmt, email verification, social login, admin UI all implemented. Phase 10 (polish) remaining on branch.
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
-| AUTH-001 | Azure AD B2C integration for external identity | P2 | 24h | 📋 | Currently internal JWT only |
+| AUTH-001 | Azure AD B2C / OIDC integration for external identity | P2 | 24h | ✅ | Feature 054: Full OIDC with discovery, token exchange, 5 provider shortcuts (Entra, Google, Okta, Apple, Cognito) |
 | AUTH-002 | Refresh token rotation (issue new on each refresh) | P2 | 8h | 📋 | Limits replay window |
 | AUTH-003 | Cross-tab token synchronization (localStorage events) | P3 | 6h | 📋 | Multi-tab consistency |
 | AUTH-004 | Session expiry warning UI (toast with "Extend" button) | P3 | 4h | 📋 | UX improvement |
-| AUTH-005 | OIDC integration for participant authentication (PART-1) | P3 | 24h | 📋 | Microsoft, Google, GitHub, Apple IdPs |
+| AUTH-005 | OIDC integration for participant authentication (PART-1) | P3 | 24h | ✅ | Feature 054: OIDC token exchange, social login (Microsoft, Google, Apple), auto-provisioning on first login |
+| AUTH-006 | Production SMTP configuration (replace MailKit stub) | P1 | 8h | 📋 | Feature 054 uses stub email sender; needs real SMTP/SendGrid for email verification |
+| AUTH-007 | Breach password list integration (HaveIBeenPwned API) | P2 | 6h | 📋 | NIST policy implemented but breach list check needs external API integration |
+| AUTH-008 | Custom domain DNS verification automation | P2 | 12h | 📋 | Feature 054 supports custom domains but DNS CNAME verification is manual |
+| AUTH-009 | Social login provider testing with real credentials | P2 | 8h | 📋 | Feature 054 IdP config tested with mocks; needs real OAuth app credentials for each provider |
+| AUTH-010 | Load testing for OIDC token exchange flow | P2 | 8h | 📋 | Token exchange is latency-sensitive; needs production-scale load testing |
 
 ---
 
@@ -159,9 +165,9 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 2. Production Infrastructure | P1 | 9 | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 10 | 40-60h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
-| 5. Authentication & Identity | P2-P3 | 5 | 40-60h | Enterprise identity |
+| 5. Authentication & Identity | P1-P3 | 10 (2 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054) |
 | 6. P2P Network & Consensus | P3 | 8 | 120-200h | Decentralization |
-| **Total** | | **44** | **480-700h** | |
+| **Total** | | **49** (2 ✅, 47 remaining) | **500-720h** | |
 
 ### Release Gating
 
@@ -175,6 +181,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.0
-**Last Updated:** 2026-03-08
+**Version:** 7.1
+**Last Updated:** 2026-03-09
 **Document Owner:** Sorcha Architecture Team

@@ -90,10 +90,21 @@ public record RevokeParticipantRequest
 /// </summary>
 public record ParticipantPublishResult
 {
+    /// <summary>Transaction ID of the published record.</summary>
     public required string TransactionId { get; init; }
+
+    /// <summary>Participant identifier.</summary>
     public required string ParticipantId { get; init; }
+
+    /// <summary>Register ID where the record was published.</summary>
     public required string RegisterId { get; init; }
+
+    /// <summary>Version number of the published record.</summary>
     public required int Version { get; init; }
+
+    /// <summary>Publication status.</summary>
     public required string Status { get; init; }
+
+    /// <summary>Human-readable result message.</summary>
     public required string Message { get; init; }
 }

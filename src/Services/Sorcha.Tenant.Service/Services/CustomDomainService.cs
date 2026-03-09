@@ -40,6 +40,7 @@ public class CustomDomainService : ICustomDomainService
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<CustomDomainResponse> GetCustomDomainAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
         var mapping = await _domainRepository.GetByOrganizationIdAsync(organizationId, cancellationToken);
@@ -63,6 +64,7 @@ public class CustomDomainService : ICustomDomainService
         };
     }
 
+    /// <inheritdoc />
     public async Task<CnameInstructionsResponse> ConfigureCustomDomainAsync(
         Guid organizationId,
         ConfigureCustomDomainRequest request,
@@ -134,6 +136,7 @@ public class CustomDomainService : ICustomDomainService
         };
     }
 
+    /// <inheritdoc />
     public async Task<DomainVerificationResponse> VerifyCustomDomainAsync(
         Guid organizationId,
         Guid adminUserId,
@@ -206,6 +209,7 @@ public class CustomDomainService : ICustomDomainService
         };
     }
 
+    /// <inheritdoc />
     public async Task RemoveCustomDomainAsync(
         Guid organizationId,
         Guid adminUserId,

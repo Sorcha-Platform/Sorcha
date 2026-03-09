@@ -14,23 +14,29 @@ public class CustomDomainRepository : ICustomDomainRepository
 {
     private readonly TenantDbContext _context;
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="CustomDomainRepository"/>.
+    /// </summary>
     public CustomDomainRepository(TenantDbContext context)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
+    /// <inheritdoc />
     public async Task<CustomDomainMapping?> GetByOrganizationIdAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
         return await _context.CustomDomainMappings
             .FirstOrDefaultAsync(m => m.OrganizationId == organizationId, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<CustomDomainMapping?> GetByDomainAsync(string domain, CancellationToken cancellationToken = default)
     {
         return await _context.CustomDomainMappings
             .FirstOrDefaultAsync(m => m.Domain == domain, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<List<CustomDomainMapping>> GetVerifiedDomainsAsync(CancellationToken cancellationToken = default)
     {
         return await _context.CustomDomainMappings
@@ -38,6 +44,7 @@ public class CustomDomainRepository : ICustomDomainRepository
             .ToListAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<CustomDomainMapping> CreateAsync(CustomDomainMapping mapping, CancellationToken cancellationToken = default)
     {
         _context.CustomDomainMappings.Add(mapping);
@@ -45,6 +52,7 @@ public class CustomDomainRepository : ICustomDomainRepository
         return mapping;
     }
 
+    /// <inheritdoc />
     public async Task<CustomDomainMapping> UpdateAsync(CustomDomainMapping mapping, CancellationToken cancellationToken = default)
     {
         _context.CustomDomainMappings.Update(mapping);
@@ -52,6 +60,7 @@ public class CustomDomainRepository : ICustomDomainRepository
         return mapping;
     }
 
+    /// <inheritdoc />
     public async Task DeleteAsync(CustomDomainMapping mapping, CancellationToken cancellationToken = default)
     {
         _context.CustomDomainMappings.Remove(mapping);

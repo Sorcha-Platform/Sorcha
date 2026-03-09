@@ -192,14 +192,14 @@
 
 ### Tests for User Story 6
 
-- [ ] T062 [P] [US6] Create domain restriction endpoint tests — test GET/PUT `/api/organizations/{orgId}/domain-restrictions`, verify OidcProvisioningService checks domain restrictions, verify invitation bypass in `tests/Sorcha.Tenant.Service.Tests/Endpoints/` (extend existing endpoint tests or create new)
+- [x] T062 [P] [US6] Create domain restriction endpoint tests — test GET/PUT `/api/organizations/{orgId}/domain-restrictions`, verify OidcProvisioningService checks domain restrictions, verify invitation bypass in `tests/Sorcha.Tenant.Service.Tests/Services/DomainRestrictionTests.cs`
 
 ### Implementation for User Story 6
 
-- [ ] T063 [US6] Create `DomainRestrictionEndpoints` — GET `/api/organizations/{orgId}/domain-restrictions` (return allowedDomains, restrictionsActive), PUT (update allowed domains, empty array = no restrictions) with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/DomainRestrictionEndpoints.cs`
-- [ ] T064 [US6] Update `OrganizationService` — add methods to get/set AllowedEmailDomains on Organization entity in `src/Services/Sorcha.Tenant.Service/Services/OrganizationService.cs`
-- [ ] T065 [US6] Wire audit event — DomainRestrictionUpdated on domain list change
-- [ ] T066 [US6] Add YARP routes for domain restriction endpoints
+- [x] T063 [US6] Create `DomainRestrictionEndpoints` — GET `/api/organizations/{orgId}/domain-restrictions` (return allowedDomains, restrictionsActive), PUT (update allowed domains, empty array = no restrictions) with RequireAdministrator policy in `src/Services/Sorcha.Tenant.Service/Endpoints/DomainRestrictionEndpoints.cs`
+- [x] T064 [US6] Update `OrganizationService` — add methods to get/set AllowedEmailDomains on Organization entity in `src/Services/Sorcha.Tenant.Service/Services/OrganizationService.cs`
+- [x] T065 [US6] Wire audit event — DomainRestrictionUpdated on domain list change
+- [x] T066 [US6] Add YARP routes for domain restriction endpoints (covered by existing catch-all route)
 
 **Checkpoint**: Domain restrictions enforce email domain matching on OIDC provisioning. Invitations bypass restrictions.
 
@@ -215,14 +215,14 @@
 
 ### Tests for User Story 7
 
-- [ ] T067 [P] [US7] Create `AuditEndpointTests` — test GET `/api/organizations/{orgId}/audit` with date range, event type, user, pagination filters; GET/PUT `audit/retention` in `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuditEndpointTests.cs`
+- [x] T067 [P] [US7] Create `AuditEndpointTests` — test GET `/api/organizations/{orgId}/audit` with date range, event type, user, pagination filters; GET/PUT `audit/retention` in `tests/Sorcha.Tenant.Service.Tests/Endpoints/AuditEndpointTests.cs`
 
 ### Implementation for User Story 7
 
-- [ ] T068 [P] [US7] Create audit DTOs — `AuditEventResponse`, `AuditQueryParams` (startDate, endDate, eventType, userId, page, pageSize) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/AuditDtos.cs`
-- [ ] T069 [US7] Create `AuditEndpoints` — GET `/api/organizations/{orgId}/audit` (RequireAuditor, filtered paginated query, max pageSize=200), GET/PUT `/api/organizations/{orgId}/audit/retention` (RequireAdministrator, 1-120 months) in `src/Services/Sorcha.Tenant.Service/Endpoints/AuditEndpoints.cs`
-- [ ] T070 [US7] Implement `AuditCleanupService` (BackgroundService) — daily at 2 AM UTC, query each org's AuditRetentionMonths, delete events older than retention period, log purge counts per org in `src/Services/Sorcha.Tenant.Service/Services/AuditCleanupService.cs`
-- [ ] T071 [US7] Register audit services in DI and add YARP routes for audit endpoints
+- [x] T068 [P] [US7] Create audit DTOs — `AuditEventResponse`, `AuditQueryParams` (startDate, endDate, eventType, userId, page, pageSize) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/AuditDtos.cs`
+- [x] T069 [US7] Create `AuditEndpoints` — GET `/api/organizations/{orgId}/audit` (RequireAuditor, filtered paginated query, max pageSize=200), GET/PUT `/api/organizations/{orgId}/audit/retention` (RequireAdministrator, 1-120 months) in `src/Services/Sorcha.Tenant.Service/Endpoints/AuditEndpoints.cs`
+- [x] T070 [US7] Implement `AuditCleanupService` (BackgroundService) — daily at 2 AM UTC, query each org's AuditRetentionMonths, delete events older than retention period, log purge counts per org in `src/Services/Sorcha.Tenant.Service/Services/AuditCleanupService.cs`
+- [x] T071 [US7] Register audit services in DI and add YARP routes for audit endpoints (covered by existing catch-all route)
 
 **Checkpoint**: Audit log queryable with full filtering. Retention configurable. Background cleanup running.
 
@@ -236,20 +236,20 @@
 
 ### UI Service Clients
 
-- [ ] T072 [P] Create `IIdpConfigurationService` / `IdpConfigurationService` (HTTP client for IDP config API) in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/IIdpConfigurationService.cs` and `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/IdpConfigurationService.cs`
-- [ ] T073 [P] Create `IInvitationService` / `InvitationService` (HTTP client for invitation API) in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/IInvitationService.cs` and `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/InvitationService.cs`
-- [ ] T074 [P] Update `IAuditService` — add retention get/set, query params (date range, event type, user, pagination) in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/IAuditService.cs`
+- [x] T072 [P] Create `IIdpConfigurationService` / `IdpConfigurationService` (HTTP client for IDP config API) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Identity/`
+- [x] T073 [P] Create `IInvitationService` / `InvitationService` (HTTP client for invitation API) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Identity/`
+- [x] T074 [P] Update `IAuditService` — add retention get/set, query params (date range, event type, user, pagination) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/IAuditService.cs`
 
 ### Blazor Pages
 
-- [ ] T075 [P] Create `OrgDashboard.razor` — display active/suspended user counts, users-by-role, recent logins, pending invitations, IDP status in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/OrgDashboard.razor`
-- [ ] T076 [P] Create `UserManagement.razor` — searchable user table with filter by role/status, inline role change, suspend/reactivate/unlock actions in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/UserManagement.razor`
-- [ ] T077 [P] Create `IdpConfiguration.razor` — IDP setup wizard with provider preset dropdown (top 5 shortcuts), issuer URL, client ID/secret fields, discover/test/toggle actions in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/IdpConfiguration.razor`
-- [ ] T078 [P] Create `Invitations.razor` — invitation management: create (email, role, expiry), list with status filter, revoke action in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/Invitations.razor`
-- [ ] T079 [P] Create `DomainRestrictions.razor` — allowed domains list management (add/remove domains, toggle restrictions) in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/DomainRestrictions.razor`
-- [ ] T080 [P] Create `AuditLog.razor` — audit event viewer with date range picker, event type filter, user filter, pagination in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Identity/AuditLog.razor`
-- [ ] T081 [P] Create `OrgSettings.razor` — org type display, self-registration toggle, audit retention config in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/Settings/OrgSettings.razor`
-- [ ] T082 Register new UI services in DI via `ServiceCollectionExtensions.AddAdminServices()` and add navigation menu entries
+- [x] T075 [P] Create `OrgDashboard.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/OrgDashboard.razor`
+- [x] T076 [P] Create `UserManagement.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/UserManagement.razor`
+- [x] T077 [P] Create `IdpConfiguration.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/IdpConfiguration.razor`
+- [x] T078 [P] Create `Invitations.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/Invitations.razor`
+- [x] T079 [P] Create `DomainRestrictions.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/DomainRestrictions.razor`
+- [x] T080 [P] Create `AuditLog.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Identity/AuditLog.razor`
+- [x] T081 [P] Create `OrgSettings.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/OrgSettings.razor`
+- [x] T082 Register new UI services in DI via `ServiceCollectionExtensions.AddAdminServices()` and add navigation menu entries
 
 **Checkpoint**: Full admin console UI operational — all 7 pages connected to backend APIs.
 
@@ -259,16 +259,16 @@
 
 **Purpose**: Integration testing, documentation, YARP route verification, final quality pass.
 
-- [ ] T083 Verify all YARP routes are configured for new endpoints (30 new routes) — check `AuthorizationPolicy` on each route in `src/Services/Sorcha.ApiGateway/`
-- [ ] T084 [P] Update Tenant Service README with new endpoints, configuration, and features
-- [ ] T085 [P] Update `docs/reference/API-DOCUMENTATION.md` with all new REST endpoints
-- [ ] T086 [P] Update `docs/reference/development-status.md` with Tenant Service status change
-- [ ] T087 [P] Update `docs/guides/AUTHENTICATION-SETUP.md` with OIDC configuration guide
-- [ ] T088 Update `.specify/MASTER-TASKS.md` — mark completed tasks, add new work items
-- [ ] T089 Run quickstart.md validation — execute all 4 flows against running Tenant Service
-- [ ] T090 Verify all new endpoints have `.WithSummary()` and `.WithDescription()` for OpenAPI/Scalar compliance
-- [ ] T091 Verify all new public API methods have `/// <summary>` XML docs
-- [ ] T092 Final build — verify 0 warnings, all tests pass, >85% coverage on new code
+- [x] T083 Verify all YARP routes are configured for new endpoints (30 new routes) — check `AuthorizationPolicy` on each route in `src/Services/Sorcha.ApiGateway/`
+- [x] T084 [P] Update Tenant Service README with new endpoints, configuration, and features
+- [x] T085 [P] Update `docs/reference/API-DOCUMENTATION.md` with all new REST endpoints
+- [x] T086 [P] Update `docs/reference/development-status.md` with Tenant Service status change
+- [x] T087 [P] Update `docs/guides/AUTHENTICATION-SETUP.md` with OIDC configuration guide
+- [x] T088 Update `.specify/MASTER-TASKS.md` — mark completed tasks, add new work items
+- [x] T089 Run quickstart.md validation — execute all 4 flows against running Tenant Service
+- [x] T090 Verify all new endpoints have `.WithSummary()` and `.WithDescription()` for OpenAPI/Scalar compliance
+- [x] T091 Verify all new public API methods have `/// <summary>` XML docs
+- [x] T092 Final build — verify 0 warnings, all tests pass, >85% coverage on new code
 
 **Checkpoint**: Feature complete, documented, tested, ready for PR.
 

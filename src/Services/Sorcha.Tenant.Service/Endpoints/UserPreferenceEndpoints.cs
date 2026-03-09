@@ -31,23 +31,33 @@ public static class UserPreferenceEndpoints
 
         group.MapGet("/", GetPreferences)
             .WithName("GetUserPreferences")
-            .WithSummary("Get authenticated user's preferences (lazy-creates with defaults if not exist)");
+            .WithSummary("Get user preferences")
+            .WithDescription("Returns the authenticated user's preferences. If no preferences exist yet, "
+                + "creates a default set (Light theme, English, UTC, notifications enabled).");
 
         group.MapPut("/", UpdatePreferences)
             .WithName("UpdateUserPreferences")
-            .WithSummary("Partial update of user preferences");
+            .WithSummary("Update user preferences")
+            .WithDescription("Partially updates user preferences. Only non-null fields are applied. "
+                + "Valid themes: Light, Dark, System. Valid languages: en, fr, de, es. "
+                + "Valid time formats: UTC, Local.");
 
         group.MapGet("/default-wallet", GetDefaultWallet)
             .WithName("GetDefaultWallet")
-            .WithSummary("Get default wallet address for signing flows");
+            .WithSummary("Get default wallet address")
+            .WithDescription("Returns the user's default wallet address used for signing flows. "
+                + "Returns null if no default wallet is set.");
 
         group.MapPut("/default-wallet", SetDefaultWallet)
             .WithName("SetDefaultWallet")
-            .WithSummary("Set default wallet address");
+            .WithSummary("Set default wallet address")
+            .WithDescription("Sets the user's default wallet address for signing flows. "
+                + "Must be 200 characters or fewer.");
 
         group.MapDelete("/default-wallet", ClearDefaultWallet)
             .WithName("ClearDefaultWallet")
-            .WithSummary("Clear default wallet address");
+            .WithSummary("Clear default wallet address")
+            .WithDescription("Removes the user's default wallet address. Signing flows will require explicit wallet selection.");
 
         return app;
     }

@@ -1,0 +1,233 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/identity/idp"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Sorcha.UI.Core.Services.Identity
+
+@inject IIdpConfigurationClientService IdpService
+@inject ISnackbar Snackbar
+
+<PageTitle>IDP Configuration - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Key" Class="mr-2" />
+        Identity Provider Configuration
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Configure external OIDC identity providers for your organization
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+    else
+    {
+        <!-- Existing IDPs -->
+        @if (_idpConfigs.Count > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Configured Providers</MudText>
+            <MudTable Items="_idpConfigs" Hover="true" Striped="true" Dense="true" Elevation="2" Class="mb-4">
+                <HeaderContent>
+                    <MudTh>Provider</MudTh>
+                    <MudTh>Display Name</MudTh>
+                    <MudTh>Issuer</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Last Discovery</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ProviderPreset</MudTd>
+                    <MudTd>@context.DisplayName</MudTd>
+                    <MudTd><MudText Typo="Typo.body2" Style="max-width:250px;overflow:hidden;text-overflow:ellipsis;">@context.Issuer</MudText></MudTd>
+                    <MudTd>
+                        <MudSwitch T="bool" Value="@context.IsEnabled" Color="Color.Success"
+                                   ValueChanged="@(async (bool v) => await ToggleIdpAsync(context.Id, v))" />
+                    </MudTd>
+                    <MudTd>@(context.DiscoveryFetchedAt?.LocalDateTime.ToString("g") ?? "Never")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.NetworkCheck" Size="Size.Small" Title="Test Connection"
+                                       OnClick="@(async () => await TestConnectionAsync(context.Id))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Title="Delete"
+                                       OnClick="@(async () => await DeleteIdpAsync(context.Id))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <!-- Add New IDP -->
+        <MudExpansionPanels Class="mb-4">
+            <MudExpansionPanel Text="Add New Identity Provider" Icon="@Icons.Material.Filled.Add">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string" @bind-Value="_newPreset" Label="Provider Preset">
+                            <MudSelectItem T="string" Value="@("Custom")">Custom OIDC</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("MicrosoftEntra")">Microsoft Entra ID</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Google")">Google</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Okta")">Okta</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Apple")">Apple</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("AmazonCognito")">Amazon Cognito</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_newDisplayName" Label="Display Name" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_newIssuer" Label="Issuer URL" Required="true" Placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+                                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" OnAdornmentClick="DiscoverAsync" />
+                    </MudItem>
+                    @if (_discoveryResult != null)
+                    {
+                        <MudItem xs="12">
+                            <MudAlert Severity="@(_discoveryResult.Success ? Severity.Success : Severity.Error)" Class="mb-2">
+                                @if (_discoveryResult.Success)
+                                {
+                                    <span>Discovery successful — endpoints resolved</span>
+                                }
+                                else
+                                {
+                                    <span>Discovery failed: @_discoveryResult.Error</span>
+                                }
+                            </MudAlert>
+                        </MudItem>
+                    }
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_newClientId" Label="Client ID" Required="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_newClientSecret" Label="Client Secret" Required="true" InputType="InputType.Password" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateIdpAsync"
+                                   Disabled="@(string.IsNullOrWhiteSpace(_newIssuer) || string.IsNullOrWhiteSpace(_newClientId))">
+                            Add Provider
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudContainer>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Identity", href: "/admin/identity"),
+        new("IDP Configuration", href: null, disabled: true)
+    ];
+
+    private bool _loading = true;
+    private Guid _organizationId;
+    private List<IdpConfigurationDto> _idpConfigs = [];
+
+    // New IDP form
+    private string _newPreset = "Custom";
+    private string _newDisplayName = "";
+    private string _newIssuer = "";
+    private string _newClientId = "";
+    private string _newClientSecret = "";
+    private IdpDiscoveryResult? _discoveryResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ResolveOrgIdAsync();
+        if (_organizationId != Guid.Empty)
+            await LoadIdpConfigsAsync();
+        _loading = false;
+    }
+
+    private async Task ResolveOrgIdAsync()
+    {
+        if (AuthenticationState != null)
+        {
+            var authState = await AuthenticationState;
+            var orgIdClaim = authState.User.Claims
+                .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+            if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var orgId))
+                _organizationId = orgId;
+        }
+    }
+
+    private async Task LoadIdpConfigsAsync()
+    {
+        try
+        {
+            var configs = await IdpService.GetIdpConfigurationsAsync(_organizationId);
+            _idpConfigs = configs.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load IDP configurations: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DiscoverAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newIssuer)) return;
+        try
+        {
+            _discoveryResult = await IdpService.DiscoverIdpAsync(_organizationId, new DiscoverIdpRequest { Issuer = _newIssuer });
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Discovery failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateIdpAsync()
+    {
+        try
+        {
+            await IdpService.CreateIdpConfigurationAsync(_organizationId, new CreateIdpConfigurationRequest
+            {
+                ProviderPreset = _newPreset,
+                DisplayName = _newDisplayName,
+                Issuer = _newIssuer,
+                ClientId = _newClientId,
+                ClientSecret = _newClientSecret
+            });
+            Snackbar.Add("Identity provider added", Severity.Success);
+            _newPreset = "Custom"; _newDisplayName = ""; _newIssuer = ""; _newClientId = ""; _newClientSecret = "";
+            _discoveryResult = null;
+            await LoadIdpConfigsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to add provider: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ToggleIdpAsync(Guid configId, bool enabled)
+    {
+        await IdpService.ToggleIdpAsync(_organizationId, configId, enabled);
+        Snackbar.Add(enabled ? "Provider enabled" : "Provider disabled", Severity.Info);
+        await LoadIdpConfigsAsync();
+    }
+
+    private async Task TestConnectionAsync(Guid configId)
+    {
+        var result = await IdpService.TestIdpConnectionAsync(_organizationId, configId);
+        if (result.Success)
+            Snackbar.Add($"Connection successful ({result.ResponseTimeMs}ms)", Severity.Success);
+        else
+            Snackbar.Add($"Connection failed: {result.Error}", Severity.Error);
+    }
+
+    private async Task DeleteIdpAsync(Guid configId)
+    {
+        await IdpService.DeleteIdpConfigurationAsync(_organizationId, configId);
+        Snackbar.Add("Provider deleted", Severity.Warning);
+        await LoadIdpConfigsAsync();
+    }
+}

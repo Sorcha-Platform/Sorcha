@@ -17,6 +17,9 @@ public class SmtpEmailSender : IEmailSender
     private readonly EmailSettings _settings;
     private readonly ILogger<SmtpEmailSender> _logger;
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="SmtpEmailSender"/>.
+    /// </summary>
     public SmtpEmailSender(IOptions<EmailSettings> settings, ILogger<SmtpEmailSender> logger)
     {
         _settings = settings.Value;

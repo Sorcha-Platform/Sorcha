@@ -20,6 +20,9 @@ public class OidcDiscoveryService : IOidcDiscoveryService
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
     private const string CacheKeyPrefix = "oidc_discovery:";
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="OidcDiscoveryService"/>.
+    /// </summary>
     public OidcDiscoveryService(
         HttpClient httpClient,
         IMemoryCache cache,

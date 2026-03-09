@@ -23,7 +23,9 @@ public static class InternalEndpoints
 
         group.MapGet("/resolve-domain/{domain}", ResolveDomain)
             .WithName("ResolveDomain")
-            .WithSummary("Resolve custom domain to organization subdomain");
+            .WithSummary("Resolve custom domain to organization subdomain")
+            .WithDescription("Looks up a verified custom domain mapping and returns the corresponding organization subdomain. "
+                + "Used internally by the API Gateway for domain-based routing.");
 
         return app;
     }

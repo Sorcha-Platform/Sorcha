@@ -14,23 +14,29 @@ public class InvitationRepository : IInvitationRepository
 {
     private readonly TenantDbContext _context;
 
+    /// <summary>
+    /// Initializes a new instance of <see cref="InvitationRepository"/>.
+    /// </summary>
     public InvitationRepository(TenantDbContext context)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
+    /// <inheritdoc />
     public async Task<OrgInvitation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.OrgInvitations
             .FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<OrgInvitation?> GetByTokenAsync(string token, CancellationToken cancellationToken = default)
     {
         return await _context.OrgInvitations
             .FirstOrDefaultAsync(i => i.Token == token, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<List<OrgInvitation>> GetByOrganizationAsync(
         Guid organizationId,
         InvitationStatus? status = null,
@@ -49,6 +55,7 @@ public class InvitationRepository : IInvitationRepository
             .ToListAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<bool> HasActiveInvitationAsync(
         Guid organizationId,
         string email,
@@ -62,6 +69,7 @@ public class InvitationRepository : IInvitationRepository
                 cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task<OrgInvitation> CreateAsync(OrgInvitation invitation, CancellationToken cancellationToken = default)
     {
         _context.OrgInvitations.Add(invitation);
@@ -69,6 +77,7 @@ public class InvitationRepository : IInvitationRepository
         return invitation;
     }
 
+    /// <inheritdoc />
     public async Task<OrgInvitation> UpdateAsync(OrgInvitation invitation, CancellationToken cancellationToken = default)
     {
         _context.OrgInvitations.Update(invitation);

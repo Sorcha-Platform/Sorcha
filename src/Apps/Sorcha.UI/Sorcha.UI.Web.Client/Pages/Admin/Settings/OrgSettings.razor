@@ -1,0 +1,174 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/settings/organization"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Sorcha.UI.Core.Services
+
+@inject IOrganizationAdminService OrgService
+@inject IAuditService AuditService
+@inject ISnackbar Snackbar
+
+<PageTitle>Organization Settings - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+        Organization Settings
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Configure organization-wide settings
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-4" />
+    }
+    else if (_error != null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    }
+    else
+    {
+        <!-- Organization Info -->
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Organization Information</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Value="@_orgName" Label="Organization Name" ReadOnly="true" Variant="Variant.Filled" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Value="@_orgSubdomain" Label="Subdomain" ReadOnly="true" Variant="Variant.Filled" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Value="@_orgStatus" Label="Status" ReadOnly="true" Variant="Variant.Filled" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Value="@_orgCreatedAt" Label="Created" ReadOnly="true" Variant="Variant.Filled" />
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <!-- Audit Retention -->
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Audit Log Retention</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Audit log entries older than the retention period are automatically purged daily.
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField @bind-Value="_retentionMonths" Label="Retention Period (months)"
+                                     Min="1" Max="120" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRetentionAsync" Disabled="_savingRetention">
+                        @if (_savingRetention) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                        Save Retention
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Settings", href: null, disabled: true),
+        new("Organization", href: null, disabled: true)
+    ];
+
+    private bool _loading = true;
+    private bool _savingRetention;
+    private string? _error;
+    private Guid _organizationId;
+
+    // Org info
+    private string _orgName = "";
+    private string _orgSubdomain = "";
+    private string _orgStatus = "";
+    private string _orgCreatedAt = "";
+
+    // Audit retention
+    private int _retentionMonths = 12;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (AuthenticationState != null)
+            {
+                var authState = await AuthenticationState;
+                var orgIdClaim = authState.User.Claims
+                    .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+                if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var orgId))
+                    _organizationId = orgId;
+            }
+
+            if (_organizationId == Guid.Empty)
+            {
+                _error = "Organization context not available.";
+                _loading = false;
+                return;
+            }
+
+            var orgTask = OrgService.GetOrganizationAsync(_organizationId);
+            var retentionTask = AuditService.GetRetentionAsync(_organizationId);
+            await Task.WhenAll(orgTask, retentionTask);
+
+            var org = await orgTask;
+            if (org != null)
+            {
+                _orgName = org.Name;
+                _orgSubdomain = org.Subdomain;
+                _orgStatus = org.Status;
+                _orgCreatedAt = org.CreatedAt.LocalDateTime.ToString("g");
+            }
+
+            var retention = await retentionTask;
+            _retentionMonths = retention.RetentionMonths;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load settings: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveRetentionAsync()
+    {
+        if (_retentionMonths < 1 || _retentionMonths > 120)
+        {
+            Snackbar.Add("Retention must be between 1 and 120 months", Severity.Warning);
+            return;
+        }
+
+        _savingRetention = true;
+        try
+        {
+            var success = await AuditService.UpdateRetentionAsync(_organizationId, _retentionMonths);
+            Snackbar.Add(success ? "Retention updated" : "Failed to update retention",
+                success ? Severity.Success : Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingRetention = false;
+        }
+    }
+}
