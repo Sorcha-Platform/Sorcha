@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -124,6 +126,30 @@ public static class AuthEndpoints
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status409Conflict);
 
+        // Passkey 2FA: get assertion options (public endpoint — uses loginToken)
+        group.MapPost("/verify-passkey/options", VerifyPasskeyOptions)
+            .WithName("VerifyPasskeyOptions")
+            .WithSummary("Get passkey assertion options for 2FA login")
+            .WithDescription("Validates the login token and returns FIDO2 assertion options scoped to the user's registered passkeys. "
+                + "The returned options and transaction ID are used in the verify-passkey endpoint.")
+            .AllowAnonymous()
+            .RequireRateLimiting(TotpEndpoints.TotpRateLimitPolicy)
+            .Produces<PasskeyAssertionOptionsResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Passkey 2FA: verify assertion response (public endpoint — uses loginToken)
+        group.MapPost("/verify-passkey", VerifyPasskey)
+            .WithName("VerifyPasskey")
+            .WithSummary("Verify passkey assertion to complete 2FA login")
+            .WithDescription("Verifies the passkey assertion response and issues access/refresh tokens on success. "
+                + "Requires a valid login token from the initial login response.")
+            .AllowAnonymous()
+            .RequireRateLimiting(TotpEndpoints.TotpRateLimitPolicy)
+            .Produces<TokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
         // Logout (revokes current token)
         group.MapPost("/logout", Logout)
             .WithName("Logout")
@@ -142,6 +168,7 @@ public static class AuthEndpoints
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
         ITotpService totpService,
+        IPasskeyService passkeyService,
         ITokenRevocationService tokenRevocationService,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
@@ -213,19 +240,27 @@ public static class AuthEndpoints
             // Reset failed attempts on successful login
             await tokenRevocationService.ResetFailedAuthAttemptsAsync(request.Email, cancellationToken);
 
-            // Check if user has TOTP 2FA enabled
+            // Check if user has TOTP 2FA or passkeys enabled
             var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);
-            if (totpStatus.IsEnabled)
+            var passkeys = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", user.Id, cancellationToken);
+            var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
+
+            if (totpStatus.IsEnabled || hasActivePasskeys)
             {
                 // 2FA required: issue a short-lived login token instead of JWT
                 var loginToken = await totpService.GenerateLoginTokenAsync(user.Id, cancellationToken);
 
-                logger.LogInformation("Login requires 2FA for user {Email} (UserId: {UserId})",
-                    user.Email, user.Id);
+                var methods = new List<string>();
+                if (totpStatus.IsEnabled) methods.Add("totp");
+                if (hasActivePasskeys) methods.Add("passkey");
+
+                logger.LogInformation("Login requires 2FA for user {Email} (UserId: {UserId}), methods: {Methods}",
+                    user.Email, user.Id, string.Join(", ", methods));
 
                 return TypedResults.Ok(new TwoFactorLoginResponse
                 {
-                    LoginToken = loginToken
+                    LoginToken = loginToken,
+                    AvailableMethods = methods.ToArray()
                 });
             }
 
@@ -583,5 +618,143 @@ public static class AuthEndpoints
             Success = true,
             Message = "Logged out successfully"
         });
+    }
+
+    /// <summary>
+    /// POST /api/auth/verify-passkey/options — get passkey assertion options for 2FA login.
+    /// </summary>
+    private static async Task<IResult> VerifyPasskeyOptions(
+        PasskeyAssertionOptionsRequest request,
+        ITotpService totpService,
+        IPasskeyService passkeyService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.LoginToken))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["login_token"] = ["Login token is required"]
+            });
+        }
+
+        // Validate login token (peek — do not consume it, as we need it again for verify)
+        var userId = await totpService.ValidateLoginTokenAsync(request.LoginToken, cancellationToken);
+        if (userId is null)
+        {
+            logger.LogWarning("Passkey assertion options failed: invalid or expired login token");
+            return TypedResults.Unauthorized();
+        }
+
+        // Get user's active passkey credentials
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", userId.Value, cancellationToken);
+        var activeCredentialIds = credentials
+            .Where(c => c.Status == CredentialStatus.Active)
+            .Select(c => c.CredentialId)
+            .ToList();
+
+        if (activeCredentialIds.Count == 0)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["passkey"] = ["No active passkey credentials found for this user"]
+            });
+        }
+
+        try
+        {
+            var result = await passkeyService.CreateAssertionOptionsAsync(
+                email: null,
+                allowedCredentialIds: activeCredentialIds,
+                cancellationToken: cancellationToken);
+
+            return TypedResults.Ok(new PasskeyAssertionOptionsResponse
+            {
+                TransactionId = result.TransactionId,
+                Options = result.Options
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create passkey assertion options for user {UserId}", userId.Value);
+            return TypedResults.Problem("Failed to create assertion options.", statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// POST /api/auth/verify-passkey — verify passkey assertion to complete 2FA login.
+    /// </summary>
+    private static async Task<IResult> VerifyPasskey(
+        PasskeyVerifyRequest request,
+        ITotpService totpService,
+        IPasskeyService passkeyService,
+        IIdentityRepository identityRepository,
+        IOrganizationRepository organizationRepository,
+        ITokenService tokenService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.LoginToken))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["login_token"] = ["Login token is required"]
+            });
+        }
+
+        // Validate login token
+        var userId = await totpService.ValidateLoginTokenAsync(request.LoginToken, cancellationToken);
+        if (userId is null)
+        {
+            logger.LogWarning("Passkey 2FA verification failed: invalid or expired login token");
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            // Verify the assertion response
+            var assertionResult = await passkeyService.VerifyAssertionAsync(
+                request.TransactionId,
+                request.AssertionResponse,
+                cancellationToken);
+
+            // Ensure the assertion credential belongs to the login token's user
+            if (assertionResult.OwnerId != userId.Value)
+            {
+                logger.LogWarning("Passkey 2FA verification failed: credential owner {OwnerId} does not match login user {UserId}",
+                    assertionResult.OwnerId, userId.Value);
+                return TypedResults.Unauthorized();
+            }
+
+            // Look up user and org, then issue JWT
+            var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
+            if (user is null || user.Status != IdentityStatus.Active)
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var organization = await organizationRepository.GetByIdAsync(user.OrganizationId, cancellationToken);
+            if (organization is null)
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            // Update last login timestamp
+            user.LastLoginAt = DateTimeOffset.UtcNow;
+            await identityRepository.UpdateUserAsync(user, cancellationToken);
+
+            // Generate tokens
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
+
+            logger.LogInformation("User completed passkey 2FA login - UserId: {UserId}, OrgId: {OrgId}, CredentialId: {CredentialId}",
+                user.Id, organization.Id, assertionResult.Credential.Id);
+
+            return TypedResults.Ok(tokenResponse);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Passkey 2FA assertion verification failed for user {UserId}", userId.Value);
+            return TypedResults.Unauthorized();
+        }
     }
 }
