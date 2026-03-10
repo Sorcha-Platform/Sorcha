@@ -81,7 +81,7 @@ public class RedisStreamEventSubscriberTests
                 It.IsAny<bool>(),
                 It.IsAny<TimeSpan?>(),
                 It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisStream[]?)null);
+            .ReturnsAsync((RedisStream[]?)null!);
     }
 
     private void SetupStreamReadSingleMessage(string streamKey, string eventType, string json)
@@ -102,7 +102,7 @@ public class RedisStreamEventSubscriberTests
                 {
                     return [CreateRedisStream(streamKey, [CreateStreamEntry("1-0", eventType, json)])];
                 }
-                return null;
+                return null!;
             });
     }
 

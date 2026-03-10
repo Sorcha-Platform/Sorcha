@@ -57,7 +57,7 @@ public class AdminHealthCommand : Command
                 var client = await clientFactory.CreateAdminServiceClientAsync(profileName);
                 var health = await client.GetHealthAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(health, new JsonSerializerOptions { WriteIndented = true }));
@@ -170,7 +170,7 @@ public class AdminAlertsCommand : Command
                 var client = await clientFactory.CreateAdminServiceClientAsync(profileName);
                 var alerts = await client.ListAlertsAsync(severity, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(alerts, new JsonSerializerOptions { WriteIndented = true }));
@@ -303,7 +303,7 @@ public class AdminEventsListCommand : Command
                 var client = await clientFactory.CreateAdminServiceClientAsync(profileName);
                 var response = await client.ListEventsAsync(severity, page, 20, since, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));

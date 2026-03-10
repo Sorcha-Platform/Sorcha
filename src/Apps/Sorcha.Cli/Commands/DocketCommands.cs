@@ -76,7 +76,7 @@ public class DocketListCommand : Command
                 var dockets = await client.ListDocketsAsync(registerId, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(dockets, new JsonSerializerOptions { WriteIndented = true }));
@@ -196,7 +196,7 @@ public class DocketGetCommand : Command
                 var docket = await client.GetDocketAsync(registerId, docketId, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(docket, new JsonSerializerOptions { WriteIndented = true }));
@@ -329,7 +329,7 @@ public class DocketTransactionsCommand : Command
                 var transactions = await client.GetDocketTransactionsAsync(registerId, docketId, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(transactions, new JsonSerializerOptions { WriteIndented = true }));

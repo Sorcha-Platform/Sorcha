@@ -31,8 +31,8 @@ public class HybridSigningTests
         var pqcSignTask = _cryptoModule.SignAsync(data, (byte)WalletNetworks.ML_DSA_65, pqcKeySet.PrivateKey.Key!);
         await Task.WhenAll(classicalSignTask, pqcSignTask);
 
-        var classicalSig = classicalSignTask.Result;
-        var pqcSig = pqcSignTask.Result;
+        var classicalSig = await classicalSignTask;
+        var pqcSig = await pqcSignTask;
 
         // Assert
         classicalSig.IsSuccess.Should().BeTrue();

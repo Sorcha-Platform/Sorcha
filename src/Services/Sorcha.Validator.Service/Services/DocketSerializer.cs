@@ -195,7 +195,7 @@ public static class DocketSerializer
     {
         TransactionId = tx.TransactionId,
         RegisterId = tx.RegisterId,
-        BlueprintId = tx.BlueprintId,
+        BlueprintId = tx.BlueprintId ?? string.Empty,
         ActionId = tx.ActionId,
         PayloadJson = tx.PayloadJson,
         PayloadHash = tx.PayloadHash,

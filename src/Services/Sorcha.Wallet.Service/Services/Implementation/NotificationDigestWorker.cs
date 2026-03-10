@@ -133,7 +133,7 @@ public sealed class NotificationDigestWorker : BackgroundService
                 keys: [key],
                 values: [maxScore]);
 
-            if (result.IsNull || result.Type != ResultType.Array)
+            if (result.IsNull || result.Resp2Type != ResultType.Array)
                 return;
 
             var entries = (RedisResult[])result!;

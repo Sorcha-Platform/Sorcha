@@ -28,8 +28,8 @@ public class CryptoEncodingConformanceTests
         var keyResult = await _cryptoModule.GenerateKeySetAsync(WalletNetworks.ED25519);
         keyResult.IsSuccess.Should().BeTrue();
 
-        var privateKey = keyResult.Value!.PrivateKey.Key;
-        var publicKey = keyResult.Value.PublicKey.Key;
+        var privateKey = keyResult.Value!.PrivateKey.Key!;
+        var publicKey = keyResult.Value.PublicKey.Key!;
         var data = Encoding.UTF8.GetBytes("transaction:payload:hash");
 
         // Act — sign
@@ -62,11 +62,11 @@ public class CryptoEncodingConformanceTests
 
         // Act — sign and encode
         var signResult = await _cryptoModule.SignAsync(
-            data, (byte)WalletNetworks.NISTP256, keyResult.Value!.PrivateKey.Key);
+            data, (byte)WalletNetworks.NISTP256, keyResult.Value!.PrivateKey.Key!);
         signResult.IsSuccess.Should().BeTrue();
 
         var sigBase64Url = Base64Url.EncodeToString(signResult.Value!);
-        var pubKeyBase64Url = Base64Url.EncodeToString(keyResult.Value.PublicKey.Key);
+        var pubKeyBase64Url = Base64Url.EncodeToString(keyResult.Value.PublicKey.Key!);
 
         // Assert — decode and verify
         var verifyResult = await _cryptoModule.VerifyAsync(
@@ -89,7 +89,7 @@ public class CryptoEncodingConformanceTests
 
         // Act — encrypt
         var encryptResult = await _cryptoModule.EncryptAsync(
-            plaintext, (byte)WalletNetworks.ED25519, keyResult.Value!.PublicKey.Key);
+            plaintext, (byte)WalletNetworks.ED25519, keyResult.Value!.PublicKey.Key!);
         encryptResult.IsSuccess.Should().BeTrue();
 
         // Encode ciphertext as Base64url (wire format)
@@ -100,7 +100,7 @@ public class CryptoEncodingConformanceTests
 
         // Assert — decrypt succeeds with decoded bytes
         var decryptResult = await _cryptoModule.DecryptAsync(
-            ciphertextBytes, (byte)WalletNetworks.ED25519, keyResult.Value.PrivateKey.Key);
+            ciphertextBytes, (byte)WalletNetworks.ED25519, keyResult.Value.PrivateKey.Key!);
         decryptResult.IsSuccess.Should().BeTrue();
         decryptResult.Value.Should().Equal(plaintext,
             "decrypted data should match original after Base64url round-trip");
@@ -157,12 +157,12 @@ public class CryptoEncodingConformanceTests
         var data = Encoding.UTF8.GetBytes("legacy-tx-id:legacy-payload-hash");
 
         var signResult = await _cryptoModule.SignAsync(
-            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key);
+            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key!);
         signResult.IsSuccess.Should().BeTrue();
 
         // Encode with standard Base64 (legacy format)
         var sigLegacyBase64 = Convert.ToBase64String(signResult.Value!);
-        var pubKeyLegacyBase64 = Convert.ToBase64String(keyResult.Value.PublicKey.Key);
+        var pubKeyLegacyBase64 = Convert.ToBase64String(keyResult.Value.PublicKey.Key!);
 
         // Decode legacy format
         var sigBytes = Convert.FromBase64String(sigLegacyBase64);
@@ -185,12 +185,12 @@ public class CryptoEncodingConformanceTests
         var data = Encoding.UTF8.GetBytes("cross-format-test");
 
         var signResult = await _cryptoModule.SignAsync(
-            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key);
+            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key!);
         signResult.IsSuccess.Should().BeTrue();
 
         // Producer: encode with standard Base64 (old system)
         var sigBase64 = Convert.ToBase64String(signResult.Value!);
-        var pubKeyBase64 = Convert.ToBase64String(keyResult.Value.PublicKey.Key);
+        var pubKeyBase64 = Convert.ToBase64String(keyResult.Value.PublicKey.Key!);
 
         // Consumer: smart decode (detects legacy format)
         var sigBytes = DecodeBase64Auto(sigBase64);
@@ -211,12 +211,12 @@ public class CryptoEncodingConformanceTests
         var data = Encoding.UTF8.GetBytes("new-format-test");
 
         var signResult = await _cryptoModule.SignAsync(
-            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key);
+            data, (byte)WalletNetworks.ED25519, keyResult.Value!.PrivateKey.Key!);
         signResult.IsSuccess.Should().BeTrue();
 
         // Producer: encode with Base64url (new system)
         var sigBase64Url = Base64Url.EncodeToString(signResult.Value!);
-        var pubKeyBase64Url = Base64Url.EncodeToString(keyResult.Value.PublicKey.Key);
+        var pubKeyBase64Url = Base64Url.EncodeToString(keyResult.Value.PublicKey.Key!);
 
         // Consumer: smart decode (detects new format)
         var sigBytes = DecodeBase64Auto(sigBase64Url);

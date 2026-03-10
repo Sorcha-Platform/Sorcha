@@ -64,7 +64,7 @@ public class OperationStatusCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var status = await client.GetOperationStatusAsync(operationId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
