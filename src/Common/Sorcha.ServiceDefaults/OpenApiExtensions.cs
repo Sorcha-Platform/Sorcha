@@ -56,8 +56,8 @@ public static class OpenApiExtensions
 
     /// <summary>
     /// Maps the OpenAPI endpoint and Scalar interactive API documentation UI.
-    /// Access control is handled by the API Gateway's OpenApi:RequireAuth configuration.
-    /// Individual services expose their own Scalar UI for development and debugging.
+    /// Only enabled in Development environment — production API docs are served
+    /// through the API Gateway's <c>/openapi</c> endpoint with auth control.
     /// </summary>
     /// <param name="app">The web application.</param>
     /// <param name="title">The title displayed in the Scalar UI.</param>
@@ -66,13 +66,17 @@ public static class OpenApiExtensions
     public static WebApplication MapSorchaOpenApiUi(this WebApplication app, string title, ScalarTheme theme = ScalarTheme.Purple)
     {
         app.MapOpenApi();
-        app.MapScalarApiReference(options =>
+
+        if (app.Environment.IsDevelopment())
         {
-            options
-                .WithTitle(title)
-                .WithTheme(theme)
-                .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
-        });
+            app.MapScalarApiReference(options =>
+            {
+                options
+                    .WithTitle(title)
+                    .WithTheme(theme)
+                    .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+            });
+        }
 
         return app;
     }

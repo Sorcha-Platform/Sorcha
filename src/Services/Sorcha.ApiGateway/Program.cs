@@ -55,18 +55,16 @@ builder.AddJwtAuthentication();
 // Add shared authorization policies (AUTH-005)
 builder.AddSorchaAuthorizationPolicies();
 
-// Add conditional OpenAPI authorization policy
+// Add conditional OpenAPI authorization policy (uses builder pattern to avoid overriding existing policies)
 var requireOpenApiAuth = builder.Configuration.GetValue<bool>("OpenApi:RequireAuth", true);
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("OpenApiAccess", policy =>
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("OpenApiAccess", policy =>
     {
         if (requireOpenApiAuth)
             policy.RequireAuthenticatedUser();
         else
             policy.RequireAssertion(_ => true); // Allow anonymous
     });
-});
 
 // Add OpenAPI documentation
 builder.Services.AddOpenApi();
@@ -547,7 +545,8 @@ app.MapScalarApiReference("/openapi", options =>
         .WithTheme(ScalarTheme.Purple)
         .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient)
         .WithOpenApiRoutePattern("/openapi/aggregated.json");
-});
+})
+.RequireAuthorization("OpenApiAccess");
 
 // URL resolution middleware — resolves org subdomain from path/subdomain/custom domain
 app.UseMiddleware<UrlResolutionMiddleware>();
