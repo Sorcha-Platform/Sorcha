@@ -266,6 +266,12 @@ public record TwoFactorLoginResponse
     public required string LoginToken { get; init; }
 
     /// <summary>
+    /// Available two-factor authentication methods for the user (e.g., "totp", "passkey").
+    /// </summary>
+    [JsonPropertyName("available_methods")]
+    public string[] AvailableMethods { get; init; } = [];
+
+    /// <summary>
     /// Human-readable message.
     /// </summary>
     [JsonPropertyName("message")]

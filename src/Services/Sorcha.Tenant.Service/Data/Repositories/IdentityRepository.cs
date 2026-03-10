@@ -87,19 +87,71 @@ public class IdentityRepository : IIdentityRepository
 
     public async Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.PublicIdentities
+        var identity = await _context.PublicIdentities
+            .Include(p => p.SocialLoginLinks)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (identity is not null)
+        {
+            var credentials = await _context.PasskeyCredentials
+                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
+        }
+
+        return identity;
+    }
+
+    public async Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var identity = await _context.PublicIdentities
+            .Include(p => p.SocialLoginLinks)
+            .FirstOrDefaultAsync(p => p.Email == email, cancellationToken);
+
+        if (identity is not null)
+        {
+            var credentials = await _context.PasskeyCredentials
+                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
+        }
+
+        return identity;
     }
 
     public async Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default)
     {
-        return await _context.PublicIdentities
-            .FirstOrDefaultAsync(p => p.PassKeyCredentialId == credentialId, cancellationToken);
+        var credential = await _context.PasskeyCredentials
+            .FirstOrDefaultAsync(c => c.CredentialId == credentialId && c.OwnerType == OwnerTypes.PublicIdentity, cancellationToken);
+
+        if (credential is null)
+            return null;
+
+        var identity = await _context.PublicIdentities
+            .Include(p => p.SocialLoginLinks)
+            .FirstOrDefaultAsync(p => p.Id == credential.OwnerId, cancellationToken);
+
+        if (identity is not null)
+        {
+            var credentials = await _context.PasskeyCredentials
+                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
+        }
+
+        return identity;
     }
 
-    public async Task<PublicIdentity> CreatePublicIdentityAsync(PublicIdentity identity, CancellationToken cancellationToken = default)
+    public async Task<PublicIdentity> CreatePublicIdentityAsync(
+        PublicIdentity identity,
+        PasskeyCredential? credential = null,
+        CancellationToken cancellationToken = default)
     {
         _context.PublicIdentities.Add(identity);
+        if (credential is not null)
+        {
+            _context.PasskeyCredentials.Add(credential);
+        }
         await _context.SaveChangesAsync(cancellationToken);
         return identity;
     }

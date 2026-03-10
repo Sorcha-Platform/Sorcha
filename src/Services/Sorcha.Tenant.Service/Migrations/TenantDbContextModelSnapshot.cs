@@ -563,6 +563,86 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("ParticipantIdentities", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PasskeyCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AaGuid")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttestationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("CredentialId")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("DeviceType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisabledReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<byte[]>("PublicKeyCose")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<long>("SignatureCounter")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CredentialId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("IX_PasskeyCredential_OrgId");
+
+                    b.HasIndex("OwnerId", "Status")
+                        .HasDatabaseName("IX_PasskeyCredential_OwnerId_Status");
+
+                    b.HasIndex("OwnerType", "OwnerId")
+                        .HasDatabaseName("IX_PasskeyCredential_Owner");
+
+                    b.ToTable("PasskeyCredentials", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PublicIdentity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -572,27 +652,35 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<string>("DeviceType")
                         .HasColumnType("text");
 
-                    b.Property<DateTimeOffset?>("LastUsedAt")
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("EmailVerifiedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<byte[]>("PassKeyCredentialId")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<byte[]>("PublicKeyCose")
-                        .IsRequired()
-                        .HasColumnType("bytea");
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("RegisteredAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("SignatureCounter")
-                        .HasColumnType("integer");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PassKeyCredentialId")
-                        .IsUnique();
+                    b.HasIndex("Email");
 
                     b.ToTable("PublicIdentities", "public");
                 });
@@ -679,6 +767,51 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsUnique();
 
                     b.ToTable("ServicePrincipals", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.SocialLoginLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalSubjectId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LinkedEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("ProviderType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("PublicIdentityId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicIdentityId")
+                        .HasDatabaseName("IX_SocialLogin_PublicIdentityId");
+
+                    b.HasIndex("ProviderType", "ExternalSubjectId")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_SocialLogin_Provider_Subject");
+
+                    b.ToTable("SocialLoginLinks", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.SystemConfiguration", b =>
@@ -1000,6 +1133,17 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("Participant");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.SocialLoginLink", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PublicIdentity", "PublicIdentity")
+                        .WithMany("SocialLoginLinks")
+                        .HasForeignKey("PublicIdentityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PublicIdentity");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.WalletLinkChallenge", b =>
                 {
                     b.HasOne("Sorcha.Tenant.Service.Models.ParticipantIdentity", "Participant")
@@ -1023,6 +1167,11 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("LinkedWalletAddresses");
 
                     b.Navigation("WalletLinkChallenges");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PublicIdentity", b =>
+                {
+                    b.Navigation("SocialLoginLinks");
                 });
 #pragma warning restore 612, 618
         }

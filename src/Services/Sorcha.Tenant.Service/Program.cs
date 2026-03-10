@@ -78,6 +78,15 @@ builder.Services.AddRateLimiter(options =>
         config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
         config.QueueLimit = 0;
     });
+
+    // Public auth rate limiting: 5 attempts per minute per IP (passkey + social endpoints)
+    options.AddFixedWindowLimiter(PublicAuthEndpoints.PublicAuthRateLimitPolicy, config =>
+    {
+        config.PermitLimit = 5;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
 });
 
 // Add health checks (PostgreSQL and Redis when configured)
@@ -129,6 +138,8 @@ app.MapBootstrapEndpoints();
 app.MapOrganizationEndpoints();
 app.MapParticipantEndpoints();
 app.MapAuthEndpoints();
+app.MapPasskeyEndpoints();
+app.MapPublicAuthEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapTotpEndpoints();

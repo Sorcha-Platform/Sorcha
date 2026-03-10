@@ -611,6 +611,80 @@ When 2FA is enabled:
 
 ---
 
+## Passkey (WebAuthn/FIDO2) Authentication
+
+The platform supports FIDO2/WebAuthn passkey authentication for both organizational and public users, powered by Fido2NetLib.
+
+### Fido2 Configuration
+
+Add to `appsettings.json`:
+
+```json
+{
+  "Fido2": {
+    "ServerDomain": "localhost",
+    "ServerName": "Sorcha Tenant Service",
+    "Origins": ["https://localhost:7080"],
+    "TimestampDriftTolerance": 300000
+  }
+}
+```
+
+For production:
+
+```bash
+Fido2__ServerDomain="your-domain.com"
+Fido2__ServerName="Sorcha Platform"
+Fido2__Origins__0="https://your-domain.com"
+```
+
+### Org User Passkeys (2FA)
+
+Organizational users can register passkeys as a second factor alongside TOTP:
+
+1. **Register** — Authenticated user calls `POST /api/passkey/register/options` to get Fido2 creation options, then `POST /api/passkey/register/verify` with the attestation response.
+2. **Login with 2FA** — After email/password login returns a `loginToken` with `available_methods: ["totp", "passkey"]`, the UI presents a method selector. For passkey: call `POST /api/auth/verify-passkey/options` with the loginToken, perform WebAuthn ceremony, then `POST /api/auth/verify-passkey`.
+3. **Manage** — `GET /api/passkey/credentials` lists passkeys; `DELETE /api/passkey/credentials/{id}` revokes one.
+
+### Public User Passkeys (Primary Auth)
+
+Public users can use passkeys as their primary authentication method:
+
+1. **Signup** — New user provides display name + optional email, calls `POST /api/auth/public/passkey/register/options`, completes WebAuthn ceremony, then `POST /api/auth/public/passkey/register/verify`. A PublicIdentity is created and tokens are issued.
+2. **Sign-in** — Discoverable credentials flow: `POST /api/auth/passkey/assertion/options` (no email needed), WebAuthn ceremony, `POST /api/auth/passkey/assertion/verify`.
+3. **Add passkey** — Authenticated user calls `POST /api/auth/public/passkey/add/options` then `POST /api/auth/public/passkey/add/verify`.
+
+### Public User Social Login
+
+Public users can also authenticate via social providers (Google, Microsoft, GitHub, Apple):
+
+1. **Initiate** — `POST /api/auth/public/social/initiate` with provider name and redirect URI.
+2. **Callback** — After OAuth redirect, `POST /api/auth/public/social/callback` exchanges the code for tokens.
+3. **Link account** — Authenticated user can link additional social accounts via `POST /api/auth/public/social/link`.
+4. **Unlink** — `DELETE /api/auth/public/social/{linkId}` (enforces last-method guard — cannot remove the only auth method).
+
+### Auth Method Management
+
+Authenticated public users can view and manage their auth methods:
+
+- `GET /api/auth/public/methods` — Lists all passkeys and social links
+- Last-method guard prevents removing the only remaining authentication method
+
+### Credential Preferences
+
+- **Discoverable credentials** (resident keys) are preferred for passwordless sign-in
+- **Non-discoverable credentials** are supported as fallback
+- Credential exclusion lists prevent duplicate registrations on the same device
+
+### Security Considerations
+
+- Passkey registration and assertion use transaction IDs to prevent replay attacks
+- Signature counters are tracked and validated on each assertion
+- Social login state tokens have a 10-minute lifetime
+- The last-method guard ensures users always have at least one way to authenticate
+
+---
+
 ## Next Steps
 
 After authentication is configured:
@@ -848,6 +922,6 @@ app.MapPost("/api/wallets/{id}/sign", SignWithWallet)
 
 ---
 
-**Status**: ✅ AUTH-002 Complete (All services integrated) | OIDC Identity Management (054) documented
-**Last Updated**: 2026-03-09
-**Version**: 1.3
+**Status**: ✅ AUTH-002 Complete | OIDC (054) | PassKey & Social Login (055) documented
+**Last Updated**: 2026-03-10
+**Version**: 1.4

@@ -56,4 +56,21 @@ public interface IAuthenticationService
     /// </summary>
     /// <returns>Authentication state with user info and roles</returns>
     Task<AuthenticationStateInfo> GetAuthenticationInfoAsync();
+
+    /// <summary>
+    /// Authenticates a user with username and password, detecting two-factor requirements.
+    /// Returns a <see cref="LoginResult"/> that indicates whether 2FA is needed.
+    /// </summary>
+    /// <param name="request">Login request with credentials</param>
+    /// <param name="profileName">Profile name to use for authentication</param>
+    /// <returns>Login result indicating success or 2FA requirement</returns>
+    Task<LoginResult> LoginWithTwoFactorAsync(LoginRequest request, string profileName);
+
+    /// <summary>
+    /// Stores a token response obtained from an external flow (e.g., passkey, social login)
+    /// into the token cache for the specified profile.
+    /// </summary>
+    /// <param name="tokenResponse">Token response to store</param>
+    /// <param name="profileName">Profile name to associate the token with</param>
+    Task StoreExternalTokenAsync(TokenResponse tokenResponse, string profileName);
 }

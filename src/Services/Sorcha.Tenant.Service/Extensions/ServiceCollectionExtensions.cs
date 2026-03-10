@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Fido2NetLib;
 using Microsoft.EntityFrameworkCore;
 using Polly;
 using Polly.CircuitBreaker;
@@ -67,6 +68,9 @@ public static class ServiceCollectionExtensions
         // Add email sender
         services.AddTenantEmail(configuration);
 
+        // Add FIDO2/WebAuthn services
+        services.AddFido2WebAuthn(configuration);
+
         // Add in-memory cache (used by OIDC discovery, password breach check, etc.)
         services.AddMemoryCache();
 
@@ -126,6 +130,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
+        services.AddScoped<IPasskeyService, PasskeyService>();
+        services.AddScoped<IPublicUserService, PublicUserService>();
+        services.AddScoped<ISocialLoginService, SocialLoginService>();
 
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
@@ -211,6 +218,43 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<EmailSettings>(configuration.GetSection("Email"));
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FIDO2/WebAuthn services for passkey authentication.
+    /// Binds configuration from the "Fido2" section in appsettings.json.
+    /// </summary>
+    public static IServiceCollection AddFido2WebAuthn(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var fido2Config = configuration.GetSection("Fido2");
+
+        var serverDomain = fido2Config["ServerDomain"];
+        var origins = fido2Config.GetSection("Origins").Get<HashSet<string>>();
+
+        if (string.IsNullOrWhiteSpace(serverDomain))
+        {
+            throw new InvalidOperationException(
+                "Fido2:ServerDomain configuration is required for WebAuthn passkey support.");
+        }
+
+        if (origins is null || origins.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Fido2:Origins configuration is required for WebAuthn passkey support. " +
+                "Specify at least one allowed origin URL.");
+        }
+
+        services.AddFido2(options =>
+        {
+            options.ServerDomain = serverDomain;
+            options.ServerName = fido2Config["ServerName"];
+            options.Origins = origins;
+            options.TimestampDriftTolerance = fido2Config.GetValue<int>("TimestampDriftTolerance", 300000);
+        });
 
         return services;
     }
