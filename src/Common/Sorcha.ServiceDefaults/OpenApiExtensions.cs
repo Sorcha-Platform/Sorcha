@@ -55,8 +55,9 @@ public static class OpenApiExtensions
     }
 
     /// <summary>
-    /// Maps the OpenAPI endpoint and Scalar interactive API documentation UI (development only).
-    /// Both the raw OpenAPI JSON and the Scalar UI are restricted to the development environment.
+    /// Maps the OpenAPI endpoint and Scalar interactive API documentation UI.
+    /// Only enabled in Development environment — production API docs are served
+    /// through the API Gateway's <c>/openapi</c> endpoint with auth control.
     /// </summary>
     /// <param name="app">The web application.</param>
     /// <param name="title">The title displayed in the Scalar UI.</param>
@@ -64,9 +65,10 @@ public static class OpenApiExtensions
     /// <returns>The web application for chaining.</returns>
     public static WebApplication MapSorchaOpenApiUi(this WebApplication app, string title, ScalarTheme theme = ScalarTheme.Purple)
     {
+        app.MapOpenApi();
+
         if (app.Environment.IsDevelopment())
         {
-            app.MapOpenApi();
             app.MapScalarApiReference(options =>
             {
                 options

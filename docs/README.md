@@ -6,6 +6,29 @@ Comprehensive documentation for the Sorcha distributed ledger platform.
 
 ---
 
+## Documentation by Audience
+
+### System Administrators
+Deploy, configure, scale, and manage a Sorcha instance.
+- **[System Admin Guide](admin/README.md)** — Complete operations manual (prerequisites, installation, configuration, scaling, monitoring, troubleshooting)
+
+### Organization Administrators
+Integrate your organization with a running Sorcha instance.
+- **[Organization Integration Guide](onboarding/organization-integration.md)** — Step-by-step with curl and C# examples
+
+### End Users
+Set up your account using passkeys or social login.
+- **[Public User Setup Guide](onboarding/public-user-setup.md)** — Registration, wallet linking, and self-service
+
+### Developers
+Build on the Sorcha platform.
+- **[API Documentation](/openapi)** — Interactive Scalar API explorer
+- **[Getting Started](#getting-started)** — Development environment setup
+- **[Guides](#guides)** — Feature-specific integration guides
+- **[Reference](#reference)** — Architecture, status, and specifications
+
+---
+
 ## Getting Started
 
 Setup guides, first-run configuration, and prerequisites.

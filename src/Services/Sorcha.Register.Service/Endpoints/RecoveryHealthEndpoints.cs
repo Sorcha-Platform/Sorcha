@@ -83,7 +83,8 @@ public static class RecoveryHealthEndpoints
             "Status is 'synced' when up-to-date, 'recovering' when catching up, " +
             "or 'stalled' when recovery has stopped due to errors. " +
             "Includes progress percentage, docket counts, and staleness detection (<10s threshold).")
-        .WithTags("Health");
+        .WithTags("Health")
+        .Produces<object>(StatusCodes.Status200OK);
     }
 
     private record SyncHealthResponse

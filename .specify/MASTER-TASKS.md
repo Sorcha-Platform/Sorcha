@@ -19,7 +19,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
 **Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055
-**Remaining:** 62 tasks across 6 themes
+**Remaining:** 63 tasks across 6 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -59,6 +59,7 @@ This document now tracks **remaining work for the first production release**, or
 | OPS-007 | Load testing at production scale | P2 | 16h | 📋 | NBomber tests exist but not at production volumes |
 | OPS-008 | Log aggregation and structured logging review | P2 | 8h | 📋 | Serilog configured; central aggregation needed |
 | OPS-009 | CI/CD pipeline hardening (release tags, changelog, artifact signing) | P2 | 8h | 📋 | PR/merge CI works; release workflow incomplete |
+| OPS-010 | Documentation & API Portal — OpenAPI enrichment, admin/onboarding guides | P1 | 16h | ✅ | Config-gated `/openapi` route, `/admin/dashboard` proxy, 132 endpoints enriched with `.Produces<T>()`, 11 admin/onboarding docs |
 
 ---
 
@@ -164,12 +165,12 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | Theme | Priority | Tasks | Effort | Focus |
 |-------|----------|-------|--------|-------|
 | 1. Security Hardening | P0 | 7 | 80-100h | Release blocker |
-| 2. Production Infrastructure | P1 | 9 | 80-120h | Deployment readiness |
+| 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 10 | 40-60h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055) |
 | 6. P2P Network & Consensus | P3 | 8 | 120-200h | Decentralization |
-| **Total** | | **50** (3 ✅, 47 remaining) | **500-720h** | |
+| **Total** | | **51** (4 ✅, 47 remaining) | **500-720h** | |
 
 ### Release Gating
 
@@ -183,6 +184,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.2
+**Version:** 7.3
 **Last Updated:** 2026-03-10
 **Document Owner:** Sorcha Architecture Team

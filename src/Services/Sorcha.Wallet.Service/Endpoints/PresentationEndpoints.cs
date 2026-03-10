@@ -22,31 +22,47 @@ public static class PresentationEndpoints
             .WithName("CreatePresentationRequest")
             .WithSummary("Create a new presentation request")
             .WithDescription("A verifier creates a request for credential presentation. Returns request ID, nonce, and OID4VP URL.")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{requestId}", GetRequest)
             .WithName("GetPresentationRequest")
             .WithSummary("Get presentation request details")
             .WithDescription("Returns request details with matching credentials for the holder's wallet.")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         group.MapPost("/{requestId}/submit", SubmitPresentation)
             .WithName("SubmitPresentation")
             .WithSummary("Submit a credential presentation")
             .WithDescription("Holder submits a VP token with disclosed claims for verification.")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         group.MapPost("/{requestId}/deny", DenyRequest)
             .WithName("DenyPresentationRequest")
             .WithSummary("Deny a presentation request")
             .WithDescription("Holder declines to present the requested credential.")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         group.MapGet("/{requestId}/result", GetResult)
             .WithName("GetPresentationResult")
             .WithSummary("Poll for verification result")
             .WithDescription("Verifier polls for the outcome of a presentation request.")
-            .RequireAuthorization("CanManageWallets");
+            .RequireAuthorization("CanManageWallets")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         return app;
     }

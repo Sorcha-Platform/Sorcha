@@ -31,7 +31,9 @@ public static class SystemRegisterEndpoints
         .WithSummary("Get system register status and summary")
         .WithDescription(
             "Returns the current status of the system register including its deterministic ID, " +
-            "display name, initialization status, blueprint count, and creation timestamp.");
+            "display name, initialization status, blueprint count, and creation timestamp.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/blueprints", async (
             SystemRegisterService service,
@@ -76,7 +78,9 @@ public static class SystemRegisterEndpoints
         .WithDescription(
             "Returns a paginated list of blueprints published to the system register. " +
             "Results are ordered by version descending (newest first). " +
-            "Supports page and pageSize query parameters (default: page=1, pageSize=20, max=100).");
+            "Supports page and pageSize query parameters (default: page=1, pageSize=20, max=100).")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/blueprints/{blueprintId}", async (
             SystemRegisterService service,
@@ -96,7 +100,10 @@ public static class SystemRegisterEndpoints
         .WithSummary("Get a specific blueprint from the system register")
         .WithDescription(
             "Retrieves a specific blueprint by its unique identifier from the system register. " +
-            "Returns 404 if the blueprint does not exist.");
+            "Returns 404 if the blueprint does not exist.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/blueprints/{blueprintId}/versions/{version:long}", async (
             SystemRegisterService service,
@@ -123,7 +130,10 @@ public static class SystemRegisterEndpoints
         .WithSummary("Get a specific version of a blueprint from the system register")
         .WithDescription(
             "Retrieves a specific version of a blueprint by its ID and version number. " +
-            "Returns 404 if the blueprint or version does not exist.");
+            "Returns 404 if the blueprint or version does not exist.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
     }
 
     /// <summary>

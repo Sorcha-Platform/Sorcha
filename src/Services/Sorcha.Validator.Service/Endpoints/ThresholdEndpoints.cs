@@ -23,17 +23,27 @@ public static class ThresholdEndpoints
         group.MapPost("/setup", SetupThreshold)
             .WithName("SetupThreshold")
             .WithSummary("Initialize BLS threshold signing for a register")
-            .WithDescription("Generates threshold key shares using Shamir's Secret Sharing and distributes them to validators.");
+            .WithDescription("Generates threshold key shares using Shamir's Secret Sharing and distributes them to validators.")
+            .Produces<ThresholdSetupResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/sign", SubmitPartialSignature)
             .WithName("SubmitThresholdSignature")
             .WithSummary("Submit a partial BLS signature for a docket")
-            .WithDescription("Submits a validator's partial BLS signature share. When threshold is met, shares are aggregated into a single compact signature.");
+            .WithDescription("Submits a validator's partial BLS signature share. When threshold is met, shares are aggregated into a single compact signature.")
+            .Produces<ThresholdSignResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{registerId}/status", GetThresholdStatus)
             .WithName("GetThresholdStatus")
             .WithSummary("Get threshold signing status for a register")
-            .WithDescription("Returns the current BLS threshold configuration and status for the specified register, including group public key, threshold value, validator count, and validator IDs.");
+            .WithDescription("Returns the current BLS threshold configuration and status for the specified register, including group public key, threshold value, validator count, and validator IDs.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return group;
     }

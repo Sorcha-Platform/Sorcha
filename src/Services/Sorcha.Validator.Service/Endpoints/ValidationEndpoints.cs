@@ -22,12 +22,18 @@ public static class ValidationEndpoints
         group.MapPost("/validate", ValidateTransaction)
             .WithName("ValidateTransaction")
             .WithSummary("Validates a transaction and adds it to the memory pool")
-            .WithDescription("Validates transaction structure, signatures, and blueprint compliance before adding to memory pool");
+            .WithDescription("Validates transaction structure, signatures, and blueprint compliance before adding to memory pool")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status409Conflict);
 
         group.MapGet("/mempool/{registerId}", GetMemPoolStats)
             .WithName("GetMemPoolStats")
             .WithSummary("Gets memory pool statistics for a register")
-            .WithDescription("Returns current transaction counts, fill percentage, and other memory pool metrics");
+            .WithDescription("Returns current transaction counts, fill percentage, and other memory pool metrics")
+            .Produces<MemPoolStats>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return group;
     }

@@ -55,6 +55,17 @@ builder.AddJwtAuthentication();
 // Add shared authorization policies (AUTH-005)
 builder.AddSorchaAuthorizationPolicies();
 
+// Add conditional OpenAPI authorization policy (uses builder pattern to avoid overriding existing policies)
+var requireOpenApiAuth = builder.Configuration.GetValue<bool>("OpenApi:RequireAuth", true);
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("OpenApiAccess", policy =>
+    {
+        if (requireOpenApiAuth)
+            policy.RequireAuthenticatedUser();
+        else
+            policy.RequireAssertion(_ => true); // Allow anonymous
+    });
+
 // Add OpenAPI documentation
 builder.Services.AddOpenApi();
 
@@ -512,7 +523,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
 // OpenAPI Documentation
 // ===========================
 
-// Gateway's own OpenAPI
+// Gateway's own OpenAPI spec
 app.MapOpenApi();
 
 // Aggregated OpenAPI from all services
@@ -526,22 +537,16 @@ app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiS
 .WithTags("Documentation")
 .ExcludeFromDescription();
 
-// Scalar UI for aggregated documentation
-app.MapScalarApiReference(options =>
+// Scalar UI at /openapi — access controlled by OpenApi:RequireAuth config
+app.MapScalarApiReference("/openapi", options =>
 {
     options
         .WithTitle("Sorcha API Gateway - All Services")
         .WithTheme(ScalarTheme.Purple)
         .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient)
         .WithOpenApiRoutePattern("/openapi/aggregated.json");
-});
-
-// Scalar UI for gateway-only documentation
-app.MapGet("/scalar/gateway", () =>
-{
-    return Results.Redirect("/scalar/v1");
 })
-.ExcludeFromDescription();
+.RequireAuthorization("OpenApiAccess");
 
 // URL resolution middleware — resolves org subdomain from path/subdomain/custom domain
 app.UseMiddleware<UrlResolutionMiddleware>();
