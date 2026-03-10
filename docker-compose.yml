@@ -485,6 +485,7 @@ services:
       Services__Validator__Url: http://validator-service:8080
       Services__UI__Url: http://sorcha-ui-web:8080
       ConnectionStrings__Redis: redis:6379
+      OpenApi__RequireAuth: ${OPENAPI_REQUIRE_AUTH:-true}
       Dashboard__AspireDashboardUrl: http://localhost:18888
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys

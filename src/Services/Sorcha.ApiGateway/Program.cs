@@ -55,6 +55,19 @@ builder.AddJwtAuthentication();
 // Add shared authorization policies (AUTH-005)
 builder.AddSorchaAuthorizationPolicies();
 
+// Add conditional OpenAPI authorization policy
+var requireOpenApiAuth = builder.Configuration.GetValue<bool>("OpenApi:RequireAuth", true);
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("OpenApiAccess", policy =>
+    {
+        if (requireOpenApiAuth)
+            policy.RequireAuthenticatedUser();
+        else
+            policy.RequireAssertion(_ => true); // Allow anonymous
+    });
+});
+
 // Add OpenAPI documentation
 builder.Services.AddOpenApi();
 
