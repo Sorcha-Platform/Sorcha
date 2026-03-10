@@ -29,6 +29,8 @@ public class TenantDbContext : DbContext
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<IdentityProviderConfiguration> IdentityProviderConfigurations => Set<IdentityProviderConfiguration>();
     public DbSet<PublicIdentity> PublicIdentities => Set<PublicIdentity>();
+    public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<SocialLoginLink> SocialLoginLinks => Set<SocialLoginLink>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
 
     // Public schema entities for custom domain resolution
@@ -78,6 +80,12 @@ public class TenantDbContext : DbContext
 
         // Configure PublicIdentity entity
         ConfigurePublicIdentity(modelBuilder);
+
+        // Configure PasskeyCredential entity (public schema)
+        ConfigurePasskeyCredential(modelBuilder);
+
+        // Configure SocialLoginLink entity (public schema)
+        ConfigureSocialLoginLink(modelBuilder);
 
         // Configure ServicePrincipal entity
         ConfigureServicePrincipal(modelBuilder);
@@ -244,14 +252,128 @@ public class TenantDbContext : DbContext
                 entity.ToTable("PublicIdentities", "public");
             entity.HasKey(e => e.Id);
 
-            entity.Property(e => e.PassKeyCredentialId)
+            entity.Property(e => e.DisplayName)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.Email)
+                .IsRequired(false)
+                .HasMaxLength(320);
+
+            entity.Property(e => e.Status)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.Property(e => e.EmailVerified)
+                .IsRequired();
+
+            entity.HasIndex(e => e.Email);
+
+            entity.HasMany(e => e.PasskeyCredentials)
+                .WithOne()
+                .HasForeignKey(e => e.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(e => e.SocialLoginLinks)
+                .WithOne(e => e.PublicIdentity)
+                .HasForeignKey(e => e.PublicIdentityId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private void ConfigurePasskeyCredential(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PasskeyCredential>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PasskeyCredentials");
+            else
+                entity.ToTable("PasskeyCredentials", "public");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.CredentialId)
                 .IsRequired();
 
             entity.Property(e => e.PublicKeyCose)
                 .IsRequired();
 
-            entity.HasIndex(e => e.PassKeyCredentialId)
+            entity.Property(e => e.OwnerType)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.Property(e => e.DisplayName)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.DeviceType)
+                .IsRequired(false)
+                .HasMaxLength(100);
+
+            entity.Property(e => e.AttestationType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.Property(e => e.DisabledReason)
+                .IsRequired(false)
+                .HasMaxLength(500);
+
+            entity.HasIndex(e => e.CredentialId)
                 .IsUnique();
+
+            entity.HasIndex(e => new { e.OwnerType, e.OwnerId })
+                .HasDatabaseName("IX_PasskeyCredential_Owner");
+
+            entity.HasIndex(e => new { e.OwnerId, e.Status })
+                .HasDatabaseName("IX_PasskeyCredential_OwnerId_Status");
+
+            entity.HasIndex(e => e.OrganizationId)
+                .HasDatabaseName("IX_PasskeyCredential_OrgId");
+        });
+    }
+
+    private void ConfigureSocialLoginLink(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<SocialLoginLink>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("SocialLoginLinks");
+            else
+                entity.ToTable("SocialLoginLinks", "public");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ProviderType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.ExternalSubjectId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.LinkedEmail)
+                .IsRequired(false)
+                .HasMaxLength(320);
+
+            entity.Property(e => e.DisplayName)
+                .IsRequired(false)
+                .HasMaxLength(256);
+
+            entity.HasIndex(e => new { e.ProviderType, e.ExternalSubjectId })
+                .IsUnique()
+                .HasDatabaseName("UQ_SocialLogin_Provider_Subject");
+
+            entity.HasIndex(e => e.PublicIdentityId)
+                .HasDatabaseName("IX_SocialLogin_PublicIdentityId");
         });
     }
 

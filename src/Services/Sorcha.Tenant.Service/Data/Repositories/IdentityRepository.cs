@@ -93,8 +93,14 @@ public class IdentityRepository : IIdentityRepository
 
     public async Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default)
     {
+        var credential = await _context.PasskeyCredentials
+            .FirstOrDefaultAsync(c => c.CredentialId == credentialId && c.OwnerType == "PublicIdentity", cancellationToken);
+
+        if (credential is null)
+            return null;
+
         return await _context.PublicIdentities
-            .FirstOrDefaultAsync(p => p.PassKeyCredentialId == credentialId, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == credential.OwnerId, cancellationToken);
     }
 
     public async Task<PublicIdentity> CreatePublicIdentityAsync(PublicIdentity identity, CancellationToken cancellationToken = default)
