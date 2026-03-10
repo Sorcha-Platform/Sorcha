@@ -29,25 +29,38 @@ public static class DelegationEndpoints
         delegationGroup.MapPost("/", GrantAccess)
             .WithName("GrantAccess")
             .WithSummary("Grant access to a wallet")
-            .WithDescription("Grant read or write access to a wallet for a specific subject (user or service)");
+            .WithDescription("Grant read or write access to a wallet for a specific subject (user or service)")
+            .Produces<WalletAccessDto>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         // GET /api/v1/wallets/{walletAddress}/access - List access grants
         delegationGroup.MapGet("/", GetAccess)
             .WithName("GetAccess")
             .WithSummary("List active access grants")
-            .WithDescription("Retrieve all active access grants for a specific wallet");
+            .WithDescription("Retrieve all active access grants for a specific wallet")
+            .Produces<IEnumerable<WalletAccessDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // DELETE /api/v1/wallets/{walletAddress}/access/{subject} - Revoke access
         delegationGroup.MapDelete("/{subject}", RevokeAccess)
             .WithName("RevokeAccess")
             .WithSummary("Revoke access to a wallet")
-            .WithDescription("Revoke a subject's access to a wallet");
+            .WithDescription("Revoke a subject's access to a wallet")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/v1/wallets/{walletAddress}/access/{subject}/check - Check access
         delegationGroup.MapGet("/{subject}/check", CheckAccess)
             .WithName("CheckAccess")
             .WithSummary("Check if subject has access")
-            .WithDescription("Verify whether a subject has the required access level to a wallet");
+            .WithDescription("Verify whether a subject has the required access level to a wallet")
+            .Produces<AccessCheckResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
     }
