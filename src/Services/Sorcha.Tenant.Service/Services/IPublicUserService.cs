@@ -54,7 +54,7 @@ public interface IPublicUserService
     /// <returns>Result containing the created identity or a conflict reason.</returns>
     Task<PublicUserResult> CreatePublicUserFromSocialAsync(
         string displayName,
-        string email,
+        string? email,
         SocialLoginLink socialLoginLink,
         CancellationToken cancellationToken = default);
 

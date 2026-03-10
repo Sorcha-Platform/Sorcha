@@ -78,7 +78,7 @@ public class PublicUserService : IPublicUserService
     /// <inheritdoc />
     public async Task<PublicUserResult> CreatePublicUserFromSocialAsync(
         string displayName,
-        string email,
+        string? email,
         SocialLoginLink socialLoginLink,
         CancellationToken cancellationToken = default)
     {
@@ -90,6 +90,19 @@ public class PublicUserService : IPublicUserService
             var existing = await _identityRepository.GetPublicIdentityByEmailAsync(email, cancellationToken);
             if (existing is not null)
             {
+                // Check if this exact social link already exists (prevent duplicates)
+                var alreadyLinked = existing.SocialLoginLinks.Any(
+                    s => s.ProviderType == socialLoginLink.ProviderType
+                      && s.ExternalSubjectId == socialLoginLink.ExternalSubjectId);
+
+                if (alreadyLinked)
+                {
+                    // Returning user — just update last used
+                    existing.LastUsedAt = DateTimeOffset.UtcNow;
+                    await _identityRepository.UpdatePublicIdentityAsync(existing, cancellationToken);
+                    return new PublicUserResult(existing, IsNewUser: false);
+                }
+
                 // Link the social account to the existing identity
                 socialLoginLink.PublicIdentityId = existing.Id;
                 existing.SocialLoginLinks.Add(socialLoginLink);

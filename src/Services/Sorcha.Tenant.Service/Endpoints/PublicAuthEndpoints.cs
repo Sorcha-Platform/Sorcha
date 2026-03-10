@@ -567,7 +567,7 @@ public static class PublicAuthEndpoints
 
             var userResult = await publicUserService.CreatePublicUserFromSocialAsync(
                 authResult.DisplayName ?? authResult.Email ?? "Social User",
-                authResult.Email ?? string.Empty,
+                authResult.Email,
                 socialLoginLink,
                 cancellationToken);
 
