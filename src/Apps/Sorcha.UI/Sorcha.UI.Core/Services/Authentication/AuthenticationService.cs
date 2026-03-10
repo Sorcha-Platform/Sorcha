@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
 
@@ -75,6 +76,75 @@ public class AuthenticationService : IAuthenticationService
         await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
 
         return tokenResponse;
+    }
+
+    /// <inheritdoc />
+    public async Task<LoginResult> LoginWithTwoFactorAsync(LoginRequest request, string profileName)
+    {
+        if (!request.IsValid())
+        {
+            throw new ArgumentException("Invalid login request", nameof(request));
+        }
+
+        var profile = await _configurationService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' not found");
+        }
+
+        var formData = new Dictionary<string, string>
+        {
+            ["username"] = request.Username,
+            ["password"] = request.Password,
+            ["grant_type"] = request.GrantType,
+            ["client_id"] = "sorcha-ui-web"
+        };
+
+        var tokenUrl = profile.GetAuthTokenUrl();
+        if (string.IsNullOrEmpty(tokenUrl))
+        {
+            tokenUrl = "/api/service-auth/token";
+        }
+
+        var response = await _httpClient.PostAsync(tokenUrl, new FormUrlEncodedContent(formData));
+        response.EnsureSuccessStatusCode();
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+
+        // Check if the response is a 2FA challenge by looking for the requires_two_factor field
+        if (doc.RootElement.TryGetProperty("requires_two_factor", out var twoFactorProp) && twoFactorProp.GetBoolean())
+        {
+            var twoFactorResponse = JsonSerializer.Deserialize<TwoFactorLoginResponseDto>(responseJson);
+            return LoginResult.TwoFactorRequired(
+                twoFactorResponse!.LoginToken,
+                twoFactorResponse.AvailableMethods,
+                twoFactorResponse.Message);
+        }
+
+        // Standard token response
+        var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseJson);
+        if (tokenResponse == null || !tokenResponse.IsValid())
+        {
+            throw new InvalidOperationException("Invalid token response from server");
+        }
+
+        var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
+        await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
+
+        return LoginResult.Success(tokenResponse);
+    }
+
+    /// <inheritdoc />
+    public async Task StoreExternalTokenAsync(TokenResponse tokenResponse, string profileName)
+    {
+        if (tokenResponse == null || !tokenResponse.IsValid())
+        {
+            throw new ArgumentException("Invalid token response", nameof(tokenResponse));
+        }
+
+        var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
+        await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
     }
 
     /// <inheritdoc />

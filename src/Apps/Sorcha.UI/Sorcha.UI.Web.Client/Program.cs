@@ -9,6 +9,7 @@ using Sorcha.Blueprint.Schemas;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Web.Client;
+using Sorcha.UI.Web.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -39,6 +40,9 @@ builder.Services.AddScoped<BlueprintSerializationService>();
 
 // Add blueprint layout service for visual diagram rendering
 builder.Services.AddScoped<BlueprintLayoutService>();
+
+// Add passkey interop service for WebAuthn browser API calls
+builder.Services.AddScoped<PasskeyInteropService>();
 
 // Add schema library service with caching (for designer and schema library pages)
 builder.Services.AddScoped<ISchemaCacheService, LocalStorageSchemaCacheService>();

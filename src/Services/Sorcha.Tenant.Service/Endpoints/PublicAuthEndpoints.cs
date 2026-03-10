@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 
@@ -100,6 +101,55 @@ public static class PublicAuthEndpoints
             .Produces<PublicTokenResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
+
+        // --- Authenticated Public User Management ---
+        var managementGroup = app.MapGroup("/api/auth/public")
+            .WithTags("Public User Management")
+            .RequireAuthorization();
+
+        managementGroup.MapGet("/methods", GetAuthMethods)
+            .WithName("GetAuthMethods")
+            .WithSummary("List all authentication methods for the current public user")
+            .WithDescription("Returns all passkey credentials and social login links associated with the "
+                + "authenticated public user. Requires a valid public user JWT.")
+            .Produces<AuthMethodsResponse>()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        managementGroup.MapPost("/social/link", LinkSocialAccount)
+            .WithName("LinkSocialAccount")
+            .WithSummary("Initiate social account linking for an authenticated user")
+            .WithDescription("Generates an authorization URL for the specified social provider. "
+                + "The user should be redirected to this URL to complete the linking flow. "
+                + "Unlike the anonymous social initiate endpoint, this links to an existing account.")
+            .Produces<SocialInitiateResponse>()
+            .ProducesValidationProblem();
+
+        managementGroup.MapDelete("/social/{linkId:guid}", UnlinkSocialAccount)
+            .WithName("UnlinkSocialAccount")
+            .WithSummary("Remove a social login link from the current public user")
+            .WithDescription("Removes the specified social login link. Returns 400 Bad Request if "
+                + "this is the user's last authentication method (last-method guard prevents account lockout).")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        managementGroup.MapPost("/passkey/add/options", AddPasskeyOptions)
+            .WithName("PublicAddPasskeyOptions")
+            .WithSummary("Generate passkey registration options for an authenticated public user")
+            .WithDescription("Creates FIDO2 credential creation options for adding an additional passkey "
+                + "to an existing public user account. Excludes already-registered credential IDs. "
+                + "Returns a transaction ID and challenge options to pass to the browser WebAuthn API.")
+            .Produces<PasskeyRegistrationOptionsResponse>()
+            .ProducesValidationProblem();
+
+        managementGroup.MapPost("/passkey/add/verify", AddPasskeyVerify)
+            .WithName("PublicAddPasskeyVerify")
+            .WithSummary("Verify passkey attestation and add credential to authenticated public user")
+            .WithDescription("Verifies the attestation response from the authenticator and links the new "
+                + "passkey credential to the authenticated public user's account. "
+                + "The transaction ID must match a pending registration challenge.")
+            .Produces<PasskeyCredentialResponse>(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         return app;
     }
@@ -602,6 +652,302 @@ public static class PublicAuthEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["provider"] = [ex.Message]
+            });
+        }
+    }
+
+    /// <summary>
+    /// Extracts the public user ID from JWT claims. Returns null if the claim is missing or invalid.
+    /// </summary>
+    private static Guid? GetPublicUserId(HttpContext context)
+    {
+        var sub = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+               ?? context.User.FindFirst("sub")?.Value;
+
+        return Guid.TryParse(sub, out var userId) ? userId : null;
+    }
+
+    /// <summary>
+    /// GET /api/auth/public/methods — list all auth methods for the authenticated public user.
+    /// </summary>
+    private static async Task<IResult> GetAuthMethods(
+        HttpContext context,
+        IPasskeyService passkeyService,
+        IPublicUserService publicUserService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetPublicUserId(context);
+        if (userId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var identity = await publicUserService.GetPublicUserByIdAsync(userId.Value, cancellationToken);
+        if (identity is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(
+            "PublicIdentity", userId.Value, cancellationToken);
+
+        var passkeys = credentials
+            .Where(c => c.Status == CredentialStatus.Active)
+            .Select(c => new AuthMethodPasskeyItem
+            {
+                Id = c.Id,
+                DisplayName = c.DisplayName,
+                DeviceType = c.DeviceType,
+                Status = c.Status.ToString(),
+                CreatedAt = c.CreatedAt,
+                LastUsedAt = c.LastUsedAt
+            })
+            .ToList();
+
+        var socialLinks = identity.SocialLoginLinks
+            .Select(s => new AuthMethodSocialLinkItem
+            {
+                Id = s.Id,
+                Provider = s.ProviderType,
+                Email = s.LinkedEmail,
+                DisplayName = s.DisplayName,
+                CreatedAt = s.CreatedAt,
+                LastUsedAt = s.LastUsedAt
+            })
+            .ToList();
+
+        logger.LogInformation(
+            "Auth methods listed for user {UserId}: {PasskeyCount} passkeys, {SocialCount} social links",
+            userId.Value, passkeys.Count, socialLinks.Count);
+
+        return TypedResults.Ok(new AuthMethodsResponse
+        {
+            Passkeys = passkeys,
+            SocialLinks = socialLinks
+        });
+    }
+
+    /// <summary>
+    /// POST /api/auth/public/social/link — initiate social account linking for authenticated user.
+    /// </summary>
+    private static async Task<IResult> LinkSocialAccount(
+        SocialInitiateRequest request,
+        HttpContext context,
+        ISocialLoginService socialLoginService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetPublicUserId(context);
+        if (userId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Provider))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = ["Provider is required"]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RedirectUri))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["redirect_uri"] = ["Redirect URI is required"]
+            });
+        }
+
+        try
+        {
+            var result = await socialLoginService.GenerateAuthorizationUrlAsync(
+                request.Provider, request.RedirectUri, cancellationToken);
+
+            logger.LogInformation(
+                "Social account linking initiated for user {UserId}, provider {Provider}",
+                userId.Value, request.Provider);
+
+            return TypedResults.Ok(new SocialInitiateResponse
+            {
+                AuthorizationUrl = result.AuthorizationUrl,
+                State = result.State
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning(ex, "Social link initiate failed: provider not configured");
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = [ex.Message]
+            });
+        }
+    }
+
+    /// <summary>
+    /// DELETE /api/auth/public/social/{linkId} — remove a social login link.
+    /// </summary>
+    private static async Task<IResult> UnlinkSocialAccount(
+        Guid linkId,
+        HttpContext context,
+        IPublicUserService publicUserService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetPublicUserId(context);
+        if (userId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await publicUserService.RemoveSocialLinkAsync(userId.Value, linkId, cancellationToken);
+
+        if (result.IsLastMethodGuard)
+        {
+            return TypedResults.Problem(
+                result.Error,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (!result.Success)
+        {
+            return TypedResults.NotFound();
+        }
+
+        logger.LogInformation(
+            "Social login link {LinkId} removed for user {UserId}",
+            linkId, userId.Value);
+
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// POST /api/auth/public/passkey/add/options — generate registration options for adding a passkey.
+    /// </summary>
+    private static async Task<IResult> AddPasskeyOptions(
+        PublicPasskeyAddOptionsRequest request,
+        HttpContext context,
+        IPasskeyService passkeyService,
+        IPublicUserService publicUserService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetPublicUserId(context);
+        if (userId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["display_name"] = ["Display name is required"]
+            });
+        }
+
+        var identity = await publicUserService.GetPublicUserByIdAsync(userId.Value, cancellationToken);
+        if (identity is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            // Get existing credential IDs to exclude from re-registration
+            var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync(
+                "PublicIdentity", userId.Value, cancellationToken);
+            var existingCredentialIds = existingCredentials
+                .Where(c => c.Status == CredentialStatus.Active)
+                .Select(c => c.CredentialId)
+                .ToList();
+
+            var result = await passkeyService.CreateRegistrationOptionsAsync(
+                "PublicIdentity",
+                userId.Value,
+                organizationId: null,
+                request.DisplayName,
+                existingCredentialIds,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Passkey add options created for user {UserId}, displayName={DisplayName}",
+                userId.Value, request.DisplayName);
+
+            return TypedResults.Ok(new PasskeyRegistrationOptionsResponse
+            {
+                TransactionId = result.TransactionId,
+                Options = result.Options
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create passkey add options for user {UserId}", userId.Value);
+            return TypedResults.Problem(
+                "Failed to create registration options.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// POST /api/auth/public/passkey/add/verify — verify attestation and add passkey to authenticated user.
+    /// </summary>
+    private static async Task<IResult> AddPasskeyVerify(
+        PublicPasskeyAddVerifyRequest request,
+        HttpContext context,
+        IPasskeyService passkeyService,
+        IPublicUserService publicUserService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetPublicUserId(context);
+        if (userId is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.TransactionId))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction_id"] = ["Transaction ID is required"]
+            });
+        }
+
+        var identity = await publicUserService.GetPublicUserByIdAsync(userId.Value, cancellationToken);
+        if (identity is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        try
+        {
+            var credential = await passkeyService.VerifyRegistrationAsync(
+                request.TransactionId,
+                request.AttestationResponse,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Passkey added for user {UserId}, credentialId={CredentialId}",
+                userId.Value, credential.Id);
+
+            return TypedResults.Json(new PasskeyCredentialResponse
+            {
+                Id = credential.Id,
+                DisplayName = credential.DisplayName,
+                DeviceType = credential.DeviceType,
+                Status = credential.Status.ToString(),
+                CreatedAt = credential.CreatedAt,
+                LastUsedAt = credential.LastUsedAt
+            }, statusCode: StatusCodes.Status201Created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Passkey add verification failed for user {UserId}", userId.Value);
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["attestation_response"] = [ex.Message]
             });
         }
     }

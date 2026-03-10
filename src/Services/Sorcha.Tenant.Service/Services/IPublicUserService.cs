@@ -87,4 +87,53 @@ public interface IPublicUserService
     Task<PublicIdentity?> GetPublicUserByCredentialIdAsync(
         byte[] credentialId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts the total number of active authentication methods for a public user.
+    /// Includes active passkey credentials and social login links.
+    /// </summary>
+    /// <param name="publicIdentityId">The public identity ID.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The total count of active auth methods.</returns>
+    Task<int> GetAuthMethodCountAsync(
+        Guid publicIdentityId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes a social login link from a public user. Enforces last-auth-method guard:
+    /// if the user has only one remaining auth method (passkey or social link), the
+    /// removal is rejected to prevent account lockout.
+    /// </summary>
+    /// <param name="publicIdentityId">The public identity ID.</param>
+    /// <param name="linkId">The social login link ID to remove.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Result indicating success, not-found, or last-method-guard rejection.</returns>
+    Task<RemoveAuthMethodResult> RemoveSocialLinkAsync(
+        Guid publicIdentityId,
+        Guid linkId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Result of attempting to remove an auth method (social link or passkey).
+/// </summary>
+/// <param name="Success">Whether the removal succeeded.</param>
+/// <param name="Error">Error message if the removal failed.</param>
+/// <param name="IsLastMethodGuard">True if removal was blocked because it's the user's last auth method.</param>
+public record RemoveAuthMethodResult(bool Success, string? Error = null, bool IsLastMethodGuard = false)
+{
+    /// <summary>
+    /// The removal succeeded.
+    /// </summary>
+    public static RemoveAuthMethodResult Succeeded { get; } = new(true);
+
+    /// <summary>
+    /// The link was not found for this user.
+    /// </summary>
+    public static RemoveAuthMethodResult NotFound { get; } = new(false, "Social login link not found.");
+
+    /// <summary>
+    /// Cannot remove the last auth method — would lock the user out.
+    /// </summary>
+    public static RemoveAuthMethodResult LastMethod { get; } = new(false, "Cannot remove the last authentication method.", true);
 }

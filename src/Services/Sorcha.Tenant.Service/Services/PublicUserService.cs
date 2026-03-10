@@ -164,4 +164,61 @@ public class PublicUserService : IPublicUserService
         ArgumentNullException.ThrowIfNull(credentialId);
         return await _identityRepository.GetPublicIdentityByCredentialIdAsync(credentialId, cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<int> GetAuthMethodCountAsync(
+        Guid publicIdentityId,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = await _identityRepository.GetPublicIdentityByIdAsync(publicIdentityId, cancellationToken);
+        if (identity is null)
+        {
+            return 0;
+        }
+
+        var activePasskeys = identity.PasskeyCredentials.Count(c => c.Status == CredentialStatus.Active);
+        var socialLinks = identity.SocialLoginLinks.Count;
+
+        return activePasskeys + socialLinks;
+    }
+
+    /// <inheritdoc />
+    public async Task<RemoveAuthMethodResult> RemoveSocialLinkAsync(
+        Guid publicIdentityId,
+        Guid linkId,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = await _identityRepository.GetPublicIdentityByIdAsync(publicIdentityId, cancellationToken);
+        if (identity is null)
+        {
+            return RemoveAuthMethodResult.NotFound;
+        }
+
+        var link = identity.SocialLoginLinks.FirstOrDefault(s => s.Id == linkId);
+        if (link is null)
+        {
+            return RemoveAuthMethodResult.NotFound;
+        }
+
+        // Last-method guard: count all auth methods
+        var activePasskeys = identity.PasskeyCredentials.Count(c => c.Status == CredentialStatus.Active);
+        var totalMethods = activePasskeys + identity.SocialLoginLinks.Count;
+
+        if (totalMethods <= 1)
+        {
+            _logger.LogWarning(
+                "Cannot remove social link {LinkId} for user {UserId}: last auth method",
+                linkId, publicIdentityId);
+            return RemoveAuthMethodResult.LastMethod;
+        }
+
+        identity.SocialLoginLinks.Remove(link);
+        await _identityRepository.UpdatePublicIdentityAsync(identity, cancellationToken);
+
+        _logger.LogInformation(
+            "Social login link {LinkId} (provider={Provider}) removed for user {UserId}",
+            linkId, link.ProviderType, publicIdentityId);
+
+        return RemoveAuthMethodResult.Succeeded;
+    }
 }
