@@ -91,6 +91,12 @@ public class IdentityRepository : IIdentityRepository
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
     }
 
+    public async Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        return await _context.PublicIdentities
+            .FirstOrDefaultAsync(p => p.Email == email, cancellationToken);
+    }
+
     public async Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default)
     {
         var credential = await _context.PasskeyCredentials

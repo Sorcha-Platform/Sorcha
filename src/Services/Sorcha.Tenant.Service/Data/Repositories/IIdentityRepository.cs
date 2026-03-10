@@ -66,6 +66,11 @@ public interface IIdentityRepository
     Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets a public identity by email address.
+    /// </summary>
+    Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets a public identity by PassKey credential ID.
     /// </summary>
     Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default);
