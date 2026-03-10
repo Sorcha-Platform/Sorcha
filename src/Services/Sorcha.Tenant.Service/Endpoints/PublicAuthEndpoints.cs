@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text;
+using System.Text.Json;
+
+using Microsoft.Extensions.Caching.Distributed;
+
 using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -55,7 +61,7 @@ public static class PublicAuthEndpoints
                 + "Optionally accepts an email to narrow allowed credentials for non-discoverable flow. "
                 + "Returns a transaction ID and challenge options to pass to the browser WebAuthn API.")
             .AllowAnonymous()
-            .Produces<PasskeyRegistrationOptionsResponse>()
+            .Produces<PasskeyAssertionOptionsResponse>()
             .ProducesValidationProblem();
 
         assertionGroup.MapPost("/assertion/verify", AssertionVerify)
@@ -76,10 +82,13 @@ public static class PublicAuthEndpoints
     /// <summary>
     /// POST /api/auth/public/passkey/register/options — generate registration challenge for new public user.
     /// </summary>
+    private static readonly TimeSpan EmailCacheTtl = TimeSpan.FromMinutes(5);
+
     private static async Task<IResult> RegisterOptions(
         PublicPasskeyRegisterOptionsRequest request,
         IPasskeyService passkeyService,
         IPublicUserService publicUserService,
+        IDistributedCache cache,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -115,6 +124,18 @@ public static class PublicAuthEndpoints
                 existingCredentialIds: null,
                 cancellationToken);
 
+            // Store the email alongside the challenge so it can be retrieved during verification.
+            // The PasskeyService cache stores credential data; this is supplementary user metadata.
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                var emailCacheKey = $"passkey:email:{result.TransactionId}";
+                await cache.SetAsync(
+                    emailCacheKey,
+                    Encoding.UTF8.GetBytes(request.Email),
+                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = EmailCacheTtl },
+                    cancellationToken);
+            }
+
             logger.LogInformation(
                 "Public passkey registration options created for displayName={DisplayName}, email={Email}",
                 request.DisplayName, request.Email ?? "(none)");
@@ -142,6 +163,7 @@ public static class PublicAuthEndpoints
         IPasskeyService passkeyService,
         IPublicUserService publicUserService,
         ITokenService tokenService,
+        IDistributedCache cache,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -161,13 +183,19 @@ public static class PublicAuthEndpoints
                 request.AttestationResponse,
                 cancellationToken);
 
-            // Create the public user with the verified credential
-            // Note: email comes from the cached challenge data set during options step,
-            // but since PasskeyService doesn't propagate it, we create without email here.
-            // The display name is stored on the credential.
+            // Retrieve the email stored during the options step
+            string? email = null;
+            var emailCacheKey = $"passkey:email:{request.TransactionId}";
+            var emailBytes = await cache.GetAsync(emailCacheKey, cancellationToken);
+            if (emailBytes is not null)
+            {
+                email = Encoding.UTF8.GetString(emailBytes);
+                await cache.RemoveAsync(emailCacheKey, cancellationToken);
+            }
+
             var userResult = await publicUserService.CreatePublicUserAsync(
                 credential.DisplayName,
-                email: null, // Email not available from attestation; set via profile update later
+                email,
                 credential,
                 cancellationToken);
 
@@ -186,7 +214,7 @@ public static class PublicAuthEndpoints
                 "Public user registered and signed in: {UserId}",
                 userResult.Identity!.Id);
 
-            return TypedResults.Ok(new PublicTokenResponse
+            return TypedResults.Json(new PublicTokenResponse
             {
                 AccessToken = tokenResponse.AccessToken,
                 RefreshToken = tokenResponse.RefreshToken,
@@ -194,7 +222,7 @@ public static class PublicAuthEndpoints
                 ExpiresIn = tokenResponse.ExpiresIn,
                 Scope = tokenResponse.Scope,
                 IsNewUser = true
-            });
+            }, statusCode: StatusCodes.Status201Created);
         }
         catch (InvalidOperationException ex)
         {
@@ -213,32 +241,45 @@ public static class PublicAuthEndpoints
         PublicPasskeyAssertionOptionsRequest request,
         IPasskeyService passkeyService,
         IPublicUserService publicUserService,
+        IIdentityRepository identityRepository,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
         try
         {
-            IEnumerable<byte[]>? allowedCredentialIds = null;
+            var allowedCredentialIds = new List<byte[]>();
 
-            // If email is provided, look up the user's credentials to narrow the allow list
+            // If email is provided, look up credentials for both public and org users
             if (!string.IsNullOrWhiteSpace(request.Email))
             {
-                var user = await publicUserService.GetPublicUserByEmailAsync(request.Email, cancellationToken);
-                if (user is not null)
+                // Check public users
+                var publicUser = await publicUserService.GetPublicUserByEmailAsync(request.Email, cancellationToken);
+                if (publicUser is not null)
                 {
-                    var credentials = await passkeyService.GetCredentialsByOwnerAsync(
-                        "PublicIdentity", user.Id, cancellationToken);
-                    allowedCredentialIds = credentials
-                        .Where(c => c.Status == Models.CredentialStatus.Active)
-                        .Select(c => c.CredentialId)
-                        .ToList();
+                    var publicCredentials = await passkeyService.GetCredentialsByOwnerAsync(
+                        "PublicIdentity", publicUser.Id, cancellationToken);
+                    allowedCredentialIds.AddRange(publicCredentials
+                        .Where(c => c.Status == CredentialStatus.Active)
+                        .Select(c => c.CredentialId));
                 }
-                // If user not found by email, still proceed — the authenticator may use discoverable credentials
+
+                // Check org users
+                var orgUser = await identityRepository.GetUserByEmailAsync(request.Email, cancellationToken);
+                if (orgUser is not null)
+                {
+                    var orgCredentials = await passkeyService.GetCredentialsByOwnerAsync(
+                        "OrgUser", orgUser.Id, cancellationToken);
+                    allowedCredentialIds.AddRange(orgCredentials
+                        .Where(c => c.Status == CredentialStatus.Active)
+                        .Select(c => c.CredentialId));
+                }
+
+                // If neither found, still proceed — the authenticator may use discoverable credentials
             }
 
             var result = await passkeyService.CreateAssertionOptionsAsync(
                 request.Email,
-                allowedCredentialIds,
+                allowedCredentialIds.Count > 0 ? allowedCredentialIds : null,
                 cancellationToken);
 
             logger.LogInformation(
