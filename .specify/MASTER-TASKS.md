@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.1
-**Last Updated:** 2026-03-09
+**Version:** 7.2
+**Last Updated:** 2026-03-10
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -18,7 +18,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
-**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054
+**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055
 **Remaining:** 62 tasks across 6 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
@@ -121,7 +121,8 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 > **Priority:** P1-P3 (Production readiness + post-release enhancement)
 > **Estimated Effort:** 50-80h
 > **Goal:** Enterprise identity integration
-> **Feature 054 Status:** Phases 1-9 complete (82 tasks). Org admin, OIDC, roles, user mgmt, email verification, social login, admin UI all implemented. Phase 10 (polish) remaining on branch.
+> **Feature 054 Status:** Complete (82 tasks). Org admin, OIDC, roles, user mgmt, email verification, social login, admin UI all implemented.
+> **Feature 055 Status:** Complete (51 tasks). Passkey/WebAuthn (Fido2NetLib) — org user 2FA registration + login, public user passkey signup + discoverable sign-in, social login (Google/Microsoft/GitHub/Apple), auth method management with last-method guard.
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
@@ -135,6 +136,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | AUTH-008 | Custom domain DNS verification automation | P2 | 12h | 📋 | Feature 054 supports custom domains but DNS CNAME verification is manual |
 | AUTH-009 | Social login provider testing with real credentials | P2 | 8h | 📋 | Feature 054 IdP config tested with mocks; needs real OAuth app credentials for each provider |
 | AUTH-010 | Load testing for OIDC token exchange flow | P2 | 8h | 📋 | Token exchange is latency-sensitive; needs production-scale load testing |
+| AUTH-011 | PassKey/WebAuthn authentication (Fido2NetLib) — org 2FA + public primary auth | P1 | 40h | ✅ | Feature 055: Org passkey 2FA, public passkey signup/sign-in, social login, method management |
 
 ---
 
@@ -165,9 +167,9 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 2. Production Infrastructure | P1 | 9 | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 10 | 40-60h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
-| 5. Authentication & Identity | P1-P3 | 10 (2 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054) |
+| 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055) |
 | 6. P2P Network & Consensus | P3 | 8 | 120-200h | Decentralization |
-| **Total** | | **49** (2 ✅, 47 remaining) | **500-720h** | |
+| **Total** | | **50** (3 ✅, 47 remaining) | **500-720h** | |
 
 ### Release Gating
 
@@ -181,6 +183,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.1
-**Last Updated:** 2026-03-09
+**Version:** 7.2
+**Last Updated:** 2026-03-10
 **Document Owner:** Sorcha Architecture Team

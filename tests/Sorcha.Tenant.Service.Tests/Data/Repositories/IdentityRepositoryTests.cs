@@ -289,9 +289,7 @@ public class IdentityRepositoryTests : IDisposable
         // Arrange
         var publicIdentity = new PublicIdentity
         {
-            PassKeyCredentialId = new byte[] { 1, 2, 3, 4, 5 },
-            PublicKeyCose = new byte[] { 10, 20, 30, 40, 50 },
-            SignatureCounter = 0,
+            DisplayName = "Test User",
             DeviceType = "YubiKey 5"
         };
 
@@ -301,7 +299,7 @@ public class IdentityRepositoryTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.Id.Should().NotBe(Guid.Empty);
-        result.PassKeyCredentialId.Should().BeEquivalentTo(new byte[] { 1, 2, 3, 4, 5 });
+        result.DisplayName.Should().Be("Test User");
 
         // Verify in database
         var saved = await _repository.GetPublicIdentityByIdAsync(result.Id);
@@ -312,42 +310,51 @@ public class IdentityRepositoryTests : IDisposable
     public async Task GetPublicIdentityByCredentialIdAsync_ShouldReturnIdentity_WhenExists()
     {
         // Arrange
-        var credentialId = new byte[] { 11, 22, 33, 44, 55 };
         var publicIdentity = new PublicIdentity
         {
-            PassKeyCredentialId = credentialId,
-            PublicKeyCose = new byte[] { 100, 200 },
+            DisplayName = "Passkey User",
             DeviceType = "Windows Hello"
         };
-        await _repository.CreatePublicIdentityAsync(publicIdentity);
+        var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
+
+        var credentialId = new byte[] { 11, 22, 33, 44, 55 };
+        var credential = new PasskeyCredential
+        {
+            CredentialId = credentialId,
+            PublicKeyCose = new byte[] { 100, 200 },
+            OwnerType = "PublicIdentity",
+            OwnerId = created.Id,
+            DisplayName = "Passkey User",
+            AttestationType = "none",
+            Status = CredentialStatus.Active
+        };
+        _context.PasskeyCredentials.Add(credential);
+        await _context.SaveChangesAsync();
 
         // Act
         var result = await _repository.GetPublicIdentityByCredentialIdAsync(credentialId);
 
         // Assert
         result.Should().NotBeNull();
-        result!.PassKeyCredentialId.Should().BeEquivalentTo(credentialId);
+        result!.Id.Should().Be(created.Id);
     }
 
     [Fact]
-    public async Task UpdatePublicIdentityAsync_ShouldUpdateSignatureCounter()
+    public async Task UpdatePublicIdentityAsync_ShouldUpdateLastUsedAt()
     {
         // Arrange
         var publicIdentity = new PublicIdentity
         {
-            PassKeyCredentialId = new byte[] { 99, 88, 77 },
-            PublicKeyCose = new byte[] { 1, 2 },
-            SignatureCounter = 0
+            DisplayName = "Update Test",
+            DeviceType = "Platform"
         };
         var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
 
         // Act
-        created.SignatureCounter = 5;
         created.LastUsedAt = DateTimeOffset.UtcNow;
         var updated = await _repository.UpdatePublicIdentityAsync(created);
 
         // Assert
-        updated.SignatureCounter.Should().Be(5);
         updated.LastUsedAt.Should().NotBeNull();
     }
 
@@ -357,8 +364,7 @@ public class IdentityRepositoryTests : IDisposable
         // Arrange
         var publicIdentity = new PublicIdentity
         {
-            PassKeyCredentialId = new byte[] { 111, 222 },
-            PublicKeyCose = new byte[] { 1, 2, 3 }
+            DisplayName = "Delete Test"
         };
         var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
 

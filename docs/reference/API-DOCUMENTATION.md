@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.0.0
-**Last Updated:** 2026-03-09
+**Version:** 2.1.0
+**Last Updated:** 2026-03-10
 **Status:** MVD Complete
 
 ---
@@ -320,6 +320,71 @@ TOTP-based 2FA with authenticator app support, QR code provisioning, and backup 
 | POST | `/api/totp/backup-validate` | Anonymous | Validate and consume backup code during login (rate limited) |
 | DELETE | `/api/totp` | Authenticated | Disable TOTP 2FA for current user |
 | GET | `/api/totp/status` | Authenticated | Get TOTP 2FA status for current user |
+
+### Passkey Authentication (Feature 055)
+
+FIDO2/WebAuthn passkey authentication for both organizational users (2FA) and public users (primary auth).
+
+#### Org User Passkey 2FA
+
+**Base Path:** `/api/passkey`
+**Authorization:** Authenticated org user
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/passkey/register/options` | Authenticated | Get passkey registration options (Fido2NetLib creation options) |
+| POST | `/api/passkey/register/verify` | Authenticated | Complete passkey registration with attestation response |
+| GET | `/api/passkey/credentials` | Authenticated | List user's passkey credentials |
+| DELETE | `/api/passkey/credentials/{id}` | Authenticated | Revoke a passkey credential |
+
+#### Org User Passkey 2FA Login
+
+**Base Path:** `/api/auth`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/verify-passkey/options` | Anonymous | Get passkey assertion options for 2FA verification (requires loginToken) |
+| POST | `/api/auth/verify-passkey` | Anonymous | Verify passkey assertion to complete 2FA login |
+
+#### Public User Passkey Signup
+
+**Base Path:** `/api/auth/public/passkey`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/public/passkey/register/options` | Anonymous | Get registration options for new public user (display name + optional email) |
+| POST | `/api/auth/public/passkey/register/verify` | Anonymous | Verify attestation, create PublicIdentity, issue tokens |
+
+#### Public User Passkey Sign-in (Discoverable)
+
+**Base Path:** `/api/auth/passkey`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/passkey/assertion/options` | Anonymous | Get assertion options (discoverable credentials, no email needed) |
+| POST | `/api/auth/passkey/assertion/verify` | Anonymous | Verify assertion and issue tokens |
+
+#### Public User Social Login
+
+**Base Path:** `/api/auth/public/social`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/auth/public/social/initiate` | Anonymous | Initiate OAuth flow for provider (Google, Microsoft, GitHub, Apple) |
+| POST | `/api/auth/public/social/callback` | Anonymous | Handle OAuth callback, provision user, issue tokens |
+
+#### Public User Auth Method Management
+
+**Base Path:** `/api/auth/public`
+**Authorization:** Authenticated public user (JWT with sub claim)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/auth/public/methods` | Authenticated | List passkeys and social links for current user |
+| POST | `/api/auth/public/social/link` | Authenticated | Link a new social account |
+| DELETE | `/api/auth/public/social/{linkId}` | Authenticated | Unlink social account (last-method guard prevents removing only auth method) |
+| POST | `/api/auth/public/passkey/add/options` | Authenticated | Get options for adding passkey to existing account |
+| POST | `/api/auth/public/passkey/add/verify` | Authenticated | Complete adding passkey to existing account |
 
 ### Invitations
 
@@ -1546,6 +1611,6 @@ connection.on("EncryptionFailed", (notification) => {
 
 ---
 
-**Last Updated:** 2026-03-09
-**Document Version:** 2.0.0
-**Feature:** 054 - Organization Identity & Admin
+**Last Updated:** 2026-03-10
+**Document Version:** 2.1.0
+**Feature:** 055 - Passkey Authentication (FIDO2/WebAuthn)

@@ -19,7 +19,7 @@ The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, a
 - **Local Authentication**: Email/password login with NIST-compliant password policy and HIBP breach list checking
 - **TOTP Two-Factor Authentication**: Authenticator app-based 2FA with backup codes
 - **Self-Registration**: Public organizations can allow users to self-register with email verification
-- **PassKey Authentication**: FIDO2/WebAuthn passwordless authentication for enhanced security
+- **PassKey Authentication**: FIDO2/WebAuthn passkey authentication — org user 2FA (register + verify as second factor) and public user primary auth (signup, sign-in, method management)
 - **Service-to-Service Authentication**: OAuth2 client credentials flow for microservice communication
 - **JWT Token Issuance**: RS256-signed tokens with configurable lifetimes
 - **Token Revocation**: Redis-backed token blacklist with automatic TTL cleanup
@@ -60,7 +60,8 @@ The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, a
 │  │  • IdpConfigurationService • TotpService             │  │
 │  │  • InvitationService    • CustomDomainService        │  │
 │  │  • PasswordPolicyService • EmailVerificationService  │  │
-│  │  • DashboardService     • PassKeyService             │  │
+│  │  • DashboardService     • PassKeyService             │
+│  │  • PublicUserService                                 │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -203,6 +204,8 @@ Service will start at:
 | `OidcSettings:CallbackBaseUrl` | — | Base URL for OIDC callback redirects |
 | `OidcSettings:StateTokenLifetimeMinutes` | 10 | OIDC state token expiry |
 | `OidcSettings:LoginTokenLifetimeMinutes` | 5 | 2FA login token expiry |
+| `Fido2:ServerDomain` | localhost | WebAuthn relying party domain |
+| `Fido2:ServerName` | Sorcha Tenant Service | WebAuthn display name |
 
 ### Environment Variables
 
@@ -249,14 +252,52 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/auth/verify-email` | POST | Verify email address with token |
 | `/api/auth/resend-verification` | POST | Resend email verification (rate limited: 3/hour) |
 
-### PassKey Authentication API (`/api/auth/passkey`)
+### Org User PassKey 2FA API (`/api/passkey`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/passkey/register-options` | POST | Get PassKey registration options |
-| `/api/auth/passkey/register` | POST | Complete PassKey registration |
-| `/api/auth/passkey/login-options` | POST | Get PassKey login options |
-| `/api/auth/passkey/login` | POST | Complete PassKey login |
+| `/api/passkey/register/options` | POST | Get passkey registration options for org user (authenticated) |
+| `/api/passkey/register/verify` | POST | Complete passkey registration for org user |
+| `/api/passkey/credentials` | GET | List org user's passkey credentials |
+| `/api/passkey/credentials/{id}` | DELETE | Delete/revoke an org user's passkey credential |
+
+### Org User PassKey 2FA Login (`/api/auth`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/verify-passkey/options` | POST | Get passkey assertion options for 2FA verification during login |
+| `/api/auth/verify-passkey` | POST | Verify passkey assertion to complete 2FA login |
+
+### Public User Passkey API (`/api/auth/public/passkey`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/public/passkey/register/options` | POST | Get passkey registration options for public signup |
+| `/api/auth/public/passkey/register/verify` | POST | Complete passkey registration and issue tokens |
+
+### Public User Passkey Sign-in (`/api/auth/passkey`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/passkey/assertion/options` | POST | Get discoverable passkey assertion options (no email needed) |
+| `/api/auth/passkey/assertion/verify` | POST | Verify passkey assertion and issue tokens |
+
+### Public User Social Login (`/api/auth/public/social`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/public/social/initiate` | POST | Initiate social login/signup with provider (Google, Microsoft, GitHub, Apple) |
+| `/api/auth/public/social/callback` | POST | Handle OAuth callback and issue tokens |
+
+### Public User Auth Method Management (`/api/auth/public`) — Authenticated
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/public/methods` | GET | List authenticated user's passkeys and social links |
+| `/api/auth/public/social/link` | POST | Link a social account to existing user |
+| `/api/auth/public/social/{linkId}` | DELETE | Unlink a social account (enforces last-method guard) |
+| `/api/auth/public/passkey/add/options` | POST | Get options for adding a passkey to existing account |
+| `/api/auth/public/passkey/add/verify` | POST | Complete adding a passkey to existing account |
 
 ### Organization API (`/api/organizations`)
 
@@ -395,6 +436,8 @@ src/Services/Sorcha.Tenant.Service/
 │   ├── InternalEndpoints.cs          # Domain resolution (API Gateway internal)
 │   ├── BootstrapEndpoints.cs         # Initial system bootstrap
 │   ├── ServiceAuthEndpoints.cs       # Service-to-service auth
+│   ├── PasskeyEndpoints.cs             # Org user passkey registration and 2FA
+│   ├── PublicAuthEndpoints.cs          # Public user passkey, social login, method management
 │   ├── ParticipantEndpoints.cs       # Participant identity management
 │   ├── PushSubscriptionEndpoints.cs  # Push notification subscriptions
 │   └── UserPreferenceEndpoints.cs    # User preference management
@@ -411,6 +454,7 @@ src/Services/Sorcha.Tenant.Service/
 │   ├── PasswordPolicyService.cs
 │   ├── EmailVerificationService.cs
 │   ├── PassKeyService.cs
+│   ├── PublicUserService.cs
 │   └── ...
 ├── Data/                   # Data access layer
 │   ├── TenantDbContext.cs
@@ -732,6 +776,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: 2026-03-09
+**Last Updated**: 2026-03-10
 **Maintained By**: Sorcha Contributors
 **Deferred (Post-MVD)**: Azure AD B2C integration
