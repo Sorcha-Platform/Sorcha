@@ -84,14 +84,23 @@ public class PublicUserService : IPublicUserService
     {
         ArgumentNullException.ThrowIfNull(socialLoginLink);
 
-        // Check for duplicate email
+        // Check for existing user with same email — link the social account if found
         if (!string.IsNullOrWhiteSpace(email))
         {
             var existing = await _identityRepository.GetPublicIdentityByEmailAsync(email, cancellationToken);
             if (existing is not null)
             {
-                _logger.LogWarning("Public user social signup rejected: email {Email} already in use", email);
-                return new PublicUserResult(null, false, "A user with this email address already exists.");
+                // Link the social account to the existing identity
+                socialLoginLink.PublicIdentityId = existing.Id;
+                existing.SocialLoginLinks.Add(socialLoginLink);
+                existing.LastUsedAt = DateTimeOffset.UtcNow;
+                await _identityRepository.UpdatePublicIdentityAsync(existing, cancellationToken);
+
+                _logger.LogInformation(
+                    "Social login linked to existing public user: {UserId} with provider {Provider}",
+                    existing.Id, socialLoginLink.ProviderType);
+
+                return new PublicUserResult(existing, IsNewUser: false);
             }
         }
 

@@ -43,8 +43,9 @@ public interface IPublicUserService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a new public user from a social login callback.
-    /// Returns a conflict result (without throwing) if the email is already in use.
+    /// Creates a new public user from a social login callback, or links the social account
+    /// to an existing user if the email already exists. Returns <see cref="PublicUserResult"/>
+    /// with <c>IsNewUser=true</c> for new accounts and <c>IsNewUser=false</c> for linked accounts.
     /// </summary>
     /// <param name="displayName">Human-readable display name from the social provider.</param>
     /// <param name="email">Email address from the social provider.</param>

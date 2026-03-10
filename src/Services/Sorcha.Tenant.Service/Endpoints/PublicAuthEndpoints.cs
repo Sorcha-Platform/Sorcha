@@ -76,6 +76,31 @@ public static class PublicAuthEndpoints
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // --- Social Login ---
+        var socialGroup = app.MapGroup("/api/auth/public/social")
+            .WithTags("Public Authentication");
+
+        socialGroup.MapPost("/initiate", SocialInitiate)
+            .WithName("SocialLoginInitiate")
+            .WithSummary("Initiate social login authorization flow")
+            .WithDescription("Generates an authorization URL for the specified social provider (Google, Microsoft, GitHub, Apple). "
+                + "The client should redirect the user to the returned URL. "
+                + "Uses PKCE and state parameter for security.")
+            .AllowAnonymous()
+            .Produces<SocialInitiateResponse>()
+            .ProducesValidationProblem();
+
+        socialGroup.MapPost("/callback", SocialCallback)
+            .WithName("SocialLoginCallback")
+            .WithSummary("Complete social login with authorization code")
+            .WithDescription("Exchanges the authorization code from the social provider for user claims, "
+                + "creates or links a public user account, and issues a JWT. "
+                + "Returns isNewUser=true for new accounts, false for existing accounts with newly linked social login.")
+            .AllowAnonymous()
+            .Produces<PublicTokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return app;
     }
 
@@ -424,6 +449,159 @@ public static class PublicAuthEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["assertion_response"] = [ex.Message]
+            });
+        }
+    }
+
+    /// <summary>
+    /// POST /api/auth/public/social/initiate — generate social login authorization URL.
+    /// </summary>
+    private static async Task<IResult> SocialInitiate(
+        SocialInitiateRequest request,
+        ISocialLoginService socialLoginService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Provider))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = ["Provider is required"]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.RedirectUri))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["redirect_uri"] = ["Redirect URI is required"]
+            });
+        }
+
+        try
+        {
+            var result = await socialLoginService.GenerateAuthorizationUrlAsync(
+                request.Provider, request.RedirectUri, cancellationToken);
+
+            logger.LogInformation("Social login initiated for provider {Provider}", request.Provider);
+
+            return TypedResults.Ok(new SocialInitiateResponse
+            {
+                AuthorizationUrl = result.AuthorizationUrl,
+                State = result.State
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning(ex, "Social login initiate failed: provider not configured");
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = [ex.Message]
+            });
+        }
+    }
+
+    /// <summary>
+    /// POST /api/auth/public/social/callback — exchange code, create/link user, issue token.
+    /// </summary>
+    private static async Task<IResult> SocialCallback(
+        SocialCallbackRequest request,
+        ISocialLoginService socialLoginService,
+        IPublicUserService publicUserService,
+        ITokenService tokenService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Provider))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = ["Provider is required"]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Code))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["code"] = ["Authorization code is required"]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.State))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["state"] = ["State parameter is required"]
+            });
+        }
+
+        try
+        {
+            // Exchange the authorization code for user claims
+            var authResult = await socialLoginService.ExchangeCodeAsync(
+                request.Provider, request.Code, request.State, cancellationToken);
+
+            if (!authResult.Success)
+            {
+                logger.LogWarning("Social login callback failed for provider {Provider}: {Error}",
+                    request.Provider, authResult.Error);
+                return TypedResults.Unauthorized();
+            }
+
+            if (string.IsNullOrEmpty(authResult.Subject))
+            {
+                logger.LogWarning("Social login returned no subject for provider {Provider}", request.Provider);
+                return TypedResults.Unauthorized();
+            }
+
+            // Create or link the social login to a public user
+            var socialLoginLink = new SocialLoginLink
+            {
+                ProviderType = authResult.Provider,
+                ExternalSubjectId = authResult.Subject,
+                LinkedEmail = authResult.Email,
+                DisplayName = authResult.DisplayName,
+                LastUsedAt = DateTimeOffset.UtcNow
+            };
+
+            var userResult = await publicUserService.CreatePublicUserFromSocialAsync(
+                authResult.DisplayName ?? authResult.Email ?? "Social User",
+                authResult.Email ?? string.Empty,
+                socialLoginLink,
+                cancellationToken);
+
+            if (!userResult.Success)
+            {
+                logger.LogWarning("Social login user creation/linking failed: {Reason}", userResult.ConflictReason);
+                return TypedResults.Unauthorized();
+            }
+
+            // Issue JWT for the public user
+            var tokenResponse = await tokenService.GeneratePublicUserTokenAsync(
+                userResult.Identity!,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Social login completed for provider {Provider}: userId={UserId}, isNewUser={IsNewUser}",
+                request.Provider, userResult.Identity!.Id, userResult.IsNewUser);
+
+            return TypedResults.Ok(new PublicTokenResponse
+            {
+                AccessToken = tokenResponse.AccessToken,
+                RefreshToken = tokenResponse.RefreshToken,
+                TokenType = tokenResponse.TokenType,
+                ExpiresIn = tokenResponse.ExpiresIn,
+                Scope = tokenResponse.Scope,
+                IsNewUser = userResult.IsNewUser
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            logger.LogWarning(ex, "Social login callback failed: provider not configured");
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["provider"] = [ex.Message]
             });
         }
     }

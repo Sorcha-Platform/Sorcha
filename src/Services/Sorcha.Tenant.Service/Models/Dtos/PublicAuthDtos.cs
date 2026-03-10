@@ -116,3 +116,63 @@ public record PublicTokenResponse
     [JsonPropertyName("is_new_user")]
     public bool IsNewUser { get; init; }
 }
+
+/// <summary>
+/// Request to initiate a social login authorization flow.
+/// </summary>
+public record SocialInitiateRequest
+{
+    /// <summary>
+    /// Social login provider name (e.g., "Google", "Microsoft", "GitHub", "Apple").
+    /// </summary>
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    /// <summary>
+    /// Client redirect URI to receive the authorization code callback.
+    /// </summary>
+    [JsonPropertyName("redirect_uri")]
+    public required string RedirectUri { get; init; }
+}
+
+/// <summary>
+/// Request to complete a social login by exchanging the authorization code.
+/// </summary>
+public record SocialCallbackRequest
+{
+    /// <summary>
+    /// Social login provider name (must match the initiate request).
+    /// </summary>
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    /// <summary>
+    /// Authorization code from the provider callback.
+    /// </summary>
+    [JsonPropertyName("code")]
+    public required string Code { get; init; }
+
+    /// <summary>
+    /// State parameter from the provider callback (for CSRF validation).
+    /// </summary>
+    [JsonPropertyName("state")]
+    public required string State { get; init; }
+}
+
+/// <summary>
+/// Response containing the social login authorization URL and state parameter.
+/// </summary>
+public record SocialInitiateResponse
+{
+    /// <summary>
+    /// URL to redirect the user to for provider authentication.
+    /// </summary>
+    [JsonPropertyName("authorization_url")]
+    public required string AuthorizationUrl { get; init; }
+
+    /// <summary>
+    /// Opaque state parameter for CSRF protection.
+    /// </summary>
+    [JsonPropertyName("state")]
+    public required string State { get; init; }
+}
