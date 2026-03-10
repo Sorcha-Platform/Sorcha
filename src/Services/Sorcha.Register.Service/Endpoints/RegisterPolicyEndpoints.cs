@@ -47,7 +47,9 @@ public static class RegisterPolicyEndpoints
         })
         .WithName("GetRegisterPolicy")
         .WithSummary("Get the current operational policy for a register")
-        .WithDescription("Returns the active RegisterPolicy for a register. For registers without an explicit policy (pre-feature), returns default values with isDefault=true.");
+        .WithDescription("Returns the active RegisterPolicy for a register. For registers without an explicit policy (pre-feature), returns default values with isDefault=true.")
+        .Produces<RegisterPolicyResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         policyGroup.MapGet("/history", async (
             IRegisterPolicyService policyService,
@@ -92,7 +94,10 @@ public static class RegisterPolicyEndpoints
         })
         .WithName("GetRegisterPolicyHistory")
         .WithSummary("Get the policy version history for a register")
-        .WithDescription("Returns a paginated list of policy snapshots from the control transaction chain, ordered chronologically.");
+        .WithDescription("Returns a paginated list of policy snapshots from the control transaction chain, ordered chronologically.")
+        .Produces<PolicyHistoryResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         policyGroup.MapPost("/update", async (
             IRegisterPolicyService policyService,
@@ -159,7 +164,12 @@ public static class RegisterPolicyEndpoints
         .WithName("ProposeRegisterPolicyUpdate")
         .WithSummary("Validate and propose a register policy update")
         .WithDescription("Validates the proposed policy update against the current policy and returns acceptance status. " +
-            "The actual update must be submitted as a control.policy.update transaction through the governance process.");
+            "The actual update must be submitted as a control.policy.update transaction through the governance process.")
+        .Produces<PolicyUpdateResponse>(StatusCodes.Status202Accepted)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status409Conflict)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized);
     }
 
     /// <summary>
@@ -200,7 +210,9 @@ public static class RegisterPolicyEndpoints
         .WithSummary("Get the approved validator list from register policy")
         .WithDescription("Returns the on-chain approved validator list from the register's policy. " +
             "In Public registration mode the list may be empty (all validators are accepted). " +
-            "In Consent mode only listed validators may participate.");
+            "In Consent mode only listed validators may participate.")
+        .Produces<ApprovedValidatorsResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         validatorGroup.MapGet("/operational", (
             string registerId,
@@ -220,7 +232,9 @@ public static class RegisterPolicyEndpoints
         .WithSummary("Get validators currently online for a register")
         .WithDescription("Returns validators currently reporting operational heartbeats via the ValidatorRegistry. " +
             "NOTE: This endpoint is a placeholder — operational state is managed by the Validator Service " +
-            "and requires cross-service integration to resolve.");
+            "and requires cross-service integration to resolve.")
+        .Produces<OperationalValidatorsResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
     }
 }
 

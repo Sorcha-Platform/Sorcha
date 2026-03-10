@@ -285,7 +285,9 @@ registersGroup.MapGet("/", async (
 })
 .WithName("GetAllRegisters")
 .WithSummary("Get all registers")
-.WithDescription("Retrieves all registers, optionally filtered by tenant.");
+.WithDescription("Retrieves all registers, optionally filtered by tenant.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get register by ID
@@ -299,7 +301,10 @@ registersGroup.MapGet("/{id}", async (
 })
 .WithName("GetRegister")
 .WithSummary("Get register by ID")
-.WithDescription("Retrieves a specific register by its unique identifier.");
+.WithDescription("Retrieves a specific register by its unique identifier.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Update register
@@ -348,7 +353,11 @@ registersGroup.MapPut("/{id}", async (
 })
 .WithName("UpdateRegister")
 .WithSummary("Update register")
-.WithDescription("Updates register metadata and settings.");
+.WithDescription("Updates register metadata and settings.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Delete register
@@ -379,7 +388,11 @@ registersGroup.MapDelete("/{id}", async (
 })
 .WithName("DeleteRegister")
 .WithSummary("Delete register")
-.WithDescription("Deletes a register and all associated data.");
+.WithDescription("Deletes a register and all associated data.")
+.Produces(StatusCodes.Status204NoContent)
+.Produces(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get register count
@@ -391,7 +404,9 @@ registersGroup.MapGet("/stats/count", async (RegisterManager manager) =>
 })
 .WithName("GetRegisterCount")
 .WithSummary("Get register count")
-.WithDescription("Returns the total number of registers.");
+.WithDescription("Returns the total number of registers.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Register Creation with Genesis Transactions (FR-REG-001A)
@@ -455,7 +470,10 @@ The pending registration expires after 5 minutes. The client must finalize withi
 - `dataToSign`: SHA-256 hash to sign with wallets
 - `expiresAt`: Expiration timestamp
 - `nonce`: Replay protection nonce
-");
+")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem();
 
 // <summary>
 // Finalize register creation (Phase 2): Verify signatures and create register
@@ -534,7 +552,11 @@ an immutable audit trail of register creation and ownership.
 - 401 Unauthorized: Signature verification failed
 - 408 Request Timeout: Pending registration expired
 - 500 Internal Server Error: Database or service error
-");
+")
+.Produces<object>(StatusCodes.Status201Created)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status401Unauthorized)
+.ProducesValidationProblem();
 
 // ===========================
 // Transaction Management API
@@ -580,7 +602,11 @@ transactionsGroup.MapPost("/", async (
 .WithName("SubmitTransaction")
 .WithSummary("Submit a transaction (internal/diagnostic only)")
 .WithDescription("Stores a transaction directly in the register. Action transactions should be submitted via the Validator Service pipeline.")
-.RequireAuthorization("CanWriteDockets");
+.RequireAuthorization("CanWriteDockets")
+.Produces<TransactionModel>(StatusCodes.Status201Created)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get transaction by ID
@@ -596,7 +622,10 @@ transactionsGroup.MapGet("/{txId}", async (
 .WithName("GetTransaction")
 .WithSummary("Get transaction by ID")
 .WithDescription("Retrieves a specific transaction by its ID.")
-.RequireAuthorization("CanReadTransactions");
+.RequireAuthorization("CanReadTransactions")
+.Produces<TransactionModel>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get all transactions for a register (queryable)
@@ -632,7 +661,9 @@ transactionsGroup.MapGet("/", async (
 .WithName("GetTransactions")
 .WithSummary("Get all transactions")
 .WithDescription("Retrieves all transactions for a register with OData pagination ($skip, $top, $count).")
-.RequireAuthorization("CanReadTransactions");
+.RequireAuthorization("CanReadTransactions")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Query API
@@ -667,7 +698,10 @@ queryGroup.MapGet("/wallets/{address}/transactions", async (
 })
 .WithName("GetTransactionsByWallet")
 .WithSummary("Query transactions by wallet")
-.WithDescription("Retrieves all transactions for a specific wallet address.");
+.WithDescription("Retrieves all transactions for a specific wallet address.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Query transactions by sender
@@ -690,7 +724,9 @@ queryGroup.MapGet("/senders/{address}/transactions", async (
 })
 .WithName("GetTransactionsBySender")
 .WithSummary("Query transactions by sender")
-.WithDescription("Retrieves all transactions sent by a specific address.");
+.WithDescription("Retrieves all transactions sent by a specific address.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Query transactions by blueprint
@@ -710,7 +746,9 @@ queryGroup.MapGet("/blueprints/{blueprintId}/transactions", async (
 })
 .WithName("GetTransactionsByBlueprint")
 .WithSummary("Query transactions by blueprint")
-.WithDescription("Retrieves all transactions for a specific blueprint.");
+.WithDescription("Retrieves all transactions for a specific blueprint.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get transaction statistics
@@ -724,7 +762,9 @@ queryGroup.MapGet("/stats", async (
 })
 .WithName("GetTransactionStatistics")
 .WithSummary("Get transaction statistics")
-.WithDescription("Retrieves comprehensive statistics for a register.");
+.WithDescription("Retrieves comprehensive statistics for a register.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Query transactions by previous transaction ID (for fork detection and chain traversal)
@@ -755,7 +795,10 @@ queryGroup.MapGet("/previous/{prevTxId}/transactions", async (
 })
 .WithName("GetTransactionsByPrevTxId")
 .WithSummary("Query transactions by previous transaction ID")
-.WithDescription("Retrieves all transactions that reference a given previous transaction ID. Used for fork detection and chain integrity auditing.");
+.WithDescription("Retrieves all transactions that reference a given previous transaction ID. Used for fork detection and chain integrity auditing.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Docket Management API
@@ -777,7 +820,9 @@ docketsGroup.MapGet("/", async (
 })
 .WithName("GetDockets")
 .WithSummary("Get all dockets")
-.WithDescription("Retrieves all dockets for a register.");
+.WithDescription("Retrieves all dockets for a register.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get docket by ID
@@ -792,7 +837,10 @@ docketsGroup.MapGet("/{docketId}", async (
 })
 .WithName("GetDocket")
 .WithSummary("Get docket by ID")
-.WithDescription("Retrieves a specific docket by its ID (docket height).");
+.WithDescription("Retrieves a specific docket by its ID (docket height).")
+.Produces<Docket>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get transactions in a docket
@@ -807,7 +855,9 @@ docketsGroup.MapGet("/{docketId}/transactions", async (
 })
 .WithName("GetDocketTransactions")
 .WithSummary("Get docket transactions")
-.WithDescription("Retrieves all transactions sealed in a specific docket.");
+.WithDescription("Retrieves all transactions sealed in a specific docket.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get the latest docket for a register
@@ -834,7 +884,10 @@ docketsGroup.MapGet("/latest", async (
 })
 .WithName("GetLatestDocket")
 .WithSummary("Get latest docket")
-.WithDescription("Retrieves the most recent docket (block) for a register.");
+.WithDescription("Retrieves the most recent docket (block) for a register.")
+.Produces<Docket>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Write a confirmed docket to the register (Validator Service only)
@@ -926,7 +979,11 @@ docketsGroup.MapPost("/", async (
 .WithName("WriteDocket")
 .WithSummary("Write a confirmed docket")
 .WithDescription("Writes a consensus-confirmed docket to the register. Used by Validator Service.")
-.RequireAuthorization("CanWriteDockets");
+.RequireAuthorization("CanWriteDockets")
+.Produces<Docket>(StatusCodes.Status201Created)
+.Produces(StatusCodes.Status404NotFound)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Blueprint Publishing API
@@ -1067,7 +1124,12 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
 .WithName("PublishBlueprintToRegister")
 .WithSummary("Publish a blueprint to a register")
 .WithDescription("Publishes a blueprint to a specific register after verifying governance rights.")
-.RequireAuthorization("CanSubmitTransactions");
+.RequireAuthorization("CanSubmitTransactions")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status403Forbidden)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Governance API
@@ -1107,7 +1169,10 @@ governanceGroup.MapGet("/roster", async (
 })
 .WithName("GetGovernanceRoster")
 .WithSummary("Get current admin roster")
-.WithDescription("Reconstructs the current admin roster by replaying all Control transactions for the register.");
+.WithDescription("Reconstructs the current admin roster by replaying all Control transactions for the register.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get governance history (Control transactions)
@@ -1145,7 +1210,10 @@ governanceGroup.MapGet("/history", async (
 })
 .WithName("GetGovernanceHistory")
 .WithSummary("Get governance history")
-.WithDescription("Retrieves paginated Control transactions that make up the governance history for a register.");
+.WithDescription("Retrieves paginated Control transactions that make up the governance history for a register.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Submit a governance proposal (add/remove member, transfer ownership)
@@ -1334,7 +1402,12 @@ governanceGroup.MapPost("/propose", async (
 .WithName("ProposeGovernanceOperation")
 .WithSummary("Submit a governance proposal")
 .WithDescription("Submits a governance operation (Add, Remove, Transfer) as a Control transaction. Owner can Add/Remove without quorum. Transfer requires quorum.")
-.RequireAuthorization("CanSubmitTransactions");
+.RequireAuthorization("CanSubmitTransactions")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // List governance proposals from Control TX history
@@ -1391,7 +1464,10 @@ governanceGroup.MapGet("/proposals", async (
 })
 .WithName("GetGovernanceProposals")
 .WithSummary("List governance proposals")
-.WithDescription("Returns paginated governance operations from Control transaction history.");
+.WithDescription("Returns paginated governance operations from Control transaction history.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Crypto Policy API
@@ -1414,7 +1490,9 @@ cryptoPolicyGroup.MapGet("/", async (
 })
 .WithName("GetActiveCryptoPolicy")
 .WithSummary("Get active crypto policy")
-.WithDescription("Returns the active cryptographic policy for this register. If no explicit policy has been set, returns the default permissive policy accepting all algorithms.");
+.WithDescription("Returns the active cryptographic policy for this register. If no explicit policy has been set, returns the default permissive policy accepting all algorithms.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get crypto policy version history for a register
@@ -1429,7 +1507,9 @@ cryptoPolicyGroup.MapGet("/history", async (
 })
 .WithName("GetCryptoPolicyHistory")
 .WithSummary("Get crypto policy version history")
-.WithDescription("Returns all crypto policy versions for this register, ordered by version number. Includes the genesis policy and all subsequent updates.");
+.WithDescription("Returns all crypto policy versions for this register, ordered by version number. Includes the genesis policy and all subsequent updates.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Submit a crypto policy update as a control transaction
@@ -1515,7 +1595,11 @@ governanceGroup.MapPost("/crypto-policy", async (
 })
 .WithName("UpdateCryptoPolicy")
 .WithSummary("Update register crypto policy")
-.WithDescription("Submits a crypto policy update as a control transaction. The new policy takes effect immediately for subsequent transactions.");
+.WithDescription("Submits a crypto policy update as a control transaction. The new policy takes effect immediately for subsequent transactions.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Participant Query API
@@ -1540,7 +1624,9 @@ participantsGroup.MapGet("/", (
 })
 .WithName("ListParticipants")
 .WithSummary("List published participants")
-.WithDescription("Returns a paginated list of published participant records on this register. Defaults to active participants only. Use status=all to include deprecated/revoked.");
+.WithDescription("Returns a paginated list of published participant records on this register. Defaults to active participants only. Use status=all to include deprecated/revoked.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Look up a participant by wallet address
@@ -1555,7 +1641,10 @@ participantsGroup.MapGet("/by-address/{walletAddress}", (
 })
 .WithName("GetParticipantByAddress")
 .WithSummary("Look up participant by wallet address")
-.WithDescription("Returns the published participant record that owns the specified wallet address on this register.");
+.WithDescription("Returns the published participant record that owns the specified wallet address on this register.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Get a participant by ID
@@ -1570,7 +1659,10 @@ participantsGroup.MapGet("/{participantId}", (
 })
 .WithName("GetParticipantById")
 .WithSummary("Get participant by ID")
-.WithDescription("Returns the latest published version of a participant record by participant ID.");
+.WithDescription("Returns the latest published version of a participant record by participant ID.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Resolve a participant's public key by wallet address
@@ -1614,7 +1706,11 @@ participantsGroup.MapGet("/by-address/{walletAddress}/public-key", (
 })
 .WithName("ResolvePublicKey")
 .WithSummary("Resolve public key by wallet address")
-.WithDescription("Returns the public key for field-level encryption. Returns 410 Gone if participant is revoked.");
+.WithDescription("Returns the public key for field-level encryption. Returns 410 Gone if participant is revoked.")
+.Produces<Sorcha.ServiceClients.Register.Models.PublicKeyResolution>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status410Gone)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Batch resolve public keys for multiple wallet addresses
@@ -1681,7 +1777,11 @@ participantsGroup.MapPost("/resolve-public-keys", (
 })
 .WithName("ResolvePublicKeysBatch")
 .WithSummary("Batch resolve public keys")
-.WithDescription("Resolves public keys for multiple wallet addresses. Returns resolved, not-found, and revoked addresses separately. Max 200 addresses per request.");
+.WithDescription("Resolves public keys for multiple wallet addresses. Returns resolved, not-found, and revoked addresses separately. Max 200 addresses per request.")
+.Produces<Sorcha.ServiceClients.Register.Models.BatchPublicKeyResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Zero-Knowledge Proof API
@@ -1750,7 +1850,12 @@ proofsGroup.MapPost("/inclusion", async (
 })
 .WithName("GenerateInclusionProof")
 .WithSummary("Generate ZK inclusion proof")
-.WithDescription("Generates a zero-knowledge proof that a transaction is included in a docket's Merkle tree without revealing the transaction content.");
+.WithDescription("Generates a zero-knowledge proof that a transaction is included in a docket's Merkle tree without revealing the transaction content.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Verify a ZK inclusion proof
@@ -1787,7 +1892,11 @@ proofsGroup.MapPost("/verify-inclusion", (
 })
 .WithName("VerifyInclusionProof")
 .WithSummary("Verify ZK inclusion proof")
-.WithDescription("Verifies a zero-knowledge proof of transaction inclusion without access to the original transaction data.");
+.WithDescription("Verifies a zero-knowledge proof of transaction inclusion without access to the original transaction data.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.ProducesValidationProblem()
+.Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
 // Admin / Diagnostic Endpoints
@@ -1848,7 +1957,10 @@ adminGroup.MapGet("/orphan-transactions", async (
 .WithName("DetectOrphanTransactions")
 .WithSummary("Detect orphan transactions")
 .WithDescription("Finds transactions not referenced by any sealed docket. These are remnants of legacy direct-write paths.")
-.RequireAuthorization("CanWriteDockets");
+.RequireAuthorization("CanWriteDockets")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
 // Delete orphan transactions (not referenced by any docket)
@@ -1921,7 +2033,11 @@ adminGroup.MapDelete("/orphan-transactions", async (
 .WithName("DeleteOrphanTransactions")
 .WithSummary("Delete orphan transactions")
 .WithDescription("Removes transactions not referenced by any sealed docket. Refuses if docketed transactions chain from orphans.")
-.RequireAuthorization("CanWriteDockets");
+.RequireAuthorization("CanWriteDockets")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status409Conflict)
+.Produces(StatusCodes.Status401Unauthorized);
 
 // Local function: builds a Merkle proof path (sibling hashes) for a target transaction
 List<string> BuildMerkleProofPath(List<string> txIds, string targetTxId, IHashProvider hashProvider)
@@ -1997,7 +2113,9 @@ adminGroup.MapPost("/rebuild-index", async (
 })
 .WithName("RebuildAddressIndex")
 .WithSummary("Rebuild bloom filter address index")
-.WithDescription("Triggers a full rebuild of the bloom filter for a register. Fetches all wallet addresses from Wallet Service and rebuilds the Redis-backed probabilistic index. Returns address count and rebuild duration.");
+.WithDescription("Triggers a full rebuild of the bloom filter for a register. Fetches all wallet addresses from Wallet Service and rebuilds the Redis-backed probabilistic index. Returns address count and rebuild duration.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized);
 
 static async IAsyncEnumerable<string> ExtractAddressStrings(IAsyncEnumerable<Sorcha.Wallet.Service.Grpc.LocalAddressEntry> entries)
 {
