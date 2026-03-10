@@ -31,6 +31,8 @@ public static class SchemaEndpoints
             .WithName("GetSystemSchemas")
             .WithSummary("Get all system schemas")
             .WithDescription("Retrieve the four core system schemas: Installation, Organisation, Participant, Register")
+            .Produces<IReadOnlyList<SchemaEntryDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
             .RequireAuthorization();
 
         // GET /api/v1/schemas/{identifier} - Get schema by identifier
@@ -38,6 +40,10 @@ public static class SchemaEndpoints
             .WithName("GetSchemaByIdentifier")
             .WithSummary("Get schema by identifier")
             .WithDescription("Retrieve a specific schema by its unique identifier. Returns 304 Not Modified if ETag matches.")
+            .Produces<SchemaContentDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status304NotModified)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization();
 
         // GET /api/v1/schemas - List all accessible schemas with filtering
@@ -45,6 +51,8 @@ public static class SchemaEndpoints
             .WithName("ListSchemas")
             .WithSummary("List all accessible schemas")
             .WithDescription("Retrieve schemas filtered by category, status, and search term")
+            .Produces<SchemaListResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
             .RequireAuthorization();
 
         // GET /api/v1/schemas/external/search - Search external schema sources
@@ -52,6 +60,10 @@ public static class SchemaEndpoints
             .WithName("SearchExternalSchemas")
             .WithSummary("Search external schema sources")
             .WithDescription("Search for schemas from external sources like SchemaStore.org")
+            .Produces<ExternalSchemaSearchResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status503ServiceUnavailable)
             .RequireAuthorization();
 
         // POST /api/v1/schemas/external/import - Import external schema
@@ -59,6 +71,13 @@ public static class SchemaEndpoints
             .WithName("ImportExternalSchema")
             .WithSummary("Import external schema")
             .WithDescription("Import a schema from an external source into the local schema store")
+            .Produces<SchemaContentDto>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status503ServiceUnavailable)
             .RequireAuthorization("RequireAdministrator");
 
         // POST /api/v1/schemas - Create custom schema
@@ -66,6 +85,11 @@ public static class SchemaEndpoints
             .WithName("CreateSchema")
             .WithSummary("Create a custom schema")
             .WithDescription("Create a new custom schema in the organization's schema store")
+            .Produces<SchemaContentDto>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status409Conflict)
             .RequireAuthorization("CanManageBlueprints");
 
         // PUT /api/v1/schemas/{identifier} - Update schema
@@ -73,6 +97,11 @@ public static class SchemaEndpoints
             .WithName("UpdateSchema")
             .WithSummary("Update a custom schema")
             .WithDescription("Update an existing custom schema's content or metadata")
+            .Produces<SchemaContentDto>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization("CanManageBlueprints");
 
         // DELETE /api/v1/schemas/{identifier} - Delete schema
@@ -80,6 +109,11 @@ public static class SchemaEndpoints
             .WithName("DeleteSchema")
             .WithSummary("Delete a custom schema")
             .WithDescription("Delete a custom schema from the organization's schema store")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization("CanManageBlueprints");
 
         // POST /api/v1/schemas/{identifier}/deprecate - Deprecate schema
@@ -87,6 +121,10 @@ public static class SchemaEndpoints
             .WithName("DeprecateSchema")
             .WithSummary("Deprecate a schema")
             .WithDescription("Mark a schema as deprecated, signaling it should no longer be used")
+            .Produces<SchemaContentDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization("CanManageBlueprints");
 
         // POST /api/v1/schemas/{identifier}/activate - Activate schema
@@ -94,6 +132,9 @@ public static class SchemaEndpoints
             .WithName("ActivateSchema")
             .WithSummary("Activate a schema")
             .WithDescription("Reactivate a deprecated schema, making it available for use again")
+            .Produces<SchemaContentDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
             .RequireAuthorization("CanManageBlueprints");
 
         // POST /api/v1/schemas/{identifier}/publish - Publish schema globally
@@ -101,6 +142,11 @@ public static class SchemaEndpoints
             .WithName("PublishSchema")
             .WithSummary("Publish a schema globally")
             .WithDescription("Make a custom schema available to all organizations")
+            .Produces<SchemaContentDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
             .RequireAuthorization("RequireAdministrator");
     }
 

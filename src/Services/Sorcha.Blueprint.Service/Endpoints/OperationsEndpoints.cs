@@ -38,7 +38,11 @@ public static class OperationsEndpoints
         })
         .WithName("GetEncryptionOperation")
         .WithSummary("Get encryption operation status")
-        .WithDescription("Returns current status of an async encryption operation. Use for polling fallback when SignalR is unavailable.");
+        .WithDescription("Returns current status of an async encryption operation. Use for polling fallback when SignalR is unavailable.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound);
 
         group.MapGet("/", async (
             string wallet,
@@ -97,7 +101,10 @@ public static class OperationsEndpoints
         })
         .WithName("ListEncryptionOperations")
         .WithSummary("List active encryption operations for a wallet")
-        .WithDescription("Returns active in-memory encryption operations for the specified wallet. For historical data, query Tenant Service /api/events.");
+        .WithDescription("Returns active in-memory encryption operations for the specified wallet. For historical data, query Tenant Service /api/events.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
 
         return routes;
     }

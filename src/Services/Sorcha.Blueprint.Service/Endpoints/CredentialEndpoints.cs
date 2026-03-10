@@ -29,22 +29,42 @@ public static class CredentialEndpoints
             .WithSummary("Revoke a previously issued credential")
             .WithDescription(
                 "Revokes a credential by updating its status to 'Revoked' in the wallet store. " +
-                "Only the original issuer or register governance roles can revoke a credential.");
+                "Only the original issuer or register governance roles can revoke a credential.")
+            .Produces<RevokeCredentialResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/{credentialId}/suspend", SuspendCredential)
             .WithName("SuspendCredential")
             .WithSummary("Temporarily suspend a credential")
-            .WithDescription("Suspends an Active credential (reversible). Only the original issuer or governance roles can suspend.");
+            .WithDescription("Suspends an Active credential (reversible). Only the original issuer or governance roles can suspend.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/{credentialId}/reinstate", ReinstateCredential)
             .WithName("ReinstateCredential")
             .WithSummary("Reinstate a suspended credential")
-            .WithDescription("Reinstates a Suspended credential to Active. Only the original issuer or governance roles can reinstate.");
+            .WithDescription("Reinstates a Suspended credential to Active. Only the original issuer or governance roles can reinstate.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/{credentialId}/refresh", RefreshCredential)
             .WithName("RefreshCredential")
             .WithSummary("Reissue an expired credential with a fresh expiry")
-            .WithDescription("Consumes the expired credential and issues a new one with a fresh expiry period.");
+            .WithDescription("Consumes the expired credential and issues a new one with a fresh expiry period.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> RevokeCredential(

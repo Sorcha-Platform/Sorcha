@@ -43,19 +43,27 @@ public static class SchemaLibraryEndpoints
         indexGroup.MapGet("/", SearchSchemaIndex)
             .WithName("SearchSchemaIndex")
             .WithSummary("Search the schema index")
-            .WithDescription("Full-text search across all indexed schemas. Results are filtered by the requesting user's organisation sector preferences.");
+            .WithDescription("Full-text search across all indexed schemas. Results are filtered by the requesting user's organisation sector preferences.")
+            .Produces<SchemaIndexSearchResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // GET /api/v1/schemas/index/{shortCode} - Get entry with full content
         indexGroup.MapGet("/{shortCode}", GetSchemaIndexEntry)
             .WithName("GetSchemaIndexEntry")
             .WithSummary("Get a specific schema index entry with full content")
-            .WithDescription("Returns full schema index entry metadata plus the JSON Schema content by short code.");
+            .WithDescription("Returns full schema index entry metadata plus the JSON Schema content by short code.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/v1/schemas/index/content/{shortCode} - Get raw JSON Schema
         indexGroup.MapGet("/content/{shortCode}", GetSchemaContent)
             .WithName("GetSchemaContent")
             .WithSummary("Get the full JSON Schema content for an indexed schema")
-            .WithDescription("Returns the normalised JSON Schema draft-2020-12 content for a schema by short code.");
+            .WithDescription("Returns the normalised JSON Schema draft-2020-12 content for a schema by short code.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // === Sector endpoints ===
 
@@ -63,19 +71,27 @@ public static class SchemaLibraryEndpoints
         sectorGroup.MapGet("/", ListSectors)
             .WithName("ListSectors")
             .WithSummary("List all available schema sectors")
-            .WithDescription("Returns the platform-curated list of schema sectors.");
+            .WithDescription("Returns the platform-curated list of schema sectors.")
+            .Produces<IReadOnlyList<SchemaSectorDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // GET /api/v1/schemas/sectors/preferences - Get org preferences
         sectorGroup.MapGet("/preferences", GetSectorPreferences)
             .WithName("GetSectorPreferences")
             .WithSummary("Get organisation's sector visibility preferences")
-            .WithDescription("Returns which sectors are enabled for the requesting user's organisation.");
+            .WithDescription("Returns which sectors are enabled for the requesting user's organisation.")
+            .Produces<OrganisationSectorPreferencesDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // PUT /api/v1/schemas/sectors/preferences - Update org preferences
         sectorGroup.MapPut("/preferences", UpdateSectorPreferences)
             .WithName("UpdateSectorPreferences")
             .WithSummary("Update organisation's sector visibility preferences")
             .WithDescription("Sets which sectors are visible to designers. Requires Administrator role.")
+            .Produces<OrganisationSectorPreferencesDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
             .RequireAuthorization("RequireAdministrator");
 
         // === Provider Health endpoints ===
@@ -84,13 +100,21 @@ public static class SchemaLibraryEndpoints
         providerGroup.MapGet("/", ListProviders)
             .WithName("ListSchemaProviders")
             .WithSummary("List all schema providers with health status")
-            .WithDescription("Returns the status of all configured schema providers including health, last fetch time, schema count, and error details.");
+            .WithDescription("Returns the status of all configured schema providers including health, last fetch time, schema count, and error details.")
+            .Produces<IReadOnlyList<SchemaProviderStatusDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
 
         // POST /api/v1/schemas/providers/{providerName}/refresh - Trigger refresh
         providerGroup.MapPost("/{providerName}/refresh", RefreshProvider)
             .WithName("RefreshSchemaProvider")
             .WithSummary("Trigger manual refresh for a specific provider")
-            .WithDescription("Triggers an immediate index refresh for the specified provider. Returns immediately — refresh runs in background.");
+            .WithDescription("Triggers an immediate index refresh for the specified provider. Returns immediately — refresh runs in background.")
+            .Produces(StatusCodes.Status202Accepted)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status429TooManyRequests);
     }
 
     // === Handler implementations ===

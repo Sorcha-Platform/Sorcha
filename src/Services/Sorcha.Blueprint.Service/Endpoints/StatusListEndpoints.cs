@@ -27,6 +27,8 @@ public static class StatusListEndpoints
             .WithDescription(
                 "Returns the status list as a W3C BitstringStatusListCredential. " +
                 "This endpoint is public and unauthenticated — verifiers use it to check credential revocation/suspension status.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
             .AllowAnonymous();
 
         // Internal endpoints — service-to-service auth required
@@ -37,12 +39,19 @@ public static class StatusListEndpoints
         internalGroup.MapPost("/{listId}/allocate", AllocateIndex)
             .WithName("AllocateStatusListIndex")
             .WithSummary("Allocate next available index in a status list (internal)")
-            .WithDescription("Allocates the next available index for a new credential. Service-to-service auth required.");
+            .WithDescription("Allocates the next available index for a new credential. Service-to-service auth required.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         internalGroup.MapPut("/{listId}/bits/{index:int}", SetBit)
             .WithName("SetStatusListBit")
             .WithSummary("Set or clear a bit in a status list (internal)")
-            .WithDescription("Sets or clears the bit at a given index. Used by lifecycle operations (revoke, suspend, reinstate).");
+            .WithDescription("Sets or clears the bit at a given index. Used by lifecycle operations (revoke, suspend, reinstate).")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> GetStatusList(
