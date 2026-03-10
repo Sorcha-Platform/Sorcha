@@ -37,61 +37,96 @@ public static class WalletEndpoints
             .WithName("CreateOrRetrieveSystemWallet")
             .WithSummary("Create or retrieve system wallet")
             .WithDescription("Creates or retrieves a system wallet for a validator. Used by Validator Service for signing operations.")
-            .AllowAnonymous(); // System wallets are service-to-service, use service auth
+            .AllowAnonymous() // System wallets are service-to-service, use service auth
+            .Produces<SystemWalletResponse>(StatusCodes.Status200OK)
+            .Produces<SystemWalletResponse>(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         // POST /api/v1/wallets - Create new wallet
         walletGroup.MapPost("/", CreateWallet)
             .WithName("CreateWallet")
             .WithSummary("Create a new wallet")
-            .WithDescription("Creates a new HD wallet with the specified algorithm and returns the mnemonic phrase for backup");
+            .WithDescription("Creates a new HD wallet with the specified algorithm and returns the mnemonic phrase for backup")
+            .Produces<CreateWalletResponse>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // POST /api/v1/wallets/recover - Recover wallet from mnemonic
         walletGroup.MapPost("/recover", RecoverWallet)
             .WithName("RecoverWallet")
             .WithSummary("Recover a wallet from mnemonic phrase")
-            .WithDescription("Recovers an existing wallet from a BIP39 mnemonic phrase");
+            .WithDescription("Recovers an existing wallet from a BIP39 mnemonic phrase")
+            .Produces<WalletDto>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status409Conflict);
 
         // GET /api/v1/wallets - List wallets for current user
         walletGroup.MapGet("/", ListWallets)
             .WithName("ListWallets")
             .WithSummary("List wallets for current user")
-            .WithDescription("Retrieve all wallets owned by the current user in the current tenant");
+            .WithDescription("Retrieve all wallets owned by the current user in the current tenant")
+            .Produces<IEnumerable<WalletDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // GET /api/v1/wallets/{address} - Get wallet by address
         walletGroup.MapGet("/{address}", GetWallet)
             .WithName("GetWallet")
             .WithSummary("Get wallet by address")
-            .WithDescription("Retrieve detailed information about a specific wallet");
+            .WithDescription("Retrieve detailed information about a specific wallet")
+            .Produces<WalletDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
 
         // PATCH /api/v1/wallets/{address} - Update wallet metadata
         walletGroup.MapPatch("/{address}", UpdateWallet)
             .WithName("UpdateWallet")
             .WithSummary("Update wallet metadata")
-            .WithDescription("Update wallet name and tags");
+            .WithDescription("Update wallet name and tags")
+            .Produces<WalletDto>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // DELETE /api/v1/wallets/{address} - Delete wallet (soft delete)
         walletGroup.MapDelete("/{address}", DeleteWallet)
             .WithName("DeleteWallet")
             .WithSummary("Delete wallet")
-            .WithDescription("Soft delete a wallet (can be recovered by support)");
+            .WithDescription("Soft delete a wallet (can be recovered by support)")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/sign - Sign transaction
         walletGroup.MapPost("/{address}/sign", SignTransaction)
             .WithName("SignTransaction")
             .WithSummary("Sign a transaction")
-            .WithDescription("Sign transaction data with the wallet's private key");
+            .WithDescription("Sign transaction data with the wallet's private key")
+            .Produces<SignTransactionResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/decrypt - Decrypt payload
         walletGroup.MapPost("/{address}/decrypt", DecryptPayload)
             .WithName("DecryptPayload")
             .WithSummary("Decrypt a payload")
-            .WithDescription("Decrypt an encrypted payload using the wallet's private key");
+            .WithDescription("Decrypt an encrypted payload using the wallet's private key")
+            .Produces<DecryptPayloadResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/encrypt - Encrypt payload
         walletGroup.MapPost("/{address}/encrypt", EncryptPayload)
             .WithName("EncryptPayload")
             .WithSummary("Encrypt a payload")
-            .WithDescription("Encrypt a payload for a recipient wallet using their public key");
+            .WithDescription("Encrypt a payload for a recipient wallet using their public key")
+            .Produces<EncryptPayloadResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/addresses - Register derived address
         walletGroup.MapPost("/{address}/addresses", RegisterDerivedAddress)
@@ -99,61 +134,95 @@ public static class WalletEndpoints
             .WithSummary("Register a client-derived HD address")
             .WithDescription("Register an HD wallet address that was derived client-side. " +
                 "The client must derive the address using their mnemonic and provide the public key and derivation path. " +
-                "This maintains security by never storing the mnemonic on the server.");
+                "This maintains security by never storing the mnemonic on the server.")
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         // GET /api/v1/wallets/{address}/addresses - List derived addresses
         walletGroup.MapGet("/{address}/addresses", ListAddresses)
             .WithName("ListAddresses")
             .WithSummary("List wallet addresses")
-            .WithDescription("List all derived addresses for a wallet with optional filtering by type (receive/change), used status, account, and labels");
+            .WithDescription("List all derived addresses for a wallet with optional filtering by type (receive/change), used status, account, and labels")
+            .Produces<AddressListResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/v1/wallets/{address}/addresses/{id} - Get specific address
         walletGroup.MapGet("/{address}/addresses/{id:guid}", GetAddress)
             .WithName("GetAddress")
             .WithSummary("Get address by ID")
-            .WithDescription("Retrieve detailed information about a specific derived address");
+            .WithDescription("Retrieve detailed information about a specific derived address")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // PATCH /api/v1/wallets/{address}/addresses/{id} - Update address metadata
         walletGroup.MapPatch("/{address}/addresses/{id:guid}", UpdateAddress)
             .WithName("UpdateAddress")
             .WithSummary("Update address metadata")
-            .WithDescription("Update address label, notes, tags, and metadata");
+            .WithDescription("Update address label, notes, tags, and metadata")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/addresses/{id}/mark-used - Mark address as used
         walletGroup.MapPost("/{address}/addresses/{id:guid}/mark-used", MarkAddressAsUsed)
             .WithName("MarkAddressAsUsed")
             .WithSummary("Mark address as used")
-            .WithDescription("Mark an address as used (received a transaction). Updates gap limit calculations.");
+            .WithDescription("Mark an address as used (received a transaction). Updates gap limit calculations.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/v1/wallets/{address}/accounts - List accounts
         walletGroup.MapGet("/{address}/accounts", ListAccounts)
             .WithName("ListAccounts")
             .WithSummary("List BIP44 accounts")
-            .WithDescription("List all BIP44 accounts for this wallet with address counts and gap status");
+            .WithDescription("List all BIP44 accounts for this wallet with address counts and gap status")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/v1/wallets/{address}/gap-status - Get gap limit status
         walletGroup.MapGet("/{address}/gap-status", GetGapStatus)
             .WithName("GetGapStatus")
             .WithSummary("Get gap limit status")
-            .WithDescription("Check BIP44 gap limit compliance for all accounts. Shows unused address counts and warnings.");
+            .WithDescription("Check BIP44 gap limit compliance for all accounts. Shows unused address counts and warnings.")
+            .Produces<GapStatusResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/{address}/encapsulate - PQC key encapsulation
         walletGroup.MapPost("/{address}/encapsulate", EncapsulateKey)
             .WithName("EncapsulateKey")
             .WithSummary("Encapsulate a shared secret using PQC key")
-            .WithDescription("Performs ML-KEM-768 key encapsulation with the recipient's PQC public key, returning ciphertext and the encrypted payload.");
+            .WithDescription("Performs ML-KEM-768 key encapsulation with the recipient's PQC public key, returning ciphertext and the encrypted payload.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         // POST /api/v1/wallets/{address}/decapsulate - PQC key decapsulation
         walletGroup.MapPost("/{address}/decapsulate", DecapsulateKey)
             .WithName("DecapsulateKey")
             .WithSummary("Decapsulate a shared secret using PQC private key")
-            .WithDescription("Performs ML-KEM-768 key decapsulation to recover the shared secret and decrypt the payload.");
+            .WithDescription("Performs ML-KEM-768 key decapsulation to recover the shared secret and decrypt the payload.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/v1/wallets/verify - Verify a signature (service-to-service)
         walletGroup.MapPost("/verify", VerifySignature)
             .WithName("VerifySignature")
             .WithSummary("Verify a cryptographic signature")
-            .WithDescription("Verify a signature against data using the provided public key and algorithm. Used by services for wallet link verification.");
+            .WithDescription("Verify a signature against data using the provided public key and algorithm. Used by services for wallet link verification.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
     }

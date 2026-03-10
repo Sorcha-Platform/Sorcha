@@ -30,42 +30,67 @@ public static class CredentialEndpoints
         credentialGroup.MapGet("/", ListCredentials)
             .WithName("ListCredentials")
             .WithSummary("List all credentials for a wallet")
-            .WithDescription("Returns all active verifiable credentials stored in the specified wallet.");
+            .WithDescription("Returns all active verifiable credentials stored in the specified wallet.")
+            .Produces<IEnumerable<object>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         credentialGroup.MapGet("/{credentialId}", GetCredential)
             .WithName("GetCredential")
             .WithSummary("Get a credential by ID")
-            .WithDescription("Returns a specific credential by its DID URI identifier.");
+            .WithDescription("Returns a specific credential by its DID URI identifier.")
+            .Produces<CredentialEntity>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/match", MatchCredentials)
             .WithName("MatchCredentials")
             .WithSummary("Match credentials against requirements")
-            .WithDescription("Finds stored credentials that satisfy the given credential requirements.");
+            .WithDescription("Finds stored credentials that satisfy the given credential requirements.")
+            .Produces<IEnumerable<object>>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         credentialGroup.MapDelete("/{credentialId}", DeleteCredential)
             .WithName("DeleteCredential")
             .WithSummary("Delete a credential from wallet")
-            .WithDescription("Permanently removes a credential from the wallet store.");
+            .WithDescription("Permanently removes a credential from the wallet store.")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapGet("/{credentialId}/export", ExportCredential)
             .WithName("ExportCredential")
             .WithSummary("Export a credential as SD-JWT VC")
-            .WithDescription("Returns the raw SD-JWT VC token for use in presentations.");
+            .WithDescription("Returns the raw SD-JWT VC token for use in presentations.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/", StoreCredential)
             .WithName("StoreCredential")
             .WithSummary("Store a credential in a wallet")
-            .WithDescription("Stores a pre-issued verifiable credential in the specified wallet.");
+            .WithDescription("Stores a pre-issued verifiable credential in the specified wallet.")
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         credentialGroup.MapPatch("/{credentialId}/status", UpdateCredentialStatus)
             .WithName("UpdateCredentialStatus")
             .WithSummary("Update a credential's status")
-            .WithDescription("Updates the status of a credential (e.g., Active → Revoked).");
+            .WithDescription("Updates the status of a credential (e.g., Active \u2192 Revoked).")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         credentialGroup.MapPost("/issue", IssueCredential)
             .WithName("IssueCredential")
             .WithSummary("Issue a new credential using the wallet's signing key")
-            .WithDescription("Creates and signs a new SD-JWT VC credential using the wallet's private key, stores it, and returns the issued credential.");
+            .WithDescription("Creates and signs a new SD-JWT VC credential using the wallet's private key, stores it, and returns the issued credential.")
+            .Produces<IssuedCredentialResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
 
         return app;
     }
