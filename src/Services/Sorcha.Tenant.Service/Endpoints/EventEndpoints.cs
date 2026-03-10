@@ -21,27 +21,63 @@ public static class EventEndpoints
 
         group.MapGet("/", GetEvents)
             .WithName("GetEvents")
-            .WithSummary("Get activity events for the authenticated user");
+            .WithSummary("Get activity events for the authenticated user")
+            .WithDescription(
+                "Returns paginated activity events for the authenticated user. " +
+                "Supports filtering by severity (Info, Warning, Error, Critical), unread-only flag, " +
+                "and events since a specific timestamp. Default page size is 50.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/unread-count", GetUnreadCount)
             .WithName("GetUnreadCount")
-            .WithSummary("Get unread event count");
+            .WithSummary("Get unread event count")
+            .WithDescription(
+                "Returns the count of unread activity events for the authenticated user. " +
+                "Useful for notification badge indicators in the UI.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/mark-read", MarkRead)
             .WithName("MarkEventsRead")
-            .WithSummary("Mark events as read");
+            .WithSummary("Mark events as read")
+            .WithDescription(
+                "Marks activity events as read. If EventIds array is provided, marks only those events. " +
+                "If EventIds is null or empty, marks all events as read for the authenticated user.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/", CreateEvent)
             .WithName("CreateEvent")
-            .WithSummary("Create an activity event (service-to-service)");
+            .WithSummary("Create an activity event (service-to-service)")
+            .WithDescription(
+                "Creates a new activity event targeted at a specific user. " +
+                "Intended for service-to-service calls to notify users of system events. " +
+                "Requires service token authentication.")
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/admin", GetAdminEvents)
             .WithName("GetAdminEvents")
-            .WithSummary("Get events for all users in organisation (admin only)");
+            .WithSummary("Get events for all users in organisation (admin only)")
+            .WithDescription(
+                "Returns paginated activity events for all users in the authenticated admin's organisation. " +
+                "Supports filtering by user ID, severity, and timestamp. " +
+                "Requires Administrator or SystemAdmin role.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
 
         group.MapDelete("/{id:guid}", DeleteEvent)
             .WithName("DeleteEvent")
-            .WithSummary("Delete a specific event");
+            .WithSummary("Delete a specific event")
+            .WithDescription(
+                "Deletes an activity event by ID. Only the event owner can delete their own events. " +
+                "Returns 404 if the event does not exist or belongs to another user.")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> GetEvents(
