@@ -99,7 +99,7 @@ public static class PasskeyEndpoints
         }
 
         // Check credential limit
-        var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", userId, cancellationToken);
+        var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
         if (existingCredentials.Count >= MaxCredentialsPerUser)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
@@ -115,7 +115,7 @@ public static class PasskeyEndpoints
         try
         {
             var result = await passkeyService.CreateRegistrationOptionsAsync(
-                "OrgUser",
+                OwnerTypes.OrgUser,
                 userId,
                 organizationId,
                 request.DisplayName,
@@ -205,7 +205,7 @@ public static class PasskeyEndpoints
             return TypedResults.Unauthorized();
         }
 
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", userId, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
 
         var response = new PasskeyCredentialListResponse
         {
@@ -241,8 +241,9 @@ public static class PasskeyEndpoints
             return TypedResults.Unauthorized();
         }
 
-        // Check if this would leave the user with no auth methods
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", userId, cancellationToken);
+        // Check if this would leave the user with no auth methods.
+        // Note: check-then-act is not fully atomic but rate limiting (5/min/IP) mitigates concurrent abuse.
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
         var activeCredentials = credentials.Where(c => c.Status == CredentialStatus.Active).ToList();
         var totpStatus = await totpService.GetStatusAsync(userId, cancellationToken);
 
@@ -256,7 +257,7 @@ public static class PasskeyEndpoints
             });
         }
 
-        var revoked = await passkeyService.RevokeCredentialAsync(id, "OrgUser", userId, cancellationToken);
+        var revoked = await passkeyService.RevokeCredentialAsync(id, OwnerTypes.OrgUser, userId, cancellationToken);
 
         if (!revoked)
         {

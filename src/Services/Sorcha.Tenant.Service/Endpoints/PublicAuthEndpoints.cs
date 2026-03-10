@@ -22,6 +22,12 @@ namespace Sorcha.Tenant.Service.Endpoints;
 public static class PublicAuthEndpoints
 {
     /// <summary>
+    /// Rate limiter policy name for public authentication endpoints.
+    /// Limits to 5 attempts per minute per IP to prevent brute-force attacks.
+    /// </summary>
+    internal const string PublicAuthRateLimitPolicy = "public-auth";
+
+    /// <summary>
     /// Maps public authentication endpoints to the application.
     /// </summary>
     public static IEndpointRouteBuilder MapPublicAuthEndpoints(this IEndpointRouteBuilder app)
@@ -37,6 +43,7 @@ public static class PublicAuthEndpoints
                 + "If an email is provided and already in use, returns 409 Conflict. "
                 + "Returns a transaction ID and challenge options to pass to the browser WebAuthn API.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<PasskeyRegistrationOptionsResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status409Conflict);
@@ -48,6 +55,7 @@ public static class PublicAuthEndpoints
                 + "with the registered passkey credential, and issues a JWT. "
                 + "The transaction ID must match a pending registration challenge.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<PublicTokenResponse>()
             .ProducesValidationProblem();
 
@@ -62,6 +70,7 @@ public static class PublicAuthEndpoints
                 + "Optionally accepts an email to narrow allowed credentials for non-discoverable flow. "
                 + "Returns a transaction ID and challenge options to pass to the browser WebAuthn API.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<PasskeyAssertionOptionsResponse>()
             .ProducesValidationProblem();
 
@@ -72,6 +81,7 @@ public static class PublicAuthEndpoints
                 + "Works for both public users and organization users — the owner type is determined "
                 + "from the credential's registration data.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<PublicTokenResponse>()
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
@@ -88,6 +98,7 @@ public static class PublicAuthEndpoints
                 + "The client should redirect the user to the returned URL. "
                 + "Uses PKCE and state parameter for security.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<SocialInitiateResponse>()
             .ProducesValidationProblem();
 
@@ -98,6 +109,7 @@ public static class PublicAuthEndpoints
                 + "creates or links a public user account, and issues a JWT. "
                 + "Returns isNewUser=true for new accounts, false for existing accounts with newly linked social login.")
             .AllowAnonymous()
+            .RequireRateLimiting(PublicAuthRateLimitPolicy)
             .Produces<PublicTokenResponse>()
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
@@ -192,7 +204,7 @@ public static class PublicAuthEndpoints
             var tempUserId = Guid.NewGuid();
 
             var result = await passkeyService.CreateRegistrationOptionsAsync(
-                "PublicIdentity",
+                OwnerTypes.PublicIdentity,
                 tempUserId,
                 organizationId: null,
                 request.DisplayName,
@@ -332,7 +344,7 @@ public static class PublicAuthEndpoints
                 if (publicUser is not null)
                 {
                     var publicCredentials = await passkeyService.GetCredentialsByOwnerAsync(
-                        "PublicIdentity", publicUser.Id, cancellationToken);
+                        OwnerTypes.PublicIdentity, publicUser.Id, cancellationToken);
                     allowedCredentialIds.AddRange(publicCredentials
                         .Where(c => c.Status == CredentialStatus.Active)
                         .Select(c => c.CredentialId));
@@ -343,7 +355,7 @@ public static class PublicAuthEndpoints
                 if (orgUser is not null)
                 {
                     var orgCredentials = await passkeyService.GetCredentialsByOwnerAsync(
-                        "OrgUser", orgUser.Id, cancellationToken);
+                        OwnerTypes.OrgUser, orgUser.Id, cancellationToken);
                     allowedCredentialIds.AddRange(orgCredentials
                         .Where(c => c.Status == CredentialStatus.Active)
                         .Select(c => c.CredentialId));
@@ -405,7 +417,7 @@ public static class PublicAuthEndpoints
                 request.AssertionResponse,
                 cancellationToken);
 
-            if (assertionResult.OwnerType == "PublicIdentity")
+            if (assertionResult.OwnerType == OwnerTypes.PublicIdentity)
             {
                 // Public user sign-in
                 var publicUser = await publicUserService.GetPublicUserByIdAsync(
@@ -419,7 +431,7 @@ public static class PublicAuthEndpoints
                     return TypedResults.Unauthorized();
                 }
 
-                if (publicUser.Status != "Active")
+                if (publicUser.Status != nameof(IdentityStatus.Active))
                 {
                     logger.LogWarning(
                         "Passkey assertion for suspended/deleted public user: {UserId}",
@@ -443,7 +455,7 @@ public static class PublicAuthEndpoints
                     IsNewUser = false
                 });
             }
-            else if (assertionResult.OwnerType == "OrgUser")
+            else if (assertionResult.OwnerType == OwnerTypes.OrgUser)
             {
                 // Organization user sign-in
                 var orgUser = await identityRepository.GetUserByIdAsync(
@@ -504,11 +516,36 @@ public static class PublicAuthEndpoints
     }
 
     /// <summary>
+    /// Validates that a redirect URI is on the configured allowlist.
+    /// Prevents open-redirect attacks by ensuring OAuth callbacks only go to trusted domains.
+    /// </summary>
+    private static bool IsRedirectUriAllowed(string redirectUri, IConfiguration configuration)
+    {
+        var allowedOrigins = configuration.GetSection("SocialLogin:AllowedRedirectOrigins").Get<string[]>();
+
+        // If no allowlist configured, only allow same-origin (relative paths)
+        if (allowedOrigins is null || allowedOrigins.Length == 0)
+        {
+            return redirectUri.StartsWith('/');
+        }
+
+        if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri))
+        {
+            return redirectUri.StartsWith('/'); // Allow relative paths
+        }
+
+        var origin = $"{uri.Scheme}://{uri.Authority}";
+        return allowedOrigins.Any(allowed =>
+            string.Equals(origin, allowed, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// POST /api/auth/public/social/initiate — generate social login authorization URL.
     /// </summary>
     private static async Task<IResult> SocialInitiate(
         SocialInitiateRequest request,
         ISocialLoginService socialLoginService,
+        IConfiguration configuration,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -525,6 +562,14 @@ public static class PublicAuthEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["redirect_uri"] = ["Redirect URI is required"]
+            });
+        }
+
+        if (!IsRedirectUriAllowed(request.RedirectUri, configuration))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["redirect_uri"] = ["Redirect URI is not on the allowed origins list"]
             });
         }
 
@@ -690,7 +735,7 @@ public static class PublicAuthEndpoints
         }
 
         var credentials = await passkeyService.GetCredentialsByOwnerAsync(
-            "PublicIdentity", userId.Value, cancellationToken);
+            OwnerTypes.PublicIdentity, userId.Value, cancellationToken);
 
         var passkeys = credentials
             .Where(c => c.Status == CredentialStatus.Active)
@@ -735,6 +780,7 @@ public static class PublicAuthEndpoints
         SocialInitiateRequest request,
         HttpContext context,
         ISocialLoginService socialLoginService,
+        IConfiguration configuration,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -757,6 +803,14 @@ public static class PublicAuthEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["redirect_uri"] = ["Redirect URI is required"]
+            });
+        }
+
+        if (!IsRedirectUriAllowed(request.RedirectUri, configuration))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["redirect_uri"] = ["Redirect URI is not on the allowed origins list"]
             });
         }
 
@@ -857,14 +911,14 @@ public static class PublicAuthEndpoints
         {
             // Get existing credential IDs to exclude from re-registration
             var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync(
-                "PublicIdentity", userId.Value, cancellationToken);
+                OwnerTypes.PublicIdentity, userId.Value, cancellationToken);
             var existingCredentialIds = existingCredentials
                 .Where(c => c.Status == CredentialStatus.Active)
                 .Select(c => c.CredentialId)
                 .ToList();
 
             var result = await passkeyService.CreateRegistrationOptionsAsync(
-                "PublicIdentity",
+                OwnerTypes.PublicIdentity,
                 userId.Value,
                 organizationId: null,
                 request.DisplayName,

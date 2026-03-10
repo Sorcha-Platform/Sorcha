@@ -51,6 +51,12 @@ public class SocialProviderConfig
     /// OAuth2 scopes to request.
     /// </summary>
     public List<string> Scopes { get; set; } = ["openid", "email", "profile"];
+
+    /// <summary>
+    /// Whether this provider supports PKCE (RFC 7636). GitHub does not support PKCE.
+    /// Defaults to true for OIDC-compliant providers (Google, Microsoft, Apple).
+    /// </summary>
+    public bool SupportsPkce { get; set; } = true;
 }
 
 /// <summary>
@@ -115,6 +121,12 @@ public class SocialLoginService : ISocialLoginService
         {
             if (!string.IsNullOrWhiteSpace(config.Name))
             {
+                // GitHub does not support PKCE — override default if not explicitly configured
+                if (string.Equals(config.Name, "GitHub", StringComparison.OrdinalIgnoreCase))
+                {
+                    config.SupportsPkce = false;
+                }
+
                 _providers[config.Name] = config;
             }
         }
@@ -132,9 +144,12 @@ public class SocialLoginService : ISocialLoginService
         var config = GetProviderConfig(provider);
         var (authEndpoint, _, _) = GetEndpoints(provider, config);
 
-        // Generate PKCE code verifier and challenge
-        var codeVerifier = GenerateCodeVerifier();
-        var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        // Generate PKCE code verifier and challenge (only for providers that support it)
+        string? codeVerifier = null;
+        if (config.SupportsPkce)
+        {
+            codeVerifier = GenerateCodeVerifier();
+        }
 
         // Generate state for CSRF protection
         var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
@@ -162,9 +177,15 @@ public class SocialLoginService : ISocialLoginService
             $"&redirect_uri={Uri.EscapeDataString(redirectUri)}" +
             $"&response_type=code" +
             $"&scope={Uri.EscapeDataString(scopes)}" +
-            $"&state={Uri.EscapeDataString(state)}" +
-            $"&code_challenge={Uri.EscapeDataString(codeChallenge)}" +
-            $"&code_challenge_method=S256";
+            $"&state={Uri.EscapeDataString(state)}";
+
+        // Append PKCE parameters only for providers that support it (GitHub does not)
+        if (config.SupportsPkce && codeVerifier is not null)
+        {
+            var codeChallenge = GenerateCodeChallenge(codeVerifier);
+            authUrl += $"&code_challenge={Uri.EscapeDataString(codeChallenge)}" +
+                       $"&code_challenge_method=S256";
+        }
 
         _logger.LogInformation("Social login authorization URL generated for provider {Provider}", provider);
 
@@ -268,7 +289,7 @@ public class SocialLoginService : ISocialLoginService
         string tokenEndpoint,
         string code,
         string redirectUri,
-        string codeVerifier,
+        string? codeVerifier,
         CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient();
@@ -280,8 +301,13 @@ public class SocialLoginService : ISocialLoginService
             ["redirect_uri"] = redirectUri,
             ["client_id"] = config.ClientId,
             ["client_secret"] = config.ClientSecret,
-            ["code_verifier"] = codeVerifier,
         };
+
+        // Only include code_verifier if PKCE was used
+        if (!string.IsNullOrEmpty(codeVerifier))
+        {
+            parameters["code_verifier"] = codeVerifier;
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
         {
@@ -486,7 +512,7 @@ public class SocialLoginService : ISocialLoginService
 
     private record SocialStateData
     {
-        public string CodeVerifier { get; init; } = string.Empty;
+        public string? CodeVerifier { get; init; }
         public string RedirectUri { get; init; } = string.Empty;
         public string Provider { get; init; } = string.Empty;
     }

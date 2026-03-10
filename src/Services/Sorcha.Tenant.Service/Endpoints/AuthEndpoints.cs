@@ -242,7 +242,7 @@ public static class AuthEndpoints
 
             // Check if user has TOTP 2FA or passkeys enabled
             var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);
-            var passkeys = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", user.Id, cancellationToken);
+            var passkeys = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, user.Id, cancellationToken);
             var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
 
             if (totpStatus.IsEnabled || hasActivePasskeys)
@@ -647,7 +647,7 @@ public static class AuthEndpoints
         }
 
         // Get user's active passkey credentials
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync("OrgUser", userId.Value, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId.Value, cancellationToken);
         var activeCredentialIds = credentials
             .Where(c => c.Status == CredentialStatus.Active)
             .Select(c => c.CredentialId)

@@ -269,7 +269,7 @@ public record TwoFactorLoginResponse
     /// Available two-factor authentication methods for the user (e.g., "totp", "passkey").
     /// </summary>
     [JsonPropertyName("available_methods")]
-    public string[] AvailableMethods { get; init; } = ["totp"];
+    public string[] AvailableMethods { get; init; } = [];
 
     /// <summary>
     /// Human-readable message.

@@ -257,7 +257,15 @@ public class PasskeyService : IPasskeyService
             OriginalOptions = originalOptions,
             StoredPublicKey = credential.PublicKeyCose,
             StoredSignatureCounter = (uint)credential.SignatureCounter,
-            IsUserHandleOwnerOfCredentialIdCallback = (args, ct) => Task.FromResult(true)
+            IsUserHandleOwnerOfCredentialIdCallback = (args, ct) =>
+            {
+                // Verify the userHandle from the authenticator matches the credential owner
+                if (args.UserHandle is null || args.UserHandle.Length == 0)
+                    return Task.FromResult(true); // Non-discoverable flow: no userHandle to verify
+
+                var claimedOwnerId = new Guid(args.UserHandle);
+                return Task.FromResult(claimedOwnerId == credential.OwnerId);
+            }
         }, cancellationToken);
 
         // Cloned authenticator detection: counter regression
