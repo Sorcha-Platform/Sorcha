@@ -525,7 +525,7 @@ app.MapGet("/gateway", async (HealthAggregationService healthService, DashboardS
 // OpenAPI Documentation
 // ===========================
 
-// Gateway's own OpenAPI
+// Gateway's own OpenAPI spec
 app.MapOpenApi();
 
 // Aggregated OpenAPI from all services
@@ -539,8 +539,8 @@ app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiS
 .WithTags("Documentation")
 .ExcludeFromDescription();
 
-// Scalar UI for aggregated documentation
-app.MapScalarApiReference(options =>
+// Scalar UI at /openapi — access controlled by OpenApi:RequireAuth config
+app.MapScalarApiReference("/openapi", options =>
 {
     options
         .WithTitle("Sorcha API Gateway - All Services")
@@ -548,13 +548,6 @@ app.MapScalarApiReference(options =>
         .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient)
         .WithOpenApiRoutePattern("/openapi/aggregated.json");
 });
-
-// Scalar UI for gateway-only documentation
-app.MapGet("/scalar/gateway", () =>
-{
-    return Results.Redirect("/scalar/v1");
-})
-.ExcludeFromDescription();
 
 // URL resolution middleware — resolves org subdomain from path/subdomain/custom domain
 app.UseMiddleware<UrlResolutionMiddleware>();
