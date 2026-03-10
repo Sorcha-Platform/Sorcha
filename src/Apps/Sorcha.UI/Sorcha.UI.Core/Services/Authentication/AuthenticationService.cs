@@ -92,21 +92,10 @@ public class AuthenticationService : IAuthenticationService
             throw new InvalidOperationException($"Profile '{profileName}' not found");
         }
 
-        var formData = new Dictionary<string, string>
-        {
-            ["username"] = request.Username,
-            ["password"] = request.Password,
-            ["grant_type"] = request.GrantType,
-            ["client_id"] = "sorcha-ui-web"
-        };
-
-        var tokenUrl = profile.GetAuthTokenUrl();
-        if (string.IsNullOrEmpty(tokenUrl))
-        {
-            tokenUrl = "/api/service-auth/token";
-        }
-
-        var response = await _httpClient.PostAsync(tokenUrl, new FormUrlEncodedContent(formData));
+        // POST to /api/auth/login which returns TwoFactorLoginResponse when 2FA is required.
+        // Do NOT use /api/service-auth/token — that endpoint skips 2FA entirely.
+        var loginPayload = new { email = request.Username, password = request.Password };
+        var response = await _httpClient.PostAsJsonAsync("/api/auth/login", loginPayload);
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync();

@@ -88,12 +88,16 @@ public class IdentityRepository : IIdentityRepository
     public async Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.PublicIdentities
+            .Include(p => p.PasskeyCredentials)
+            .Include(p => p.SocialLoginLinks)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
     }
 
     public async Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         return await _context.PublicIdentities
+            .Include(p => p.PasskeyCredentials)
+            .Include(p => p.SocialLoginLinks)
             .FirstOrDefaultAsync(p => p.Email == email, cancellationToken);
     }
 
@@ -106,6 +110,8 @@ public class IdentityRepository : IIdentityRepository
             return null;
 
         return await _context.PublicIdentities
+            .Include(p => p.PasskeyCredentials)
+            .Include(p => p.SocialLoginLinks)
             .FirstOrDefaultAsync(p => p.Id == credential.OwnerId, cancellationToken);
     }
 
