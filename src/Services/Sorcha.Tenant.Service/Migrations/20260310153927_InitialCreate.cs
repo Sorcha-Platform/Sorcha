@@ -165,14 +165,43 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PasskeyCredentials",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    CredentialId = table.Column<byte[]>(type: "bytea", nullable: false),
+                    PublicKeyCose = table.Column<byte[]>(type: "bytea", nullable: false),
+                    SignatureCounter = table.Column<long>(type: "bigint", nullable: false),
+                    OwnerType = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: true),
+                    DisplayName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    DeviceType = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    AttestationType = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    AaGuid = table.Column<Guid>(type: "uuid", nullable: false),
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastUsedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    DisabledAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    DisabledReason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PasskeyCredentials", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PublicIdentities",
                 schema: "public",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    PassKeyCredentialId = table.Column<byte[]>(type: "bytea", nullable: false),
-                    PublicKeyCose = table.Column<byte[]>(type: "bytea", nullable: false),
-                    SignatureCounter = table.Column<int>(type: "integer", nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    Email = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: true),
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    EmailVerified = table.Column<bool>(type: "boolean", nullable: false),
+                    EmailVerifiedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     DeviceType = table.Column<string>(type: "text", nullable: true),
                     RegisteredAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     LastUsedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
@@ -420,6 +449,32 @@ namespace Sorcha.Tenant.Service.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "SocialLoginLinks",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    PublicIdentityId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ProviderType = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    ExternalSubjectId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    LinkedEmail = table.Column<string>(type: "character varying(320)", maxLength: 320, nullable: true),
+                    DisplayName = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastUsedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SocialLoginLinks", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SocialLoginLinks_PublicIdentities_PublicIdentityId",
+                        column: x => x.PublicIdentityId,
+                        principalSchema: "public",
+                        principalTable: "PublicIdentities",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_ActivityEvent_ExpiresAt",
                 schema: "public",
@@ -579,11 +634,35 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_PublicIdentities_PassKeyCredentialId",
+                name: "IX_PasskeyCredential_OrgId",
+                schema: "public",
+                table: "PasskeyCredentials",
+                column: "OrganizationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasskeyCredential_Owner",
+                schema: "public",
+                table: "PasskeyCredentials",
+                columns: new[] { "OwnerType", "OwnerId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasskeyCredential_OwnerId_Status",
+                schema: "public",
+                table: "PasskeyCredentials",
+                columns: new[] { "OwnerId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasskeyCredentials_CredentialId",
+                schema: "public",
+                table: "PasskeyCredentials",
+                column: "CredentialId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PublicIdentities_Email",
                 schema: "public",
                 table: "PublicIdentities",
-                column: "PassKeyCredentialId",
-                unique: true);
+                column: "Email");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PushSubscription_UserId",
@@ -610,6 +689,19 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "ServicePrincipals",
                 column: "ServiceName",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SocialLogin_PublicIdentityId",
+                schema: "public",
+                table: "SocialLoginLinks",
+                column: "PublicIdentityId");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_SocialLogin_Provider_Subject",
+                schema: "public",
+                table: "SocialLoginLinks",
+                columns: new[] { "ProviderType", "ExternalSubjectId" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -702,7 +794,7 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
-                name: "PublicIdentities",
+                name: "PasskeyCredentials",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -711,6 +803,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "ServicePrincipals",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "SocialLoginLinks",
                 schema: "public");
 
             migrationBuilder.DropTable(
@@ -735,6 +831,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "Organizations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "PublicIdentities",
                 schema: "public");
 
             migrationBuilder.DropTable(

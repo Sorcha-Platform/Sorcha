@@ -66,6 +66,7 @@ public class SocialProviderConfig
 /// </summary>
 public class SocialLoginService : ISocialLoginService
 {
+    private const string GitHubUserEmailsEndpoint = "https://api.github.com/user/emails";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(10);
 
     private static readonly Dictionary<string, (string Auth, string Token, string UserInfo)> WellKnownEndpoints = new(StringComparer.OrdinalIgnoreCase)
@@ -400,7 +401,7 @@ public class SocialLoginService : ISocialLoginService
         string? email = null;
         try
         {
-            using var emailResponse = await client.GetAsync("https://api.github.com/user/emails", cancellationToken);
+            using var emailResponse = await client.GetAsync(GitHubUserEmailsEndpoint, cancellationToken);
             if (emailResponse.IsSuccessStatusCode)
             {
                 var emailJson = await emailResponse.Content.ReadAsStringAsync(cancellationToken);
@@ -457,8 +458,10 @@ public class SocialLoginService : ISocialLoginService
 
     private static IdTokenClaims? ParseIdTokenClaims(string idToken)
     {
-        // Decode the JWT payload (second segment) without validation
-        // Token signature was already validated by the provider during the exchange
+        // Decode the JWT payload (second segment) without cryptographic signature validation.
+        // Trust boundary: the id_token was received directly from the provider's token endpoint
+        // over TLS in ExchangeCodeForTokensAsync, so the transport provides integrity assurance.
+        // Full JWKS-based signature validation would add defense-in-depth but is not implemented.
         var parts = idToken.Split('.');
         if (parts.Length < 2)
         {

@@ -166,6 +166,7 @@ public static class PasskeyEndpoints
             var credential = await passkeyService.VerifyRegistrationAsync(
                 request.TransactionId,
                 request.AttestationResponse,
+                persist: true,
                 cancellationToken);
 
             logger.LogInformation("Passkey credential registered for user {UserId}: {CredentialId}",

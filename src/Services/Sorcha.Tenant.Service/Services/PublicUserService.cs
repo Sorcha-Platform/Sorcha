@@ -63,11 +63,11 @@ public class PublicUserService : IPublicUserService
         };
 
         // Link the passkey credential to this identity
-        credential.OwnerType = "PublicIdentity";
+        credential.OwnerType = OwnerTypes.PublicIdentity;
         credential.OwnerId = identity.Id;
-        identity.PasskeyCredentials.Add(credential);
 
-        var created = await _identityRepository.CreatePublicIdentityAsync(identity, cancellationToken);
+        // Save identity and credential in a single transaction
+        var created = await _identityRepository.CreatePublicIdentityAsync(identity, credential, cancellationToken);
 
         _logger.LogInformation("Public user created: {UserId} with display name {DisplayName}",
             created.Id, created.DisplayName);
@@ -131,7 +131,7 @@ public class PublicUserService : IPublicUserService
         socialLoginLink.PublicIdentityId = identity.Id;
         identity.SocialLoginLinks.Add(socialLoginLink);
 
-        var created = await _identityRepository.CreatePublicIdentityAsync(identity, cancellationToken);
+        var created = await _identityRepository.CreatePublicIdentityAsync(identity, credential: null, cancellationToken);
 
         _logger.LogInformation("Public user created from social login: {UserId} with provider {Provider}",
             created.Id, socialLoginLink.ProviderType);

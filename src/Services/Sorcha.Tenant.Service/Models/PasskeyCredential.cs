@@ -52,8 +52,9 @@ public class PasskeyCredential
     /// <summary>
     /// Signature counter for cloned authenticator detection.
     /// Increments on each authentication; regression indicates a cloned authenticator.
+    /// Stored as long to avoid lossy cast from FIDO2's uint SignCount.
     /// </summary>
-    public int SignatureCounter { get; set; } = 0;
+    public long SignatureCounter { get; set; } = 0;
 
     /// <summary>
     /// Type of the credential owner: "OrgUser" or "PublicIdentity".

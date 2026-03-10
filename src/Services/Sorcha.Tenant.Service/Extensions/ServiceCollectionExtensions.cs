@@ -232,11 +232,27 @@ public static class ServiceCollectionExtensions
     {
         var fido2Config = configuration.GetSection("Fido2");
 
+        var serverDomain = fido2Config["ServerDomain"];
+        var origins = fido2Config.GetSection("Origins").Get<HashSet<string>>();
+
+        if (string.IsNullOrWhiteSpace(serverDomain))
+        {
+            throw new InvalidOperationException(
+                "Fido2:ServerDomain configuration is required for WebAuthn passkey support.");
+        }
+
+        if (origins is null || origins.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Fido2:Origins configuration is required for WebAuthn passkey support. " +
+                "Specify at least one allowed origin URL.");
+        }
+
         services.AddFido2(options =>
         {
-            options.ServerDomain = fido2Config["ServerDomain"];
+            options.ServerDomain = serverDomain;
             options.ServerName = fido2Config["ServerName"];
-            options.Origins = fido2Config.GetSection("Origins").Get<HashSet<string>>();
+            options.Origins = origins;
             options.TimestampDriftTolerance = fido2Config.GetValue<int>("TimestampDriftTolerance", 300000);
         });
 

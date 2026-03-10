@@ -265,9 +265,12 @@ public static class PublicAuthEndpoints
         try
         {
             // Verify the attestation response and get the credential
+            // persist: false — the credential will be saved alongside the PublicIdentity
+            // in a single transaction by PublicUserService.CreatePublicUserAsync
             var credential = await passkeyService.VerifyRegistrationAsync(
                 request.TransactionId,
                 request.AttestationResponse,
+                persist: false,
                 cancellationToken);
 
             // Retrieve the email stored during the options step
@@ -980,6 +983,7 @@ public static class PublicAuthEndpoints
             var credential = await passkeyService.VerifyRegistrationAsync(
                 request.TransactionId,
                 request.AttestationResponse,
+                persist: false,
                 cancellationToken);
 
             logger.LogInformation(

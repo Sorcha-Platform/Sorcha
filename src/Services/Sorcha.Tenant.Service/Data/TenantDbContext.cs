@@ -269,10 +269,9 @@ public class TenantDbContext : DbContext
 
             entity.HasIndex(e => e.Email);
 
-            entity.HasMany(e => e.PasskeyCredentials)
-                .WithOne()
-                .HasForeignKey(e => e.OwnerId)
-                .OnDelete(DeleteBehavior.Restrict);
+            // PasskeyCredentials uses polymorphic OwnerId (points to PublicIdentity.Id or UserIdentity.Id).
+            // No EF FK constraint — lookups use the composite index on (OwnerType, OwnerId).
+            entity.Ignore(e => e.PasskeyCredentials);
 
             entity.HasMany(e => e.SocialLoginLinks)
                 .WithOne(e => e.PublicIdentity)

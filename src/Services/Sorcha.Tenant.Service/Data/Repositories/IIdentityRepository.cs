@@ -77,8 +77,9 @@ public interface IIdentityRepository
 
     /// <summary>
     /// Creates a new public identity (PassKey registration).
+    /// Optionally persists a passkey credential in the same transaction.
     /// </summary>
-    Task<PublicIdentity> CreatePublicIdentityAsync(PublicIdentity identity, CancellationToken cancellationToken = default);
+    Task<PublicIdentity> CreatePublicIdentityAsync(PublicIdentity identity, PasskeyCredential? credential = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates an existing public identity (e.g., signature counter).

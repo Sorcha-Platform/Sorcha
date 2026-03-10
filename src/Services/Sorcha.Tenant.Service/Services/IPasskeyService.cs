@@ -62,11 +62,13 @@ public interface IPasskeyService
     /// </summary>
     /// <param name="transactionId">Transaction ID from the registration options step.</param>
     /// <param name="attestationResponse">Raw attestation response from the browser/authenticator.</param>
+    /// <param name="persist">When true, persists the credential to the database. When false, returns an in-memory credential object.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The newly created and persisted passkey credential.</returns>
+    /// <returns>The newly created passkey credential.</returns>
     Task<PasskeyCredential> VerifyRegistrationAsync(
         string transactionId,
         AuthenticatorAttestationRawResponse attestationResponse,
+        bool persist = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>

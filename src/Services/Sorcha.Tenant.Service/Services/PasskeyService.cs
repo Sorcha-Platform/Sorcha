@@ -122,6 +122,7 @@ public class PasskeyService : IPasskeyService
     public async Task<PasskeyCredential> VerifyRegistrationAsync(
         string transactionId,
         AuthenticatorAttestationRawResponse attestationResponse,
+        bool persist = true,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Verifying passkey registration for transactionId={TransactionId}", transactionId);
@@ -159,7 +160,7 @@ public class PasskeyService : IPasskeyService
         {
             CredentialId = result.Id,
             PublicKeyCose = result.PublicKey,
-            SignatureCounter = (int)result.SignCount,
+            SignatureCounter = (long)result.SignCount,
             OwnerType = cacheEntry.OwnerType,
             OwnerId = cacheEntry.OwnerId,
             OrganizationId = cacheEntry.OrganizationId,
@@ -170,8 +171,11 @@ public class PasskeyService : IPasskeyService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        _db.PasskeyCredentials.Add(credential);
-        await _db.SaveChangesAsync(cancellationToken);
+        if (persist)
+        {
+            _db.PasskeyCredentials.Add(credential);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         _logger.LogInformation(
             "Passkey registered for {OwnerType} {OwnerId}, credentialId={CredentialId}",
@@ -286,7 +290,7 @@ public class PasskeyService : IPasskeyService
         }
 
         // Update counter and last used timestamp
-        credential.SignatureCounter = (int)assertionResult.SignCount;
+        credential.SignatureCounter = (long)assertionResult.SignCount;
         credential.LastUsedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
