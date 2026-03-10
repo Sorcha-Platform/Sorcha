@@ -19,42 +19,62 @@ public static class ValidatorRegistrationEndpoints
         group.MapPost("/register", RegisterValidator)
             .WithName("RegisterValidator")
             .WithSummary("Register as a validator for a register")
-            .WithDescription("Registers this validator node for participation in consensus. In public mode, registration is immediate. In consent mode, registration is pending until approved.");
+            .WithDescription("Registers this validator node for participation in consensus. In public mode, registration is immediate. In consent mode, registration is pending until approved.")
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{registerId}", GetValidators)
             .WithName("GetValidators")
             .WithSummary("Get validators for a register")
-            .WithDescription("Returns all active validators registered for the specified register");
+            .WithDescription("Returns all active validators registered for the specified register")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{registerId}/pending", GetPendingValidators)
             .WithName("GetPendingValidators")
             .WithSummary("Get pending validators awaiting approval")
-            .WithDescription("Returns validators with pending status awaiting approval (consent mode only)");
+            .WithDescription("Returns validators with pending status awaiting approval (consent mode only)")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{registerId}/{validatorId}", GetValidator)
             .WithName("GetValidator")
             .WithSummary("Get validator details")
-            .WithDescription("Returns details for a specific validator");
+            .WithDescription("Returns details for a specific validator")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{registerId}/count", GetValidatorCount)
             .WithName("GetValidatorCount")
             .WithSummary("Get active validator count")
-            .WithDescription("Returns the number of active validators for the register");
+            .WithDescription("Returns the number of active validators for the register")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/approve", ApproveValidator)
             .WithName("ApproveValidator")
             .WithSummary("Approve a pending validator")
-            .WithDescription("Approves a pending validator registration (consent mode only). Requires register owner authorization.");
+            .WithDescription("Approves a pending validator registration (consent mode only). Requires register owner authorization.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/{validatorId}/reject", RejectValidator)
             .WithName("RejectValidator")
             .WithSummary("Reject a pending validator")
-            .WithDescription("Rejects a pending validator registration (consent mode only). Requires register owner authorization.");
+            .WithDescription("Rejects a pending validator registration (consent mode only). Requires register owner authorization.")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/{registerId}/refresh", RefreshValidators)
             .WithName("RefreshValidators")
             .WithSummary("Refresh validator list from chain")
-            .WithDescription("Forces a refresh of the validator list from the transaction chain");
+            .WithDescription("Forces a refresh of the validator list from the transaction chain")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
 
         return group;
     }
