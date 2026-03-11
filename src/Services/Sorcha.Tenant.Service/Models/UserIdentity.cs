@@ -115,6 +115,19 @@ public class UserIdentity
     /// Whether the account requires administrator unlock (25+ failed attempts).
     /// </summary>
     public bool LockedPermanently { get; set; }
+
+    /// <summary>
+    /// SHA-256 hash of the password reset token.
+    /// Storing the hash prevents token compromise if the database is leaked.
+    /// Cleared after successful password reset (one-time use).
+    /// </summary>
+    public string? PasswordResetTokenHash { get; set; }
+
+    /// <summary>
+    /// Expiry timestamp for the password reset token (1 hour from generation).
+    /// Null when no reset is pending.
+    /// </summary>
+    public DateTime? PasswordResetTokenExpiresAt { get; set; }
 }
 
 /// <summary>
