@@ -1,12 +1,19 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 
+@inject NavigationManager NavigationManager
+
+<Sorcha.UI.Web.Client.Components.FragmentTokenHandler />
+
 <CascadingAuthenticationState>
     <Router AppAssembly="@typeof(Routes).Assembly">
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Components.Layout.MainLayout)">
                 <NotAuthorized>
-                    <Sorcha.UI.Web.Client.Components.RedirectToLogin />
+                    @{
+                        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
+                        NavigationManager.NavigateTo($"/auth/login?returnUrl={returnUrl}", forceLoad: true);
+                    }
                 </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
