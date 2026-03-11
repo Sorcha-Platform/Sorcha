@@ -55,6 +55,12 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Relax antiforgery cookie policy for test server (non-SSL)
+            services.Configure<Microsoft.AspNetCore.Antiforgery.AntiforgeryOptions>(options =>
+            {
+                options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.None;
+            });
+
             // Remove all EF Core related services to prevent provider conflicts
             var descriptorsToRemove = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<TenantDbContext>)
