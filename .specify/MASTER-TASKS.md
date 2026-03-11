@@ -138,6 +138,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | AUTH-009 | Social login provider testing with real credentials | P2 | 8h | 📋 | Feature 054 IdP config tested with mocks; needs real OAuth app credentials for each provider |
 | AUTH-010 | Load testing for OIDC token exchange flow | P2 | 8h | 📋 | Token exchange is latency-sensitive; needs production-scale load testing |
 | AUTH-011 | PassKey/WebAuthn authentication (Fido2NetLib) — org 2FA + public primary auth | P1 | 40h | ✅ | Feature 055: Org passkey 2FA, public passkey signup/sign-in, social login, method management |
+| AUTH-012 | Server-rendered auth pages (Razor Pages in Tenant Service) | P1 | 30h | ✅ | Login, signup, logout, OAuth/OIDC callbacks, email verification, password reset — eliminates WASM download for unauth users |
 
 ---
 
