@@ -26,10 +26,10 @@ public class CryptoModuleMlKemTests
         var plaintext = "Hello, post-quantum world!"u8.ToArray();
 
         // Act
-        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
+        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
         encResult.IsSuccess.Should().BeTrue("ML-KEM-768 encryption should succeed");
 
-        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key);
+        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key!);
         decResult.IsSuccess.Should().BeTrue("ML-KEM-768 decryption should succeed");
 
         // Assert
@@ -46,10 +46,10 @@ public class CryptoModuleMlKemTests
         var symmetricKey = new byte[32];
         Random.Shared.NextBytes(symmetricKey);
 
-        var encResult = await _crypto.EncryptAsync(symmetricKey, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
+        var encResult = await _crypto.EncryptAsync(symmetricKey, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
         encResult.IsSuccess.Should().BeTrue();
 
-        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key);
+        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key!);
         decResult.IsSuccess.Should().BeTrue();
         decResult.Value.Should().BeEquivalentTo(symmetricKey);
     }
@@ -62,10 +62,10 @@ public class CryptoModuleMlKemTests
         var plaintext = new byte[5000];
         Random.Shared.NextBytes(plaintext);
 
-        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
+        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
         encResult.IsSuccess.Should().BeTrue();
 
-        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key);
+        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key!);
         decResult.IsSuccess.Should().BeTrue();
         decResult.Value.Should().BeEquivalentTo(plaintext);
     }
@@ -77,7 +77,7 @@ public class CryptoModuleMlKemTests
         var keys = keyResult.Value!;
         var plaintext = new byte[100];
 
-        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
+        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
         encResult.IsSuccess.Should().BeTrue();
 
         // Format: [KEM ciphertext (1088)] [nonce (24)] [symmetric ciphertext (var)]
@@ -94,10 +94,10 @@ public class CryptoModuleMlKemTests
         var keys2 = keyResult2.Value!;
         var plaintext = "secret"u8.ToArray();
 
-        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys1.PublicKey.Key);
+        var encResult = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys1.PublicKey.Key!);
         encResult.IsSuccess.Should().BeTrue();
 
-        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys2.PrivateKey.Key);
+        var decResult = await _crypto.DecryptAsync(encResult.Value!, (byte)WalletNetworks.ML_KEM_768, keys2.PrivateKey.Key!);
         decResult.IsSuccess.Should().BeFalse();
     }
 
@@ -108,7 +108,7 @@ public class CryptoModuleMlKemTests
         var keys = keyResult.Value!;
         var shortCiphertext = new byte[100]; // Way too short
 
-        var decResult = await _crypto.DecryptAsync(shortCiphertext, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key);
+        var decResult = await _crypto.DecryptAsync(shortCiphertext, (byte)WalletNetworks.ML_KEM_768, keys.PrivateKey.Key!);
         decResult.IsSuccess.Should().BeFalse();
     }
 
@@ -119,8 +119,8 @@ public class CryptoModuleMlKemTests
         var keys = keyResult.Value!;
         var plaintext = "same data"u8.ToArray();
 
-        var enc1 = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
-        var enc2 = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key);
+        var enc1 = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
+        var enc2 = await _crypto.EncryptAsync(plaintext, (byte)WalletNetworks.ML_KEM_768, keys.PublicKey.Key!);
 
         enc1.Value.Should().NotBeEquivalentTo(enc2.Value);
     }

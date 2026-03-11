@@ -17,10 +17,10 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
 {
     private readonly ILogger<PeerServiceClient> _logger;
     private readonly string _serviceAddress;
-    private readonly GrpcChannel _channel;
-    private readonly PeerDiscovery.PeerDiscoveryClient _discoveryClient;
-    private readonly PeerCommunication.PeerCommunicationClient _communicationClient;
-    private readonly HttpClient _httpClient;
+    private readonly GrpcChannel? _channel;
+    private readonly PeerDiscovery.PeerDiscoveryClient? _discoveryClient;
+    private readonly PeerCommunication.PeerCommunicationClient? _communicationClient;
+    private readonly HttpClient? _httpClient;
     private readonly string _localPeerId;
     private bool _disposed;
     private bool _peerServiceUnavailableLogged;

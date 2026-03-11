@@ -148,7 +148,7 @@ public class RedisBloomFilterAddressIndex : ILocalAddressIndex
 
         // Update params
         var batch = _database.CreateBatch();
-        batch.HashSetAsync(paramsKey, [
+        _ = batch.HashSetAsync(paramsKey, [
             new HashEntry("bit_array_size", bitArraySize),
             new HashEntry("hash_function_count", hashCount),
             new HashEntry("address_count", addressCount),

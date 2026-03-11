@@ -94,7 +94,9 @@ public class SymmetricCryptoTests
     public void GenerateKey_ShouldProduceCorrectSize()
     {
         // Act
+#pragma warning disable CS0618 // Testing deprecated member behavior
         byte[] key = _symmetricCrypto.GenerateKey(EncryptionType.AES_256);
+#pragma warning restore CS0618
 
         // Assert
         key.Should().HaveCount(32);

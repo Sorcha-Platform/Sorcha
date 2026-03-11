@@ -183,10 +183,10 @@ public class FormRuleTests
         }
         """;
 
-#pragma warning disable CS0612 // Obsolete
+#pragma warning disable CS0612, CS0618 // Obsolete
         var control = JsonSerializer.Deserialize<Control>(json);
 
         control!.Conditions.Should().HaveCount(1);
-#pragma warning restore CS0612
+#pragma warning restore CS0612, CS0618
     }
 }

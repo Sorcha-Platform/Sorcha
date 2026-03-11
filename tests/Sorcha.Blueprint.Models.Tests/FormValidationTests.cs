@@ -403,6 +403,7 @@ public class FormValidationTests
     public void Control_WithConditionalDisplay_ValidatesCorrectly()
     {
         // Arrange - Control that displays conditionally
+#pragma warning disable CS0618 // Testing deprecated Conditions property
         var conditionalControl = new Control
         {
             ControlType = ControlTypes.TextLine,
@@ -417,6 +418,7 @@ public class FormValidationTests
         // Act & Assert
         conditionalControl.Conditions.Should().NotBeEmpty();
         conditionalControl.Conditions.Should().HaveCount(1);
+#pragma warning restore CS0618
     }
 
     [Fact]

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <NoWarn>$(NoWarn);NU1608</NoWarn>
+    <NoWarn>$(NoWarn);NU1608;MUD0002;RZ10012</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

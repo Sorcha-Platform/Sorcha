@@ -970,10 +970,10 @@ public class ControlDocketProcessor : IControlDocketProcessor
 
         _logger.LogInformation(
             "Register policy updated for register {RegisterId}: version {Version} by {UpdatedBy}",
-            registerId, payload.Policy.Version, payload.UpdatedBy);
+            registerId, payload.Policy?.Version, payload.UpdatedBy);
 
         // Enforce registration mode transition if changing from public to consent
-        if (payload.TransitionMode.HasValue &&
+        if (payload.TransitionMode.HasValue && payload.Policy is not null &&
             payload.Policy.Validators.RegistrationMode == Sorcha.Register.Models.RegistrationMode.Consent)
         {
             var ejected = await _validatorRegistry.EnforceRegistrationModeTransitionAsync(
@@ -992,7 +992,7 @@ public class ControlDocketProcessor : IControlDocketProcessor
             return $"Register policy updated to version {payload.Policy.Version} by {payload.UpdatedBy} ({ejected} validators affected by transition)";
         }
 
-        return $"Register policy updated to version {payload.Policy.Version} by {payload.UpdatedBy}";
+        return $"Register policy updated to version {payload.Policy?.Version} by {payload.UpdatedBy}";
     }
 
 

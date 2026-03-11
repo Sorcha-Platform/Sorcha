@@ -65,7 +65,7 @@ public class CredentialListCommand : Command
                 var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
                 var credentials = await client.ListCredentialsAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(credentials, new JsonSerializerOptions { WriteIndented = true }));
@@ -149,7 +149,7 @@ public class CredentialGetCommand : Command
                 var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
                 var credential = await client.GetCredentialAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(credential, new JsonSerializerOptions { WriteIndented = true }));
@@ -309,7 +309,7 @@ public class CredentialIssueCommand : Command
 
                 var credential = await client.IssueCredentialAsync(request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(credential, new JsonSerializerOptions { WriteIndented = true }));
@@ -425,7 +425,7 @@ public class CredentialPresentCommand : Command
 
                 var response = await client.PresentCredentialAsync(id, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
@@ -508,7 +508,7 @@ public class CredentialVerifyCommand : Command
                 var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
                 var result = await client.VerifyCredentialAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
@@ -691,7 +691,7 @@ public class CredentialStatusCommand : Command
                 var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
                 var status = await client.GetCredentialStatusAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
@@ -800,7 +800,7 @@ public class CredentialSuspendCommand : Command
                     Reason = reason
                 }, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
@@ -911,7 +911,7 @@ public class CredentialReinstateCommand : Command
                     Reason = reason
                 }, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
@@ -1022,7 +1022,7 @@ public class CredentialRefreshCommand : Command
                     NewExpiryDuration = expiresInDays.HasValue ? $"P{expiresInDays}D" : null
                 }, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
@@ -1119,7 +1119,7 @@ public class CredentialStatusListGetCommand : Command
                 var client = await clientFactory.CreateCredentialServiceClientAsync(profileName);
                 var response = await client.GetStatusListAsync(listId);
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));

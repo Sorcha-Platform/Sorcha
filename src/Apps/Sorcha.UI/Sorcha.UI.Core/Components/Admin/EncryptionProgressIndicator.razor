@@ -242,6 +242,8 @@
     {
         if (update.OperationId != _currentOperationId) return Task.CompletedTask;
 
+        if (_operation is null) return Task.CompletedTask;
+
         _operation = _operation with
         {
             Stage = update.StepName,
@@ -254,7 +256,7 @@
 
     private async Task HandleSignalRComplete(EncryptionCompleteUpdate update)
     {
-        if (update.OperationId != _currentOperationId) return;
+        if (update.OperationId != _currentOperationId || _operation is null) return;
 
         _operation = _operation with
         {
@@ -271,7 +273,7 @@
 
     private async Task HandleSignalRFailed(EncryptionFailedUpdate update)
     {
-        if (update.OperationId != _currentOperationId) return;
+        if (update.OperationId != _currentOperationId || _operation is null) return;
 
         _operation = _operation with
         {

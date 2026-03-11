@@ -90,7 +90,7 @@ public class MongoDocumentMapperTests
 
         result.Payloads[0].IV.Should().NotBeNull();
         result.Payloads[0].IV!.Data.Should().Equal(TestIvBytes);
-        result.Payloads[0].IV.Address.Should().Be("test-address");
+        result.Payloads[0].IV!.Address.Should().Be("test-address");
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class MongoDocumentMapperTests
 
         result.Payloads[0].Challenges.Should().HaveCount(1);
         result.Payloads[0].Challenges![0].Data.Should().Equal(TestChallengeBytes);
-        result.Payloads[0].Challenges[0].Address.Should().Be("wallet-1");
+        result.Payloads[0].Challenges![0].Address.Should().Be("wallet-1");
     }
 
     [Fact]

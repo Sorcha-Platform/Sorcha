@@ -71,7 +71,7 @@ public class SchemaProvidersListCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var providers = await client.GetSchemaProvidersAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(providers, new JsonSerializerOptions { WriteIndented = true }));

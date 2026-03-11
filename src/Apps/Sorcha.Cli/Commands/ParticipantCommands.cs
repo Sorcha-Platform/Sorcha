@@ -101,7 +101,7 @@ public class ParticipantRegisterCommand : Command
 
                 var participant = await client.RegisterParticipantAsync(orgId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
@@ -188,7 +188,7 @@ public class ParticipantListCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var participants = await client.ListParticipantsAsync(orgId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(participants, new JsonSerializerOptions { WriteIndented = true }));
@@ -286,7 +286,7 @@ public class ParticipantGetCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var participant = await client.GetParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
@@ -418,7 +418,7 @@ public class ParticipantUpdateCommand : Command
 
                 var participant = await client.UpdateParticipantAsync(orgId, id, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
@@ -513,7 +513,7 @@ public class ParticipantSearchCommand : Command
 
                 var participants = await client.SearchParticipantsAsync(request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(participants, new JsonSerializerOptions { WriteIndented = true }));
@@ -612,7 +612,7 @@ public class ParticipantWalletLinkCommand : Command
 
                 var challenge = await client.InitiateWalletLinkAsync(participantId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(challenge, new JsonSerializerOptions { WriteIndented = true }));
@@ -708,7 +708,7 @@ public class ParticipantSuspendCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 await client.SuspendParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Suspended" }, new JsonSerializerOptions { WriteIndented = true }));
@@ -805,7 +805,7 @@ public class ParticipantReactivateCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 await client.ReactivateParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Active" }, new JsonSerializerOptions { WriteIndented = true }));
@@ -948,7 +948,7 @@ public class ParticipantPublishCommand : Command
 
                 var result = await client.PublishParticipantAsync(orgId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
@@ -1065,7 +1065,7 @@ public class ParticipantUnpublishCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var result = await client.UnpublishParticipantAsync(orgId, id, registerId, signer, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));

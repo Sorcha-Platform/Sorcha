@@ -50,7 +50,7 @@ public class PqcWalletIntegrationTests
             pqcKeys.Value.PublicKey.Key!);
 
         signResult.IsSuccess.Should().BeTrue();
-        signResult.Value.WitnessPublicKey.Should().NotBeNullOrEmpty(
+        signResult.Value!.WitnessPublicKey.Should().NotBeNullOrEmpty(
             "HybridSignature must include the PQC public key as witness data");
 
         // Witness key should match the original PQC public key
@@ -100,7 +100,7 @@ public class PqcWalletIntegrationTests
 
         // Verify using classical public key (PQC key comes from witness)
         var verifyResult = await _cryptoModule.HybridVerifyAsync(
-            signResult.Value, hash, classicalKeys.Value.PublicKey.Key!);
+            signResult.Value!, hash, classicalKeys.Value.PublicKey.Key!);
 
         verifyResult.Should().Be(CryptoStatus.Success);
     }

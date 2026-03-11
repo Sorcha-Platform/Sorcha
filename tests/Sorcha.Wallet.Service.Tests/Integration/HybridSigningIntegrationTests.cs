@@ -124,8 +124,8 @@ public class HybridSigningIntegrationTests
             pqcWallet.Address, data, isPreHashed: true);
         await Task.WhenAll(classicalTask, pqcTask);
 
-        var (classicalSig, classicalPubKey) = classicalTask.Result;
-        var (pqcSig, pqcPubKey) = pqcTask.Result;
+        var (classicalSig, classicalPubKey) = await classicalTask;
+        var (pqcSig, pqcPubKey) = await pqcTask;
 
         // Assemble HybridSignature
         var hybrid = new HybridSignature

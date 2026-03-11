@@ -62,7 +62,7 @@ public class ValidatorStatusCommand : Command
                 var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
                 var status = await client.GetStatusAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
@@ -307,7 +307,7 @@ public class ValidatorProcessCommand : Command
 
                 var result = await client.ProcessRegisterAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
@@ -395,7 +395,7 @@ public class ValidatorIntegrityCheckCommand : Command
 
                 var result = await client.IntegrityCheckAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
@@ -535,7 +535,7 @@ public class ValidatorConsentPendingCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(content);
@@ -854,7 +854,7 @@ public class ValidatorConsentRefreshCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(content);
@@ -957,7 +957,7 @@ public class ValidatorMetricsCommand : Command
                 return ExitCodes.GeneralError;
             }
 
-            var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+            var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
             if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
             {
                 Console.WriteLine(content);
@@ -1098,7 +1098,7 @@ public class ValidatorThresholdStatusCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(content);
@@ -1241,7 +1241,7 @@ public class ValidatorThresholdSetupCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption) ?? "table";
+                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
                 if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine(content);
