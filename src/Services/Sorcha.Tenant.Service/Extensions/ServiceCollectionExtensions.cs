@@ -133,6 +133,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPasskeyService, PasskeyService>();
         services.AddScoped<IPublicUserService, PublicUserService>();
         services.AddScoped<ISocialLoginService, SocialLoginService>();
+        services.AddScoped<ILoginService, LoginService>();
 
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();

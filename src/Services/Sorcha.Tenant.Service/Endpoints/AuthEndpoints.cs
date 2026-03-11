@@ -164,13 +164,7 @@ public static class AuthEndpoints
 
     private static async Task<IResult> Login(
         LoginRequest request,
-        IIdentityRepository identityRepository,
-        IOrganizationRepository organizationRepository,
-        ITokenService tokenService,
-        ITotpService totpService,
-        IPasskeyService passkeyService,
-        ITokenRevocationService tokenRevocationService,
-        ILogger<Program> logger,
+        ILoginService loginService,
         CancellationToken cancellationToken)
     {
         // Validate input
@@ -190,97 +184,32 @@ public static class AuthEndpoints
             });
         }
 
-        // Rate limiting check
-        if (await tokenRevocationService.IsRateLimitedAsync(request.Email, cancellationToken))
+        var result = await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
+
+        if (!result.Success)
         {
-            logger.LogWarning("Login rate-limited for {Email}", request.Email);
-            return TypedResults.Problem("Too many failed login attempts. Please try again later.",
-                statusCode: StatusCodes.Status429TooManyRequests);
-        }
-
-        try
-        {
-            // Look up user by email
-            var user = await identityRepository.GetUserByEmailAsync(request.Email, cancellationToken);
-
-            if (user == null || user.Status != IdentityStatus.Active)
+            // Rate-limited responses get 429
+            if (result.Error?.Contains("Too many login attempts", StringComparison.OrdinalIgnoreCase) == true)
             {
-                logger.LogWarning("Login failed: User not found or inactive - {Email}", request.Email);
-                await tokenRevocationService.IncrementFailedAuthAttemptsAsync(request.Email, cancellationToken);
-                return TypedResults.Unauthorized();
+                return TypedResults.Problem(result.Error,
+                    statusCode: StatusCodes.Status429TooManyRequests);
             }
 
-            // Verify password hash exists (local auth user)
-            if (string.IsNullOrEmpty(user.PasswordHash))
-            {
-                logger.LogWarning("Login failed: User has no password (external IDP user?) - {Email}", request.Email);
-                await tokenRevocationService.IncrementFailedAuthAttemptsAsync(request.Email, cancellationToken);
-                return TypedResults.Unauthorized();
-            }
-
-            // Verify password using BCrypt
-            bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
-
-            if (!isPasswordValid)
-            {
-                logger.LogWarning("Login failed: Invalid password - {Email}", request.Email);
-                await tokenRevocationService.IncrementFailedAuthAttemptsAsync(request.Email, cancellationToken);
-                return TypedResults.Unauthorized();
-            }
-
-            // Get user's organization
-            var organization = await organizationRepository.GetByIdAsync(user.OrganizationId, cancellationToken);
-
-            if (organization == null)
-            {
-                logger.LogError("Login failed: Organization not found - {OrgId}", user.OrganizationId);
-                return TypedResults.Unauthorized();
-            }
-
-            // Reset failed attempts on successful login
-            await tokenRevocationService.ResetFailedAuthAttemptsAsync(request.Email, cancellationToken);
-
-            // Check if user has TOTP 2FA or passkeys enabled
-            var totpStatus = await totpService.GetStatusAsync(user.Id, cancellationToken);
-            var passkeys = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, user.Id, cancellationToken);
-            var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
-
-            if (totpStatus.IsEnabled || hasActivePasskeys)
-            {
-                // 2FA required: issue a short-lived login token instead of JWT
-                var loginToken = await totpService.GenerateLoginTokenAsync(user.Id, cancellationToken);
-
-                var methods = new List<string>();
-                if (totpStatus.IsEnabled) methods.Add("totp");
-                if (hasActivePasskeys) methods.Add("passkey");
-
-                logger.LogInformation("Login requires 2FA for user {Email} (UserId: {UserId}), methods: {Methods}",
-                    user.Email, user.Id, string.Join(", ", methods));
-
-                return TypedResults.Ok(new TwoFactorLoginResponse
-                {
-                    LoginToken = loginToken,
-                    AvailableMethods = methods.ToArray()
-                });
-            }
-
-            // No 2FA — standard login: update timestamp and issue JWT
-            user.LastLoginAt = DateTimeOffset.UtcNow;
-            await identityRepository.UpdateUserAsync(user, cancellationToken);
-
-            // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
-
-            logger.LogInformation("User logged in successfully - {Email} (UserId: {UserId}, OrgId: {OrgId})",
-                user.Email, user.Id, organization.Id);
-
-            return TypedResults.Ok(tokenResponse);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Login failed with exception - {Email}", request.Email);
             return TypedResults.Unauthorized();
         }
+
+        // 2FA required: return login token and available methods
+        if (result.TwoFactorRequired)
+        {
+            return TypedResults.Ok(new TwoFactorLoginResponse
+            {
+                LoginToken = result.LoginToken!,
+                AvailableMethods = result.AvailableMethods!.ToArray()
+            });
+        }
+
+        // Standard login: return tokens
+        return TypedResults.Ok(result.Tokens);
     }
 
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> Verify2Fa(
