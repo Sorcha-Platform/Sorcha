@@ -4,9 +4,7 @@
 using System.Security.Claims;
 
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.EntityFrameworkCore;
 
-using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -414,10 +412,7 @@ public static class AuthEndpoints
     /// </summary>
     private static async Task<IResult> Register(
         SelfRegistrationRequest request,
-        IPasswordPolicyService passwordPolicyService,
-        IEmailVerificationService emailVerificationService,
-        TenantDbContext dbContext,
-        ILogger<Program> logger,
+        IRegistrationService registrationService,
         CancellationToken cancellationToken)
     {
         // Validate required fields
@@ -434,98 +429,25 @@ public static class AuthEndpoints
         if (validationErrors.Count > 0)
             return TypedResults.ValidationProblem(validationErrors);
 
-        // Resolve organization
-        var org = await dbContext.Organizations
-            .FirstOrDefaultAsync(o => o.Subdomain == request.OrgSubdomain, cancellationToken);
+        var result = await registrationService.RegisterAsync(
+            request.OrgSubdomain, request.Email, request.Password,
+            request.DisplayName, cancellationToken);
 
-        if (org is null)
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["orgSubdomain"] = ["Organization not found"]
-            });
-
-        // Check if org allows self-registration
-        if (org.OrgType != OrgType.Public || !org.SelfRegistrationEnabled)
+        if (!result.Success)
         {
+            if (result.ValidationErrors is not null)
+                return TypedResults.ValidationProblem(result.ValidationErrors);
+
             return TypedResults.Problem(
-                "Self-registration is not enabled for this organization.",
-                statusCode: StatusCodes.Status403Forbidden);
+                result.Error,
+                statusCode: result.ErrorStatusCode ?? StatusCodes.Status400BadRequest);
         }
-
-        // Validate password against NIST policy + HIBP breach check
-        var passwordResult = await passwordPolicyService.ValidateAsync(request.Password, cancellationToken);
-        if (!passwordResult.IsValid)
-        {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["password"] = passwordResult.Errors.ToArray()
-            });
-        }
-
-        // Check email uniqueness within the organization
-        var existingUser = await dbContext.UserIdentities
-            .FirstOrDefaultAsync(u => u.Email == request.Email && u.OrganizationId == org.Id,
-                cancellationToken);
-
-        if (existingUser is not null)
-        {
-            return TypedResults.Problem(
-                "An account with this email already exists.",
-                statusCode: StatusCodes.Status409Conflict);
-        }
-
-        // Check domain restrictions
-        if (org.AllowedEmailDomains is { Length: > 0 })
-        {
-            var emailDomain = request.Email.Split('@').LastOrDefault();
-            if (emailDomain is null || !org.AllowedEmailDomains.Contains(emailDomain, StringComparer.OrdinalIgnoreCase))
-            {
-                return TypedResults.Problem(
-                    "Registration is restricted to specific email domains.",
-                    statusCode: StatusCodes.Status403Forbidden);
-            }
-        }
-
-        // Create the user
-        var user = new UserIdentity
-        {
-            Id = Guid.NewGuid(),
-            OrganizationId = org.Id,
-            Email = request.Email,
-            DisplayName = request.DisplayName,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Status = IdentityStatus.Active,
-            Roles = [UserRole.Member],
-            ProvisionedVia = ProvisioningMethod.Local,
-            ProfileCompleted = true,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        dbContext.UserIdentities.Add(user);
-
-        // Log audit event
-        dbContext.AuditLogEntries.Add(new AuditLogEntry
-        {
-            EventType = AuditEventType.SelfRegistration,
-            IdentityId = user.Id,
-            OrganizationId = org.Id,
-            Timestamp = DateTimeOffset.UtcNow
-        });
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        // Send verification email
-        await emailVerificationService.GenerateAndSendVerificationAsync(user, cancellationToken);
-
-        logger.LogInformation(
-            "User self-registered: {Email} in org {OrgSubdomain} (UserId: {UserId})",
-            user.Email, request.OrgSubdomain, user.Id);
 
         return TypedResults.Created($"/api/auth/me", new SelfRegistrationResponse
         {
             Success = true,
-            UserId = user.Id,
-            Message = "Account created. Please check your email to verify your address."
+            UserId = result.UserId,
+            Message = result.Message
         });
     }
 
