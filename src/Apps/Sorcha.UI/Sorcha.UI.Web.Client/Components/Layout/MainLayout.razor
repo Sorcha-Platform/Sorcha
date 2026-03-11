@@ -49,7 +49,7 @@
                 </MudMenu>
             </Authorized>
             <NotAuthorized>
-                <MudButton Href="auth/login" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Login">
+                <MudButton OnClick="@(() => Navigation.NavigateTo("/auth/login", forceLoad: true))" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Login">
                     @Loc.T("nav.signIn")
                 </MudButton>
             </NotAuthorized>
@@ -213,7 +213,7 @@
             </Authorized>
             <NotAuthorized>
                 <MudNavMenu>
-                    <MudNavLink Href="auth/login" Icon="@Icons.Material.Filled.Login">
+                    <MudNavLink OnClick="@(() => Navigation.NavigateTo("/auth/login", forceLoad: true))" Icon="@Icons.Material.Filled.Login">
                         @Loc.T("nav.signIn")
                     </MudNavLink>
                 </MudNavMenu>

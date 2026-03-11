@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
@@ -89,6 +90,18 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+// Configure ForwardedHeaders for Docker/reverse proxy support
+// The API Gateway terminates TLS and forwards HTTP internally — the tenant service
+// must trust X-Forwarded-Proto so antiforgery sees the original HTTPS request.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                               ForwardedHeaders.XForwardedProto |
+                               ForwardedHeaders.XForwardedHost;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 // Add Razor Pages for server-rendered auth UI
 builder.Services.AddRazorPages();
 builder.Services.AddAntiforgery(options =>
@@ -96,7 +109,7 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.Name = "Sorcha.Auth.AF";
     options.Cookie.Path = "/auth";
     options.Cookie.SameSite = SameSiteMode.Strict;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 
 // Add health checks (PostgreSQL and Redis when configured)
@@ -118,6 +131,9 @@ var app = builder.Build();
 
 // Map default endpoints (OpenAPI, health checks)
 app.MapDefaultEndpoints();
+
+// Trust forwarded headers from API Gateway (must be before any middleware that checks scheme)
+app.UseForwardedHeaders();
 
 // Add Serilog HTTP request logging (OPS-001)
 app.UseSerilogLogging();
