@@ -1,0 +1,32 @@
+@page "/auth/verify-email"
+@model Sorcha.Tenant.Service.Pages.Auth.VerifyEmailModel
+@{
+    ViewData["Title"] = "Verify Email";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Email Verification</h2>
+        <p>Confirming your email address</p>
+    </div>
+    <div class="auth-card-body">
+        @if (Model.IsVerified)
+        {
+            <div class="auth-result auth-result-success">
+                <span class="auth-result-icon" aria-hidden="true">&#10003;</span>
+                <h3>Email verified!</h3>
+                <p>Your email address has been successfully verified. You can now sign in to your account.</p>
+                <a href="/auth/login" class="btn btn-primary btn-lg w-100 mt-3">Continue to Sign In</a>
+            </div>
+        }
+        else
+        {
+            <div class="auth-result auth-result-error">
+                <span class="auth-result-icon" aria-hidden="true">&#10007;</span>
+                <h3>Verification failed</h3>
+                <p>@Model.ErrorMessage</p>
+                <a href="/auth/login" class="btn btn-secondary btn-lg w-100 mt-3">Back to Sign In</a>
+            </div>
+        }
+    </div>
+</div>

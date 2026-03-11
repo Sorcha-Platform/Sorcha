@@ -1,0 +1,20 @@
+@page "/auth/error"
+@model Sorcha.Tenant.Service.Pages.Auth.ErrorModel
+@{
+    ViewData["Title"] = "Error";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Authentication Error</h2>
+        <p>We couldn't complete your request</p>
+    </div>
+    <div class="auth-card-body">
+        <div class="auth-result auth-result-error">
+            <span class="auth-result-icon" aria-hidden="true">&#10007;</span>
+            <h3>Something went wrong</h3>
+            <p>@Model.Message</p>
+            <a href="/auth/login" class="btn btn-secondary btn-lg w-100 mt-3">Back to Sign In</a>
+        </div>
+    </div>
+</div>

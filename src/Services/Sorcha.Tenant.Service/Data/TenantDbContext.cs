@@ -466,6 +466,13 @@ public class TenantDbContext : DbContext
 
             entity.HasIndex(e => e.OrganizationId);
             entity.HasIndex(e => e.Status);
+
+            // Password reset token fields
+            entity.Property(e => e.PasswordResetTokenHash).HasMaxLength(500);
+            entity.Property(e => e.PasswordResetTokenExpiresAt);
+
+            entity.HasIndex(e => e.PasswordResetTokenHash)
+                .HasDatabaseName("IX_UserIdentity_PasswordResetTokenHash");
         });
     }
 

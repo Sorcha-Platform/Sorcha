@@ -89,6 +89,16 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
+// Add Razor Pages for server-rendered auth UI
+builder.Services.AddRazorPages();
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.Name = "Sorcha.Auth.AF";
+    options.Cookie.Path = "/auth";
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+
 // Add health checks (PostgreSQL and Redis when configured)
 builder.Services.AddTenantHealthChecks(builder.Configuration);
 
@@ -133,6 +143,8 @@ app.UseAuthorization();
 
 app.UseRateLimiter();
 
+app.UseStaticFiles();
+
 // Map API endpoint groups
 app.MapBootstrapEndpoints();
 app.MapOrganizationEndpoints();
@@ -154,6 +166,7 @@ app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
 app.MapEventEndpoints();
+app.MapRazorPages();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
 // The standard Aspire health endpoint returns plain text "Healthy" or "Unhealthy"

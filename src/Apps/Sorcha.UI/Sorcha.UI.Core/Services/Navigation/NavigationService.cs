@@ -38,13 +38,14 @@ public class NavigationService : INavigationService
         }
 
         // Build login URL with optional return URL parameter
-        var loginUrl = "auth/login";
+        // Uses forceLoad: true to navigate to server-rendered auth pages
+        var loginUrl = "/auth/login";
         if (UrlValidator.IsValidReturnUrl(returnUrl, _navigationManager.BaseUri))
         {
-            loginUrl = $"auth/login?returnUrl={Uri.EscapeDataString(returnUrl!)}";
+            loginUrl = $"/auth/login?returnUrl={Uri.EscapeDataString(returnUrl!)}";
         }
 
-        _navigationManager.NavigateTo(loginUrl, forceLoad: false);
+        _navigationManager.NavigateTo(loginUrl, forceLoad: true);
         return Task.CompletedTask;
     }
 

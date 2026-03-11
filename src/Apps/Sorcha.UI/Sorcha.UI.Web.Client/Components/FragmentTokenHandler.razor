@@ -1,0 +1,74 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@using System.IdentityModel.Tokens.Jwt
+@using Microsoft.AspNetCore.Components.Authorization
+@using Sorcha.UI.Core.Models.Authentication
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
+@using Microsoft.JSInterop
+
+@inject IJSRuntime JSRuntime
+@inject ITokenCache TokenCache
+@inject IConfigurationService ConfigurationService
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+
+@code {
+    private static readonly JwtSecurityTokenHandler JwtHandler = new() { MapInboundClaims = false };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            var result = await JSRuntime.InvokeAsync<FragmentTokenResult?>("sorcha.fragmentHandoff.getAndClear");
+            if (result?.Token is null)
+                return;
+
+            // Decode the JWT to get expiration
+            var jwt = JwtHandler.ReadJwtToken(result.Token);
+            var expiresIn = (int)(jwt.ValidTo - DateTime.UtcNow).TotalSeconds;
+            if (expiresIn <= 0)
+                return;
+
+            // Store the token under the active profile
+            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+            var cacheEntry = new TokenCacheEntry
+            {
+                AccessToken = result.Token,
+                RefreshToken = result.Refresh,
+                ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn),
+                ProfileName = profileName,
+                IssuedAt = DateTime.UtcNow
+            };
+            await TokenCache.StoreTokenAsync(profileName, cacheEntry);
+
+            // Notify Blazor auth system
+            AuthStateProvider.NotifyAuthenticationStateChanged();
+
+            // Navigate to return URL or dashboard (validate to prevent open redirect)
+            var destination = IsValidReturnUrl(result.ReturnUrl) ? result.ReturnUrl! : "dashboard";
+            NavigationManager.NavigateTo(destination, forceLoad: false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Fragment token handoff failed: {ex.Message}");
+        }
+    }
+
+    private static bool IsValidReturnUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        // Only allow relative paths; reject protocol-relative ("//evil.com") and absolute URLs
+        return url.StartsWith('/') && !url.StartsWith("//");
+    }
+
+    private sealed class FragmentTokenResult
+    {
+        public string? Token { get; set; }
+        public string? Refresh { get; set; }
+        public string? ReturnUrl { get; set; }
+    }
+}

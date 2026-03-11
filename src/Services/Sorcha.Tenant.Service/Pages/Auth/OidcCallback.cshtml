@@ -1,0 +1,81 @@
+@page "/auth/oidc/callback"
+@model Sorcha.Tenant.Service.Pages.Auth.OidcCallbackModel
+@{
+    ViewData["Title"] = "Completing Sign-In";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Sign In</h2>
+        <p>Completing your sign-in</p>
+    </div>
+    <div class="auth-card-body">
+        @if (Model.RequiresProfileCompletion)
+        {
+            <div class="auth-result">
+                <p class="text-muted mb-4">
+                    Your identity provider did not supply all required profile fields.
+                    Please provide the missing information to complete sign-in.
+                </p>
+
+                @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @Model.ErrorMessage
+                    </div>
+                }
+
+                <form method="post" asp-page-handler="Profile">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" asp-for="OidcState" />
+
+                    <div class="mb-3">
+                        <label class="form-label" for="ProfileDisplayName">Display Name</label>
+                        <input type="text"
+                               asp-for="ProfileDisplayName"
+                               id="ProfileDisplayName"
+                               class="form-control form-control-lg"
+                               placeholder="Your name"
+                               autocomplete="name"
+                               maxlength="100" />
+                        <span asp-validation-for="ProfileDisplayName" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label" for="ProfileEmail">Email Address</label>
+                        <input type="email"
+                               asp-for="ProfileEmail"
+                               id="ProfileEmail"
+                               class="form-control form-control-lg"
+                               placeholder="you@@example.com"
+                               autocomplete="email"
+                               maxlength="256" />
+                        <span asp-validation-for="ProfileEmail" class="text-danger small"></span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100">Complete Sign-In</button>
+                </form>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="auth-result">
+                <div class="alert alert-danger" role="alert">
+                    @Model.ErrorMessage
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/auth/login" class="btn btn-primary">Back to Sign In</a>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="auth-processing text-center">
+                <div class="spinner-border text-primary mb-3" role="status" aria-label="Loading">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted">Completing sign-in...</p>
+            </div>
+        }
+    </div>
+</div>

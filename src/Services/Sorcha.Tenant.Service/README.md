@@ -20,6 +20,7 @@ The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, a
 - **TOTP Two-Factor Authentication**: Authenticator app-based 2FA with backup codes
 - **Self-Registration**: Public organizations can allow users to self-register with email verification
 - **PassKey Authentication**: FIDO2/WebAuthn passkey authentication — org user 2FA (register + verify as second factor) and public user primary auth (signup, sign-in, method management)
+- **Server-Rendered Auth Pages**: Razor Pages for login, signup, logout, OAuth/OIDC callbacks, email verification, and password reset — eliminates ~15MB WASM download for unauthenticated users
 - **Service-to-Service Authentication**: OAuth2 client credentials flow for microservice communication
 - **JWT Token Issuance**: RS256-signed tokens with configurable lifetimes
 - **Token Revocation**: Redis-backed token blacklist with automatic TTL cleanup
@@ -54,14 +55,23 @@ The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, a
 │  └──────────────┘  └───────────────┘  └────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
+│  │           Server-Rendered Auth Pages (Razor)         │  │
+│  │  /auth/login    /auth/signup    /auth/logout         │  │
+│  │  /auth/social/callback   /auth/oidc/callback         │  │
+│  │  /auth/verify-email  /auth/reset-password            │  │
+│  │  /auth/error                                         │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
 │  │             Service Layer                            │  │
 │  │  • OrganizationService  • TokenService               │  │
 │  │  • OidcExchangeService  • OidcProvisioningService    │  │
 │  │  • IdpConfigurationService • TotpService             │  │
 │  │  • InvitationService    • CustomDomainService        │  │
 │  │  • PasswordPolicyService • EmailVerificationService  │  │
-│  │  • DashboardService     • PassKeyService             │
-│  │  • PublicUserService                                 │  │
+│  │  • DashboardService     • PassKeyService             │  │
+│  │  • PublicUserService    • LoginService               │  │
+│  │  • RegistrationService  • PasswordResetService       │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │

@@ -1,0 +1,52 @@
+@page "/auth/logout"
+@model Sorcha.Tenant.Service.Pages.Auth.LogoutModel
+@{
+    ViewData["Title"] = "Sign Out";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Sign Out</h2>
+    </div>
+    <div class="auth-card-body">
+        @if (Model.IsSignedOut)
+        {
+            <div class="auth-result text-center">
+                <p class="mb-4">You've been signed out.</p>
+                <a href="/auth/login" class="btn btn-primary btn-lg w-100">Sign In Again</a>
+            </div>
+        }
+        else
+        {
+            <p class="text-center mb-4">Are you sure you want to sign out?</p>
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="RefreshToken" id="refresh-token-field" />
+                <button type="submit" class="btn btn-primary btn-lg w-100">Sign Out</button>
+            </form>
+            <div class="text-center mt-3">
+                <a href="/app" class="text-muted">Cancel</a>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var hash = window.location.hash;
+            if (!hash) return;
+
+            var params = new URLSearchParams(hash.substring(1));
+            var refresh = params.get('refresh');
+            if (refresh) {
+                var field = document.getElementById('refresh-token-field');
+                if (field) {
+                    field.value = refresh;
+                }
+                // Clear the fragment so the token is not visible in the browser address bar
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+        })();
+    </script>
+}

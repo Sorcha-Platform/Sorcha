@@ -1,0 +1,216 @@
+@page "/auth/signup"
+@model Sorcha.Tenant.Service.Pages.Auth.SignupModel
+@{
+    ViewData["Title"] = "Sign Up";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Create Account</h2>
+        <p>Get started with Sorcha</p>
+    </div>
+    <div class="auth-card-body">
+        @if (Model.RegistrationSuccess)
+        {
+            <div class="auth-result success">
+                <div class="icon">&#10004;</div>
+                <h3>Check your email</h3>
+                <p>We've sent a verification link to <strong>@Model.Email</strong>. Please check your inbox and click the link to activate your account.</p>
+                <a href="/auth/login@(Model.ReturnUrl != null ? $"?returnUrl={Uri.EscapeDataString(Model.ReturnUrl)}" : "")" class="btn btn-primary btn-lg w-100 mt-3">Go to Sign In</a>
+            </div>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @Model.ErrorMessage
+                </div>
+            }
+
+            <div class="method-tabs">
+                <button type="button" class="method-tab @(Model.ActiveTab == "passkey" ? "active" : "")" data-tab="passkey">Passkey</button>
+                <button type="button" class="method-tab @(Model.ActiveTab == "social" ? "active" : "")" data-tab="social">Social</button>
+                <button type="button" class="method-tab @(Model.ActiveTab == "email" ? "active" : "")" data-tab="email">Email</button>
+            </div>
+
+            @* --- Tab 1: Passkey Registration --- *@
+            <div id="tab-passkey" class="tab-content" style="display: @(Model.ActiveTab == "passkey" ? "block" : "none");">
+                <div class="mb-3">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" id="passkey-display-name" class="form-control form-control-lg"
+                           placeholder="Your name" autofocus />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="passkey-email" class="form-control form-control-lg"
+                           placeholder="you@@example.com" />
+                </div>
+                <input type="hidden" id="passkey-return-url" value="@(Model.ReturnUrl ?? "")" />
+                <button type="button" class="passkey-btn" id="passkey-register-btn">
+                    <span>&#128274;</span> Register with Passkey
+                </button>
+            </div>
+
+            @* --- Tab 2: Social Login --- *@
+            <div id="tab-social" class="tab-content" style="display: @(Model.ActiveTab == "social" ? "block" : "none");">
+                <div class="d-grid gap-2">
+                    <button type="button" class="social-btn" data-provider="Google">
+                        Continue with Google
+                    </button>
+                    <button type="button" class="social-btn" data-provider="Microsoft">
+                        Continue with Microsoft
+                    </button>
+                    <button type="button" class="social-btn" data-provider="GitHub">
+                        Continue with GitHub
+                    </button>
+                    <button type="button" class="social-btn" data-provider="Apple">
+                        Continue with Apple
+                    </button>
+                </div>
+            </div>
+
+            @* --- Tab 3: Email & Password --- *@
+            <div id="tab-email" class="tab-content" style="display: @(Model.ActiveTab == "email" ? "block" : "none");">
+                <form method="post" asp-page-handler="Email">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" asp-for="ReturnUrl" />
+                    <input type="hidden" asp-for="OrgSubdomain" />
+                    <div class="mb-3">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" asp-for="DisplayName" class="form-control form-control-lg"
+                               placeholder="Your name" />
+                        <span asp-validation-for="DisplayName" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" asp-for="Email" class="form-control form-control-lg"
+                               placeholder="you@@example.com" />
+                        <span asp-validation-for="Email" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" asp-for="Password" class="form-control form-control-lg"
+                               placeholder="Create a password" />
+                        <span asp-validation-for="Password" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="password" asp-for="ConfirmPassword" class="form-control form-control-lg"
+                               placeholder="Confirm your password" />
+                        <span id="confirm-password-error" class="text-danger small" style="display: none;">Passwords do not match.</span>
+                    </div>
+                    <button type="submit" id="email-submit-btn" class="btn btn-primary btn-lg w-100">Create Account</button>
+                </form>
+            </div>
+
+            <div class="text-center mt-4">
+                <p class="text-muted mb-1">Already have an account?
+                    <a href="/auth/login@(Model.ReturnUrl != null ? $"?returnUrl={Uri.EscapeDataString(Model.ReturnUrl)}" : "")">Sign in</a>
+                </p>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script src="/auth-static/js/webauthn.js"></script>
+    <script>
+        // --- Tab switching ---
+        document.querySelectorAll('.method-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                var targetTab = this.getAttribute('data-tab');
+
+                // Toggle active class on tabs
+                document.querySelectorAll('.method-tab').forEach(function(t) {
+                    t.classList.remove('active');
+                });
+                this.classList.add('active');
+
+                // Show/hide content
+                document.querySelectorAll('.tab-content').forEach(function(content) {
+                    content.style.display = 'none';
+                });
+                var target = document.getElementById('tab-' + targetTab);
+                if (target) target.style.display = 'block';
+            });
+        });
+
+        // --- Passkey registration ---
+        document.getElementById('passkey-register-btn')?.addEventListener('click', function() {
+            var displayName = document.getElementById('passkey-display-name')?.value;
+            var email = document.getElementById('passkey-email')?.value;
+            var returnUrl = document.getElementById('passkey-return-url')?.value || '';
+
+            if (!displayName || !email) {
+                alert('Please enter your display name and email.');
+                return;
+            }
+
+            sorcha.webauthn.register(
+                '/api/auth/public/passkey/register/options',
+                '/api/auth/public/passkey/register/verify',
+                displayName,
+                email,
+                returnUrl
+            );
+        });
+
+        // --- Social login ---
+        document.querySelectorAll('.social-btn[data-provider]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var provider = this.getAttribute('data-provider');
+                var returnUrl = '@(Model.ReturnUrl != null ? Uri.EscapeDataString(Model.ReturnUrl) : "")';
+                var redirectUri = window.location.origin + '/auth/social-callback';
+                var nonce = crypto.randomUUID();
+                var state = btoa(JSON.stringify({ nonce: nonce, returnUrl: returnUrl }));
+                // Store nonce for CSRF validation on callback
+                sessionStorage.setItem('social_login_nonce', nonce);
+
+                fetch('/api/auth/public/social/initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: provider,
+                        redirect_uri: redirectUri,
+                        state: state
+                    })
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.authorization_url) {
+                        window.location.href = data.authorization_url;
+                    } else {
+                        alert('Failed to initiate social login. Please try again.');
+                    }
+                })
+                .catch(function() {
+                    alert('Failed to initiate social login. Please try again.');
+                });
+            });
+        });
+
+        // --- Confirm password validation ---
+        var confirmInput = document.getElementById('confirm-password');
+        var submitBtn = document.getElementById('email-submit-btn');
+        var errorSpan = document.getElementById('confirm-password-error');
+
+        if (confirmInput && submitBtn) {
+            submitBtn.closest('form')?.addEventListener('submit', function(e) {
+                var password = document.querySelector('input[name="Password"]')?.value;
+                var confirm = confirmInput.value;
+                if (password !== confirm) {
+                    e.preventDefault();
+                    errorSpan.style.display = 'block';
+                    confirmInput.focus();
+                } else {
+                    errorSpan.style.display = 'none';
+                }
+            });
+
+            confirmInput.addEventListener('input', function() {
+                errorSpan.style.display = 'none';
+            });
+        }
+    </script>
+}

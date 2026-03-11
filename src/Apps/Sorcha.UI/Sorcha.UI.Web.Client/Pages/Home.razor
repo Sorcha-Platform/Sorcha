@@ -208,7 +208,10 @@
             }
         </Authorized>
         <NotAuthorized>
-            <Sorcha.UI.Web.Client.Components.RedirectToLogin />
+            @{
+                var returnUrl = Uri.EscapeDataString(Navigation.Uri);
+                Navigation.NavigateTo($"/auth/login?returnUrl={returnUrl}", forceLoad: true);
+            }
         </NotAuthorized>
     </AuthorizeView>
 </CascadingAuthenticationState>
