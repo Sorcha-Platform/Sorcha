@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using System.IdentityModel.Tokens.Jwt;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
-using System.Text.Json;
 using Sorcha.UI.Core.Models.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
 
 namespace Sorcha.UI.Core.Services.Authentication;
 
 /// <summary>
-/// OAuth2 Password Grant authentication service
+/// Authentication service for token management.
+/// Login and registration are handled by server-rendered Razor Pages;
+/// this service manages token refresh, retrieval, and logout.
 /// </summary>
 public class AuthenticationService : IAuthenticationService
 {
@@ -28,112 +28,6 @@ public class AuthenticationService : IAuthenticationService
         _httpClient = httpClient;
         _tokenCache = tokenCache;
         _configurationService = configurationService;
-    }
-
-    /// <inheritdoc />
-    public async Task<TokenResponse> LoginAsync(LoginRequest request, string profileName)
-    {
-        if (!request.IsValid())
-        {
-            throw new ArgumentException("Invalid login request", nameof(request));
-        }
-
-        var profile = await _configurationService.GetProfileAsync(profileName);
-        if (profile == null)
-        {
-            throw new InvalidOperationException($"Profile '{profileName}' not found");
-        }
-
-        // Call OAuth2 token endpoint with form-urlencoded data
-        var formData = new Dictionary<string, string>
-        {
-            ["username"] = request.Username,
-            ["password"] = request.Password,
-            ["grant_type"] = request.GrantType,
-            ["client_id"] = "sorcha-ui-web" // Client identifier for UI
-        };
-
-        // Get the auth token URL from profile (uses override or derives from base URL)
-        var tokenUrl = profile.GetAuthTokenUrl();
-        if (string.IsNullOrEmpty(tokenUrl))
-        {
-            // Fallback to relative path for same-origin requests
-            tokenUrl = "/api/service-auth/token";
-        }
-
-        var response = await _httpClient.PostAsync(tokenUrl, new FormUrlEncodedContent(formData));
-
-        response.EnsureSuccessStatusCode();
-
-        var tokenResponse = await response.Content.ReadFromJsonAsync<TokenResponse>();
-        if (tokenResponse == null || !tokenResponse.IsValid())
-        {
-            throw new InvalidOperationException("Invalid token response from server");
-        }
-
-        // Cache the token
-        var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
-        await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
-
-        return tokenResponse;
-    }
-
-    /// <inheritdoc />
-    public async Task<LoginResult> LoginWithTwoFactorAsync(LoginRequest request, string profileName)
-    {
-        if (!request.IsValid())
-        {
-            throw new ArgumentException("Invalid login request", nameof(request));
-        }
-
-        var profile = await _configurationService.GetProfileAsync(profileName);
-        if (profile == null)
-        {
-            throw new InvalidOperationException($"Profile '{profileName}' not found");
-        }
-
-        // POST to /api/auth/login which returns TwoFactorLoginResponse when 2FA is required.
-        // Do NOT use /api/service-auth/token — that endpoint skips 2FA entirely.
-        var loginPayload = new { email = request.Username, password = request.Password };
-        var response = await _httpClient.PostAsJsonAsync("/api/auth/login", loginPayload);
-        response.EnsureSuccessStatusCode();
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-
-        // Check if the response is a 2FA challenge by looking for the requires_two_factor field
-        if (doc.RootElement.TryGetProperty("requires_two_factor", out var twoFactorProp) && twoFactorProp.GetBoolean())
-        {
-            var twoFactorResponse = JsonSerializer.Deserialize<TwoFactorLoginResponseDto>(responseJson);
-            return LoginResult.TwoFactorRequired(
-                twoFactorResponse!.LoginToken,
-                twoFactorResponse.AvailableMethods,
-                twoFactorResponse.Message);
-        }
-
-        // Standard token response
-        var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseJson);
-        if (tokenResponse == null || !tokenResponse.IsValid())
-        {
-            throw new InvalidOperationException("Invalid token response from server");
-        }
-
-        var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
-        await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
-
-        return LoginResult.Success(tokenResponse);
-    }
-
-    /// <inheritdoc />
-    public async Task StoreExternalTokenAsync(TokenResponse tokenResponse, string profileName)
-    {
-        if (tokenResponse == null || !tokenResponse.IsValid())
-        {
-            throw new ArgumentException("Invalid token response", nameof(tokenResponse));
-        }
-
-        var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
-        await _tokenCache.StoreTokenAsync(profileName, cacheEntry);
     }
 
     /// <inheritdoc />
@@ -231,25 +125,8 @@ public class AuthenticationService : IAuthenticationService
     /// <inheritdoc />
     public async Task LogoutAsync(string profileName)
     {
-        var entry = await _tokenCache.GetTokenAsync(profileName);
-        if (entry != null && !string.IsNullOrEmpty(entry.AccessToken))
-        {
-            try
-            {
-                _httpClient.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", entry.AccessToken);
-                await _httpClient.PostAsync("/api/auth/logout", null);
-            }
-            catch (Exception)
-            {
-                // Best-effort server-side revocation -- don't fail logout if server is unreachable
-            }
-            finally
-            {
-                _httpClient.DefaultRequestHeaders.Authorization = null;
-            }
-        }
-
+        // Clear local token cache — server-side revocation is handled
+        // by the server-rendered logout page which receives the refresh token
         await _tokenCache.RemoveTokenAsync(profileName);
     }
 
