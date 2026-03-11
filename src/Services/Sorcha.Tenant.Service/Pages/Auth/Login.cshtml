@@ -1,0 +1,86 @@
+@page "/auth/login"
+@model Sorcha.Tenant.Service.Pages.Auth.LoginModel
+@{
+    ViewData["Title"] = "Sign In";
+}
+
+<div class="auth-card">
+    <div class="auth-header">
+        <h2>Sign In</h2>
+        <p>Welcome back to Sorcha</p>
+    </div>
+    <div class="auth-card-body">
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                @Model.ErrorMessage
+            </div>
+        }
+
+        @if (Model.ShowTwoFactor)
+        {
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="LoginToken" />
+                <input type="hidden" asp-for="ReturnUrl" />
+                <div class="mb-3">
+                    <label class="form-label">Verification Code</label>
+                    <input type="text" asp-for="TotpCode" class="form-control form-control-lg"
+                           placeholder="Enter 6-digit code" autofocus autocomplete="one-time-code"
+                           inputmode="numeric" maxlength="6" />
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg w-100">Verify</button>
+            </form>
+        }
+        else
+        {
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="ReturnUrl" />
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" asp-for="Email" class="form-control form-control-lg"
+                           placeholder="you@@example.com" autofocus />
+                    <span asp-validation-for="Email" class="text-danger small"></span>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Password</label>
+                    <input type="password" asp-for="Password" class="form-control form-control-lg"
+                           placeholder="Enter password" />
+                    <span asp-validation-for="Password" class="text-danger small"></span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg w-100">Sign In</button>
+            </form>
+
+            <div class="divider-row">
+                <hr class="divider-line" />
+                <span class="divider-text">or</span>
+                <hr class="divider-line" />
+            </div>
+
+            <button type="button" class="passkey-btn" id="passkey-signin-btn">
+                <span>&#128274;</span> Sign in with Passkey
+            </button>
+        }
+
+        <div class="text-center mt-4">
+            <p class="text-muted mb-1">Don't have an account?
+                <a href="/auth/signup@(Model.ReturnUrl != null ? $"?returnUrl={Uri.EscapeDataString(Model.ReturnUrl)}" : "")">Sign up</a>
+            </p>
+            <p class="text-muted">
+                <a href="/auth/reset-password">Forgot password?</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="/auth-static/js/webauthn.js"></script>
+    <script>
+        document.getElementById('passkey-signin-btn')?.addEventListener('click', function() {
+            sorcha.webauthn.signIn('/api/auth/passkey/assertion/options',
+                                   '/api/auth/passkey/assertion/verify',
+                                   '@(Model.ReturnUrl ?? "")');
+        });
+    </script>
+}
