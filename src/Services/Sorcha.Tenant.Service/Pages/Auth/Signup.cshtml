@@ -96,7 +96,7 @@
                     </div>
                     <div class="mb-4">
                         <label class="form-label">Confirm Password</label>
-                        <input type="password" id="confirm-password" class="form-control form-control-lg"
+                        <input type="password" asp-for="ConfirmPassword" class="form-control form-control-lg"
                                placeholder="Confirm your password" />
                         <span id="confirm-password-error" class="text-danger small" style="display: none;">Passwords do not match.</span>
                     </div>
@@ -162,6 +162,10 @@
                 var provider = this.getAttribute('data-provider');
                 var returnUrl = '@(Model.ReturnUrl != null ? Uri.EscapeDataString(Model.ReturnUrl) : "")';
                 var redirectUri = window.location.origin + '/auth/social-callback';
+                var nonce = crypto.randomUUID();
+                var state = btoa(JSON.stringify({ nonce: nonce, returnUrl: returnUrl }));
+                // Store nonce for CSRF validation on callback
+                sessionStorage.setItem('social_login_nonce', nonce);
 
                 fetch('/api/auth/public/social/initiate', {
                     method: 'POST',
@@ -169,7 +173,7 @@
                     body: JSON.stringify({
                         provider: provider,
                         redirect_uri: redirectUri,
-                        state: returnUrl
+                        state: state
                     })
                 })
                 .then(function(res) { return res.json(); })

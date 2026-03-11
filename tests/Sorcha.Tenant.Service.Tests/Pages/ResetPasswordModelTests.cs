@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Sorcha.Tenant.Service.Pages.Auth;
@@ -22,8 +23,10 @@ public class ResetPasswordModelTests
 
     private ResetPasswordModel CreateModel()
     {
+        var config = new ConfigurationBuilder().Build();
         var model = new ResetPasswordModel(
             _passwordResetService.Object,
+            config,
             NullLogger<ResetPasswordModel>.Instance);
 
         var httpContext = new DefaultHttpContext();

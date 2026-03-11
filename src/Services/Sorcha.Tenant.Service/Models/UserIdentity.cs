@@ -127,7 +127,7 @@ public class UserIdentity
     /// Expiry timestamp for the password reset token (1 hour from generation).
     /// Null when no reset is pending.
     /// </summary>
-    public DateTime? PasswordResetTokenExpiresAt { get; set; }
+    public DateTimeOffset? PasswordResetTokenExpiresAt { get; set; }
 }
 
 /// <summary>

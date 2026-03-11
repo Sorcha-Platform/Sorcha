@@ -123,8 +123,17 @@ public class RegistrationService : IRegistrationService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        // Send verification email
-        await _emailVerificationService.GenerateAndSendVerificationAsync(user, ct);
+        // Send verification email — wrapped in try/catch so a transient email failure
+        // doesn't leave the user unable to re-request verification later.
+        try
+        {
+            await _emailVerificationService.GenerateAndSendVerificationAsync(user, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send verification email for user {Email} (UserId: {UserId}). " +
+                "User can re-request verification from the login page.", user.Email, user.Id);
+        }
 
         _logger.LogInformation(
             "User self-registered: {Email} in org {OrgSubdomain} (UserId: {UserId})",

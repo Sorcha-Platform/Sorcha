@@ -187,7 +187,7 @@ public static class AuthEndpoints
         if (!result.Success)
         {
             // Rate-limited responses get 429
-            if (result.Error?.Contains("Too many login attempts", StringComparison.OrdinalIgnoreCase) == true)
+            if (result.ErrorCode == LoginErrorCode.RateLimited)
             {
                 return TypedResults.Problem(result.Error,
                     statusCode: StatusCodes.Status429TooManyRequests);

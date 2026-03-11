@@ -11,7 +11,7 @@ namespace Sorcha.Tenant.Service.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<DateTime>(
+            migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "PasswordResetTokenExpiresAt",
                 schema: "public",
                 table: "UserIdentities",

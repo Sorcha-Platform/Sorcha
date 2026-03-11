@@ -50,6 +50,13 @@ public class SignupModel : PageModel
     public string Password { get; set; } = "";
 
     /// <summary>
+    /// Password confirmation for server-side validation.
+    /// </summary>
+    [BindProperty]
+    [Required(ErrorMessage = "Please confirm your password.")]
+    public string ConfirmPassword { get; set; } = "";
+
+    /// <summary>
     /// Organization subdomain for org-specific registration.
     /// </summary>
     [BindProperty]
@@ -106,6 +113,12 @@ public class SignupModel : PageModel
 
         if (!ModelState.IsValid)
         {
+            return Page();
+        }
+
+        if (Password != ConfirmPassword)
+        {
+            ModelState.AddModelError(nameof(ConfirmPassword), "Passwords do not match.");
             return Page();
         }
 

@@ -4,6 +4,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -241,6 +242,12 @@ public class OidcCallbackModel : PageModel
     /// <returns>Redirect to app on success, page with error on failure.</returns>
     public async Task<IActionResult> OnPostProfileAsync(CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+        {
+            RequiresProfileCompletion = true;
+            return Page();
+        }
+
         if (string.IsNullOrWhiteSpace(OidcState))
         {
             ErrorMessage = "Login session expired. Please sign in again.";
@@ -281,6 +288,20 @@ public class OidcCallbackModel : PageModel
             {
                 RequiresProfileCompletion = true;
                 ErrorMessage = "Registration is restricted to specific email domains.";
+                return Page();
+            }
+        }
+
+        // Check email uniqueness within the organization
+        if (!string.IsNullOrWhiteSpace(ProfileEmail))
+        {
+            var trimmedEmail = ProfileEmail.Trim();
+            var existingUser = await _dbContext.UserIdentities
+                .AnyAsync(u => u.Email == trimmedEmail && u.OrganizationId == org.Id && u.Id != user.Id, ct);
+            if (existingUser)
+            {
+                RequiresProfileCompletion = true;
+                ErrorMessage = "An account with this email already exists in this organization.";
                 return Page();
             }
         }

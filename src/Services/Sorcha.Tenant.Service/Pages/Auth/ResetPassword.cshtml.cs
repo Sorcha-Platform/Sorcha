@@ -15,6 +15,7 @@ namespace Sorcha.Tenant.Service.Pages.Auth;
 public class ResetPasswordModel : PageModel
 {
     private readonly IPasswordResetService _passwordResetService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ResetPasswordModel> _logger;
 
     /// <summary>
@@ -22,9 +23,11 @@ public class ResetPasswordModel : PageModel
     /// </summary>
     public ResetPasswordModel(
         IPasswordResetService passwordResetService,
+        IConfiguration configuration,
         ILogger<ResetPasswordModel> logger)
     {
         _passwordResetService = passwordResetService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -120,7 +123,10 @@ public class ResetPasswordModel : PageModel
 
         try
         {
-            var resetBaseUrl = $"{Request.Scheme}://{Request.Host}/auth/reset-password";
+            var appBaseUrl = _configuration["AppBaseUrl"];
+            var resetBaseUrl = !string.IsNullOrEmpty(appBaseUrl)
+                ? $"{appBaseUrl.TrimEnd('/')}/auth/reset-password"
+                : $"{Request.Scheme}://{Request.Host}/auth/reset-password";
             await _passwordResetService.RequestResetAsync(Email, resetBaseUrl, cancellationToken);
 
             // Always show "check your email" to prevent enumeration

@@ -48,7 +48,8 @@ public class LoginService : ILoginService
         if (await _revocationService.IsRateLimitedAsync(email, ct))
         {
             _logger.LogWarning("Login rate-limited for {Email}", email);
-            return new LoginResult(false, Error: "Too many login attempts. Please try again later.");
+            return new LoginResult(false, Error: "Too many login attempts. Please try again later.",
+                ErrorCode: LoginErrorCode.RateLimited);
         }
 
         try

@@ -73,7 +73,7 @@ public class PasswordResetService : IPasswordResetService
 
         // Store the SHA-256 hash of the token (not the raw token)
         user.PasswordResetTokenHash = HashToken(rawToken);
-        user.PasswordResetTokenExpiresAt = DateTime.UtcNow.Add(TokenTtl);
+        user.PasswordResetTokenExpiresAt = DateTimeOffset.UtcNow.Add(TokenTtl);
 
         await _dbContext.SaveChangesAsync(ct);
 
@@ -104,7 +104,7 @@ public class PasswordResetService : IPasswordResetService
             return new PasswordResetValidation(false, Error: "Invalid or expired reset token.");
         }
 
-        if (user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
+        if (user.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
         {
             _logger.LogInformation("Expired password reset token used for user {Email}", user.Email);
             return new PasswordResetValidation(false, Error: "Reset token has expired. Please request a new one.");
@@ -130,7 +130,7 @@ public class PasswordResetService : IPasswordResetService
             return new PasswordResetResult(false, Error: "Invalid or expired reset token.");
         }
 
-        if (user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
+        if (user.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
         {
             return new PasswordResetResult(false, Error: "Reset token has expired. Please request a new one.");
         }

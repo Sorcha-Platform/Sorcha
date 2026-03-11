@@ -6,6 +6,21 @@ using Sorcha.Tenant.Service.Models.Dtos;
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
+/// Error codes for login failures — avoids fragile string-matching on error messages.
+/// </summary>
+public enum LoginErrorCode
+{
+    /// <summary>No error.</summary>
+    None,
+    /// <summary>Invalid email or password.</summary>
+    InvalidCredentials,
+    /// <summary>Too many failed attempts — rate limited.</summary>
+    RateLimited,
+    /// <summary>Account is locked (temporary or permanent).</summary>
+    AccountLocked
+}
+
+/// <summary>
 /// Result of a login attempt.
 /// </summary>
 /// <param name="Success">Whether login succeeded (tokens issued or 2FA challenge returned).</param>
@@ -14,13 +29,15 @@ namespace Sorcha.Tenant.Service.Services;
 /// <param name="LoginToken">Short-lived token for 2FA verification flow.</param>
 /// <param name="AvailableMethods">Available 2FA methods (e.g., "totp", "passkey").</param>
 /// <param name="Error">Error message if login failed.</param>
+/// <param name="ErrorCode">Typed error code for programmatic handling.</param>
 public record LoginResult(
     bool Success,
     TokenResponse? Tokens = null,
     bool TwoFactorRequired = false,
     string? LoginToken = null,
     List<string>? AvailableMethods = null,
-    string? Error = null);
+    string? Error = null,
+    LoginErrorCode ErrorCode = LoginErrorCode.None);
 
 /// <summary>
 /// Authenticates users with email and password. Handles BCrypt verification,

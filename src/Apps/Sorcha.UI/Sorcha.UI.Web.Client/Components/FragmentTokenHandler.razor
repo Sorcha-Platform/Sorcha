@@ -48,14 +48,21 @@
             // Notify Blazor auth system
             AuthStateProvider.NotifyAuthenticationStateChanged();
 
-            // Navigate to return URL or dashboard
-            var destination = !string.IsNullOrEmpty(result.ReturnUrl) ? result.ReturnUrl : "dashboard";
+            // Navigate to return URL or dashboard (validate to prevent open redirect)
+            var destination = IsValidReturnUrl(result.ReturnUrl) ? result.ReturnUrl! : "dashboard";
             NavigationManager.NavigateTo(destination, forceLoad: false);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently fail - user will see the normal unauthenticated view
+            Console.WriteLine($"Fragment token handoff failed: {ex.Message}");
         }
+    }
+
+    private static bool IsValidReturnUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return false;
+        // Only allow relative paths; reject protocol-relative ("//evil.com") and absolute URLs
+        return url.StartsWith('/') && !url.StartsWith("//");
     }
 
     private sealed class FragmentTokenResult

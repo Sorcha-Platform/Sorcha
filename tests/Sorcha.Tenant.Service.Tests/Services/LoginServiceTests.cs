@@ -208,6 +208,7 @@ public class LoginServiceTests
         // Assert
         result.Success.Should().BeFalse();
         result.Error.Should().Contain("Too many login attempts");
+        result.ErrorCode.Should().Be(LoginErrorCode.RateLimited);
 
         // Should not even attempt user lookup
         _identityRepo.Verify(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);

@@ -44,6 +44,7 @@ public class SignupModelTests
         var model = CreateModel();
         model.Email = "user@test.com";
         model.Password = "StrongPassword1!";
+        model.ConfirmPassword = "StrongPassword1!";
         model.DisplayName = "Test User";
 
         // Act
@@ -70,6 +71,7 @@ public class SignupModelTests
         var model = CreateModel();
         model.Email = "user@test.com";
         model.Password = "weak";
+        model.ConfirmPassword = "weak";
         model.DisplayName = "Test User";
 
         // Act
@@ -93,6 +95,7 @@ public class SignupModelTests
         var model = CreateModel();
         model.Email = "existing@test.com";
         model.Password = "StrongPassword1!";
+        model.ConfirmPassword = "StrongPassword1!";
         model.DisplayName = "Test User";
 
         // Act
@@ -115,6 +118,7 @@ public class SignupModelTests
         var model = CreateModel();
         model.Email = "new@test.com";
         model.Password = "StrongPassword1!";
+        model.ConfirmPassword = "StrongPassword1!";
         model.DisplayName = "New User";
 
         // Act

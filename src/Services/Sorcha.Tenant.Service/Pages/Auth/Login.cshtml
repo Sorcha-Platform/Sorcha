@@ -76,11 +76,13 @@
 
 @section Scripts {
     <script src="/auth-static/js/webauthn.js"></script>
+    <div id="login-data" data-return-url="@(System.Net.WebUtility.HtmlEncode(Model.ReturnUrl ?? ""))" style="display:none;"></div>
     <script>
         document.getElementById('passkey-signin-btn')?.addEventListener('click', function() {
+            var returnUrl = document.getElementById('login-data').dataset.returnUrl;
             sorcha.webauthn.signIn('/api/auth/passkey/assertion/options',
                                    '/api/auth/passkey/assertion/verify',
-                                   '@(Model.ReturnUrl ?? "")');
+                                   returnUrl);
         });
     </script>
 }
