@@ -245,7 +245,7 @@ public static class Extensions
             var path = context.Request.Path.Value ?? "";
             if (path.StartsWith("/scalar", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("/login", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/design", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/app", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/explorer", StringComparison.OrdinalIgnoreCase) ||
