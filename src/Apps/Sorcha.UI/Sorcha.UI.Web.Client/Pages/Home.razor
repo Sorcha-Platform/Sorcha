@@ -13,6 +13,7 @@
 @using Sorcha.UI.Core.Models.Dashboard
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Web.Client.Components.Layout
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IDashboardService DashboardService
 @inject IAlertService AlertService
 @inject IAlertDismissalService AlertDismissal
@@ -23,198 +24,186 @@
 
 <PageTitle>@Loc.T("dashboard.pageTitle")</PageTitle>
 
-<CascadingAuthenticationState>
-    <AuthorizeView>
-        <Authorized>
-            @if (!_hasDefaultWallet && !_isLoading)
-            {
-                <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcome")</MudText>
-                <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AccountBalanceWallet">
-                    <MudText Typo="Typo.body1">
-                        @Loc.T("dashboard.wizard.walletRequired")
-                    </MudText>
-                </MudAlert>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="wallets/create?wizard=true"
-                           StartIcon="@Icons.Material.Filled.Add" Size="Size.Large">
-                    @Loc.T("wallet.create")
-                </MudButton>
-            }
-            else
-            {
-            <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcomeBack", GetDisplayName(context))</MudText>
+@if (!_hasDefaultWallet && !_isLoading)
+{
+    <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcome")</MudText>
+    <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AccountBalanceWallet">
+        <MudText Typo="Typo.body1">
+            @Loc.T("dashboard.wizard.walletRequired")
+        </MudText>
+    </MudAlert>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="wallets/create?wizard=true"
+               StartIcon="@Icons.Material.Filled.Add" Size="Size.Large">
+        @Loc.T("wallet.create")
+    </MudButton>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcomeBack", _displayName)</MudText>
 
-            @* Stats Cards *@
-            <MudGrid Class="mb-6">
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.ActiveBlueprints</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.blueprints")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Secondary" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.TotalWallets</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.wallets")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Info" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.RecentTransactions</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.transactions")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Success" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.ConnectedPeers</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.peers")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.ActiveRegisters</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.registers")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="4" lg="2">
-                    <MudCard Elevation="2">
-                        <MudCardContent Class="d-flex flex-column align-center pa-4">
-                            <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Dark" Size="Size.Large" Class="mb-2" />
-                            @if (_isLoading)
-                            {
-                                <MudSkeleton Width="40px" Height="32px" />
-                            }
-                            else if (!_stats.IsLoaded)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
-                            }
-                            else
-                            {
-                                <MudText Typo="Typo.h5">@_stats.TotalOrganizations</MudText>
-                            }
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.organizations")</MudText>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
+    @* Stats Cards *@
+    <MudGrid Class="mb-6">
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.ActiveBlueprints</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.blueprints")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Color="Color.Secondary" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.TotalWallets</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.wallets")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Info" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.RecentTransactions</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.transactions")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Hub" Color="Color.Success" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.ConnectedPeers</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.peers")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.ActiveRegisters</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.registers")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Elevation="2">
+                <MudCardContent Class="d-flex flex-column align-center pa-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Dark" Size="Size.Large" Class="mb-2" />
+                    @if (_isLoading)
+                    {
+                        <MudSkeleton Width="40px" Height="32px" />
+                    }
+                    else if (!_stats.IsLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Loc.T("dashboard.stats.unavailable")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.h5">@_stats.TotalOrganizations</MudText>
+                    }
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.stats.organizations")</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
 
-            @* Alerts Panel *@
-            <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
+    @* Alerts Panel *@
+    <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
 
-            @if (_isRefreshing)
-            {
-                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
-            }
+    @if (_isRefreshing)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+    }
 
-            @* Quick Actions *@
-            <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.quickActions")</MudText>
-            <MudStack Row="true" Spacing="2" Class="mb-6">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="designer"
-                           StartIcon="@Icons.Material.Filled.Add">
-                    @Loc.T("blueprint.create")
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="wallets"
-                           StartIcon="@Icons.Material.Filled.AccountBalanceWallet">
-                    @Loc.T("dashboard.manageWallets")
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="registers"
-                           StartIcon="@Icons.Material.Filled.Storage">
-                    @Loc.T("dashboard.viewRegisters")
-                </MudButton>
-            </MudStack>
+    @* Quick Actions *@
+    <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.quickActions")</MudText>
+    <MudStack Row="true" Spacing="2" Class="mb-6">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="designer"
+                   StartIcon="@Icons.Material.Filled.Add">
+            @Loc.T("blueprint.create")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="wallets"
+                   StartIcon="@Icons.Material.Filled.AccountBalanceWallet">
+            @Loc.T("dashboard.manageWallets")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="registers"
+                   StartIcon="@Icons.Material.Filled.Storage">
+            @Loc.T("dashboard.viewRegisters")
+        </MudButton>
+    </MudStack>
 
-            @* Error State Display *@
-            @if (!_stats.IsLoaded && !_isLoading)
-            {
-                <MudAlert Severity="Severity.Warning" Class="mb-4">
-                    @Loc.T("dashboard.statsError") <a href="/app/wallets" class="mud-alert-link">@Loc.T("dashboard.viewWallets")</a>
-                </MudAlert>
-            }
+    @* Error State Display *@
+    @if (!_stats.IsLoaded && !_isLoading)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            @Loc.T("dashboard.statsError") <a href="/app/wallets" class="mud-alert-link">@Loc.T("dashboard.viewWallets")</a>
+        </MudAlert>
+    }
 
-            @* Recent Activity *@
-            <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.recentActivity")</MudText>
-            <MudPaper Elevation="1" Class="pa-4">
-                <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.noRecentActivity")</MudText>
-            </MudPaper>
-            }
-        </Authorized>
-        <NotAuthorized>
-            @{
-                var returnUrl = Uri.EscapeDataString(Navigation.Uri);
-                Navigation.NavigateTo($"/auth/login?returnUrl={returnUrl}", forceLoad: true);
-            }
-        </NotAuthorized>
-    </AuthorizeView>
-</CascadingAuthenticationState>
+    @* Recent Activity *@
+    <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.recentActivity")</MudText>
+    <MudPaper Elevation="1" Class="pa-4">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Loc.T("dashboard.noRecentActivity")</MudText>
+    </MudPaper>
+}
 
 @code {
     private const int RefreshIntervalMs = 30_000;
@@ -223,12 +212,17 @@
     private bool _isLoading = true;
     private bool _isRefreshing;
     private bool _hasDefaultWallet;
+    private string _displayName = string.Empty;
     private System.Timers.Timer? _refreshTimer;
     private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
         Loc.OnLanguageChanged += OnLanguageChanged;
+
+        // Get display name from auth state (already verified by [Authorize] + AuthorizeRouteView)
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _displayName = GetDisplayName(authState.User);
 
         var wallets = await WalletApi.GetWalletsAsync();
         var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
@@ -287,9 +281,8 @@
         Loc.OnLanguageChanged -= OnLanguageChanged;
     }
 
-    private static string GetDisplayName(AuthenticationState context)
+    private static string GetDisplayName(ClaimsPrincipal user)
     {
-        var user = context.User;
         return user.FindFirst("name")?.Value
             ?? user.FindFirst("preferred_username")?.Value
             ?? user.FindFirst("email")?.Value
