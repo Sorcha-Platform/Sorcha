@@ -25,7 +25,7 @@ public class IdpConfigurationClientService : IIdpConfigurationClientService
     }
 
     private static string BaseUrl(Guid organizationId) =>
-        $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/idp-config";
+        $"/api/organizations/{Uri.EscapeDataString(organizationId.ToString())}/idp";
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<IdpConfigurationDto>> GetIdpConfigurationsAsync(
