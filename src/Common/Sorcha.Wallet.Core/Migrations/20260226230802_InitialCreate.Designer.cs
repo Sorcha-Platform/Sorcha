@@ -153,8 +153,8 @@ namespace Sorcha.Wallet.Core.Migrations
 
                     b.Property<string>("EncryptedPrivateKey")
                         .IsRequired()
-                        .HasMaxLength(4096)
-                        .HasColumnType("character varying(4096)");
+                        .HasMaxLength(16384)
+                        .HasColumnType("character varying(16384)");
 
                     b.Property<string>("EncryptionKeyId")
                         .IsRequired()
@@ -183,8 +183,8 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasColumnType("character varying(256)");
 
                     b.Property<string>("PublicKey")
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)");
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -354,8 +354,8 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("PublicKey")
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)");
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
 
                     b.Property<string>("Tags")
                         .HasMaxLength(1024)
