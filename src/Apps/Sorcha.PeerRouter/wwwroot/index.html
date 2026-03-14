@@ -156,6 +156,30 @@
         .event-type-PeerExchanged { color: #d29922; }
         .event-type-RelayForwarded { color: #f0883e; }
         .event-type-Error { color: #ff7b72; }
+        .event-type-PeerHeartbeatRejected { color: #f97583; }
+
+        .filter-bar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 8px 16px;
+            border-bottom: 1px solid #30363d;
+            background: #0d1117;
+        }
+
+        .filter-btn {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid #30363d;
+            background: transparent;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .filter-btn.active { opacity: 1; }
+        .filter-btn.inactive { opacity: 0.35; }
 
         .event-time {
             color: #484f58;
@@ -258,6 +282,7 @@
                 Live Events
                 <span class="event-count" id="event-count">0 events</span>
             </div>
+            <div class="filter-bar" id="filter-bar"></div>
             <div class="panel-body" id="event-list">
                 <div class="no-data">Waiting for events...</div>
             </div>
@@ -269,8 +294,17 @@
         var EVENT_TYPE_NAMES = [
             'PeerConnected','PeerDisconnected','PeerHeartbeat',
             'RegisterAdvertised','PeerListRequested','PeerExchanged',
-            'RelayForwarded','Error'
+            'RelayForwarded','Error','PeerHeartbeatRejected'
         ];
+        var EVENT_TYPE_COLORS = {
+            PeerConnected: '#3fb950', PeerDisconnected: '#f85149',
+            PeerHeartbeat: '#58a6ff', RegisterAdvertised: '#d2a8ff',
+            PeerListRequested: '#79c0ff', PeerExchanged: '#d29922',
+            RelayForwarded: '#f0883e', Error: '#ff7b72',
+            PeerHeartbeatRejected: '#f97583'
+        };
+        var activeFilters = {};
+        EVENT_TYPE_NAMES.forEach(function(t) { activeFilters[t] = true; });
         var events = [];
         var eventSource = null;
         var reconnectDelay = 1000;
@@ -323,6 +357,24 @@
             return el;
         }
 
+        function buildFilterBar() {
+            var bar = document.getElementById('filter-bar');
+            clearChildren(bar);
+            EVENT_TYPE_NAMES.forEach(function(t) {
+                var btn = document.createElement('button');
+                btn.textContent = t;
+                btn.className = 'filter-btn ' + (activeFilters[t] ? 'active' : 'inactive');
+                btn.style.color = EVENT_TYPE_COLORS[t] || '#c9d1d9';
+                btn.style.borderColor = activeFilters[t] ? (EVENT_TYPE_COLORS[t] || '#30363d') : '#30363d';
+                btn.onclick = function() {
+                    activeFilters[t] = !activeFilters[t];
+                    buildFilterBar();
+                    renderEvents();
+                };
+                bar.appendChild(btn);
+            });
+        }
+
         function renderEvents() {
             var container = document.getElementById('event-list');
             var countEl = document.getElementById('event-count');
@@ -330,13 +382,18 @@
 
             clearChildren(container);
 
-            if (events.length === 0) {
-                container.appendChild(createTextEl('div', 'Waiting for events...', 'no-data'));
+            var filtered = events.filter(function(evt) {
+                return activeFilters[getTypeName(evt.type)];
+            });
+
+            if (filtered.length === 0) {
+                container.appendChild(createTextEl('div',
+                    events.length === 0 ? 'Waiting for events...' : 'No events match filter', 'no-data'));
                 return;
             }
 
-            for (var i = events.length - 1; i >= 0; i--) {
-                var evt = events[i];
+            for (var i = filtered.length - 1; i >= 0; i--) {
+                var evt = filtered[i];
                 var typeName = getTypeName(evt.type);
 
                 var row = document.createElement('div');
@@ -349,8 +406,10 @@
                 peerSpan.title = evt.peerId || '';
                 row.appendChild(peerSpan);
 
-                row.appendChild(createTextEl('span',
-                    (evt.ipAddress || '') + ':' + (evt.port || ''), 'event-detail'));
+                var source = (evt.ipAddress && evt.ipAddress !== 'unknown')
+                    ? evt.ipAddress + (evt.port ? ':' + evt.port : '')
+                    : shortenPeerId(evt.peerId);
+                row.appendChild(createTextEl('span', source, 'event-detail'));
 
                 container.appendChild(row);
             }
@@ -459,6 +518,7 @@
             }).catch(function() {});
         }
 
+        buildFilterBar();
         connectSSE();
         fetchPeers();
         fetchHealth();
