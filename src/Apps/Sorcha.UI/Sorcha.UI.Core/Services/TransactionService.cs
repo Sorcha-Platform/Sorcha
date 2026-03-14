@@ -117,7 +117,7 @@ public class TransactionService : ITransactionService
     {
         try
         {
-            var url = $"/api/transactions/query?wallet={Uri.EscapeDataString(walletAddress)}&page={page}&pageSize={pageSize}";
+            var url = $"/api/register/query/wallets/{Uri.EscapeDataString(walletAddress)}/transactions?page={page}&pageSize={pageSize}";
 
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
