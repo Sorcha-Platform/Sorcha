@@ -63,39 +63,24 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
 
             try
             {
-                // Navigate to login
+                // Navigate to login (server-rendered Razor Page at /auth/login)
                 await page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.PublicRoutes.Login}");
                 await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-                await page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
 
-                // Wait for login form
-                var usernameInput = page.Locator("input[type='text']").First;
-                await usernameInput.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
+                // Wait for login form (email input, not text - it's type='email')
+                var emailInput = page.Locator("input[type='email']").First;
+                await emailInput.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
 
                 // Fill credentials
-                await usernameInput.FillAsync(TestConstants.TestEmail);
+                await emailInput.FillAsync(TestConstants.TestEmail);
                 await page.Locator("input[type='password']").First.FillAsync(TestConstants.TestPassword);
 
-                // Select Docker profile if available
-                var profileSelector = page.Locator("select");
-                if (await profileSelector.CountAsync() > 0)
-                {
-                    try
-                    {
-                        await profileSelector.First.SelectOptionAsync(
-                            new SelectOptionValue { Value = TestConstants.TestProfileName });
-                    }
-                    catch
-                    {
-                        // Profile option may not exist, continue
-                    }
-                }
-
                 // Click login
-                var loginButton = page.Locator("button:has-text('Sign In'), button:has-text('Login')").First;
+                var loginButton = page.Locator("button:has-text('Sign In')").First;
                 await loginButton.ClickAsync();
 
                 // Wait for navigation away from login
+                await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
                 await page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
 
                 // Verify login succeeded

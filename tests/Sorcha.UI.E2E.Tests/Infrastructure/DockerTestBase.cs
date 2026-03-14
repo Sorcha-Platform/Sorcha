@@ -177,7 +177,9 @@ public abstract class DockerTestBase : PageTest
     /// </summary>
     protected bool IsOnLoginPage()
     {
-        return Page.Url.Contains("/auth/login", StringComparison.OrdinalIgnoreCase);
+        var url = Page.Url;
+        return url.Contains("/auth/login", StringComparison.OrdinalIgnoreCase)
+            || url.Contains("/auth/signup", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
