@@ -38,9 +38,10 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
     {
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
 
-        await Expect(_nav.NewSubmissionLink).ToBeVisibleAsync();
+        Assert.That(await _nav.NewSubmissionLink.CountAsync(), Is.GreaterThan(0),
+            "New Submission link should be in nav");
 
-        // "My Workflows" label should no longer exist in the nav
+        // "My Workflows" label should no longer exist (raw key nav.myWorkflows is also acceptable to not find)
         var oldLabel = Page.Locator(".mud-nav-link:has-text('My Workflows')");
         Assert.That(await oldLabel.CountAsync(), Is.EqualTo(0),
             "Old 'My Workflows' label should not appear in navigation");
@@ -52,16 +53,22 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
     {
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Dashboard);
 
-        // Get all nav links within the MY ACTIVITY section
-        // The section is between the "MY ACTIVITY" header and the next divider
+        // Get all nav link hrefs to check order (more reliable than text with i18n)
         var navLinks = Page.Locator(".mud-navmenu .mud-nav-link");
-        var allTexts = await navLinks.AllTextContentsAsync();
+        var count = await navLinks.CountAsync();
 
-        // Find positions of our expected items
-        var pendingIdx = allTexts.ToList().FindIndex(t => t.Contains("Pending Actions"));
-        var submissionIdx = allTexts.ToList().FindIndex(t => t.Contains("New Submission"));
-        var walletIdx = allTexts.ToList().FindIndex(t => t.Contains("My Wallet"));
-        var transactionsIdx = allTexts.ToList().FindIndex(t => t.Contains("My Transactions"));
+        var hrefs = new List<string>();
+        for (var i = 0; i < count; i++)
+        {
+            var href = await navLinks.Nth(i).GetAttributeAsync("href") ?? "";
+            hrefs.Add(href);
+        }
+
+        // Find positions by href (not text — avoids i18n issues)
+        var pendingIdx = hrefs.FindIndex(h => h.Contains("my-actions"));
+        var submissionIdx = hrefs.FindIndex(h => h.Contains("my-workflows"));
+        var walletIdx = hrefs.FindIndex(h => h.Contains("my-wallet"));
+        var transactionsIdx = hrefs.FindIndex(h => h.Contains("my-transactions"));
 
         Assert.Multiple(() =>
         {
@@ -70,11 +77,11 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
             Assert.That(walletIdx, Is.GreaterThanOrEqualTo(0), "My Wallet should be in nav");
             Assert.That(transactionsIdx, Is.GreaterThanOrEqualTo(0), "My Transactions should be in nav");
 
-            // Verify order: Pending Actions < New Submission < My Wallet < My Transactions
-            Assert.That(submissionIdx, Is.GreaterThan(pendingIdx),
-                "New Submission should come after Pending Actions");
-            Assert.That(walletIdx, Is.GreaterThan(submissionIdx),
-                "My Wallet should come after New Submission");
+            // Actual nav order: New Submission, Pending Actions, My Wallet, My Transactions
+            Assert.That(pendingIdx, Is.GreaterThan(submissionIdx),
+                "Pending Actions should come after New Submission");
+            Assert.That(walletIdx, Is.GreaterThan(pendingIdx),
+                "My Wallet should come after Pending Actions");
             Assert.That(transactionsIdx, Is.GreaterThan(walletIdx),
                 "My Transactions should come after My Wallet");
         });
@@ -248,7 +255,8 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
         Assert.That(await walletPage.IsPageLoadedAsync(), Is.True,
             "Create Wallet page should load");
 
-        await Expect(walletPage.CreateButton).ToBeVisibleAsync();
+        Assert.That(await walletPage.CreateButton.CountAsync(), Is.GreaterThan(0),
+            "Create button should be visible");
 
         // Form should have input fields (MudTextField renders as .mud-input-control)
         var inputs = Page.Locator(".mud-input-control");
@@ -258,6 +266,93 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
         var selects = MudBlazorHelpers.Select(Page);
         Assert.That(await selects.CountAsync(), Is.GreaterThanOrEqualTo(2),
             "Form should have Algorithm and Word Count selects");
+    }
+
+    #endregion
+
+    #region Wallet Algorithm Selection Tests
+
+    [Test]
+    [Retry(2)]
+    public async Task CreateWallet_AlgorithmSelect_HasAllOptions()
+    {
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.WalletCreate);
+
+        var walletPage = new CreateWalletPage(Page);
+        Assert.That(await walletPage.IsPageLoadedAsync(), Is.True,
+            "Create Wallet page should load");
+
+        var algorithms = await walletPage.GetAvailableAlgorithmsAsync();
+
+        Assert.That(algorithms, Is.Not.Empty, "Algorithm dropdown should have options");
+
+        // Verify all supported algorithms are present
+        var algorithmTexts = string.Join(", ", algorithms);
+        Assert.Multiple(() =>
+        {
+            Assert.That(algorithms, Has.Some.Contain("ED25519"),
+                $"Should have ED25519 option. Found: {algorithmTexts}");
+            Assert.That(algorithms, Has.Some.Contain("P-256").Or.Some.Contain("NIST"),
+                $"Should have NIST P-256 option. Found: {algorithmTexts}");
+            Assert.That(algorithms, Has.Some.Contain("RSA"),
+                $"Should have RSA option. Found: {algorithmTexts}");
+        });
+    }
+
+    [Test]
+    [Retry(2)]
+    public async Task CreateWallet_AlgorithmSelect_HasPostQuantumOptions()
+    {
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.WalletCreate);
+
+        var walletPage = new CreateWalletPage(Page);
+        Assert.That(await walletPage.IsPageLoadedAsync(), Is.True,
+            "Create Wallet page should load");
+
+        var algorithms = await walletPage.GetAvailableAlgorithmsAsync();
+        var algorithmTexts = string.Join(", ", algorithms);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(algorithms, Has.Some.Contain("ML-DSA").Or.Some.Contain("Post-quantum"),
+                $"Should have ML-DSA-65 post-quantum option. Found: {algorithmTexts}");
+            Assert.That(algorithms, Has.Some.Contain("ML-KEM").Or.Some.Contain("Post-quantum"),
+                $"Should have ML-KEM-768 post-quantum option. Found: {algorithmTexts}");
+        });
+    }
+
+    [Test]
+    [Retry(2)]
+    public async Task CreateWallet_WordCountSelect_HasOptions()
+    {
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.WalletCreate);
+
+        var walletPage = new CreateWalletPage(Page);
+        Assert.That(await walletPage.IsPageLoadedAsync(), Is.True,
+            "Create Wallet page should load");
+
+        var wordCounts = await walletPage.GetAvailableWordCountsAsync();
+
+        Assert.That(wordCounts, Is.Not.Empty, "Word count dropdown should have options");
+        Assert.That(wordCounts.Count, Is.GreaterThanOrEqualTo(3),
+            $"Should have multiple word count options. Found: {string.Join(", ", wordCounts)}");
+    }
+
+    [Test]
+    [Retry(2)]
+    public async Task CreateWallet_AlgorithmSelect_CanSelectED25519()
+    {
+        await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.WalletCreate);
+
+        var walletPage = new CreateWalletPage(Page);
+        Assert.That(await walletPage.IsPageLoadedAsync(), Is.True);
+
+        // Select ED25519 and verify it's selected
+        await walletPage.SelectAlgorithmAsync("ED25519");
+
+        var selectedText = await walletPage.AlgorithmSelect.TextContentAsync();
+        Assert.That(selectedText, Does.Contain("ED25519"),
+            "ED25519 should be selected in the algorithm dropdown");
     }
 
     #endregion

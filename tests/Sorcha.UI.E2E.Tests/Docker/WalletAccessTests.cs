@@ -31,20 +31,22 @@ public class WalletAccessTests : AuthenticatedDockerTestBase
     {
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Wallets);
 
-        var walletLink = Page.Locator("a[href*='wallets/']").First;
-        if (await walletLink.CountAsync() > 0)
-        {
-            await walletLink.ClickAsync();
-            await Page.WaitForLoadStateAsync(Microsoft.Playwright.LoadState.NetworkIdle);
-
-            var tabs = Page.Locator(".mud-tab");
-            var tabCount = await tabs.CountAsync();
-            Assert.That(tabCount, Is.GreaterThanOrEqualTo(2),
-                "Wallet detail should have multiple tabs including Access");
-        }
-        else
+        // Look for wallet links (href contains wallet address pattern)
+        var walletLink = Page.Locator("a[href*='wallets/']");
+        if (await walletLink.CountAsync() == 0)
         {
             Assert.Inconclusive("No wallets available to test detail view");
+            return;
         }
+
+        await walletLink.First.ClickAsync();
+        await Page.WaitForLoadStateAsync(Microsoft.Playwright.LoadState.NetworkIdle);
+        await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
+
+        // Wallet detail page should have tabs
+        var tabs = Page.Locator(".mud-tabs .mud-tab, .mud-tab");
+        var tabCount = await tabs.CountAsync();
+        Assert.That(tabCount, Is.GreaterThanOrEqualTo(2),
+            "Wallet detail should have multiple tabs including Access");
     }
 }

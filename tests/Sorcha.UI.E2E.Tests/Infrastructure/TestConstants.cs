@@ -71,8 +71,9 @@ public static class TestConstants
     public static class PublicRoutes
     {
         public const string Landing = "/";
-        public const string Login = $"{AppBase}/auth/login";
-        public const string Logout = $"{AppBase}/auth/logout";
+        public const string Login = "/auth/login";
+        public const string Logout = "/auth/logout";
+        public const string Signup = "/auth/signup";
     }
 
     /// <summary>

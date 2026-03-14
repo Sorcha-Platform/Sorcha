@@ -127,6 +127,28 @@ public static class MudBlazorHelpers
     }
 
     /// <summary>
+    /// Waits for the localization service to load translations.
+    /// Translations load asynchronously in OnAfterRenderAsync, so the initial render
+    /// shows raw i18n keys (e.g. "nav.dashboard"). This waits until the nav menu
+    /// shows translated text instead of raw keys.
+    /// </summary>
+    public static async Task WaitForTranslationsAsync(IPage page, int timeoutMs = 15000)
+    {
+        try
+        {
+            // Wait until the nav menu no longer shows raw i18n keys.
+            // Raw keys follow the pattern "nav.something" — translated text is just "Dashboard".
+            await page.WaitForFunctionAsync(
+                "() => { const links = document.querySelectorAll('.mud-nav-link'); if (links.length === 0) return false; for (const l of links) { const t = l.textContent.trim(); if (t && !t.includes('.') && t.length > 1) return true; } return false; }",
+                new PageWaitForFunctionOptions { Timeout = timeoutMs });
+        }
+        catch (TimeoutException)
+        {
+            // Translations may not load (e.g. network issue) — continue with raw keys
+        }
+    }
+
+    /// <summary>
     /// Locates elements by data-testid attribute. Use this as the primary selector strategy.
     /// </summary>
     public static ILocator TestId(IPage page, string testId) =>
