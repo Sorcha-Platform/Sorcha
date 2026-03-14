@@ -34,10 +34,10 @@ A system administrator navigates to the Schema Providers admin page to check tha
 
 **Acceptance Scenarios**:
 
-1. **Given** the DPP provider is registered, **When** an administrator views the Schema Providers page, **Then** they see a "Digital Product Passport" provider card with health status, schema count, and last fetch time
-2. **Given** one of the DPP sources (e.g., UNTP endpoint) is unreachable, **When** the provider refreshes, **Then** the provider shows "Degraded" status with schemas from available sources still returned, and an error message identifying which source failed
-3. **Given** the provider is in a degraded state, **When** the administrator clicks "Refresh", **Then** the system re-attempts all sources and updates the status accordingly
-4. **Given** a source has failed consecutively, **When** the next automatic refresh occurs, **Then** the system applies exponential backoff to that source while continuing to refresh healthy sources
+1. **Given** the three DPP providers are registered, **When** an administrator views the Schema Providers page, **Then** they see provider cards for `dpp-untp`, `dpp-batterypass`, and `dpp-catenax`, each with independent health status, schema count, and last fetch time
+2. **Given** one DPP provider (e.g., `dpp-untp`) is unreachable, **When** it refreshes, **Then** that provider shows "Unavailable" status while the other two DPP providers continue to operate independently
+3. **Given** a DPP provider is in an unavailable state, **When** the administrator clicks "Refresh" on that provider, **Then** the system re-attempts that source and updates its status accordingly
+4. **Given** a DPP provider has failed consecutively, **When** the next automatic refresh occurs, **Then** the system applies exponential backoff to that provider while the other DPP providers refresh normally
 
 ---
 
@@ -80,13 +80,24 @@ A user viewing a DPP schema in the Schema Library sees version information and m
 - What happens when a source returns schemas with no version identifier? The provider assigns a version based on the fetch date (e.g., "2026-03-12") and tags the schema as "unversioned" in metadata.
 - What happens when the same conceptual schema (e.g., "Digital Product Passport") exists in multiple sources (UNTP and Catena-X)? Each source's version is imported as a separate schema entry, distinguished by source attribution, allowing users to choose the one that fits their needs.
 - What happens when a source changes its API endpoint or URL structure? The provider detects repeated failures, enters backoff, and the admin is alerted via the provider health page. Configuration allows administrators to update source URLs without code changes.
+- What happens with GitHub API rate limiting? GitHub-hosted providers (`dpp-batterypass`, `dpp-catenax`) use raw content URLs (`raw.githubusercontent.com`) which are not subject to GitHub API rate limits, avoiding this concern entirely.
+
+## Clarifications
+
+### Session 2026-03-14
+
+- Q: Should DPP be implemented as one provider with internal sub-source tracking, or three separate providers reusing existing per-provider health infrastructure? → A: Three separate providers (`dpp-untp`, `dpp-batterypass`, `dpp-catenax`), each implementing `IExternalSchemaProvider` independently. This reuses existing health/backoff infrastructure without extension.
+- Q: How should non-JSON-Schema source formats (e.g., Catena-X SAMM/Turtle models) be handled? → A: Only fetch schemas already in JSON Schema format from each source; skip non-JSON-Schema files. SAMM-to-JSON-Schema conversion is deferred to a future enhancement.
+- Q: How should versioned schemas be uniquely identified to support version coexistence (FR-012)? → A: Encode version in `SourceUri` (e.g., `untp/dpp/0.6.1/DigitalProductPassport`). Each version is a distinct index entry. Provider marks old-version entries as deprecated during refresh. No storage layer changes required.
+- Q: Should schema content be persisted beyond in-memory cache for offline resilience? → A: In-memory cache only, matching existing provider patterns (`SchemaStoreOrgProvider`, `FhirSchemaProvider`). If the source is offline, `GetSchemaAsync` returns null. Persistent caching can be added later if needed.
+- Q: How should GitHub-hosted sources (Battery Pass, Catena-X) be fetched to avoid API rate limits? → A: Use raw content URLs (`raw.githubusercontent.com`) which bypass GitHub API rate limits entirely. Requires known file paths or a tree listing, but avoids API complexity and authentication.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide a new external schema provider named "Digital Product Passport" that implements the existing provider interface pattern
-- **FR-002**: System MUST fetch schemas from three sources: UNTP vocabulary endpoint, Battery Pass GitHub repository, and Eclipse Tractus-X semantic models repository
+- **FR-001**: System MUST provide three external schema providers (`dpp-untp`, `dpp-batterypass`, `dpp-catenax`), each implementing the existing `IExternalSchemaProvider` interface independently. Together they form the DPP schema family.
+- **FR-002**: System MUST fetch schemas from three sources: UNTP vocabulary endpoint (`dpp-untp` provider), Battery Pass GitHub repository via raw content URLs (`dpp-batterypass` provider), and Eclipse Tractus-X semantic models repository via raw content URLs (`dpp-catenax` provider)
 - **FR-003**: System MUST add a new "Sustainability" sector to the platform-curated sector list, with an appropriate display name, description, and icon
 - **FR-004**: System MUST tag all DPP schemas with the "sustainability" sector as a primary tag
 - **FR-005**: System MUST cross-tag DPP schemas with appropriate additional sectors based on their content domain:
@@ -96,23 +107,23 @@ A user viewing a DPP schema in the Schema Library sees version information and m
   - Catena-X construction materials: "sustainability" + "construction"
   - Carbon footprint schemas: "sustainability" + "government" (regulatory compliance)
 - **FR-006**: System MUST support searching DPP schemas by keyword, returning results from all three sources ranked by relevance
-- **FR-007**: System MUST display the DPP provider on the admin Schema Providers health page with status, schema count, last fetch time, and error details
-- **FR-008**: System MUST support manual refresh of the DPP provider from the admin page
-- **FR-009**: System MUST apply exponential backoff per individual source when that source fails consecutively, while continuing to refresh healthy sources
+- **FR-007**: System MUST display each DPP provider (`dpp-untp`, `dpp-batterypass`, `dpp-catenax`) on the admin Schema Providers health page with independent status, schema count, last fetch time, and error details
+- **FR-008**: System MUST support manual refresh of each DPP provider independently from the admin page
+- **FR-009**: System MUST apply exponential backoff per DPP provider when that provider's source fails consecutively, while other DPP providers continue to refresh independently (handled by existing per-provider backoff infrastructure)
 - **FR-010**: System MUST preserve schema version information from source metadata and display it on schema detail pages
 - **FR-011**: System MUST indicate schema maturity (stable vs. pre-release/draft) based on version numbering conventions (semantic versioning < 1.0.0 = pre-release)
-- **FR-012**: System MUST deprecate (not delete) previous schema versions when a newer version of the same schema is fetched, ensuring backward compatibility for existing blueprints
-- **FR-013**: System MUST normalise fetched DPP schemas to JSON Schema draft-2020-12 format using the existing normalisation pipeline
+- **FR-012**: System MUST deprecate (not delete) previous schema versions when a newer version of the same schema is fetched, ensuring backward compatibility for existing blueprints. Each version uses a distinct `SourceUri` (version-encoded), and the provider marks old-version entries as deprecated during refresh
+- **FR-013**: System MUST normalise fetched DPP schemas to JSON Schema draft-2020-12 format using the existing normalisation pipeline. Providers MUST only fetch files already in JSON Schema format; non-JSON-Schema formats (e.g., SAMM/Turtle, JSON-LD vocabularies) are skipped
 - **FR-014**: System MUST include source attribution metadata for each DPP schema (governing body, specification URL, source repository)
 - **FR-015**: System MUST allow administrators to configure source URLs via application configuration without requiring code changes
 - **FR-016**: System MUST gracefully degrade when individual sources are unavailable — schemas from healthy sources continue to be served
 
 ### Key Entities
 
-- **DPP Schema Provider**: The provider instance registered in the schema index system. Has a name ("Digital Product Passport"), health status, and manages connections to three underlying sources.
-- **DPP Source**: An individual upstream source of DPP schemas (UNTP, Battery Pass, or Catena-X). Each has its own URL, health status, backoff state, and fetch schedule.
+- **DPP Schema Providers**: Three independent provider instances (`dpp-untp`, `dpp-batterypass`, `dpp-catenax`), each registered in the schema index system with its own health status, backoff state, and refresh schedule. Together they form the DPP schema family.
+- **DPP Source**: The upstream origin for each provider — UNTP vocabulary endpoint, Battery Pass GitHub repository, or Catena-X/Tractus-X GitHub repository. Each provider maps to exactly one source.
 - **Sustainability Sector**: A new platform-curated sector added to the existing 8 sectors. Used as primary tag for all DPP schemas.
-- **Schema Version**: Version metadata attached to each DPP schema entry, including version string, maturity indicator (stable/pre-release), and relationship to previous versions of the same schema.
+- **Schema Version**: Version metadata attached to each DPP schema entry, including version string, maturity indicator (stable/pre-release), and relationship to previous versions of the same schema. Each version is a distinct index entry identified by a version-encoded `SourceUri`; previous versions are deprecated (not deleted) when a newer version is fetched.
 
 ## Success Criteria *(mandatory)*
 
@@ -130,10 +141,10 @@ A user viewing a DPP schema in the Schema Library sees version information and m
 ## Assumptions
 
 - The UNTP vocabulary endpoint (`test.uncefact.org/vocabulary/untp/dpp/0/`) remains publicly accessible without authentication. If it moves or requires auth, the admin can update the URL in configuration.
-- Battery Pass and Catena-X GitHub repositories host JSON Schema files in predictable directory structures (e.g., `/gen` folders for generated schemas). Changes to repository structure may require provider updates.
-- The existing schema normalisation pipeline (JSON Schema draft-2020-12) can handle schemas from all three sources. Some DPP schemas may use JSON-LD; the provider extracts the JSON Schema portion only.
+- Battery Pass and Catena-X GitHub repositories host JSON Schema files in predictable directory structures (e.g., `/gen` folders for generated schemas), fetched via `raw.githubusercontent.com` URLs to avoid GitHub API rate limits. Changes to repository structure may require provider updates.
+- The existing schema normalisation pipeline (JSON Schema draft-2020-12) is used only for files already in JSON Schema format. Non-JSON-Schema formats (SAMM/Turtle, JSON-LD vocabularies) are skipped; SAMM-to-JSON-Schema conversion is out of scope for this feature.
 - Semantic versioning conventions are followed by the standards bodies (versions < 1.0.0 = pre-release). Where version strings don't follow SemVer, the system falls back to treating them as stable.
-- The existing exponential backoff and provider health infrastructure supports per-source granularity within a single provider (or the provider is implemented as three logical sub-providers sharing a single admin card).
+- The existing exponential backoff and provider health infrastructure is reused as-is, with each DPP source registered as an independent provider (`dpp-untp`, `dpp-batterypass`, `dpp-catenax`).
 - Cross-sector tag assignments (FR-005) are initial defaults based on current understanding of each schema's domain applicability. These can be refined through admin configuration or future schema metadata improvements.
 
 ## Dependencies
