@@ -556,6 +556,107 @@ public class QueryManagerTests
         result.Items[0].PrevTxId.Should().Be(targetPrevTxId);
     }
 
+    // ===== Cross-Register Wallet Query Tests =====
+
+    [Fact]
+    public async Task GetTransactionsByWalletAcrossRegistersAsync_ReturnsTransactionsFromMultipleRegisters()
+    {
+        // Arrange — create a second register and seed transactions in both
+        var register2 = new Sorcha.Register.Models.Register
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = "Second Register",
+            TenantId = "tenant123",
+            Height = 0,
+            Status = RegisterStatus.Offline
+        };
+        await _repository.InsertRegisterAsync(register2);
+
+        var walletAddress = "crossreg-wallet";
+        await _repository.InsertTransactionAsync(CreateTransactionForRegister(_testRegisterId, walletAddress, "recipient1"));
+        await _repository.InsertTransactionAsync(CreateTransactionForRegister(register2.Id, walletAddress, "recipient2"));
+
+        // Act
+        var result = await _manager.GetTransactionsByWalletAcrossRegistersAsync(walletAddress, 1, 20);
+
+        // Assert
+        result.TotalCount.Should().Be(2);
+        result.Items.Should().Contain(i => i.RegisterId == _testRegisterId);
+        result.Items.Should().Contain(i => i.RegisterId == register2.Id);
+        result.Items.Should().Contain(i => i.RegisterName == "Second Register");
+    }
+
+    [Fact]
+    public async Task GetTransactionsByWalletAcrossRegistersAsync_NoTransactions_ReturnsEmpty()
+    {
+        // Act
+        var result = await _manager.GetTransactionsByWalletAcrossRegistersAsync("nonexistent-wallet", 1, 20);
+
+        // Assert
+        result.TotalCount.Should().Be(0);
+        result.Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetTransactionsByWalletAcrossRegistersAsync_PaginatesCorrectly()
+    {
+        // Arrange — seed 5 transactions across 2 registers
+        var register2 = new Sorcha.Register.Models.Register
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = "Second Register",
+            TenantId = "tenant123",
+            Height = 0,
+            Status = RegisterStatus.Offline
+        };
+        await _repository.InsertRegisterAsync(register2);
+
+        var walletAddress = "paged-wallet";
+        for (int i = 0; i < 3; i++)
+            await _repository.InsertTransactionAsync(CreateTransactionForRegister(_testRegisterId, walletAddress, $"r{i}"));
+        for (int i = 0; i < 2; i++)
+            await _repository.InsertTransactionAsync(CreateTransactionForRegister(register2.Id, walletAddress, $"r{i}"));
+
+        // Act
+        var page1 = await _manager.GetTransactionsByWalletAcrossRegistersAsync(walletAddress, 1, 2);
+        var page2 = await _manager.GetTransactionsByWalletAcrossRegistersAsync(walletAddress, 2, 2);
+
+        // Assert
+        page1.Items.Should().HaveCount(2);
+        page1.TotalCount.Should().Be(5);
+        page1.TotalPages.Should().Be(3);
+        page2.Items.Should().HaveCount(2);
+    }
+
+    private TransactionModel CreateTransactionForRegister(string registerId, string senderWallet, string recipientWallet)
+    {
+        var txId = Guid.NewGuid().ToString("N") + new string('0', 64);
+        txId = txId.Substring(0, 64);
+
+        return new TransactionModel
+        {
+            RegisterId = registerId,
+            TxId = txId,
+            PrevTxId = string.Empty,
+            Version = 1,
+            SenderWallet = senderWallet,
+            RecipientsWallets = new[] { recipientWallet },
+            TimeStamp = DateTime.UtcNow,
+            PayloadCount = 1,
+            Payloads = new[]
+            {
+                new PayloadModel
+                {
+                    WalletAccess = new[] { senderWallet },
+                    PayloadSize = 1024,
+                    Hash = "payload_hash",
+                    Data = "encrypted_data"
+                }
+            },
+            Signature = "signature"
+        };
+    }
+
     // ===== Chain Traversal Tests (US2) =====
 
     [Fact]

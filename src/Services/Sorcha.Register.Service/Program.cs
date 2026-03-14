@@ -693,8 +693,10 @@ queryGroup.MapGet("/wallets/{address}/transactions", async (
         return Results.Ok(result);
     }
 
-    // Query across all registers (future enhancement)
-    return Results.BadRequest(new { error = "registerId is required" });
+    // Cross-register wallet query
+    var crossResult = await manager.GetTransactionsByWalletAcrossRegistersAsync(
+        address, page, pageSize);
+    return Results.Ok(crossResult);
 })
 .WithName("GetTransactionsByWallet")
 .WithSummary("Query transactions by wallet")
