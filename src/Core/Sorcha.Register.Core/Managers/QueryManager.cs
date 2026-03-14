@@ -145,6 +145,63 @@ public class QueryManager
     }
 
     /// <summary>
+    /// Gets transactions by wallet address across all registers with pagination.
+    /// Returns items wrapped with register context (registerId, registerName).
+    /// </summary>
+    public async Task<PaginatedResult<CrossRegisterTransactionItem>> GetTransactionsByWalletAcrossRegistersAsync(
+        string walletAddress,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+        var registers = (await _repository.GetRegistersAsync(cancellationToken)).ToList();
+        var allItems = new List<CrossRegisterTransactionItem>();
+
+        foreach (var register in registers)
+        {
+            var senderTxs = await _repository.GetAllTransactionsBySenderAddressAsync(
+                register.Id, walletAddress, cancellationToken);
+            var recipientTxs = await _repository.GetAllTransactionsByRecipientAddressAsync(
+                register.Id, walletAddress, cancellationToken);
+
+            var registerTxs = senderTxs.Concat(recipientTxs)
+                .DistinctBy(t => t.TxId)
+                .Select(t => new CrossRegisterTransactionItem
+                {
+                    Transaction = t,
+                    RegisterId = register.Id,
+                    RegisterName = register.Name
+                });
+
+            allItems.AddRange(registerTxs);
+        }
+
+        var sorted = allItems
+            .OrderByDescending(i => i.Transaction.TimeStamp)
+            .ToList();
+
+        var total = sorted.Count;
+        var items = sorted
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new PaginatedResult<CrossRegisterTransactionItem>
+        {
+            Items = items,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = total,
+            TotalPages = (int)Math.Ceiling(total / (double)pageSize)
+        };
+    }
+
+    /// <summary>
     /// Gets transactions by previous transaction ID with pagination.
     /// Used for fork detection and chain traversal.
     /// </summary>
@@ -266,6 +323,16 @@ public class PaginatedResult<T>
     public int TotalPages { get; set; }
     public bool HasPreviousPage => Page > 1;
     public bool HasNextPage => Page < TotalPages;
+}
+
+/// <summary>
+/// A transaction item with register context for cross-register queries
+/// </summary>
+public class CrossRegisterTransactionItem
+{
+    public required TransactionModel Transaction { get; init; }
+    public required string RegisterId { get; init; }
+    public required string RegisterName { get; init; }
 }
 
 /// <summary>
