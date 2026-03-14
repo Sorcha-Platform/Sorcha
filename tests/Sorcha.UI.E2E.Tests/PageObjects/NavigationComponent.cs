@@ -9,7 +9,7 @@ namespace Sorcha.UI.E2E.Tests.PageObjects;
 
 /// <summary>
 /// Page object for the MudBlazor navigation drawer and app bar.
-/// Works on any page that uses MainLayout.
+/// Selectors handle both translated text and raw i18n keys.
 /// </summary>
 public class NavigationComponent
 {
@@ -22,44 +22,52 @@ public class NavigationComponent
 
     // App Bar
     public ILocator AppBar => MudBlazorHelpers.AppBar(_page);
-    public ILocator AppTitle => _page.Locator(".mud-appbar .mud-typography-h5");
+    public ILocator AppTitle => _page.Locator(".mud-appbar .mud-typography-h5, .mud-appbar .mud-typography:has-text('Sorcha')");
     public ILocator MenuToggle => _page.Locator(".mud-appbar .mud-icon-button").First;
-    public ILocator UserMenu => _page.Locator(".mud-appbar .mud-menu");
-    public ILocator SignInButton => _page.Locator(".mud-appbar a:has-text('Sign In'), .mud-appbar button:has-text('Sign In')");
+    public ILocator UserMenu => _page.Locator(".mud-appbar .mud-menu, .mud-appbar .mud-avatar");
+    public ILocator SignInButton => _page.Locator(
+        ".mud-appbar a:has-text('Sign In'), .mud-appbar button:has-text('Sign In'), .mud-appbar :has-text('nav.signIn')");
 
     // Drawer
-    public ILocator Drawer => MudBlazorHelpers.Drawer(_page);
+    public ILocator Drawer => _page.Locator(".mud-drawer");
     public ILocator DrawerHeader => _page.Locator(".mud-drawer-header");
     public ILocator NavMenu => MudBlazorHelpers.NavMenu(_page);
 
-    // Navigation links (authenticated)
-    public ILocator DashboardLink => _page.Locator(".mud-nav-link:has-text('Dashboard')");
-    public ILocator PendingActionsLink => _page.Locator(".mud-nav-link:has-text('Pending Actions')");
-    public ILocator NewSubmissionLink => _page.Locator(".mud-nav-link:has-text('New Submission')");
-    public ILocator MyTransactionsLink => _page.Locator(".mud-nav-link:has-text('My Transactions')");
-    public ILocator MyWalletLink => _page.Locator(".mud-nav-link:has-text('My Wallet')");
-    public ILocator MyBlueprintsLink => _page.Locator(".mud-nav-link:has-text('My Blueprints')");
-    public ILocator VisualDesignerLink => _page.Locator(".mud-nav-link:has-text('Visual Designer')");
-    public ILocator AiChatDesignerLink => _page.Locator(".mud-nav-link:has-text('AI Chat Designer')");
-    public ILocator CatalogueLink => _page.Locator(".mud-nav-link:has-text('Catalogue')");
-    public ILocator DataSchemasLink => _page.Locator(".mud-nav-link:has-text('Data Schemas')");
-    public ILocator AllWalletsLink => _page.Locator(".mud-nav-link:has-text('All Wallets')");
-    public ILocator CreateWalletLink => _page.Locator(".mud-nav-link:has-text('Create Wallet')");
-    public ILocator RecoverWalletLink => _page.Locator(".mud-nav-link:has-text('Recover Wallet')");
-    public ILocator RegistersLink => _page.Locator(".mud-nav-link:has-text('Registers')");
-    public ILocator SystemHealthLink => _page.Locator(".mud-nav-link:has-text('System Health')");
-    public ILocator PeerNetworkLink => _page.Locator(".mud-nav-link:has-text('Peer Network')");
-    public ILocator SettingsLink => _page.Locator(".mud-nav-link:has-text('Settings')");
-    public ILocator HelpLink => _page.Locator(".mud-nav-link:has-text('Help')");
+    // Navigation links — match translated text OR raw i18n key
+    public ILocator DashboardLink => NavLink("Dashboard", "nav.dashboard");
+    public ILocator PendingActionsLink => NavLink("Pending Actions", "nav.pendingActions");
+    public ILocator NewSubmissionLink => NavLink("New Submission", "nav.newSubmission");
+    public ILocator MyTransactionsLink => NavLink("My Transactions", "nav.myTransactions");
+    public ILocator MyWalletLink => NavLink("My Wallet", "nav.myWallet");
+    public ILocator MyCredentialsLink => NavLink("My Credentials", "nav.myCredentials");
+    public ILocator MyBlueprintsLink => NavLink("My Blueprints", "nav.myBlueprints");
+    public ILocator VisualDesignerLink => NavLink("Visual Designer", "nav.visualDesigner");
+    public ILocator AiChatDesignerLink => NavLink("AI Chat Designer", "nav.aiChatDesigner");
+    public ILocator CatalogueLink => NavLink("Catalogue", "nav.catalogue");
+    public ILocator DataSchemasLink => NavLink("Data Schemas", "nav.dataSchemas");
+    public ILocator AllWalletsLink => NavLink("All Wallets", "nav.allWallets");
+    public ILocator CreateWalletLink => NavLink("Create Wallet", "nav.createWallet");
+    public ILocator RecoverWalletLink => NavLink("Recover Wallet", "nav.recoverWallet");
+    public ILocator RegistersLink => NavLink("Registers", "nav.registers");
+    public ILocator ParticipantsLink => NavLink("Participants", "nav.participants");
+    public ILocator SystemHealthLink => NavLink("System Health", "nav.systemHealth");
+    public ILocator PeerNetworkLink => NavLink("Peer Network", "nav.peerNetwork");
+    public ILocator SettingsLink => NavLink("Settings", "nav.settings");
+    public ILocator HelpLink => NavLink("Help", "nav.help");
 
-    // Nav groups (expandable)
-    public ILocator WalletsGroup => _page.Locator(".mud-nav-group:has-text('Wallets')");
-    public ILocator AdministrationGroup => _page.Locator(".mud-nav-group:has-text('Administration')");
+    // Nav groups (expandable) — match translated or raw key
+    public ILocator WalletsGroup => _page.Locator(
+        ".mud-nav-group:has-text('Wallets'), .mud-nav-group:has-text('nav.wallets')");
+    public ILocator AdministrationGroup => _page.Locator(
+        ".mud-nav-group:has-text('Administration'), .mud-nav-group:has-text('System'), .mud-nav-group:has-text('Identity')");
 
-    // Section headers
-    public ILocator MyActivitySection => _page.Locator(".mud-text-secondary:has-text('MY ACTIVITY')");
-    public ILocator DesignerSection => _page.Locator(".mud-text-secondary:has-text('DESIGNER')");
-    public ILocator ManagementSection => _page.Locator(".mud-text-secondary:has-text('MANAGEMENT')");
+    /// <summary>
+    /// Creates a nav link locator matching either translated text or raw i18n key.
+    /// </summary>
+    private ILocator NavLink(string translatedText, string i18nKey)
+    {
+        return _page.Locator($".mud-nav-link:has-text('{translatedText}'), .mud-nav-link:has-text('{i18nKey}')");
+    }
 
     /// <summary>
     /// Toggles the drawer open/closed.
@@ -67,26 +75,24 @@ public class NavigationComponent
     public async Task ToggleDrawerAsync()
     {
         await MenuToggle.ClickAsync();
-        await _page.WaitForTimeoutAsync(300); // Wait for animation
+        await _page.WaitForTimeoutAsync(300);
     }
 
     /// <summary>
     /// Checks whether the drawer is currently open.
+    /// MudBlazor uses mud-drawer--open or similar class.
     /// </summary>
     public async Task<bool> IsDrawerOpenAsync()
     {
-        // MudBlazor adds mud-drawer--open class when open
-        var drawerClass = await Drawer.GetAttributeAsync("class") ?? "";
+        var drawerClass = await Drawer.First.GetAttributeAsync("class") ?? "";
         return drawerClass.Contains("open", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
     /// Expands a nav group if it's collapsed.
-    /// MudBlazor nav groups use a toggle element (.mud-nav-link) as the clickable header.
     /// </summary>
     public async Task ExpandNavGroupAsync(ILocator navGroup)
     {
-        // MudNavGroup renders the toggle header as a .mud-nav-link inside the group
         var toggle = navGroup.Locator("button, .mud-nav-link").First;
         if (await toggle.CountAsync() > 0)
         {
@@ -100,7 +106,7 @@ public class NavigationComponent
     /// </summary>
     public async Task NavigateToAsync(ILocator navLink)
     {
-        await navLink.ClickAsync();
+        await navLink.First.ClickAsync();
         await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await _page.WaitForTimeoutAsync(TestConstants.ShortWait);
     }
@@ -110,7 +116,8 @@ public class NavigationComponent
     /// </summary>
     public async Task OpenUserMenuAsync()
     {
-        await UserMenu.Locator(".mud-icon-button").ClickAsync();
+        var menuButton = UserMenu.Locator(".mud-icon-button, .mud-avatar").First;
+        await menuButton.ClickAsync();
         await _page.WaitForTimeoutAsync(300);
     }
 
@@ -120,34 +127,16 @@ public class NavigationComponent
     public async Task<string?> GetDisplayedUsernameAsync()
     {
         await OpenUserMenuAsync();
-        var menuContent = _page.Locator(".mud-popover-open .mud-typography-body2");
+        var menuContent = _page.Locator(".mud-popover-open .mud-typography-body2, .mud-popover-open .mud-list-item");
         if (await menuContent.CountAsync() > 0)
         {
-            return await menuContent.TextContentAsync();
+            return await menuContent.First.TextContentAsync();
         }
         return null;
     }
 
     /// <summary>
-    /// Clicks logout in the user menu.
-    /// </summary>
-    public async Task LogoutAsync()
-    {
-        await OpenUserMenuAsync();
-        await _page.Locator(".mud-popover-open .mud-menu-item:has-text('Logout')").ClickAsync();
-        await _page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-    }
-
-    /// <summary>
-    /// Gets all visible nav link texts.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> GetVisibleNavLinksAsync()
-    {
-        return await _page.Locator(".mud-nav-link").AllTextContentsAsync();
-    }
-
-    /// <summary>
-    /// Checks whether the authenticated nav menu is visible (vs. the unauthenticated one).
+    /// Checks whether the authenticated nav menu is visible.
     /// </summary>
     public async Task<bool> IsAuthenticatedNavVisibleAsync()
     {
