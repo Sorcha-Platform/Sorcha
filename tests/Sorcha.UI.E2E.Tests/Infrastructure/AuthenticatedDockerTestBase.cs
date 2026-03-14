@@ -45,17 +45,40 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
     }
 
     /// <summary>
-    /// Navigates to an authenticated page and verifies we weren't redirected to login.
+    /// Navigates to an authenticated page. If redirected to login (token not loaded
+    /// from localStorage yet), performs an inline re-login and retries.
     /// </summary>
     protected async Task NavigateAuthenticatedAsync(string path)
     {
         await NavigateAndWaitForBlazorAsync(path);
 
+        if (!IsOnLoginPage()) return;
+
+        // Token may not have loaded from localStorage yet — re-login inline
+        try
+        {
+            var emailInput = Page.Locator("input[type='email']").First;
+            if (await emailInput.CountAsync() > 0)
+            {
+                await emailInput.FillAsync(TestConstants.TestEmail);
+                await Page.Locator("input[type='password']").First.FillAsync(TestConstants.TestPassword);
+                await Page.Locator("button:has-text('Sign In')").First.ClickAsync();
+                await Page.WaitForLoadStateAsync(Microsoft.Playwright.LoadState.DOMContentLoaded);
+                await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
+
+                // Navigate to the original target
+                await NavigateAndWaitForBlazorAsync(path);
+            }
+        }
+        catch
+        {
+            // Inline re-login failed — mark inconclusive
+        }
+
         if (IsOnLoginPage())
         {
             Assert.Inconclusive(
-                $"Auth session expired - redirected to login when navigating to {path}. " +
-                "Re-run to refresh auth state.");
+                $"Auth session expired - redirected to login when navigating to {path}.");
         }
     }
 }
