@@ -31,8 +31,8 @@ public class WalletAccessTests : AuthenticatedDockerTestBase
     {
         await NavigateAuthenticatedAsync(TestConstants.AuthenticatedRoutes.Wallets);
 
-        // Look for any clickable wallet link or card
-        var walletLink = Page.Locator("a[href*='wallets/'], .mud-card");
+        // Look for wallet links (href contains wallet address pattern)
+        var walletLink = Page.Locator("a[href*='wallets/']");
         if (await walletLink.CountAsync() == 0)
         {
             Assert.Inconclusive("No wallets available to test detail view");
