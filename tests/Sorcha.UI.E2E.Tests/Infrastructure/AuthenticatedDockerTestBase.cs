@@ -16,6 +16,7 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
     private static string? _storageStatePath;
     private static bool _authAttempted;
     private static bool _authSucceeded;
+    private static DateTime _authTimestamp;
 
     /// <summary>
     /// MudBlazor layout should be validated on authenticated pages.
@@ -49,10 +50,14 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
         await _authLock.WaitAsync();
         try
         {
-            if (_authAttempted)
+            // Skip re-auth if already succeeded and token isn't expired
+            if (_authSucceeded &&
+                DateTime.UtcNow - _authTimestamp < TimeSpan.FromMinutes(45))
                 return;
 
+            // Reset for fresh auth attempt
             _authAttempted = true;
+            _authSucceeded = false;
 
             var playwright = await Microsoft.Playwright.Playwright.CreateAsync();
             var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
@@ -132,6 +137,7 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
                     await context.StorageStateAsync(new() { Path = statePath });
                     _storageStatePath = statePath;
 
+                    _authTimestamp = DateTime.UtcNow;
                     TestContext.Out.WriteLine($"Authentication succeeded. State saved to {statePath}");
                 }
                 else
