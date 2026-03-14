@@ -220,7 +220,33 @@
             </MudTabPanel>
 
             <!-- Signing Tab -->
-            <MudTabPanel Text="Sign Data" Icon="@Icons.Material.Filled.Edit">
+            <MudTabPanel Text="@(IsKemWallet ? "Key Encapsulation" : "Sign Data")" Icon="@(IsKemWallet ? Icons.Material.Filled.Lock : Icons.Material.Filled.Edit)">
+                @if (IsKemWallet)
+                {
+                    <MudPaper Class="pa-6" Outlined="true">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="4" Class="py-4">
+                            <MudIcon Icon="@Icons.Material.Filled.EnhancedEncryption" Size="Size.Large" Color="Color.Info" />
+                            <MudText Typo="Typo.h6">Key Encapsulation Wallet</MudText>
+                            <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary" Style="max-width: 600px;">
+                                This wallet uses <strong>@wallet?.Algorithm</strong>, a post-quantum Key Encapsulation Mechanism (KEM).
+                                KEM wallets are designed for secure key exchange and encryption, not for signing data.
+                            </MudText>
+                            <MudAlert Severity="Severity.Info" Class="mt-2" Style="max-width: 600px;">
+                                <strong>What can this wallet do?</strong>
+                                <ul class="mt-1 mb-0" style="padding-left: 20px;">
+                                    <li>Encapsulate shared secrets for secure key exchange</li>
+                                    <li>Encrypt data for recipients using their public key</li>
+                                    <li>Decapsulate secrets sent to this wallet</li>
+                                </ul>
+                                <MudText Typo="Typo.body2" Class="mt-2">
+                                    To sign data, create a wallet with a signature algorithm such as ED25519, NIST P-256, or ML-DSA-65.
+                                </MudText>
+                            </MudAlert>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
                 <MudGrid>
                     <MudItem xs="12" md="8">
                         <MudPaper Class="pa-4" Outlined="true">
@@ -292,6 +318,7 @@
                         }
                     </MudItem>
                 </MudGrid>
+                }
             </MudTabPanel>
 
             <!-- Transactions Tab -->
@@ -433,6 +460,9 @@
     private List<TransactionQueryResultItem> transactions = [];
     private bool isLoadingTransactions;
     private bool transactionError;
+
+    // KEM detection
+    private bool IsKemWallet => wallet?.Algorithm is "ML-KEM-768" or "ML-KEM-1024";
 
     // Signing state
     private string signInputMode = "text";
