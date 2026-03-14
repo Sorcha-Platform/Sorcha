@@ -88,7 +88,7 @@ public class WalletDbContext : DbContext
             // Required fields
             entity.Property(e => e.EncryptedPrivateKey)
                 .IsRequired()
-                .HasMaxLength(4096);
+                .HasMaxLength(16384);
 
             entity.Property(e => e.EncryptionKeyId)
                 .IsRequired()
@@ -115,7 +115,7 @@ public class WalletDbContext : DbContext
                 .HasMaxLength(1024);
 
             entity.Property(e => e.PublicKey)
-                .HasMaxLength(1024);
+                .HasMaxLength(8192);
 
             // Enum conversion to string for readability
             entity.Property(e => e.Status)
@@ -195,7 +195,7 @@ public class WalletDbContext : DbContext
                 .HasMaxLength(256);
 
             entity.Property(e => e.PublicKey)
-                .HasMaxLength(1024);
+                .HasMaxLength(8192);
 
             entity.Property(e => e.Notes)
                 .HasMaxLength(2048);
