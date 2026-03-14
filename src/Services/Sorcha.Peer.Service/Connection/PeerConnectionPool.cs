@@ -8,6 +8,7 @@ using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Observability;
+using Sorcha.Peer.Service.Protos;
 using System.Collections.Concurrent;
 
 namespace Sorcha.Peer.Service.Connection;
@@ -359,6 +360,8 @@ public class PeerConnectionPool : IAsyncDisposable
     /// <summary>
     /// Attempts to reconnect to any disconnected seed nodes.
     /// Seed nodes are critical infrastructure and should be reconnected promptly.
+    /// After reconnecting, re-registers with the remote peer so it adds us
+    /// back to its routing table (required after heartbeat rejection).
     /// </summary>
     public async Task ReconnectDisconnectedSeedNodesAsync(CancellationToken cancellationToken = default)
     {
@@ -376,12 +379,66 @@ public class PeerConnectionPool : IAsyncDisposable
                 {
                     _logger.LogInformation("Reconnected to seed node {PeerId}", peerId);
                     connection.ConsecutiveFailures = 0;
+
+                    // Re-register with the remote peer so it adds us to its routing table
+                    await RegisterWithRemotePeerAsync(peerId, cancellationToken);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Failed to reconnect to seed node {PeerId}", peerId);
             }
+        }
+    }
+
+    /// <summary>
+    /// Registers this node with a remote peer using the existing gRPC channel.
+    /// Called after reconnection to ensure the remote peer's routing table
+    /// includes us (required after heartbeat rejection / timeout eviction).
+    /// </summary>
+    private async Task RegisterWithRemotePeerAsync(string peerId, CancellationToken cancellationToken)
+    {
+        var channel = GetChannel(peerId);
+        if (channel is null)
+        {
+            _logger.LogWarning("Cannot re-register with {PeerId} — no active channel", peerId);
+            return;
+        }
+
+        try
+        {
+            var client = new PeerDiscovery.PeerDiscoveryClient(channel);
+            var localPeer = _peerListManager.GetLocalPeerStatus();
+            var request = new RegisterPeerRequest
+            {
+                PeerInfo = new PeerInfo
+                {
+                    PeerId = localPeer?.PeerId ?? _configuration.NodeId ?? Environment.MachineName,
+                    Address = _configuration.NetworkAddress.ExternalAddress ?? Environment.MachineName,
+                    Port = _configuration.ListenPort,
+                    SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }
+                }
+            };
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            var response = await client.RegisterPeerAsync(request, cancellationToken: cts.Token);
+
+            if (response.Success)
+            {
+                _logger.LogInformation(
+                    "Re-registered with peer {PeerId}: {Message}", peerId, response.Message);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Re-registration rejected by {PeerId}: {Message}", peerId, response.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to re-register with peer {PeerId}", peerId);
         }
     }
 
