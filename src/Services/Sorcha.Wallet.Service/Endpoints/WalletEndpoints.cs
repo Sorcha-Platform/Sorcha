@@ -584,6 +584,16 @@ public static class WalletEndpoints
         {
             return Results.NotFound();
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("InvalidParameter"))
+        {
+            logger.LogWarning(ex, "Unsupported signing operation for wallet {Address}", address);
+            return Results.BadRequest(new ProblemDetails
+            {
+                Title = "Signing Not Supported",
+                Detail = $"This wallet's algorithm does not support signing operations. {ex.Message}",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to sign transaction for wallet {Address}", address);
