@@ -25,7 +25,7 @@
                 Manage your cryptographic wallets and identity
             </MudText>
         </MudStack>
-        <MudButton Href="/wallets/create" Color="Color.Primary" Variant="Variant.Filled"
+        <MudButton Href="wallets/create" Color="Color.Primary" Variant="Variant.Filled"
                    StartIcon="@Icons.Material.Filled.Add">
             Create Wallet
         </MudButton>
@@ -58,7 +58,7 @@
                     Title="No Wallets"
                     Description="Create your first wallet to start participating in workflows."
                     ActionText="Create Wallet"
-                    OnAction="@(() => Navigation.NavigateTo("/wallets/create"))" />
+                    OnAction="@(() => Navigation.NavigateTo("wallets/create"))" />
     }
     else
     {
@@ -91,7 +91,7 @@
         </MudGrid>
 
         <MudStack Row="true" Justify="Justify.Center" Class="mt-4">
-            <MudButton Href="/wallets" Color="Color.Primary" Variant="Variant.Outlined"
+            <MudButton Href="wallets" Color="Color.Primary" Variant="Variant.Outlined"
                        StartIcon="@Icons.Material.Filled.ManageAccounts">
                 Manage All Wallets
             </MudButton>
