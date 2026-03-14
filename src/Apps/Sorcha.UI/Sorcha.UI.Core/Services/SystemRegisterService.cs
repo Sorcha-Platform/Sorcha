@@ -29,7 +29,7 @@ public class SystemRegisterService : ISystemRegisterService
     {
         try
         {
-            var response = await _httpClient.GetAsync("/api/admin/system-register", ct);
+            var response = await _httpClient.GetAsync("/api/system-register", ct);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch system register status: {StatusCode}", response.StatusCode);
@@ -51,7 +51,7 @@ public class SystemRegisterService : ISystemRegisterService
         try
         {
             var response = await _httpClient.GetAsync(
-                $"/api/admin/system-register/blueprints?page={page}&pageSize={pageSize}", ct);
+                $"/api/system-register/blueprints?page={page}&pageSize={pageSize}", ct);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch system register blueprints: {StatusCode}", response.StatusCode);
@@ -74,7 +74,7 @@ public class SystemRegisterService : ISystemRegisterService
         try
         {
             var response = await _httpClient.GetAsync(
-                $"/api/admin/system-register/blueprints/{blueprintId}", ct);
+                $"/api/system-register/blueprints/{blueprintId}", ct);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch blueprint {BlueprintId}: {StatusCode}", blueprintId, response.StatusCode);
@@ -96,7 +96,7 @@ public class SystemRegisterService : ISystemRegisterService
         try
         {
             var response = await _httpClient.GetAsync(
-                $"/api/admin/system-register/blueprints/{blueprintId}/versions/{version}", ct);
+                $"/api/system-register/blueprints/{blueprintId}/versions/{version}", ct);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch blueprint {BlueprintId} version {Version}: {StatusCode}",
