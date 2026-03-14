@@ -125,11 +125,14 @@ public abstract class DockerTestBase : PageTest
 
     /// <summary>
     /// Navigates to a URL and waits for Blazor WASM to hydrate.
+    /// Also waits for i18n translations to load so text assertions
+    /// match English strings rather than raw keys.
     /// </summary>
     protected async Task NavigateAndWaitForBlazorAsync(string path)
     {
         await NavigateToAsync(path);
         await MudBlazorHelpers.WaitForBlazorAsync(Page, TestConstants.PageLoadTimeout);
+        await MudBlazorHelpers.WaitForTranslationsAsync(Page, TestConstants.PageLoadTimeout);
     }
 
     /// <summary>

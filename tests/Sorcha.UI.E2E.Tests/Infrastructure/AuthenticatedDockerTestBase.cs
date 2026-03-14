@@ -49,13 +49,11 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
         await _authLock.WaitAsync();
         try
         {
-            // Already authenticated in this test run
             if (_authAttempted)
                 return;
 
             _authAttempted = true;
 
-            // Create a temporary browser context to perform login
             var playwright = await Microsoft.Playwright.Playwright.CreateAsync();
             var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
             var context = await browser.NewContextAsync();
@@ -63,46 +61,83 @@ public abstract class AuthenticatedDockerTestBase : DockerTestBase
 
             try
             {
-                // Navigate to login (server-rendered Razor Page at /auth/login)
+                // 1. Navigate to server-rendered login page
                 await page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.PublicRoutes.Login}");
                 await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-                // Wait for login form (email input, not text - it's type='email')
+                // 2. Wait for login form
                 var emailInput = page.Locator("input[type='email']").First;
                 await emailInput.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
 
-                // Fill credentials
+                // 3. Fill credentials and submit
                 await emailInput.FillAsync(TestConstants.TestEmail);
                 await page.Locator("input[type='password']").First.FillAsync(TestConstants.TestPassword);
+                await page.Locator("button:has-text('Sign In')").First.ClickAsync();
 
-                // Click login
-                var loginButton = page.Locator("button:has-text('Sign In')").First;
-                await loginButton.ClickAsync();
+                // 4. Wait for the form POST to redirect (DOMContentLoaded, not NetworkIdle
+                //    because Blazor WASM boot keeps loading resources)
+                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
-                // Wait for navigation away from login
-                await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-                await page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
+                // 5. Check if we got redirected to /app/#token=...
+                //    The server redirects to /app/#token={jwt}&refresh={refreshToken}
+                //    Then FragmentTokenHandler processes the token in OnAfterRenderAsync
+                var loginSucceeded = false;
 
-                // Verify login succeeded
-                if (page.Url.Contains("/auth/login"))
+                try
                 {
-                    TestContext.Out.WriteLine("WARNING: Login did not redirect away from login page. " +
-                        "Auth state may not be available.");
-                    // Still save state - some pages may partially work
+                    // Wait for URL to leave /auth/login
+                    await page.WaitForURLAsync(
+                        url => !url.Contains("/auth/login"),
+                        new() { Timeout = TestConstants.PageLoadTimeout * 2 });
+
+                    loginSucceeded = true;
+                }
+                catch (TimeoutException)
+                {
+                    // Check if the URL has a token in the returnUrl (bounce scenario)
+                    loginSucceeded = page.Url.Contains("token");
                 }
 
-                // Save storage state for reuse
-                var statePath = Path.Combine(
-                    Path.GetTempPath(),
-                    $"sorcha-e2e-auth-state-{Guid.NewGuid():N}.json");
+                if (loginSucceeded)
+                {
+                    // 6. Wait for Blazor WASM to fully hydrate and process the token.
+                    //    FragmentTokenHandler stores the token in encrypted localStorage
+                    //    during OnAfterRenderAsync, so we need to wait for that.
+                    await page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout * 2);
 
-                await context.StorageStateAsync(new() { Path = statePath });
-                _storageStatePath = statePath;
-                _authSucceeded = !page.Url.Contains("/auth/login");
+                    // 7. Navigate to dashboard to ensure app is fully loaded
+                    await page.GotoAsync(
+                        $"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.Dashboard}");
+                    await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+                    await page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
+
+                    // 8. Verify we're authenticated (not bounced to login)
+                    _authSucceeded = !page.Url.Contains("/auth/login");
+
+                    if (!_authSucceeded)
+                    {
+                        TestContext.Out.WriteLine(
+                            $"WARNING: Auth bounce detected. URL: {page.Url}. " +
+                            "Token may not have been stored before auth guard fired.");
+                    }
+                }
 
                 if (_authSucceeded)
                 {
+                    // 9. Save storage state (cookies + localStorage with encrypted token)
+                    var statePath = Path.Combine(
+                        Path.GetTempPath(),
+                        $"sorcha-e2e-auth-state-{Guid.NewGuid():N}.json");
+
+                    await context.StorageStateAsync(new() { Path = statePath });
+                    _storageStatePath = statePath;
+
                     TestContext.Out.WriteLine($"Authentication succeeded. State saved to {statePath}");
+                }
+                else
+                {
+                    TestContext.Out.WriteLine(
+                        $"Authentication failed. URL after login: {page.Url}");
                 }
             }
             catch (Exception ex)
