@@ -16,7 +16,7 @@ public class OrganizationsPage
     public OrganizationsPage(IPage page) => _page = page;
 
     // Page elements
-    public ILocator PageTitle => _page.Locator("h4:has-text('Organizations'), h5:has-text('Organizations')");
+    public ILocator PageTitle => _page.Locator("h4:has-text('Organizations'), h4:has-text('Organisations'), h5:has-text('Organizations'), h5:has-text('Organisations')");
     public ILocator CreateButton => _page.GetByRole(AriaRole.Button, new() { Name = "Create Organization" });
     public ILocator OrgTable => _page.Locator("[data-testid='organization-list']");
     public ILocator OrgFormDialog => _page.Locator(".mud-dialog");
@@ -35,7 +35,8 @@ public class OrganizationsPage
     {
         try
         {
-            await PageTitle.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
+            // Use .First to avoid strict mode violation when multiple h4/h5 match
+            await PageTitle.First.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
             return true;
         }
         catch
@@ -46,8 +47,8 @@ public class OrganizationsPage
 
     public async Task ClickCreateAsync()
     {
-        await CreateButton.ClickAsync();
-        await OrgFormDialog.WaitForAsync(new() { Timeout = TestConstants.ElementTimeout });
+        await CreateButton.First.ClickAsync();
+        await OrgFormDialog.First.WaitForAsync(new() { Timeout = TestConstants.ElementTimeout });
     }
 
     public async Task FillFormAsync(string name, string subdomain)
