@@ -134,10 +134,25 @@ public class PeerHeartbeatBackgroundService : BackgroundService
 
             var latency = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
+            var latencySpan = TimeSpan.FromMilliseconds(latency);
+            _metrics.RecordHeartbeatLatency(latency, peerId);
+
+            // Handle heartbeat rejection — remote peer has dropped our registration
+            // (e.g. we timed out of their routing table). Mark for reconnection so the
+            // existing reconnect loop re-registers us on the next cycle.
+            if (!response.Success)
+            {
+                _logger.LogWarning(
+                    "Heartbeat {Seq} rejected by peer {PeerId}: {Reason} — marking for reconnection",
+                    sequenceNumber, peerId, response.Message);
+                _metrics.RecordHeartbeatRejection(peerId, response.Message);
+                _connectionPool.MarkPeerForReconnection(peerId);
+                return;
+            }
+
             // Record success
             _connectionPool.RecordSuccess(peerId);
-            _metrics.RecordHeartbeatLatency(latency, peerId);
-            _activitySource.RecordSuccess(activity, TimeSpan.FromMilliseconds(latency));
+            _activitySource.RecordSuccess(activity, latencySpan);
 
             // Update peer's last seen time
             await _peerListManager.UpdateLastSeenAsync(peerId);

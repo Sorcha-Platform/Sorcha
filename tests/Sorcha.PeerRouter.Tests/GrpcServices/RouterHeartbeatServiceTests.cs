@@ -68,6 +68,47 @@ public sealed class RouterHeartbeatServiceTests
     }
 
     [Fact]
+    public async Task SendHeartbeat_UnregisteredPeer_EmitsRejectedEvent()
+    {
+        var initialCount = _eventBuffer.Count;
+
+        var request = new PeerHeartbeatRequest
+        {
+            PeerId = "unknown-peer",
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            SequenceNumber = 42
+        };
+
+        await _service.SendHeartbeat(request, TestServerCallContext.Create());
+
+        _eventBuffer.Count.Should().BeGreaterThan(initialCount);
+        var lastEvent = _eventBuffer.GetSnapshot().Last();
+        lastEvent.Type.Should().Be(RouterEventType.PeerHeartbeatRejected);
+        lastEvent.PeerId.Should().Be("unknown-peer");
+    }
+
+    [Fact]
+    public async Task SendHeartbeat_RegisteredPeer_EmitsEventWithPeerAddress()
+    {
+        RegisterPeer("peer-1");
+        var initialCount = _eventBuffer.Count;
+
+        var request = new PeerHeartbeatRequest
+        {
+            PeerId = "peer-1",
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            SequenceNumber = 1
+        };
+
+        await _service.SendHeartbeat(request, TestServerCallContext.Create());
+
+        var lastEvent = _eventBuffer.GetSnapshot().Last();
+        lastEvent.Type.Should().Be(RouterEventType.PeerHeartbeat);
+        lastEvent.IpAddress.Should().Be("10.0.0.1");
+        lastEvent.Port.Should().Be(5000);
+    }
+
+    [Fact]
     public async Task SendHeartbeat_UpdatesLastSeen()
     {
         RegisterPeer("peer-1");

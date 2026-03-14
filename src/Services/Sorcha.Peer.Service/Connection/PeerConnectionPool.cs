@@ -386,6 +386,25 @@ public class PeerConnectionPool : IAsyncDisposable
     }
 
     /// <summary>
+    /// Marks a peer's connection as disconnected so the reconnection loop
+    /// will re-establish the connection and re-register with the remote.
+    /// Unlike RecordFailureAsync, this does not increment failure counts —
+    /// it handles logical rejections (e.g. "Peer not registered") where
+    /// the transport is healthy but the remote has dropped the peer's state.
+    /// </summary>
+    public void MarkPeerForReconnection(string peerId)
+    {
+        if (_connections.TryGetValue(peerId, out var connection))
+        {
+            connection.IsConnected = false;
+            connection.ConsecutiveFailures = 0;
+            _logger.LogInformation(
+                "Peer {PeerId} marked for reconnection (logical rejection)",
+                peerId);
+        }
+    }
+
+    /// <summary>
     /// Gets the connection status for all peers.
     /// </summary>
     public IReadOnlyDictionary<string, bool> GetConnectionStatuses()

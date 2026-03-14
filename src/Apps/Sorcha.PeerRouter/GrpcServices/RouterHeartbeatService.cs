@@ -57,13 +57,46 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
 
     /// <summary>
     /// Core heartbeat processing: touch peer, update register versions, emit event, build response.
+    /// Rejects heartbeats from unregistered peers, forcing them to re-register.
     /// </summary>
     private PeerHeartbeatResponse ProcessHeartbeat(PeerHeartbeatRequest request)
     {
         var peerId = request.PeerId;
         var found = _routingTable.TouchPeer(peerId);
 
-        if (found && request.RegisterVersions.Count > 0)
+        // Resolve the peer's actual address from the routing table for event clarity
+        var peer = _routingTable.GetPeer(peerId);
+        var ipAddress = peer?.IpAddress ?? "unknown";
+        var port = peer?.Port ?? 0;
+
+        if (!found)
+        {
+            _eventBuffer.Add(RouterEvent.Create(
+                RouterEventType.PeerHeartbeatRejected,
+                peerId,
+                ipAddress,
+                port,
+                detail: new Dictionary<string, object?>
+                {
+                    ["sequence"] = request.SequenceNumber,
+                    ["reason"] = "Peer not registered — must re-register"
+                }));
+
+            _logger.LogWarning(
+                "Heartbeat rejected from unregistered peer {PeerId} seq={Sequence}",
+                peerId,
+                request.SequenceNumber);
+
+            return new PeerHeartbeatResponse
+            {
+                Success = false,
+                PeerId = "router",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                Message = "Peer not registered"
+            };
+        }
+
+        if (request.RegisterVersions.Count > 0)
         {
             _routingTable.UpdateRegisterVersions(peerId, request.RegisterVersions);
         }
@@ -92,22 +125,21 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
         _eventBuffer.Add(RouterEvent.Create(
             RouterEventType.PeerHeartbeat,
             peerId,
-            "heartbeat",
-            0,
+            ipAddress,
+            port,
             detail: detail));
 
         _logger.LogDebug(
-            "Heartbeat from {PeerId} seq={Sequence}, found={Found}",
+            "Heartbeat from {PeerId} seq={Sequence}",
             peerId,
-            request.SequenceNumber,
-            found);
+            request.SequenceNumber);
 
         return new PeerHeartbeatResponse
         {
-            Success = found,
+            Success = true,
             PeerId = "router",
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Message = found ? "OK" : "Peer not registered"
+            Message = "OK"
         };
     }
 }

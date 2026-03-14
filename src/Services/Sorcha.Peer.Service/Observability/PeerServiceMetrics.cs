@@ -37,6 +37,9 @@ public sealed class PeerServiceMetrics : IDisposable
     private readonly Counter<long> _pushNotificationsDelivered;
     private readonly Counter<long> _pushNotificationsFailed;
 
+    // Heartbeat rejection metrics
+    private readonly Counter<long> _heartbeatRejectionsReceived;
+
     // Failover metrics
     private readonly Counter<long> _failoverCount;
 
@@ -88,6 +91,12 @@ public sealed class PeerServiceMetrics : IDisposable
             name: "peer.push.notifications.failed",
             unit: "notifications",
             description: "Number of failed push notification deliveries");
+
+        // Heartbeat rejection counter (remote peer dropped our registration)
+        _heartbeatRejectionsReceived = _meter.CreateCounter<long>(
+            name: "peer.heartbeat.rejections",
+            unit: "rejections",
+            description: "Number of heartbeat rejections received from remote peers");
 
         // Failover event counter
         _failoverCount = _meter.CreateCounter<long>(
@@ -159,6 +168,23 @@ public sealed class PeerServiceMetrics : IDisposable
     public void RecordPushNotificationFailed(long count = 1)
     {
         _pushNotificationsFailed.Add(count);
+    }
+
+    /// <summary>
+    /// Records a heartbeat rejection from a remote peer.
+    /// Tracks per-peer rejection counts for future reliability scoring.
+    /// </summary>
+    /// <param name="peerId">The peer that rejected our heartbeat</param>
+    /// <param name="reason">Rejection reason from the remote peer</param>
+    public void RecordHeartbeatRejection(string peerId, string reason)
+    {
+        var tags = new TagList
+        {
+            { "peer_id", peerId },
+            { "reason", reason }
+        };
+
+        _heartbeatRejectionsReceived.Add(1, tags);
     }
 
     /// <summary>
