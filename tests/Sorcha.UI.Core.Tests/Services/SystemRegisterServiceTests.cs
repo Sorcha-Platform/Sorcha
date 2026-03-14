@@ -68,7 +68,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register")),
+                    req.RequestUri!.ToString().Contains("/api/system-register")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -98,7 +98,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register")),
+                    req.RequestUri!.ToString().Contains("/api/system-register")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -187,7 +187,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -216,7 +216,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -297,7 +297,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints/bp-001")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints/bp-001")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -328,7 +328,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints/nonexistent")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints/nonexistent")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -371,7 +371,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints/bp-001/versions/1")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints/bp-001/versions/1")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 
@@ -401,7 +401,7 @@ public class SystemRegisterServiceTests : IDisposable
                 "SendAsync",
                 ItExpr.Is<HttpRequestMessage>(req =>
                     req.Method == HttpMethod.Get &&
-                    req.RequestUri!.ToString().Contains("/api/admin/system-register/blueprints/bp-001/versions/99")),
+                    req.RequestUri!.ToString().Contains("/api/system-register/blueprints/bp-001/versions/99")),
                 ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response);
 

@@ -1,7 +1,12 @@
 @using System.Net.Http.Json
+@using System.Net.Http.Headers
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
 @inject HttpClient Http
+@inject IAuthenticationService AuthService
+@inject IConfigurationService ConfigService
 
 <MudGrid>
     <MudItem xs="12">
@@ -525,8 +530,20 @@
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
+    private async Task SetAuthHeaderAsync()
+    {
+        var profileName = await ConfigService.GetActiveProfileNameAsync();
+        var token = await AuthService.GetAccessTokenAsync(profileName);
+        if (!string.IsNullOrEmpty(token))
+        {
+            Http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+        }
+    }
+
     private async Task RefreshAll()
     {
+        await SetAuthHeaderAsync();
         await LoadServiceMetrics();
         if (serviceStatus?.IsRunning == true)
         {
