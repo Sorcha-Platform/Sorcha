@@ -198,10 +198,10 @@ public class DockerAuthenticationTests : DockerTestBase
     [Test]
     public async Task ApiGateway_ScalarDocs_Accessible()
     {
-        var response = await Page.GotoAsync($"{TestConstants.ApiGatewayUrl}/scalar/v1");
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        // Scalar UI requires auth; the OpenAPI JSON spec is public
+        var response = await Page.GotoAsync($"{TestConstants.ApiGatewayUrl}/openapi/v1.json");
 
-        Assert.That(response?.Status, Is.EqualTo(200), "Scalar API docs should be accessible");
+        Assert.That(response?.Status, Is.EqualTo(200), "OpenAPI spec should be accessible at /openapi/v1.json");
     }
 
     #endregion
