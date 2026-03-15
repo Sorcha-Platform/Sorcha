@@ -69,6 +69,21 @@ public static class SorchaDerivationPaths
     public const string DocketSigningPath = "m/44'/0'/0'/0/102";
 
     /// <summary>
+    /// Derivation path for blueprint publishing to the system register
+    /// </summary>
+    /// <remarks>
+    /// Used by the Register Service system wallet to sign blueprint transactions
+    /// published to the system register.
+    /// Maps to: m/44'/0'/0'/0/103
+    /// </remarks>
+    public const string BlueprintPublish = "sorcha:blueprint-publish";
+
+    /// <summary>
+    /// BIP44 path for blueprint publishing
+    /// </summary>
+    public const string BlueprintPublishPath = "m/44'/0'/0'/0/103";
+
+    /// <summary>
     /// Resolves a Sorcha system path to its corresponding BIP44 path
     /// </summary>
     /// <param name="systemPath">Sorcha system path (e.g., "sorcha:register-attestation")</param>
@@ -89,6 +104,7 @@ public static class SorchaDerivationPaths
             RegisterAttestation => RegisterAttestationPath,
             RegisterControl => RegisterControlPath,
             DocketSigning => DocketSigningPath,
+            BlueprintPublish => BlueprintPublishPath,
             _ => throw new ArgumentException($"Unknown Sorcha system path: {systemPath}", nameof(systemPath))
         };
     }

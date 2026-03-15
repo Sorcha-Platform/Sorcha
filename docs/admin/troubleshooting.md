@@ -18,7 +18,7 @@ Common issues, diagnostic procedures, and fixes for Sorcha deployments.
 | Slow startup (> 2 min) | Health check retries exhausting | Normal for first build; subsequent starts are faster |
 | `ERR_CONNECTION_REFUSED` in browser | API Gateway not running or wrong port | Verify gateway is healthy: `docker-compose ps api-gateway` |
 | CORS errors in browser | API Gateway misconfigured | Check `ASPNETCORE_ENVIRONMENT` -- `Development` enables permissive CORS |
-| Register data missing | System register not seeded | Set `SORCHA_SEED_SYSTEM_REGISTER=true` in `.env` and restart |
+| Register data missing | System register not bootstrapped | System register bootstraps automatically on startup. Check register-service logs for bootstrap errors. |
 
 ## Diagnostic Commands
 

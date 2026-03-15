@@ -208,10 +208,9 @@
 
         if (user.Identity?.IsAuthenticated == true)
         {
-            var roleClaim = user.Claims.FirstOrDefault(c =>
-                c.Type == System.Security.Claims.ClaimTypes.Role ||
-                c.Type == "role");
-            _isAdmin = roleClaim?.Value == "Administrator";
+            _isAdmin = user.Claims.Any(c =>
+                (c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role") &&
+                c.Value == "Administrator");
         }
     }
 

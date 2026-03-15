@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sorcha.Register.Models;
@@ -190,7 +191,6 @@ public class RegisterAttestation
     /// </summary>
     [Required]
     [JsonPropertyName("algorithm")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SignatureAlgorithm Algorithm { get; set; }
 
     /// <summary>
@@ -230,6 +230,7 @@ public enum RegisterRole
 /// <summary>
 /// Cryptographic signature algorithms supported
 /// </summary>
+[JsonConverter(typeof(SignatureAlgorithmConverter))]
 public enum SignatureAlgorithm
 {
     /// <summary>
@@ -256,4 +257,33 @@ public enum SignatureAlgorithm
     /// SLH-DSA-128s (FIPS 205) — hash-based post-quantum signature
     /// </summary>
     SLH_DSA_128s
+}
+
+/// <summary>
+/// JSON converter for SignatureAlgorithm that accepts both underscore (ML_DSA_65) and
+/// hyphenated (ML-DSA-65) formats, matching the wallet service's algorithm naming.
+/// </summary>
+public class SignatureAlgorithmConverter : JsonConverter<SignatureAlgorithm>
+{
+    /// <inheritdoc />
+    public override SignatureAlgorithm Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var value = reader.GetString();
+        if (string.IsNullOrEmpty(value))
+            throw new JsonException("SignatureAlgorithm value cannot be null or empty.");
+
+        // Normalize: replace hyphens with underscores for enum matching
+        var normalized = value.Replace("-", "_");
+
+        if (Enum.TryParse<SignatureAlgorithm>(normalized, ignoreCase: true, out var result))
+            return result;
+
+        throw new JsonException($"Unable to convert \"{value}\" to SignatureAlgorithm.");
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, SignatureAlgorithm value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToString());
+    }
 }

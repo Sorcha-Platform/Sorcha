@@ -302,7 +302,7 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 
 > **Register Creation** now accepts an optional `policy` field in the creation request. If omitted, default policy values are applied at genesis.
 
-### System Register (Feature 048)
+### System Register (Feature 048, upgraded in Feature 057)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -310,8 +310,9 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 | GET | `/api/system-register/blueprints` | List system blueprints (paginated) |
 | GET | `/api/system-register/blueprints/{blueprintId}` | Get specific system blueprint |
 | GET | `/api/system-register/blueprints/{blueprintId}/versions/{version}` | Get specific blueprint version |
+| POST | `/api/system-register/publish` | Publish a new blueprint to the system register |
 
-> The **System Register** is a deterministic, singleton register bootstrapped on first startup. It stores governance blueprints and system-level templates available to all registers.
+> The **System Register** is a real register backed by the standard ledger infrastructure. It is automatically bootstrapped on first startup (no environment variable needed). Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`), replacing the previous standalone MongoDB collection (`sorcha_system_register_blueprints`).
 
 ### SignalR Hub
 

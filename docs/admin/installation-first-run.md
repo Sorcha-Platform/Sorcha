@@ -180,18 +180,13 @@ Confirm the installation is working:
 - [ ] Aspire Dashboard is accessible: `http://localhost:18888`
 - [ ] UI loads: `http://localhost/app`
 
-## Optional: Enable System Register
+## System Register
 
-The System Register provides a shared ledger for platform-level data. To enable automatic seeding on startup:
+The System Register provides a shared ledger for platform-level governance data (blueprints, policies). It bootstraps automatically on first startup -- no environment variable is needed. The register service creates the well-known system register and seeds default blueprints idempotently.
 
-In `.env`, set:
-```
-SORCHA_SEED_SYSTEM_REGISTER=true
-```
-
-Then restart the Register Service:
+To verify bootstrap succeeded, check the register service logs or query:
 ```bash
-docker-compose restart register-service
+curl http://localhost:5380/api/system-register
 ```
 
 ## Optional: Aspire AppHost Mode (Development)

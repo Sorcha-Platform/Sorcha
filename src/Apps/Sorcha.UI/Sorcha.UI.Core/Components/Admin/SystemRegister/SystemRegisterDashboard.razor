@@ -65,13 +65,19 @@ else
             </MudStack>
             <MudDivider Class="my-3" />
             <MudGrid>
-                <MudItem xs="12" sm="4">
+                <MudItem xs="12" sm="3">
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.caption" Color="Color.Secondary">Blueprint Count</MudText>
                         <MudText Typo="Typo.h5">@_status.BlueprintCount</MudText>
                     </MudStack>
                 </MudItem>
-                <MudItem xs="12" sm="4">
+                <MudItem xs="12" sm="3">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Height</MudText>
+                        <MudText Typo="Typo.h5">@_status.Height</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="3">
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.caption" Color="Color.Secondary">Created</MudText>
                         <MudText Typo="Typo.body1">
@@ -79,7 +85,7 @@ else
                         </MudText>
                     </MudStack>
                 </MudItem>
-                <MudItem xs="12" sm="4">
+                <MudItem xs="12" sm="3">
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
                         <MudText Typo="Typo.body1">
@@ -94,7 +100,27 @@ else
     @if (!_status.IsInitialized)
     {
         <MudAlert Severity="Severity.Warning" Class="mb-4">
-            System register has not been initialized. Blueprint publishing and validation features are unavailable until the register is initialized.
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText>
+                    System register has not been initialized. Blueprint publishing and validation features are unavailable until the register is initialized.
+                </MudText>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           OnClick="InitializeSystemRegisterAsync"
+                           Disabled="@_initializing"
+                           data-testid="initialize-system-register-button">
+                    @if (_initializing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <text>Initializing...</text>
+                    }
+                    else
+                    {
+                        <text>Initialize</text>
+                    }
+                </MudButton>
+            </MudStack>
         </MudAlert>
     }
 
@@ -142,6 +168,7 @@ else
     private SystemRegisterViewModel? _status;
     private bool _loading = true;
     private bool _gridLoading;
+    private bool _initializing;
     private string? _error;
     private MudDataGrid<BlueprintSummaryViewModel>? _dataGrid;
 
@@ -202,6 +229,37 @@ else
         finally
         {
             _gridLoading = false;
+        }
+    }
+
+    private async Task InitializeSystemRegisterAsync()
+    {
+        _initializing = true;
+        _error = null;
+
+        try
+        {
+            var success = await RegisterService.InitializeAsync();
+            if (success)
+            {
+                await LoadDataAsync();
+                if (_dataGrid is not null)
+                {
+                    await _dataGrid.ReloadServerData();
+                }
+            }
+            else
+            {
+                _error = "Failed to initialize system register. Check service logs for details.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to initialize system register: {ex.Message}";
+        }
+        finally
+        {
+            _initializing = false;
         }
     }
 

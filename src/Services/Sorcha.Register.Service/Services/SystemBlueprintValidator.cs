@@ -2,31 +2,29 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Register.Core.Services;
-using Sorcha.Register.Service.Repositories;
 
 namespace Sorcha.Register.Service.Services;
 
 /// <summary>
-/// Validates blueprint existence by querying the local <see cref="ISystemRegisterRepository"/> directly,
+/// Validates blueprint existence by querying the <see cref="SystemRegisterService"/> directly,
 /// avoiding the HTTP self-reference that occurs when the Register Service calls its own REST API.
 /// </summary>
 public class SystemBlueprintValidator : ISystemBlueprintValidator
 {
-    private readonly ISystemRegisterRepository _repository;
+    private readonly SystemRegisterService _systemRegisterService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemBlueprintValidator"/> class.
     /// </summary>
-    /// <param name="repository">System register repository for blueprint lookups</param>
-    public SystemBlueprintValidator(ISystemRegisterRepository repository)
+    /// <param name="systemRegisterService">System register service for blueprint lookups</param>
+    public SystemBlueprintValidator(SystemRegisterService systemRegisterService)
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _systemRegisterService = systemRegisterService ?? throw new ArgumentNullException(nameof(systemRegisterService));
     }
 
     /// <inheritdoc/>
     public async Task<bool> ExistsAsync(string blueprintId, CancellationToken ct = default)
     {
-        var entry = await _repository.GetBlueprintByIdAsync(blueprintId, ct);
-        return entry is not null && entry.IsActive;
+        return await _systemRegisterService.BlueprintExistsAsync(blueprintId, ct);
     }
 }

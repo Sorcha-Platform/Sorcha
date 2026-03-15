@@ -18,7 +18,7 @@ public class SystemWalletSigningOptions
     /// Requests with paths not in this list are rejected.
     /// </summary>
     public string[] AllowedDerivationPaths { get; set; } =
-        ["sorcha:register-control", "sorcha:docket-signing"];
+        ["sorcha:register-control", "sorcha:docket-signing", "sorcha:blueprint-publish"];
 
     /// <summary>
     /// Maximum number of signing operations per register per minute (sliding window)

@@ -69,6 +69,27 @@ public class SystemRegisterService : ISystemRegisterService
     }
 
     /// <inheritdoc />
+    public async Task<bool> InitializeAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsync("/api/system-register/initialize", null, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to initialize system register: {StatusCode}", response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing system register");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<BlueprintDetailViewModel?> GetBlueprintAsync(string blueprintId, CancellationToken ct = default)
     {
         try

@@ -35,6 +35,13 @@ public interface ISystemRegisterService
     Task<BlueprintDetailViewModel?> GetBlueprintAsync(string blueprintId, CancellationToken ct = default);
 
     /// <summary>
+    /// Initializes the system register with default blueprints.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True if initialization was performed, false if already initialized.</returns>
+    Task<bool> InitializeAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Gets detailed information about a specific version of a blueprint.
     /// </summary>
     /// <param name="blueprintId">Blueprint identifier.</param>

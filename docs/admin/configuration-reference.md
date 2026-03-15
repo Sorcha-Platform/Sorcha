@@ -152,7 +152,8 @@ Shared across all services via the `x-otel-env` YAML anchor:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENAPI_REQUIRE_AUTH` | `true` | Require JWT authentication for `/openapi` endpoints |
-| `SORCHA_SEED_SYSTEM_REGISTER` | `false` | Auto-create the system register on startup |
+
+> **Note:** `SORCHA_SEED_SYSTEM_REGISTER` was removed in Feature 057. The system register now bootstraps automatically on startup.
 
 ## Service URLs (Internal)
 

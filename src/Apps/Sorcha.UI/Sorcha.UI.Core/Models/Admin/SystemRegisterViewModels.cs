@@ -15,16 +15,28 @@ public record SystemRegisterViewModel
     public string RegisterId { get; init; } = string.Empty;
 
     /// <summary>Human-readable display name.</summary>
-    [JsonPropertyName("displayName")]
+    [JsonPropertyName("name")]
     public string DisplayName { get; init; } = string.Empty;
 
+    /// <summary>Current status: "initialized" or "not_initialized".</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
     /// <summary>Whether the register has been initialized.</summary>
-    [JsonPropertyName("isInitialized")]
-    public bool IsInitialized { get; init; }
+    [JsonIgnore]
+    public bool IsInitialized => Status == "initialized";
 
     /// <summary>Number of blueprints published to the register.</summary>
     [JsonPropertyName("blueprintCount")]
     public int BlueprintCount { get; init; }
+
+    /// <summary>Current version number.</summary>
+    [JsonPropertyName("currentVersion")]
+    public long CurrentVersion { get; init; }
+
+    /// <summary>Register chain height from the ledger.</summary>
+    [JsonPropertyName("height")]
+    public long Height { get; init; }
 
     /// <summary>When the register was created.</summary>
     [JsonPropertyName("createdAt")]
