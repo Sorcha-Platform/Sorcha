@@ -274,7 +274,7 @@ public class SystemRegisterBootstrapper : BackgroundService
         if (!await systemRegisterService.BlueprintExistsAsync("register-creation-v1", cancellationToken))
         {
             _logger.LogInformation("Seeding blueprint: register-creation-v1");
-            var creationBlueprint = CreateRegisterCreationBlueprintJson();
+            var creationBlueprint = LoadBlueprintFromCatalog("register-creation-v1");
             await systemRegisterService.PublishBlueprintAsync(
                 "register-creation-v1",
                 creationBlueprint,
@@ -292,7 +292,7 @@ public class SystemRegisterBootstrapper : BackgroundService
         if (!await systemRegisterService.BlueprintExistsAsync("register-governance-v1", cancellationToken))
         {
             _logger.LogInformation("Seeding blueprint: register-governance-v1");
-            var governanceBlueprint = CreateGovernanceBlueprintJson();
+            var governanceBlueprint = LoadBlueprintFromCatalog("register-governance-v1");
             await systemRegisterService.PublishBlueprintAsync(
                 "register-governance-v1",
                 governanceBlueprint,
@@ -308,49 +308,39 @@ public class SystemRegisterBootstrapper : BackgroundService
     }
 
     /// <summary>
-    /// Creates the register-creation-v1 blueprint JSON content.
+    /// Loads a seed blueprint from the template catalog (blueprints/templates/{id}.json).
+    /// Extracts the "template" property which contains the actual blueprint content.
     /// </summary>
-    private static JsonElement CreateRegisterCreationBlueprintJson()
+    private static JsonElement LoadBlueprintFromCatalog(string blueprintId)
     {
-        var json = """
+        // Template catalog is at the repo/container root: /blueprints/templates/
+        var paths = new[]
         {
-            "@context": "https://sorcha.dev/blueprints/v1",
-            "id": "register-creation-v1",
-            "name": "Register Creation Workflow",
-            "version": "1.0.0",
-            "description": "Default workflow for creating a new register in the Sorcha platform",
-            "actions": [
-                {"id": "validate-request", "name": "Validate Register Creation Request", "type": "validation"},
-                {"id": "create-register", "name": "Create New Register", "type": "register-creation"},
-                {"id": "publish-transaction", "name": "Publish Register Creation Transaction", "type": "transaction"}
-            ]
-        }
-        """;
-        return JsonSerializer.Deserialize<JsonElement>(json);
-    }
+            Path.Combine(AppContext.BaseDirectory, "blueprints", "templates", $"{blueprintId}.json"),
+            Path.Combine("/blueprints", "templates", $"{blueprintId}.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "blueprints", "templates", $"{blueprintId}.json")
+        };
 
-    /// <summary>
-    /// Creates the register-governance-v1 blueprint JSON content.
-    /// </summary>
-    private static JsonElement CreateGovernanceBlueprintJson()
-    {
-        var json = """
+        foreach (var path in paths)
         {
-            "@context": "https://sorcha.dev/blueprints/v1",
-            "id": "register-governance-v1",
-            "name": "Register Governance Workflow",
-            "version": "1.0.0",
-            "description": "Default governance workflow for managing register policies, membership, and lifecycle",
-            "actions": [
-                {"id": "propose-change", "name": "Propose Governance Change", "type": "governance-proposal"},
-                {"id": "validate-proposal", "name": "Validate Governance Proposal", "type": "validation"},
-                {"id": "collect-votes", "name": "Collect Member Votes", "type": "voting"},
-                {"id": "apply-change", "name": "Apply Governance Change", "type": "governance-execution"},
-                {"id": "publish-update", "name": "Publish Governance Update", "type": "transaction"}
-            ]
+            if (!File.Exists(path)) continue;
+
+            var json = File.ReadAllText(path);
+            using var doc = JsonDocument.Parse(json);
+
+            // The catalog file wraps the blueprint in a "template" property
+            if (doc.RootElement.TryGetProperty("template", out var template))
+            {
+                return template.Clone();
+            }
+
+            // If no wrapper, use the root element directly
+            return doc.RootElement.Clone();
         }
-        """;
-        return JsonSerializer.Deserialize<JsonElement>(json);
+
+        throw new FileNotFoundException(
+            $"Blueprint template '{blueprintId}.json' not found in catalog. " +
+            $"Searched: {string.Join(", ", paths)}");
     }
 
     /// <summary>

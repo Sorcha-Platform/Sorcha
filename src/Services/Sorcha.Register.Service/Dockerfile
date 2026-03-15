@@ -57,6 +57,9 @@ EXPOSE 8081
 # Copy published application
 COPY --from=publish /app/publish .
 
+# Copy blueprint template catalog for system register seeding
+COPY blueprints/templates/ ./blueprints/templates/
+
 # Set environment variables
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_HTTP_PORTS=8080

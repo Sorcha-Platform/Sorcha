@@ -1,0 +1,65 @@
+{
+  "id": "register-creation-v1",
+  "title": "Register Creation Workflow",
+  "description": "Default workflow for creating a new register in the Sorcha platform. Validates the creation request, constructs the register with its control record, and publishes the genesis transaction.",
+  "version": 1,
+  "category": "system",
+  "tags": ["system", "register", "creation", "genesis"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "@context": "https://sorcha.dev/blueprints/v1",
+    "id": "register-creation-v1",
+    "title": "Register Creation Workflow",
+    "description": "Default workflow for creating a new register in the Sorcha platform",
+    "version": 1,
+    "participants": [
+      { "id": "initiator", "name": "Initiator", "organisation": "Register Creator" },
+      { "id": "owner", "name": "Owner", "organisation": "Register Owner" }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Validate Creation Request",
+        "sender": "initiator",
+        "isStartingAction": true,
+        "type": "validation",
+        "routes": [
+          { "id": "valid", "nextActionIds": [1], "isDefault": true }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Sign Attestation",
+        "sender": "owner",
+        "type": "attestation",
+        "routes": [
+          { "id": "signed", "nextActionIds": [2], "isDefault": true }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Create Register",
+        "sender": "initiator",
+        "type": "register-creation",
+        "routes": [
+          { "id": "created", "nextActionIds": [3], "isDefault": true }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Publish Genesis Transaction",
+        "sender": "initiator",
+        "type": "transaction"
+      }
+    ],
+    "metadata": {
+      "category": "system",
+      "type": "register-creation",
+      "isSystem": "true"
+    }
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}
