@@ -81,9 +81,19 @@ public class AnthropicProviderService : IAIProviderService
                 // Accumulate tool arguments
                 toolArgumentsJson += response.Delta.PartialJson;
             }
-            else if (response.Delta?.Type == "content_block_stop" && currentToolId != null && currentToolName != null)
+            else if (response.Delta?.StopReason != null)
             {
-                // End of tool use block - emit the complete tool use event
+                _logger.LogInformation("AI stream ended with stop reason: {StopReason}", response.Delta.StopReason);
+                yield return new StreamEnd(response.Delta.StopReason);
+            }
+            else if (currentToolId != null && currentToolName != null
+                     && response.Delta?.Type == null && response.ContentBlock?.Type == null)
+            {
+                // The SDK sends content_block_stop as an event with all-null properties.
+                // When we have an active tool and get this null event, the tool block is complete.
+                _logger.LogInformation("Tool block complete: {ToolName} (ID: {ToolId}), args: {ArgsLen} chars",
+                    currentToolName, currentToolId, toolArgumentsJson.Length);
+
                 JsonDocument arguments;
                 try
                 {
@@ -102,11 +112,6 @@ public class AnthropicProviderService : IAIProviderService
                 currentToolId = null;
                 currentToolName = null;
                 toolArgumentsJson = "";
-            }
-            else if (response.Delta?.StopReason != null)
-            {
-                _logger.LogInformation("AI stream ended with stop reason: {StopReason}", response.Delta.StopReason);
-                yield return new StreamEnd(response.Delta.StopReason);
             }
         }
 

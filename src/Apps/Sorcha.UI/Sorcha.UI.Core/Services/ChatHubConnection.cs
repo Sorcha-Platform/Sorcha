@@ -87,6 +87,11 @@ public class ChatHubConnection : IChatHubConnection
             .WithAutomaticReconnect(new CustomRetryPolicy(ReconnectDelays))
             .Build();
 
+        // AI tool execution can take 30-60+ seconds — increase timeout to prevent
+        // the client from disconnecting while the server processes tool calls
+        connection.ServerTimeout = TimeSpan.FromMinutes(3);
+        connection.KeepAliveInterval = TimeSpan.FromSeconds(15);
+
         RegisterEventHandlers(connection);
         return connection;
     }
