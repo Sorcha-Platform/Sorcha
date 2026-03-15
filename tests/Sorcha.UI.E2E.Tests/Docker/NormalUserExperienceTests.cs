@@ -67,7 +67,7 @@ public class NormalUserExperienceTests : AuthenticatedDockerTestBase
         // Find positions by href (not text — avoids i18n issues)
         var pendingIdx = hrefs.FindIndex(h => h.Contains("my-actions"));
         var submissionIdx = hrefs.FindIndex(h => h.Contains("my-workflows"));
-        var walletIdx = hrefs.FindIndex(h => h.Contains("my-wallet"));
+        var walletIdx = hrefs.FindIndex(h => h.Contains("/wallets"));
         var transactionsIdx = hrefs.FindIndex(h => h.Contains("my-transactions"));
 
         Assert.Multiple(() =>

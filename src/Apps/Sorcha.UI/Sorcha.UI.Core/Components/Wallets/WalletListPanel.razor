@@ -1,0 +1,286 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Wallet
+
+<MudText Typo="Typo.h4" Class="mb-2">
+    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Class="mr-2" />
+    @Title
+</MudText>
+<MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+    @Subtitle
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12">
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <div class="d-flex justify-space-between align-center flex-wrap gap-2">
+                <MudTextField T="string" @bind-Value="_searchText" Placeholder="Search wallets..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined" Class="flex-grow-1 mr-3" Style="max-width: 400px;" />
+                <div class="d-flex gap-2 align-center">
+                    <MudToggleIconButton Toggled="@_isTableView"
+                                         ToggledChanged="@(v => _isTableView = v)"
+                                         Icon="@Icons.Material.Filled.GridView"
+                                         ToggledIcon="@Icons.Material.Filled.TableRows"
+                                         Title="Switch to table view"
+                                         ToggledTitle="Switch to card view"
+                                         Size="Size.Medium"
+                                         Color="Color.Default"
+                                         ToggledColor="Color.Primary" />
+                    @if (ShowRecoverButton)
+                    {
+                        <MudButton Href="wallets/recover" Color="Color.Secondary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Restore">
+                            Recover Wallet
+                        </MudButton>
+                    }
+                    @if (ShowCreateButton)
+                    {
+                        <MudButton Href="wallets/create" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add">
+                            Create Wallet
+                        </MudButton>
+                    }
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    @if (IsLoading)
+    {
+        <MudItem xs="12">
+            <MudPaper Class="pa-8 text-center" Elevation="2">
+                <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                <MudText Typo="Typo.body1" Class="mt-4">Loading wallets...</MudText>
+            </MudPaper>
+        </MudItem>
+    }
+    else if (!string.IsNullOrEmpty(Error))
+    {
+        <MudItem xs="12">
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                @Error
+            </MudAlert>
+        </MudItem>
+    }
+    else if (FilteredWallets.Any())
+    {
+        @if (_isTableView)
+        {
+            <MudItem xs="12">
+                <MudTable Items="@FilteredWallets" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="2" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Name</MudTh>
+                        <MudTh>Address</MudTh>
+                        <MudTh>Algorithm</MudTh>
+                        <MudTh>Status</MudTh>
+                        @if (ShowOwnerColumn)
+                        {
+                            <MudTh>Owner</MudTh>
+                        }
+                        <MudTh>Created</MudTh>
+                        <MudTh Style="text-align: right;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Name">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                @if (ShowDefaultIndicator && context.Address == DefaultWalletAddress)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" Title="Default Wallet" />
+                                }
+                                <MudLink Href="@($"wallets/{context.Address}")" Typo="Typo.body2">@context.Name</MudLink>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Address">
+                            <TruncatedId Value="@context.Address" />
+                        </MudTd>
+                        <MudTd DataLabel="Algorithm">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">@context.Algorithm</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Color="GetStatusColor(context.Status)" Size="Size.Small">@context.Status</MudChip>
+                        </MudTd>
+                        @if (ShowOwnerColumn)
+                        {
+                            <MudTd DataLabel="Owner">
+                                <MudText Typo="Typo.body2">@context.Owner</MudText>
+                            </MudTd>
+                        }
+                        <MudTd DataLabel="Created">@context.CreatedAt.ToString("MMM dd, yyyy")</MudTd>
+                        <MudTd DataLabel="Actions" Style="text-align: right;">
+                            <MudStack Row="true" Spacing="0" Justify="Justify.FlexEnd">
+                                @if (ShowDefaultIndicator)
+                                {
+                                    @if (context.Address != DefaultWalletAddress)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.StarOutline" Size="Size.Small" Title="Set as Default" OnClick="() => OnSetDefault.InvokeAsync(context)" />
+                                    }
+                                    else
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" Title="Default Wallet" Disabled="true" />
+                                    }
+                                }
+                                <MudIconButton Icon="@Icons.Material.Filled.QrCode2" Size="Size.Small" Title="Show QR Code" OnClick="() => OnShowQrCode.InvokeAsync(context)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" Title="Copy Address" OnClick="() => OnCopyAddress.InvokeAsync(context)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" Title="Delete" OnClick="() => OnDelete.InvokeAsync(context)" />
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudItem>
+        }
+        else
+        {
+            @foreach (var wallet in FilteredWallets)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard Elevation="2" Class="wallet-card" @onclick="() => OnViewWallet.InvokeAsync(wallet.Address)" Style="cursor: pointer;">
+                        <MudCardHeader>
+                            <CardHeaderAvatar>
+                                <MudAvatar Color="GetAlgorithmColor(wallet.Algorithm)" Size="Size.Medium">
+                                    <MudIcon Icon="@Icons.Material.Filled.Key" />
+                                </MudAvatar>
+                            </CardHeaderAvatar>
+                            <CardHeaderContent>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    @if (ShowDefaultIndicator && wallet.Address == DefaultWalletAddress)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" Title="Default Wallet" />
+                                    }
+                                    <MudText Typo="Typo.h6">@wallet.Name</MudText>
+                                </MudStack>
+                                <TruncatedId Value="@wallet.Address" />
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Color="GetStatusColor(wallet.Status)" Size="Size.Small">
+                                    @wallet.Status
+                                </MudChip>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudStack Row="true" Spacing="2" Class="mb-2">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">
+                                    @wallet.Algorithm
+                                </MudChip>
+                                @if (ShowOwnerColumn)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="align-self-center">
+                                        @wallet.Owner
+                                    </MudText>
+                                }
+                            </MudStack>
+                            <MudDivider Class="my-2" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Size="Size.Small" Class="mr-1" />
+                                Created @wallet.CreatedAt.ToString("MMM dd, yyyy")
+                            </MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            @if (ShowDefaultIndicator)
+                            {
+                                <span @onclick:stopPropagation="true">
+                                    @if (wallet.Address != DefaultWalletAddress)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.StarOutline" Size="Size.Small" Title="Set as Default" OnClick="() => OnSetDefault.InvokeAsync(wallet)" />
+                                    }
+                                    else
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" Title="Default Wallet" Disabled="true" />
+                                    }
+                                </span>
+                            }
+                            <span @onclick:stopPropagation="true">
+                                <MudIconButton Icon="@Icons.Material.Filled.QrCode2" Size="Size.Small" Title="Show QR Code" OnClick="() => OnShowQrCode.InvokeAsync(wallet)" />
+                            </span>
+                            <span @onclick:stopPropagation="true">
+                                <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" Title="Copy Address" OnClick="() => OnCopyAddress.InvokeAsync(wallet)" />
+                            </span>
+                            <MudSpacer />
+                            <span @onclick:stopPropagation="true">
+                                <MudButton Color="Color.Primary" Variant="Variant.Text" OnClick="() => OnViewWallet.InvokeAsync(wallet.Address)">
+                                    View Details
+                                </MudButton>
+                            </span>
+                            <span @onclick:stopPropagation="true">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => OnDelete.InvokeAsync(wallet)" />
+                            </span>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        }
+    }
+    else
+    {
+        <MudItem xs="12">
+            <MudPaper Class="pa-8 text-center" Elevation="2">
+                <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Size="Size.Large" Color="Color.Secondary" Class="mb-3" />
+                <MudText Typo="Typo.h6" Class="mb-2">@EmptyTitle</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    @EmptyDescription
+                </MudText>
+                @if (ShowCreateButton || ShowRecoverButton)
+                {
+                    <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                        @if (ShowRecoverButton)
+                        {
+                            <MudButton Href="wallets/recover" Color="Color.Secondary" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Restore">
+                                Recover Wallet
+                            </MudButton>
+                        }
+                        @if (ShowCreateButton)
+                        {
+                            <MudButton Href="wallets/create" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add">
+                                Create Wallet
+                            </MudButton>
+                        }
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private string _searchText = "";
+    private bool _isTableView;
+
+    [Parameter] public string Title { get; set; } = "Wallet Management";
+    [Parameter] public string Subtitle { get; set; } = "Manage your HD wallets for cryptographic signing and address generation";
+    [Parameter] public string EmptyTitle { get; set; } = "No Wallets Found";
+    [Parameter] public string EmptyDescription { get; set; } = "Get started by creating your first wallet or recovering an existing one";
+    [Parameter] public List<WalletDto> Wallets { get; set; } = [];
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? DefaultWalletAddress { get; set; }
+    [Parameter] public bool ShowDefaultIndicator { get; set; } = true;
+    [Parameter] public bool ShowOwnerColumn { get; set; }
+    [Parameter] public bool ShowCreateButton { get; set; } = true;
+    [Parameter] public bool ShowRecoverButton { get; set; } = true;
+    [Parameter] public EventCallback<WalletDto> OnSetDefault { get; set; }
+    [Parameter] public EventCallback<WalletDto> OnShowQrCode { get; set; }
+    [Parameter] public EventCallback<WalletDto> OnCopyAddress { get; set; }
+    [Parameter] public EventCallback<WalletDto> OnDelete { get; set; }
+    [Parameter] public EventCallback<string> OnViewWallet { get; set; }
+
+    private IEnumerable<WalletDto> FilteredWallets => string.IsNullOrWhiteSpace(_searchText)
+        ? Wallets
+        : Wallets.Where(w =>
+            w.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            w.Address.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+            w.Algorithm.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    private static Color GetStatusColor(string status) => status.ToUpperInvariant() switch
+    {
+        "ACTIVE" => Color.Success,
+        "ARCHIVED" => Color.Warning,
+        "DELETED" => Color.Error,
+        "LOCKED" => Color.Info,
+        _ => Color.Default
+    };
+
+    private static Color GetAlgorithmColor(string algorithm) => algorithm.ToUpperInvariant() switch
+    {
+        "ED25519" => Color.Primary,
+        "NISTP256" => Color.Secondary,
+        "RSA4096" => Color.Tertiary,
+        _ => Color.Default
+    };
+}

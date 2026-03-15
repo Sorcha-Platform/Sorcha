@@ -90,7 +90,7 @@ public static class TestConstants
         public const string WalletCreate = $"{AppBase}/wallets/create";
         public const string WalletCreateFirstLogin = $"{AppBase}/wallets/create?first-login=true";
         public const string WalletRecover = $"{AppBase}/wallets/recover";
-        public const string MyWallet = $"{AppBase}/my-wallet";
+        public const string MyWallet = $"{AppBase}/wallets";
         public const string MyActions = $"{AppBase}/my-actions";
         public const string MyWorkflows = $"{AppBase}/my-workflows";
         public const string MyTransactions = $"{AppBase}/my-transactions";
