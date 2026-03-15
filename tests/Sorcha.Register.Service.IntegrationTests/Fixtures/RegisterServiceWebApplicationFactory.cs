@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MongoDB.Driver;
 using Moq;
-using Sorcha.Register.Service.Repositories;
+using Sorcha.Register.Service.Services;
 using StackExchange.Redis;
 
 namespace Sorcha.Register.Service.IntegrationTests.Fixtures;
@@ -101,26 +101,13 @@ public class RegisterServiceWebApplicationFactory : WebApplicationFactory<Progra
             services.AddSingleton(mockMultiplexer.Object);
 
             // === Mock MongoDB ===
-            // Register Service uses MongoDB for the system register (MongoSystemRegisterRepository)
+            // SystemRegisterService now uses RegisterManager/TransactionManager (backed by IRegisterRepository)
+            // so no MongoDB mocking is needed for the system register.
+            // Provide mock IMongoClient/IMongoDatabase so any remaining DI doesn't fail.
             services.RemoveAll<IMongoClient>();
             services.RemoveAll<IMongoDatabase>();
-            services.RemoveAll<ISystemRegisterRepository>();
-
-            var mockSystemRegisterRepo = new Mock<ISystemRegisterRepository>();
-            mockSystemRegisterRepo.Setup(r => r.GetAllBlueprintsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<SystemRegisterEntry>());
-            mockSystemRegisterRepo.Setup(r => r.GetBlueprintByIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((SystemRegisterEntry?)null);
-
-            services.AddSingleton(mockSystemRegisterRepo.Object);
-
-            // Provide a mock IMongoClient and IMongoDatabase so DI doesn't fail
-            var mockMongoCollection = new Mock<IMongoCollection<SystemRegisterEntry>>();
 
             var mockMongoDatabase = new Mock<IMongoDatabase>();
-            mockMongoDatabase.Setup(d => d.GetCollection<SystemRegisterEntry>(It.IsAny<string>(), It.IsAny<MongoCollectionSettings>()))
-                .Returns(mockMongoCollection.Object);
-
             var mockMongoClient = new Mock<IMongoClient>();
             mockMongoClient.Setup(c => c.GetDatabase(It.IsAny<string>(), It.IsAny<MongoDatabaseSettings>()))
                 .Returns(mockMongoDatabase.Object);

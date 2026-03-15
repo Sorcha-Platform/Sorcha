@@ -31,15 +31,6 @@ public static class SystemRegisterConstants
     /// </summary>
     public const string SystemSetupWalletName = "system-setup";
 
-    /// <summary>
-    /// Environment variable name that controls whether the system register
-    /// is seeded on startup. Expected values: "true" or "false" (default: false).
-    /// </summary>
-    public const string EnvSeedFlag = "SORCHA_SEED_SYSTEM_REGISTER";
-
-    /// <summary>
-    /// Environment variable name for overriding the default governance blueprint
-    /// applied to the system register.
-    /// </summary>
-    public const string EnvBlueprintOverride = "SORCHA_SYSTEM_REGISTER_BLUEPRINT";
+    // Note: The SORCHA_SEED_SYSTEM_REGISTER env var was removed in Feature 057.
+    // System register bootstrap is now automatic and idempotent on startup.
 }

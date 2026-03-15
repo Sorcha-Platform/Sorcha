@@ -14,7 +14,6 @@ using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Extensions;
 using Sorcha.Register.Service.Hubs;
-using Sorcha.Register.Service.Repositories;
 using Sorcha.Register.Service.Services;
 using Microsoft.Extensions.Options;
 using Sorcha.Register.Storage.InMemory;
@@ -139,38 +138,15 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IDIDResolver,
     Sorcha.Register.Core.Services.DIDResolver>();
 
 // Feature 048: Register policy service (reads policy from control chain via direct repository access)
-builder.Services.AddSingleton<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
+builder.Services.AddScoped<Sorcha.Register.Core.Services.ISystemBlueprintValidator,
     Sorcha.Register.Service.Services.SystemBlueprintValidator>();
-builder.Services.AddSingleton<Sorcha.Register.Core.Services.IRegisterPolicyService,
+builder.Services.AddScoped<Sorcha.Register.Core.Services.IRegisterPolicyService,
     Sorcha.Register.Core.Services.RegisterPolicyService>();
 
-// System register MongoDB database (reuses the shared IMongoClient)
-builder.Services.AddSingleton<IMongoDatabase>(sp =>
-{
-    var client = sp.GetRequiredService<IMongoClient>();
-    var databaseName = builder.Configuration["MongoDB:DatabaseName"] ?? "sorcha_system_register";
-    return client.GetDatabase(databaseName);
-});
+// Register system register services (scoped — will use ledger-backed dependencies)
+builder.Services.AddScoped<SystemRegisterService>();
 
-// Register system register services
-builder.Services.AddSingleton<ISystemRegisterRepository, MongoSystemRegisterRepository>();
-builder.Services.AddSingleton<SystemRegisterService>();
-
-// Feature 048: System register bootstrap configuration and background service
-builder.Services.Configure<Sorcha.Register.Service.Configuration.SystemRegisterConfiguration>(config =>
-{
-    // Default is false (no seeding). Set SORCHA_SEED_SYSTEM_REGISTER=true in .env to enable.
-    var seedFlag = builder.Configuration["SORCHA_SEED_SYSTEM_REGISTER"]
-        ?? Environment.GetEnvironmentVariable("SORCHA_SEED_SYSTEM_REGISTER");
-    if (seedFlag is not null && bool.TryParse(seedFlag, out var seed))
-    {
-        config.SeedSystemRegister = seed;
-    }
-    // else: keep default (false)
-
-    config.SystemRegisterBlueprint = builder.Configuration["SORCHA_SYSTEM_REGISTER_BLUEPRINT"]
-        ?? Environment.GetEnvironmentVariable("SORCHA_SYSTEM_REGISTER_BLUEPRINT");
-});
+// Feature 057: System register bootstrap — always runs (idempotent), uses standard register creation flow
 builder.Services.AddHostedService<SystemRegisterBootstrapper>();
 
 // Participant index service (in-memory address → participant mapping)
@@ -1024,13 +1000,13 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
     }
 
     // Publish to system register (global catalog) — idempotent: skip if already exists
-    var bsonDocument = MongoDB.Bson.BsonDocument.Parse(request.BlueprintJson);
+    var blueprintElement = System.Text.Json.JsonDocument.Parse(request.BlueprintJson).RootElement;
     long systemVersion = 0;
     var existingEntry = await systemRegister.GetBlueprintAsync(request.BlueprintId);
     if (existingEntry is null)
     {
         var entry = await systemRegister.PublishBlueprintAsync(
-            request.BlueprintId, bsonDocument, request.PublishedBy);
+            request.BlueprintId, blueprintElement, request.PublishedBy);
         systemVersion = entry.Version;
     }
     else

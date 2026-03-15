@@ -49,7 +49,7 @@ public interface IRegisterPolicyService
 
 /// <summary>
 /// Validates blueprint existence in the system register.
-/// Implemented in the Register Service layer where <c>ISystemRegisterRepository</c> is available.
+/// Implemented in the Register Service layer where <c>SystemRegisterService</c> is available.
 /// </summary>
 public interface ISystemBlueprintValidator
 {

@@ -14,11 +14,6 @@ public static class PeerServiceConstants
     public static readonly Guid SystemRegisterId = Guid.Empty;
 
     /// <summary>
-    /// MongoDB collection name for system register blueprints
-    /// </summary>
-    public const string SystemRegisterCollectionName = "sorcha_system_register_blueprints";
-
-    /// <summary>
     /// Heartbeat interval in seconds
     /// </summary>
     public const int HeartbeatIntervalSeconds = 30;

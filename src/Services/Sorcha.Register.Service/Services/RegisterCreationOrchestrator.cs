@@ -89,8 +89,10 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             request.TenantId,
             request.Owners.Count);
 
-        // Generate unique register ID (GUID without hyphens)
-        var registerId = Guid.NewGuid().ToString("N");
+        // Use pre-determined register ID if provided, otherwise generate a new one
+        var registerId = !string.IsNullOrWhiteSpace(request.RegisterId)
+            ? request.RegisterId
+            : Guid.NewGuid().ToString("N");
         var createdAt = DateTimeOffset.UtcNow;
         var expiresAt = createdAt.Add(_pendingExpirationTime);
         var nonce = GenerateNonce();

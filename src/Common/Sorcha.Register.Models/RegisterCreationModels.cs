@@ -68,6 +68,16 @@ public class InitiateRegisterCreationRequest
     /// </summary>
     [JsonPropertyName("policy")]
     public RegisterPolicy? Policy { get; set; }
+
+    /// <summary>
+    /// Optional pre-determined register ID. When provided, this ID is used instead of generating a new one.
+    /// Must be a 32-character lowercase hex string. Used by the system register bootstrapper to create
+    /// the system register with a deterministic well-known ID.
+    /// </summary>
+    [StringLength(32, MinimumLength = 32)]
+    [RegularExpression("^[a-f0-9]{32}$")]
+    [JsonPropertyName("registerId")]
+    public string? RegisterId { get; set; }
 }
 
 /// <summary>
@@ -283,7 +293,6 @@ public class SignedAttestation
     /// </summary>
     [Required]
     [JsonPropertyName("algorithm")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SignatureAlgorithm Algorithm { get; set; }
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Sorcha.Register.Service.Services;
 
 namespace Sorcha.Register.Service.Endpoints;
@@ -34,6 +35,92 @@ public static class SystemRegisterEndpoints
             "display name, initialization status, blueprint count, and creation timestamp.")
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/initialize", async (
+            SystemRegisterService service,
+            ILogger<Program> logger,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var wasInitialized = await service.InitializeSystemRegisterAsync(ct);
+                var info = await service.GetSystemRegisterInfoAsync(ct);
+
+                return wasInitialized
+                    ? Results.Ok(new { message = "System register initialized successfully", status = info })
+                    : Results.Ok(new { message = "System register was already initialized", status = info });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to initialize system register via API");
+                return Results.Problem(
+                    detail: $"Failed to initialize system register: {ex.Message}",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .WithName("InitializeSystemRegister")
+        .WithSummary("Initialize the system register")
+        .WithDescription(
+            "Seeds the system register with default blueprints. " +
+            "This operation is idempotent — calling it on an already-initialized register is safe.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
+
+        group.MapPost("/publish", async (
+            PublishBlueprintRequest request,
+            SystemRegisterService service,
+            ILogger<Program> logger,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BlueprintId))
+            {
+                return Results.BadRequest(new { error = "blueprintId is required" });
+            }
+
+            if (request.Blueprint.ValueKind == JsonValueKind.Undefined)
+            {
+                return Results.BadRequest(new { error = "blueprint is required" });
+            }
+
+            try
+            {
+                var entry = await service.PublishBlueprintAsync(
+                    request.BlueprintId,
+                    request.Blueprint,
+                    "api-user",
+                    request.Metadata,
+                    ct);
+
+                return Results.Created(
+                    $"/api/system-register/blueprints/{entry.BlueprintId}",
+                    new PublishBlueprintResponse
+                    {
+                        TransactionId = entry.PublicationTransactionId!,
+                        BlueprintId = entry.BlueprintId,
+                        Version = entry.Version,
+                        PublishedAt = entry.PublishedAt
+                    });
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError(ex, "Failed to publish blueprint {BlueprintId}", request.BlueprintId);
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .WithName("PublishBlueprint")
+        .WithSummary("Publish a blueprint to the system register")
+        .WithDescription(
+            "Publishes a new blueprint to the system register as a signed control-chain transaction. " +
+            "The blueprint JSON is stored on the ledger with a deterministic transaction ID, " +
+            "signed by the system wallet. Returns the transaction ID and blueprint metadata on success.")
+        .Accepts<PublishBlueprintRequest>("application/json")
+        .Produces<PublishBlueprintResponse>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
 
         group.MapGet("/blueprints", async (
             SystemRegisterService service,
@@ -134,6 +221,42 @@ public static class SystemRegisterEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);
+    }
+
+    /// <summary>
+    /// Request body for publishing a blueprint to the system register.
+    /// </summary>
+    private record PublishBlueprintRequest
+    {
+        /// <summary>Unique blueprint identifier.</summary>
+        public required string BlueprintId { get; init; }
+
+        /// <summary>Blueprint JSON document to publish.</summary>
+        public required JsonElement Blueprint { get; init; }
+
+        /// <summary>Optional previous transaction ID for explicit chain linking.</summary>
+        public string? PreviousTransactionId { get; init; }
+
+        /// <summary>Optional metadata key-value pairs.</summary>
+        public Dictionary<string, string>? Metadata { get; init; }
+    }
+
+    /// <summary>
+    /// Response returned after successfully publishing a blueprint.
+    /// </summary>
+    private record PublishBlueprintResponse
+    {
+        /// <summary>Transaction ID of the published blueprint.</summary>
+        public required string TransactionId { get; init; }
+
+        /// <summary>Blueprint identifier.</summary>
+        public required string BlueprintId { get; init; }
+
+        /// <summary>Version number assigned to the published blueprint.</summary>
+        public long Version { get; init; }
+
+        /// <summary>UTC timestamp when published.</summary>
+        public DateTime PublishedAt { get; init; }
     }
 
     /// <summary>

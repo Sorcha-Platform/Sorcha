@@ -118,29 +118,38 @@ public class DocketBuildTriggerService : BackgroundService
             return;
         }
 
-        // Check minValidators from policy before building
-        try
+        // Check minValidators from policy before building — but skip for genesis docket.
+        // A brand-new register has no validators registered yet; the genesis docket must
+        // be built first to bootstrap the register before validators can join.
+        var isGenesisBuild = !_genesisWritten.ContainsKey(registerId);
+        if (!isGenesisBuild)
         {
-            var validatorRegistry = scope.ServiceProvider.GetRequiredService<IValidatorRegistry>();
-            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
-            var activeCount = await validatorRegistry.GetActiveCountAsync(registerId, cancellationToken);
-
-            var policyResponse = await registerClient.GetRegisterPolicyAsync(registerId, cancellationToken);
-            var minValidators = policyResponse?.Policy?.Validators?.MinValidators ?? 1;
-
-            if (activeCount < minValidators)
+            try
             {
-                _logger.LogWarning(
-                    "Skipping docket build for register {RegisterId}: active validators ({ActiveCount}) below minimum ({MinValidators})",
-                    registerId, activeCount, minValidators);
-                return;
+                var validatorRegistry = scope.ServiceProvider.GetRequiredService<IValidatorRegistry>();
+                var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+                var activeCount = await validatorRegistry.GetActiveCountAsync(registerId, cancellationToken);
+
+                var policyResponse = await registerClient.GetRegisterPolicyAsync(registerId, cancellationToken);
+                // Default to 0 when no policy exists — allows single-node operation
+                // without registered validators. Production deployments should set
+                // MinValidators explicitly in their register policy.
+                var minValidators = policyResponse?.Policy?.Validators?.MinValidators ?? 0;
+
+                if (activeCount < minValidators)
+                {
+                    _logger.LogWarning(
+                        "Skipping docket build for register {RegisterId}: active validators ({ActiveCount}) below minimum ({MinValidators})",
+                        registerId, activeCount, minValidators);
+                    return;
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Failed to check minValidators for register {RegisterId}, proceeding with build",
-                registerId);
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to check minValidators for register {RegisterId}, proceeding with build",
+                    registerId);
+            }
         }
 
         _logger.LogInformation("Triggering docket build for register {RegisterId}", registerId);

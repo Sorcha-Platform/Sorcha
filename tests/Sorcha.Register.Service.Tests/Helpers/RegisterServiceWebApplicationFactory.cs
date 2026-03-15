@@ -11,11 +11,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
 using Moq;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Models;
-using Sorcha.Register.Service.Repositories;
 using Sorcha.Register.Service.Services;
 using Sorcha.Register.Storage.InMemory;
 using Sorcha.ServiceClients.Peer;
@@ -35,7 +33,7 @@ namespace Sorcha.Register.Service.Tests.Helpers;
 ///   <item><c>ConnectionStrings:redis</c> — dummy value to prevent Aspire startup failure</item>
 ///   <item><c>RegisterStorage:Type=InMemory</c> — use in-memory register storage</item>
 ///   <item>Authentication replaced with auto-authenticating test scheme</item>
-///   <item>MongoDB dependencies (ISystemRegisterRepository) replaced with in-memory impl</item>
+///   <item>System register uses ledger-backed SystemRegisterService (no MongoDB dependency)</item>
 ///   <item>Redis dependencies (IConnectionMultiplexer) replaced with mock</item>
 ///   <item>Redis-backed services (IPendingRegistrationStore, IEventPublisher) replaced</item>
 ///   <item>External service clients (Validator, Peer) replaced with mocks</item>
@@ -82,10 +80,6 @@ public class RegisterServiceWebApplicationFactory : WebApplicationFactory<Progra
                 .Returns(mockDatabase.Object);
             mockRedis.Setup(r => r.IsConnected).Returns(false);
             ReplaceService<IConnectionMultiplexer>(services, _ => mockRedis.Object);
-
-            // Replace ISystemRegisterRepository (MongoDB-dependent) with in-memory impl
-            ReplaceService<ISystemRegisterRepository>(services,
-                _ => new InMemorySystemRegisterRepository());
 
             // Replace Redis-backed pending registration store with in-memory impl
             ReplaceService<IPendingRegistrationStore>(services,
@@ -177,54 +171,6 @@ internal class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptio
         var ticket = new AuthenticationTicket(principal, "TestScheme");
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
-    }
-}
-
-/// <summary>
-/// In-memory implementation of <see cref="ISystemRegisterRepository"/> for testing.
-/// </summary>
-internal class InMemorySystemRegisterRepository : ISystemRegisterRepository
-{
-    private readonly List<SystemRegisterEntry> _entries = [];
-    private long _nextVersion = 1;
-
-    public Task<List<SystemRegisterEntry>> GetAllBlueprintsAsync(CancellationToken ct = default)
-        => Task.FromResult(_entries.Where(e => e.IsActive).ToList());
-
-    public Task<SystemRegisterEntry?> GetBlueprintByIdAsync(string blueprintId, CancellationToken ct = default)
-        => Task.FromResult(_entries.FirstOrDefault(e => e.BlueprintId == blueprintId && e.IsActive));
-
-    public Task<List<SystemRegisterEntry>> GetBlueprintsSinceVersionAsync(long sinceVersion, CancellationToken ct = default)
-        => Task.FromResult(_entries.Where(e => e.Version > sinceVersion).OrderBy(e => e.Version).ToList());
-
-    public Task<SystemRegisterEntry> PublishBlueprintAsync(
-        string blueprintId, BsonDocument doc, string publishedBy,
-        Dictionary<string, string>? metadata = null, CancellationToken ct = default)
-    {
-        var entry = new SystemRegisterEntry
-        {
-            BlueprintId = blueprintId, Document = doc, PublishedBy = publishedBy,
-            Version = _nextVersion++, IsActive = true, PublishedAt = DateTime.UtcNow, Metadata = metadata
-        };
-        _entries.Add(entry);
-        return Task.FromResult(entry);
-    }
-
-    public Task<long> GetLatestVersionAsync(CancellationToken ct = default)
-        => Task.FromResult(_entries.Any() ? _entries.Max(e => e.Version) : 0L);
-
-    public Task<bool> IsSystemRegisterInitializedAsync(CancellationToken ct = default)
-        => Task.FromResult(_entries.Any());
-
-    public Task<int> GetBlueprintCountAsync(CancellationToken ct = default)
-        => Task.FromResult(_entries.Count(e => e.IsActive));
-
-    public Task<bool> DeprecateBlueprintAsync(string blueprintId, CancellationToken ct = default)
-    {
-        var entry = _entries.FirstOrDefault(e => e.BlueprintId == blueprintId && e.IsActive);
-        if (entry is null) return Task.FromResult(false);
-        entry.IsActive = false;
-        return Task.FromResult(true);
     }
 }
 
