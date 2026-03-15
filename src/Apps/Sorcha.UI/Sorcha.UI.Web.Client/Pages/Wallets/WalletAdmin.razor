@@ -1,33 +1,30 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
-@page "/wallets"
+@page "/wallet-admin"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Sorcha.UI.Core.Components.Wallets
 @inject IWalletApiService WalletService
-@inject IWalletPreferenceService WalletPreferenceService
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 
-<PageTitle>My Wallets - Sorcha Platform</PageTitle>
+<PageTitle>Wallet Administration - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <WalletListPanel Title="My Wallets"
-                     Subtitle="Manage your HD wallets for cryptographic signing and address generation"
+    <WalletListPanel Title="Wallet Administration"
+                     Subtitle="Manage organisational wallets, group wallets, and delegated access"
                      Wallets="wallets"
                      IsLoading="isLoading"
                      Error="@error"
-                     DefaultWalletAddress="@defaultWalletAddress"
-                     ShowDefaultIndicator="true"
-                     ShowOwnerColumn="false"
+                     ShowDefaultIndicator="false"
+                     ShowOwnerColumn="true"
                      ShowCreateButton="true"
                      ShowRecoverButton="true"
-                     EmptyTitle="No Wallets Found"
-                     EmptyDescription="Get started by creating your first wallet or recovering an existing one"
-                     OnSetDefault="SetDefaultWallet"
+                     EmptyTitle="No Organisation Wallets"
+                     EmptyDescription="No wallets found in this organisation"
                      OnShowQrCode="ShowQrCode"
                      OnCopyAddress="CopyAddress"
                      OnDelete="ConfirmDelete"
@@ -38,12 +35,10 @@
     private List<WalletDto> wallets = new();
     private bool isLoading = true;
     private string? error;
-    private string? defaultWalletAddress;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadWalletsAsync();
-        await LoadDefaultWalletAsync();
     }
 
     private async Task LoadWalletsAsync()
@@ -53,6 +48,9 @@
 
         try
         {
+            // TODO: Replace with organisation-scoped API (e.g. GetOrganizationWalletsAsync)
+            // when the admin wallet endpoint is available. Currently uses the same
+            // user-scoped API as a placeholder.
             wallets = await WalletService.GetWalletsAsync();
         }
         catch (HttpRequestException ex)
@@ -69,36 +67,9 @@
         }
     }
 
-    private async Task LoadDefaultWalletAsync()
-    {
-        try
-        {
-            defaultWalletAddress = await WalletPreferenceService.GetDefaultWalletAsync();
-        }
-        catch
-        {
-            // Non-critical — default indicator just won't show
-        }
-    }
-
     private void ViewWallet(string address)
     {
         Navigation.NavigateTo($"wallets/{address}");
-    }
-
-    private async Task SetDefaultWallet(WalletDto wallet)
-    {
-        try
-        {
-            await WalletPreferenceService.SetDefaultWalletAsync(wallet.Address);
-            defaultWalletAddress = wallet.Address;
-            Snackbar.Add($"'{wallet.Name}' set as default wallet", Severity.Success);
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to set default wallet: {ex.Message}", Severity.Error);
-        }
     }
 
     private async Task ShowQrCode(WalletDto wallet)
@@ -158,14 +129,6 @@
             if (success)
             {
                 wallets.Remove(wallet);
-
-                // Clear default if deleted wallet was the default
-                if (wallet.Address == defaultWalletAddress)
-                {
-                    await WalletPreferenceService.ClearDefaultWalletAsync();
-                    defaultWalletAddress = null;
-                }
-
                 Snackbar.Add($"Wallet '{wallet.Name}' deleted successfully", Severity.Success);
             }
             else
