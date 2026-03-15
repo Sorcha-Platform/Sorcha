@@ -127,7 +127,13 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementati
 
 // Add SignalR (Sprint 5)
 // TODO: Add Redis backplane when Microsoft.AspNetCore.SignalR.StackExchangeRedis package is added
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // AI tool execution can take 30-60+ seconds per turn with multiple continuation rounds.
+    // Default 30s client timeout causes disconnects during long AI processing.
+    options.ClientTimeoutInterval = TimeSpan.FromMinutes(3);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+});
 
 // Add Notification service (Sprint 5)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.INotificationService,

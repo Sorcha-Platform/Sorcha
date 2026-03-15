@@ -270,78 +270,130 @@ public class ChatOrchestrationService : IChatOrchestrationService
         // Build system prompt with blueprint context if editing
         var systemPrompt = BuildSystemPrompt(session);
 
-        // Stream AI response
-        var responseContent = "";
-        var toolCalls = new List<ToolCall>();
-        var toolResults = new List<ToolResult>();
+        // Stream AI response with tool-use continuation loop.
+        // When Claude calls tools, stop_reason is "tool_use" — we must send the tool results
+        // back and stream another turn until Claude finishes with "end_turn".
+        const int maxContinuationTurns = 10; // Safety limit to prevent infinite loops
 
-        await foreach (var evt in _aiProvider.StreamCompletionAsync(
-            messages, toolDefinitions, systemPrompt, cancellationToken))
+        for (var turn = 0; turn < maxContinuationTurns; turn++)
         {
-            switch (evt)
+            var responseContent = "";
+            var toolCalls = new List<ToolCall>();
+            var toolResults = new List<ToolResult>();
+            string? stopReason = null;
+
+            await foreach (var evt in _aiProvider.StreamCompletionAsync(
+                messages, toolDefinitions, systemPrompt, cancellationToken))
             {
-                case TextChunk chunk:
-                    responseContent += chunk.Text;
-                    await onChunk(chunk.Text);
-                    break;
+                _logger.LogInformation("Stream event: {EventType}", evt.GetType().Name);
+                switch (evt)
+                {
+                    case TextChunk chunk:
+                        responseContent += chunk.Text;
+                        await onChunk(chunk.Text);
+                        break;
 
-                case ToolUse toolUse:
-                    var toolCall = new ToolCall
-                    {
-                        Id = toolUse.Id,
-                        ToolName = toolUse.Name,
-                        Arguments = toolUse.Arguments
-                    };
-                    toolCalls.Add(toolCall);
+                    case ToolUse toolUse:
+                        var toolCall = new ToolCall
+                        {
+                            Id = toolUse.Id,
+                            ToolName = toolUse.Name,
+                            Arguments = toolUse.Arguments
+                        };
+                        toolCalls.Add(toolCall);
 
-                    // Execute the tool
-                    var result = await _toolExecutor.ExecuteAsync(
-                        toolUse.Name, toolUse.Arguments, builder, cancellationToken);
+                        // Execute the tool
+                        var result = await _toolExecutor.ExecuteAsync(
+                            toolUse.Name, toolUse.Arguments, builder, cancellationToken);
 
-                    // Update result with correct tool call ID
-                    result = result with { ToolCallId = toolUse.Id };
-                    toolResults.Add(result);
+                        // Update result with correct tool call ID
+                        result = result with { ToolCallId = toolUse.Id };
+                        toolResults.Add(result);
 
-                    await onToolResult(toolUse.Name, result);
+                        await onToolResult(toolUse.Name, result);
 
-                    // If blueprint changed, notify and validate
-                    if (result.BlueprintChanged)
-                    {
-                        var draft = builder.BuildDraft();
-                        session.BlueprintDraft = draft;
-                        await _sessionStore.UpdateSessionAsync(session);
+                        // If blueprint changed, notify and validate
+                        if (result.BlueprintChanged)
+                        {
+                            var draft = builder.BuildDraft();
+                            session.BlueprintDraft = draft;
+                            await _sessionStore.UpdateSessionAsync(session);
 
-                        var validation = ValidateBlueprint(draft);
-                        await onBlueprintUpdate(draft, validation);
-                    }
-                    break;
+                            var validation = ValidateBlueprint(draft);
+                            await onBlueprintUpdate(draft, validation);
+                        }
+                        break;
 
-                case StreamEnd:
-                    // Stream completed
-                    break;
+                    case StreamEnd end:
+                        stopReason = end.StopReason;
+                        break;
 
-                case StreamError error:
-                    _logger.LogError("AI stream error: {Message}", error.Message);
-                    throw new InvalidOperationException($"AI service error: {error.Message}");
+                    case StreamError error:
+                        _logger.LogError("AI stream error: {Message}", error.Message);
+                        throw new InvalidOperationException($"AI service error: {error.Message}");
+                }
             }
-        }
 
-        // Store assistant message with tool calls and results
-        var assistantMessage = new ChatMessage
-        {
-            SessionId = sessionId,
-            Role = MessageRole.Assistant,
-            Content = responseContent,
-            ToolCalls = toolCalls.Count > 0 ? toolCalls : null,
-            ToolResults = toolResults.Count > 0 ? toolResults : null
-        };
-        await _sessionStore.AddMessageAsync(sessionId, assistantMessage);
+            // Store assistant message with tool calls and results
+            _logger.LogInformation("Stream loop ended. StopReason={StopReason}, tools={ToolCount}, text={TextLen}",
+                stopReason, toolCalls.Count, responseContent.Length);
+
+            // Store assistant message with tool calls only (NOT tool results).
+            // Tool results go in a separate user message for correct Anthropic API format:
+            // assistant: [text + tool_use blocks] → user: [tool_result blocks]
+            var assistantMessage = new ChatMessage
+            {
+                SessionId = sessionId,
+                Role = MessageRole.Assistant,
+                Content = responseContent,
+                ToolCalls = toolCalls.Count > 0 ? toolCalls : null
+            };
+
+            try
+            {
+                await _sessionStore.AddMessageAsync(sessionId, assistantMessage);
+                _logger.LogInformation("Stored assistant message for session {SessionId}", sessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "FAILED to store assistant message for session {SessionId}", sessionId);
+                throw;
+            }
+
+            // If Claude stopped because it used tools, send results back and continue
+            if (stopReason == "tool_use" && toolResults.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Turn {Turn}: AI used {ToolCount} tools, sending results back for continuation",
+                    turn, toolResults.Count);
+
+                // Add tool results as a user message for the next turn
+                var toolResultMessage = new ChatMessage
+                {
+                    SessionId = sessionId,
+                    Role = MessageRole.User,
+                    Content = "",
+                    ToolResults = toolResults
+                };
+                _logger.LogInformation("Storing tool result message for session {SessionId}", sessionId);
+                await _sessionStore.AddMessageAsync(sessionId, toolResultMessage);
+
+                // Refresh messages for next iteration
+                _logger.LogInformation("Refreshing message history for continuation turn {Turn}", turn + 1);
+                messages = await _sessionStore.GetMessagesAsync(sessionId);
+                _logger.LogInformation("Continuation turn {Turn} starting with {MessageCount} messages", turn + 1, messages.Count);
+                continue;
+            }
+
+            // end_turn or max_tokens — we're done
+            _logger.LogDebug(
+                "Processed message in session {SessionId}, response length: {Length}, tools used: {ToolCount}, turns: {Turns}",
+                sessionId, responseContent.Length, toolCalls.Count, turn + 1);
+            break;
+        }
 
         // Update session activity
         await _sessionStore.UpdateSessionAsync(session);
-
-        _logger.LogDebug("Processed message in session {SessionId}, response length: {Length}, tools used: {ToolCount}",
-            sessionId, responseContent.Length, toolCalls.Count);
     }
 
     /// <inheritdoc />
