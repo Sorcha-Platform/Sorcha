@@ -136,6 +136,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRegistrationService, RegistrationService>();
         services.AddScoped<IPasswordResetService, PasswordResetService>();
 
+        // Platform services
+        services.AddScoped<IPlatformUserService, PlatformUserService>();
+        services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
+
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();
         services.AddScoped<IIdpConfigurationService, IdpConfigurationService>();

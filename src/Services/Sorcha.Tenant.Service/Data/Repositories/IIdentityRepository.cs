@@ -7,7 +7,7 @@ namespace Sorcha.Tenant.Service.Data.Repositories;
 
 /// <summary>
 /// Repository interface for Identity entity operations.
-/// Handles UserIdentity, PublicIdentity, and ServicePrincipal entities.
+/// Handles UserIdentity and ServicePrincipal entities.
 /// </summary>
 public interface IIdentityRepository
 {

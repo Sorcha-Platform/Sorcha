@@ -172,6 +172,7 @@ app.MapUserPreferenceEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
+app.MapPlatformOrgEndpoints();
 app.MapOrgSettingsEndpoints();
 app.MapDomainRestrictionEndpoints();
 app.MapAuditEndpoints();

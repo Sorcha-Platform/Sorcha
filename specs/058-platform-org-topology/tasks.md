@@ -25,7 +25,7 @@
 - [X] T004 [P] Delete `IPublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/IPublicUserService.cs`
 - [X] T005 [P] Delete `PublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/PublicUserService.cs`
 - [X] T006 [P] Delete `PublicAuthEndpoints.cs` from `src/Services/Sorcha.Tenant.Service/Endpoints/PublicAuthEndpoints.cs`
-- [ ] T007 Remove all references to deleted types (PublicIdentity, SocialLoginLink, OwnerTypes, IPublicUserService, PublicUserService, PublicAuthEndpoints) across the solution — update DI registration in `Program.cs`, endpoint mappings, DbContext configurations, and any consuming code
+- [X] T007 Remove all references to deleted types (PublicIdentity, SocialLoginLink, OwnerTypes, IPublicUserService, PublicUserService, PublicAuthEndpoints) across the solution — update DI registration in `Program.cs`, endpoint mappings, DbContext configurations, and any consuming code
 
 ---
 
@@ -50,33 +50,33 @@
 - [X] T015 [P] Add `AdminCreated = 4` to `ProvisioningMethod` enum in `src/Services/Sorcha.Tenant.Service/Models/ProvisioningMethod.cs`
 - [X] T016 Modify `UserIdentity.cs`: add `PlatformUserId` (Guid, Required) field; remove `PasswordHash`, `ExternalIdpSubject`, `EmailVerified`, `EmailVerifiedAt`, `VerificationToken`, `VerificationTokenExpiresAt`, `PasswordResetTokenHash`, `PasswordResetTokenExpiresAt`, `FailedLoginCount`, `LockedUntil`, `LockedPermanently` fields in `src/Services/Sorcha.Tenant.Service/Models/UserIdentity.cs`
 - [X] T017 Modify `PasskeyCredential.cs`: remove `OwnerType`, `OwnerId`, `OrganizationId` fields and their indexes; add `PlatformUserId` (Guid, FK → PlatformUser, Required) with indexes on PlatformUserId and (PlatformUserId, Status) in `src/Services/Sorcha.Tenant.Service/Models/PasskeyCredential.cs`
-- [ ] T017b Update passkey authentication flow to resolve PlatformUser via `PlatformUserId` FK instead of polymorphic `OwnerType`/`OwnerId`; update passkey registration and assertion endpoints to use PlatformUser as the credential owner in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` and related services
+- [X] T017b Update passkey authentication flow to resolve PlatformUser via `PlatformUserId` FK instead of polymorphic `OwnerType`/`OwnerId`; update passkey registration and assertion endpoints to use PlatformUser as the credential owner in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` and related services
 
 ### EF Core Configuration
 
-- [ ] T018 Update DbContext to register new entities (PlatformUser, PlatformSocialLogin, PlatformUserOrgMembership, PlatformSettings) in public schema; update entity configurations for modified entities (Organization one-to-many IDP, UserIdentity +PlatformUserId/-auth fields, PasskeyCredential reparent); update all references from `Organization.IdentityProvider` to `Organization.IdentityProviders` across the solution in `src/Services/Sorcha.Tenant.Service/Data/`
-- [ ] T019 Reset EF Core initial migration to include all new/modified entity configurations (no production instances) — regenerate migration in `src/Services/Sorcha.Tenant.Service/Data/Migrations/`
+- [X] T018 Update DbContext to register new entities (PlatformUser, PlatformSocialLogin, PlatformUserOrgMembership, PlatformSettings) in public schema; update entity configurations for modified entities (Organization one-to-many IDP, UserIdentity +PlatformUserId/-auth fields, PasskeyCredential reparent); update all references from `Organization.IdentityProvider` to `Organization.IdentityProviders` across the solution in `src/Services/Sorcha.Tenant.Service/Data/`
+- [X] T019 Reset EF Core initial migration to include all new/modified entity configurations (no production instances) — regenerate migration in `src/Services/Sorcha.Tenant.Service/Data/Migrations/`
 
 ### Base Services
 
-- [ ] T020 Create `IPlatformUserService.cs` interface with methods: CreateAsync, GetByIdAsync, GetByEmailAsync, GetByProviderSubjectAsync, UpdateAsync, LinkSocialLoginAsync, GetOrgMembershipsAsync, AddOrgMembershipAsync in `src/Services/Sorcha.Tenant.Service/Services/IPlatformUserService.cs`
-- [ ] T021 Create `PlatformUserService.cs` implementing IPlatformUserService — PlatformUser CRUD, email uniqueness enforcement, social login linking, org membership management in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
-- [ ] T022 [P] Create `IPlatformSettingsService.cs` interface with methods: GetAsync, UpdatePublicOrgEnabledAsync, UpdateMaxOrgsPerUserAsync in `src/Services/Sorcha.Tenant.Service/Services/IPlatformSettingsService.cs`
-- [ ] T023 [P] Create `PlatformSettingsService.cs` implementing IPlatformSettingsService — singleton config management, atomically toggle public org status + self-registration in `src/Services/Sorcha.Tenant.Service/Services/PlatformSettingsService.cs`
+- [X] T020 Create `IPlatformUserService.cs` interface with methods: CreateAsync, GetByIdAsync, GetByEmailAsync, GetByProviderSubjectAsync, UpdateAsync, LinkSocialLoginAsync, GetOrgMembershipsAsync, AddOrgMembershipAsync in `src/Services/Sorcha.Tenant.Service/Services/IPlatformUserService.cs`
+- [X] T021 Create `PlatformUserService.cs` implementing IPlatformUserService — PlatformUser CRUD, email uniqueness enforcement, social login linking, org membership management in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
+- [X] T022 [P] Create `IPlatformSettingsService.cs` interface with methods: GetAsync, UpdatePublicOrgEnabledAsync, UpdateMaxOrgsPerUserAsync in `src/Services/Sorcha.Tenant.Service/Services/IPlatformSettingsService.cs`
+- [X] T023 [P] Create `PlatformSettingsService.cs` implementing IPlatformSettingsService — singleton config management, atomically toggle public org status + self-registration in `src/Services/Sorcha.Tenant.Service/Services/PlatformSettingsService.cs`
 
 ### Token & Auth Infrastructure
 
-- [ ] T024 Modify `TokenService.cs`: add `platform_user_id` claim to JWT; merge `GeneratePublicUserTokenAsync` into `GenerateUserTokenAsync` (all users are PlatformUsers now) in `src/Services/Sorcha.Tenant.Service/Services/TokenService.cs`
-- [ ] T025 [P] Add `RequirePlatformAuditor` authorization policy (SystemAdmin org member with Auditor+ role) in `src/Common/Sorcha.ServiceDefaults/AuthorizationPolicyExtensions.cs`
+- [X] T024 Modify `TokenService.cs`: add `platform_user_id` claim to JWT; merge `GeneratePublicUserTokenAsync` into `GenerateUserTokenAsync` (all users are PlatformUsers now) in `src/Services/Sorcha.Tenant.Service/Services/TokenService.cs`
+- [X] T025 [P] Add `RequirePlatformAuditor` authorization policy (SystemAdmin org member with Auditor+ role) in `src/Common/Sorcha.ServiceDefaults/AuthorizationPolicyExtensions.cs`
 
 ### API Gateway Routes
 
-- [ ] T026 Add 6 YARP routes to API Gateway: `platform-settings-route` (/api/platform/settings, RequireSystemAdmin), `platform-public-org-route` (/api/platform/settings/public-org, RequireSystemAdmin), `platform-orgs-route` (/api/platform/organizations, RequireSystemAdmin), `platform-org-status-route` (/api/platform/organizations/{id}/status, RequireSystemAdmin), `platform-org-users-route` (/api/platform/organizations/{id}/users, RequirePlatformAuditor), `auth-switch-org-route` (/api/auth/switch-org, RequireAuthenticated) in `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [X] T026 Add 6 YARP routes to API Gateway: `platform-settings-route` (/api/platform/settings, RequireSystemAdmin), `platform-public-org-route` (/api/platform/settings/public-org, RequireSystemAdmin), `platform-orgs-route` (/api/platform/organizations, RequireSystemAdmin), `platform-org-status-route` (/api/platform/organizations/{id}/status, RequireSystemAdmin), `platform-org-users-route` (/api/platform/organizations/{id}/users, RequirePlatformAuditor), `auth-switch-org-route` (/api/auth/switch-org, RequireAuthenticated) in `src/Services/Sorcha.ApiGateway/appsettings.json`
 
 ### DI Registration
 
-- [ ] T027 Register new services (IPlatformUserService, IPlatformSettingsService) and update DI for modified services in `src/Services/Sorcha.Tenant.Service/Program.cs`
-- [ ] T027b [P] Create `PlatformOrgEndpoints.cs` stub with endpoint group registration and route mapping scaffold in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
+- [X] T027 Register new services (IPlatformUserService, IPlatformSettingsService) and update DI for modified services in `src/Services/Sorcha.Tenant.Service/Program.cs`
+- [X] T027b [P] Create `PlatformOrgEndpoints.cs` stub with endpoint group registration and route mapping scaffold in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
 
 > **Terminology note**: "disabled" in the spec maps to `Organization.Status = Suspended` in the data model.
 
