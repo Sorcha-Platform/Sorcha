@@ -75,9 +75,31 @@ public class LoginModel : PageModel
     public string? ReturnUrl { get; set; }
 
     /// <summary>
+    /// Platform login token for org selection flow.
+    /// </summary>
+    [BindProperty]
+    public string? PlatformLoginToken { get; set; }
+
+    /// <summary>
+    /// Selected organisation ID from the org picker.
+    /// </summary>
+    [BindProperty]
+    public Guid? SelectedOrgId { get; set; }
+
+    /// <summary>
     /// Whether to show the 2FA verification form.
     /// </summary>
     public bool ShowTwoFactor { get; set; }
+
+    /// <summary>
+    /// Whether to show the org selection form.
+    /// </summary>
+    public bool ShowOrgSelection { get; set; }
+
+    /// <summary>
+    /// Available organisations for the org picker.
+    /// </summary>
+    public List<OrgChoice>? AvailableOrganizations { get; set; }
 
     /// <summary>
     /// Available 2FA methods (e.g., "totp", "passkey").
@@ -111,6 +133,12 @@ public class LoginModel : PageModel
             return await Handle2FaAsync(ct);
         }
 
+        // Org selection completion flow
+        if (!string.IsNullOrEmpty(PlatformLoginToken) && SelectedOrgId.HasValue && SelectedOrgId != Guid.Empty)
+        {
+            return await HandleOrgSelectionAsync(ct);
+        }
+
         // Primary login flow
         if (!ModelState.IsValid)
         {
@@ -119,9 +147,40 @@ public class LoginModel : PageModel
 
         var result = await _loginService.LoginAsync(Email, Password, ct);
 
-        if (!result.Success && !result.TwoFactorRequired)
+        if (!result.Success && !result.TwoFactorRequired && !result.OrgSelectionRequired)
         {
             ErrorMessage = result.Error ?? "Login failed.";
+            return Page();
+        }
+
+        // Org selection required — show org picker
+        if (result.OrgSelectionRequired)
+        {
+            ShowOrgSelection = true;
+            PlatformLoginToken = result.PlatformLoginToken;
+            AvailableOrganizations = result.AvailableOrganizations;
+            return Page();
+        }
+
+        if (result.TwoFactorRequired)
+        {
+            ShowTwoFactor = true;
+            LoginToken = result.LoginToken;
+            AvailableMethods = result.AvailableMethods;
+            return Page();
+        }
+
+        return RedirectToApp(result.Tokens!);
+    }
+
+    private async Task<IActionResult> HandleOrgSelectionAsync(CancellationToken ct)
+    {
+        var result = await _loginService.CompleteOrgSelectionAsync(
+            PlatformLoginToken!, SelectedOrgId!.Value, ct);
+
+        if (!result.Success)
+        {
+            ErrorMessage = result.Error ?? "Organization selection failed. Please sign in again.";
             return Page();
         }
 

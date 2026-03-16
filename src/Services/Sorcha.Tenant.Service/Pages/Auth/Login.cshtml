@@ -32,6 +32,26 @@
                 <button type="submit" class="btn btn-primary btn-lg w-100">Verify</button>
             </form>
         }
+        else if (Model.ShowOrgSelection)
+        {
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="PlatformLoginToken" />
+                <input type="hidden" asp-for="ReturnUrl" />
+                <p class="text-muted mb-3">Select an organisation to sign in to:</p>
+                <div class="d-grid gap-2">
+                    @foreach (var org in Model.AvailableOrganizations!)
+                    {
+                        <button type="submit" name="SelectedOrgId" value="@org.OrganizationId"
+                                class="btn btn-outline-primary btn-lg text-start">
+                            <strong>@org.OrganizationName</strong>
+                            <br />
+                            <small class="text-muted">@org.Role</small>
+                        </button>
+                    }
+                </div>
+            </form>
+        }
         else
         {
             <form method="post">
