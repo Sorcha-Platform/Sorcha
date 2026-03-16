@@ -119,10 +119,10 @@ public static class AuthEndpoints
             .WithDescription("Creates a local account for public organizations with self-registration enabled. "
                 + "Validates password against NIST policy and HIBP breach list. Sends verification email.")
             .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
             .Produces<SelfRegistrationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status409Conflict);
+            .Produces(StatusCodes.Status403Forbidden);
 
         // Passkey 2FA: get assertion options (public endpoint — uses loginToken)
         group.MapPost("/verify-passkey/options", VerifyPasskeyOptions)
@@ -182,7 +182,9 @@ public static class AuthEndpoints
             });
         }
 
-        var result = await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
+        var result = !string.IsNullOrWhiteSpace(request.OrganizationSubdomain)
+            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, cancellationToken)
+            : await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
 
         if (!result.Success)
         {

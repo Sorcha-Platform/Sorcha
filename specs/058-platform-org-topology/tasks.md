@@ -138,14 +138,14 @@
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Create registration endpoint `POST /api/auth/register` — validate email uniqueness (timing-safe check: return same response shape regardless of email existence), hash password (BCrypt), create PlatformUser + UserIdentity in public org + PlatformUserOrgMembership, generate verification token, issue JWT in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T043 [US3] Create email verification endpoint `POST /api/auth/verify-email` — validate token + expiry, set EmailVerified=true + EmailVerifiedAt in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T044 [US3] Implement password authentication in `PlatformUserService.cs` — BCrypt verify, progressive lockout (FailedLoginCount increment, LockedUntil for temp lockout at 5/10/15/20 failures, LockedPermanently at >25) in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
-- [ ] T045 [US3] Update existing login flow in `AuthEndpoints.cs` to authenticate against PlatformUser.PasswordHash instead of UserIdentity, then resolve org membership and issue org-scoped JWT in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T045b [US3] Implement subdomain-aware login in `AuthEndpoints.cs`: when login request includes subdomain, authenticate against PlatformUser, verify PlatformUserOrgMembership for the target org, issue JWT scoped to that org; return 403 if not a member in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T046 [US3] Add FluentValidation validators for `RegisterRequest` (email format, password min 8 chars, displayName 2-256) and `VerifyEmailRequest` in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T047 [P] [US3] Create registration page in Main UI — email, password, display name fields, form validation, success/error display in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Auth/Register.razor`
-- [ ] T048 [P] [US3] Create email verification landing page in Main UI — token extraction from URL, API call, success/expired feedback in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Auth/VerifyEmail.razor`
+- [X] T042 [US3] Made registration timing-safe (same response shape regardless of email existence) with BCrypt dummy hash for consistent timing in `src/Services/Sorcha.Tenant.Service/Services/RegistrationService.cs`; added `platform-auth` rate limiting to register endpoint
+- [X] T043 [US3] Email verification endpoint `POST /api/auth/verify-email` already exists in `OidcEndpoints.cs`; added `platform-auth` rate limiting; `EmailVerificationService.VerifyTokenAsync` correctly updates PlatformUser.EmailVerified
+- [X] T044 [US3] Implemented `ValidatePasswordAsync` in `PlatformUserService.cs` with progressive lockout (5→15min, 10→30min, 15→1hr, 20→4hr, 25+→permanent); added `PasswordAuthResult` record to `IPlatformUserService.cs`
+- [X] T045 [US3] Updated `LoginService.cs` to delegate password verification to `PlatformUserService.ValidatePasswordAsync` with lockout-aware error responses (AccountLocked error code)
+- [X] T045b [US3] Added subdomain-aware login overload `LoginAsync(email, password, orgSubdomain)` in `LoginService.cs`: resolves PlatformUser by email, validates password, verifies PlatformUserOrgMembership, resolves UserIdentity in target org, issues org-scoped JWT; `AuthEndpoints.cs` login handler routes to subdomain overload when `OrganizationSubdomain` is provided
+- [X] T046 [US3] Inline validation already exists in `AuthEndpoints.cs` Register handler and `RegistrationService.cs` (password policy via HIBP + NIST, email format, display name); `VerifyEmailRequest` DTO with validation in `OidcEndpoints.cs`
+- [X] T047 [P] [US3] Registration page already exists as server-rendered Razor Page `Signup.cshtml` with email/password tab, form validation, and success display in `src/Services/Sorcha.Tenant.Service/Pages/Auth/`
+- [X] T048 [P] [US3] Email verification landing page already exists as server-rendered Razor Page `VerifyEmail.cshtml` with token validation and success/error feedback in `src/Services/Sorcha.Tenant.Service/Pages/Auth/`
 
 **Checkpoint**: Email/password signup works. Email verification flow functional. Login authenticates against PlatformUser.
 

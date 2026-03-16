@@ -171,6 +171,79 @@ public class PlatformUserService : IPlatformUserService
     }
 
     /// <inheritdoc />
+    public async Task<PasswordAuthResult> ValidatePasswordAsync(PlatformUser platformUser, string password, CancellationToken ct)
+    {
+        // Check permanent lockout
+        if (platformUser.LockedPermanently)
+        {
+            _logger.LogWarning("Login attempt on permanently locked account {UserId}", platformUser.Id);
+            return new PasswordAuthResult(false, IsLocked: true, IsPermanentlyLocked: true);
+        }
+
+        // Check temporary lockout
+        if (platformUser.LockedUntil.HasValue && platformUser.LockedUntil.Value > DateTimeOffset.UtcNow)
+        {
+            _logger.LogWarning("Login attempt on temporarily locked account {UserId} (locked until {LockedUntil})",
+                platformUser.Id, platformUser.LockedUntil.Value);
+            return new PasswordAuthResult(false, IsLocked: true, LockedUntil: platformUser.LockedUntil);
+        }
+
+        // No password set (social-login-only user)
+        if (string.IsNullOrEmpty(platformUser.PasswordHash))
+        {
+            return new PasswordAuthResult(false);
+        }
+
+        // Verify BCrypt hash
+        if (!BCrypt.Net.BCrypt.Verify(password, platformUser.PasswordHash))
+        {
+            platformUser.FailedLoginCount++;
+
+            // Progressive lockout thresholds
+            platformUser.LockedUntil = platformUser.FailedLoginCount switch
+            {
+                >= 25 => null, // Permanent lockout handled below
+                >= 20 => DateTimeOffset.UtcNow.AddHours(4),
+                >= 15 => DateTimeOffset.UtcNow.AddHours(1),
+                >= 10 => DateTimeOffset.UtcNow.AddMinutes(30),
+                >= 5 => DateTimeOffset.UtcNow.AddMinutes(15),
+                _ => null
+            };
+
+            if (platformUser.FailedLoginCount >= 25)
+            {
+                platformUser.LockedPermanently = true;
+                _logger.LogWarning("Account {UserId} permanently locked after {Count} failed attempts",
+                    platformUser.Id, platformUser.FailedLoginCount);
+            }
+
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogWarning("Failed login attempt {Count} for user {UserId}",
+                platformUser.FailedLoginCount, platformUser.Id);
+
+            return new PasswordAuthResult(false,
+                IsLocked: platformUser.LockedPermanently || platformUser.LockedUntil.HasValue,
+                IsPermanentlyLocked: platformUser.LockedPermanently,
+                LockedUntil: platformUser.LockedUntil);
+        }
+
+        // Success — reset lockout state
+        if (platformUser.FailedLoginCount > 0)
+        {
+            platformUser.FailedLoginCount = 0;
+            platformUser.LockedUntil = null;
+            platformUser.LockedPermanently = false;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        platformUser.LastLoginAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        return new PasswordAuthResult(true);
+    }
+
+    /// <inheritdoc />
     public async Task<(PlatformUser User, bool IsNew)> ResolveOrCreateSocialUserAsync(
         string provider, string subject, string? email, string? displayName, CancellationToken ct)
     {

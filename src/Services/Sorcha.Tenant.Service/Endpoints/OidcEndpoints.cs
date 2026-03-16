@@ -65,6 +65,7 @@ public static class OidcEndpoints
             .WithSummary("Verify email address with token")
             .WithDescription("Validates an email verification token and marks the user's email as verified.")
             .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
             .Produces<EmailVerificationResponse>()
             .Produces(StatusCodes.Status400BadRequest);
 

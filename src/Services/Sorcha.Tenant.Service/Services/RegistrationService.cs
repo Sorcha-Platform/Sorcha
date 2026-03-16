@@ -72,15 +72,23 @@ public class RegistrationService : IRegistrationService
                 });
         }
 
-        // Check email uniqueness within the organization
+        // Timing-safe email uniqueness check: return the same success-shaped
+        // response whether the email exists or not, to prevent enumeration.
         var existingUser = await _dbContext.UserIdentities
             .FirstOrDefaultAsync(u => u.Email == email && u.OrganizationId == org.Id, ct);
 
         if (existingUser is not null)
         {
-            return new RegistrationResult(false,
-                Error: "An account with this email already exists.",
-                ErrorStatusCode: 409);
+            // Perform a dummy BCrypt hash to maintain consistent timing
+            BCrypt.Net.BCrypt.HashPassword("timing-safe-dummy");
+
+            _logger.LogInformation(
+                "Registration attempt for existing email {Email} in org {OrgSubdomain} — returning success shape",
+                email, orgSubdomain);
+
+            return new RegistrationResult(true,
+                UserId: existingUser.Id,
+                Message: "Account created. Please check your email to verify your address.");
         }
 
         // Check domain restrictions

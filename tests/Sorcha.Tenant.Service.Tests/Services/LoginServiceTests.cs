@@ -16,7 +16,7 @@ namespace Sorcha.Tenant.Service.Tests.Services;
 
 /// <summary>
 /// Unit tests for <see cref="LoginService"/>: email/password authentication,
-/// BCrypt verification, 2FA detection, rate limiting, and token issuance.
+/// progressive lockout via PlatformUserService, 2FA detection, rate limiting, and token issuance.
 /// </summary>
 public class LoginServiceTests : IDisposable
 {
@@ -26,6 +26,7 @@ public class LoginServiceTests : IDisposable
     private readonly Mock<ITotpService> _totpService = new();
     private readonly Mock<IPasskeyService> _passkeyService = new();
     private readonly Mock<ITokenRevocationService> _revocationService = new();
+    private readonly Mock<IPlatformUserService> _platformUserService = new();
     private readonly ILogger<LoginService> _logger = NullLogger<LoginService>.Instance;
     private readonly TenantDbContext _dbContext;
 
@@ -51,6 +52,7 @@ public class LoginServiceTests : IDisposable
             _totpService.Object,
             _passkeyService.Object,
             _revocationService.Object,
+            _platformUserService.Object,
             _logger);
 
     private static UserIdentity CreateTestUser(string email = "user@test.com")
@@ -64,6 +66,22 @@ public class LoginServiceTests : IDisposable
             PlatformUserId = Guid.NewGuid(),
             Status = IdentityStatus.Active
         };
+    }
+
+    private PlatformUser SeedPlatformUser(Guid platformUserId, string email = "user@test.com")
+    {
+        var platformUser = new PlatformUser
+        {
+            Id = platformUserId,
+            Email = email,
+            DisplayName = "Test User",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("correct-password"),
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _dbContext.PlatformUsers.Add(platformUser);
+        _dbContext.SaveChanges();
+        return platformUser;
     }
 
     private static Organization CreateTestOrg(Guid orgId) =>
@@ -91,12 +109,27 @@ public class LoginServiceTests : IDisposable
             .ReturnsAsync(Array.Empty<PasskeyCredential>());
     }
 
+    private void SetupPasswordSuccess()
+    {
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(true));
+    }
+
+    private void SetupPasswordFailure()
+    {
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(false));
+    }
+
     [Fact]
     public async Task LoginAsync_ValidCredentials_ReturnsTokens()
     {
         // Arrange
         var user = CreateTestUser();
         var org = CreateTestOrg(user.OrganizationId);
+        SeedPlatformUser(user.PlatformUserId);
         var expectedTokens = new TokenResponse
         {
             AccessToken = "access-token-123",
@@ -105,6 +138,7 @@ public class LoginServiceTests : IDisposable
 
         SetupNoRateLimit();
         SetupNo2Fa();
+        SetupPasswordSuccess();
         _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(user.OrganizationId, It.IsAny<CancellationToken>()))
@@ -133,7 +167,9 @@ public class LoginServiceTests : IDisposable
     {
         // Arrange
         var user = CreateTestUser();
+        SeedPlatformUser(user.PlatformUserId);
         SetupNoRateLimit();
+        SetupPasswordFailure();
 
         _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
@@ -149,6 +185,56 @@ public class LoginServiceTests : IDisposable
         result.Tokens.Should().BeNull();
 
         _revocationService.Verify(r => r.IncrementFailedAuthAttemptsAsync("user@test.com", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LoginAsync_AccountLocked_ReturnsLockedError()
+    {
+        // Arrange
+        var user = CreateTestUser();
+        SeedPlatformUser(user.PlatformUserId);
+        SetupNoRateLimit();
+
+        _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(false, IsLocked: true, LockedUntil: DateTimeOffset.UtcNow.AddMinutes(15)));
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "wrong-password");
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be(LoginErrorCode.AccountLocked);
+        result.Error.Should().Contain("Too many failed login attempts");
+    }
+
+    [Fact]
+    public async Task LoginAsync_PermanentlyLocked_ReturnsLockedError()
+    {
+        // Arrange
+        var user = CreateTestUser();
+        SeedPlatformUser(user.PlatformUserId);
+        SetupNoRateLimit();
+
+        _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(false, IsLocked: true, IsPermanentlyLocked: true));
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "wrong-password");
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.ErrorCode.Should().Be(LoginErrorCode.AccountLocked);
+        result.Error.Should().Contain("contact an administrator");
     }
 
     [Fact]
@@ -178,6 +264,8 @@ public class LoginServiceTests : IDisposable
         // Arrange
         var user = CreateTestUser();
         var org = CreateTestOrg(user.OrganizationId);
+        SeedPlatformUser(user.PlatformUserId);
+        SetupPasswordSuccess();
 
         SetupNoRateLimit();
         _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
@@ -258,6 +346,8 @@ public class LoginServiceTests : IDisposable
         // Arrange
         var user = CreateTestUser();
         var org = CreateTestOrg(user.OrganizationId);
+        SeedPlatformUser(user.PlatformUserId);
+        SetupPasswordSuccess();
 
         SetupNoRateLimit();
         _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
@@ -301,6 +391,8 @@ public class LoginServiceTests : IDisposable
     {
         // Arrange
         var user = CreateTestUser();
+        SeedPlatformUser(user.PlatformUserId);
+        SetupPasswordSuccess();
 
         SetupNoRateLimit();
         _identityRepo.Setup(r => r.GetUserByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
@@ -316,5 +408,99 @@ public class LoginServiceTests : IDisposable
         // Assert
         result.Success.Should().BeFalse();
         result.Error.Should().Be("Invalid email or password.");
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithSubdomain_IssuesOrgScopedToken()
+    {
+        // Arrange
+        var platformUserId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var user = new UserIdentity
+        {
+            Id = Guid.NewGuid(),
+            Email = "user@test.com",
+            DisplayName = "Test User",
+            OrganizationId = orgId,
+            PlatformUserId = platformUserId,
+            Status = IdentityStatus.Active
+        };
+        var org = new Organization
+        {
+            Id = orgId,
+            Name = "Target Org",
+            Subdomain = "target",
+            Status = OrganizationStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var platformUser = SeedPlatformUser(platformUserId);
+        _dbContext.Organizations.Add(org);
+        _dbContext.UserIdentities.Add(user);
+        _dbContext.SaveChanges();
+
+        var membership = new PlatformUserOrgMembership
+        {
+            PlatformUserId = platformUserId,
+            OrganizationId = orgId,
+            Role = "Member",
+            JoinedAt = DateTimeOffset.UtcNow
+        };
+
+        SetupNoRateLimit();
+        SetupNo2Fa();
+        _platformUserService.Setup(p => p.GetByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(platformUser);
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(true));
+        _platformUserService.Setup(p => p.GetOrgMembershipsAsync(platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { membership });
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, platformUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse { AccessToken = "org-token", RefreshToken = "org-refresh" });
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "correct-password", "target");
+
+        // Assert
+        result.Success.Should().BeTrue();
+        result.Tokens.Should().NotBeNull();
+        result.Tokens!.AccessToken.Should().Be("org-token");
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithSubdomain_NotMember_ReturnsError()
+    {
+        // Arrange
+        var platformUser = SeedPlatformUser(Guid.NewGuid());
+        var org = new Organization
+        {
+            Id = Guid.NewGuid(),
+            Name = "Other Org",
+            Subdomain = "other",
+            Status = OrganizationStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _dbContext.Organizations.Add(org);
+        _dbContext.SaveChanges();
+
+        SetupNoRateLimit();
+        _platformUserService.Setup(p => p.GetByEmailAsync("user@test.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(platformUser);
+        _platformUserService.Setup(p => p.ValidatePasswordAsync(
+                It.IsAny<PlatformUser>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PasswordAuthResult(true));
+        _platformUserService.Setup(p => p.GetOrgMembershipsAsync(platformUser.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PlatformUserOrgMembership>());
+
+        var service = CreateService();
+
+        // Act
+        var result = await service.LoginAsync("user@test.com", "correct-password", "other");
+
+        // Assert
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("not a member");
     }
 }

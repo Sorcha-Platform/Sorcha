@@ -6,6 +6,19 @@ using Sorcha.Tenant.Service.Models;
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
+/// Result of a password validation attempt against a PlatformUser.
+/// </summary>
+/// <param name="Success">Whether the password was correct and the account is not locked.</param>
+/// <param name="IsLocked">Whether the account is currently locked (temporary or permanent).</param>
+/// <param name="IsPermanentlyLocked">Whether the account requires administrator unlock.</param>
+/// <param name="LockedUntil">When the temporary lock expires, if applicable.</param>
+public record PasswordAuthResult(
+    bool Success,
+    bool IsLocked = false,
+    bool IsPermanentlyLocked = false,
+    DateTimeOffset? LockedUntil = null);
+
+/// <summary>
 /// Service interface for platform-wide user management operations.
 /// Handles PlatformUser lifecycle, social login linking, and organisation membership.
 /// </summary>
@@ -85,6 +98,17 @@ public interface IPlatformUserService
     /// <returns>The newly created organisation membership.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the user already has a membership in the organisation.</exception>
     Task<PlatformUserOrgMembership> AddOrgMembershipAsync(Guid platformUserId, Guid organizationId, string role, CancellationToken ct);
+
+    /// <summary>
+    /// Validates a password against a PlatformUser's stored hash with progressive lockout.
+    /// Checks lockout state before verification; increments FailedLoginCount on failure;
+    /// resets on success. Lockout thresholds: 5→15min, 10→30min, 15→1hr, 20→4hr, 25+→permanent.
+    /// </summary>
+    /// <param name="platformUser">The platform user to authenticate.</param>
+    /// <param name="password">The plaintext password to verify.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Result indicating success, lockout, or invalid credentials.</returns>
+    Task<PasswordAuthResult> ValidatePasswordAsync(PlatformUser platformUser, string password, CancellationToken ct);
 
     /// <summary>
     /// Resolves or creates a PlatformUser from social login claims.
