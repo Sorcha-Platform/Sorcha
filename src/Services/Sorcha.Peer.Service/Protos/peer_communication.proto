@@ -42,6 +42,11 @@ enum MessageType {
   HEARTBEAT = 5;
   BLS_KEY_SHARE_DISTRIBUTION = 6;
   BLS_PARTIAL_SIGNATURE = 7;
+  // Relay register sync message types
+  REGISTER_SYNC_REQUEST = 8;
+  REGISTER_SYNC_RESPONSE = 9;
+  TRANSACTION_DATA_REQUEST = 10;
+  TRANSACTION_DATA_RESPONSE = 11;
 }
 
 // BLS threshold key share distribution request

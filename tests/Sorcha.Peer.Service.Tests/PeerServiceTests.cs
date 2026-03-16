@@ -8,6 +8,7 @@ using Moq;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Monitoring;
 using Sorcha.Peer.Service.Network;
@@ -106,11 +107,17 @@ public class PeerServiceTests : IDisposable
             new Mock<ILogger<TransactionQueueManager>>().Object,
             _config,
             scopeFactory: null);
+        var relayCommunication = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool,
+            _peerListManager,
+            _config);
         _distributionService = new TransactionDistributionService(
             new Mock<ILogger<TransactionDistributionService>>().Object,
             _config,
             queueManager,
-            gossipEngine);
+            gossipEngine,
+            relayCommunication);
     }
 
     private PeerService CreateService() => new PeerService(

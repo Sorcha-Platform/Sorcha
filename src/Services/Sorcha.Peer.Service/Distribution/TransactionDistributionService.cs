@@ -4,6 +4,7 @@
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Protos;
 
@@ -18,17 +19,20 @@ public class TransactionDistributionService
     private readonly PeerServiceConfiguration _configuration;
     private readonly TransactionQueueManager _queueManager;
     private readonly GossipProtocolEngine _gossipEngine;
+    private readonly RelayCommunicationService _relayCommunication;
 
     public TransactionDistributionService(
         ILogger<TransactionDistributionService> logger,
         IOptions<PeerServiceConfiguration> configuration,
         TransactionQueueManager queueManager,
-        GossipProtocolEngine gossipEngine)
+        GossipProtocolEngine gossipEngine,
+        RelayCommunicationService relayCommunication)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         _queueManager = queueManager ?? throw new ArgumentNullException(nameof(queueManager));
         _gossipEngine = gossipEngine ?? throw new ArgumentNullException(nameof(gossipEngine));
+        _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
     }
 
     /// <summary>
@@ -91,6 +95,17 @@ public class TransactionDistributionService
         Core.TransactionNotification transaction,
         CancellationToken cancellationToken)
     {
+        // Relay fallback: NAT'd peers have empty Address
+        if (string.IsNullOrEmpty(peer.Address))
+        {
+            _logger.LogDebug("Peer {PeerId} has no address, sending transaction via relay", peer.PeerId);
+            return await _relayCommunication.SendViaRelayAsync(
+                peer.PeerId,
+                MessageType.TransactionNotification,
+                transaction,
+                cancellationToken);
+        }
+
         try
         {
             var address = $"http://{peer.Address}:{peer.Port}";

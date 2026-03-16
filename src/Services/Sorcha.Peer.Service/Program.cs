@@ -139,6 +139,10 @@ builder.Services.AddSingleton<StatisticsAggregator>();
 builder.Services.AddSingleton<PeerServiceMetrics>();
 builder.Services.AddSingleton<PeerServiceActivitySource>();
 
+// Register relay communication services
+builder.Services.AddSingleton<RelayCommunicationService>();
+builder.Services.AddSingleton<RelayMessageHandler>();
+
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();
 builder.Services.AddSingleton<RegisterReplicationService>();
@@ -206,6 +210,7 @@ app.MapGrpcService<PeerHeartbeatGrpcService>();
 app.MapGrpcService<RegisterSyncGrpcService>();
 app.MapGrpcService<TransactionDistributionGrpcService>();
 app.MapGrpcService<DocketSyncGrpcService>();
+app.MapGrpcService<PeerCommunicationServiceImpl>();
 
 // Enable gRPC reflection for development
 if (app.Environment.IsDevelopment())
