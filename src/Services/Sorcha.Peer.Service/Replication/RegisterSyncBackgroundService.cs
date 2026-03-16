@@ -5,8 +5,12 @@ using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Data;
+using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Protos;
+using RelayModels = Sorcha.Peer.Service.Communication.Models;
 
 namespace Sorcha.Peer.Service.Replication;
 
@@ -20,22 +24,40 @@ public class RegisterSyncBackgroundService : BackgroundService
 {
     private readonly ILogger<RegisterSyncBackgroundService> _logger;
     private readonly RegisterReplicationService _replicationService;
+    private readonly RelayCommunicationService? _relayCommunication;
+    private readonly PeerListManager? _peerListManager;
+    private readonly RegisterCache? _registerCache;
     private readonly IDbContextFactory<PeerDbContext>? _dbContextFactory;
     private readonly RegisterSyncConfiguration _syncConfig;
     private readonly ConcurrentDictionary<string, RegisterSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<string, Task> _liveSubscriptionTasks = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _syncSemaphores = new();
     private CancellationTokenSource? _serviceCts;
 
     public RegisterSyncBackgroundService(
         ILogger<RegisterSyncBackgroundService> logger,
         RegisterReplicationService replicationService,
         IOptions<PeerServiceConfiguration> configuration,
-        IDbContextFactory<PeerDbContext>? dbContextFactory = null)
+        IDbContextFactory<PeerDbContext>? dbContextFactory = null,
+        RelayCommunicationService? relayCommunication = null,
+        PeerListManager? peerListManager = null,
+        RegisterCache? registerCache = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _replicationService = replicationService ?? throw new ArgumentNullException(nameof(replicationService));
+        _relayCommunication = relayCommunication;
+        _peerListManager = peerListManager;
+        _registerCache = registerCache;
         _dbContextFactory = dbContextFactory;
         _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
+    }
+
+    /// <summary>
+    /// Gets or creates the per-register sync semaphore.
+    /// </summary>
+    public SemaphoreSlim GetSyncSemaphore(string registerId)
+    {
+        return _syncSemaphores.GetOrAdd(registerId, _ => new SemaphoreSlim(1, 1));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,6 +70,13 @@ public class RegisterSyncBackgroundService : BackgroundService
 
         using var timer = new PeriodicTimer(
             TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes));
+
+        // Start relay poll loop if relay is available
+        Task? relayPollTask = null;
+        if (_relayCommunication != null && _peerListManager != null && _registerCache != null)
+        {
+            relayPollTask = RunRelayPollLoopAsync(stoppingToken);
+        }
 
         try
         {
@@ -73,6 +102,13 @@ public class RegisterSyncBackgroundService : BackgroundService
         {
             // Cancel and await all live subscription tasks
             _serviceCts.Cancel();
+
+            if (relayPollTask != null)
+            {
+                try { await relayPollTask.ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+            }
+
             var activeTasks = _liveSubscriptionTasks.Values.ToArray();
             if (activeTasks.Length > 0)
             {
@@ -83,6 +119,118 @@ public class RegisterSyncBackgroundService : BackgroundService
         }
 
         _logger.LogInformation("RegisterSyncBackgroundService stopped");
+    }
+
+    /// <summary>
+    /// Periodic relay sync poll loop. Fires every RelayPollIntervalSeconds to sync
+    /// subscribed registers from NAT'd peers via relay as a safety net for missed notifications.
+    /// </summary>
+    private async Task RunRelayPollLoopAsync(CancellationToken stoppingToken)
+    {
+        using var relayTimer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_syncConfig.RelayPollIntervalSeconds));
+
+        _logger.LogInformation(
+            "Relay poll loop started with interval {Interval}s",
+            _syncConfig.RelayPollIntervalSeconds);
+
+        try
+        {
+            while (await relayTimer.WaitForNextTickAsync(stoppingToken))
+            {
+                foreach (var (registerId, subscription) in _subscriptions.ToList())
+                {
+                    if (stoppingToken.IsCancellationRequested) break;
+
+                    try
+                    {
+                        await TryRelayPollForRegisterAsync(registerId, subscription, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Error in relay poll for register {RegisterId}", registerId);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Relay poll loop cancelled");
+        }
+    }
+
+    /// <summary>
+    /// Attempts relay sync poll for a single register. Finds NAT'd peers and sends
+    /// sync requests, stopping after the first successful response.
+    /// </summary>
+    private async Task TryRelayPollForRegisterAsync(
+        string registerId,
+        RegisterSubscription subscription,
+        CancellationToken cancellationToken)
+    {
+        var semaphore = GetSyncSemaphore(registerId);
+        if (!await semaphore.WaitAsync(0, cancellationToken))
+        {
+            _logger.LogDebug("Relay poll skipped for register {RegisterId} — sync already in progress", registerId);
+            return;
+        }
+
+        try
+        {
+            var peers = _peerListManager!.GetPeersForRegister(registerId);
+            var natdPeers = peers.Where(p => string.IsNullOrEmpty(p.Address)).ToList();
+
+            if (natdPeers.Count == 0) return;
+
+            var cacheEntry = _registerCache!.GetOrCreate(registerId);
+
+            foreach (var peer in natdPeers)
+            {
+                var correlationId = Guid.NewGuid().ToString();
+                var syncRequest = new RelayModels.RegisterSyncRequest
+                {
+                    CorrelationId = correlationId,
+                    RegisterId = registerId,
+                    FromDocketVersion = subscription.LastSyncedDocketVersion
+                };
+
+                var response = await _relayCommunication!.SendAndWaitAsync<RelayModels.RegisterSyncResponse>(
+                    peer.PeerId,
+                    MessageType.RegisterSyncRequest,
+                    syncRequest,
+                    correlationId,
+                    cancellationToken: cancellationToken);
+
+                if (response != null)
+                {
+                    foreach (var docket in response.Dockets)
+                    {
+                        cacheEntry.AddOrUpdateDocket(new CachedDocket
+                        {
+                            RegisterId = registerId,
+                            Version = docket.Version,
+                            Data = docket.Data,
+                            DocketHash = docket.DocketHash,
+                            PreviousHash = docket.PreviousHash,
+                            TransactionIds = docket.TransactionIds,
+                            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(docket.CreatedAt)
+                        });
+                    }
+
+                    _logger.LogDebug(
+                        "Relay poll synced {Count} dockets for register {RegisterId} from peer {PeerId}",
+                        response.Dockets.Count, registerId, peer.PeerId);
+
+                    // Stop after first successful peer per register
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            semaphore.Release();
+        }
     }
 
     /// <summary>

@@ -17,6 +17,7 @@ This service provides:
 - **System register replication** (full sync + incremental sync)
 - **Heartbeat monitoring** (30s interval, 60s timeout triggers failover)
 - **Push notifications** for blueprint publication events
+- **Relay communication** for NAT'd peers (messages routed through seed nodes)
 - **Isolated mode** for graceful degradation when hub nodes are unreachable
 - **Comprehensive observability** (7 OpenTelemetry metrics, 6 distributed traces, structured logging)
 

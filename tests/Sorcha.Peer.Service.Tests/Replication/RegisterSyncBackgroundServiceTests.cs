@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Data;
@@ -174,9 +175,145 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
         _service.GetSubscription("reg-2").Should().NotBeNull();
     }
 
+    [Fact]
+    public void GetSyncSemaphore_ReturnsSameSemaphoreForSameRegister()
+    {
+        var sem1 = _service.GetSyncSemaphore("reg-1");
+        var sem2 = _service.GetSyncSemaphore("reg-1");
+
+        sem1.Should().BeSameAs(sem2);
+    }
+
+    [Fact]
+    public void GetSyncSemaphore_ReturnsDifferentSemaphoreForDifferentRegisters()
+    {
+        var sem1 = _service.GetSyncSemaphore("reg-1");
+        var sem2 = _service.GetSyncSemaphore("reg-2");
+
+        sem1.Should().NotBeSameAs(sem2);
+    }
+
+    [Fact]
+    public async Task GetSyncSemaphore_PreventsConccurrentSync()
+    {
+        var semaphore = _service.GetSyncSemaphore("reg-1");
+
+        await semaphore.WaitAsync();
+        var acquired = await semaphore.WaitAsync(0);
+
+        acquired.Should().BeFalse();
+        semaphore.Release();
+    }
+
     public void Dispose()
     {
         _service.Dispose();
+    }
+}
+
+public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
+{
+    private readonly RegisterSyncBackgroundService _service;
+    private readonly PeerListManager _peerListManager;
+    private readonly PeerConnectionPool _connectionPool;
+    private readonly RelayCommunicationService _relayCommunication;
+    private readonly RegisterCache _registerCache;
+
+    public RegisterSyncBackgroundServiceRelayTests()
+    {
+        var config = new PeerServiceConfiguration
+        {
+            NodeId = "test-node",
+            RegisterSync = new RegisterSyncConfiguration
+            {
+                PeriodicSyncIntervalMinutes = 1,
+                MaxRetryAttempts = 3,
+                RelayPollIntervalSeconds = 10
+            },
+            PeerDiscovery = new PeerDiscoveryConfiguration
+            {
+                MaxPeersInList = 100,
+                MinHealthyPeers = 5
+            },
+            SeedNodes = new SeedNodeConfiguration()
+        };
+
+        _peerListManager = new PeerListManager(
+            new Mock<ILogger<PeerListManager>>().Object,
+            Options.Create(config));
+
+        var loggerFactoryMock = new Mock<ILoggerFactory>();
+        loggerFactoryMock
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new Mock<ILogger>().Object);
+
+        _connectionPool = new PeerConnectionPool(
+            new Mock<ILogger<PeerConnectionPool>>().Object,
+            loggerFactoryMock.Object,
+            _peerListManager,
+            Options.Create(config),
+            new PeerServiceMetrics(),
+            new PeerServiceActivitySource());
+
+        _registerCache = new RegisterCache(
+            new Mock<ILogger<RegisterCache>>().Object);
+
+        _relayCommunication = new RelayCommunicationService(
+            new Mock<ILogger<RelayCommunicationService>>().Object,
+            _connectionPool,
+            _peerListManager,
+            Options.Create(config));
+
+        var replicationService = new RegisterReplicationService(
+            new Mock<ILogger<RegisterReplicationService>>().Object,
+            _connectionPool,
+            _peerListManager,
+            _registerCache,
+            Options.Create(config),
+            _relayCommunication);
+
+        _service = new RegisterSyncBackgroundService(
+            new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
+            replicationService,
+            Options.Create(config),
+            relayCommunication: _relayCommunication,
+            peerListManager: _peerListManager,
+            registerCache: _registerCache);
+    }
+
+    [Fact]
+    public async Task SubscribeToRegister_WithRelay_CreatesSubscription()
+    {
+        var sub = await _service.SubscribeToRegisterAsync("reg-relay", ReplicationMode.FullReplica);
+
+        sub.Should().NotBeNull();
+        sub.RegisterId.Should().Be("reg-relay");
+    }
+
+    [Fact]
+    public void GetSyncSemaphore_WithRelay_ReturnsSemaphore()
+    {
+        var sem = _service.GetSyncSemaphore("reg-relay");
+        sem.Should().NotBeNull();
+        sem.CurrentCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SyncSemaphore_BlocksWhenHeld()
+    {
+        var sem = _service.GetSyncSemaphore("reg-test");
+
+        await sem.WaitAsync();
+        var acquired = await sem.WaitAsync(0);
+
+        acquired.Should().BeFalse("semaphore should block concurrent sync");
+        sem.Release();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _service.Dispose();
+        await _connectionPool.DisposeAsync();
     }
 }
 

@@ -256,19 +256,33 @@ public class RelayMessageHandler
             return;
         }
 
-        _logger.LogDebug("Relayed transaction notification triggering sync for register {RegisterId}", registerId);
-
-        var syncRequest = new RelayModels.RegisterSyncRequest
+        var semaphore = _syncBackgroundService.GetSyncSemaphore(registerId);
+        if (!await semaphore.WaitAsync(0, cancellationToken))
         {
-            CorrelationId = Guid.NewGuid().ToString(),
-            RegisterId = registerId,
-            FromDocketVersion = subscription.LastSyncedDocketVersion
-        };
+            _logger.LogDebug("Sync already in progress for register {RegisterId}, skipping notification trigger", registerId);
+            return;
+        }
 
-        await _relayCommunication.SendViaRelayAsync(
-            message.SenderPeerId,
-            MessageType.RegisterSyncRequest,
-            syncRequest,
-            cancellationToken);
+        try
+        {
+            _logger.LogDebug("Relayed transaction notification triggering sync for register {RegisterId}", registerId);
+
+            var syncRequest = new RelayModels.RegisterSyncRequest
+            {
+                CorrelationId = Guid.NewGuid().ToString(),
+                RegisterId = registerId,
+                FromDocketVersion = subscription.LastSyncedDocketVersion
+            };
+
+            await _relayCommunication.SendViaRelayAsync(
+                message.SenderPeerId,
+                MessageType.RegisterSyncRequest,
+                syncRequest,
+                cancellationToken);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
     }
 }

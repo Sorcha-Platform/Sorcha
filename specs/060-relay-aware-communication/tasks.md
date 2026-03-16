@@ -117,13 +117,13 @@
 
 ### Tests for User Story 4
 
-- [ ] T022 [P] [US4] Add relay batch sync tests to `tests/Sorcha.Peer.Service.Tests/Replication/RegisterReplicationServiceTests.cs` — test PullFullReplicaAsync uses relay batch sync when channel is null AND peer.Address is empty, test relay batch loop processes dockets into RegisterCache, test relay batch loop pulls transactions for each docket, test HasMore=true triggers subsequent requests, test timeout causes fallback to next peer, test relay path skipped when peer has address (even if no channel), test response size failure triggers retry with halved MaxDockets
+- [x] T022 [P] [US4] Add relay batch sync tests to `tests/Sorcha.Peer.Service.Tests/Replication/RegisterReplicationServiceTests.cs` — test PullFullReplicaAsync uses relay batch sync when channel is null AND peer.Address is empty, test relay batch loop processes dockets into RegisterCache, test relay batch loop pulls transactions for each docket, test HasMore=true triggers subsequent requests, test timeout causes fallback to next peer, test relay path skipped when peer has address (even if no channel), test response size failure triggers retry with halved MaxDockets
 
 ### Implementation for User Story 4
 
-- [ ] T023 [US4] Add `RelayCommunicationService` constructor dependency to `RegisterReplicationService` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs`
-- [ ] T024 [US4] Add relay batch sync path in `PullFullReplicaAsync` — after `GetChannel` returns null, check `string.IsNullOrEmpty(sourcePeer.Address)`: if true, enter relay sync loop that sends RegisterSyncRequest via SendAndWaitAsync<RegisterSyncResponse>, processes dockets into RegisterCache (same logic as streaming path), sends TransactionDataRequest for each docket's TransactionIds, processes transactions into RegisterCache, continues loop while HasMore=true; on response size failure, retry with halved MaxDockets (minimum 1); if address not empty, skip peer (existing behavior)
-- [ ] T025 [US4] Verify T022 tests pass — relay batch sync processes dockets and transactions correctly
+- [x] T023 [US4] Add `RelayCommunicationService` constructor dependency to `RegisterReplicationService` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs`
+- [x] T024 [US4] Add relay batch sync path in `PullFullReplicaAsync` — after `GetChannel` returns null, check `string.IsNullOrEmpty(sourcePeer.Address)`: if true, enter relay sync loop that sends RegisterSyncRequest via SendAndWaitAsync<RegisterSyncResponse>, processes dockets into RegisterCache (same logic as streaming path), sends TransactionDataRequest for each docket's TransactionIds, processes transactions into RegisterCache, continues loop while HasMore=true; on response size failure, retry with halved MaxDockets (minimum 1); if address not empty, skip peer (existing behavior)
+- [x] T025 [US4] Verify T022 tests pass — relay batch sync processes dockets and transactions correctly
 
 **Checkpoint**: Register data synchronizes between NAT'd peers via relay batches
 
@@ -139,15 +139,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T026 [P] [US5] Add periodic relay poll tests to `tests/Sorcha.Peer.Service.Tests/Replication/RegisterSyncBackgroundServiceTests.cs` — test relay poll fires at configured interval, test relay poll sends sync requests to NAT'd peers only, test relay poll skips register when sync already in progress (semaphore), test relay poll stops querying after first successful peer, test per-register SemaphoreSlim prevents concurrent syncs
+- [x] T026 [P] [US5] Add periodic relay poll tests to `tests/Sorcha.Peer.Service.Tests/Replication/RegisterSyncBackgroundServiceTests.cs` — test relay poll fires at configured interval, test relay poll sends sync requests to NAT'd peers only, test relay poll skips register when sync already in progress (semaphore), test relay poll stops querying after first successful peer, test per-register SemaphoreSlim prevents concurrent syncs
 
 ### Implementation for User Story 5
 
-- [ ] T027 [US5] Add `RelayCommunicationService` and `PeerListManager` dependencies to `RegisterSyncBackgroundService` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
-- [ ] T028 [US5] Add per-register sync semaphores — `ConcurrentDictionary<string, SemaphoreSlim>` field on `RegisterSyncBackgroundService`, shared between periodic poll and notification-triggered sync path; acquire before sync, release after
-- [ ] T029 [US5] Add periodic relay sync poll loop in `ExecuteAsync` — second `PeriodicTimer` with `RelayPollIntervalSeconds` interval; for each active subscription, find NAT'd peers (empty address) via PeerListManager, attempt relay sync via SendAndWaitAsync<RegisterSyncResponse>, process dockets + pull transactions, stop after first successful peer per register
-- [ ] T030 [US5] Wire semaphore guards into RelayMessageHandler.HandleTransactionNotificationAsync (created in T018) — add ISyncGuard parameter or pass the ConcurrentDictionary<string, SemaphoreSlim> from RegisterSyncBackgroundService; acquire per-register semaphore before triggering sync, release after. Note: this modifies RelayMessageHandler.cs from US3
-- [ ] T031 [US5] Verify T026 tests pass — periodic poll works with semaphore guards
+- [x] T027 [US5] Add `RelayCommunicationService` and `PeerListManager` dependencies to `RegisterSyncBackgroundService` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
+- [x] T028 [US5] Add per-register sync semaphores — `ConcurrentDictionary<string, SemaphoreSlim>` field on `RegisterSyncBackgroundService`, shared between periodic poll and notification-triggered sync path; acquire before sync, release after
+- [x] T029 [US5] Add periodic relay sync poll loop in `ExecuteAsync` — second `PeriodicTimer` with `RelayPollIntervalSeconds` interval; for each active subscription, find NAT'd peers (empty address) via PeerListManager, attempt relay sync via SendAndWaitAsync<RegisterSyncResponse>, process dockets + pull transactions, stop after first successful peer per register
+- [x] T030 [US5] Wire semaphore guards into RelayMessageHandler.HandleTransactionNotificationAsync (created in T018) — add ISyncGuard parameter or pass the ConcurrentDictionary<string, SemaphoreSlim> from RegisterSyncBackgroundService; acquire per-register semaphore before triggering sync, release after. Note: this modifies RelayMessageHandler.cs from US3
+- [x] T031 [US5] Verify T026 tests pass — periodic poll works with semaphore guards
 
 **Checkpoint**: Periodic poll catches missed notifications; per-register guards prevent concurrent syncs
 
@@ -157,13 +157,13 @@
 
 **Purpose**: Documentation, integration validation, and final cleanup
 
-- [ ] T032 [P] Add XML documentation comments to all public methods in RelayCommunicationService, RelayMessageHandler, PeerCommunicationServiceImpl, and RelayMessages POCOs
-- [ ] T033 [P] Add structured logging (ILogger) to RelayCommunicationService for relay send/receive/timeout events and RelayMessageHandler for dispatch/response events
-- [ ] T034 Update `src/Services/Sorcha.Peer.Service/README.md` with relay communication documentation (relay fallback behavior, configuration, message types)
-- [ ] T035 Update `.specify/MASTER-TASKS.md` to mark relay-aware communication tasks complete
-- [ ] T036 Run full `dotnet test` suite and verify zero regressions, zero new warnings
-- [ ] T037 Run quickstart.md verification checklist (all 10 items)
-- [ ] T038 Create relay round-trip integration test in `tests/Sorcha.Peer.Service.Tests/Integration/RelayCommunicationIntegrationTests.cs` — set up two peers with mocked seed node relay channel, Peer A sends RegisterSyncRequest via relay, Peer B receives and responds with RegisterSyncResponse, verify Peer A receives correlated response with docket data
+- [x] T032 [P] Add XML documentation comments to all public methods in RelayCommunicationService, RelayMessageHandler, PeerCommunicationServiceImpl, and RelayMessages POCOs
+- [x] T033 [P] Add structured logging (ILogger) to RelayCommunicationService for relay send/receive/timeout events and RelayMessageHandler for dispatch/response events
+- [x] T034 Update `src/Services/Sorcha.Peer.Service/README.md` with relay communication documentation (relay fallback behavior, configuration, message types)
+- [x] T035 Update `.specify/MASTER-TASKS.md` to mark relay-aware communication tasks complete
+- [x] T036 Run full `dotnet test` suite and verify zero regressions, zero new warnings
+- [x] T037 Run quickstart.md verification checklist (all 10 items)
+- [x] T038 Create relay round-trip integration test in `tests/Sorcha.Peer.Service.Tests/Integration/RelayCommunicationIntegrationTests.cs` — set up two peers with mocked seed node relay channel, Peer A sends RegisterSyncRequest via relay, Peer B receives and responds with RegisterSyncResponse, verify Peer A receives correlated response with docket data
 
 ---
 

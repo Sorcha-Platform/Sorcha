@@ -4,10 +4,12 @@
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.Peer.Service.Communication;
 using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Protos;
+using RelayModels = Sorcha.Peer.Service.Communication.Models;
 
 namespace Sorcha.Peer.Service.Replication;
 
@@ -23,6 +25,7 @@ public class RegisterReplicationService
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerListManager _peerListManager;
     private readonly RegisterCache _registerCache;
+    private readonly RelayCommunicationService? _relayCommunication;
     private readonly RegisterSyncConfiguration _syncConfig;
 
     public RegisterReplicationService(
@@ -30,12 +33,14 @@ public class RegisterReplicationService
         PeerConnectionPool connectionPool,
         PeerListManager peerListManager,
         RegisterCache registerCache,
-        IOptions<PeerServiceConfiguration>? configuration = null)
+        IOptions<PeerServiceConfiguration>? configuration = null,
+        RelayCommunicationService? relayCommunication = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
+        _relayCommunication = relayCommunication;
         _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
     }
 
@@ -78,7 +83,24 @@ public class RegisterReplicationService
         foreach (var sourcePeer in sourcePeers)
         {
             var channel = _connectionPool.GetChannel(sourcePeer.PeerId);
-            if (channel == null) continue;
+
+            if (channel == null)
+            {
+                // No direct channel — try relay batch sync for NAT'd peers
+                if (string.IsNullOrEmpty(sourcePeer.Address) && _relayCommunication != null)
+                {
+                    var (relayResult, relayDockets, relayTransactions) = await TryRelayBatchSyncAsync(
+                        sourcePeer, subscription, cacheEntry, replicationToken);
+
+                    totalDockets += relayDockets;
+                    totalTransactions += relayTransactions;
+
+                    if (relayResult != null)
+                        return relayResult;
+                }
+
+                continue;
+            }
 
             try
             {
@@ -199,6 +221,163 @@ public class RegisterReplicationService
             DocketsSynced = totalDockets,
             TransactionsSynced = totalTransactions
         };
+    }
+
+    /// <summary>
+    /// Attempts relay batch sync for a NAT'd peer (empty address, no direct channel).
+    /// Sends RegisterSyncRequest via relay, processes docket batches and transaction pulls.
+    /// Returns (result, docketsSynced, transactionsSynced) — result is non-null on success or null to fall through.
+    /// </summary>
+    private async Task<(FullReplicaSyncResult? Result, long DocketsSynced, long TransactionsSynced)> TryRelayBatchSyncAsync(
+        PeerNode sourcePeer,
+        RegisterSubscription subscription,
+        RegisterCacheEntry cacheEntry,
+        CancellationToken cancellationToken)
+    {
+        var registerId = subscription.RegisterId;
+        var docketsSynced = 0L;
+        var transactionsSynced = 0L;
+
+        _logger.LogInformation(
+            "Attempting relay batch sync for register {RegisterId} from NAT'd peer {PeerId}",
+            registerId, sourcePeer.PeerId);
+
+        try
+        {
+            var fromVersion = subscription.LastSyncedDocketVersion;
+            var maxDockets = _syncConfig.DocketPullBatchSize;
+            var hasMore = true;
+
+            while (hasMore)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var correlationId = Guid.NewGuid().ToString();
+                var syncRequest = new RelayModels.RegisterSyncRequest
+                {
+                    CorrelationId = correlationId,
+                    RegisterId = registerId,
+                    FromDocketVersion = fromVersion,
+                    MaxDockets = maxDockets
+                };
+
+                var syncResponse = await _relayCommunication!.SendAndWaitAsync<RelayModels.RegisterSyncResponse>(
+                    sourcePeer.PeerId,
+                    MessageType.RegisterSyncRequest,
+                    syncRequest,
+                    correlationId,
+                    cancellationToken: cancellationToken);
+
+                if (syncResponse == null)
+                {
+                    // Response size may be too large — retry with halved batch size
+                    if (maxDockets > 1)
+                    {
+                        maxDockets = Math.Max(1, maxDockets / 2);
+                        _logger.LogDebug(
+                            "Relay sync response null for register {RegisterId}, retrying with MaxDockets={MaxDockets}",
+                            registerId, maxDockets);
+                        continue;
+                    }
+
+                    _logger.LogWarning(
+                        "Relay batch sync failed for register {RegisterId} from peer {PeerId} — no response",
+                        registerId, sourcePeer.PeerId);
+                    await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
+                    return (null, docketsSynced, transactionsSynced);
+                }
+
+                // Process dockets from response
+                foreach (var docket in syncResponse.Dockets)
+                {
+                    cacheEntry.AddOrUpdateDocket(new CachedDocket
+                    {
+                        RegisterId = registerId,
+                        Version = docket.Version,
+                        Data = docket.Data,
+                        DocketHash = docket.DocketHash,
+                        PreviousHash = docket.PreviousHash,
+                        TransactionIds = docket.TransactionIds,
+                        CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(docket.CreatedAt)
+                    });
+
+                    docketsSynced++;
+                    fromVersion = docket.Version;
+
+                    // Pull transactions for this docket's transaction IDs
+                    if (docket.TransactionIds.Count > 0)
+                    {
+                        var txCorrelationId = Guid.NewGuid().ToString();
+                        var txRequest = new RelayModels.TransactionDataRequest
+                        {
+                            CorrelationId = txCorrelationId,
+                            RegisterId = registerId,
+                            TransactionIds = docket.TransactionIds
+                        };
+
+                        var txResponse = await _relayCommunication.SendAndWaitAsync<RelayModels.TransactionDataResponse>(
+                            sourcePeer.PeerId,
+                            MessageType.TransactionDataRequest,
+                            txRequest,
+                            txCorrelationId,
+                            cancellationToken: cancellationToken);
+
+                        if (txResponse != null)
+                        {
+                            foreach (var tx in txResponse.Transactions)
+                            {
+                                cacheEntry.AddOrUpdateTransaction(new CachedTransaction
+                                {
+                                    TransactionId = tx.TransactionId,
+                                    RegisterId = registerId,
+                                    Data = tx.Data,
+                                    Checksum = tx.Checksum,
+                                    CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(tx.CreatedAt)
+                                });
+
+                                transactionsSynced++;
+                            }
+                        }
+                    }
+                }
+
+                hasMore = syncResponse.HasMore;
+            }
+
+            // Update subscription state
+            subscription.TotalDocketsInChain = docketsSynced;
+            subscription.RecordSyncSuccess(
+                cacheEntry.GetLatestDocketVersion(),
+                cacheEntry.GetLatestTransactionVersion());
+
+            _logger.LogInformation(
+                "Relay batch sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId}",
+                registerId, docketsSynced, transactionsSynced, sourcePeer.PeerId);
+
+            return (new FullReplicaSyncResult
+            {
+                Success = true,
+                DocketsSynced = docketsSynced,
+                TransactionsSynced = transactionsSynced,
+                SourcePeerId = sourcePeer.PeerId
+            }, docketsSynced, transactionsSynced);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "Relay batch sync cancelled for register {RegisterId} from peer {PeerId}",
+                registerId, sourcePeer.PeerId);
+            await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
+            return (null, docketsSynced, transactionsSynced);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Error during relay batch sync for register {RegisterId} from peer {PeerId}",
+                registerId, sourcePeer.PeerId);
+            await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
+            return (null, docketsSynced, transactionsSynced);
+        }
     }
 
     /// <summary>
