@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 using FluentAssertions;
-using Sorcha.Blueprint.Schemas;
+using Sorcha.Blueprint.Schemas.Client;
 using Xunit;
 
 namespace Sorcha.UI.Core.Tests.SchemaLibrary;

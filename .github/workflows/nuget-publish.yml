@@ -34,7 +34,7 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all libraries"
-            CHANGED='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.ServiceClients","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
+            CHANGED='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.ServiceClients","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
           else
             CHANGED="["
             FIRST=true

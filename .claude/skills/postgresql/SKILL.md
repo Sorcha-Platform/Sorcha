@@ -15,7 +15,7 @@ PostgreSQL database management for Sorcha's distributed ledger platform. This pr
 ### DbContext with PostgreSQL Schema
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Data/WalletDbContext.cs
+// src/Core/Sorcha.Wallet.Core/Data/WalletDbContext.cs
 public class WalletDbContext : DbContext
 {
     protected override void OnModelCreating(ModelBuilder modelBuilder)

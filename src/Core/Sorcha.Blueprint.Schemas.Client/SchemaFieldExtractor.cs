@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Recursively extracts fields from a JSON Schema, producing a flattened hierarchy

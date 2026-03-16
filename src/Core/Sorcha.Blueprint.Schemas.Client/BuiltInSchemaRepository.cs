@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Repository for built-in JSON Schemas shipped with Sorcha

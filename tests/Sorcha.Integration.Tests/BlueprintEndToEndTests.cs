@@ -3,7 +3,7 @@
 
 using FluentAssertions;
 using Sorcha.Blueprint.Fluent;
-using Sorcha.Blueprint.Schemas;
+using Sorcha.Blueprint.Schemas.Client;
 
 namespace Sorcha.Integration.Tests;
 

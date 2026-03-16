@@ -34,7 +34,7 @@
     <ProjectReference Include="..\..\src\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Fluent\Sorcha.Blueprint.Fluent.csproj" />
-    <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Schemas\Sorcha.Blueprint.Schemas.csproj" />
+    <ProjectReference Include="..\..\src\Core\Sorcha.Blueprint.Schemas.Client\Sorcha.Blueprint.Schemas.Client.csproj" />
   </ItemGroup>
 
 </Project>

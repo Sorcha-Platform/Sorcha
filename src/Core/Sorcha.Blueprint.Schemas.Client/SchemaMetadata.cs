@@ -3,7 +3,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Metadata about a JSON Schema document in the library

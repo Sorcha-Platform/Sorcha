@@ -40,7 +40,7 @@ public class TenantDbContext : DbContext
 Required for `dotnet ef` CLI commands when DbContext needs constructor parameters:
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Data/WalletDbContextFactory.cs
+// src/Core/Sorcha.Wallet.Core/Data/WalletDbContextFactory.cs
 public class WalletDbContextFactory : IDesignTimeDbContextFactory<WalletDbContext>
 {
     public WalletDbContext CreateDbContext(string[] args)

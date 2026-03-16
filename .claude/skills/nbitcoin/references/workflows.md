@@ -14,7 +14,7 @@
 ### Complete Flow
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:53-134
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:53-134
 public async Task<(WalletEntity Wallet, Mnemonic Mnemonic)> CreateWalletAsync(
     string name, string algorithm, string owner, string tenant,
     int wordCount = 12, string? passphrase = null, CancellationToken cancellationToken = default)
@@ -74,7 +74,7 @@ Copy this checklist and track progress:
 ### Complete Flow
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:137-250
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:137-250
 public async Task<WalletEntity> RecoverWalletAsync(
     Mnemonic mnemonic, string name, string algorithm, string owner, string tenant,
     string? passphrase = null, CancellationToken cancellationToken = default)
@@ -137,7 +137,7 @@ public IActionResult RecoverWallet(string phrase)
 The server NEVER stores mnemonics. Clients derive keys locally and register only public keys.
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:437-547
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:437-547
 public async Task<WalletAddress> RegisterDerivedAddressAsync(
     string walletAddress,
     string derivedPublicKey,    // Base64-encoded - client derived this
@@ -209,7 +209,7 @@ if (unusedCount >= 20)
 ### Sorcha System Paths
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
+// src/Core/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
 
 // Defined system paths
 public const string RegisterAttestation = "sorcha:register-attestation";   // → m/44'/0'/0'/0/100

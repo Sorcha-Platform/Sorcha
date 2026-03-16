@@ -24,7 +24,7 @@
 - **Impact:** System can only use JSON serialization (inefficient for production network transmission)
 
 ### 3. Wallet Address Generation — NotImplementedException
-**File:** `src/Common/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:409-411`
+**File:** `src/Core/Sorcha.Wallet.Core/Services/Implementation/WalletManager.cs:409-411`
 - Server cannot generate HD wallet addresses; requires mnemonic not stored server-side
 - **Impact:** Client-side derivation only, limits server-initiated operations
 
@@ -44,7 +44,7 @@
 ## HIGH (Degraded Functionality)
 
 ### 6. Delegation Service — NotImplementedException
-**File:** `src/Common/Sorcha.Wallet.Core/Services/Implementation/DelegationService.cs:210`
+**File:** `src/Core/Sorcha.Wallet.Core/Services/Implementation/DelegationService.cs:210`
 - Cannot update existing wallet access delegations; must delete and recreate
 
 ### 7. Transaction Version Adapters — Not Implemented

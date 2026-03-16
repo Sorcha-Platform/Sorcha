@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Sorcha.Blueprint.Schemas;
+using Sorcha.Blueprint.Schemas.Client;
 using Xunit;
 
 namespace Sorcha.Blueprint.Schemas.Core.Tests;

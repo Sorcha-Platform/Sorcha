@@ -38,7 +38,7 @@ Purpose: Give AI coding agents the minimal, actionable knowledge to be productiv
     ```
 
 - **Schema handling**:
-  - Schema services are under `src/Core/Sorcha.Blueprint.Schemas/`.
+  - Schema services are under `src/Core/Sorcha.Blueprint.Schemas.Client/`.
   - Use `SchemaLibraryService` and `ISchemaRepository` for schema lookups; client caches schemas in local storage (`LocalStorageSchemaCacheService`) in the Designer.
 
 - **Tests & CI**:
@@ -57,7 +57,7 @@ Purpose: Give AI coding agents the minimal, actionable knowledge to be productiv
   - Service defaults & telemetry: `src/Common/Sorcha.ServiceDefaults/` (extension methods, MapDefaultEndpoints)
   - Blueprint models: `src/Common/Sorcha.Blueprint.Models/`
   - Fluent builders: `src/Core/Sorcha.Blueprint.Fluent/`
-  - Schema library: `src/Core/Sorcha.Blueprint.Schemas/`
+  - Schema library: `src/Core/Sorcha.Blueprint.Schemas.Client/`
   - API Gateway (YARP): `src/Services/Sorcha.ApiGateway/`
 
 - **Test naming and patterns**:

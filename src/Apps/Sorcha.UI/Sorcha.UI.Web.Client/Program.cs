@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
-using Sorcha.Blueprint.Schemas;
+using Sorcha.Blueprint.Schemas.Client;
 using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Services;
 using Sorcha.UI.Web.Client;

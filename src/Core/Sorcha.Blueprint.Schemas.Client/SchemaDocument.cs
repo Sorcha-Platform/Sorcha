@@ -4,7 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Represents a complete JSON Schema document with metadata

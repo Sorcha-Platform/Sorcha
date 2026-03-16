@@ -15,7 +15,7 @@ NBitcoin provides HD wallet operations in Sorcha through the `Sorcha.Wallet.Core
 ### Generate a Mnemonic
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Domain/ValueObjects/Mnemonic.cs
+// src/Core/Sorcha.Wallet.Core/Domain/ValueObjects/Mnemonic.cs
 var mnemonic = Mnemonic.Generate(12);  // or 24 for higher security
 // NEVER log mnemonic.Phrase - use mnemonic.ToString() which returns "Mnemonic(12 words)"
 ```
@@ -23,7 +23,7 @@ var mnemonic = Mnemonic.Generate(12);  // or 24 for higher security
 ### Derive Keys at BIP44 Path
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:62-111
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:62-111
 var masterKey = await _keyManagement.DeriveMasterKeyAsync(mnemonic, passphrase);
 var path = DerivationPath.CreateBip44(coinType: 0, account: 0, change: 0, addressIndex: 0);
 var (privateKey, publicKey) = await _keyManagement.DeriveKeyAtPathAsync(masterKey, path, "ED25519");
@@ -74,7 +74,7 @@ var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(privateK
 **When:** Using Sorcha-specific derivation purposes.
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
+// src/Core/Sorcha.Wallet.Core/Constants/SorchaDerivationPaths.cs
 var resolvedPath = SorchaDerivationPaths.IsSystemPath(derivationPath)
     ? SorchaDerivationPaths.ResolvePath(derivationPath)  // "sorcha:register-attestation" → "m/44'/0'/0'/0/100"
     : derivationPath;

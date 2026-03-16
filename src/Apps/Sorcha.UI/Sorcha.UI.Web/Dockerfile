@@ -17,7 +17,7 @@ COPY ["src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Sorcha.UI.Web.Client.csproj", "Ap
 COPY ["src/Apps/Sorcha.UI/Sorcha.UI.Core/Sorcha.UI.Core.csproj", "Apps/Sorcha.UI/Sorcha.UI.Core/"]
 COPY ["src/Common/Sorcha.Blueprint.Models/Sorcha.Blueprint.Models.csproj", "Common/Sorcha.Blueprint.Models/"]
 COPY ["src/Core/Sorcha.Blueprint.Fluent/Sorcha.Blueprint.Fluent.csproj", "Core/Sorcha.Blueprint.Fluent/"]
-COPY ["src/Core/Sorcha.Blueprint.Schemas/Sorcha.Blueprint.Schemas.csproj", "Core/Sorcha.Blueprint.Schemas/"]
+COPY ["src/Core/Sorcha.Blueprint.Schemas.Client/Sorcha.Blueprint.Schemas.Client.csproj", "Core/Sorcha.Blueprint.Schemas.Client/"]
 
 # Restore dependencies
 RUN dotnet restore "Apps/Sorcha.UI/Sorcha.UI.Web/Sorcha.UI.Web.csproj"
