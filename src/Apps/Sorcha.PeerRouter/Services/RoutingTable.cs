@@ -28,7 +28,7 @@ public sealed class RoutingTable
     /// Returns true if the peer was newly added, false if updated.
     /// If a stale (unhealthy) entry exists at the same IP:port, it is replaced.
     /// </summary>
-    public bool RegisterPeer(PeerInfo peerInfo)
+    public bool RegisterPeer(PeerInfo peerInfo, string? sourceAddress = null)
     {
         // Prevent the router from appearing in its own peer table
         if (!string.IsNullOrEmpty(_selfPeerId) &&
@@ -38,7 +38,7 @@ public sealed class RoutingTable
         }
 
         // Address-based dedup: remove stale entries at the same IP:port
-        var newIp = ExtractIp(peerInfo.Address);
+        var newIp = !string.IsNullOrEmpty(peerInfo.Address) ? ExtractIp(peerInfo.Address) : ExtractGrpcPeerIp(sourceAddress);
         var newPort = peerInfo.Port;
 
         foreach (var (existingId, existing) in _entries)
@@ -72,7 +72,7 @@ public sealed class RoutingTable
             _ =>
             {
                 isNew = true;
-                var entry = CreateEntry(peerInfo);
+                var entry = CreateEntry(peerInfo, sourceAddress);
                 _eventBuffer.Add(RouterEvent.Create(
                     RouterEventType.PeerConnected,
                     entry.PeerId,
@@ -84,12 +84,14 @@ public sealed class RoutingTable
             (_, existing) =>
             {
                 existing.Address = peerInfo.Address;
-                existing.IpAddress = ExtractIp(peerInfo.Address);
+                existing.IpAddress = !string.IsNullOrEmpty(peerInfo.Address) ? ExtractIp(peerInfo.Address) : ExtractGrpcPeerIp(sourceAddress);
                 existing.Port = peerInfo.Port;
                 existing.Capabilities = peerInfo.Capabilities;
                 existing.AdvertisedRegisters = [.. peerInfo.AdvertisedRegisters];
                 existing.LastSeen = DateTimeOffset.UtcNow;
                 existing.IsHealthy = true;
+                if (!string.IsNullOrEmpty(peerInfo.NodeName))
+                    existing.NodeName = peerInfo.NodeName;
                 return existing;
             });
 
@@ -237,16 +239,45 @@ public sealed class RoutingTable
     public int TotalCount => _entries.Count;
     public int HealthyCount => _entries.Values.Count(e => e.IsHealthy);
 
-    private static RoutingEntry CreateEntry(PeerInfo peerInfo) => new()
+    private static RoutingEntry CreateEntry(PeerInfo peerInfo, string? sourceAddress = null) => new()
     {
         PeerId = peerInfo.PeerId,
-        NodeName = string.IsNullOrEmpty(peerInfo.PeerId) ? null : null, // NodeName comes from future extension
+        NodeName = string.IsNullOrEmpty(peerInfo.NodeName) ? null : peerInfo.NodeName,
         Address = peerInfo.Address,
-        IpAddress = ExtractIp(peerInfo.Address),
+        IpAddress = !string.IsNullOrEmpty(peerInfo.Address) ? ExtractIp(peerInfo.Address) : ExtractGrpcPeerIp(sourceAddress),
         Port = peerInfo.Port,
         Capabilities = peerInfo.Capabilities,
         AdvertisedRegisters = [.. peerInfo.AdvertisedRegisters]
     };
+
+    /// <summary>
+    /// Extracts the IP address from a gRPC context.Peer string (e.g. "ipv4:1.2.3.4:5000").
+    /// </summary>
+    private static string ExtractGrpcPeerIp(string? contextPeer)
+    {
+        if (string.IsNullOrEmpty(contextPeer))
+            return "";
+
+        // gRPC Peer format: "ipv4:1.2.3.4:port" or "ipv6:[::1]:port"
+        if (contextPeer.StartsWith("ipv4:", StringComparison.OrdinalIgnoreCase))
+        {
+            var afterPrefix = contextPeer[5..];
+            var lastColon = afterPrefix.LastIndexOf(':');
+            return lastColon > 0 ? afterPrefix[..lastColon] : afterPrefix;
+        }
+
+        if (contextPeer.StartsWith("ipv6:", StringComparison.OrdinalIgnoreCase))
+        {
+            var afterPrefix = contextPeer[5..];
+            // IPv6 addresses are in brackets: [::1]:port
+            var closeBracket = afterPrefix.IndexOf(']');
+            if (closeBracket > 0 && afterPrefix.StartsWith('['))
+                return afterPrefix[1..closeBracket];
+            return afterPrefix;
+        }
+
+        return contextPeer;
+    }
 
     private static string ExtractIp(string address)
     {

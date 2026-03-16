@@ -204,6 +204,7 @@ public class PeerExchangeService : IDisposable
         var info = new PeerInfo
         {
             PeerId = peer.PeerId,
+            NodeName = peer.NodeName ?? "",
             Address = peer.Address,
             Port = peer.Port,
             IsSeedNode = peer.IsSeedNode,
