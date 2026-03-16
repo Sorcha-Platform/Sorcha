@@ -51,7 +51,7 @@ public class PeerCommunicationServiceImpl : PeerCommunication.PeerCommunicationB
 
             return new MessageAck
             {
-                Received = true,
+                Received = false,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             };
         }

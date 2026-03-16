@@ -164,7 +164,12 @@ public class RelayMessageHandler
 
         if (cacheEntry != null)
         {
-            foreach (var txId in request.TransactionIds)
+            // Cap transaction IDs to prevent unbounded response payloads
+            var txIds = request.TransactionIds.Count > 500
+                ? request.TransactionIds.Take(500)
+                : request.TransactionIds;
+
+            foreach (var txId in txIds)
             {
                 var tx = cacheEntry.GetTransaction(txId);
                 if (tx != null)
@@ -267,18 +272,42 @@ public class RelayMessageHandler
         {
             _logger.LogDebug("Relayed transaction notification triggering sync for register {RegisterId}", registerId);
 
+            var correlationId = Guid.NewGuid().ToString();
             var syncRequest = new RelayModels.RegisterSyncRequest
             {
-                CorrelationId = Guid.NewGuid().ToString(),
+                CorrelationId = correlationId,
                 RegisterId = registerId,
                 FromDocketVersion = subscription.LastSyncedDocketVersion
             };
 
-            await _relayCommunication.SendViaRelayAsync(
+            var syncResponse = await _relayCommunication.SendAndWaitAsync<RelayModels.RegisterSyncResponse>(
                 message.SenderPeerId,
                 MessageType.RegisterSyncRequest,
                 syncRequest,
-                cancellationToken);
+                correlationId,
+                cancellationToken: cancellationToken);
+
+            if (syncResponse != null)
+            {
+                var cacheEntry = _registerCache.GetOrCreate(registerId);
+                foreach (var docket in syncResponse.Dockets)
+                {
+                    cacheEntry.AddOrUpdateDocket(new Replication.CachedDocket
+                    {
+                        RegisterId = registerId,
+                        Version = docket.Version,
+                        Data = docket.Data,
+                        DocketHash = docket.DocketHash,
+                        PreviousHash = docket.PreviousHash,
+                        TransactionIds = docket.TransactionIds,
+                        CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(docket.CreatedAt)
+                    });
+                }
+
+                _logger.LogDebug(
+                    "Notification-triggered sync applied {Count} dockets for register {RegisterId}",
+                    syncResponse.Dockets.Count, registerId);
+            }
         }
         finally
         {

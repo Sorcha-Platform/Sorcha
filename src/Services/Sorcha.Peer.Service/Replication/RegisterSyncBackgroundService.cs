@@ -278,6 +278,12 @@ public class RegisterSyncBackgroundService : BackgroundService
                 await liveTask.ConfigureAwait(false);
             }
 
+            // Dispose the per-register semaphore
+            if (_syncSemaphores.TryRemove(registerId, out var semaphore))
+            {
+                semaphore.Dispose();
+            }
+
             await DeleteSubscriptionAsync(registerId, cancellationToken);
             _logger.LogInformation("Unsubscribed from register {RegisterId}", registerId);
         }
@@ -482,5 +488,19 @@ public class RegisterSyncBackgroundService : BackgroundService
         {
             _logger.LogError(ex, "Error deleting subscription for register {RegisterId}", registerId);
         }
+    }
+
+    /// <summary>
+    /// Disposes all per-register sync semaphores and base resources.
+    /// </summary>
+    public override void Dispose()
+    {
+        foreach (var semaphore in _syncSemaphores.Values)
+        {
+            semaphore.Dispose();
+        }
+
+        _syncSemaphores.Clear();
+        base.Dispose();
     }
 }

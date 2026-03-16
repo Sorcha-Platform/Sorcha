@@ -247,6 +247,8 @@ public class RegisterReplicationService
             var fromVersion = subscription.LastSyncedDocketVersion;
             var maxDockets = _syncConfig.DocketPullBatchSize;
             var hasMore = true;
+            var consecutiveNullRetries = 0;
+            const int maxNullRetries = 3;
 
             while (hasMore)
             {
@@ -270,22 +272,27 @@ public class RegisterReplicationService
 
                 if (syncResponse == null)
                 {
-                    // Response size may be too large — retry with halved batch size
-                    if (maxDockets > 1)
+                    consecutiveNullRetries++;
+
+                    // Retry with halved batch size, but cap total null retries
+                    if (consecutiveNullRetries <= maxNullRetries && maxDockets > 1)
                     {
                         maxDockets = Math.Max(1, maxDockets / 2);
                         _logger.LogDebug(
-                            "Relay sync response null for register {RegisterId}, retrying with MaxDockets={MaxDockets}",
-                            registerId, maxDockets);
+                            "Relay sync response null for register {RegisterId}, retry {Retry}/{MaxRetries} with MaxDockets={MaxDockets}",
+                            registerId, consecutiveNullRetries, maxNullRetries, maxDockets);
                         continue;
                     }
 
                     _logger.LogWarning(
-                        "Relay batch sync failed for register {RegisterId} from peer {PeerId} — no response",
-                        registerId, sourcePeer.PeerId);
+                        "Relay batch sync failed for register {RegisterId} from peer {PeerId} — no response after {Retries} retries",
+                        registerId, sourcePeer.PeerId, consecutiveNullRetries);
                     await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
                     return (null, docketsSynced, transactionsSynced);
                 }
+
+                // Reset retry counter on successful response
+                consecutiveNullRetries = 0;
 
                 // Process dockets from response
                 foreach (var docket in syncResponse.Dockets)
