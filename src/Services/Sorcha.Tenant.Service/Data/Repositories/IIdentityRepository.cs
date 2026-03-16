@@ -19,11 +19,6 @@ public interface IIdentityRepository
     Task<UserIdentity?> GetUserByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets a user identity by external IDP user ID.
-    /// </summary>
-    Task<UserIdentity?> GetUserByExternalIdAsync(string externalIdpUserId, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets a user identity by email address.
     /// </summary>
     Task<UserIdentity?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
@@ -57,39 +52,6 @@ public interface IIdentityRepository
     /// Gets the total count of active users across all organizations.
     /// </summary>
     Task<int> GetTotalActiveUserCountAsync(CancellationToken cancellationToken = default);
-
-    // PublicIdentity operations (PassKey/FIDO2, public schema)
-
-    /// <summary>
-    /// Gets a public identity by ID.
-    /// </summary>
-    Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets a public identity by email address.
-    /// </summary>
-    Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets a public identity by PassKey credential ID.
-    /// </summary>
-    Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Creates a new public identity (PassKey registration).
-    /// Optionally persists a passkey credential in the same transaction.
-    /// </summary>
-    Task<PublicIdentity> CreatePublicIdentityAsync(PublicIdentity identity, PasskeyCredential? credential = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Updates an existing public identity (e.g., signature counter).
-    /// </summary>
-    Task<PublicIdentity> UpdatePublicIdentityAsync(PublicIdentity identity, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Deletes a public identity (PassKey revocation).
-    /// </summary>
-    Task DeletePublicIdentityAsync(Guid id, CancellationToken cancellationToken = default);
 
     // ServicePrincipal operations (service-to-service auth, public schema)
 

@@ -141,6 +141,11 @@ public enum IdentityProviderType
     AmazonCognito,
 
     /// <summary>
+    /// GitHub OAuth.
+    /// </summary>
+    GitHub,
+
+    /// <summary>
     /// Generic OpenID Connect compliant provider.
     /// </summary>
     GenericOidc

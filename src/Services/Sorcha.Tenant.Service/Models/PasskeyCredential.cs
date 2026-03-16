@@ -29,7 +29,8 @@ public enum CredentialStatus
 
 /// <summary>
 /// Represents a FIDO2/WebAuthn passkey credential stored in the system.
-/// Can be owned by either an OrgUser (UserIdentity) or a PublicIdentity.
+/// Owned by a PlatformUser (platform-wide identity anchor).
+/// Stored in the public schema.
 /// </summary>
 public class PasskeyCredential
 {
@@ -57,19 +58,9 @@ public class PasskeyCredential
     public long SignatureCounter { get; set; } = 0;
 
     /// <summary>
-    /// Type of the credential owner: "OrgUser" or "PublicIdentity".
+    /// Foreign key to the PlatformUser who owns this credential.
     /// </summary>
-    public string OwnerType { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Foreign key to the owner entity (UserIdentity.Id or PublicIdentity.Id).
-    /// </summary>
-    public Guid OwnerId { get; set; }
-
-    /// <summary>
-    /// Organization ID when the owner is an OrgUser; null for PublicIdentity owners.
-    /// </summary>
-    public Guid? OrganizationId { get; set; }
+    public Guid PlatformUserId { get; set; }
 
     /// <summary>
     /// Human-readable name for this credential (e.g., "My YubiKey", "Work Laptop").
@@ -116,4 +107,9 @@ public class PasskeyCredential
     /// Reason the credential was disabled (e.g., "Signature counter regression detected").
     /// </summary>
     public string? DisabledReason { get; set; }
+
+    /// <summary>
+    /// Navigation property to the owning PlatformUser.
+    /// </summary>
+    public PlatformUser PlatformUser { get; set; } = null!;
 }
