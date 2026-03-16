@@ -229,6 +229,7 @@ public static class SystemRegisterEndpoints
             string blueprintId,
             CancellationToken ct) =>
         {
+            // TODO: add server-side filtering by blueprintId to avoid loading entire catalogue
             var transactions = await service.GetAllBlueprintsAsync(ct);
             var matching = transactions
                 .Where(t => t.BlueprintId == blueprintId)

@@ -961,10 +961,10 @@
                 yesText: "Proceed to Publish");
         }
 
-        // Navigate to publishing workflow
-        // TODO: initiate the Blueprint Publishing workflow with CurrentBlueprint as submission data
-        Snackbar.Add("Blueprint publishing workflow initiated", Severity.Info);
-        Navigation.NavigateTo($"/templates?publish={CurrentBlueprint.Id}");
+        // Navigate to catalogue — full workflow initiation will be wired when
+        // the Blueprint Publishing Blueprint can be instantiated as a workflow instance
+        Snackbar.Add("Opening catalogue to publish blueprint (workflow integration pending)", Severity.Info);
+        Navigation.NavigateTo("/templates");
     }
 
     public void Dispose()

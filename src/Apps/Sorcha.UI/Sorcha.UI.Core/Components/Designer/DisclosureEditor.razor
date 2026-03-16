@@ -41,7 +41,7 @@
                                Class="mb-2">
                         @foreach (var participant in Participants)
                         {
-                            var address = !string.IsNullOrEmpty(participant.WalletAddress) ? participant.WalletAddress : participant.Name;
+                            var address = !string.IsNullOrEmpty(participant.WalletAddress) ? participant.WalletAddress : participant.Id;
                             <MudSelectItem T="string" Value="@address">
                                 @participant.Name @(string.IsNullOrEmpty(participant.WalletAddress) ? "" : $"({participant.WalletAddress[..Math.Min(8, participant.WalletAddress.Length)]}...)")
                             </MudSelectItem>

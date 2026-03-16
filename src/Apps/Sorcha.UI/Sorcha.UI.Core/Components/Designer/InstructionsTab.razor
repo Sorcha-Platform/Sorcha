@@ -153,17 +153,19 @@
 
         var json = _exportService.Export(Blueprint);
         var fileName = $"instructions-{Blueprint.Id}.json";
-        var serializedContent = JsonSerializer.Serialize(json);
 
-        var script = "(function() { " +
-            "let b = new Blob([" + serializedContent + "], { type: 'application/json' }); " +
-            "let u = URL.createObjectURL(b); " +
-            "let a = document.createElement('a'); " +
-            "a.href = u; a.download = '" + fileName + "'; " +
+        // Register download helper once, then call with data as arguments (no eval injection)
+        await JS.InvokeVoidAsync("eval",
+            "window.sorcha = window.sorcha || {}; " +
+            "window.sorcha.downloadFile = window.sorcha.downloadFile || function(fileName, mimeType, content) { " +
+            "var blob = new Blob([content], { type: mimeType }); " +
+            "var url = URL.createObjectURL(blob); " +
+            "var a = document.createElement('a'); " +
+            "a.href = url; a.download = fileName; " +
             "document.body.appendChild(a); a.click(); " +
-            "document.body.removeChild(a); URL.revokeObjectURL(u); })();";
+            "document.body.removeChild(a); URL.revokeObjectURL(url); };");
 
-        await JS.InvokeVoidAsync("eval", script);
+        await JS.InvokeVoidAsync("sorcha.downloadFile", fileName, "application/json", json);
 
         Snackbar.Add("Instruction strings exported", MudBlazor.Severity.Success);
     }
