@@ -1,0 +1,638 @@
+openapi: 3.0.3
+info:
+  title: Sorcha Platform Management API
+  description: Platform-level endpoints for organisation topology management
+  version: 1.0.0
+
+paths:
+  /api/platform/settings:
+    get:
+      operationId: GetPlatformSettings
+      summary: Get platform settings
+      description: Returns platform configuration including public org status and max orgs per user.
+      tags: [Platform Settings]
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Platform settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettingsResponse'
+        '403':
+          description: Not a system admin
+
+  /api/platform/settings/public-org:
+    put:
+      operationId: UpdatePublicOrgSettings
+      summary: Enable or disable the public organisation
+      description: >
+        Atomically toggles the public org status and self-registration setting.
+        When enabled, sets Organization.Status = Active and SelfRegistrationEnabled = true.
+        When disabled, sets Organization.Status = Suspended and SelfRegistrationEnabled = false.
+      tags: [Platform Settings]
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePublicOrgRequest'
+      responses:
+        '200':
+          description: Public org settings updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettingsResponse'
+        '403':
+          description: Not a system admin
+
+  /api/platform/settings/max-orgs:
+    put:
+      operationId: UpdateMaxOrgsPerUser
+      summary: Update maximum orgs per user setting
+      tags: [Platform Settings]
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMaxOrgsRequest'
+      responses:
+        '200':
+          description: Setting updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformSettingsResponse'
+        '403':
+          description: Not a system admin
+
+  /api/platform/organizations:
+    get:
+      operationId: ListOrganizations
+      summary: List all organisations
+      description: Returns all orgs with metadata. System admin only.
+      tags: [Platform Organisations]
+      security:
+        - bearer: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Active, Suspended, Deleted]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: Paginated org list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '403':
+          description: Not a system admin
+
+    post:
+      operationId: CreateOrganization
+      summary: Admin-initiated organisation creation with invite
+      description: >
+        Creates a private org and sends an invitation email to the specified
+        admin. Bypasses the blueprint workflow.
+      tags: [Platform Organisations]
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organisation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetailResponse'
+        '400':
+          description: Validation failed (subdomain taken, invalid format)
+        '403':
+          description: Not a system admin
+
+  /api/platform/organizations/{orgId}/status:
+    put:
+      operationId: UpdateOrganizationStatus
+      summary: Disable or suspend a private organisation
+      description: >
+        Changes org status. Platform orgs (IsPlatformOrg=true) cannot be
+        suspended or deleted.
+      tags: [Platform Organisations]
+      security:
+        - bearer: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrgStatusRequest'
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetailResponse'
+        '400':
+          description: Cannot suspend platform orgs
+        '403':
+          description: Not a system admin
+        '404':
+          description: Organisation not found
+
+  /api/platform/organizations/{orgId}/users:
+    get:
+      operationId: GetOrganizationUsers
+      summary: View organisation user list (audit)
+      description: >
+        Returns user list for an org. Read-only for private orgs.
+        System admin or auditor role required.
+      tags: [Platform Organisations]
+      security:
+        - bearer: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgUserListResponse'
+        '403':
+          description: Insufficient permissions
+        '404':
+          description: Organisation not found
+
+  /api/auth/register:
+    post:
+      operationId: RegisterUser
+      summary: Self-register with email and password
+      description: >
+        Creates a PlatformUser and UserIdentity in the public org.
+        Public org must be enabled. Sends email verification.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered, verification email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Validation failed
+        '409':
+          description: Email already registered
+
+  /api/auth/social/initiate:
+    post:
+      operationId: InitiateSocialLogin
+      summary: Start social login flow
+      description: >
+        Generates OAuth authorization URL for the specified provider.
+        Creates or matches PlatformUser on callback.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocialLoginInitiateRequest'
+      responses:
+        '200':
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialLoginInitiateResponse'
+        '400':
+          description: Provider not configured or public org disabled
+
+  /api/auth/social/callback:
+    post:
+      operationId: CompleteSocialLogin
+      summary: Complete social login with authorization code
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocialLoginCallbackRequest'
+      responses:
+        '200':
+          description: Authenticated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid code or state
+
+  /api/auth/switch-org:
+    post:
+      operationId: SwitchOrganization
+      summary: Switch active organisation context
+      description: >
+        Issues a new JWT scoped to the target org. Validates the user has
+        a PlatformUserOrgMembership for the target org.
+      tags: [Authentication]
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchOrgRequest'
+      responses:
+        '200':
+          description: New JWT issued for target org
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '403':
+          description: Not a member of the target org
+
+  /api/auth/me/organizations:
+    get:
+      operationId: GetMyOrganizations
+      summary: List organisations the current user belongs to
+      description: >
+        Returns all org memberships for the authenticated PlatformUser.
+        Used by the org switcher UI.
+      tags: [Authentication]
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Org membership list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgMembershipListResponse'
+
+  /api/auth/social/link:
+    post:
+      operationId: LinkSocialProvider
+      summary: Link additional social provider to current user
+      tags: [Authentication]
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocialLoginInitiateRequest'
+      responses:
+        '200':
+          description: Authorization URL for linking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialLoginInitiateResponse'
+
+  /api/auth/verify-email:
+    post:
+      operationId: VerifyEmail
+      summary: Verify email address with token
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email verified
+        '400':
+          description: Invalid or expired token
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PlatformSettingsResponse:
+      type: object
+      properties:
+        publicOrgEnabled:
+          type: boolean
+        maxOrgsPerUser:
+          type: integer
+        publicOrgId:
+          type: string
+          format: uuid
+        publicOrgStatus:
+          type: string
+          enum: [Active, Suspended]
+        updatedAt:
+          type: string
+          format: date-time
+
+    UpdatePublicOrgRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+
+    UpdateMaxOrgsRequest:
+      type: object
+      required: [maxOrgsPerUser]
+      properties:
+        maxOrgsPerUser:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name, subdomain, adminEmail]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+        subdomain:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
+        description:
+          type: string
+          maxLength: 500
+        adminEmail:
+          type: string
+          format: email
+
+    OrganizationListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationSummary'
+        totalCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    OrganizationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        subdomain:
+          type: string
+        status:
+          type: string
+          enum: [Active, Suspended, Deleted]
+        orgType:
+          type: string
+          enum: [Standard, Public]
+        isPlatformOrg:
+          type: boolean
+        userCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    OrganizationDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        subdomain:
+          type: string
+        status:
+          type: string
+        orgType:
+          type: string
+        isPlatformOrg:
+          type: boolean
+        userCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        branding:
+          $ref: '#/components/schemas/BrandingConfiguration'
+
+    BrandingConfiguration:
+      type: object
+      properties:
+        logoUrl:
+          type: string
+        primaryColor:
+          type: string
+        secondaryColor:
+          type: string
+        companyTagline:
+          type: string
+
+    UpdateOrgStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [Active, Suspended]
+
+    OrgUserListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrgUserSummary'
+        totalCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    OrgUserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [Active, Suspended, Deleted]
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 256
+
+    SocialLoginInitiateRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          enum: [google, github, microsoft, apple]
+        returnUrl:
+          type: string
+
+    SocialLoginInitiateResponse:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+          format: uri
+        state:
+          type: string
+
+    SocialLoginCallbackRequest:
+      type: object
+      required: [code, state]
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+
+    SwitchOrgRequest:
+      type: object
+      required: [organizationId]
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+
+    OrgMembershipListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrgMembership'
+
+    OrgMembership:
+      type: object
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+        organizationName:
+          type: string
+        subdomain:
+          type: string
+        role:
+          type: string
+        isCurrent:
+          type: boolean
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        tokenType:
+          type: string
+
+    VerifyEmailRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
