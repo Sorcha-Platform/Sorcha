@@ -63,26 +63,16 @@ public class LoginService : ILoginService
 
         try
         {
-            // Look up user by email
-            var user = await _identityRepository.GetUserByEmailAsync(email, ct);
-
-            if (user is null || user.Status != IdentityStatus.Active)
+            // Authenticate against PlatformUser (cross-org identity)
+            var platformUser = await _platformUserService.GetByEmailAsync(email, ct);
+            if (platformUser is null || platformUser.Status != PlatformUserStatus.Active)
             {
-                _logger.LogWarning("Login failed: User not found or inactive - {Email}", email);
+                _logger.LogWarning("Login failed: PlatformUser not found or inactive - {Email}", email);
                 await _revocationService.IncrementFailedAuthAttemptsAsync(email, ct);
                 return new LoginResult(false, Error: "Invalid email or password.");
             }
 
-            // Look up PlatformUser for authentication fields
-            var platformUser = await _dbContext.PlatformUsers
-                .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, ct);
-            if (platformUser is null)
-            {
-                _logger.LogError("Login failed: PlatformUser not found for user {UserId}", user.Id);
-                return new LoginResult(false, Error: "Invalid email or password.");
-            }
-
-            // Validate password with progressive lockout on PlatformUser
+            // Validate password with progressive lockout
             var passwordResult = await _platformUserService.ValidatePasswordAsync(platformUser, password, ct);
 
             if (!passwordResult.Success)
@@ -107,56 +97,156 @@ public class LoginService : ILoginService
                 return new LoginResult(false, Error: "Invalid email or password.");
             }
 
-            // Get user's organization
-            var organization = await _organizationRepository.GetByIdAsync(user.OrganizationId, ct);
-
-            if (organization is null)
-            {
-                _logger.LogError("Login failed: Organization not found - {OrgId}", user.OrganizationId);
-                return new LoginResult(false, Error: "Invalid email or password.");
-            }
-
             // Reset failed attempts on successful password verification
             await _revocationService.ResetFailedAuthAttemptsAsync(email, ct);
 
-            // Check if user has TOTP 2FA or passkeys enabled
-            var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
-            var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(user.PlatformUserId, ct);
-            var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
+            // Get all org memberships with active orgs
+            var memberships = await _platformUserService.GetOrgMembershipsAsync(platformUser.Id, ct);
+            var orgIds = memberships.Select(m => m.OrganizationId).ToList();
 
-            if (totpStatus.IsEnabled || hasActivePasskeys)
+            var activeOrgs = await _dbContext.Organizations
+                .Where(o => orgIds.Contains(o.Id) && o.Status == OrganizationStatus.Active)
+                .ToListAsync(ct);
+
+            if (activeOrgs.Count == 0)
             {
-                // 2FA required: issue a short-lived login token instead of JWT
-                var loginToken = await _totpService.GenerateLoginTokenAsync(user.Id, ct);
-
-                var methods = new List<string>();
-                if (totpStatus.IsEnabled) methods.Add("totp");
-                if (hasActivePasskeys) methods.Add("passkey");
-
-                _logger.LogInformation("Login requires 2FA for user {Email} (UserId: {UserId}), methods: {Methods}",
-                    user.Email, user.Id, string.Join(", ", methods));
-
-                return new LoginResult(true, TwoFactorRequired: true,
-                    LoginToken: loginToken, AvailableMethods: methods);
+                _logger.LogWarning("Login failed: No active org memberships for {Email}", email);
+                return new LoginResult(false, Error: "No active organizations found for this account.");
             }
 
-            // No 2FA — standard login: update timestamp and issue JWT
-            user.LastLoginAt = DateTimeOffset.UtcNow;
-            await _identityRepository.UpdateUserAsync(user, ct);
+            // Single org — auto-select (no picker needed)
+            if (activeOrgs.Count == 1)
+            {
+                return await IssueTokensForOrgAsync(platformUser, activeOrgs[0], memberships, ct);
+            }
 
-            // Generate tokens
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, ct);
+            // Multiple orgs — return org list for user to pick
+            var orgChoices = activeOrgs
+                .Join(memberships, o => o.Id, m => m.OrganizationId, (o, m) => new OrgChoice(
+                    o.Id, o.Name, o.Subdomain ?? "", m.Role))
+                .ToList();
 
-            _logger.LogInformation("User logged in successfully - {Email} (UserId: {UserId}, OrgId: {OrgId})",
-                user.Email, user.Id, organization.Id);
+            // Issue a platform login token (reuse TOTP token infra — short-lived, scoped to platform user)
+            // We use a UserIdentity ID for the token, so pick the first available identity
+            var anyIdentity = await _dbContext.UserIdentities
+                .FirstOrDefaultAsync(u => u.PlatformUserId == platformUser.Id && u.Status == IdentityStatus.Active, ct);
+            if (anyIdentity is null)
+            {
+                _logger.LogWarning("Login failed: No active UserIdentity for {Email}", email);
+                return new LoginResult(false, Error: "No active identity found for this account.");
+            }
 
-            return new LoginResult(true, Tokens: tokenResponse);
+            var platformLoginToken = await _totpService.GenerateLoginTokenAsync(anyIdentity.Id, ct);
+
+            _logger.LogInformation("Login requires org selection for {Email} — {Count} orgs available",
+                email, activeOrgs.Count);
+
+            return new LoginResult(true, OrgSelectionRequired: true,
+                AvailableOrganizations: orgChoices,
+                PlatformLoginToken: platformLoginToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login failed with exception - {Email}", email);
             return new LoginResult(false, Error: "Invalid email or password.");
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default)
+    {
+        // Validate the platform login token
+        var userIdentityId = await _totpService.ValidateLoginTokenAsync(platformLoginToken, ct);
+        if (userIdentityId is null)
+        {
+            _logger.LogWarning("Org selection failed: invalid or expired platform login token");
+            return new LoginResult(false, Error: "Login session expired. Please sign in again.");
+        }
+
+        // Resolve platform user from the identity
+        var sourceIdentity = await _dbContext.UserIdentities
+            .FirstOrDefaultAsync(u => u.Id == userIdentityId.Value, ct);
+        if (sourceIdentity is null)
+        {
+            return new LoginResult(false, Error: "Invalid session.");
+        }
+
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Id == sourceIdentity.PlatformUserId, ct);
+        if (platformUser is null || platformUser.Status != PlatformUserStatus.Active)
+        {
+            return new LoginResult(false, Error: "Account is no longer active.");
+        }
+
+        // Verify membership in chosen org
+        var memberships = await _platformUserService.GetOrgMembershipsAsync(platformUser.Id, ct);
+        if (!memberships.Any(m => m.OrganizationId == organizationId))
+        {
+            _logger.LogWarning("Org selection failed: user {UserId} not a member of org {OrgId}",
+                platformUser.Id, organizationId);
+            return new LoginResult(false, Error: "You are not a member of this organization.");
+        }
+
+        var organization = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (organization is null || organization.Status != OrganizationStatus.Active)
+        {
+            return new LoginResult(false, Error: "Organization is not available.");
+        }
+
+        return await IssueTokensForOrgAsync(platformUser, organization, memberships, ct);
+    }
+
+    /// <summary>
+    /// Issues JWT tokens for a user in a specific org, handling 2FA if needed.
+    /// </summary>
+    private async Task<LoginResult> IssueTokensForOrgAsync(
+        PlatformUser platformUser,
+        Organization organization,
+        IReadOnlyList<PlatformUserOrgMembership> memberships,
+        CancellationToken ct)
+    {
+        // Get UserIdentity in the target org
+        var user = await _dbContext.UserIdentities
+            .FirstOrDefaultAsync(u => u.PlatformUserId == platformUser.Id
+                && u.OrganizationId == organization.Id
+                && u.Status == IdentityStatus.Active, ct);
+
+        if (user is null)
+        {
+            _logger.LogWarning("Login failed: No active UserIdentity in org {OrgId} for platform user {PlatformUserId}",
+                organization.Id, platformUser.Id);
+            return new LoginResult(false, Error: "No active identity found in this organization.");
+        }
+
+        // Check if user has TOTP 2FA or passkeys enabled
+        var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
+        var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(platformUser.Id, ct);
+        var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
+
+        if (totpStatus.IsEnabled || hasActivePasskeys)
+        {
+            var loginToken = await _totpService.GenerateLoginTokenAsync(user.Id, ct);
+            var methods = new List<string>();
+            if (totpStatus.IsEnabled) methods.Add("totp");
+            if (hasActivePasskeys) methods.Add("passkey");
+
+            _logger.LogInformation("Login requires 2FA for {Email} in org {OrgId}, methods: {Methods}",
+                user.Email, organization.Id, string.Join(", ", methods));
+
+            return new LoginResult(true, TwoFactorRequired: true,
+                LoginToken: loginToken, AvailableMethods: methods);
+        }
+
+        // No 2FA — issue JWT
+        user.LastLoginAt = DateTimeOffset.UtcNow;
+        await _identityRepository.UpdateUserAsync(user, ct);
+
+        var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, platformUser.Id, ct);
+
+        _logger.LogInformation("User logged in successfully - {Email} (OrgId: {OrgId})",
+            user.Email, organization.Id);
+
+        return new LoginResult(true, Tokens: tokenResponse);
     }
 
     /// <inheritdoc />

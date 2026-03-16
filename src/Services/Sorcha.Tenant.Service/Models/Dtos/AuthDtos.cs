@@ -303,6 +303,64 @@ public record Verify2FaRequest
 }
 
 /// <summary>
+/// Response when login requires org selection (user has multiple active orgs).
+/// </summary>
+public record OrgSelectionResponse
+{
+    /// <summary>Whether org selection is required.</summary>
+    [JsonPropertyName("requires_org_selection")]
+    public bool RequiresOrgSelection { get; init; } = true;
+
+    /// <summary>Short-lived token for completing org selection.</summary>
+    [JsonPropertyName("platform_login_token")]
+    public required string PlatformLoginToken { get; init; }
+
+    /// <summary>Available organisations to choose from.</summary>
+    [JsonPropertyName("organizations")]
+    public required IReadOnlyList<OrgSelectionEntry> Organizations { get; init; }
+
+    /// <summary>Human-readable message.</summary>
+    [JsonPropertyName("message")]
+    public string Message { get; init; } = "Please select an organization to sign in to.";
+}
+
+/// <summary>
+/// An organisation entry in the org selection response.
+/// </summary>
+public record OrgSelectionEntry
+{
+    /// <summary>Organisation ID.</summary>
+    [JsonPropertyName("organization_id")]
+    public Guid OrganizationId { get; init; }
+
+    /// <summary>Organisation display name.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>Organisation subdomain.</summary>
+    [JsonPropertyName("subdomain")]
+    public string Subdomain { get; init; } = string.Empty;
+
+    /// <summary>User's role in this organisation.</summary>
+    [JsonPropertyName("role")]
+    public string Role { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Request to complete login after org selection.
+/// </summary>
+public record CompleteOrgSelectionRequest
+{
+    /// <summary>Platform login token from the org selection response.</summary>
+    [JsonPropertyName("platform_login_token")]
+    public required string PlatformLoginToken { get; init; }
+
+    /// <summary>The chosen organisation ID.</summary>
+    [JsonPropertyName("organization_id")]
+    public required Guid OrganizationId { get; init; }
+}
+
+/// <summary>
 /// Request to switch the active organisation context.
 /// Issues a new JWT scoped to the target org.
 /// </summary>

@@ -31,6 +31,14 @@ public static class TestDataSeeder
     public static readonly Guid MemberUserId = new("00000000-0000-0000-0001-000000000002");
     public static readonly Guid AuditorUserId = new("00000000-0000-0000-0001-000000000003");
 
+    // Well-known PlatformUser IDs (stable, not random)
+    public static readonly Guid AdminPlatformUserId = new("00000000-0000-0000-0002-000000000001");
+    public static readonly Guid MemberPlatformUserId = new("00000000-0000-0000-0002-000000000002");
+    public static readonly Guid AuditorPlatformUserId = new("00000000-0000-0000-0002-000000000003");
+
+    /// <summary>Default test password for all seeded users.</summary>
+    public const string DefaultTestPassword = "TestPassword123!";
+
     /// <summary>
     /// Seeds test data into the database context (idempotent - safe to call multiple times).
     /// </summary>
@@ -54,39 +62,75 @@ public static class TestDataSeeder
 
         context.Organizations.Add(testOrg);
 
-        // Create admin user
+        // Create PlatformUsers (cross-org identity with password hashes)
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(DefaultTestPassword);
+
+        var adminPlatformUser = new PlatformUser
+        {
+            Id = AdminPlatformUserId,
+            Email = "admin@test-org.sorcha.io",
+            DisplayName = "Admin User",
+            PasswordHash = passwordHash,
+            EmailVerified = true,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var memberPlatformUser = new PlatformUser
+        {
+            Id = MemberPlatformUserId,
+            Email = "member@test-org.sorcha.io",
+            DisplayName = "Member User",
+            PasswordHash = passwordHash,
+            EmailVerified = true,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var auditorPlatformUser = new PlatformUser
+        {
+            Id = AuditorPlatformUserId,
+            Email = "auditor@test-org.sorcha.io",
+            DisplayName = "Auditor User",
+            PasswordHash = passwordHash,
+            EmailVerified = true,
+            Status = PlatformUserStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        context.PlatformUsers.AddRange(adminPlatformUser, memberPlatformUser, auditorPlatformUser);
+
+        // Create admin user identity
         var adminUser = new UserIdentity
         {
             Id = AdminUserId,
             Email = "admin@test-org.sorcha.io",
             DisplayName = "Admin User",
-            PlatformUserId = Guid.NewGuid(),
+            PlatformUserId = AdminPlatformUserId,
             Status = IdentityStatus.Active,
             Roles = new[] { UserRole.Administrator },
             OrganizationId = TestOrganizationId,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        // Create member user
+        // Create member user identity
         var memberUser = new UserIdentity
         {
             Id = MemberUserId,
             Email = "member@test-org.sorcha.io",
             DisplayName = "Member User",
-            PlatformUserId = Guid.NewGuid(),
+            PlatformUserId = MemberPlatformUserId,
             Status = IdentityStatus.Active,
             Roles = new[] { UserRole.Member },
             OrganizationId = TestOrganizationId,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        // Create auditor user
+        // Create auditor user identity
         var auditorUser = new UserIdentity
         {
             Id = AuditorUserId,
             Email = "auditor@test-org.sorcha.io",
             DisplayName = "Auditor User",
-            PlatformUserId = Guid.NewGuid(),
+            PlatformUserId = AuditorPlatformUserId,
             Status = IdentityStatus.Active,
             Roles = new[] { UserRole.Auditor },
             OrganizationId = TestOrganizationId,
@@ -94,6 +138,31 @@ public static class TestDataSeeder
         };
 
         context.UserIdentities.AddRange(adminUser, memberUser, auditorUser);
+
+        // Create org memberships
+        context.PlatformUserOrgMemberships.AddRange(
+            new PlatformUserOrgMembership
+            {
+                PlatformUserId = AdminPlatformUserId,
+                OrganizationId = TestOrganizationId,
+                Role = UserRole.Administrator.ToString(),
+                JoinedAt = DateTimeOffset.UtcNow
+            },
+            new PlatformUserOrgMembership
+            {
+                PlatformUserId = MemberPlatformUserId,
+                OrganizationId = TestOrganizationId,
+                Role = UserRole.Member.ToString(),
+                JoinedAt = DateTimeOffset.UtcNow
+            },
+            new PlatformUserOrgMembership
+            {
+                PlatformUserId = AuditorPlatformUserId,
+                OrganizationId = TestOrganizationId,
+                Role = UserRole.Auditor.ToString(),
+                JoinedAt = DateTimeOffset.UtcNow
+            }
+        );
 
         // Create test service principal with Argon2id-hashed secret
         // ServiceAuthService.VerifyClientSecret expects salt(16) + hash(32) = 48 bytes

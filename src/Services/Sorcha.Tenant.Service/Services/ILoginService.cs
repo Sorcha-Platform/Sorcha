@@ -36,8 +36,24 @@ public record LoginResult(
     bool TwoFactorRequired = false,
     string? LoginToken = null,
     List<string>? AvailableMethods = null,
+    bool OrgSelectionRequired = false,
+    List<OrgChoice>? AvailableOrganizations = null,
+    string? PlatformLoginToken = null,
     string? Error = null,
     LoginErrorCode ErrorCode = LoginErrorCode.None);
+
+/// <summary>
+/// An organisation the user can choose to log into.
+/// </summary>
+/// <param name="OrganizationId">Organisation ID.</param>
+/// <param name="OrganizationName">Display name.</param>
+/// <param name="Subdomain">URL subdomain.</param>
+/// <param name="Role">User's role in this org.</param>
+public record OrgChoice(
+    Guid OrganizationId,
+    string OrganizationName,
+    string Subdomain,
+    string Role);
 
 /// <summary>
 /// Authenticates users with email and password. Handles BCrypt verification,
@@ -68,4 +84,14 @@ public interface ILoginService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens scoped to the target org, or 2FA challenge.</returns>
     Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default);
+
+    /// <summary>
+    /// Completes login after org selection. Uses the platform login token issued during
+    /// the initial login to identify the user, then issues a JWT scoped to the chosen org.
+    /// </summary>
+    /// <param name="platformLoginToken">Short-lived token from the org-selection login response.</param>
+    /// <param name="organizationId">The chosen organisation ID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Login result with tokens scoped to the chosen org, or 2FA challenge.</returns>
+    Task<LoginResult> CompleteOrgSelectionAsync(string platformLoginToken, Guid organizationId, CancellationToken ct = default);
 }

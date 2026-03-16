@@ -52,6 +52,18 @@ public static class AuthEndpoints
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // Complete login after org selection (public endpoint)
+        group.MapPost("/select-org", SelectOrg)
+            .WithName("SelectOrg")
+            .WithSummary("Complete login by selecting an organisation")
+            .WithDescription("After a login response with requires_org_selection=true, submit the platform login token "
+                + "and chosen organisation ID to receive access/refresh tokens.")
+            .AllowAnonymous()
+            .Produces<TokenResponse>()
+            .Produces<TwoFactorLoginResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
         // Token refresh (public endpoint - requires valid refresh token)
         group.MapPost("/token/refresh", RefreshToken)
             .WithName("RefreshToken")
@@ -235,6 +247,24 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
+        // Org selection required: return org list with platform login token
+        if (result.OrgSelectionRequired)
+        {
+            return TypedResults.Ok(new OrgSelectionResponse
+            {
+                PlatformLoginToken = result.PlatformLoginToken!,
+                Organizations = result.AvailableOrganizations!
+                    .Select(o => new OrgSelectionEntry
+                    {
+                        OrganizationId = o.OrganizationId,
+                        Name = o.OrganizationName,
+                        Subdomain = o.Subdomain,
+                        Role = o.Role
+                    })
+                    .ToList()
+            });
+        }
+
         // 2FA required: return login token and available methods
         if (result.TwoFactorRequired)
         {
@@ -246,6 +276,47 @@ public static class AuthEndpoints
         }
 
         // Standard login: return tokens
+        return TypedResults.Ok(result.Tokens);
+    }
+
+    private static async Task<IResult> SelectOrg(
+        CompleteOrgSelectionRequest request,
+        ILoginService loginService,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.PlatformLoginToken))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["platform_login_token"] = ["Platform login token is required"]
+            });
+        }
+
+        if (request.OrganizationId == Guid.Empty)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["organization_id"] = ["Organization ID is required"]
+            });
+        }
+
+        var result = await loginService.CompleteOrgSelectionAsync(
+            request.PlatformLoginToken, request.OrganizationId, cancellationToken);
+
+        if (!result.Success)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (result.TwoFactorRequired)
+        {
+            return TypedResults.Ok(new TwoFactorLoginResponse
+            {
+                LoginToken = result.LoginToken!,
+                AvailableMethods = result.AvailableMethods!.ToArray()
+            });
+        }
+
         return TypedResults.Ok(result.Tokens);
     }
 
