@@ -279,4 +279,86 @@ public class BlueprintLayoutServiceTests
         node.DetailSummary.Should().Contain("2 disclosures");
         node.DetailSummary.Should().Contain("1 route");
     }
+
+    [Fact]
+    public void ComputeLayout_MultiParticipant_AssignsSwimlaneColumns()
+    {
+        var participants = new List<Participant>
+        {
+            new() { Id = "p1", Name = "Alice", Organisation = "Org", WalletAddress = "w1" },
+            new() { Id = "p2", Name = "Bob", Organisation = "Org", WalletAddress = "w2" },
+            new() { Id = "p3", Name = "Charlie", Organisation = "Org", WalletAddress = "w3" }
+        };
+        var actions = new List<BlueprintAction>
+        {
+            new() { Id = 0, Title = "Submit", BlueprintId = "bp", Sender = "p1", IsStartingAction = true,
+                     Routes = [new Route { Id = "r1", NextActionIds = [1] }] },
+            new() { Id = 1, Title = "Review", BlueprintId = "bp", Sender = "p2",
+                     Routes = [new Route { Id = "r2", NextActionIds = [2] }] },
+            new() { Id = 2, Title = "Approve", BlueprintId = "bp", Sender = "p3",
+                     Routes = [new Route { Id = "r3", NextActionIds = [] }] }
+        };
+        var bp = CreateBlueprint(participants: participants, actions: actions);
+
+        var result = _sut.ComputeLayout(bp);
+
+        var submitNode = result.Nodes.First(n => n.ActionId == 0);
+        var reviewNode = result.Nodes.First(n => n.ActionId == 1);
+        var approveNode = result.Nodes.First(n => n.ActionId == 2);
+
+        // Each participant should be in a different swimlane column
+        submitNode.SwimlaneColumn.Should().Be(0, "Alice is first participant");
+        reviewNode.SwimlaneColumn.Should().Be(1, "Bob is second participant");
+        approveNode.SwimlaneColumn.Should().Be(2, "Charlie is third participant");
+    }
+
+    [Fact]
+    public void ComputeLayout_SingleParticipant_AllInColumn0()
+    {
+        var participants = new List<Participant>
+        {
+            new() { Id = "p1", Name = "Alice", Organisation = "Org", WalletAddress = "w1" }
+        };
+        var actions = new List<BlueprintAction>
+        {
+            new() { Id = 0, Title = "Step 1", BlueprintId = "bp", Sender = "p1", IsStartingAction = true,
+                     Routes = [new Route { Id = "r1", NextActionIds = [1] }] },
+            new() { Id = 1, Title = "Step 2", BlueprintId = "bp", Sender = "p1",
+                     Routes = [new Route { Id = "r2", NextActionIds = [] }] }
+        };
+        var bp = CreateBlueprint(participants: participants, actions: actions);
+
+        var result = _sut.ComputeLayout(bp);
+
+        result.Nodes.Should().AllSatisfy(n => n.SwimlaneColumn.Should().Be(0));
+    }
+
+    [Fact]
+    public void ComputeLayout_SwimlaneColumns_AlignByParticipantX()
+    {
+        var participants = new List<Participant>
+        {
+            new() { Id = "p1", Name = "Alice", Organisation = "Org", WalletAddress = "w1" },
+            new() { Id = "p2", Name = "Bob", Organisation = "Org", WalletAddress = "w2" }
+        };
+        var actions = new List<BlueprintAction>
+        {
+            new() { Id = 0, Title = "Step 1", BlueprintId = "bp", Sender = "p1", IsStartingAction = true,
+                     Routes = [new Route { Id = "r1", NextActionIds = [1] }] },
+            new() { Id = 1, Title = "Step 2", BlueprintId = "bp", Sender = "p2",
+                     Routes = [new Route { Id = "r2", NextActionIds = [2] }] },
+            new() { Id = 2, Title = "Step 3", BlueprintId = "bp", Sender = "p1",
+                     Routes = [new Route { Id = "r3", NextActionIds = [] }] }
+        };
+        var bp = CreateBlueprint(participants: participants, actions: actions);
+
+        var result = _sut.ComputeLayout(bp);
+
+        var step1 = result.Nodes.First(n => n.ActionId == 0);
+        var step3 = result.Nodes.First(n => n.ActionId == 2);
+
+        // Same participant (Alice) should have same X position (same column)
+        step1.Position.X.Should().Be(step3.Position.X,
+            "actions by the same participant should align in the same swimlane column");
+    }
 }

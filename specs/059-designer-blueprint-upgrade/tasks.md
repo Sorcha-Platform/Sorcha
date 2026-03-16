@@ -80,14 +80,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Create `BlueprintDiagram.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintDiagram.razor` — unified component with `Mode` parameter (Edit, Preview, Compact); Edit mode uses ActionNodeWidget (unlocked), Preview mode uses ReadOnlyActionNodeWidget (locked, auto-layout), Compact mode uses simplified title-only nodes with smaller spacing; all modes use BlueprintLayoutService for positioning
-- [ ] T024 [US2] Extend `BlueprintLayoutService.cs` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/BlueprintLayoutService.cs` — add swimlane column assignment by sender participant, increase spacing (generous padding around actions), add participant header labels above each column, improve edge routing for divergent/convergent paths
-- [ ] T025 [US2] Add decision diamond rendering for divergent paths in `BlueprintDiagram.razor` — where an action has multiple routes, render a diamond-shaped decision indicator with labelled condition arrows for each route
-- [ ] T026 [US2] Add convergent path merge indicators in `BlueprintDiagram.razor` — where multiple routes target the same action, render a merge indicator at the target node
-- [ ] T027 [US2] Improve back-edge rendering for cycles — curved arcs (not straight lines) with distinct styling (purple dashed), cycle target badge already exists in ReadOnlyActionNodeWidget
-- [ ] T028 [US2] Refactor `BlueprintViewerDiagram.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintViewerDiagram.razor` — delegate to `BlueprintDiagram` in Preview mode, remove duplicated layout and node creation logic
-- [ ] T029 [US2] Replace `BlueprintPreview.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Chat/BlueprintPreview.razor` — replace flat timeline list with `BlueprintDiagram` in Preview mode (or Compact mode for narrow chat pane)
-- [ ] T030 [US2] Write unit tests for swimlane layout in `tests/Sorcha.UI.Core.Tests/Services/BlueprintLayoutServiceTests.cs` — test multi-participant blueprint assigns correct columns, single-participant stays single column, edge routing crosses lanes correctly
+- [x] T023 [US2] Create `BlueprintDiagram.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintDiagram.razor` — unified component with `Mode` parameter (Edit, Preview, Compact); Edit mode uses ActionNodeWidget (unlocked), Preview mode uses ReadOnlyActionNodeWidget (locked, auto-layout), Compact mode uses simplified title-only nodes with smaller spacing; all modes use BlueprintLayoutService for positioning
+- [x] T024 [US2] Extend `BlueprintLayoutService.cs` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/BlueprintLayoutService.cs` — add swimlane column assignment by sender participant, increase spacing (generous padding around actions), add participant header labels above each column, improve edge routing for divergent/convergent paths
+- [x] T025 [US2] Add decision diamond rendering for divergent paths in `BlueprintDiagram.razor` — where an action has multiple routes, render a diamond-shaped decision indicator with labelled condition arrows for each route
+- [x] T026 [US2] Add convergent path merge indicators in `BlueprintDiagram.razor` — where multiple routes target the same action, render a merge indicator at the target node
+- [x] T027 [US2] Improve back-edge rendering for cycles — curved arcs (not straight lines) with distinct styling (purple dashed), cycle target badge already exists in ReadOnlyActionNodeWidget
+- [x] T028 [US2] Refactor `BlueprintViewerDiagram.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintViewerDiagram.razor` — delegate to `BlueprintDiagram` in Preview mode, remove duplicated layout and node creation logic
+- [x] T029 [US2] Replace `BlueprintPreview.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Chat/BlueprintPreview.razor` — replace flat timeline list with `BlueprintDiagram` in Preview mode (or Compact mode for narrow chat pane)
+- [x] T030 [US2] Write unit tests for swimlane layout in `tests/Sorcha.UI.Core.Tests/Services/BlueprintLayoutServiceTests.cs` — test multi-participant blueprint assigns correct columns, single-participant stays single column, edge routing crosses lanes correctly
 
 **Checkpoint**: US2 complete — same diagram renders in all contexts with swimlanes, directional arrows, and cycle arcs.
 

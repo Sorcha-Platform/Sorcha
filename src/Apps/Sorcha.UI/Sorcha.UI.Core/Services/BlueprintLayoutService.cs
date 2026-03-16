@@ -15,10 +15,11 @@ namespace Sorcha.UI.Core.Services;
 public class BlueprintLayoutService
 {
     private const double NodeWidth = 280;
-    private const double VerticalSpacing = 180;
-    private const double HorizontalSpacing = 320;
-    private const double StartXOffset = 50;
-    private const double StartYOffset = 50;
+    private const double VerticalSpacing = 220;
+    private const double HorizontalSpacing = 360;
+    private const double StartXOffset = 80;
+    private const double StartYOffset = 80;
+    private const double SwimlaneHeaderHeight = 40;
 
     /// <summary>
     /// Computes a positioned layout for the given blueprint.
@@ -51,26 +52,30 @@ public class BlueprintLayoutService
         // Identify cycle targets
         var cycleTargets = new HashSet<int>(edges.Where(e => e.IsBackEdge).Select(e => e.TargetActionId));
 
+        // Build swimlane column mapping: participant sender → column index
+        var swimlaneColumns = BuildSwimlaneColumns(actions, participants);
+
         // Order nodes within each layer
         var layerGroups = actions
             .GroupBy(a => layers.GetValueOrDefault(a.Id, 0))
             .OrderBy(g => g.Key)
             .ToList();
 
-        // Compute positions
+        // Compute positions using swimlane columns
         var nodes = new List<DiagramNode>();
         double maxX = 0;
 
         foreach (var group in layerGroups)
         {
             var layer = group.Key;
-            var actionsInLayer = group.OrderBy(a => GetParentOrder(a.Id, adjacency, layers)).ToList();
+            var actionsInLayer = group.OrderBy(a => swimlaneColumns.GetValueOrDefault(a.Sender ?? "", 0)).ToList();
 
             for (int i = 0; i < actionsInLayer.Count; i++)
             {
                 var action = actionsInLayer[i];
-                double x = StartXOffset + i * HorizontalSpacing;
-                double y = StartYOffset + layer * VerticalSpacing;
+                var column = swimlaneColumns.GetValueOrDefault(action.Sender ?? "", i);
+                double x = StartXOffset + column * HorizontalSpacing;
+                double y = StartYOffset + SwimlaneHeaderHeight + layer * VerticalSpacing;
 
                 bool isTerminal = IsTerminalAction(action);
                 string summary = BuildDetailSummary(action);
@@ -84,7 +89,8 @@ public class BlueprintLayoutService
                     IsStarting: action.IsStartingAction,
                     IsTerminal: isTerminal,
                     IsCycleTarget: cycleTargets.Contains(action.Id),
-                    DetailSummary: summary));
+                    DetailSummary: summary,
+                    SwimlaneColumn: column));
 
                 if (x + NodeWidth > maxX) maxX = x + NodeWidth;
             }
@@ -96,6 +102,38 @@ public class BlueprintLayoutService
         double totalWidth = maxX + StartXOffset;
 
         return new DiagramLayout(nodes, edges, legend, totalWidth, totalHeight);
+    }
+
+    /// <summary>
+    /// Builds a mapping of participant sender ID → swimlane column index.
+    /// Column order follows participant list order.
+    /// </summary>
+    private static Dictionary<string, int> BuildSwimlaneColumns(
+        List<BlueprintAction> actions, List<Participant> participants)
+    {
+        var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        // Use participant list order for columns
+        for (int i = 0; i < participants.Count; i++)
+        {
+            // Map both ID and Name as potential sender values
+            if (!string.IsNullOrEmpty(participants[i].Id))
+                columns.TryAdd(participants[i].Id, i);
+            if (!string.IsNullOrEmpty(participants[i].Name))
+                columns.TryAdd(participants[i].Name, i);
+        }
+
+        // Assign columns for senders not in participant list
+        int nextColumn = participants.Count;
+        foreach (var action in actions)
+        {
+            if (!string.IsNullOrEmpty(action.Sender) && !columns.ContainsKey(action.Sender))
+            {
+                columns[action.Sender] = nextColumn++;
+            }
+        }
+
+        return columns;
     }
 
     private static Dictionary<int, List<int>> BuildAdjacencyGraph(

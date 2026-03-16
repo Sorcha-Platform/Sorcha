@@ -1,5 +1,7 @@
 @using BlueprintModel = Sorcha.Blueprint.Models.Blueprint
 @using Sorcha.UI.Core.Models.Chat
+@using Sorcha.UI.Core.Models.Designer
+@using Sorcha.UI.Core.Components.Designer
 
 <div class="blueprint-preview-container">
     @if (Blueprint == null)
@@ -71,7 +73,7 @@
                 }
             </MudPaper>
 
-            <!-- Actions -->
+            <!-- Actions Diagram -->
             <MudPaper Elevation="1" Class="pa-4 mb-4">
                 <div class="d-flex align-center mb-3">
                     <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-2" />
@@ -80,123 +82,9 @@
 
                 @if (Blueprint.Actions.Any())
                 {
-                    <MudTimeline TimelinePosition="TimelinePosition.Start">
-                        @foreach (var action in Blueprint.Actions.OrderBy(a => a.Id))
-                        {
-                            <MudTimelineItem Color="@GetActionColor(action)" Size="MudBlazor.Size.Medium">
-                                <ItemContent>
-                                    <MudPaper Elevation="0" Class="pa-3 action-card">
-                                        <div class="d-flex align-center justify-space-between mb-2">
-                                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
-                                                @action.Title
-                                            </MudText>
-                                            @if (action.IsStartingAction)
-                                            {
-                                                <MudChip T="string" Color="Color.Primary" Size="MudBlazor.Size.Small">
-                                                    Start
-                                                </MudChip>
-                                            }
-                                        </div>
-
-                                        @if (!string.IsNullOrEmpty(action.Description))
-                                        {
-                                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                                                @action.Description
-                                            </MudText>
-                                        }
-
-                                        @if (!string.IsNullOrEmpty(action.Sender))
-                                        {
-                                            <div class="d-flex align-center gap-2 mb-2">
-                                                <MudIcon Icon="@Icons.Material.Filled.Send" Size="MudBlazor.Size.Small" Color="Color.Secondary" />
-                                                <MudText Typo="Typo.caption">
-                                                    Sender: @GetParticipantName(action.Sender)
-                                                </MudText>
-                                            </div>
-                                        }
-
-                                        @if (action.DataSchemas?.Any() == true)
-                                        {
-                                            <MudExpansionPanel Text="@($"Data Fields ({GetSchemaFieldCount(action)} fields)")"
-                                                               Dense="true"
-                                                               Class="mt-2 mb-1 schema-panel">
-                                                <div class="schema-fields">
-                                                    @foreach (var fieldInfo in GetSchemaFields(action))
-                                                    {
-                                                        <div class="schema-field">
-                                                            <MudIcon Icon="@GetFieldTypeIcon(fieldInfo.Type)"
-                                                                     Size="MudBlazor.Size.Small"
-                                                                     Color="Color.Primary"
-                                                                     Class="mr-1" />
-                                                            <span class="field-name">@fieldInfo.Name</span>
-                                                            <MudChip T="string" Size="MudBlazor.Size.Small"
-                                                                     Variant="Variant.Text"
-                                                                     Color="Color.Default">
-                                                                @fieldInfo.Type
-                                                            </MudChip>
-                                                            @if (fieldInfo.IsRequired)
-                                                            {
-                                                                <MudChip T="string" Size="MudBlazor.Size.Small"
-                                                                         Color="Color.Warning"
-                                                                         Variant="Variant.Outlined">
-                                                                    Required
-                                                                </MudChip>
-                                                            }
-                                                            @if (!string.IsNullOrEmpty(fieldInfo.Constraints))
-                                                            {
-                                                                <span class="field-constraints">@fieldInfo.Constraints</span>
-                                                            }
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </MudExpansionPanel>
-                                        }
-
-                                        @if (action.Disclosures?.Any() == true)
-                                        {
-                                            <MudExpansionPanel Text="@($"Disclosures ({action.Disclosures.Count()})")"
-                                                               Dense="true"
-                                                               Class="mt-1 mb-1 disclosure-panel">
-                                                <div class="disclosure-rules">
-                                                    @foreach (var disclosure in action.Disclosures)
-                                                    {
-                                                        <div class="disclosure-rule">
-                                                            <MudIcon Icon="@Icons.Material.Filled.Person"
-                                                                     Size="MudBlazor.Size.Small"
-                                                                     Color="Color.Info"
-                                                                     Class="mr-1" />
-                                                            <span class="participant-name">@GetParticipantName(disclosure.ParticipantAddress)</span>
-                                                            <MudIcon Icon="@Icons.Material.Filled.Visibility"
-                                                                     Size="MudBlazor.Size.Small"
-                                                                     Color="Color.Secondary"
-                                                                     Class="mx-1" />
-                                                            <span class="disclosed-fields">
-                                                                @string.Join(", ", disclosure.DataPointers.Take(3))
-                                                                @if (disclosure.DataPointers.Count > 3)
-                                                                {
-                                                                    <span>... +@(disclosure.DataPointers.Count - 3) more</span>
-                                                                }
-                                                            </span>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </MudExpansionPanel>
-                                        }
-
-                                        @if (action.Routes?.Any() == true)
-                                        {
-                                            <div class="d-flex align-center gap-2 mt-2">
-                                                <MudIcon Icon="@Icons.Material.Filled.AltRoute" Size="MudBlazor.Size.Small" Color="Color.Info" />
-                                                <MudText Typo="Typo.caption" Color="Color.Info">
-                                                    @action.Routes.Count() routing rule(s)
-                                                </MudText>
-                                            </div>
-                                        }
-                                    </MudPaper>
-                                </ItemContent>
-                            </MudTimelineItem>
-                        }
-                    </MudTimeline>
+                    <BlueprintDiagram Blueprint="Blueprint"
+                                      Mode="DiagramMode.Compact"
+                                      Height="350px" />
                 }
                 else
                 {
@@ -317,123 +205,5 @@
             p.Id == participantId || p.WalletAddress == participantId);
 
         return participant?.Name ?? participantId;
-    }
-
-    private Color GetActionColor(Sorcha.Blueprint.Models.Action action)
-    {
-        if (action.IsStartingAction)
-            return Color.Primary;
-
-        return Color.Default;
-    }
-
-    private int GetSchemaFieldCount(Sorcha.Blueprint.Models.Action action)
-    {
-        return action.DataSchemas?.Sum(s => GetPropertiesCount(s)) ?? 0;
-    }
-
-    private int GetPropertiesCount(System.Text.Json.JsonDocument schema)
-    {
-        try
-        {
-            if (schema.RootElement.TryGetProperty("properties", out var props))
-            {
-                return props.EnumerateObject().Count();
-            }
-        }
-        catch (Exception)
-        {
-            // Resilience: malformed schema JSON returns zero count rather than failing
-        }
-        return 0;
-    }
-
-    private IEnumerable<SchemaFieldInfo> GetSchemaFields(Sorcha.Blueprint.Models.Action action)
-    {
-        var fields = new List<SchemaFieldInfo>();
-
-        if (action.DataSchemas == null)
-            return fields;
-
-        foreach (var schema in action.DataSchemas)
-        {
-            try
-            {
-                if (!schema.RootElement.TryGetProperty("properties", out var props))
-                    continue;
-
-                var required = new HashSet<string>();
-                if (schema.RootElement.TryGetProperty("required", out var reqArray))
-                {
-                    foreach (var req in reqArray.EnumerateArray())
-                    {
-                        if (req.GetString() is string s)
-                            required.Add(s);
-                    }
-                }
-
-                foreach (var prop in props.EnumerateObject())
-                {
-                    var fieldType = "string";
-                    var constraints = new List<string>();
-
-                    if (prop.Value.TryGetProperty("type", out var typeProp))
-                        fieldType = typeProp.GetString() ?? "string";
-
-                    if (prop.Value.TryGetProperty("format", out var formatProp))
-                        constraints.Add($"format: {formatProp.GetString()}");
-
-                    if (prop.Value.TryGetProperty("minLength", out var minLen))
-                        constraints.Add($"min: {minLen.GetInt32()}");
-
-                    if (prop.Value.TryGetProperty("maxLength", out var maxLen))
-                        constraints.Add($"max: {maxLen.GetInt32()}");
-
-                    if (prop.Value.TryGetProperty("minimum", out var min))
-                        constraints.Add($">= {min.GetDouble()}");
-
-                    if (prop.Value.TryGetProperty("maximum", out var max))
-                        constraints.Add($"<= {max.GetDouble()}");
-
-                    if (prop.Value.TryGetProperty("pattern", out var pattern))
-                        constraints.Add("regex");
-
-                    if (prop.Value.TryGetProperty("enum", out var enumVals))
-                        constraints.Add($"{enumVals.GetArrayLength()} options");
-
-                    fields.Add(new SchemaFieldInfo
-                    {
-                        Name = prop.Name,
-                        Type = fieldType,
-                        IsRequired = required.Contains(prop.Name),
-                        Constraints = constraints.Any() ? string.Join(", ", constraints) : null
-                    });
-                }
-            }
-            catch (Exception)
-            {
-                // Resilience: skip schemas with malformed JSON rather than failing the preview
-            }
-        }
-
-        return fields;
-    }
-
-    private string GetFieldTypeIcon(string type) => type switch
-    {
-        "string" => Icons.Material.Filled.TextFields,
-        "number" or "integer" => Icons.Material.Filled.Numbers,
-        "boolean" => Icons.Material.Filled.ToggleOn,
-        "array" => Icons.Material.Filled.List,
-        "object" => Icons.Material.Filled.DataObject,
-        _ => Icons.Material.Filled.QuestionMark
-    };
-
-    private record SchemaFieldInfo
-    {
-        public string Name { get; init; } = "";
-        public string Type { get; init; } = "string";
-        public bool IsRequired { get; init; }
-        public string? Constraints { get; init; }
     }
 }

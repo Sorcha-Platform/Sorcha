@@ -1,0 +1,274 @@
+@using Blazor.Diagrams
+@using Blazor.Diagrams.Core.Geometry
+@using Blazor.Diagrams.Core.Models
+@using Blazor.Diagrams.Options
+@using Blazor.Diagrams.Components
+@using Sorcha.UI.Core.Models.Designer
+@using Sorcha.UI.Core.Services
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+
+@inject BlueprintLayoutService LayoutService
+
+@* Unified blueprint diagram supporting Edit, Preview, and Compact modes *@
+
+<!-- Participant Swimlane Headers -->
+@if (_layout is not null && _layout.ParticipantLegend.Count > 0 && Mode != DiagramMode.Compact)
+{
+    <div class="swimlane-headers">
+        @foreach (var p in _layout.ParticipantLegend)
+        {
+            <div class="swimlane-header" style="background-color: @(p.Colour)20; border-bottom: 3px solid @(p.Colour);">
+                <span class="swimlane-dot" style="background-color: @p.Colour"></span>
+                <span class="swimlane-name">@p.Name</span>
+            </div>
+        }
+    </div>
+}
+
+<!-- Participant Legend (compact inline) -->
+@if (_layout is not null && _layout.ParticipantLegend.Count > 0 && Mode == DiagramMode.Compact)
+{
+    <div class="compact-legend">
+        @foreach (var p in _layout.ParticipantLegend)
+        {
+            <span class="legend-dot" style="background-color: @p.Colour"></span>
+            <span class="legend-label">@p.Name</span>
+        }
+    </div>
+}
+
+<!-- Diagram Canvas -->
+<div class="diagram-container @GetModeClass()" style="height: @Height">
+    @if (_diagram is not null && _layout is not null)
+    {
+        <CascadingValue Value="_layout.ParticipantLegend" Name="ParticipantLegend" IsFixed="false">
+            <CascadingValue Value="_layout" Name="DiagramLayout" IsFixed="false">
+                <CascadingValue Value="_diagram" IsFixed="true">
+                    <DiagramCanvas></DiagramCanvas>
+                </CascadingValue>
+            </CascadingValue>
+        </CascadingValue>
+    }
+    else if (_loading)
+    {
+        <div class="diagram-loading">
+            <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" />
+            <MudText Typo="Typo.caption" Class="mt-2">Building diagram...</MudText>
+        </div>
+    }
+</div>
+
+<style>
+    .swimlane-headers {
+        display: flex;
+        gap: 8px;
+        padding: 0 80px;
+        margin-bottom: 4px;
+    }
+
+    .swimlane-header {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 4px 4px 0 0;
+        min-width: 280px;
+    }
+
+    .swimlane-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .swimlane-name {
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .compact-legend {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+    }
+
+    .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .legend-label {
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .diagram-container {
+        position: relative;
+        overflow: auto;
+    }
+
+    .diagram-container.mode-compact {
+        max-height: 300px;
+    }
+
+    .diagram-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public Sorcha.Blueprint.Models.Blueprint Blueprint { get; set; } = null!;
+
+    /// <summary>
+    /// Diagram display mode: Edit (interactive), Preview (read-only), Compact (minimal)
+    /// </summary>
+    [Parameter]
+    public DiagramMode Mode { get; set; } = DiagramMode.Preview;
+
+    [Parameter]
+    public string Height { get; set; } = "400px";
+
+    [Parameter]
+    public EventCallback<BlueprintAction> OnActionClicked { get; set; }
+
+    private BlazorDiagram? _diagram;
+    private DiagramLayout? _layout;
+    private bool _loading;
+
+    protected override void OnParametersSet()
+    {
+        if (Blueprint is not null)
+        {
+            BuildDiagram();
+        }
+    }
+
+    private void BuildDiagram()
+    {
+        _loading = true;
+
+        try
+        {
+            _layout = LayoutService.ComputeLayout(Blueprint);
+
+            var options = new BlazorDiagramOptions
+            {
+                AllowMultiSelection = Mode == DiagramMode.Edit
+            };
+            options.Zoom.Enabled = Mode != DiagramMode.Compact;
+            options.Links.DefaultColor = "#666666";
+
+            _diagram = new BlazorDiagram(options);
+
+            // Register node widget based on mode
+            if (Mode == DiagramMode.Edit)
+            {
+                _diagram.RegisterComponent<ActionNodeModel, ActionNodeWidget>();
+            }
+            else
+            {
+                _diagram.RegisterComponent<ActionNodeModel, ReadOnlyActionNodeWidget>();
+            }
+
+            // Create nodes
+            var nodeMap = new Dictionary<int, ActionNodeModel>();
+            foreach (var diagramNode in _layout.Nodes)
+            {
+                var action = Blueprint.Actions.FirstOrDefault(a => a.Id == diagramNode.ActionId);
+                if (action is null) continue;
+
+                var nodeModel = new ActionNodeModel(action, diagramNode.Position);
+                nodeModel.Locked = Mode != DiagramMode.Edit;
+                nodeModel.AddPort(PortAlignment.Top);
+                nodeModel.AddPort(PortAlignment.Bottom);
+                _diagram.Nodes.Add(nodeModel);
+                nodeMap[action.Id] = nodeModel;
+            }
+
+            // Create links
+            foreach (var edge in _layout.Edges)
+            {
+                if (edge.TargetActionId < 0) continue;
+
+                if (!nodeMap.TryGetValue(edge.SourceActionId, out var sourceNode)) continue;
+                if (!nodeMap.TryGetValue(edge.TargetActionId, out var targetNode)) continue;
+
+                var sourcePort = sourceNode.Ports.FirstOrDefault(p => p.Alignment == PortAlignment.Bottom);
+                var targetPort = targetNode.Ports.FirstOrDefault(p => p.Alignment == PortAlignment.Top);
+
+                if (sourcePort is not null && targetPort is not null)
+                {
+                    var link = new LinkModel(sourcePort, targetPort);
+                    link.Color = GetEdgeColor(edge.EdgeType);
+
+                    // Back-edges get dashed styling via CSS class
+                    if (edge.IsBackEdge)
+                    {
+                        link.Color = "#9c27b0"; // Purple for cycles
+                    }
+
+                    if (edge.Label is not null && Mode != DiagramMode.Compact)
+                    {
+                        link.Labels.Add(new LinkLabelModel(link, edge.Label));
+                    }
+                    _diagram.Links.Add(link);
+                }
+            }
+
+            // Handle selection callback
+            if (OnActionClicked.HasDelegate)
+            {
+                _diagram.SelectionChanged += OnSelectionChanged;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnSelectionChanged(Blazor.Diagrams.Core.Models.Base.Model model)
+    {
+        if (model is ActionNodeModel actionNode && actionNode.Selected && OnActionClicked.HasDelegate)
+        {
+            OnActionClicked.InvokeAsync(actionNode.Action);
+        }
+    }
+
+    private string GetModeClass() => Mode switch
+    {
+        DiagramMode.Edit => "mode-edit",
+        DiagramMode.Preview => "mode-preview",
+        DiagramMode.Compact => "mode-compact",
+        _ => ""
+    };
+
+    private static string GetEdgeColor(EdgeType edgeType) => edgeType switch
+    {
+        EdgeType.Default => "#1976d2",
+        EdgeType.Conditional => "#ff9800",
+        EdgeType.Rejection => "#f44336",
+        EdgeType.BackEdge => "#9c27b0",
+        EdgeType.Terminal => "#f44336",
+        _ => "#666666"
+    };
+
+    public void Dispose()
+    {
+        if (_diagram is not null)
+        {
+            _diagram.SelectionChanged -= OnSelectionChanged;
+        }
+    }
+}

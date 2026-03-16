@@ -17,4 +17,5 @@ public record DiagramNode(
     bool IsStarting,
     bool IsTerminal,
     bool IsCycleTarget,
-    string DetailSummary);
+    string DetailSummary,
+    int SwimlaneColumn = 0);
