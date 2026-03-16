@@ -157,6 +157,8 @@
         .event-type-RelayForwarded { color: #f0883e; }
         .event-type-Error { color: #ff7b72; }
         .event-type-PeerHeartbeatRejected { color: #f97583; }
+        .event-type-PeerReplaced { color: #da8ee7; }
+        .event-type-PeerEvicted { color: #f97583; }
 
         .filter-bar {
             display: flex;
@@ -263,15 +265,16 @@
                 <table>
                     <thead>
                         <tr>
+                            <th>Node Name</th>
                             <th>Peer ID</th>
-                            <th>Address</th>
+                            <th>Source IP</th>
                             <th>Status</th>
                             <th>Last Seen</th>
                             <th>Heartbeats</th>
                         </tr>
                     </thead>
                     <tbody id="peer-table-body">
-                        <tr><td colspan="5" class="no-data">No peers connected</td></tr>
+                        <tr><td colspan="6" class="no-data">No peers connected</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -294,14 +297,16 @@
         var EVENT_TYPE_NAMES = [
             'PeerConnected','PeerDisconnected','PeerHeartbeat',
             'RegisterAdvertised','PeerListRequested','PeerExchanged',
-            'RelayForwarded','Error','PeerHeartbeatRejected'
+            'RelayForwarded','Error','PeerHeartbeatRejected',
+            'PeerReplaced','PeerEvicted'
         ];
         var EVENT_TYPE_COLORS = {
             PeerConnected: '#3fb950', PeerDisconnected: '#f85149',
             PeerHeartbeat: '#58a6ff', RegisterAdvertised: '#d2a8ff',
             PeerListRequested: '#79c0ff', PeerExchanged: '#d29922',
             RelayForwarded: '#f0883e', Error: '#ff7b72',
-            PeerHeartbeatRejected: '#f97583'
+            PeerHeartbeatRejected: '#f97583',
+            PeerReplaced: '#da8ee7', PeerEvicted: '#f97583'
         };
         var activeFilters = {};
         EVENT_TYPE_NAMES.forEach(function(t) { activeFilters[t] = true; });
@@ -426,7 +431,7 @@
             if (peers.length === 0) {
                 var tr = document.createElement('tr');
                 var td = createTextEl('td', 'No peers connected', 'no-data');
-                td.colSpan = 5;
+                td.colSpan = 6;
                 tr.appendChild(td);
                 tbody.appendChild(tr);
                 return;
@@ -436,12 +441,20 @@
                 var peer = peers[p];
                 var row = document.createElement('tr');
 
+                var nameCell = createTextEl('td', peer.nodeName || '--');
+                nameCell.style.color = peer.nodeName ? '#58a6ff' : '#484f58';
+                nameCell.style.fontWeight = peer.nodeName ? '600' : 'normal';
+                row.appendChild(nameCell);
+
                 var idCell = createTextEl('td', shortenPeerId(peer.peerId));
                 idCell.title = peer.peerId;
+                idCell.style.color = '#8b949e';
+                idCell.style.fontFamily = 'Consolas, monospace';
+                idCell.style.fontSize = '12px';
                 row.appendChild(idCell);
 
-                row.appendChild(createTextEl('td',
-                    (peer.ipAddress || peer.address || '--') + ':' + (peer.port || '')));
+                var sourceIp = peer.ipAddress || '--';
+                row.appendChild(createTextEl('td', sourceIp));
 
                 var statusText = peer.isHealthy ? 'Healthy' : 'Unhealthy';
                 var statusClass = peer.isHealthy ? 'peer-healthy' : 'peer-unhealthy';
