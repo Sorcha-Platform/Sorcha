@@ -116,13 +116,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T035 [US2] Create social login initiate endpoint `POST /api/auth/social/initiate` — generate OAuth authorization URL with PKCE for requested provider; validate public org is enabled and provider is configured in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T036 [US2] Create social login callback endpoint `POST /api/auth/social/callback` — exchange authorization code, resolve/create PlatformUser + PlatformSocialLogin, create UserIdentity in public org if new, create PlatformUserOrgMembership, issue JWT in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T037 [US2] Create social provider link endpoint `POST /api/auth/social/link` (RequireAuthenticated) — initiate OAuth flow for linking additional provider to existing PlatformUser in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T038 [US2] Implement social login resolution logic in `PlatformUserService.cs`: find by (Provider, Subject) → existing user; find by email → link provider to existing; neither → create new PlatformUser + PlatformSocialLogin in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
-- [ ] T039 [US2] Add FluentValidation validators for `SocialLoginInitiateRequest` and `SocialLoginCallbackRequest` in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T040 [P] [US2] Create social login UI components in Main UI — provider buttons (Google, GitHub, Microsoft, Apple), OAuth redirect handling, callback processing in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Auth/SocialLogin.razor`
-- [ ] T041 [US2] Update login page to show social login buttons when public org is enabled with configured providers in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Auth/Login.razor`
+- [X] T035 [US2] Create social login initiate endpoint `POST /api/auth/social/initiate` — generate OAuth authorization URL with PKCE for requested provider; validate public org is enabled and provider is configured in `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs`
+- [X] T036 [US2] Create social login callback endpoint `POST /api/auth/social/callback` — exchange authorization code, resolve/create PlatformUser + PlatformSocialLogin, create UserIdentity in public org if new, create PlatformUserOrgMembership, issue JWT in `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs`
+- [X] T037 [US2] Create social provider link endpoint `POST /api/auth/social/link` (RequireAuthenticated) — initiate OAuth flow for linking additional provider to existing PlatformUser in `src/Services/Sorcha.Tenant.Service/Endpoints/SocialLoginEndpoints.cs`
+- [X] T038 [US2] Implement social login resolution logic in `PlatformUserService.cs`: find by (Provider, Subject) → existing user; find by email → link provider to existing; neither → create new PlatformUser + PlatformSocialLogin in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
+- [X] T039 [US2] Add inline validators for `SocialLoginInitiateRequest` and `SocialLoginCallbackRequest` (project uses inline validation, not FluentValidation) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/SocialLoginDtos.cs`
+- [X] T040 [P] [US2] Social login UI: implemented SocialCallback server-rendered page with full OAuth exchange, user provisioning, and JWT redirect in `src/Services/Sorcha.Tenant.Service/Pages/Auth/SocialCallback.cshtml.cs`; updated Signup page social JS to use new endpoint
+- [X] T041 [US2] Added social login buttons (Google, Microsoft, GitHub, Apple) with JS to Login page in `src/Services/Sorcha.Tenant.Service/Pages/Auth/Login.cshtml`
 
 **Checkpoint**: Users can sign up and log in via social providers. Platform identity is created. Social provider linking works.
 

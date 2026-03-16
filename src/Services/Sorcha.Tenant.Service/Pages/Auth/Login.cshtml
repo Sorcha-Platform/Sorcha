@@ -61,6 +61,21 @@
             <button type="button" class="passkey-btn" id="passkey-signin-btn">
                 <span>&#128274;</span> Sign in with Passkey
             </button>
+
+            <div class="d-grid gap-2 mt-3">
+                <button type="button" class="social-btn" data-provider="Google">
+                    Continue with Google
+                </button>
+                <button type="button" class="social-btn" data-provider="Microsoft">
+                    Continue with Microsoft
+                </button>
+                <button type="button" class="social-btn" data-provider="GitHub">
+                    Continue with GitHub
+                </button>
+                <button type="button" class="social-btn" data-provider="Apple">
+                    Continue with Apple
+                </button>
+            </div>
         }
 
         <div class="text-center mt-4">
@@ -83,6 +98,29 @@
             sorcha.webauthn.signIn('/api/auth/passkey/assertion/options',
                                    '/api/auth/passkey/assertion/verify',
                                    returnUrl);
+        });
+
+        // Social login buttons
+        document.querySelectorAll('.social-btn[data-provider]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var provider = this.getAttribute('data-provider').toLowerCase();
+                fetch('/api/auth/social/initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: provider })
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.authorizationUrl) {
+                        window.location.href = data.authorizationUrl;
+                    } else {
+                        alert('Social login is not available. The public organisation may be disabled.');
+                    }
+                })
+                .catch(function() {
+                    alert('Failed to initiate social login. Please try again.');
+                });
+            });
         });
     </script>
 }

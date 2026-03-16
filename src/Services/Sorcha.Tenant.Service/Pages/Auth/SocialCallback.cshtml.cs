@@ -3,43 +3,67 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Models.Dtos;
+using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Pages.Auth;
 
 /// <summary>
 /// Server-rendered Social OAuth callback page model.
-/// TODO: Reimplemented in US2 (T036) — social login flow with PlatformSocialLogin model.
-/// Currently a minimal stub that redirects to the login page.
+/// Handles the OAuth provider redirect, exchanges the code for user claims,
+/// resolves/creates PlatformUser, and issues a JWT via fragment redirect.
 /// </summary>
 public class SocialCallbackModel : PageModel
 {
+    private readonly ISocialLoginService _socialLoginService;
+    private readonly IPlatformUserService _platformUserService;
+    private readonly IIdentityRepository _identityRepository;
+    private readonly IOrganizationRepository _organizationRepository;
+    private readonly ITokenService _tokenService;
+    private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SocialCallbackModel"/> class.
     /// </summary>
-    public SocialCallbackModel(ILogger<SocialCallbackModel> logger)
+    public SocialCallbackModel(
+        ISocialLoginService socialLoginService,
+        IPlatformUserService platformUserService,
+        IIdentityRepository identityRepository,
+        IOrganizationRepository organizationRepository,
+        ITokenService tokenService,
+        TenantDbContext db,
+        ILogger<SocialCallbackModel> logger)
     {
+        _socialLoginService = socialLoginService;
+        _platformUserService = platformUserService;
+        _identityRepository = identityRepository;
+        _organizationRepository = organizationRepository;
+        _tokenService = tokenService;
+        _db = db;
         _logger = logger;
     }
 
     /// <summary>
     /// Error message to display when the social login flow fails.
-    /// Null when processing is successful.
     /// </summary>
     public string? ErrorMessage { get; set; }
 
     /// <summary>
     /// True during the initial page render while the OAuth exchange is in progress.
-    /// Becomes false after processing completes (with success redirect or error).
     /// </summary>
     public bool IsProcessing { get; set; } = true;
 
     /// <summary>
     /// Handles GET requests from the OAuth provider redirect.
-    /// TODO: Reimplemented in US2 (T036) — full social login exchange, user provisioning, and JWT issuance.
+    /// Exchanges the authorization code, resolves/creates user, and redirects with JWT.
     /// </summary>
-    public Task<IActionResult> OnGetAsync(
+    public async Task<IActionResult> OnGetAsync(
         string? provider,
         string? code,
         string? state,
@@ -48,11 +72,82 @@ public class SocialCallbackModel : PageModel
     {
         IsProcessing = false;
 
-        _logger.LogWarning(
-            "Social callback received for provider {Provider} but social login is not yet reimplemented (US2 T036)",
-            provider);
+        if (!string.IsNullOrEmpty(error))
+        {
+            _logger.LogWarning("Social login callback received error from provider {Provider}: {Error}", provider, error);
+            ErrorMessage = "The sign-in was cancelled or failed. Please try again.";
+            return Page();
+        }
 
-        ErrorMessage = "Social login is temporarily unavailable. Please use another sign-in method.";
-        return Task.FromResult<IActionResult>(Page());
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state) || string.IsNullOrEmpty(provider))
+        {
+            ErrorMessage = "Invalid callback parameters. Please try signing in again.";
+            return Page();
+        }
+
+        // Exchange code for claims
+        var callbackResult = await _socialLoginService.ExchangeCodeAsync(provider, code, state, ct);
+        if (!callbackResult.Success || string.IsNullOrEmpty(callbackResult.Subject))
+        {
+            _logger.LogWarning("Social login exchange failed for {Provider}: {Error}", provider, callbackResult.Error);
+            ErrorMessage = callbackResult.Error ?? "Authentication failed. Please try again.";
+            return Page();
+        }
+
+        // Resolve or create PlatformUser
+        var (platformUser, isNew) = await _platformUserService.ResolveOrCreateSocialUserAsync(
+            provider, callbackResult.Subject, callbackResult.Email, callbackResult.DisplayName, ct);
+
+        // Ensure UserIdentity in public org
+        var publicOrgId = WellKnownIds.PublicOrgId;
+        var userIdentity = await _db.UserIdentities
+            .FirstOrDefaultAsync(u => u.PlatformUserId == platformUser.Id && u.OrganizationId == publicOrgId, ct);
+
+        if (userIdentity is null)
+        {
+            userIdentity = new UserIdentity
+            {
+                OrganizationId = publicOrgId,
+                PlatformUserId = platformUser.Id,
+                Email = platformUser.Email,
+                DisplayName = platformUser.DisplayName,
+                Roles = [UserRole.Member],
+                Status = IdentityStatus.Active,
+                ProvisionedVia = ProvisioningMethod.SocialLogin,
+                ProfileCompleted = !string.IsNullOrWhiteSpace(platformUser.Email)
+                    && !string.IsNullOrWhiteSpace(platformUser.DisplayName)
+            };
+            await _identityRepository.CreateUserAsync(userIdentity, ct);
+        }
+
+        // Ensure org membership
+        var memberships = await _platformUserService.GetOrgMembershipsAsync(platformUser.Id, ct);
+        if (!memberships.Any(m => m.OrganizationId == publicOrgId))
+        {
+            await _platformUserService.AddOrgMembershipAsync(
+                platformUser.Id, publicOrgId, UserRole.Member.ToString(), ct);
+        }
+
+        // Update last login
+        userIdentity.LastLoginAt = DateTimeOffset.UtcNow;
+        await _identityRepository.UpdateUserAsync(userIdentity, ct);
+
+        // Get public org and issue JWT
+        var publicOrg = await _organizationRepository.GetByIdAsync(publicOrgId, ct);
+        if (publicOrg is null)
+        {
+            ErrorMessage = "Platform configuration error. Please contact support.";
+            return Page();
+        }
+
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, ct);
+
+        _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
+            platformUser.Id, provider, isNew);
+
+        // Redirect to app with token in fragment
+        var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
+                       $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
+        return Redirect($"/app/#{fragment}");
     }
 }

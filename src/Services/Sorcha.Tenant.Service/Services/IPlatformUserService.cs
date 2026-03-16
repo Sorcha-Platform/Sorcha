@@ -85,4 +85,17 @@ public interface IPlatformUserService
     /// <returns>The newly created organisation membership.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the user already has a membership in the organisation.</exception>
     Task<PlatformUserOrgMembership> AddOrgMembershipAsync(Guid platformUserId, Guid organizationId, string role, CancellationToken ct);
+
+    /// <summary>
+    /// Resolves or creates a PlatformUser from social login claims.
+    /// Resolution order: (1) find by provider+subject, (2) find by email and link provider, (3) create new user + link.
+    /// </summary>
+    /// <param name="provider">Social provider name (e.g., "google", "github").</param>
+    /// <param name="subject">Provider's unique user identifier.</param>
+    /// <param name="email">Email address from the social provider.</param>
+    /// <param name="displayName">Display name from the social provider.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved or created platform user, and whether it was newly created.</returns>
+    Task<(PlatformUser User, bool IsNew)> ResolveOrCreateSocialUserAsync(
+        string provider, string subject, string? email, string? displayName, CancellationToken ct);
 }

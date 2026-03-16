@@ -169,4 +169,61 @@ public class PlatformUserService : IPlatformUserService
 
         return membership;
     }
+
+    /// <inheritdoc />
+    public async Task<(PlatformUser User, bool IsNew)> ResolveOrCreateSocialUserAsync(
+        string provider, string subject, string? email, string? displayName, CancellationToken ct)
+    {
+        // Step 1: Find by provider + subject (returning user)
+        var existingByProvider = await GetByProviderSubjectAsync(provider, subject, ct);
+        if (existingByProvider is not null)
+        {
+            // Update last used timestamp on the social login
+            var socialLogin = await _db.PlatformSocialLogins
+                .FirstAsync(s => s.Provider == provider && s.Subject == subject, ct);
+            socialLogin.LastUsedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Social login resolved existing user {UserId} via {Provider}/{Subject}",
+                existingByProvider.Id, provider, subject);
+
+            return (existingByProvider, false);
+        }
+
+        // Step 2: Find by email and link provider (existing user, new provider)
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var existingByEmail = await GetByEmailAsync(email, ct);
+            if (existingByEmail is not null)
+            {
+                await LinkSocialLoginAsync(existingByEmail.Id, provider, subject, email, displayName, ct);
+
+                _logger.LogInformation(
+                    "Social login linked {Provider}/{Subject} to existing user {UserId} via email match",
+                    provider, subject, existingByEmail.Id);
+
+                return (existingByEmail, false);
+            }
+        }
+
+        // Step 3: Create new PlatformUser + link social login
+        var resolvedDisplayName = displayName ?? email?.Split('@')[0] ?? "User";
+        var newUser = await CreateAsync(email ?? $"{provider}_{subject}@noemail.local", resolvedDisplayName, null, ct);
+        await LinkSocialLoginAsync(newUser.Id, provider, subject, email, displayName, ct);
+
+        // Mark email as verified for social login users (provider verified it)
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            newUser.EmailVerified = true;
+            newUser.EmailVerifiedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        _logger.LogInformation(
+            "Social login created new user {UserId} via {Provider}/{Subject}",
+            newUser.Id, provider, subject);
+
+        return (newUser, true);
+    }
 }
