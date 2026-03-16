@@ -481,6 +481,20 @@ public static class ServiceCollectionExtensions
             return new OrganizationAdminService(httpClient, auditService, logger);
         });
 
+        // Org Provisioning Service (self-service org creation)
+        services.AddScoped<IOrgProvisioningClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            return new OrgProvisioningClientService(httpClient);
+        });
+
         // Validator Admin Service
         services.AddScoped<IValidatorAdminService>(sp =>
         {

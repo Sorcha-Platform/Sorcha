@@ -161,12 +161,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T049 [US4] Create `create-organisation-v1.json` blueprint template — participants (requestor, system), actions (Submit Request → Validate → Provision → Confirm), schemas for org name/subdomain input in `src/Services/Sorcha.Blueprint.Service/Templates/`
-- [ ] T050 [US4] Seed "Create Organisation" blueprint into public org during bootstrap in `SystemRegisterBootstrapper` or `DatabaseInitializer` following existing blueprint seeding pattern in `src/Services/Sorcha.Blueprint.Service/`
-- [ ] T051 [US4] Implement org provisioning service method — atomic creation: create Organization + per-org schema + admin UserIdentity + PlatformUserOrgMembership + increment CreatedOrgsCount; rollback on any failure in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs` (or new `OrgProvisioningService.cs`)
-- [ ] T052 [US4] Implement validation logic for org creation: check EmailVerified, check CreatedOrgsCount < MaxOrgsPerUser, validate subdomain format (3-50 chars, lowercase alphanumeric + hyphens), check subdomain uniqueness in `src/Services/Sorcha.Tenant.Service/Services/`
-- [ ] T053 [US4] Add FluentValidation validator for org creation request (name 3-100, subdomain 3-50 with pattern, description max 500) in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T054 [P] [US4] Create "Create Organisation" page in Main UI — org name, subdomain, description fields; blueprint trigger; progress display in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CreateOrganization.razor`
+- [X] T049 [US4] Created `create-organisation-v1.json` blueprint template with participants (requestor, system), actions (Submit Request → Validate → Provision → Confirm), and JSON Schema for org name/subdomain input in `blueprints/templates/create-organisation-v1.json`
+- [X] T050 [US4] Seeded "Create Organisation" blueprint into system register during bootstrap in `SystemRegisterBootstrapper.SeedBlueprintsIfMissingAsync` following existing blueprint seeding pattern in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
+- [X] T051 [US4] Implemented `OrgProvisioningService` with atomic creation: Organization + admin UserIdentity + PlatformUserOrgMembership + increment CreatedOrgsCount + audit log in single SaveChangesAsync; rollback via EF Core transaction on failure in `src/Services/Sorcha.Tenant.Service/Services/OrgProvisioningService.cs`
+- [X] T052 [US4] Implemented validation in `OrgProvisioningService.ValidateAsync`: check EmailVerified, check PlatformUser.Status Active, check CreatedOrgsCount < MaxOrgsPerUser, validate subdomain format/availability via OrganizationService.ValidateSubdomainAsync, validate name 3-100 and description max 500
+- [X] T053 [US4] DTOs defined as `ProvisionOrgRequest` and `OrgProvisioningResult` records in `IOrgProvisioningService.cs` with inline validation in service (project uses inline validation, not FluentValidation); endpoint added as `POST /api/auth/create-org` in `AuthEndpoints.cs`
+- [X] T054 [P] [US4] Created "Create Organisation" MudBlazor page with name, subdomain, description fields; success/error display; `OrgProvisioningClientService` for HTTP calls in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/CreateOrganization.razor`
 
 **Checkpoint**: Public org members can self-service create private orgs. Atomic provisioning with full rollback on failure.
 

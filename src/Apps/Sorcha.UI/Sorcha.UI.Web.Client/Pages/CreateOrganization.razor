@@ -1,0 +1,111 @@
+@page "/create-organization"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Services
+@inject IOrgProvisioningClientService OrgService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Create Organisation</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+        Create Organisation
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Create a new private organisation. You will be the administrator.
+    </MudText>
+
+    <MudPaper Class="pa-6" Elevation="2">
+        @if (_success)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">
+                Organisation <strong>@_resultName</strong> created successfully!
+            </MudAlert>
+            <MudText Typo="Typo.body2" Class="mb-2">Subdomain: <code>@_resultSubdomain</code></MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/"))">
+                Go to Dashboard
+            </MudButton>
+        }
+        else
+        {
+            <MudTextField @bind-Value="_name" Label="Organisation Name" Required="true"
+                          RequiredError="Name is required" Counter="100" MaxLength="100"
+                          HelperText="3-100 characters" Variant="Variant.Outlined" Class="mb-4" />
+
+            <MudTextField @bind-Value="_subdomain" Label="Subdomain" Required="true"
+                          RequiredError="Subdomain is required" Counter="50" MaxLength="50"
+                          HelperText="Lowercase letters, numbers, and hyphens (3-50 chars)"
+                          Variant="Variant.Outlined" Class="mb-4"
+                          Adornment="Adornment.End" AdornmentText=".sorcha.io" />
+
+            <MudTextField @bind-Value="_description" Label="Description" Lines="3"
+                          Counter="500" MaxLength="500"
+                          HelperText="Optional description for your organisation"
+                          Variant="Variant.Outlined" Class="mb-4" />
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_loading || string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_subdomain))"
+                       OnClick="SubmitAsync" FullWidth="true">
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Creating...</span>
+                }
+                else
+                {
+                    <span>Create Organisation</span>
+                }
+            </MudButton>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string _name = string.Empty;
+    private string _subdomain = string.Empty;
+    private string? _description;
+    private string? _error;
+    private bool _loading;
+    private bool _success;
+    private string? _resultName;
+    private string? _resultSubdomain;
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        _loading = true;
+
+        try
+        {
+            var result = await OrgService.CreateOrganizationAsync(_name, _subdomain.ToLowerInvariant(), _description);
+            if (result.Success)
+            {
+                _success = true;
+                _resultName = result.OrganizationName;
+                _resultSubdomain = result.Subdomain;
+                Snackbar.Add("Organisation created!", Severity.Success);
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to create organisation.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

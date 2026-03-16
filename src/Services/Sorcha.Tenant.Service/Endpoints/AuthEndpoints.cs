@@ -157,6 +157,19 @@ public static class AuthEndpoints
             .Produces<SuccessResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // Create organisation (self-service, authenticated)
+        group.MapPost("/create-org", CreateOrganization)
+            .WithName("CreateOrganization")
+            .WithSummary("Create a new private organisation")
+            .WithDescription("Self-service org creation for public org members. Validates eligibility "
+                + "(email verified, within org limit, subdomain available) and atomically provisions "
+                + "the org with the caller as admin.")
+            .RequireAuthorization()
+            .Produces<OrgProvisioningResult>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         return app;
     }
 
@@ -609,5 +622,37 @@ public static class AuthEndpoints
             logger.LogWarning(ex, "Passkey 2FA assertion verification failed for user {UserId}", userId.Value);
             return TypedResults.Unauthorized();
         }
+    }
+
+    /// <summary>
+    /// POST /api/auth/create-org — self-service organisation creation.
+    /// </summary>
+    private static async Task<IResult> CreateOrganization(
+        ProvisionOrgRequest request,
+        ClaimsPrincipal principal,
+        IOrgProvisioningService provisioningService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await provisioningService.ProvisionAsync(platformUserId, request, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.ErrorCode is "EmailNotVerified" or "UserInactive" or "UserNotFound")
+                return TypedResults.Json(result, statusCode: StatusCodes.Status403Forbidden);
+
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [result.ErrorCode ?? "error"] = [result.Error ?? "Validation failed."]
+            });
+        }
+
+        return TypedResults.Ok(result);
     }
 }
