@@ -155,6 +155,15 @@ public class Action
     };
 
     /// <summary>
+    /// Guidance text for participants executing this action (Markdown, max 5000 chars).
+    /// Provides step-by-step instructions, compliance notes, or contextual help.
+    /// </summary>
+    [DataAnnotations.MaxLength(5000)]
+    [JsonPropertyName("instructions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Instructions { get; set; }
+
+    /// <summary>
     /// Rejection routing configuration.
     /// Defines where the workflow routes when a participant rejects this action.
     /// If not specified, rejection is not allowed for this action.

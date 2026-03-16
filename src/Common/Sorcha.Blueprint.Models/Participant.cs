@@ -78,6 +78,15 @@ public class Participant : IEquatable<Participant>
     public Dictionary<string, JsonNode>? AdditionalProperties { get; set; }
 
     /// <summary>
+    /// Role-specific guidance text for this participant (Markdown, max 2000 chars).
+    /// Explains what this participant is expected to do in the workflow.
+    /// </summary>
+    [DataAnnotations.MaxLength(2000)]
+    [JsonPropertyName("instructions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Instructions { get; set; }
+
+    /// <summary>
     /// Whether to use a stealth address for privacy
     /// </summary>
     [JsonPropertyName("useStealthAddress")]
