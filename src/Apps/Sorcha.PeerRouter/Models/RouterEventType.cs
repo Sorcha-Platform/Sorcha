@@ -16,5 +16,7 @@ public enum RouterEventType
     PeerExchanged,
     RelayForwarded,
     Error,
-    PeerHeartbeatRejected
+    PeerHeartbeatRejected,
+    PeerReplaced,
+    PeerEvicted
 }

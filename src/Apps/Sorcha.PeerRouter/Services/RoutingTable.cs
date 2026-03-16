@@ -26,6 +26,7 @@ public sealed class RoutingTable
     /// <summary>
     /// Registers or updates a peer in the routing table.
     /// Returns true if the peer was newly added, false if updated.
+    /// If a stale (unhealthy) entry exists at the same IP:port, it is replaced.
     /// </summary>
     public bool RegisterPeer(PeerInfo peerInfo)
     {
@@ -34,6 +35,35 @@ public sealed class RoutingTable
             string.Equals(peerInfo.PeerId, _selfPeerId, StringComparison.OrdinalIgnoreCase))
         {
             return false;
+        }
+
+        // Address-based dedup: remove stale entries at the same IP:port
+        var newIp = ExtractIp(peerInfo.Address);
+        var newPort = peerInfo.Port;
+
+        foreach (var (existingId, existing) in _entries)
+        {
+            if (existingId == peerInfo.PeerId)
+                continue;
+
+            if (!existing.IsHealthy &&
+                existing.Port == newPort &&
+                string.Equals(existing.IpAddress, newIp, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_entries.TryRemove(existingId, out _))
+                {
+                    _eventBuffer.Add(RouterEvent.Create(
+                        RouterEventType.PeerReplaced,
+                        existingId,
+                        existing.IpAddress,
+                        existing.Port,
+                        detail: new Dictionary<string, object?>
+                        {
+                            ["replaced_by"] = peerInfo.PeerId,
+                            ["reason"] = "Stale entry at same address replaced by new registration"
+                        }));
+                }
+            }
         }
 
         var isNew = false;
@@ -162,6 +192,40 @@ public sealed class RoutingTable
         }
 
         return markedUnhealthy;
+    }
+
+    /// <summary>
+    /// Removes peer entries that have been unhealthy for longer than the eviction timeout.
+    /// Returns the list of evicted peers.
+    /// </summary>
+    public IReadOnlyList<RoutingEntry> EvictStalePeers(TimeSpan evictionTimeout)
+    {
+        var cutoff = DateTimeOffset.UtcNow - evictionTimeout;
+        var evicted = new List<RoutingEntry>();
+
+        foreach (var (peerId, entry) in _entries)
+        {
+            if (!entry.IsHealthy && entry.LastSeen < cutoff)
+            {
+                if (_entries.TryRemove(peerId, out _))
+                {
+                    evicted.Add(entry);
+                    _eventBuffer.Add(RouterEvent.Create(
+                        RouterEventType.PeerEvicted,
+                        entry.PeerId,
+                        entry.IpAddress,
+                        entry.Port,
+                        entry.NodeName,
+                        new Dictionary<string, object?>
+                        {
+                            ["reason"] = "eviction_timeout",
+                            ["last_seen"] = entry.LastSeen.ToString("O")
+                        }));
+                }
+            }
+        }
+
+        return evicted;
     }
 
     /// <summary>
