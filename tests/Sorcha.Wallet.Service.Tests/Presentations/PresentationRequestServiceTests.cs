@@ -63,6 +63,48 @@ public class PresentationRequestServiceTests
         r1.Id.Should().NotBe(r2.Id);
     }
 
+    [Fact]
+    public async Task CreateRequestAsync_WithAcceptedIssuers_PreservesIssuers()
+    {
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            AcceptedIssuers = ["did:sorcha:w:issuer-1", "did:sorcha:w:issuer-2"]
+        };
+
+        var request = await _service.CreateRequestAsync(dto);
+
+        request.AcceptedIssuers.Should().HaveCount(2);
+        request.AcceptedIssuers.Should().Contain("did:sorcha:w:issuer-1");
+    }
+
+    [Fact]
+    public async Task CreateRequestAsync_WithTargetWalletAddress_PreservesAddress()
+    {
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            TargetWalletAddress = "wallet-target-1"
+        };
+
+        var request = await _service.CreateRequestAsync(dto);
+
+        request.TargetWalletAddress.Should().Be("wallet-target-1");
+    }
+
+    [Fact]
+    public async Task CreateRequestAsync_DefaultTtl_ExpiresIn300Seconds()
+    {
+        var dto = CreateTestDto();
+        var before = DateTimeOffset.UtcNow.AddSeconds(300);
+
+        var request = await _service.CreateRequestAsync(dto);
+
+        request.ExpiresAt.Should().BeCloseTo(before, TimeSpan.FromSeconds(5));
+    }
+
     // --- GetRequestAsync ---
 
     [Fact]
@@ -97,6 +139,27 @@ public class PresentationRequestServiceTests
 
         fetched.Should().NotBeNull();
         fetched!.Status.Should().Be(PresentationStatus.Expired);
+    }
+
+    [Fact]
+    public async Task GetRequestAsync_VerifiedRequest_DoesNotTransitionToExpired()
+    {
+        // Create a request, verify it, then check that get doesn't overwrite status
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse"));
+
+        _storeMock
+            .Setup(s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _service.SubmitPresentationAsync(request.Id, "cred-1", [], "vp-token");
+
+        // Even though time may pass, verified status should not transition
+        var fetched = await _service.GetRequestAsync(request.Id);
+        fetched!.Status.Should().Be(PresentationStatus.Verified);
     }
 
     // --- FindMatchingCredentialsAsync ---
@@ -143,6 +206,56 @@ public class PresentationRequestServiceTests
         matches[0].RequestedClaims.Should().Contain("class");
         matches[0].DisclosableClaims.Should().Contain("class");
         matches[0].DisclosableClaims.Should().Contain("permitNumber");
+    }
+
+    [Fact]
+    public async Task FindMatchingCredentialsAsync_NoMatchingCredentials_ReturnsEmptyList()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FindMatchingCredentialsAsync_MultipleCredentials_ReturnsAll()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse"),
+                CreateTestCredential("cred-2", "ChemicalHandlingLicense", "did:sorcha:w:epa")
+            ]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().HaveCount(2);
+        matches[0].CredentialId.Should().Be("cred-1");
+        matches[1].CredentialId.Should().Be("cred-2");
+    }
+
+    [Fact]
+    public async Task FindMatchingCredentialsAsync_CredentialWithInvalidClaimsJson_SkipsCredential()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        var badCred = CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse");
+        badCred.ClaimsJson = "not-valid-json{{{";
+
+        _storeMock
+            .Setup(s => s.MatchAsync("wallet-1", "ChemicalHandlingLicense", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([badCred]);
+
+        var matches = await _service.FindMatchingCredentialsAsync(request, "wallet-1");
+
+        matches.Should().BeEmpty();
     }
 
     // --- SubmitPresentationAsync ---
@@ -366,6 +479,109 @@ public class PresentationRequestServiceTests
         verification!.Errors.Should().Contain(e => e.FailureReason == "ClaimValueMismatch");
     }
 
+    [Fact]
+    public async Task SubmitPresentationAsync_ValidWithVerifiedClaims_IncludesClaimsInResult()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                """{"class":"CategoryB","permitNumber":"HSE-001"}"""));
+
+        _storeMock
+            .Setup(s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await _service.SubmitPresentationAsync(
+            request.Id, "cred-1", ["class"], "vp-token");
+
+        var verification = JsonSerializer.Deserialize<VerificationResult>(result.VerificationResult!);
+        verification!.IsValid.Should().BeTrue();
+        verification.VerifiedClaims.Should().NotBeNull();
+        verification.VerifiedClaims.Should().ContainKey("class");
+        verification.VerifiedClaims.Should().ContainKey("permitNumber");
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_MultipleErrors_AllErrorsReported()
+    {
+        // Credential has wrong type AND is expired — both errors should appear
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+        var cred = CreateTestCredential("cred-1", "WrongType", "did:sorcha:w:hse");
+        cred.ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1);
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cred);
+
+        var result = await _service.SubmitPresentationAsync(
+            request.Id, "cred-1", [], "vp-token");
+
+        result.Status.Should().Be(PresentationStatus.Denied);
+
+        var verification = JsonSerializer.Deserialize<VerificationResult>(result.VerificationResult!);
+        verification!.IsValid.Should().BeFalse();
+        verification.Errors.Should().HaveCountGreaterThanOrEqualTo(2);
+        verification.Errors.Should().Contain(e => e.FailureReason == "TypeMismatch");
+        verification.Errors.Should().Contain(e => e.FailureReason == "Expired");
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_TrustedIssuer_Verified()
+    {
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            AcceptedIssuers = ["did:sorcha:w:trusted-issuer"]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:trusted-issuer"));
+
+        _storeMock
+            .Setup(s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await _service.SubmitPresentationAsync(
+            request.Id, "cred-1", [], "vp-token");
+
+        result.Status.Should().Be(PresentationStatus.Verified);
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_RequiredClaimWithMatchingValue_Verified()
+    {
+        var dto = new CreatePresentationRequestDto
+        {
+            CredentialType = "ChemicalHandlingLicense",
+            CallbackUrl = "https://example.com/callback",
+            RequiredClaims = [new ClaimConstraint { ClaimName = "class", ExpectedValue = "CategoryB" }]
+        };
+        var request = await _service.CreateRequestAsync(dto);
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse",
+                """{"class":"CategoryB"}"""));
+
+        _storeMock
+            .Setup(s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await _service.SubmitPresentationAsync(
+            request.Id, "cred-1", ["class"], "vp-token");
+
+        result.Status.Should().Be(PresentationStatus.Verified);
+
+        var verification = JsonSerializer.Deserialize<VerificationResult>(result.VerificationResult!);
+        verification!.IsValid.Should().BeTrue();
+        verification.VerifiedClaims.Should().ContainKey("class");
+    }
+
     // --- DenyRequestAsync ---
 
     [Fact]
@@ -383,6 +599,44 @@ public class PresentationRequestServiceTests
     {
         var result = await _service.DenyRequestAsync("nonexistent");
         result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DenyRequestAsync_AlreadyVerifiedRequest_DoesNotChangeToDenied()
+    {
+        // Verify a request first, then try to deny it
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        _storeMock
+            .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse"));
+
+        _storeMock
+            .Setup(s => s.RecordPresentationAsync("cred-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _service.SubmitPresentationAsync(request.Id, "cred-1", [], "vp-token");
+
+        // Try to deny after verification — should not change status
+        var result = await _service.DenyRequestAsync(request.Id);
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(PresentationStatus.Verified);
+    }
+
+    [Fact]
+    public async Task DenyRequestAsync_AlreadyDeniedRequest_StaysDenied()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        // Deny once
+        await _service.DenyRequestAsync(request.Id);
+
+        // Deny again — should still be denied, no error
+        var result = await _service.DenyRequestAsync(request.Id);
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(PresentationStatus.Denied);
     }
 
     // --- Replay prevention ---
@@ -409,6 +663,22 @@ public class PresentationRequestServiceTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Verified*expected Pending*");
+    }
+
+    [Fact]
+    public async Task SubmitPresentationAsync_AfterDeny_ThrowsInvalidOperation()
+    {
+        var request = await _service.CreateRequestAsync(CreateTestDto());
+
+        // Deny the request first
+        await _service.DenyRequestAsync(request.Id);
+
+        // Then try to submit — should fail because status is Denied, not Pending
+        var act = () => _service.SubmitPresentationAsync(
+            request.Id, "cred-1", [], "vp-token");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Denied*expected Pending*");
     }
 
     // --- Helpers ---
