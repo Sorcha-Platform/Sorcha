@@ -81,11 +81,16 @@ public static class PlatformOrgEndpoints
 
         if (!result.Success)
         {
+            logger.LogWarning("Admin org creation failed for {AdminEmail}: {Error} ({ErrorCode})",
+                request.AdminEmail, result.Error, result.ErrorCode);
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 [result.ErrorCode ?? "error"] = [result.Error ?? "Validation failed."]
             });
         }
+
+        logger.LogInformation("Organisation {OrgId} ({OrgName}) created by platform user {PlatformUserId}",
+            result.OrganizationId, result.OrganizationName, platformUserId);
 
         var response = new AdminCreateOrganizationResponse
         {

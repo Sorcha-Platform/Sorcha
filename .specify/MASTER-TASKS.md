@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.2
-**Last Updated:** 2026-03-10
+**Version:** 7.3
+**Last Updated:** 2026-03-16
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -18,7 +18,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
-**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055
+**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058
 **Remaining:** 63 tasks across 6 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
@@ -124,6 +124,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 > **Goal:** Enterprise identity integration
 > **Feature 054 Status:** Complete (82 tasks). Org admin, OIDC, roles, user mgmt, email verification, social login, admin UI all implemented.
 > **Feature 055 Status:** Complete (51 tasks). Passkey/WebAuthn (Fido2NetLib) — org user 2FA registration + login, public user passkey signup + discoverable sign-in, social login (Google/Microsoft/GitHub/Apple), auth method management with last-method guard.
+> **Feature 058 Status:** Complete (81 tasks). Platform Organisation Topology — three-tier org model (system admin, public, private), PlatformUser cross-org identity, social login, email/password signup, blueprint-driven org creation, org switching, platform governance (audit, suspension, settings), admin UI.
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
@@ -169,7 +170,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 10 | 40-60h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
-| 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055) |
+| 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 8 | 120-200h | Decentralization |
 | **Total** | | **51** (4 ✅, 47 remaining) | **500-720h** | |
 
@@ -185,6 +186,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.3
-**Last Updated:** 2026-03-10
+**Version:** 7.4
+**Last Updated:** 2026-03-16
 **Document Owner:** Sorcha Architecture Team

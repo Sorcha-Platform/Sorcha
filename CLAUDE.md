@@ -71,7 +71,7 @@ dotnet restore && dotnet build && dotnet test
 | Blueprint | 100% | 5000 / 7000 | Workflow management, SignalR |
 | Register | 100% | 5290 / 7290 | Distributed ledger, OData |
 | Wallet | 95% | internal / 7001 | Crypto operations, HD wallets |
-| Tenant | 90% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity |
+| Tenant | 97% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity |
 | Validator | 95% | internal / 7004 | Consensus, chain integrity |
 | Peer | 70% | 5002 / 7002 | P2P network, gRPC |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
@@ -132,6 +132,47 @@ The Participant Identity Registry bridges Tenant Service users with Blueprint wo
 var participant = await participantClient.GetByIdAsync(orgId, participantId);
 var canSign = await participantClient.ValidateSigningCapabilityAsync(orgId, participantId);
 ```
+
+---
+
+## Platform Organisation Topology API
+
+Three-tier org topology: system admin org, public org (social login + email/password), and private orgs. `PlatformUser` is the cross-org identity anchor; `UserIdentity` handles per-org authorisation.
+
+### Well-Known Organisation IDs
+
+| ID | Purpose |
+|----|---------|
+| `00000000-0000-0000-0000-000000000001` | System Admin Org |
+| `00000000-0000-0000-0000-000000000002` | Public Org |
+
+### Platform Management Endpoints (SystemAdmin only)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/platform/organizations` | List all orgs (paginated, status filter) |
+| PUT | `/platform/organizations/{orgId}/status` | Update org status (Active/Suspended) |
+| GET | `/platform/organizations/{orgId}/users` | Audit org users (read-only) |
+| POST | `/platform/organizations` | Create org with admin invite |
+| GET | `/platform/settings` | Get platform settings |
+| PUT | `/platform/settings/public-org` | Enable/disable public org |
+
+### Authentication & Org Switching Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/auth/social/initiate` | Start social login OAuth flow |
+| POST | `/auth/social/callback` | Complete social login callback |
+| POST | `/auth/register` | Email/password signup (public org) |
+| GET | `/auth/me/organizations` | List user's org memberships |
+| POST | `/auth/switch-org` | Switch active org (re-issues JWT) |
+
+### Platform Identity Models
+
+- **PlatformUser**: Cross-org identity with email uniqueness, social logins, passkey credentials
+- **PlatformSocialLogin**: OAuth provider links (Google, GitHub, Microsoft, Apple)
+- **PlatformUserOrgMembership**: Maps platform users to org-scoped roles
+- **PlatformSettings**: Platform governance (public org enable/disable, max orgs per user)
 
 ---
 
@@ -455,7 +496,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 
 ---
 
-**Version:** 2.5 | **Updated:** 2026-01-24 | Built with .NET 10 and .NET Aspire
+**Version:** 2.6 | **Updated:** 2026-03-16 | Built with .NET 10 and .NET Aspire
 
 
 ## Skill Usage Guide

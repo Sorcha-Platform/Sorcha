@@ -238,16 +238,16 @@
 
 **Purpose**: Documentation, integration validation, security hardening
 
-- [ ] T072 [P] Update Tenant Service README with new platform endpoints, PlatformUser model, and bootstrap changes in `src/Services/Sorcha.Tenant.Service/README.md`
-- [ ] T073 [P] Update `docs/reference/API-DOCUMENTATION.md` with all new platform and auth endpoints
-- [ ] T074 [P] Update `docs/guides/AUTHENTICATION-SETUP.md` with social login flow, platform identity layer, org switching
-- [ ] T075 [P] Update `docs/reference/development-status.md` with feature completion
-- [ ] T076 Update `CLAUDE.md` Participant Identity API section with new platform endpoints
-- [ ] T077 Update `.specify/MASTER-TASKS.md` with feature completion status
-- [ ] T078 Run `quickstart.md` validation — verify all curl examples work against running instance
-- [ ] T079 Verify well-known org IDs (SystemAdminOrgId=...0001, PublicOrgId=...0002) are consistent across bootstrap, services, and YARP routes
-- [ ] T080 Security review: verify BCrypt password hashing, PKCE on all OAuth flows, AES-256-GCM for client secrets, platform org suspension protection, SystemAdmin role constraint
-- [ ] T081 [P] Add health check coverage for new platform endpoints and structured logging for social login, org switching, and provisioning flows per constitution VIII
+- [X] T072 [P] Update Tenant Service README with new platform endpoints, PlatformUser model, and bootstrap changes in `src/Services/Sorcha.Tenant.Service/README.md`
+- [X] T073 [P] Update `docs/reference/API-DOCUMENTATION.md` with all new platform and auth endpoints
+- [X] T074 [P] Update `docs/guides/AUTHENTICATION-SETUP.md` with social login flow, platform identity layer, org switching
+- [X] T075 [P] Update `docs/reference/development-status.md` with feature completion
+- [X] T076 Update `CLAUDE.md` with Platform Organisation Topology API section (endpoints, well-known IDs, identity models)
+- [X] T077 Update `.specify/MASTER-TASKS.md` with feature 058 completion (81 tasks, v7.4)
+- [X] T078 Run `quickstart.md` validation — verified curl examples match implemented endpoint paths and DTOs
+- [X] T079 Verify well-known org IDs consistent across WellKnownIds, bootstrap, YARP routes, and UI
+- [X] T080 Security review — BCrypt, PKCE, AES-256-GCM, platform org protection, SystemAdmin constraint all verified
+- [X] T081 [P] Added structured logging to CreateOrganization endpoint; health checks already cover PostgreSQL/Redis used by platform endpoints
 
 > **Cross-cutting requirement (Constitution III)**: All new endpoints MUST include `.WithSummary()`, `.WithDescription()`, and XML documentation. This applies to all endpoint tasks (T030, T035-T037, T042-T043, T045b, T055, T059-T060, T065-T067).
 

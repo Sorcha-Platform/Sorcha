@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.1.0
-**Last Updated:** 2026-03-10
+**Version:** 2.2.0
+**Last Updated:** 2026-03-16
 **Status:** MVD Complete
 
 ---
@@ -12,17 +12,20 @@
 2. [Getting Started](#getting-started)
 3. [Authentication](#authentication)
 4. [Tenant Service API](#tenant-service-api)
-5. [Organization Identity & Admin API](#organization-identity--admin-api)
-6. [Peer Service API](#peer-service-api)
-7. [Blueprint Service API](#blueprint-service-api)
-8. [Wallet Service API](#wallet-service-api)
-9. [Register Service API](#register-service-api)
-10. [Action Workflow API](#action-workflow-api)
-11. [Execution Helper API](#execution-helper-api)
-12. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
-13. [Error Handling](#error-handling)
-14. [Rate Limiting](#rate-limiting)
-15. [Code Examples](#code-examples)
+5. [Platform Organisation Management API](#platform-organisation-management-api)
+6. [Organization Identity & Admin API](#organization-identity--admin-api)
+7. [Organisation Switching](#organisation-switching)
+8. [Platform Settings](#platform-settings)
+9. [Peer Service API](#peer-service-api)
+10. [Blueprint Service API](#blueprint-service-api)
+11. [Wallet Service API](#wallet-service-api)
+12. [Register Service API](#register-service-api)
+13. [Action Workflow API](#action-workflow-api)
+14. [Execution Helper API](#execution-helper-api)
+15. [Real-time Notifications (SignalR)](#real-time-notifications-signalr)
+16. [Error Handling](#error-handling)
+17. [Rate Limiting](#rate-limiting)
+18. [Code Examples](#code-examples)
 
 ---
 
@@ -246,6 +249,84 @@ Authorization: Bearer {token}
 
 ---
 
+## Platform Organisation Management API
+
+Endpoints for platform-level organisation governance. Requires `SystemAdmin` role.
+
+### List Organisations
+
+```
+GET /api/platform/organizations?page=1&pageSize=25&status=Active
+Authorization: Bearer <system-admin-token>
+```
+
+**Response** (200):
+```json
+{
+  "items": [
+    {
+      "id": "guid",
+      "name": "Acme Corp",
+      "subdomain": "acme-corp",
+      "status": "Active",
+      "orgType": "Private",
+      "isPlatformOrg": false,
+      "userCount": 12,
+      "createdAt": "2026-03-16T10:00:00Z"
+    }
+  ],
+  "totalCount": 42,
+  "page": 1,
+  "pageSize": 25
+}
+```
+
+### Update Organisation Status
+
+```
+PUT /api/platform/organizations/{orgId}/status
+Authorization: Bearer <system-admin-token>
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{ "status": "Suspended" }
+```
+
+**Response** (204): No content on success.
+
+**Validation**: Status must be `Active` or `Suspended`. Platform organisations (System Admin, Public) cannot be suspended.
+
+### Get Organisation Users
+
+```
+GET /api/platform/organizations/{orgId}/users?page=1&pageSize=25
+Authorization: Bearer <system-admin-token>
+```
+
+**Response** (200):
+```json
+{
+  "items": [
+    {
+      "id": "guid",
+      "email": "user@example.com",
+      "displayName": "Jane Doe",
+      "roles": ["Administrator"],
+      "status": "Active",
+      "createdAt": "2026-03-16T10:00:00Z",
+      "lastLoginAt": "2026-03-16T12:00:00Z"
+    }
+  ],
+  "totalCount": 12,
+  "page": 1,
+  "pageSize": 25
+}
+```
+
+---
+
 ## Organization Identity & Admin API
 
 Feature 054 adds comprehensive organization identity management, OIDC single sign-on, user authentication, two-factor authentication, invitations, domain restrictions, custom domains, audit logging, and admin dashboard capabilities to the Tenant Service.
@@ -457,6 +538,71 @@ Query audit events and manage retention policy for the organization.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/organizations/{organizationId}/dashboard` | Get aggregated stats: user counts, role distribution, recent logins, pending invitations, IDP status |
+
+---
+
+## Organisation Switching
+
+### List My Organisations
+
+```
+GET /api/auth/me/organizations
+Authorization: Bearer <token>
+```
+
+**Response** (200):
+```json
+{
+  "items": [
+    {
+      "organizationId": "guid",
+      "organizationName": "Acme Corp",
+      "subdomain": "acme-corp",
+      "role": "Administrator",
+      "isCurrent": true
+    }
+  ]
+}
+```
+
+### Switch Organisation
+
+```
+POST /api/auth/switch-org
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{ "organizationId": "target-org-guid" }
+```
+
+**Response** (200): Returns new `TokenResponse` scoped to the target organisation.
+
+---
+
+## Platform Settings
+
+### Get Platform Settings
+
+```
+GET /api/platform/settings
+Authorization: Bearer <system-admin-token>
+```
+
+### Update Public Org Status
+
+```
+PUT /api/platform/settings/public-org
+Authorization: Bearer <system-admin-token>
+Content-Type: application/json
+```
+
+**Request**:
+```json
+{ "enabled": true }
+```
 
 ---
 
@@ -1611,6 +1757,6 @@ connection.on("EncryptionFailed", (notification) => {
 
 ---
 
-**Last Updated:** 2026-03-10
-**Document Version:** 2.1.0
-**Feature:** 055 - Passkey Authentication (FIDO2/WebAuthn)
+**Last Updated:** 2026-03-16
+**Document Version:** 2.2.0
+**Feature:** 058 - Platform Organisation Topology

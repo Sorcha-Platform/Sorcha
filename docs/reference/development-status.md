@@ -1,14 +1,14 @@
 # Sorcha Platform - Development Status Report
 
-**Date:** 2026-03-09
-**Version:** 4.2 (Updated after Feature 054 Organization Admin & Identity Management)
+**Date:** 2026-03-16
+**Version:** 4.3 (Updated after Feature 058 Platform Organisation Topology)
 **Overall Completion:** 100% MVD
 
 ---
 
 ## Executive Summary
 
-This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 054 (Organization Admin & Identity Management, Phases 1-9) on 2026-03-09.
+This document provides an accurate, evidence-based assessment of the Sorcha platform's development status. Updated after Feature 058 (Platform Organisation Topology, 10 phases, 81 tasks) on 2026-03-16.
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
@@ -16,7 +16,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - Register Service is 100% complete with comprehensive testing, JWT authentication, and decentralized governance (234 tests)
 - **Peer Service 95%**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions, circuit breaking, PostgreSQL queue
 - **Validator Service 100% MVD**: Memory pool, docket building, consensus, gRPC, duplicate detection cross-check (620+ tests)
-- **Tenant Service 95%**: Auth, orgs, OIDC integration, identity management, role consolidation, admin console (7 pages)
+- **Tenant Service 97%**: Auth, orgs, OIDC integration, identity management, role consolidation, admin console, platform org topology
 - **AUTH-002 complete**: All services now have JWT Bearer authentication with authorization policies
 - **Quantum-Safe Cryptography 100% complete**: ML-DSA-65, ML-KEM-768, SLH-DSA-128s, BLS12-381 threshold signatures, ZK proofs (Pedersen commitments, range proofs), per-register crypto policy, ws2 Bech32m addresses (270+ new tests)
 - **System Admin Tooling (Feature 049)**: Service principal CRUD, register policy management, validator consent/metrics/threshold, system register page, 17 CLI subcommands (29 new components)
@@ -43,7 +43,7 @@ For detailed implementation status, see the individual section files:
 | [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
 | **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
 | [Validator Service](status/validator-service.md) | 100% MVD | Consensus, mempool, dedup cross-check |
-| [Tenant Service](status/tenant-service.md) | 95% | Auth, orgs, OIDC, identity mgmt, admin console |
+| [Tenant Service](status/tenant-service.md) | 97% | Auth, orgs, OIDC, identity mgmt, admin console, platform org topology |
 | [Authentication (AUTH-002)](status/authentication.md) | 100% | JWT Bearer for all services |
 | [Core Libraries & Infrastructure](status/core-libraries.md) | 95% | Engine, Crypto, Gateway |
 | **Sorcha.UI (Unified)** | 100% | Register management, designer, consumer pages |
@@ -64,7 +64,7 @@ For detailed implementation status, see the individual section files:
 | **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
 | **Sorcha.PeerRouter** | 100% | Complete | None |
 | **Validator.Service** | 100% MVD | Complete | None (deferred: enclave, fork detection) |
-| **Tenant.Service** | 95% | Complete | None (deferred: Phase 10 polish) |
+| **Tenant.Service** | 97% | Complete | None (deferred: Phase 10 polish) |
 | **Authentication (AUTH-002)** | 100% | Complete | None |
 | **Sorcha.Cryptography (PQC)** | 100% | Complete | None |
 | **ApiGateway** | 100% MVD | Complete | None |
@@ -96,6 +96,18 @@ For detailed implementation status, see the individual section files:
 ---
 
 ## Recent Completions
+
+### 2026-03-16
+- **058-Platform-Organisation-Topology** (Phases 1-10 complete, 81 tasks)
+  - Three-tier org topology: system admin, public, private organisations
+  - PlatformUser cross-org identity with social login (Google, GitHub, Microsoft, Apple)
+  - Email/password signup with BCrypt + NIST SP 800-63B password policy
+  - Blueprint-driven self-service org creation
+  - Organisation switching with JWT re-issuance
+  - Platform governance: org audit, suspension/activation, settings management
+  - Admin-initiated org creation with invitation
+  - Platform Organisations management UI page
+  - YARP gateway routes for all new endpoints
 
 ### 2026-03-09
 - **054-Org-Identity-Admin** (Phases 1-9 complete, T001-T082)
@@ -348,8 +360,8 @@ The platform is feature-complete for MVD but requires the following for producti
 
 ---
 
-**Document Version:** 4.2
-**Last Updated:** 2026-03-09
+**Document Version:** 4.3
+**Last Updated:** 2026-03-16
 **Owner:** Sorcha Architecture Team
 
 **See Also:**

@@ -22,6 +22,82 @@ The Sorcha platform uses **JWT (JSON Web Token) Bearer authentication** for secu
 └────────────────────────────────────┘
 ```
 
+## Platform Identity Layer (Feature 058)
+
+Feature 058 introduces a two-tier identity model:
+
+| Layer | Schema | Purpose | Entity |
+|-------|--------|---------|--------|
+| Platform | public | Authentication, cross-org anchor | `PlatformUser` |
+| Organisation | org_{id} | Authorisation, org-scoped role | `UserIdentity` |
+
+### How It Works
+
+1. **Authentication** always resolves to a `PlatformUser` (by email, social login, or passkey)
+2. The `PlatformUser` has one or more `PlatformUserOrgMembership` records linking them to organisations
+3. A JWT is issued scoped to one organisation, containing both `platform_user_id` and org-scoped `sub` claims
+4. **Authorisation** is checked against the `UserIdentity` in the current org's schema
+
+### JWT Claims (Updated)
+
+| Claim | Value | Purpose |
+|-------|-------|---------|
+| `sub` | UserIdentity.Id | Org-scoped user ID |
+| `platform_user_id` | PlatformUser.Id | Cross-org identity anchor |
+| `org_id` | Organization.Id | Current org scope |
+| `org_name` | Organization.Name | Display name |
+| `roles` | UserRole[] | Org-scoped permissions |
+
+---
+
+## Organisation Switching
+
+Users who belong to multiple organisations can switch their active context without re-authenticating.
+
+### Flow
+
+1. User calls `GET /api/auth/me/organizations` to list their org memberships
+2. User calls `POST /api/auth/switch-org` with target `organizationId`
+3. Server verifies membership, issues a new JWT scoped to the target org
+4. Client stores the new tokens and reloads the application context
+
+### Security
+
+- The switch endpoint verifies active membership in the target org
+- A completely new JWT is issued (not a token modification)
+- The previous token remains valid until expiry but is scoped to the old org
+- Organisation suspension prevents switching into that org
+
+---
+
+## Social Login (Feature 058)
+
+Social login uses OAuth2/OIDC with PKCE for all providers.
+
+### Supported Providers
+
+| Provider | OIDC Discovery | Scopes |
+|----------|---------------|--------|
+| Google | `https://accounts.google.com/.well-known/openid-configuration` | openid, email, profile |
+| GitHub | Custom (non-standard OIDC) | user:email |
+| Microsoft | `https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration` | openid, email, profile |
+| Apple | `https://appleid.apple.com/.well-known/openid-configuration` | openid, email, name |
+
+### Flow
+
+1. Client calls `POST /api/auth/social/initiate` with provider name and return URL
+2. Server generates PKCE challenge, stores state, returns authorization URL
+3. User completes OAuth dance with provider
+4. Client sends authorization code to `POST /api/auth/social/callback`
+5. Server exchanges code for tokens, resolves/creates `PlatformUser` + `PlatformSocialLogin`
+6. JWT issued for the user's default organisation
+
+### Configuration
+
+Social login providers are configured per-organisation via the Identity Provider Configuration API (`/api/organizations/{orgId}/idp`). The public org typically has social providers enabled. Maximum 4 simultaneous providers per org.
+
+---
+
 ## Services Configured (AUTH-002 Complete)
 
 ### ✅ Tenant Service
@@ -922,6 +998,6 @@ app.MapPost("/api/wallets/{id}/sign", SignWithWallet)
 
 ---
 
-**Status**: ✅ AUTH-002 Complete | OIDC (054) | PassKey & Social Login (055) documented
-**Last Updated**: 2026-03-10
-**Version**: 1.4
+**Status**: ✅ AUTH-002 Complete | OIDC (054) | PassKey & Social Login (055) | Platform Identity (058) documented
+**Last Updated**: 2026-03-16
+**Version**: 1.5

@@ -46,10 +46,10 @@ curl -X POST http://localhost/api/tenants/bootstrap \
   -H "Content-Type: application/json" \
   -d '{
     "organizationName": "Sorcha Local",
-    "subdomain": "sorcha-local",
+    "organizationSubdomain": "sorcha-local",
     "adminEmail": "admin@sorcha.local",
     "adminPassword": "Dev_Pass_2025!",
-    "adminDisplayName": "System Admin"
+    "adminName": "System Admin"
   }'
 ```
 
@@ -75,7 +75,7 @@ curl -X POST http://localhost/api/auth/social/initiate \
 # 2. After OAuth dance, callback
 curl -X POST http://localhost/api/auth/social/callback \
   -H "Content-Type: application/json" \
-  -d '{"code": "auth_code_from_google", "state": "state_from_step_1"}'
+  -d '{"provider": "google", "code": "auth_code_from_google", "state": "state_from_step_1"}'
 # Returns: TokenResponse (accessToken, refreshToken)
 ```
 
@@ -85,6 +85,7 @@ curl -X POST http://localhost/api/auth/social/callback \
 curl -X POST http://localhost/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
+    "orgSubdomain": "sorcha-local",
     "email": "user@example.com",
     "password": "MySecurePass1!",
     "displayName": "Jane Doe"

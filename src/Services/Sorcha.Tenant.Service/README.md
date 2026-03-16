@@ -1,7 +1,7 @@
 # Sorcha Tenant Service
 
 **Version**: 2.0.0
-**Status**: 95% Complete
+**Status**: 97% Complete
 **Framework**: .NET 10.0
 **Architecture**: Microservice
 
@@ -87,6 +87,25 @@ The **Sorcha Tenant Service** is a multi-tenant authentication, authorization, a
     │   tenant)    │    │   List)     │   │  Google)     │
     └──────────────┘    └─────────────┘   └──────────────┘
 ```
+
+### Platform Identity Layer (Feature 058)
+
+Authentication happens at the **platform level** via `PlatformUser`, while authorisation is scoped per-org via `UserIdentity`.
+
+| Layer | Schema | Purpose | Entity |
+|-------|--------|---------|--------|
+| Platform | public | Authentication, cross-org anchor | PlatformUser |
+| Organisation | org_{id} | Authorisation, org-scoped role | UserIdentity |
+
+**Key entities:**
+- `PlatformUser` — Cross-org identity with email uniqueness, social logins, passkey credentials
+- `PlatformSocialLogin` — OAuth provider links (Google, GitHub, Microsoft, Apple)
+- `PlatformUserOrgMembership` — Maps platform users to org-scoped roles
+- `PlatformSettings` — Platform governance (public org enable/disable, max orgs per user)
+
+**Well-known organisations:**
+- System Admin Org (`00000000-0000-0000-0000-000000000001`) — Platform governance
+- Public Org (`00000000-0000-0000-0000-000000000002`) — Social login + email/password signup
 
 ---
 
@@ -262,6 +281,13 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/auth/verify-email` | POST | Verify email address with token |
 | `/api/auth/resend-verification` | POST | Resend email verification (rate limited: 3/hour) |
 
+### Organisation Switching
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/api/auth/me/organizations` | List user's org memberships | Authenticated |
+| POST | `/api/auth/switch-org` | Switch active org (re-issues JWT) | Authenticated |
+
 ### Org User PassKey 2FA API (`/api/passkey`)
 
 | Endpoint | Method | Description |
@@ -413,6 +439,17 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 
 **Max page size:** 200 events. Audit events older than the retention period are automatically purged daily.
 
+### Platform Organisation Management
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/api/platform/organizations` | List all organisations (paginated, status filter) | SystemAdmin |
+| PUT | `/api/platform/organizations/{orgId}/status` | Update org status (Active/Suspended) | SystemAdmin |
+| GET | `/api/platform/organizations/{orgId}/users` | List org users (read-only audit) | SystemAdmin |
+| POST | `/api/platform/organizations` | Create org with admin invite | SystemAdmin |
+| GET | `/api/platform/settings` | Get platform settings | SystemAdmin |
+| PUT | `/api/platform/settings/public-org` | Enable/disable public org | SystemAdmin |
+
 ### Internal API (`/api/internal`)
 
 | Endpoint | Method | Description |
@@ -444,7 +481,7 @@ src/Services/Sorcha.Tenant.Service/
 │   ├── DashboardEndpoints.cs         # Admin dashboard KPIs
 │   ├── AuditEndpoints.cs             # Audit log query and retention
 │   ├── InternalEndpoints.cs          # Domain resolution (API Gateway internal)
-│   ├── BootstrapEndpoints.cs         # Initial system bootstrap
+│   ├── BootstrapEndpoints.cs         # Initial system bootstrap (creates System Admin Org + Public Org, PlatformUser for admin, PlatformSettings)
 │   ├── ServiceAuthEndpoints.cs       # Service-to-service auth
 │   ├── PasskeyEndpoints.cs             # Org user passkey registration and 2FA
 │   ├── PublicAuthEndpoints.cs          # Public user passkey, social login, method management
@@ -786,6 +823,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Last Updated**: 2026-03-10
+**Last Updated**: 2026-03-16
 **Maintained By**: Sorcha Contributors
 **Deferred (Post-MVD)**: Azure AD B2C integration
