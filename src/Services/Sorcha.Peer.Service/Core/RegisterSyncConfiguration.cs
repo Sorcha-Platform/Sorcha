@@ -75,4 +75,10 @@ public class RegisterSyncConfiguration
     /// </summary>
     [Range(5, 120)]
     public int ReplicationTimeoutMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Interval in seconds for periodic relay sync polling of NAT'd peers (default: 60 seconds)
+    /// </summary>
+    [Range(10, 300)]
+    public int RelayPollIntervalSeconds { get; set; } = 60;
 }

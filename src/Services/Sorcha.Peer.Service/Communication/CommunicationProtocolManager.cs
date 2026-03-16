@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
+using System.Text.Json;
+using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Protos;
-using System.Collections.Concurrent;
-using Grpc.Net.Client;
 
 namespace Sorcha.Peer.Service.Communication;
 
@@ -20,6 +21,7 @@ public class CommunicationProtocolManager
     private readonly ILoggerFactory _loggerFactory;
     private readonly CommunicationConfiguration _configuration;
     private readonly HttpClient _httpClient;
+    private readonly RelayCommunicationService _relayCommunication;
     private readonly ConcurrentDictionary<string, CircuitBreaker> _circuitBreakers;
     private readonly ConcurrentDictionary<string, StreamingCommunicationClient> _streamingClients;
 
@@ -27,12 +29,14 @@ public class CommunicationProtocolManager
         ILogger<CommunicationProtocolManager> logger,
         ILoggerFactory loggerFactory,
         IOptions<PeerServiceConfiguration> configuration,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        RelayCommunicationService relayCommunication)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _configuration = configuration?.Value?.Communication ?? throw new ArgumentNullException(nameof(configuration));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
         _circuitBreakers = new ConcurrentDictionary<string, CircuitBreaker>();
         _streamingClients = new ConcurrentDictionary<string, StreamingCommunicationClient>();
     }
@@ -45,6 +49,17 @@ public class CommunicationProtocolManager
         object message,
         CancellationToken cancellationToken = default)
     {
+        // Relay fallback: NAT'd peers have empty Address and cannot be reached directly
+        if (string.IsNullOrEmpty(peer.Address))
+        {
+            _logger.LogDebug("Peer {PeerId} has no address, routing via relay", peer.PeerId);
+            return await _relayCommunication.SendViaRelayAsync(
+                peer.PeerId,
+                MessageType.TransactionNotification,
+                message,
+                cancellationToken);
+        }
+
         var breaker = GetOrCreateCircuitBreaker(peer.PeerId);
 
         try
