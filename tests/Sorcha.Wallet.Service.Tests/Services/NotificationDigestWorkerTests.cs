@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+extern alias ServiceClients;
+
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Sorcha.ServiceClients.Models;
+using ServiceClients::Sorcha.ServiceClients.Models;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Tests.Helpers;
 using StackExchange.Redis;
@@ -522,6 +524,224 @@ public class NotificationDigestWorkerTests
                 It.Is<RedisValue>(v => VerifyDigestPayload(v, TestUserId, expectedEventCount: 1)),
                 It.IsAny<CommandFlags>()),
             Times.Once);
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessPendingDigestsAsync — Active-users set cleanup
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_QueueEmptyAfterProcessing_RemovesUserFromActiveUsersSet()
+    {
+        // Arrange
+        var testEvent = CreateTestEvent();
+
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId, testEvent);
+
+        // SortedSetLengthAsync returns 0 (empty after processing) — default in SetupActiveUsers
+        var worker = CreateWorker();
+
+        // Act
+        await worker.ProcessPendingDigestsAsync();
+
+        // Assert — user removed from active-users set since queue is now empty
+        _mockDatabase.Verify(
+            db => db.SetRemoveAsync(
+                (RedisKey)DigestActiveUsersKey,
+                (RedisValue)TestUserId,
+                It.IsAny<CommandFlags>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_QueueStillHasItemsAfterProcessing_DoesNotRemoveUserFromActiveUsersSet()
+    {
+        // Arrange
+        var testEvent = CreateTestEvent();
+
+        SetupActiveUsers(TestUserId);
+        SetupScriptResult(TestUserId, testEvent);
+
+        // Override SortedSetLengthAsync to return non-zero (items arrived during processing)
+        _mockDatabase
+            .Setup(db => db.SortedSetLengthAsync(
+                It.Is<RedisKey>(k => k.ToString() == $"{DigestKeyPrefix}{TestUserId}"),
+                It.IsAny<double>(), It.IsAny<double>(), It.IsAny<Exclude>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(3);
+
+        var worker = CreateWorker();
+
+        // Act
+        await worker.ProcessPendingDigestsAsync();
+
+        // Assert — user should NOT be removed since queue still has items
+        _mockDatabase.Verify(
+            db => db.SetRemoveAsync(
+                (RedisKey)DigestActiveUsersKey,
+                (RedisValue)TestUserId,
+                It.IsAny<CommandFlags>()),
+            Times.Never);
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessPendingDigestsAsync — Concurrent safety (each user processed independently)
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_OneUserFails_OtherUsersStillProcessed()
+    {
+        // Arrange — user-001 script fails, user-002 succeeds
+        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
+
+        SetupActiveUsers(TestUserId, AnotherUserId);
+
+        _mockDatabase
+            .Setup(db => db.ScriptEvaluateAsync(
+                It.IsAny<string>(),
+                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
+                It.IsAny<RedisValue[]>(),
+                It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(
+                ConnectionFailureType.UnableToResolvePhysicalConnection, "Timeout"));
+
+        SetupScriptResult(AnotherUserId, event2);
+
+        var worker = CreateWorker();
+
+        // Act — should not throw
+        var act = () => worker.ProcessPendingDigestsAsync();
+        await act.Should().NotThrowAsync();
+
+        // Assert — user-002 digest still delivered
+        _mockSubscriber.Verify(
+            s => s.PublishAsync(
+                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
+                It.Is<RedisValue>(v => VerifyDigestPayload(v, AnotherUserId, expectedEventCount: 1)),
+                It.IsAny<CommandFlags>()),
+            Times.Once);
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessPendingDigestsAsync — Publish failure for one user
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_PublishFailsForOneUser_ContinuesWithNextUser()
+    {
+        // Arrange
+        var event1 = CreateTestEvent(userId: TestUserId, blueprintId: "bp-001");
+        var event2 = CreateTestEvent(userId: AnotherUserId, blueprintId: "bp-002");
+
+        SetupActiveUsers(TestUserId, AnotherUserId);
+        SetupScriptResult(TestUserId, event1);
+        SetupScriptResult(AnotherUserId, event2);
+
+        var publishCallCount = 0;
+        _mockSubscriber
+            .Setup(s => s.PublishAsync(
+                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                publishCallCount++;
+                if (publishCallCount == 1)
+                    throw new RedisConnectionException(
+                        ConnectionFailureType.UnableToResolvePhysicalConnection, "First publish failed");
+                return 1;
+            });
+
+        var worker = CreateWorker();
+
+        // Act — should not throw
+        var act = () => worker.ProcessPendingDigestsAsync();
+        await act.Should().NotThrowAsync();
+
+        // Assert — publish was attempted for both users
+        _mockSubscriber.Verify(
+            s => s.PublishAsync(
+                It.Is<RedisChannel>(ch => ch.ToString() == PubSubChannel),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()),
+            Times.Exactly(2));
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessPendingDigestsAsync — Cancellation token respected
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_CancellationRequested_StopsProcessingUsers()
+    {
+        // Arrange — two users, but cancel after first
+        SetupActiveUsers(TestUserId, AnotherUserId);
+
+        using var cts = new CancellationTokenSource();
+
+        // Cancel when script is evaluated for user-001
+        _mockDatabase
+            .Setup(db => db.ScriptEvaluateAsync(
+                It.IsAny<string>(),
+                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{TestUserId}"),
+                It.IsAny<RedisValue[]>(),
+                It.IsAny<CommandFlags>()))
+            .Callback(() => cts.Cancel())
+            .ReturnsAsync(RedisResult.Create(Array.Empty<RedisResult>()));
+
+        var worker = CreateWorker();
+
+        // Act
+        await worker.ProcessPendingDigestsAsync(cts.Token);
+
+        // Assert — second user should not be processed
+        _mockDatabase.Verify(
+            db => db.ScriptEvaluateAsync(
+                It.IsAny<string>(),
+                It.Is<RedisKey[]>(k => k[0].ToString() == $"{DigestKeyPrefix}{AnotherUserId}"),
+                It.IsAny<RedisValue[]>(),
+                It.IsAny<CommandFlags>()),
+            Times.Never);
+    }
+
+    // ---------------------------------------------------------------------------
+    // ProcessPendingDigestsAsync — All JSON entries malformed
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProcessPendingDigestsAsync_AllEntriesMalformed_DoesNotPublish()
+    {
+        // Arrange — all entries are invalid JSON
+        var key = (RedisKey)$"{DigestKeyPrefix}{TestUserId}";
+
+        SetupActiveUsers(TestUserId);
+
+        var entries = new[]
+        {
+            RedisResult.Create((RedisValue)"not-json-1"),
+            RedisResult.Create((RedisValue)"not-json-2")
+        };
+
+        _mockDatabase
+            .Setup(db => db.ScriptEvaluateAsync(
+                It.IsAny<string>(),
+                It.Is<RedisKey[]>(k => k.Length == 1 && k[0] == key),
+                It.IsAny<RedisValue[]>(),
+                It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisResult.Create(entries));
+
+        var worker = CreateWorker();
+
+        // Act
+        await worker.ProcessPendingDigestsAsync();
+
+        // Assert — no publish since no valid events
+        _mockSubscriber.Verify(
+            s => s.PublishAsync(
+                It.IsAny<RedisChannel>(),
+                It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()),
+            Times.Never);
     }
 
     // ---------------------------------------------------------------------------
