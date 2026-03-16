@@ -269,6 +269,19 @@ For detailed implementation status, see the individual section files:
   - E2E: 7 new Docker test files, 4 new page objects, 0 warnings
   - LoadBlueprintDialog: Self-loading via IBlueprintApiService (no longer requires caller to pass data)
 
+### 2026-03-16
+- **Designer & Blueprint Instructions Upgrade** (Feature 059)
+  - Blueprint Instructions Model: overview, per-action, per-participant, per-field guidance with schema description fallback
+  - Semantic Versioning: v{major}.{minor} with structural diff detection (SHA-256 hash comparison)
+  - Unified BlueprintDiagram component (Edit/Preview/Compact modes) with swimlane layout
+  - Blueprint Publishing Workflow template: Author→Reviewer→Publisher governance with structural/doc review paths
+  - Catalogue Dual-Source: auto-seeded templates + published blueprints from system register
+  - Designer Context Handoff: round-trip between visual designer and AI chat via query params
+  - Instructions Editor: InstructionsTab, InstructionsPreview, export/import for translation, stale detection
+  - Stub Fixes: AI chat export download, clipboard copy, schema-aware field resolution, RouteEditor, DisclosureEditor
+  - 2 new API endpoints: /versions (history), /classify-change (structural diff)
+  - 69 tasks completed, ~100 new tests
+
 ### 2026-01-28
 - **UI Register Management 100% complete** (70/70 tasks)
   - Enhanced CreateRegisterWizard with 4-step flow including wallet selection

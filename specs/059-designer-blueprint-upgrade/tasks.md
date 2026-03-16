@@ -193,13 +193,13 @@
 
 **Purpose**: Documentation, validation, and integration testing across all user stories.
 
-- [ ] T060 Update `CLAUDE.md` with new API endpoints for versioned publishing, instructions model description
-- [ ] T061 [P] Update `docs/reference/API-DOCUMENTATION.md` with system register version endpoints and classify-change endpoint
-- [ ] T062 [P] Update `docs/reference/development-status.md` with designer upgrade completion status
-- [ ] T063 [P] Add XML documentation comments to all new public classes and methods (BlueprintInstructions, InstructionSet, BlueprintVersion, StructuralDiffService, SchemaFieldResolver, InstructionExportService)
-- [ ] T064 [P] Add `.WithSummary()` and `.WithDescription()` to all new Minimal API endpoints (versions, classify-change)
-- [ ] T065 Update `.specify/MASTER-TASKS.md` with feature 059 completion status
-- [ ] T066 Run full `dotnet build && dotnet test` validation across all affected projects
+- [x] T060 Update `CLAUDE.md` with new API endpoints for versioned publishing, instructions model description
+- [x] T061 [P] Update `docs/reference/API-DOCUMENTATION.md` with system register version endpoints and classify-change endpoint
+- [x] T062 [P] Update `docs/reference/development-status.md` with designer upgrade completion status
+- [x] T063 [P] Add XML documentation comments to all new public classes and methods (BlueprintInstructions, InstructionSet, BlueprintVersion, StructuralDiffService, SchemaFieldResolver, InstructionExportService)
+- [x] T064 [P] Add `.WithSummary()` and `.WithDescription()` to all new Minimal API endpoints (versions, classify-change)
+- [x] T065 Update `.specify/MASTER-TASKS.md` with feature 059 completion status
+- [x] T066 Run full `dotnet build && dotnet test` validation across all affected projects
 
 ---
 
