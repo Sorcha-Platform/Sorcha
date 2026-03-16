@@ -1,0 +1,165 @@
+@using MudBlazor
+@using Sorcha.Blueprint.Models
+@using Sorcha.Blueprint.Schemas
+@using System.Text.Json
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+
+<MudPaper Class="pa-4" Elevation="0" Style="background: var(--mud-palette-background-gray);">
+    <MudStack Spacing="3">
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Preview" Size="Size.Small" Class="mr-2" />
+            Instructions Preview
+        </MudText>
+
+        @if (!string.IsNullOrWhiteSpace(FilterParticipant))
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Showing instructions visible to: <strong>@FilterParticipant</strong>
+            </MudAlert>
+        }
+
+        <!-- Blueprint Overview -->
+        @if (!string.IsNullOrWhiteSpace(Blueprint?.Instructions?.Overview))
+        {
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Small" Class="mr-1" />
+                    Overview
+                </MudText>
+                <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@Blueprint.Instructions.Overview</MudText>
+            </MudPaper>
+        }
+
+        <!-- Per-Action Instructions -->
+        @if (Blueprint?.Actions != null)
+        {
+            @foreach (var action in GetVisibleActions())
+            {
+                var actionInstruction = GetActionInstruction(action);
+                var inlineInstruction = action.Instructions;
+
+                @if (!string.IsNullOrWhiteSpace(actionInstruction) || !string.IsNullOrWhiteSpace(inlineInstruction))
+                {
+                    <MudPaper Class="pa-3" Outlined="true">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Class="mr-1" />
+                            Action @action.Id: @action.Title
+                        </MudText>
+
+                        @if (!string.IsNullOrWhiteSpace(inlineInstruction))
+                        {
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@inlineInstruction</MudText>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(actionInstruction))
+                        {
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@actionInstruction</MudText>
+                        }
+
+                        <!-- Field-level instructions -->
+                        @if (action.Form?.Elements != null)
+                        {
+                            @foreach (var control in action.Form.Elements.Where(c => HasHelpText(c, action)))
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Start" Class="mt-2 ml-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Color="Color.Info" />
+                                    <div>
+                                        <MudText Typo="Typo.caption" Style="font-weight: 600;">@control.Title</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@GetControlHelpText(control, action)</MudText>
+                                    </div>
+                                </MudStack>
+                            }
+                        }
+                    </MudPaper>
+                }
+            }
+        }
+
+        <!-- Per-Participant Instructions -->
+        @if (Blueprint?.Instructions?.ParticipantInstructions != null)
+        {
+            @foreach (var (name, instruction) in GetVisibleParticipantInstructions())
+            {
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
+                        @name
+                    </MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@instruction</MudText>
+                </MudPaper>
+            }
+        }
+
+        @if (!HasAnyInstructions())
+        {
+            <MudAlert Severity="Severity.Info">
+                No instructions defined. Use the Instructions tab to add guidance text.
+            </MudAlert>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public Blueprint? Blueprint { get; set; }
+
+    /// <summary>
+    /// When set, filters instructions to only those visible to this participant.
+    /// Null shows all instructions (designer mode).
+    /// </summary>
+    [Parameter]
+    public string? FilterParticipant { get; set; }
+
+    private IEnumerable<BlueprintAction> GetVisibleActions()
+    {
+        if (Blueprint?.Actions is null) return [];
+
+        if (string.IsNullOrEmpty(FilterParticipant))
+            return Blueprint.Actions;
+
+        // Show only actions where the participant is the sender
+        return Blueprint.Actions.Where(a =>
+            string.Equals(a.Sender, FilterParticipant, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<KeyValuePair<string, string>> GetVisibleParticipantInstructions()
+    {
+        if (Blueprint?.Instructions?.ParticipantInstructions is null) return [];
+
+        if (string.IsNullOrEmpty(FilterParticipant))
+            return Blueprint.Instructions.ParticipantInstructions;
+
+        // Show only instructions matching the current participant
+        return Blueprint.Instructions.ParticipantInstructions
+            .Where(kvp => string.Equals(kvp.Key, FilterParticipant, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string? GetActionInstruction(BlueprintAction action)
+    {
+        return Blueprint?.Instructions?.ActionInstructions?.GetValueOrDefault(action.Id);
+    }
+
+    private bool HasHelpText(Control control, BlueprintAction action)
+    {
+        return !string.IsNullOrWhiteSpace(control.Instructions) ||
+               SchemaDescriptionExtractor.GetDescription(control.Scope, action.DataSchemas) is not null;
+    }
+
+    private string? GetControlHelpText(Control control, BlueprintAction action)
+    {
+        // Priority: explicit control instruction > schema description
+        if (!string.IsNullOrWhiteSpace(control.Instructions))
+            return control.Instructions;
+
+        return SchemaDescriptionExtractor.GetDescription(control.Scope, action.DataSchemas);
+    }
+
+    private bool HasAnyInstructions()
+    {
+        if (Blueprint?.Instructions is null) return false;
+
+        return !string.IsNullOrWhiteSpace(Blueprint.Instructions.Overview) ||
+               Blueprint.Instructions.ActionInstructions?.Count > 0 ||
+               Blueprint.Instructions.ParticipantInstructions?.Count > 0 ||
+               Blueprint.Actions?.Any(a => !string.IsNullOrWhiteSpace(a.Instructions)) == true;
+    }
+}

@@ -340,6 +340,45 @@
                     </ChildContent>
                 </MudExpansionPanel>
 
+                <!-- Instructions -->
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Class="mr-2" Size="Size.Small" />
+                            <MudText>Instructions</MudText>
+                            @if (!string.IsNullOrWhiteSpace(editedAction.Instructions))
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" Class="ml-2" />
+                            }
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                            Guidance text shown to participants when executing this action
+                        </MudText>
+                        <MudTextField @bind-Value="editedAction.Instructions"
+                                      Label="Action Instructions (Markdown)"
+                                      Variant="Variant.Outlined"
+                                      Lines="4"
+                                      Margin="Margin.Dense"
+                                      HelperText="Displayed as help text when this action is active" />
+                        <MudButton StartIcon="@Icons.Material.Filled.Preview"
+                                   Color="Color.Info"
+                                   Size="Size.Small"
+                                   Variant="Variant.Text"
+                                   Class="mt-2"
+                                   OnClick="ToggleInstructionsPreview">
+                            @(_showInstructionsPreview ? "Hide Preview" : "Show Preview")
+                        </MudButton>
+                        @if (_showInstructionsPreview)
+                        {
+                            <div class="mt-2">
+                                <InstructionsPreview Blueprint="Blueprint" />
+                            </div>
+                        }
+                    </ChildContent>
+                </MudExpansionPanel>
+
                 <!-- Advanced Settings -->
                 <MudExpansionPanel>
                     <TitleContent>
@@ -405,6 +444,24 @@
             <MudText Typo="Typo.caption" Color="Color.Secondary">
                 Actions: @editedBlueprint.Actions.Count
             </MudText>
+
+            <MudDivider Class="my-4" />
+
+            <!-- Instructions Editor -->
+            <MudExpansionPanels MultiExpansion="true">
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Class="mr-2" Size="Size.Small" />
+                            <MudText>Instructions</MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <InstructionsTab Blueprint="editedBlueprint"
+                                         OnInstructionsChanged="OnBlueprintInstructionsChanged" />
+                    </ChildContent>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
         }
     </div>
 </div>
@@ -460,6 +517,7 @@
 
     private Blueprint editedBlueprint = new();
     private BlueprintAction editedAction = new();
+    private bool _showInstructionsPreview;
 
     protected override void OnParametersSet()
     {
@@ -479,7 +537,8 @@
                 Calculations = actionNode.Action.Calculations,
                 Condition = actionNode.Action.Condition,
                 RequiredActionData = actionNode.Action.RequiredActionData,
-                BlueprintId = actionNode.Action.BlueprintId
+                BlueprintId = actionNode.Action.BlueprintId,
+                Instructions = actionNode.Action.Instructions
             };
         }
         else
@@ -491,6 +550,9 @@
                 Title = Blueprint.Title,
                 Description = Blueprint.Description,
                 Version = Blueprint.Version,
+                VersionMajor = Blueprint.VersionMajor,
+                VersionMinor = Blueprint.VersionMinor,
+                Instructions = Blueprint.Instructions,
                 CreatedAt = Blueprint.CreatedAt,
                 UpdatedAt = Blueprint.UpdatedAt,
                 Participants = Blueprint.Participants,
@@ -859,6 +921,18 @@
         if (root.TryGetProperty("$id", out var id) && id.ValueKind == JsonValueKind.String)
             return id.GetString() ?? "Untitled";
         return "Untitled Schema";
+    }
+
+    private void ToggleInstructionsPreview()
+    {
+        _showInstructionsPreview = !_showInstructionsPreview;
+    }
+
+    private Task OnBlueprintInstructionsChanged(Blueprint updatedBlueprint)
+    {
+        editedBlueprint = updatedBlueprint;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
 }

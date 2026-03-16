@@ -1,0 +1,168 @@
+@using MudBlazor
+@using Sorcha.Blueprint.Models
+@using Sorcha.Blueprint.Schemas
+@using Sorcha.UI.Core.Services
+@using System.Text.Json
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+
+<MudStack Spacing="3">
+    <!-- Blueprint Overview Instructions -->
+    <MudText Typo="Typo.subtitle2">
+        <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Small" Class="mr-1" />
+        Blueprint Overview
+    </MudText>
+    <MudTextField @bind-Value="_overview"
+                  Label="Overview (Markdown)"
+                  Variant="Variant.Outlined"
+                  Lines="5"
+                  Margin="Margin.Dense"
+                  HelperText="Markdown overview of the workflow purpose and usage"
+                  Immediate="true"
+                  TextChanged="OnOverviewChanged" />
+
+    <MudDivider Class="my-2" />
+
+    <!-- Per-Action Instructions -->
+    <MudText Typo="Typo.subtitle2">
+        <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Class="mr-1" />
+        Action Instructions
+    </MudText>
+
+    @if (Blueprint?.Actions != null)
+    {
+        @foreach (var action in Blueprint.Actions)
+        {
+            var actionId = action.Id;
+            var currentText = GetActionInstruction(actionId);
+            var schemaDescription = GetSchemaFallback(action);
+
+            <MudPaper Class="pa-3 mb-2" Outlined="true">
+                <MudText Typo="Typo.body2" Style="font-weight: 500;" Class="mb-2">
+                    Action @actionId: @action.Title
+                </MudText>
+                <MudTextField Value="@currentText"
+                              ValueChanged="@((string v) => SetActionInstruction(actionId, v))"
+                              Label="Instructions (Markdown)"
+                              Variant="Variant.Outlined"
+                              Lines="3"
+                              Margin="Margin.Dense"
+                              Immediate="true" />
+                @if (schemaDescription is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                        <MudIcon Icon="@Icons.Material.Filled.Schema" Size="Size.Small" />
+                        Schema fallback: @schemaDescription
+                    </MudText>
+                }
+            </MudPaper>
+        }
+    }
+
+    <MudDivider Class="my-2" />
+
+    <!-- Per-Participant Instructions -->
+    <MudText Typo="Typo.subtitle2">
+        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-1" />
+        Participant Instructions
+    </MudText>
+
+    @if (Blueprint?.Participants != null)
+    {
+        @foreach (var participant in Blueprint.Participants)
+        {
+            var name = participant.Name;
+            var currentText = GetParticipantInstruction(name);
+
+            <MudPaper Class="pa-3 mb-2" Outlined="true">
+                <MudText Typo="Typo.body2" Style="font-weight: 500;" Class="mb-2">
+                    @name
+                </MudText>
+                <MudTextField Value="@currentText"
+                              ValueChanged="@((string v) => SetParticipantInstruction(name, v))"
+                              Label="Role guidance (Markdown)"
+                              Variant="Variant.Outlined"
+                              Lines="2"
+                              Margin="Margin.Dense"
+                              Immediate="true" />
+            </MudPaper>
+        }
+    }
+</MudStack>
+
+@code {
+    [Parameter]
+    public Blueprint? Blueprint { get; set; }
+
+    [Parameter]
+    public EventCallback<Blueprint> OnInstructionsChanged { get; set; }
+
+    private string _overview = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        _overview = Blueprint?.Instructions?.Overview ?? string.Empty;
+    }
+
+    private void EnsureInstructions()
+    {
+        if (Blueprint is null) return;
+        Blueprint.Instructions ??= new BlueprintInstructions();
+    }
+
+    private async Task OnOverviewChanged(string value)
+    {
+        EnsureInstructions();
+        Blueprint!.Instructions!.Overview = string.IsNullOrWhiteSpace(value) ? null : value;
+        await OnInstructionsChanged.InvokeAsync(Blueprint);
+    }
+
+    private string GetActionInstruction(int actionId)
+    {
+        return Blueprint?.Instructions?.ActionInstructions?.GetValueOrDefault(actionId) ?? string.Empty;
+    }
+
+    private async Task SetActionInstruction(int actionId, string value)
+    {
+        EnsureInstructions();
+        Blueprint!.Instructions!.ActionInstructions ??= new Dictionary<int, string>();
+
+        if (string.IsNullOrWhiteSpace(value))
+            Blueprint.Instructions.ActionInstructions.Remove(actionId);
+        else
+            Blueprint.Instructions.ActionInstructions[actionId] = value;
+
+        await OnInstructionsChanged.InvokeAsync(Blueprint);
+    }
+
+    private string GetParticipantInstruction(string name)
+    {
+        return Blueprint?.Instructions?.ParticipantInstructions?.GetValueOrDefault(name) ?? string.Empty;
+    }
+
+    private async Task SetParticipantInstruction(string name, string value)
+    {
+        EnsureInstructions();
+        Blueprint!.Instructions!.ParticipantInstructions ??= new Dictionary<string, string>();
+
+        if (string.IsNullOrWhiteSpace(value))
+            Blueprint.Instructions.ParticipantInstructions.Remove(name);
+        else
+            Blueprint.Instructions.ParticipantInstructions[name] = value;
+
+        await OnInstructionsChanged.InvokeAsync(Blueprint);
+    }
+
+    private string? GetSchemaFallback(BlueprintAction action)
+    {
+        // Check first control's scope against data schemas for fallback description
+        if (action.Form?.Elements is { Count: > 0 } elements && action.DataSchemas is not null)
+        {
+            var firstControl = elements.FirstOrDefault(e => !string.IsNullOrEmpty(e.Scope));
+            if (firstControl is not null)
+            {
+                return SchemaDescriptionExtractor.GetDescription(firstControl.Scope, action.DataSchemas);
+            }
+        }
+        return null;
+    }
+}
