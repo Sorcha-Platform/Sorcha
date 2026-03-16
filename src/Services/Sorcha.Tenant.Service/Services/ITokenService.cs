@@ -16,21 +16,13 @@ public interface ITokenService
     /// </summary>
     /// <param name="user">The user identity.</param>
     /// <param name="organization">The organization.</param>
+    /// <param name="platformUserId">The platform user ID to include as a claim.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Token response with access and refresh tokens.</returns>
     Task<TokenResponse> GenerateUserTokenAsync(
         UserIdentity user,
         Organization organization,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Generates an access token for a public user (PassKey authenticated).
-    /// </summary>
-    /// <param name="identity">The public identity.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Token response with access and refresh tokens.</returns>
-    Task<TokenResponse> GeneratePublicUserTokenAsync(
-        PublicIdentity identity,
+        Guid platformUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

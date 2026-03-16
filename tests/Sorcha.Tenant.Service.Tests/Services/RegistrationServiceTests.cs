@@ -147,9 +147,9 @@ public class RegistrationServiceTests : IDisposable
         {
             Id = Guid.NewGuid(),
             OrganizationId = org.Id,
+            PlatformUserId = Guid.NewGuid(),
             Email = "existing@test.com",
             DisplayName = "Existing User",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("password"),
             Status = IdentityStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow
         });

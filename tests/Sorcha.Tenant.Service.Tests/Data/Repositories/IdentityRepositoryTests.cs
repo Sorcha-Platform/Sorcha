@@ -35,7 +35,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "ext_user_123",
+            PlatformUserId = Guid.NewGuid(),
             Email = "alice@example.com",
             DisplayName = "Alice Johnson",
             Roles = new[] { UserRole.Member },
@@ -64,7 +64,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "ext_user_456",
+            PlatformUserId = Guid.NewGuid(),
             Email = "bob@example.com",
             DisplayName = "Bob Smith",
             Status = IdentityStatus.Active
@@ -94,46 +94,13 @@ public class IdentityRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task GetUserByExternalIdAsync_ShouldReturnUser_WhenExists()
-    {
-        // Arrange
-        var user = new UserIdentity
-        {
-            OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "azure_entra_user_789",
-            Email = "charlie@example.com",
-            DisplayName = "Charlie Brown",
-            Status = IdentityStatus.Active
-        };
-        await _repository.CreateUserAsync(user);
-
-        // Act
-        var result = await _repository.GetUserByExternalIdAsync("azure_entra_user_789");
-
-        // Assert
-        result.Should().NotBeNull();
-        result!.ExternalIdpSubject.Should().Be("azure_entra_user_789");
-        result.Email.Should().Be("charlie@example.com");
-    }
-
-    [Fact]
-    public async Task GetUserByExternalIdAsync_ShouldReturnNull_WhenNotExists()
-    {
-        // Act
-        var result = await _repository.GetUserByExternalIdAsync("nonexistent_user");
-
-        // Assert
-        result.Should().BeNull();
-    }
-
-    [Fact]
     public async Task GetUserByEmailAsync_ShouldReturnUser_WhenExists()
     {
         // Arrange
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "ext_user_email_test",
+            PlatformUserId = Guid.NewGuid(),
             Email = "diana@example.com",
             DisplayName = "Diana Prince",
             Status = IdentityStatus.Active
@@ -166,7 +133,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = "user1",
+            PlatformUserId = Guid.NewGuid(),
             Email = "user1@example.com",
             DisplayName = "User One",
             Status = IdentityStatus.Active
@@ -174,7 +141,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = "user2",
+            PlatformUserId = Guid.NewGuid(),
             Email = "user2@example.com",
             DisplayName = "User Two",
             Status = IdentityStatus.Active
@@ -182,7 +149,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = "user3",
+            PlatformUserId = Guid.NewGuid(),
             Email = "user3@example.com",
             DisplayName = "User Three",
             Status = IdentityStatus.Suspended
@@ -204,7 +171,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = "user_all_1",
+            PlatformUserId = Guid.NewGuid(),
             Email = "all1@example.com",
             DisplayName = "All User One",
             Status = IdentityStatus.Active
@@ -212,7 +179,7 @@ public class IdentityRepositoryTests : IDisposable
         await _repository.CreateUserAsync(new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = "user_all_2",
+            PlatformUserId = Guid.NewGuid(),
             Email = "all2@example.com",
             DisplayName = "All User Two",
             Status = IdentityStatus.Suspended
@@ -232,7 +199,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "update_test_user",
+            PlatformUserId = Guid.NewGuid(),
             Email = "original@example.com",
             DisplayName = "Original Name",
             Roles = new[] { UserRole.Member },
@@ -263,7 +230,7 @@ public class IdentityRepositoryTests : IDisposable
         var user = new UserIdentity
         {
             OrganizationId = Guid.NewGuid(),
-            ExternalIdpSubject = "deactivate_test",
+            PlatformUserId = Guid.NewGuid(),
             Email = "deactivate@example.com",
             DisplayName = "Deactivate User",
             Status = IdentityStatus.Active
@@ -277,103 +244,6 @@ public class IdentityRepositoryTests : IDisposable
         var deactivated = await _repository.GetUserByIdAsync(created.Id);
         deactivated.Should().NotBeNull();
         deactivated!.Status.Should().Be(IdentityStatus.Suspended);
-    }
-
-    #endregion
-
-    #region PublicIdentity Tests
-
-    [Fact]
-    public async Task CreatePublicIdentityAsync_ShouldAddPublicIdentityToDatabase()
-    {
-        // Arrange
-        var publicIdentity = new PublicIdentity
-        {
-            DisplayName = "Test User",
-            DeviceType = "YubiKey 5"
-        };
-
-        // Act
-        var result = await _repository.CreatePublicIdentityAsync(publicIdentity);
-
-        // Assert
-        result.Should().NotBeNull();
-        result.Id.Should().NotBe(Guid.Empty);
-        result.DisplayName.Should().Be("Test User");
-
-        // Verify in database
-        var saved = await _repository.GetPublicIdentityByIdAsync(result.Id);
-        saved.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task GetPublicIdentityByCredentialIdAsync_ShouldReturnIdentity_WhenExists()
-    {
-        // Arrange
-        var publicIdentity = new PublicIdentity
-        {
-            DisplayName = "Passkey User",
-            DeviceType = "Windows Hello"
-        };
-        var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
-
-        var credentialId = new byte[] { 11, 22, 33, 44, 55 };
-        var credential = new PasskeyCredential
-        {
-            CredentialId = credentialId,
-            PublicKeyCose = new byte[] { 100, 200 },
-            OwnerType = "PublicIdentity",
-            OwnerId = created.Id,
-            DisplayName = "Passkey User",
-            AttestationType = "none",
-            Status = CredentialStatus.Active
-        };
-        _context.PasskeyCredentials.Add(credential);
-        await _context.SaveChangesAsync();
-
-        // Act
-        var result = await _repository.GetPublicIdentityByCredentialIdAsync(credentialId);
-
-        // Assert
-        result.Should().NotBeNull();
-        result!.Id.Should().Be(created.Id);
-    }
-
-    [Fact]
-    public async Task UpdatePublicIdentityAsync_ShouldUpdateLastUsedAt()
-    {
-        // Arrange
-        var publicIdentity = new PublicIdentity
-        {
-            DisplayName = "Update Test",
-            DeviceType = "Platform"
-        };
-        var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
-
-        // Act
-        created.LastUsedAt = DateTimeOffset.UtcNow;
-        var updated = await _repository.UpdatePublicIdentityAsync(created);
-
-        // Assert
-        updated.LastUsedAt.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task DeletePublicIdentityAsync_ShouldRemovePublicIdentity()
-    {
-        // Arrange
-        var publicIdentity = new PublicIdentity
-        {
-            DisplayName = "Delete Test"
-        };
-        var created = await _repository.CreatePublicIdentityAsync(publicIdentity);
-
-        // Act
-        await _repository.DeletePublicIdentityAsync(created.Id);
-
-        // Assert
-        var deleted = await _repository.GetPublicIdentityByIdAsync(created.Id);
-        deleted.Should().BeNull();
     }
 
     #endregion

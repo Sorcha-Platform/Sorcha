@@ -60,7 +60,6 @@ public class OidcProvisioningServiceTests : IDisposable
         // Assert
         user.Should().NotBeNull();
         isFirstLogin.Should().BeTrue();
-        user.ExternalIdpSubject.Should().Be("oidc|12345");
         user.Email.Should().Be("alice@example.com");
         user.DisplayName.Should().Be("Alice Smith");
         user.Roles.Should().ContainSingle().Which.Should().Be(UserRole.Member);
@@ -77,7 +76,7 @@ public class OidcProvisioningServiceTests : IDisposable
         var existingUser = new UserIdentity
         {
             OrganizationId = _testOrgId,
-            ExternalIdpSubject = "oidc|existing",
+            PlatformUserId = Guid.NewGuid(),
             Email = "bob@example.com",
             DisplayName = "Bob Jones",
             Roles = [UserRole.Member],
@@ -99,20 +98,6 @@ public class OidcProvisioningServiceTests : IDisposable
         user.Id.Should().Be(existingUser.Id);
         user.LastLoginAt.Should().NotBeNull();
         user.LastLoginAt.Should().BeOnOrAfter(beforeLogin);
-    }
-
-    [Fact]
-    public async Task ProvisionOrMatchUserAsync_IdpClaimsEmailVerified_SetsEmailVerifiedTrue()
-    {
-        // Arrange
-        var service = CreateService();
-        var claims = CreateClaims(sub: "oidc|verified", email: "verified@example.com", name: "Verified User", emailVerified: true);
-
-        // Act
-        var (user, _) = await service.ProvisionOrMatchUserAsync(_testOrgId, claims, CancellationToken.None);
-
-        // Assert
-        user.EmailVerified.Should().BeTrue();
     }
 
     [Fact]

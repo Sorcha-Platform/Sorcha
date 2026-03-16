@@ -168,7 +168,7 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(user, organization, ct);
+        var tokens = await _tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, ct);
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await _identityRepository.UpdateUserAsync(user, ct);
 

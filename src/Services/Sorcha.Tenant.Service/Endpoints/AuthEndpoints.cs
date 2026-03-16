@@ -4,7 +4,9 @@
 using System.Security.Claims;
 
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -119,10 +121,10 @@ public static class AuthEndpoints
             .WithDescription("Creates a local account for public organizations with self-registration enabled. "
                 + "Validates password against NIST policy and HIBP breach list. Sends verification email.")
             .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
             .Produces<SelfRegistrationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status409Conflict);
+            .Produces(StatusCodes.Status403Forbidden);
 
         // Passkey 2FA: get assertion options (public endpoint — uses loginToken)
         group.MapPost("/verify-passkey/options", VerifyPasskeyOptions)
@@ -157,6 +159,41 @@ public static class AuthEndpoints
             .Produces<SuccessResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // List user's organisations (for org switcher)
+        group.MapGet("/me/organizations", GetMyOrganizations)
+            .WithName("GetMyOrganizations")
+            .WithSummary("List organisations the current user belongs to")
+            .WithDescription("Returns all org memberships for the authenticated PlatformUser. "
+                + "Used by the org switcher UI. Includes org name, subdomain, role, and isCurrent flag.")
+            .RequireAuthorization()
+            .Produces<OrgMembershipListResponse>()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Switch active organisation
+        group.MapPost("/switch-org", SwitchOrganization)
+            .WithName("SwitchOrganization")
+            .WithSummary("Switch active organisation context")
+            .WithDescription("Issues a new JWT scoped to the target org. Validates the user has "
+                + "a PlatformUserOrgMembership for the target org and an active UserIdentity.")
+            .RequireAuthorization()
+            .Produces<TokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
+        // Create organisation (self-service, authenticated)
+        group.MapPost("/create-org", CreateOrganization)
+            .WithName("CreateOrganization")
+            .WithSummary("Create a new private organisation")
+            .WithDescription("Self-service org creation for public org members. Validates eligibility "
+                + "(email verified, within org limit, subdomain available) and atomically provisions "
+                + "the org with the caller as admin.")
+            .RequireAuthorization()
+            .Produces<OrgProvisioningResult>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         return app;
     }
 
@@ -182,7 +219,9 @@ public static class AuthEndpoints
             });
         }
 
-        var result = await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
+        var result = !string.IsNullOrWhiteSpace(request.OrganizationSubdomain)
+            ? await loginService.LoginAsync(request.Email, request.Password, request.OrganizationSubdomain, cancellationToken)
+            : await loginService.LoginAsync(request.Email, request.Password, cancellationToken);
 
         if (!result.Success)
         {
@@ -279,7 +318,7 @@ public static class AuthEndpoints
         await identityRepository.UpdateUserAsync(user, cancellationToken);
 
         // Generate tokens
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
@@ -498,7 +537,7 @@ public static class AuthEndpoints
         }
 
         // Get user's active passkey credentials
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId.Value, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(userId.Value, cancellationToken);
         var activeCredentialIds = credentials
             .Where(c => c.Status == CredentialStatus.Active)
             .Select(c => c.CredentialId)
@@ -569,16 +608,16 @@ public static class AuthEndpoints
                 request.AssertionResponse,
                 cancellationToken);
 
-            // Ensure the assertion credential belongs to the login token's user
-            if (assertionResult.OwnerId != userId.Value)
-            {
-                logger.LogWarning("Passkey 2FA verification failed: credential owner {OwnerId} does not match login user {UserId}",
-                    assertionResult.OwnerId, userId.Value);
-                return TypedResults.Unauthorized();
-            }
-
             // Look up user and org, then issue JWT
             var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
+
+            // Ensure the assertion credential belongs to the login token's user
+            if (user is null || assertionResult.PlatformUserId != user.PlatformUserId)
+            {
+                logger.LogWarning("Passkey 2FA verification failed: credential owner {PlatformUserId} does not match login user {UserId}",
+                    assertionResult.PlatformUserId, userId.Value);
+                return TypedResults.Unauthorized();
+            }
             if (user is null || user.Status != IdentityStatus.Active)
             {
                 return TypedResults.Unauthorized();
@@ -595,7 +634,7 @@ public static class AuthEndpoints
             await identityRepository.UpdateUserAsync(user, cancellationToken);
 
             // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
 
             logger.LogInformation("User completed passkey 2FA login - UserId: {UserId}, OrgId: {OrgId}, CredentialId: {CredentialId}",
                 user.Id, organization.Id, assertionResult.Credential.Id);
@@ -607,5 +646,148 @@ public static class AuthEndpoints
             logger.LogWarning(ex, "Passkey 2FA assertion verification failed for user {UserId}", userId.Value);
             return TypedResults.Unauthorized();
         }
+    }
+
+    /// <summary>
+    /// POST /api/auth/create-org — self-service organisation creation.
+    /// </summary>
+    private static async Task<IResult> CreateOrganization(
+        ProvisionOrgRequest request,
+        ClaimsPrincipal principal,
+        IOrgProvisioningService provisioningService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await provisioningService.ProvisionAsync(platformUserId, request, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.ErrorCode is "EmailNotVerified" or "UserInactive" or "UserNotFound")
+                return TypedResults.Json(result, statusCode: StatusCodes.Status403Forbidden);
+
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [result.ErrorCode ?? "error"] = [result.Error ?? "Validation failed."]
+            });
+        }
+
+        return TypedResults.Ok(result);
+    }
+
+    /// <summary>
+    /// GET /api/auth/me/organizations — list the current user's org memberships.
+    /// </summary>
+    private static async Task<IResult> GetMyOrganizations(
+        ClaimsPrincipal principal,
+        TenantDbContext db,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        // Current org from JWT
+        var currentOrgIdClaim = principal.FindFirst("org_id")?.Value;
+        Guid.TryParse(currentOrgIdClaim, out var currentOrgId);
+
+        var memberships = await db.PlatformUserOrgMemberships
+            .Where(m => m.PlatformUserId == platformUserId)
+            .Join(db.Organizations,
+                m => m.OrganizationId,
+                o => o.Id,
+                (m, o) => new OrgMembershipEntry
+                {
+                    OrganizationId = o.Id,
+                    OrganizationName = o.Name,
+                    Subdomain = o.Subdomain,
+                    Role = m.Role,
+                    IsCurrent = o.Id == currentOrgId
+                })
+            .OrderBy(e => e.OrganizationName)
+            .ToListAsync(cancellationToken);
+
+        return TypedResults.Ok(new OrgMembershipListResponse { Items = memberships });
+    }
+
+    /// <summary>
+    /// POST /api/auth/switch-org — switch active organisation and issue new JWT.
+    /// </summary>
+    private static async Task<IResult> SwitchOrganization(
+        SwitchOrgRequest request,
+        ClaimsPrincipal principal,
+        TenantDbContext db,
+        ITokenService tokenService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        // Validate request
+        if (request.OrganizationId == Guid.Empty)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["organizationId"] = ["Organization ID is required."]
+            });
+        }
+
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        // Verify membership in target org
+        var membership = await db.PlatformUserOrgMemberships
+            .FirstOrDefaultAsync(m => m.PlatformUserId == platformUserId
+                && m.OrganizationId == request.OrganizationId, cancellationToken);
+
+        if (membership is null)
+        {
+            return TypedResults.Json(
+                new { error = "You are not a member of the target organisation." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Look up the target org
+        var targetOrg = await db.Organizations
+            .FirstOrDefaultAsync(o => o.Id == request.OrganizationId, cancellationToken);
+
+        if (targetOrg is null || targetOrg.Status != OrganizationStatus.Active)
+        {
+            return TypedResults.Json(
+                new { error = "Target organisation is not available." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Find the user's UserIdentity in the target org
+        var userIdentity = await db.UserIdentities
+            .FirstOrDefaultAsync(ui => ui.PlatformUserId == platformUserId
+                && ui.OrganizationId == request.OrganizationId
+                && ui.Status == IdentityStatus.Active, cancellationToken);
+
+        if (userIdentity is null)
+        {
+            return TypedResults.Json(
+                new { error = "No active identity found in the target organisation." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Issue new JWT scoped to target org
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(
+            userIdentity, targetOrg, platformUserId, cancellationToken);
+
+        logger.LogInformation(
+            "User {PlatformUserId} switched to org {OrgId} ({Subdomain})",
+            platformUserId, targetOrg.Id, targetOrg.Subdomain);
+
+        return TypedResults.Ok(tokenResponse);
     }
 }

@@ -34,6 +34,12 @@ public static class AuthorizationPolicies
     /// Currently mirrors RequireService; kept as a separate semantic policy for future scope-based tightening.
     /// </summary>
     public const string CanWriteDockets = "CanWriteDockets";
+
+    /// <summary>System admin org member with Auditor+ role required.</summary>
+    public const string RequirePlatformAuditor = "RequirePlatformAuditor";
+
+    /// <summary>System admin org member with SystemAdmin role required.</summary>
+    public const string RequireSystemAdmin = "RequireSystemAdmin";
 }
 
 /// <summary>
@@ -54,6 +60,8 @@ public static class AuthorizationPolicyExtensions
     ///   <item><term>RequireDelegatedAuthority</term><description>Service token acting on behalf of a user.</description></item>
     ///   <item><term>RequireAdministrator</term><description>Administrator role required.</description></item>
     ///   <item><term>CanWriteDockets</term><description>Service token required for docket writes. Currently mirrors RequireService; exists as a separate semantic policy for future scope-based tightening.</description></item>
+    ///   <item><term>RequirePlatformAuditor</term><description>System admin org member with Auditor+ role required.</description></item>
+    ///   <item><term>RequireSystemAdmin</term><description>System admin org member with SystemAdmin role required.</description></item>
     /// </list>
     /// </summary>
     /// <typeparam name="TBuilder">The host application builder type.</typeparam>
@@ -112,6 +120,26 @@ public static class AuthorizationPolicyExtensions
             //    "dockets:write" scope) without affecting the general RequireService gate.
             options.AddPolicy(AuthorizationPolicies.CanWriteDockets, policy =>
                 policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
+
+            // 7. RequirePlatformAuditor — system admin org member with Auditor+ role
+            options.AddPolicy(AuthorizationPolicies.RequirePlatformAuditor, policy =>
+                policy.RequireAssertion(context =>
+                {
+                    var orgId = context.User.FindFirst("org_id")?.Value;
+                    var isSystemAdminOrg = orgId == "00000000-0000-0000-0000-000000000001";
+                    var hasRole = context.User.IsInRole("SystemAdmin") || context.User.IsInRole("Auditor") || context.User.IsInRole("Administrator");
+                    return isSystemAdminOrg && hasRole;
+                }));
+
+            // 8. RequireSystemAdmin — system admin org member with SystemAdmin role
+            options.AddPolicy(AuthorizationPolicies.RequireSystemAdmin, policy =>
+                policy.RequireAssertion(context =>
+                {
+                    var orgId = context.User.FindFirst("org_id")?.Value;
+                    var isSystemAdminOrg = orgId == "00000000-0000-0000-0000-000000000001";
+                    var isSystemAdmin = context.User.IsInRole("SystemAdmin");
+                    return isSystemAdminOrg && isSystemAdmin;
+                }));
         });
 
         return services;

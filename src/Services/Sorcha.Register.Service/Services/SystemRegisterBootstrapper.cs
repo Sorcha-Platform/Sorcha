@@ -305,6 +305,24 @@ public class SystemRegisterBootstrapper : BackgroundService
         {
             _logger.LogInformation("Blueprint register-governance-v1 already exists — skipping");
         }
+
+        // Check and publish create-organisation-v1
+        if (!await systemRegisterService.BlueprintExistsAsync("create-organisation-v1", cancellationToken))
+        {
+            _logger.LogInformation("Seeding blueprint: create-organisation-v1");
+            var orgCreationBlueprint = LoadBlueprintFromCatalog("create-organisation-v1");
+            await systemRegisterService.PublishBlueprintAsync(
+                "create-organisation-v1",
+                orgCreationBlueprint,
+                "system",
+                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
+                cancellationToken);
+            _logger.LogInformation("Blueprint create-organisation-v1 seeded successfully");
+        }
+        else
+        {
+            _logger.LogInformation("Blueprint create-organisation-v1 already exists — skipping");
+        }
     }
 
     /// <summary>

@@ -55,20 +55,18 @@ public class PasskeyService : IPasskeyService
 
     /// <inheritdoc />
     public async Task<RegistrationOptionsResult> CreateRegistrationOptionsAsync(
-        string ownerType,
-        Guid ownerId,
-        Guid? organizationId,
+        Guid platformUserId,
         string displayName,
         IEnumerable<byte[]>? existingCredentialIds = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
-            "Creating passkey registration options for {OwnerType} {OwnerId}",
-            ownerType, ownerId);
+            "Creating passkey registration options for PlatformUser {PlatformUserId}",
+            platformUserId);
 
         var user = new Fido2User
         {
-            Id = ownerId.ToByteArray(),
+            Id = platformUserId.ToByteArray(),
             Name = displayName,
             DisplayName = displayName
         };
@@ -96,9 +94,7 @@ public class PasskeyService : IPasskeyService
         var cacheEntry = new RegistrationCacheEntry
         {
             OptionsJson = options.ToJson(),
-            OwnerType = ownerType,
-            OwnerId = ownerId,
-            OrganizationId = organizationId,
+            PlatformUserId = platformUserId,
             DisplayName = displayName
         };
 
@@ -112,8 +108,8 @@ public class PasskeyService : IPasskeyService
             cancellationToken);
 
         _logger.LogInformation(
-            "Created passkey registration options for {OwnerType} {OwnerId}, transactionId={TransactionId}",
-            ownerType, ownerId, transactionId);
+            "Created passkey registration options for PlatformUser {PlatformUserId}, transactionId={TransactionId}",
+            platformUserId, transactionId);
 
         return new RegistrationOptionsResult(transactionId, options);
     }
@@ -161,9 +157,7 @@ public class PasskeyService : IPasskeyService
             CredentialId = result.Id,
             PublicKeyCose = result.PublicKey,
             SignatureCounter = (long)result.SignCount,
-            OwnerType = cacheEntry.OwnerType,
-            OwnerId = cacheEntry.OwnerId,
-            OrganizationId = cacheEntry.OrganizationId,
+            PlatformUserId = cacheEntry.PlatformUserId,
             DisplayName = cacheEntry.DisplayName,
             AttestationType = "none",
             AaGuid = result.AaGuid,
@@ -178,8 +172,8 @@ public class PasskeyService : IPasskeyService
         }
 
         _logger.LogInformation(
-            "Passkey registered for {OwnerType} {OwnerId}, credentialId={CredentialId}",
-            credential.OwnerType, credential.OwnerId, credential.Id);
+            "Passkey registered for PlatformUser {PlatformUserId}, credentialId={CredentialId}",
+            credential.PlatformUserId, credential.Id);
 
         return credential;
     }
@@ -268,7 +262,7 @@ public class PasskeyService : IPasskeyService
                     return Task.FromResult(true); // Non-discoverable flow: no userHandle to verify
 
                 var claimedOwnerId = new Guid(args.UserHandle);
-                return Task.FromResult(claimedOwnerId == credential.OwnerId);
+                return Task.FromResult(claimedOwnerId == credential.PlatformUserId);
             }
         }, cancellationToken);
 
@@ -295,40 +289,38 @@ public class PasskeyService : IPasskeyService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Passkey assertion verified for {OwnerType} {OwnerId}, credentialId={CredentialId}",
-            credential.OwnerType, credential.OwnerId, credential.Id);
+            "Passkey assertion verified for PlatformUser {PlatformUserId}, credentialId={CredentialId}",
+            credential.PlatformUserId, credential.Id);
 
-        return new AssertionVerificationResult(credential, credential.OwnerType, credential.OwnerId);
+        return new AssertionVerificationResult(credential, credential.PlatformUserId);
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<PasskeyCredential>> GetCredentialsByOwnerAsync(
-        string ownerType,
-        Guid ownerId,
+        Guid platformUserId,
         CancellationToken cancellationToken = default)
     {
         return await _db.PasskeyCredentials
-            .Where(c => c.OwnerType == ownerType && c.OwnerId == ownerId)
+            .Where(c => c.PlatformUserId == platformUserId)
             .ToListAsync(cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task<bool> RevokeCredentialAsync(
         Guid credentialId,
-        string ownerType,
-        Guid ownerId,
+        Guid platformUserId,
         CancellationToken cancellationToken = default)
     {
         var credential = await _db.PasskeyCredentials
             .FirstOrDefaultAsync(
-                c => c.Id == credentialId && c.OwnerType == ownerType && c.OwnerId == ownerId,
+                c => c.Id == credentialId && c.PlatformUserId == platformUserId,
                 cancellationToken);
 
         if (credential is null)
         {
             _logger.LogWarning(
-                "Credential {CredentialId} not found for {OwnerType} {OwnerId} during revocation",
-                credentialId, ownerType, ownerId);
+                "Credential {CredentialId} not found for PlatformUser {PlatformUserId} during revocation",
+                credentialId, platformUserId);
             return false;
         }
 
@@ -338,8 +330,8 @@ public class PasskeyService : IPasskeyService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Passkey credential {CredentialId} revoked for {OwnerType} {OwnerId}",
-            credentialId, ownerType, ownerId);
+            "Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId}",
+            credentialId, platformUserId);
 
         return true;
     }
@@ -355,19 +347,9 @@ public class PasskeyService : IPasskeyService
         public string OptionsJson { get; set; } = string.Empty;
 
         /// <summary>
-        /// Owner type ("OrgUser" or "PublicIdentity").
+        /// Platform user ID that will own the credential.
         /// </summary>
-        public string OwnerType { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Owner entity ID.
-        /// </summary>
-        public Guid OwnerId { get; set; }
-
-        /// <summary>
-        /// Organization ID (null for PublicIdentity).
-        /// </summary>
-        public Guid? OrganizationId { get; set; }
+        public Guid PlatformUserId { get; set; }
 
         /// <summary>
         /// Display name for the credential.

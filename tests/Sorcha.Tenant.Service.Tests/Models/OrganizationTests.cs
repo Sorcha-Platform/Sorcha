@@ -143,13 +143,13 @@ public class OrganizationTests
     }
 
     [Fact]
-    public void Organization_ShouldHaveIdentityProviderNavigationProperty()
+    public void Organization_ShouldHaveIdentityProvidersNavigationProperty()
     {
         // Arrange & Act
         var organization = new Organization();
 
         // Assert
-        organization.IdentityProvider.Should().BeNull();
+        organization.IdentityProviders.Should().BeEmpty();
     }
 
     [Fact]

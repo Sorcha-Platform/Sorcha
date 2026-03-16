@@ -53,7 +53,7 @@ public class SystemRegisterServiceTests : IDisposable
         {
             RegisterId = "sys-reg-001",
             DisplayName = "System Register",
-            IsInitialized = true,
+            Status = "initialized",
             BlueprintCount = 12,
             CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
         };

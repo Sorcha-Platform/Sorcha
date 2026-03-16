@@ -78,7 +78,7 @@ public class AuthApiTests : IClassFixture<TenantServiceWebApplicationFactory>, I
 
         user.Should().NotBeNull();
         user!.Email.Should().Be(TestDataSeeder.TestLocalAdminEmail);
-        user.PasswordHash.Should().NotBeNullOrWhiteSpace();
+        user.PlatformUserId.Should().NotBe(Guid.Empty);
         user.Status.Should().Be(IdentityStatus.Active);
     }
 
@@ -89,11 +89,7 @@ public class AuthApiTests : IClassFixture<TenantServiceWebApplicationFactory>, I
         var user = await TestDataSeeder.GetTestUserAsync(_factory.Services, TestDataSeeder.TestLocalAdminUserId);
 
         user.Should().NotBeNull();
-        user!.PasswordHash.Should().NotBeNullOrWhiteSpace();
-
-        // Verify password using BCrypt
-        var isValid = BCrypt.Net.BCrypt.Verify(TestDataSeeder.TestLocalAdminPassword, user.PasswordHash);
-        isValid.Should().BeTrue("because the password hash should match the test password");
+        user!.PlatformUserId.Should().NotBe(Guid.Empty, "because local auth users should have a PlatformUserId");
     }
 
     [Fact]
@@ -121,7 +117,7 @@ public class AuthApiTests : IClassFixture<TenantServiceWebApplicationFactory>, I
 
         user.Should().NotBeNull();
         user!.Email.Should().Be(TestDataSeeder.TestLocalAdminEmail);
-        user.PasswordHash.Should().NotBeNullOrWhiteSpace();
+        user.PlatformUserId.Should().NotBe(Guid.Empty);
     }
 
     [Fact]

@@ -8,7 +8,7 @@ namespace Sorcha.Tenant.Service.Data.Repositories;
 
 /// <summary>
 /// Repository implementation for Identity entity operations.
-/// Handles UserIdentity, PublicIdentity, and ServicePrincipal entities.
+/// Handles UserIdentity and ServicePrincipal entities.
 /// </summary>
 public class IdentityRepository : IIdentityRepository
 {
@@ -24,12 +24,6 @@ public class IdentityRepository : IIdentityRepository
     {
         return await _context.UserIdentities
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
-    }
-
-    public async Task<UserIdentity?> GetUserByExternalIdAsync(string externalIdpSubject, CancellationToken cancellationToken = default)
-    {
-        return await _context.UserIdentities
-            .FirstOrDefaultAsync(u => u.ExternalIdpSubject == externalIdpSubject, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -84,94 +78,6 @@ public class IdentityRepository : IIdentityRepository
     }
 
 
-
-    public async Task<PublicIdentity?> GetPublicIdentityByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        var identity = await _context.PublicIdentities
-            .Include(p => p.SocialLoginLinks)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
-
-        if (identity is not null)
-        {
-            var credentials = await _context.PasskeyCredentials
-                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
-                .ToListAsync(cancellationToken);
-            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
-        }
-
-        return identity;
-    }
-
-    public async Task<PublicIdentity?> GetPublicIdentityByEmailAsync(string email, CancellationToken cancellationToken = default)
-    {
-        var identity = await _context.PublicIdentities
-            .Include(p => p.SocialLoginLinks)
-            .FirstOrDefaultAsync(p => p.Email == email, cancellationToken);
-
-        if (identity is not null)
-        {
-            var credentials = await _context.PasskeyCredentials
-                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
-                .ToListAsync(cancellationToken);
-            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
-        }
-
-        return identity;
-    }
-
-    public async Task<PublicIdentity?> GetPublicIdentityByCredentialIdAsync(byte[] credentialId, CancellationToken cancellationToken = default)
-    {
-        var credential = await _context.PasskeyCredentials
-            .FirstOrDefaultAsync(c => c.CredentialId == credentialId && c.OwnerType == OwnerTypes.PublicIdentity, cancellationToken);
-
-        if (credential is null)
-            return null;
-
-        var identity = await _context.PublicIdentities
-            .Include(p => p.SocialLoginLinks)
-            .FirstOrDefaultAsync(p => p.Id == credential.OwnerId, cancellationToken);
-
-        if (identity is not null)
-        {
-            var credentials = await _context.PasskeyCredentials
-                .Where(c => c.OwnerType == OwnerTypes.PublicIdentity && c.OwnerId == identity.Id)
-                .ToListAsync(cancellationToken);
-            foreach (var c in credentials) identity.PasskeyCredentials.Add(c);
-        }
-
-        return identity;
-    }
-
-    public async Task<PublicIdentity> CreatePublicIdentityAsync(
-        PublicIdentity identity,
-        PasskeyCredential? credential = null,
-        CancellationToken cancellationToken = default)
-    {
-        _context.PublicIdentities.Add(identity);
-        if (credential is not null)
-        {
-            _context.PasskeyCredentials.Add(credential);
-        }
-        await _context.SaveChangesAsync(cancellationToken);
-        return identity;
-    }
-
-    public async Task<PublicIdentity> UpdatePublicIdentityAsync(PublicIdentity identity, CancellationToken cancellationToken = default)
-    {
-        _context.PublicIdentities.Update(identity);
-        await _context.SaveChangesAsync(cancellationToken);
-        return identity;
-    }
-
-    public async Task DeletePublicIdentityAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        var identity = await GetPublicIdentityByIdAsync(id, cancellationToken);
-        if (identity != null)
-        {
-            _context.PublicIdentities.Remove(identity);
-            await _context.SaveChangesAsync(cancellationToken);
-        }
-    }
 
 
 

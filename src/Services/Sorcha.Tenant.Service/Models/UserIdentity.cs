@@ -22,19 +22,12 @@ public class UserIdentity
     public Guid OrganizationId { get; set; }
 
     /// <summary>
-    /// External IDP subject claim (sub). Unique within organization.
-    /// Null for local authentication users.
+    /// Cross-org identity anchor. Links to PlatformUser in the public schema.
     /// </summary>
-    public string? ExternalIdpSubject { get; set; }
+    public Guid PlatformUserId { get; set; }
 
     /// <summary>
-    /// Password hash for local authentication (BCrypt).
-    /// Null for external IDP users.
-    /// </summary>
-    public string? PasswordHash { get; set; }
-
-    /// <summary>
-    /// User email address.
+    /// User email address (denormalized copy from PlatformUser).
     /// </summary>
     public string Email { get; set; } = string.Empty;
 
@@ -65,27 +58,6 @@ public class UserIdentity
     public DateTimeOffset? LastLoginAt { get; set; }
 
     /// <summary>
-    /// Whether the user's email address has been verified.
-    /// </summary>
-    public bool EmailVerified { get; set; }
-
-    /// <summary>
-    /// Timestamp when the email was verified.
-    /// </summary>
-    public DateTimeOffset? EmailVerifiedAt { get; set; }
-
-    /// <summary>
-    /// Email verification token (32-byte URL-safe base64).
-    /// Cleared after successful verification.
-    /// </summary>
-    public string? VerificationToken { get; set; }
-
-    /// <summary>
-    /// Expiry timestamp for the verification token (24h from generation).
-    /// </summary>
-    public DateTimeOffset? VerificationTokenExpiresAt { get; set; }
-
-    /// <summary>
     /// How this user account was provisioned.
     /// </summary>
     public ProvisioningMethod ProvisionedVia { get; set; } = ProvisioningMethod.Local;
@@ -100,34 +72,6 @@ public class UserIdentity
     /// False if OIDC login didn't return required claims.
     /// </summary>
     public bool ProfileCompleted { get; set; } = true;
-
-    /// <summary>
-    /// Number of consecutive failed login attempts (for progressive lockout).
-    /// </summary>
-    public int FailedLoginCount { get; set; }
-
-    /// <summary>
-    /// Timestamp until which the account is temporarily locked. Null if not locked.
-    /// </summary>
-    public DateTimeOffset? LockedUntil { get; set; }
-
-    /// <summary>
-    /// Whether the account requires administrator unlock (25+ failed attempts).
-    /// </summary>
-    public bool LockedPermanently { get; set; }
-
-    /// <summary>
-    /// SHA-256 hash of the password reset token.
-    /// Storing the hash prevents token compromise if the database is leaked.
-    /// Cleared after successful password reset (one-time use).
-    /// </summary>
-    public string? PasswordResetTokenHash { get; set; }
-
-    /// <summary>
-    /// Expiry timestamp for the password reset token (1 hour from generation).
-    /// Null when no reset is pending.
-    /// </summary>
-    public DateTimeOffset? PasswordResetTokenExpiresAt { get; set; }
 }
 
 /// <summary>

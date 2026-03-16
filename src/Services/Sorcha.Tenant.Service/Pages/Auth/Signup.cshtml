@@ -167,21 +167,19 @@
                 // Store nonce for CSRF validation on callback
                 sessionStorage.setItem('social_login_nonce', nonce);
 
-                fetch('/api/auth/public/social/initiate', {
+                fetch('/api/auth/social/initiate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        provider: provider,
-                        redirect_uri: redirectUri,
-                        state: state
+                        provider: provider.toLowerCase()
                     })
                 })
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
-                    if (data.authorization_url) {
-                        window.location.href = data.authorization_url;
+                    if (data.authorizationUrl) {
+                        window.location.href = data.authorizationUrl;
                     } else {
-                        alert('Failed to initiate social login. Please try again.');
+                        alert('Social login is not available. The public organisation may be disabled.');
                     }
                 })
                 .catch(function() {

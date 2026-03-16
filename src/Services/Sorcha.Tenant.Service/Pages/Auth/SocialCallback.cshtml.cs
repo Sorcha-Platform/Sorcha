@@ -3,23 +3,29 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
+
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Pages.Auth;
 
 /// <summary>
 /// Server-rendered Social OAuth callback page model.
-/// Receives the authorization code and state from the OAuth provider, exchanges the code
-/// for user claims, creates or links a public user account, and issues a JWT.
-/// On success, redirects to the main application with the token in the URL fragment.
-/// On failure, displays an error message with a link back to the sign-up page.
+/// Handles the OAuth provider redirect, exchanges the code for user claims,
+/// resolves/creates PlatformUser, and issues a JWT via fragment redirect.
 /// </summary>
 public class SocialCallbackModel : PageModel
 {
     private readonly ISocialLoginService _socialLoginService;
-    private readonly IPublicUserService _publicUserService;
+    private readonly IPlatformUserService _platformUserService;
+    private readonly IIdentityRepository _identityRepository;
+    private readonly IOrganizationRepository _organizationRepository;
     private readonly ITokenService _tokenService;
+    private readonly TenantDbContext _db;
     private readonly ILogger<SocialCallbackModel> _logger;
 
     /// <summary>
@@ -27,39 +33,36 @@ public class SocialCallbackModel : PageModel
     /// </summary>
     public SocialCallbackModel(
         ISocialLoginService socialLoginService,
-        IPublicUserService publicUserService,
+        IPlatformUserService platformUserService,
+        IIdentityRepository identityRepository,
+        IOrganizationRepository organizationRepository,
         ITokenService tokenService,
+        TenantDbContext db,
         ILogger<SocialCallbackModel> logger)
     {
         _socialLoginService = socialLoginService;
-        _publicUserService = publicUserService;
+        _platformUserService = platformUserService;
+        _identityRepository = identityRepository;
+        _organizationRepository = organizationRepository;
         _tokenService = tokenService;
+        _db = db;
         _logger = logger;
     }
 
     /// <summary>
     /// Error message to display when the social login flow fails.
-    /// Null when processing is successful.
     /// </summary>
     public string? ErrorMessage { get; set; }
 
     /// <summary>
     /// True during the initial page render while the OAuth exchange is in progress.
-    /// Becomes false after processing completes (with success redirect or error).
     /// </summary>
     public bool IsProcessing { get; set; } = true;
 
     /// <summary>
     /// Handles GET requests from the OAuth provider redirect.
-    /// Receives the authorization code and state parameters, exchanges the code for user
-    /// claims, creates or links the public user account, and redirects to the application.
+    /// Exchanges the authorization code, resolves/creates user, and redirects with JWT.
     /// </summary>
-    /// <param name="provider">The social provider name (e.g., "Google", "GitHub").</param>
-    /// <param name="code">The authorization code from the provider.</param>
-    /// <param name="state">The state parameter for CSRF protection and flow correlation.</param>
-    /// <param name="error">Optional error parameter from the provider if the user denied access.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Redirect to app on success, or page with error message on failure.</returns>
     public async Task<IActionResult> OnGetAsync(
         string? provider,
         string? code,
@@ -69,104 +72,82 @@ public class SocialCallbackModel : PageModel
     {
         IsProcessing = false;
 
-        // Handle provider-side errors (e.g., user denied access)
         if (!string.IsNullOrEmpty(error))
         {
-            _logger.LogInformation("Social login denied by user or provider error: {Error}", error);
-            ErrorMessage = "Sign-in was cancelled or denied. Please try again.";
+            _logger.LogWarning("Social login callback received error from provider {Provider}: {Error}", provider, error);
+            ErrorMessage = "The sign-in was cancelled or failed. Please try again.";
             return Page();
         }
 
-        if (string.IsNullOrWhiteSpace(provider))
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state) || string.IsNullOrEmpty(provider))
         {
-            _logger.LogWarning("Social callback received with missing provider parameter");
-            ErrorMessage = "Invalid callback request: missing provider.";
+            ErrorMessage = "Invalid callback parameters. Please try signing in again.";
             return Page();
         }
 
-        if (string.IsNullOrWhiteSpace(code))
+        // Exchange code for claims
+        var callbackResult = await _socialLoginService.ExchangeCodeAsync(provider, code, state, ct);
+        if (!callbackResult.Success || string.IsNullOrEmpty(callbackResult.Subject))
         {
-            _logger.LogWarning("Social callback received with missing authorization code for provider {Provider}", provider);
-            ErrorMessage = "Invalid callback request: missing authorization code.";
+            _logger.LogWarning("Social login exchange failed for {Provider}: {Error}", provider, callbackResult.Error);
+            ErrorMessage = callbackResult.Error ?? "Authentication failed. Please try again.";
             return Page();
         }
 
-        if (string.IsNullOrWhiteSpace(state))
-        {
-            _logger.LogWarning("Social callback received with missing state parameter for provider {Provider}", provider);
-            ErrorMessage = "Invalid callback request: missing state parameter.";
-            return Page();
-        }
+        // Resolve or create PlatformUser
+        var (platformUser, isNew) = await _platformUserService.ResolveOrCreateSocialUserAsync(
+            provider, callbackResult.Subject, callbackResult.Email, callbackResult.DisplayName, ct);
 
-        try
-        {
-            // Exchange the authorization code for user claims via the social provider
-            var authResult = await _socialLoginService.ExchangeCodeAsync(provider, code, state, ct);
+        // Ensure UserIdentity in public org
+        var publicOrgId = WellKnownIds.PublicOrgId;
+        var userIdentity = await _db.UserIdentities
+            .FirstOrDefaultAsync(u => u.PlatformUserId == platformUser.Id && u.OrganizationId == publicOrgId, ct);
 
-            if (!authResult.Success)
+        if (userIdentity is null)
+        {
+            userIdentity = new UserIdentity
             {
-                _logger.LogWarning(
-                    "Social login code exchange failed for provider {Provider}: {Error}",
-                    provider, authResult.Error);
-                ErrorMessage = "Sign-in failed. The authorization code may have expired. Please try again.";
-                return Page();
-            }
-
-            if (string.IsNullOrEmpty(authResult.Subject))
-            {
-                _logger.LogWarning("Social login returned no subject for provider {Provider}", provider);
-                ErrorMessage = "Sign-in failed: could not retrieve your identity from the provider.";
-                return Page();
-            }
-
-            // Create or link the social login to a public user account
-            var socialLoginLink = new SocialLoginLink
-            {
-                ProviderType = authResult.Provider,
-                ExternalSubjectId = authResult.Subject,
-                LinkedEmail = authResult.Email,
-                DisplayName = authResult.DisplayName,
-                LastUsedAt = DateTimeOffset.UtcNow
+                OrganizationId = publicOrgId,
+                PlatformUserId = platformUser.Id,
+                Email = platformUser.Email,
+                DisplayName = platformUser.DisplayName,
+                Roles = [UserRole.Member],
+                Status = IdentityStatus.Active,
+                ProvisionedVia = ProvisioningMethod.SocialLogin,
+                ProfileCompleted = !string.IsNullOrWhiteSpace(platformUser.Email)
+                    && !string.IsNullOrWhiteSpace(platformUser.DisplayName)
             };
-
-            var userResult = await _publicUserService.CreatePublicUserFromSocialAsync(
-                authResult.DisplayName ?? authResult.Email ?? "Social User",
-                authResult.Email,
-                socialLoginLink,
-                ct);
-
-            if (!userResult.Success)
-            {
-                _logger.LogWarning(
-                    "Social login user creation/linking failed for provider {Provider}: {Reason}",
-                    provider, userResult.ConflictReason);
-                ErrorMessage = "Sign-in failed: could not create or link your account. Please try again.";
-                return Page();
-            }
-
-            // Issue JWT for the public user
-            var tokenResponse = await _tokenService.GeneratePublicUserTokenAsync(userResult.Identity!, ct);
-
-            _logger.LogInformation(
-                "Social login completed for provider {Provider}: userId={UserId}, isNewUser={IsNewUser}",
-                provider, userResult.Identity!.Id, userResult.IsNewUser);
-
-            // Redirect to the application with tokens in the URL fragment
-            var fragment = $"token={Uri.EscapeDataString(tokenResponse.AccessToken)}" +
-                           $"&refresh={Uri.EscapeDataString(tokenResponse.RefreshToken)}";
-            return Redirect($"/app/#{fragment}");
+            await _identityRepository.CreateUserAsync(userIdentity, ct);
         }
-        catch (ArgumentException ex)
+
+        // Ensure org membership
+        var memberships = await _platformUserService.GetOrgMembershipsAsync(platformUser.Id, ct);
+        if (!memberships.Any(m => m.OrganizationId == publicOrgId))
         {
-            _logger.LogWarning(ex, "Social callback failed: provider '{Provider}' not configured", provider);
-            ErrorMessage = $"Sign-in failed: the '{provider}' provider is not configured.";
+            await _platformUserService.AddOrgMembershipAsync(
+                platformUser.Id, publicOrgId, UserRole.Member.ToString(), ct);
+        }
+
+        // Update last login
+        userIdentity.LastLoginAt = DateTimeOffset.UtcNow;
+        await _identityRepository.UpdateUserAsync(userIdentity, ct);
+
+        // Get public org and issue JWT
+        var publicOrg = await _organizationRepository.GetByIdAsync(publicOrgId, ct);
+        if (publicOrg is null)
+        {
+            ErrorMessage = "Platform configuration error. Please contact support.";
             return Page();
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during social callback for provider {Provider}", provider);
-            ErrorMessage = "An unexpected error occurred. Please try again.";
-            return Page();
-        }
+
+        var tokens = await _tokenService.GenerateUserTokenAsync(userIdentity, publicOrg, platformUser.Id, ct);
+
+        _logger.LogInformation("Social login completed for PlatformUser {PlatformUserId} via {Provider} (isNew={IsNew})",
+            platformUser.Id, provider, isNew);
+
+        // Redirect to app with token in fragment
+        var fragment = $"token={Uri.EscapeDataString(tokens.AccessToken)}" +
+                       $"&refresh={Uri.EscapeDataString(tokens.RefreshToken)}";
+        return Redirect($"/app/#{fragment}");
     }
 }

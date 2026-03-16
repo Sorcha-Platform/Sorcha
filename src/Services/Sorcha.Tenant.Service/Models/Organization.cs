@@ -48,10 +48,16 @@ public class Organization
     public BrandingConfiguration? Branding { get; set; }
 
     /// <summary>
-    /// Navigation property to identity provider configuration.
-    /// Each organization can have one external IDP configured.
+    /// Whether this is a platform-level organisation (system admin or public org).
+    /// Platform orgs cannot be suspended or deleted.
     /// </summary>
-    public IdentityProviderConfiguration? IdentityProvider { get; set; }
+    public bool IsPlatformOrg { get; set; }
+
+    /// <summary>
+    /// Navigation property to identity provider configurations.
+    /// Each organization can have multiple external IDPs configured (e.g., multiple social providers).
+    /// </summary>
+    public ICollection<IdentityProviderConfiguration> IdentityProviders { get; set; } = new List<IdentityProviderConfiguration>();
 
     /// <summary>
     /// Organization type (Standard = invitation-only, Public = self-registration enabled).

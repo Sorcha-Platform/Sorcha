@@ -56,4 +56,16 @@ public interface ILoginService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Login result with tokens or 2FA challenge.</returns>
     Task<LoginResult> LoginAsync(string email, string password, CancellationToken ct = default);
+
+    /// <summary>
+    /// Attempts to authenticate a user with email and password, targeting a specific organization by subdomain.
+    /// Validates PlatformUserOrgMembership for the target org and issues JWT scoped to that org.
+    /// Returns 403-equivalent if the user is not a member of the specified org.
+    /// </summary>
+    /// <param name="email">User email address.</param>
+    /// <param name="password">User password.</param>
+    /// <param name="orgSubdomain">Target organization subdomain.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Login result with tokens scoped to the target org, or 2FA challenge.</returns>
+    Task<LoginResult> LoginAsync(string email, string password, string orgSubdomain, CancellationToken ct = default);
 }

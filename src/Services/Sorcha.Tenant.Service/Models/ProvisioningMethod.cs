@@ -29,5 +29,10 @@ public enum ProvisioningMethod
     /// <summary>
     /// Provisioned via social login (Google, Microsoft, Apple).
     /// </summary>
-    SocialLogin
+    SocialLogin,
+
+    /// <summary>
+    /// Created directly by a system administrator.
+    /// </summary>
+    AdminCreated
 }

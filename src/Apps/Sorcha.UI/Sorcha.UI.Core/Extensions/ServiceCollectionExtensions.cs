@@ -481,6 +481,20 @@ public static class ServiceCollectionExtensions
             return new OrganizationAdminService(httpClient, auditService, logger);
         });
 
+        // Org Provisioning Service (self-service org creation)
+        services.AddScoped<IOrgProvisioningClientService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
+            };
+
+            return new OrgProvisioningClientService(httpClient);
+        });
+
         // Validator Admin Service
         services.AddScoped<IValidatorAdminService>(sp =>
         {
@@ -612,6 +626,34 @@ public static class ServiceCollectionExtensions
             var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<DomainRestrictionClientService>>();
             return new DomainRestrictionClientService(httpClient, logger);
+        });
+
+        // Platform Settings Admin Service (058 - authenticated, SystemAdmin only)
+        services.AddScoped<IPlatformSettingsAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<PlatformSettingsAdminService>>();
+            return new PlatformSettingsAdminService(httpClient, logger);
+        });
+
+        // Platform Org Admin Service (058 - authenticated, SystemAdmin only)
+        services.AddScoped<IPlatformOrgAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            return new PlatformOrgAdminService(httpClient);
+        });
+
+        // Org Switcher Service (058 - authenticated)
+        services.AddScoped<IOrgSwitcherService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            return new OrgSwitcherService(httpClient);
         });
 
         // Status List Service (050 - public endpoint, no auth needed)

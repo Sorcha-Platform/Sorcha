@@ -1,0 +1,455 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/platform-organizations"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "SystemAdmin,Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Admin
+
+@inject IPlatformOrgAdminService OrgAdminService
+@inject ISnackbar Snackbar
+
+<PageTitle>Platform Organisations - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.CorporateFare" Class="mr-2" />
+        Platform Organisations
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Create and manage organisations across the platform. System admin only.
+    </MudText>
+
+    @* Organisation creation form *@
+    <MudExpansionPanels Class="mb-6">
+        <MudExpansionPanel Text="Create Organisation" Icon="@Icons.Material.Filled.Add">
+            <MudPaper Class="pa-4" Elevation="0">
+                @if (_success)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mb-4">
+                        Organisation <strong>@_resultName</strong> created successfully!
+                        @if (_adminDirectlyAdded)
+                        {
+                            <span> Admin was directly added to the organisation.</span>
+                        }
+                        else
+                        {
+                            <span> An invitation has been sent to the admin email.</span>
+                        }
+                    </MudAlert>
+
+                    <MudSimpleTable Dense="true" Bordered="true" Class="mb-4">
+                        <tbody>
+                            <tr><td><strong>Organisation ID</strong></td><td>@_resultOrgId</td></tr>
+                            <tr><td><strong>Name</strong></td><td>@_resultName</td></tr>
+                            <tr><td><strong>Subdomain</strong></td><td>@_resultSubdomain</td></tr>
+                            <tr><td><strong>Admin Status</strong></td><td>@(_adminDirectlyAdded ? "Added directly" : $"Invitation sent (ID: {_resultInvitationId})")</td></tr>
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ResetForm">
+                        Create Another
+                    </MudButton>
+                }
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_name" Label="Organisation Name" Required="true"
+                                          RequiredError="Name is required" Counter="100" MaxLength="100"
+                                          HelperText="3-100 characters" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_subdomain" Label="Subdomain" Required="true"
+                                          RequiredError="Subdomain is required" Counter="50" MaxLength="50"
+                                          HelperText="Lowercase letters, numbers, and hyphens (3-50 chars)"
+                                          Variant="Variant.Outlined"
+                                          Adornment="Adornment.End" AdornmentText=".sorcha.io" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_adminEmail" Label="Invitee Email" Required="true"
+                                          RequiredError="Email is required"
+                                          InputType="InputType.Email"
+                                          HelperText="Existing users are added directly; new emails receive an invitation"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudSelect @bind-Value="_role" Label="Invitee Role" Variant="Variant.Outlined"
+                                       HelperText="Role assigned to the invited user">
+                                <MudSelectItem Value="@("Administrator")">Administrator</MudSelectItem>
+                                <MudSelectItem Value="@("Designer")">Designer</MudSelectItem>
+                                <MudSelectItem Value="@("Auditor")">Auditor</MudSelectItem>
+                                <MudSelectItem Value="@("Member")">Member</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_description" Label="Description" Lines="3"
+                                          Counter="500" MaxLength="500"
+                                          HelperText="Optional description for the organisation"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mt-4 mb-2">@_error</MudAlert>
+                    }
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4"
+                               Disabled="@(_loading || string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_subdomain) || string.IsNullOrWhiteSpace(_adminEmail))"
+                               OnClick="SubmitAsync">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Creating...</span>
+                        }
+                        else
+                        {
+                            <span>Create Organisation</span>
+                        }
+                    </MudButton>
+                }
+            </MudPaper>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+
+    @* Organisation list *@
+    <MudPaper Class="pa-4" Elevation="2">
+        <div class="d-flex align-center justify-space-between mb-4">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.List" Class="mr-1" />
+                All Organisations
+            </MudText>
+            <div class="d-flex align-center gap-2">
+                <MudSelect T="string" Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
+                           Dense="true" Style="width: 160px;" Clearable="true"
+                           ValueChanged="OnStatusFilterChanged">
+                    <MudSelectItem Value="@("Active")">Active</MudSelectItem>
+                    <MudSelectItem Value="@("Suspended")">Suspended</MudSelectItem>
+                </MudSelect>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadOrgsAsync"
+                               Title="Refresh" />
+            </div>
+        </div>
+
+        @if (_orgsLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mb-4" />
+        }
+
+        <MudTable Items="_orgs" Dense="true" Hover="true" Bordered="true" Striped="true"
+                  Loading="_orgsLoading">
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Subdomain</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Users</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">
+                    <MudText Typo="Typo.body2">@context.Name</MudText>
+                    @if (context.IsPlatformOrg)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-1">Platform</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Subdomain">@context.Subdomain</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(context.Status == "Active" ? Color.Success : context.Status == "Suspended" ? Color.Warning : Color.Error)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Type">@context.OrgType</MudTd>
+                <MudTd DataLabel="Users">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => ViewUsersAsync(context.Id, context.Name))">
+                        @context.UserCount
+                    </MudButton>
+                </MudTd>
+                <MudTd DataLabel="Created">@context.CreatedAt.ToString("yyyy-MM-dd")</MudTd>
+                <MudTd DataLabel="Actions">
+                    @if (!context.IsPlatformOrg)
+                    {
+                        @if (context.Status == "Active")
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.PauseCircle" Color="Color.Warning"
+                                           Size="Size.Small" Title="Suspend"
+                                           OnClick="@(() => ToggleStatusAsync(context.Id, "Suspended"))" />
+                        }
+                        else if (context.Status == "Suspended")
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayCircle" Color="Color.Success"
+                                           Size="Size.Small" Title="Activate"
+                                           OnClick="@(() => ToggleStatusAsync(context.Id, "Active"))" />
+                        }
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No organisations found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (_orgsTotalCount > _orgsPageSize)
+        {
+            <div class="d-flex justify-center mt-4">
+                <MudPagination Count="@((int)Math.Ceiling((double)_orgsTotalCount / _orgsPageSize))"
+                               Selected="_orgsPage"
+                               SelectedChanged="OnOrgPageChanged" />
+            </div>
+        }
+    </MudPaper>
+
+    @* User list dialog *@
+    @if (_showUsers)
+    {
+        <MudPaper Class="pa-4 mt-4" Elevation="2">
+            <div class="d-flex align-center justify-space-between mb-4">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-1" />
+                    Users in @_usersOrgName
+                </MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _showUsers = false)"
+                               Title="Close" />
+            </div>
+
+            @if (_usersLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Class="mb-4" />
+            }
+
+            <MudTable Items="_users" Dense="true" Hover="true" Bordered="true" Striped="true"
+                      Loading="_usersLoading">
+                <HeaderContent>
+                    <MudTh>Email</MudTh>
+                    <MudTh>Display Name</MudTh>
+                    <MudTh>Role</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Joined</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Email">@context.Email</MudTd>
+                    <MudTd DataLabel="Display Name">@context.DisplayName</MudTd>
+                    <MudTd DataLabel="Role">@string.Join(", ", context.Roles)</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.Status == "Active" ? Color.Success : Color.Warning)">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Joined">@context.CreatedAt.ToString("yyyy-MM-dd")</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No users found.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+            @if (_usersTotalCount > _usersPageSize)
+            {
+                <div class="d-flex justify-center mt-4">
+                    <MudPagination Count="@((int)Math.Ceiling((double)_usersTotalCount / _usersPageSize))"
+                                   Selected="_usersPage"
+                                   SelectedChanged="OnUserPageChanged" />
+                </div>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Platform Organisations", href: null, disabled: true)
+    ];
+
+    // Create form state
+    private string _name = string.Empty;
+    private string _subdomain = string.Empty;
+    private string _adminEmail = string.Empty;
+    private string _role = "Administrator";
+    private string? _description;
+    private string? _error;
+    private bool _loading;
+    private bool _success;
+    private Guid? _resultOrgId;
+    private string? _resultName;
+    private string? _resultSubdomain;
+    private bool _adminDirectlyAdded;
+    private Guid? _resultInvitationId;
+
+    // Org list state
+    private List<PlatformOrgSummary> _orgs = [];
+    private bool _orgsLoading;
+    private string? _statusFilter;
+    private int _orgsPage = 1;
+    private int _orgsPageSize = 25;
+    private int _orgsTotalCount;
+
+    // User list state
+    private List<PlatformOrgUser> _users = [];
+    private bool _usersLoading;
+    private bool _showUsers;
+    private string _usersOrgName = string.Empty;
+    private Guid _usersOrgId;
+    private int _usersPage = 1;
+    private int _usersPageSize = 25;
+    private int _usersTotalCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadOrgsAsync();
+    }
+
+    private async Task LoadOrgsAsync()
+    {
+        _orgsLoading = true;
+        try
+        {
+            var result = await OrgAdminService.ListOrganizationsAsync(
+                _statusFilter, _orgsPage, _orgsPageSize);
+            _orgs = result.Items.ToList();
+            _orgsTotalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load organisations: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _orgsLoading = false;
+        }
+    }
+
+    private async Task OnStatusFilterChanged(string? value)
+    {
+        _statusFilter = value;
+        _orgsPage = 1;
+        await LoadOrgsAsync();
+    }
+
+    private async Task OnOrgPageChanged(int page)
+    {
+        _orgsPage = page;
+        await LoadOrgsAsync();
+    }
+
+    private async Task ToggleStatusAsync(Guid orgId, string newStatus)
+    {
+        try
+        {
+            var ok = await OrgAdminService.UpdateOrganizationStatusAsync(orgId, newStatus);
+            if (ok)
+            {
+                Snackbar.Add($"Organisation status changed to {newStatus}.", Severity.Success);
+                await LoadOrgsAsync();
+            }
+            else
+            {
+                Snackbar.Add("Failed to update organisation status.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ViewUsersAsync(Guid orgId, string orgName)
+    {
+        _usersOrgId = orgId;
+        _usersOrgName = orgName;
+        _usersPage = 1;
+        _showUsers = true;
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        _usersLoading = true;
+        try
+        {
+            var result = await OrgAdminService.GetOrganizationUsersAsync(
+                _usersOrgId, _usersPage, _usersPageSize);
+            _users = result.Items.ToList();
+            _usersTotalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load users: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _usersLoading = false;
+        }
+    }
+
+    private async Task OnUserPageChanged(int page)
+    {
+        _usersPage = page;
+        await LoadUsersAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        _loading = true;
+
+        try
+        {
+            var result = await OrgAdminService.CreateOrganizationAsync(
+                _name, _subdomain.ToLowerInvariant(), _adminEmail.Trim(), _role, _description);
+
+            if (result.Success)
+            {
+                _success = true;
+                _resultOrgId = result.OrganizationId;
+                _resultName = result.OrganizationName;
+                _resultSubdomain = result.Subdomain;
+                _adminDirectlyAdded = result.AdminDirectlyAdded;
+                _resultInvitationId = result.InvitationId;
+
+                Snackbar.Add(result.AdminDirectlyAdded
+                    ? "Organisation created! Admin added directly."
+                    : "Organisation created! Invitation sent to admin.", Severity.Success);
+
+                await LoadOrgsAsync();
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to create organisation.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        _success = false;
+        _name = string.Empty;
+        _subdomain = string.Empty;
+        _adminEmail = string.Empty;
+        _role = "Administrator";
+        _description = null;
+        _error = null;
+        _resultOrgId = null;
+        _resultName = null;
+        _resultSubdomain = null;
+        _adminDirectlyAdded = false;
+        _resultInvitationId = null;
+    }
+}

@@ -41,9 +41,11 @@ public class EmailVerificationService : IEmailVerificationService
             .Replace("/", "_")
             .TrimEnd('=');
 
-        // Store on user entity
-        user.VerificationToken = token;
-        user.VerificationTokenExpiresAt = DateTimeOffset.UtcNow.Add(TokenExpiry);
+        // Store verification token on PlatformUser
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, cancellationToken);
+        platformUser!.VerificationToken = token;
+        platformUser.VerificationTokenExpiresAt = DateTimeOffset.UtcNow.Add(TokenExpiry);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -65,31 +67,31 @@ public class EmailVerificationService : IEmailVerificationService
     public async Task<(bool Success, string? Error)> VerifyTokenAsync(
         string token, CancellationToken cancellationToken)
     {
-        var user = await _dbContext.UserIdentities
-            .FirstOrDefaultAsync(u => u.VerificationToken == token, cancellationToken);
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.VerificationToken == token, cancellationToken);
 
-        if (user is null)
+        if (platformUser is null)
         {
             return (false, "Invalid verification token.");
         }
 
-        if (user.VerificationTokenExpiresAt.HasValue
-            && user.VerificationTokenExpiresAt.Value < DateTimeOffset.UtcNow)
+        if (platformUser.VerificationTokenExpiresAt.HasValue
+            && platformUser.VerificationTokenExpiresAt.Value < DateTimeOffset.UtcNow)
         {
             return (false, "Verification token has expired.");
         }
 
-        // Mark email as verified
-        user.EmailVerified = true;
-        user.EmailVerifiedAt = DateTimeOffset.UtcNow;
-        user.VerificationToken = null;
-        user.VerificationTokenExpiresAt = null;
+        // Mark email as verified on PlatformUser
+        platformUser.EmailVerified = true;
+        platformUser.EmailVerifiedAt = DateTimeOffset.UtcNow;
+        platformUser.VerificationToken = null;
+        platformUser.VerificationTokenExpiresAt = null;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Email verified for user {UserId} ({Email})",
-            user.Id, user.Email);
+            "Email verified for PlatformUser {PlatformUserId} ({Email})",
+            platformUser.Id, platformUser.Email);
 
         return (true, null);
     }
@@ -97,17 +99,24 @@ public class EmailVerificationService : IEmailVerificationService
     /// <inheritdoc />
     public async Task<bool> CanResendAsync(Guid userId, CancellationToken cancellationToken)
     {
+        // Look up the UserIdentity to get the PlatformUserId
         var user = await _dbContext.UserIdentities
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         if (user is null)
             return false;
 
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, cancellationToken);
+
+        if (platformUser is null)
+            return false;
+
         // Simple rate check: if token was generated within the last 20 minutes, deny
         // (3 per hour ≈ one every 20 minutes)
-        if (user.VerificationTokenExpiresAt.HasValue)
+        if (platformUser.VerificationTokenExpiresAt.HasValue)
         {
-            var tokenAge = DateTimeOffset.UtcNow - (user.VerificationTokenExpiresAt.Value - TokenExpiry);
+            var tokenAge = DateTimeOffset.UtcNow - (platformUser.VerificationTokenExpiresAt.Value - TokenExpiry);
             if (tokenAge < TimeSpan.FromMinutes(20))
                 return false;
         }

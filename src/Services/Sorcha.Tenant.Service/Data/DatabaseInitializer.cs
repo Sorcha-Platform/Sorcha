@@ -5,6 +5,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services;
 
 namespace Sorcha.Tenant.Service.Data;
 
@@ -18,9 +19,9 @@ public class DatabaseInitializer
     private readonly ILogger<DatabaseInitializer> _logger;
     private readonly IConfiguration _configuration;
 
-    // Well-known IDs for default organization and admin
-    public static readonly Guid DefaultOrganizationId = new("00000000-0000-0000-0000-000000000001");
-    public static readonly Guid DefaultAdminUserId = new("00000000-0000-0000-0001-000000000001");
+    // Well-known IDs delegate to WellKnownIds (single source of truth)
+    public static readonly Guid DefaultOrganizationId = WellKnownIds.SystemAdminOrgId;
+    public static readonly Guid DefaultAdminUserId = WellKnownIds.DefaultAdminUserId;
 
     // Well-known IDs for service principals
     public static readonly Guid BlueprintServicePrincipalId = new("00000000-0000-0000-0002-000000000001");
@@ -114,61 +115,144 @@ public class DatabaseInitializer
     {
         _logger.LogInformation("Checking for seed data...");
 
-        // Check if default organization exists
+        // --- 1. System Admin Organisation ---
+        await SeedSystemAdminOrgAsync(dbContext, cancellationToken);
+
+        // --- 2. Public Organisation ---
+        await SeedPublicOrgAsync(dbContext, cancellationToken);
+
+        // --- 3. Admin PlatformUser + UserIdentity + OrgMembership ---
+        await SeedAdminUserAsync(dbContext, cancellationToken);
+
+        // --- 4. PlatformSettings ---
+        await SeedPlatformSettingsAsync(dbContext, cancellationToken);
+    }
+
+    private async Task SeedSystemAdminOrgAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
+    {
         var existingOrg = await dbContext.Organizations
-            .FirstOrDefaultAsync(o => o.Id == DefaultOrganizationId, cancellationToken);
+            .FirstOrDefaultAsync(o => o.Id == WellKnownIds.SystemAdminOrgId, cancellationToken);
 
-        if (existingOrg == null)
+        if (existingOrg != null)
         {
-            _logger.LogInformation("Creating default organization: {Name}", DefaultOrganizationName);
+            _logger.LogInformation("System admin organisation already exists: {Name}", existingOrg.Name);
+            return;
+        }
 
-            var organization = new Organization
+        _logger.LogInformation("Creating system admin organisation: {Name}", DefaultOrganizationName);
+
+        var systemAdminOrg = new Organization
+        {
+            Id = WellKnownIds.SystemAdminOrgId,
+            Name = _configuration["Seed:OrganizationName"] ?? DefaultOrganizationName,
+            Subdomain = _configuration["Seed:OrganizationSubdomain"] ?? DefaultOrganizationSubdomain,
+            Status = OrganizationStatus.Active,
+            IsPlatformOrg = true,
+            OrgType = OrgType.Standard,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Branding = new BrandingConfiguration
             {
-                Id = DefaultOrganizationId,
-                Name = _configuration["Seed:OrganizationName"] ?? DefaultOrganizationName,
-                Subdomain = _configuration["Seed:OrganizationSubdomain"] ?? DefaultOrganizationSubdomain,
-                Status = OrganizationStatus.Active,
-                CreatedAt = DateTimeOffset.UtcNow,
-                Branding = new BrandingConfiguration
-                {
-                    PrimaryColor = "#6366f1",
-                    SecondaryColor = "#8b5cf6",
-                    CompanyTagline = "Distributed Ledger Platform"
-                }
-            };
+                PrimaryColor = "#6366f1",
+                SecondaryColor = "#8b5cf6",
+                CompanyTagline = "Distributed Ledger Platform"
+            }
+        };
 
-            dbContext.Organizations.Add(organization);
-            await dbContext.SaveChangesAsync(cancellationToken);
+        dbContext.Organizations.Add(systemAdminOrg);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("System admin organisation created with ID: {Id}", systemAdminOrg.Id);
+    }
 
-            _logger.LogInformation("Default organization created with ID: {Id}", organization.Id);
-        }
-        else
+    private async Task SeedPublicOrgAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var existingOrg = await dbContext.Organizations
+            .FirstOrDefaultAsync(o => o.Id == WellKnownIds.PublicOrgId, cancellationToken);
+
+        if (existingOrg != null)
         {
-            _logger.LogInformation("Default organization already exists: {Name}", existingOrg.Name);
+            _logger.LogInformation("Public organisation already exists: {Name}", existingOrg.Name);
+            return;
         }
 
-        // Check if default admin user exists
-        var existingAdmin = await dbContext.UserIdentities
-            .FirstOrDefaultAsync(u => u.Id == DefaultAdminUserId, cancellationToken);
+        _logger.LogInformation("Creating public organisation");
 
-        if (existingAdmin == null)
+        var publicOrg = new Organization
         {
-            var adminEmail = _configuration["Seed:AdminEmail"] ?? DefaultAdminEmail;
-            var adminPassword = _configuration["Seed:AdminPassword"] ?? DefaultAdminPassword;
+            Id = WellKnownIds.PublicOrgId,
+            Name = "Sorcha Public",
+            Subdomain = "public",
+            Status = OrganizationStatus.Suspended,
+            IsPlatformOrg = true,
+            OrgType = OrgType.Public,
+            SelfRegistrationEnabled = false,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Branding = new BrandingConfiguration
+            {
+                PrimaryColor = "#10b981",
+                SecondaryColor = "#34d399",
+                CompanyTagline = "Open Access Platform"
+            }
+        };
 
-            _logger.LogInformation("Creating default administrator: {Email}", adminEmail);
+        dbContext.Organizations.Add(publicOrg);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Public organisation created with ID: {Id} (Status: Suspended)", publicOrg.Id);
+    }
 
-            // Hash the password using BCrypt
+    private async Task SeedAdminUserAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // Check if PlatformUser already exists
+        var existingPlatformUser = await dbContext.PlatformUsers
+            .FirstOrDefaultAsync(u => u.Id == WellKnownIds.DefaultAdminUserId, cancellationToken);
+
+        var adminEmail = _configuration["Seed:AdminEmail"] ?? DefaultAdminEmail;
+        var adminPassword = _configuration["Seed:AdminPassword"] ?? DefaultAdminPassword;
+
+        if (existingPlatformUser == null)
+        {
+            _logger.LogInformation("Creating admin PlatformUser: {Email}", adminEmail);
+
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword);
 
-            var adminUser = new UserIdentity
+            var platformUser = new PlatformUser
             {
-                Id = DefaultAdminUserId,
-                OrganizationId = DefaultOrganizationId,
+                Id = WellKnownIds.DefaultAdminUserId,
                 Email = adminEmail,
                 DisplayName = "System Administrator",
                 PasswordHash = passwordHash,
-                ExternalIdpSubject = null, // Local authentication
+                EmailVerified = true,
+                EmailVerifiedAt = DateTimeOffset.UtcNow,
+                Status = PlatformUserStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            dbContext.PlatformUsers.Add(platformUser);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Admin PlatformUser created with ID: {Id}", platformUser.Id);
+            _logger.LogWarning("Default admin credentials - Email: {Email}, Password: {Password} - CHANGE IN PRODUCTION!",
+                adminEmail, adminPassword);
+        }
+        else
+        {
+            _logger.LogInformation("Admin PlatformUser already exists: {Email}", existingPlatformUser.Email);
+        }
+
+        // Check if UserIdentity exists in system admin org
+        var existingIdentity = await dbContext.UserIdentities
+            .FirstOrDefaultAsync(u => u.PlatformUserId == WellKnownIds.DefaultAdminUserId
+                && u.OrganizationId == WellKnownIds.SystemAdminOrgId, cancellationToken);
+
+        if (existingIdentity == null)
+        {
+            _logger.LogInformation("Creating admin UserIdentity in system admin org");
+
+            var adminIdentity = new UserIdentity
+            {
+                Id = DefaultAdminUserId,
+                OrganizationId = WellKnownIds.SystemAdminOrgId,
+                PlatformUserId = WellKnownIds.DefaultAdminUserId,
+                Email = adminEmail,
+                DisplayName = "System Administrator",
                 Roles =
                 [
                     UserRole.Administrator,
@@ -181,17 +265,58 @@ public class DatabaseInitializer
                 CreatedAt = DateTimeOffset.UtcNow
             };
 
-            dbContext.UserIdentities.Add(adminUser);
+            dbContext.UserIdentities.Add(adminIdentity);
             await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Admin UserIdentity created with ID: {Id}", adminIdentity.Id);
+        }
 
-            _logger.LogInformation("Default administrator created with ID: {Id}", adminUser.Id);
-            _logger.LogWarning("Default admin credentials - Email: {Email}, Password: {Password} - CHANGE IN PRODUCTION!",
-                adminEmail, adminPassword);
-        }
-        else
+        // Check if OrgMembership exists
+        var existingMembership = await dbContext.PlatformUserOrgMemberships
+            .FirstOrDefaultAsync(m => m.PlatformUserId == WellKnownIds.DefaultAdminUserId
+                && m.OrganizationId == WellKnownIds.SystemAdminOrgId, cancellationToken);
+
+        if (existingMembership == null)
         {
-            _logger.LogInformation("Default administrator already exists: {Email}", existingAdmin.Email);
+            _logger.LogInformation("Creating admin PlatformUserOrgMembership");
+
+            var membership = new PlatformUserOrgMembership
+            {
+                PlatformUserId = WellKnownIds.DefaultAdminUserId,
+                OrganizationId = WellKnownIds.SystemAdminOrgId,
+                Role = UserRole.SystemAdmin.ToString(),
+                JoinedAt = DateTimeOffset.UtcNow
+            };
+
+            dbContext.PlatformUserOrgMemberships.Add(membership);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Admin org membership created for system admin org");
         }
+    }
+
+    private async Task SeedPlatformSettingsAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var existingSettings = await dbContext.PlatformSettings
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existingSettings != null)
+        {
+            _logger.LogInformation("PlatformSettings already seeded");
+            return;
+        }
+
+        _logger.LogInformation("Seeding PlatformSettings (PublicOrgEnabled=false, MaxOrgsPerUser=1)");
+
+        var settings = new PlatformSettings
+        {
+            PublicOrgEnabled = false,
+            MaxOrgsPerUser = 1,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            UpdatedBy = WellKnownIds.DefaultAdminUserId
+        };
+
+        dbContext.PlatformSettings.Add(settings);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("PlatformSettings seeded with ID: {Id}", settings.Id);
     }
 
     private async Task SeedServicePrincipalsAsync(TenantDbContext dbContext, CancellationToken cancellationToken)

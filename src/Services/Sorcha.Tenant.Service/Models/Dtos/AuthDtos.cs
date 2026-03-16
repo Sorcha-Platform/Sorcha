@@ -303,6 +303,48 @@ public record Verify2FaRequest
 }
 
 /// <summary>
+/// Request to switch the active organisation context.
+/// Issues a new JWT scoped to the target org.
+/// </summary>
+public record SwitchOrgRequest
+{
+    /// <summary>
+    /// The target organisation ID to switch to.
+    /// </summary>
+    public required Guid OrganizationId { get; init; }
+}
+
+/// <summary>
+/// A single org membership entry for the org switcher.
+/// </summary>
+public record OrgMembershipEntry
+{
+    /// <summary>Organisation ID.</summary>
+    public Guid OrganizationId { get; init; }
+
+    /// <summary>Organisation display name.</summary>
+    public string OrganizationName { get; init; } = string.Empty;
+
+    /// <summary>Organisation subdomain.</summary>
+    public string Subdomain { get; init; } = string.Empty;
+
+    /// <summary>The user's highest role in this organisation.</summary>
+    public string Role { get; init; } = string.Empty;
+
+    /// <summary>Whether this is the user's currently active organisation.</summary>
+    public bool IsCurrent { get; init; }
+}
+
+/// <summary>
+/// Response containing all org memberships for the current user.
+/// </summary>
+public record OrgMembershipListResponse
+{
+    /// <summary>List of org memberships.</summary>
+    public IReadOnlyList<OrgMembershipEntry> Items { get; init; } = [];
+}
+
+/// <summary>
 /// Generic success response.
 /// </summary>
 public record SuccessResponse

@@ -226,7 +226,7 @@ public class OrganizationRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_ShouldIncludeIdentityProviderNavigation()
+    public async Task CreateAsync_ShouldIncludeIdentityProvidersNavigation()
     {
         // Arrange
         var organization = new Organization
@@ -234,13 +234,16 @@ public class OrganizationRepositoryTests : IDisposable
             Name = "Org With IDP",
             Subdomain = "orgidp",
             Status = OrganizationStatus.Active,
-            IdentityProvider = new IdentityProviderConfiguration
+            IdentityProviders = new List<IdentityProviderConfiguration>
             {
-                ProviderPreset = IdentityProviderType.MicrosoftEntra,
-                IssuerUrl = "https://login.microsoftonline.com/tenant-id/v2.0",
-                ClientId = "client-id",
-                ClientSecretEncrypted = new byte[] { 1, 2, 3 },
-                Scopes = new[] { "openid", "profile", "email" }
+                new IdentityProviderConfiguration
+                {
+                    ProviderPreset = IdentityProviderType.MicrosoftEntra,
+                    IssuerUrl = "https://login.microsoftonline.com/tenant-id/v2.0",
+                    ClientId = "client-id",
+                    ClientSecretEncrypted = new byte[] { 1, 2, 3 },
+                    Scopes = new[] { "openid", "profile", "email" }
+                }
             }
         };
 
@@ -250,7 +253,7 @@ public class OrganizationRepositoryTests : IDisposable
         // Assert
         var fetched = await _repository.GetByIdAsync(created.Id);
         fetched.Should().NotBeNull();
-        fetched!.IdentityProvider.Should().NotBeNull();
-        fetched.IdentityProvider!.ProviderPreset.Should().Be(IdentityProviderType.MicrosoftEntra);
+        fetched!.IdentityProviders.Should().NotBeEmpty();
+        fetched.IdentityProviders.First().ProviderPreset.Should().Be(IdentityProviderType.MicrosoftEntra);
     }
 }

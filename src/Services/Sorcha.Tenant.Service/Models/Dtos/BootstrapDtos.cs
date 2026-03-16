@@ -106,6 +106,21 @@ public class BootstrapResponse
     public string? ServicePrincipalClientSecret { get; set; }
 
     /// <summary>
+    /// ID of the system admin organisation (platform governance).
+    /// </summary>
+    public Guid SystemAdminOrgId { get; set; }
+
+    /// <summary>
+    /// ID of the public organisation (self-registration target).
+    /// </summary>
+    public Guid PublicOrgId { get; set; }
+
+    /// <summary>
+    /// ID of the admin PlatformUser (platform-wide identity).
+    /// </summary>
+    public Guid PlatformUserId { get; set; }
+
+    /// <summary>
     /// Timestamp of bootstrap operation.
     /// </summary>
     public DateTime CreatedAt { get; set; }

@@ -210,9 +210,13 @@ public static class OrganizationEndpoints
             return TypedResults.NotFound();
         }
 
-        targetUser.FailedLoginCount = 0;
-        targetUser.LockedUntil = null;
-        targetUser.LockedPermanently = false;
+        // TODO: FailedLoginCount, LockedUntil, LockedPermanently removed from UserIdentity.
+        // Account lockout will be handled by PlatformUser in a future task.
+        // For now, just reactivate the user status if suspended.
+        if (targetUser.Status == IdentityStatus.Suspended)
+        {
+            targetUser.Status = IdentityStatus.Active;
+        }
         await identityRepository.UpdateUserAsync(targetUser, cancellationToken);
 
         dbContext.AuditLogEntries.Add(new AuditLogEntry

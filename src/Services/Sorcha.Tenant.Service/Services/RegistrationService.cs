@@ -72,15 +72,23 @@ public class RegistrationService : IRegistrationService
                 });
         }
 
-        // Check email uniqueness within the organization
+        // Timing-safe email uniqueness check: return the same success-shaped
+        // response whether the email exists or not, to prevent enumeration.
         var existingUser = await _dbContext.UserIdentities
             .FirstOrDefaultAsync(u => u.Email == email && u.OrganizationId == org.Id, ct);
 
         if (existingUser is not null)
         {
-            return new RegistrationResult(false,
-                Error: "An account with this email already exists.",
-                ErrorStatusCode: 409);
+            // Perform a dummy BCrypt hash to maintain consistent timing
+            BCrypt.Net.BCrypt.HashPassword("timing-safe-dummy");
+
+            _logger.LogInformation(
+                "Registration attempt for existing email {Email} in org {OrgSubdomain} — returning success shape",
+                email, orgSubdomain);
+
+            return new RegistrationResult(true,
+                UserId: Guid.Empty,
+                Message: "Account created. Please check your email to verify your address.");
         }
 
         // Check domain restrictions
@@ -95,14 +103,31 @@ public class RegistrationService : IRegistrationService
             }
         }
 
-        // Create the user
+        // Create or find PlatformUser for this registration
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Email == email, ct);
+        if (platformUser is null)
+        {
+            platformUser = new PlatformUser
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                DisplayName = displayName,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                Status = PlatformUserStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _dbContext.PlatformUsers.Add(platformUser);
+        }
+
+        // Create the user identity (org-scoped)
         var user = new UserIdentity
         {
             Id = Guid.NewGuid(),
             OrganizationId = org.Id,
+            PlatformUserId = platformUser.Id,
             Email = email,
             DisplayName = displayName,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Status = IdentityStatus.Active,
             Roles = [UserRole.Member],
             ProvisionedVia = ProvisioningMethod.Local,
@@ -111,6 +136,16 @@ public class RegistrationService : IRegistrationService
         };
 
         _dbContext.UserIdentities.Add(user);
+
+        // Create org membership link
+        _dbContext.Set<PlatformUserOrgMembership>().Add(new PlatformUserOrgMembership
+        {
+            Id = Guid.NewGuid(),
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = nameof(UserRole.Member),
+            JoinedAt = DateTimeOffset.UtcNow
+        });
 
         // Log audit event
         _dbContext.AuditLogEntries.Add(new AuditLogEntry

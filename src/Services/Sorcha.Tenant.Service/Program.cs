@@ -80,8 +80,8 @@ builder.Services.AddRateLimiter(options =>
         config.QueueLimit = 0;
     });
 
-    // Public auth rate limiting: 5 attempts per minute per IP (passkey + social endpoints)
-    options.AddFixedWindowLimiter(PublicAuthEndpoints.PublicAuthRateLimitPolicy, config =>
+    // Platform auth rate limiting: 5 attempts per minute per IP (social + registration endpoints)
+    options.AddFixedWindowLimiter("platform-auth", config =>
     {
         config.PermitLimit = 5;
         config.Window = TimeSpan.FromMinutes(1);
@@ -167,12 +167,14 @@ app.MapOrganizationEndpoints();
 app.MapParticipantEndpoints();
 app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
-app.MapPublicAuthEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
+app.MapSocialLoginEndpoints();
+app.MapPlatformSettingsEndpoints();
+app.MapPlatformOrgEndpoints();
 app.MapOrgSettingsEndpoints();
 app.MapDomainRestrictionEndpoints();
 app.MapAuditEndpoints();

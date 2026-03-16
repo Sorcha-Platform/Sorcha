@@ -57,8 +57,12 @@ public class PasswordResetService : IPasswordResetService
             return true;
         }
 
+        // Look up PlatformUser for authentication fields
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, ct);
+
         // External IDP users cannot reset passwords (they have no local password)
-        if (string.IsNullOrEmpty(user.PasswordHash))
+        if (platformUser is null || string.IsNullOrEmpty(platformUser.PasswordHash))
         {
             _logger.LogInformation("Password reset requested for external IDP user: {Email}", email);
             return true;
@@ -71,9 +75,9 @@ public class PasswordResetService : IPasswordResetService
             .Replace('/', '_')
             .TrimEnd('=');
 
-        // Store the SHA-256 hash of the token (not the raw token)
-        user.PasswordResetTokenHash = HashToken(rawToken);
-        user.PasswordResetTokenExpiresAt = DateTimeOffset.UtcNow.Add(TokenTtl);
+        // Store the SHA-256 hash of the token (not the raw token) on PlatformUser
+        platformUser.PasswordResetTokenHash = HashToken(rawToken);
+        platformUser.PasswordResetTokenExpiresAt = DateTimeOffset.UtcNow.Add(TokenTtl);
 
         await _dbContext.SaveChangesAsync(ct);
 
@@ -97,20 +101,20 @@ public class PasswordResetService : IPasswordResetService
         }
 
         var tokenHash = HashToken(token);
-        var user = await FindUserByTokenHashAsync(tokenHash, ct);
+        var platformUser = await FindPlatformUserByTokenHashAsync(tokenHash, ct);
 
-        if (user is null)
+        if (platformUser is null)
         {
             return new PasswordResetValidation(false, Error: "Invalid or expired reset token.");
         }
 
-        if (user.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
+        if (platformUser.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
         {
-            _logger.LogInformation("Expired password reset token used for user {Email}", user.Email);
+            _logger.LogInformation("Expired password reset token used for user {Email}", platformUser.Email);
             return new PasswordResetValidation(false, Error: "Reset token has expired. Please request a new one.");
         }
 
-        return new PasswordResetValidation(true, Email: user.Email);
+        return new PasswordResetValidation(true, Email: platformUser.Email);
     }
 
     /// <inheritdoc />
@@ -123,14 +127,14 @@ public class PasswordResetService : IPasswordResetService
         }
 
         var tokenHash = HashToken(token);
-        var user = await FindUserByTokenHashAsync(tokenHash, ct);
+        var platformUser = await FindPlatformUserByTokenHashAsync(tokenHash, ct);
 
-        if (user is null)
+        if (platformUser is null)
         {
             return new PasswordResetResult(false, Error: "Invalid or expired reset token.");
         }
 
-        if (user.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
+        if (platformUser.PasswordResetTokenExpiresAt < DateTimeOffset.UtcNow)
         {
             return new PasswordResetResult(false, Error: "Reset token has expired. Please request a new one.");
         }
@@ -147,14 +151,14 @@ public class PasswordResetService : IPasswordResetService
         }
 
         // Update the password hash (BCrypt) and clear the reset token (one-time use)
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-        user.PasswordResetTokenHash = null;
-        user.PasswordResetTokenExpiresAt = null;
+        platformUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        platformUser.PasswordResetTokenHash = null;
+        platformUser.PasswordResetTokenExpiresAt = null;
 
         await _dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Password successfully reset for user {Email} (UserId: {UserId})",
-            user.Email, user.Id);
+        _logger.LogInformation("Password successfully reset for PlatformUser {Email} (PlatformUserId: {PlatformUserId})",
+            platformUser.Email, platformUser.Id);
 
         return new PasswordResetResult(true);
     }
@@ -169,12 +173,12 @@ public class PasswordResetService : IPasswordResetService
     }
 
     /// <summary>
-    /// Finds a user by the hashed reset token.
+    /// Finds a PlatformUser by the hashed reset token.
     /// </summary>
-    private async Task<UserIdentity?> FindUserByTokenHashAsync(string tokenHash, CancellationToken ct)
+    private async Task<PlatformUser?> FindPlatformUserByTokenHashAsync(string tokenHash, CancellationToken ct)
     {
-        return await _dbContext.UserIdentities
-            .FirstOrDefaultAsync(u => u.PasswordResetTokenHash == tokenHash, ct);
+        return await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.PasswordResetTokenHash == tokenHash, ct);
     }
 
     /// <summary>

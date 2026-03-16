@@ -215,7 +215,7 @@ public partial class OrganizationService : IOrganizationService
             OrganizationId = organizationId,
             Email = request.Email,
             DisplayName = request.DisplayName,
-            ExternalIdpSubject = request.ExternalIdpSubject,
+            // TODO: ExternalIdpSubject removed from UserIdentity — external subject tracking moves to PlatformSocialLogin
             Roles = request.Roles,
             Status = IdentityStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow

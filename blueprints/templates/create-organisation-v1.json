@@ -1,0 +1,123 @@
+{
+  "id": "create-organisation-v1",
+  "title": "Create Organisation Workflow",
+  "description": "Self-service workflow for creating a new private organisation. Validates the user's eligibility (email verified, within org creation limit), provisions the organisation with admin identity, and confirms creation.",
+  "version": 1,
+  "category": "system",
+  "tags": ["system", "organisation", "creation", "self-service"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "@context": "https://sorcha.dev/blueprints/v1",
+    "id": "create-organisation-v1",
+    "title": "Create Organisation Workflow",
+    "description": "Self-service workflow for public org members to create private organisations",
+    "version": 1,
+    "participants": [
+      {
+        "id": "requestor",
+        "name": "Requestor",
+        "organisation": "Public Organisation Member"
+      },
+      {
+        "id": "system",
+        "name": "Platform System",
+        "organisation": "Sorcha Platform"
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Submit Organisation Request",
+        "description": "User submits organisation name, subdomain, and optional description",
+        "sender": "requestor",
+        "isStartingAction": true,
+        "type": "submission",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 100,
+                "description": "Organisation display name"
+              },
+              "subdomain": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 50,
+                "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+                "description": "Unique subdomain (lowercase alphanumeric + hyphens)"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "Optional organisation description"
+              }
+            },
+            "required": ["name", "subdomain"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "submitted",
+            "nextActionIds": [1],
+            "isDefault": true
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Validate Request",
+        "description": "System validates user eligibility: email verified, org creation limit not exceeded, subdomain available and not reserved",
+        "sender": "system",
+        "type": "validation",
+        "routes": [
+          {
+            "id": "valid",
+            "nextActionIds": [2],
+            "condition": { "==": [{ "var": "validation.passed" }, true] },
+            "description": "All validation checks passed"
+          },
+          {
+            "id": "invalid",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Validation failed — workflow terminates with error"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Provision Organisation",
+        "description": "Atomically creates: Organisation entity, admin UserIdentity for requestor, PlatformUserOrgMembership, and increments CreatedOrgsCount",
+        "sender": "system",
+        "type": "provisioning",
+        "routes": [
+          {
+            "id": "provisioned",
+            "nextActionIds": [3],
+            "isDefault": true
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Confirm Creation",
+        "description": "Returns the new organisation details to the requestor",
+        "sender": "system",
+        "type": "confirmation"
+      }
+    ],
+    "metadata": {
+      "category": "system",
+      "type": "organisation-creation",
+      "isSystem": "true",
+      "requiresEmailVerification": "true"
+    }
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}

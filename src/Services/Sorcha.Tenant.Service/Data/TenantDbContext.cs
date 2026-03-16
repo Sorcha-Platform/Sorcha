@@ -28,9 +28,11 @@ public class TenantDbContext : DbContext
     // Public schema entities (shared metadata)
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<IdentityProviderConfiguration> IdentityProviderConfigurations => Set<IdentityProviderConfiguration>();
-    public DbSet<PublicIdentity> PublicIdentities => Set<PublicIdentity>();
+    public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
+    public DbSet<PlatformSocialLogin> PlatformSocialLogins => Set<PlatformSocialLogin>();
+    public DbSet<PlatformUserOrgMembership> PlatformUserOrgMemberships => Set<PlatformUserOrgMembership>();
+    public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
-    public DbSet<SocialLoginLink> SocialLoginLinks => Set<SocialLoginLink>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
 
     // Public schema entities for custom domain resolution
@@ -78,14 +80,8 @@ public class TenantDbContext : DbContext
         // Configure IdentityProviderConfiguration entity
         ConfigureIdentityProviderConfiguration(modelBuilder);
 
-        // Configure PublicIdentity entity
-        ConfigurePublicIdentity(modelBuilder);
-
         // Configure PasskeyCredential entity (public schema)
         ConfigurePasskeyCredential(modelBuilder);
-
-        // Configure SocialLoginLink entity (public schema)
-        ConfigureSocialLoginLink(modelBuilder);
 
         // Configure ServicePrincipal entity
         ConfigureServicePrincipal(modelBuilder);
@@ -131,6 +127,18 @@ public class TenantDbContext : DbContext
 
         // Configure ActivityEvent entity (public schema)
         ConfigureActivityEvent(modelBuilder);
+
+        // Configure PlatformUser entity (public schema)
+        ConfigurePlatformUser(modelBuilder);
+
+        // Configure PlatformSocialLogin entity (public schema)
+        ConfigurePlatformSocialLogin(modelBuilder);
+
+        // Configure PlatformUserOrgMembership entity (public schema)
+        ConfigurePlatformUserOrgMembership(modelBuilder);
+
+        // Configure PlatformSettings entity (public schema)
+        ConfigurePlatformSettings(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -180,10 +188,10 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.CustomDomain).HasMaxLength(500);
             entity.Property(e => e.CustomDomainStatus).HasConversion<string>().HasMaxLength(20);
 
-            // One-to-one relationship with IdentityProviderConfiguration
-            entity.HasOne(e => e.IdentityProvider)
+            // One-to-many relationship with IdentityProviderConfiguration
+            entity.HasMany(e => e.IdentityProviders)
                 .WithOne(i => i.Organization)
-                .HasForeignKey<IdentityProviderConfiguration>(i => i.OrganizationId)
+                .HasForeignKey(i => i.OrganizationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
@@ -232,51 +240,11 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.JwksUri).HasMaxLength(500);
             entity.Property(e => e.DisplayName).HasMaxLength(200);
 
-            entity.HasIndex(e => e.OrganizationId)
-                .IsUnique();
+            entity.HasIndex(e => new { e.OrganizationId, e.ProviderPreset })
+                .IsUnique()
+                .HasDatabaseName("UQ_IdpConfig_Org_Provider");
 
             entity.HasIndex(e => e.ProviderPreset);
-        });
-    }
-
-    private void ConfigurePublicIdentity(ModelBuilder modelBuilder)
-    {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
-                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
-
-        modelBuilder.Entity<PublicIdentity>(entity =>
-        {
-            if (isInMemory)
-                entity.ToTable("PublicIdentities");
-            else
-                entity.ToTable("PublicIdentities", "public");
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.DisplayName)
-                .IsRequired()
-                .HasMaxLength(256);
-
-            entity.Property(e => e.Email)
-                .IsRequired(false)
-                .HasMaxLength(320);
-
-            entity.Property(e => e.Status)
-                .IsRequired()
-                .HasMaxLength(20);
-
-            entity.Property(e => e.EmailVerified)
-                .IsRequired();
-
-            entity.HasIndex(e => e.Email);
-
-            // PasskeyCredentials uses polymorphic OwnerId (points to PublicIdentity.Id or UserIdentity.Id).
-            // No EF FK constraint — lookups use the composite index on (OwnerType, OwnerId).
-            entity.Ignore(e => e.PasskeyCredentials);
-
-            entity.HasMany(e => e.SocialLoginLinks)
-                .WithOne(e => e.PublicIdentity)
-                .HasForeignKey(e => e.PublicIdentityId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 
@@ -298,10 +266,6 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.PublicKeyCose)
                 .IsRequired();
-
-            entity.Property(e => e.OwnerType)
-                .IsRequired()
-                .HasMaxLength(20);
 
             entity.Property(e => e.DisplayName)
                 .IsRequired()
@@ -327,52 +291,16 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.CredentialId)
                 .IsUnique();
 
-            entity.HasIndex(e => new { e.OwnerType, e.OwnerId })
-                .HasDatabaseName("IX_PasskeyCredential_Owner");
+            entity.HasOne(e => e.PlatformUser)
+                .WithMany(p => p.PasskeyCredentials)
+                .HasForeignKey(e => e.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(e => new { e.OwnerId, e.Status })
-                .HasDatabaseName("IX_PasskeyCredential_OwnerId_Status");
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_PasskeyCredential_PlatformUserId");
 
-            entity.HasIndex(e => e.OrganizationId)
-                .HasDatabaseName("IX_PasskeyCredential_OrgId");
-        });
-    }
-
-    private void ConfigureSocialLoginLink(ModelBuilder modelBuilder)
-    {
-        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
-                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
-
-        modelBuilder.Entity<SocialLoginLink>(entity =>
-        {
-            if (isInMemory)
-                entity.ToTable("SocialLoginLinks");
-            else
-                entity.ToTable("SocialLoginLinks", "public");
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.ProviderType)
-                .IsRequired()
-                .HasMaxLength(50);
-
-            entity.Property(e => e.ExternalSubjectId)
-                .IsRequired()
-                .HasMaxLength(256);
-
-            entity.Property(e => e.LinkedEmail)
-                .IsRequired(false)
-                .HasMaxLength(320);
-
-            entity.Property(e => e.DisplayName)
-                .IsRequired(false)
-                .HasMaxLength(256);
-
-            entity.HasIndex(e => new { e.ProviderType, e.ExternalSubjectId })
-                .IsUnique()
-                .HasDatabaseName("UQ_SocialLogin_Provider_Subject");
-
-            entity.HasIndex(e => e.PublicIdentityId)
-                .HasDatabaseName("IX_SocialLogin_PublicIdentityId");
+            entity.HasIndex(e => new { e.PlatformUserId, e.Status })
+                .HasDatabaseName("IX_PasskeyCredential_PlatformUserId_Status");
         });
     }
 
@@ -422,16 +350,6 @@ public class TenantDbContext : DbContext
             entity.ToTable("UserIdentities");
             entity.HasKey(e => e.Id);
 
-            // ExternalIdpSubject is nullable (null for local auth users)
-            entity.Property(e => e.ExternalIdpSubject)
-                .IsRequired(false)
-                .HasMaxLength(200);
-
-            // PasswordHash is nullable (null for external IDP users)
-            entity.Property(e => e.PasswordHash)
-                .IsRequired(false)
-                .HasMaxLength(500);
-
             entity.Property(e => e.Email)
                 .IsRequired()
                 .HasMaxLength(255);
@@ -452,27 +370,19 @@ public class TenantDbContext : DbContext
                 .HasConversion<string>()
                 .IsRequired();
 
-            // Unique index on ExternalIdpSubject only for non-null values
-            entity.HasIndex(e => e.ExternalIdpSubject)
-                .IsUnique()
-                .HasFilter("\"ExternalIdpSubject\" IS NOT NULL");
+            entity.Property(e => e.PlatformUserId).IsRequired();
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_UserIdentity_PlatformUserId");
 
-            // New fields for org identity management
-            entity.Property(e => e.VerificationToken).HasMaxLength(100);
             entity.Property(e => e.ProvisionedVia).HasConversion<string>().HasMaxLength(20);
 
-            entity.HasIndex(e => e.Email)
-                .IsUnique();  // Email must be unique within organization
+            entity.HasIndex(e => new { e.OrganizationId, e.Email })
+                .IsUnique()
+                .HasDatabaseName("UQ_UserIdentity_Org_Email");  // Email must be unique within organization
 
             entity.HasIndex(e => e.OrganizationId);
             entity.HasIndex(e => e.Status);
 
-            // Password reset token fields
-            entity.Property(e => e.PasswordResetTokenHash).HasMaxLength(500);
-            entity.Property(e => e.PasswordResetTokenExpiresAt);
-
-            entity.HasIndex(e => e.PasswordResetTokenHash)
-                .HasDatabaseName("IX_UserIdentity_PasswordResetTokenHash");
         });
     }
 
@@ -937,6 +847,148 @@ public class TenantDbContext : DbContext
                 entity.HasIndex(e => new { e.UserId, e.IsRead })
                     .HasDatabaseName("IX_ActivityEvent_UserId_IsRead");
             }
+        });
+    }
+
+    private void ConfigurePlatformUser(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformUser>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformUsers");
+            else
+                entity.ToTable("PlatformUsers", "public");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Email)
+                .IsRequired()
+                .HasMaxLength(320);
+
+            entity.Property(e => e.DisplayName)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.PasswordHash)
+                .IsRequired(false)
+                .HasMaxLength(500);
+
+            entity.Property(e => e.VerificationToken)
+                .IsRequired(false)
+                .HasMaxLength(100);
+
+            entity.Property(e => e.PasswordResetTokenHash)
+                .IsRequired(false)
+                .HasMaxLength(500);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.HasIndex(e => e.Email)
+                .IsUnique()
+                .HasDatabaseName("UQ_PlatformUser_Email");
+
+            entity.HasIndex(e => e.Status)
+                .HasDatabaseName("IX_PlatformUser_Status");
+
+            entity.HasIndex(e => e.PasswordResetTokenHash)
+                .HasDatabaseName("IX_PlatformUser_PasswordResetTokenHash");
+
+            entity.HasMany(e => e.SocialLogins)
+                .WithOne(s => s.PlatformUser)
+                .HasForeignKey(s => s.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(e => e.OrgMemberships)
+                .WithOne(m => m.PlatformUser)
+                .HasForeignKey(m => m.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private void ConfigurePlatformSocialLogin(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformSocialLogin>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformSocialLogins");
+            else
+                entity.ToTable("PlatformSocialLogins", "public");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Provider)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.Subject)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.Email)
+                .IsRequired(false)
+                .HasMaxLength(320);
+
+            entity.Property(e => e.DisplayName)
+                .IsRequired(false)
+                .HasMaxLength(256);
+
+            entity.HasIndex(e => new { e.Provider, e.Subject })
+                .IsUnique()
+                .HasDatabaseName("UQ_PlatformSocialLogin_Provider_Subject");
+
+            entity.HasIndex(e => e.PlatformUserId)
+                .HasDatabaseName("IX_PlatformSocialLogin_PlatformUserId");
+        });
+    }
+
+    private void ConfigurePlatformUserOrgMembership(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformUserOrgMembership>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformUserOrgMemberships");
+            else
+                entity.ToTable("PlatformUserOrgMemberships", "public");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Role)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.HasIndex(e => new { e.PlatformUserId, e.OrganizationId })
+                .IsUnique()
+                .HasDatabaseName("UQ_PlatformUserOrgMembership_User_Org");
+
+            entity.HasOne(e => e.Organization)
+                .WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private void ConfigurePlatformSettings(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformSettings>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformSettings");
+            else
+                entity.ToTable("PlatformSettings", "public");
+            entity.HasKey(e => e.Id);
         });
     }
 }

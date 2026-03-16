@@ -131,11 +131,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
         services.AddScoped<IPasskeyService, PasskeyService>();
-        services.AddScoped<IPublicUserService, PublicUserService>();
         services.AddScoped<ISocialLoginService, SocialLoginService>();
         services.AddScoped<ILoginService, LoginService>();
         services.AddScoped<IRegistrationService, RegistrationService>();
         services.AddScoped<IPasswordResetService, PasswordResetService>();
+
+        // Platform services
+        services.AddScoped<IPlatformUserService, PlatformUserService>();
+        services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
+        services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
 
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();

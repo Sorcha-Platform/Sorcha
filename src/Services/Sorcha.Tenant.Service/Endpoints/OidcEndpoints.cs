@@ -65,6 +65,7 @@ public static class OidcEndpoints
             .WithSummary("Verify email address with token")
             .WithDescription("Validates an email verification token and marks the user's email as verified.")
             .AllowAnonymous()
+            .RequireRateLimiting("platform-auth")
             .Produces<EmailVerificationResponse>()
             .Produces(StatusCodes.Status400BadRequest);
 
@@ -260,7 +261,7 @@ public static class OidcEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // Issue full JWT
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken);
         return TypedResults.Ok(new OidcCallbackResult
         {
             Success = true,
@@ -329,7 +330,7 @@ public static class OidcEndpoints
             user.Id);
         if (org is not null)
         {
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken);
             return TypedResults.Ok(new OidcCallbackResult
             {
                 Success = true,

@@ -67,6 +67,7 @@ public class TokenService : ITokenService
     public async Task<TokenResponse> GenerateUserTokenAsync(
         UserIdentity user,
         Organization organization,
+        Guid platformUserId,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
@@ -83,7 +84,8 @@ public class TokenService : ITokenService
             new("name", user.DisplayName),
             new(TokenClaimConstants.OrgId, organization.Id.ToString()),
             new("org_name", organization.Name),
-            new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser)
+            new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
+            new("platform_user_id", platformUserId.ToString())
         };
 
         // Add role claims
@@ -107,52 +109,6 @@ public class TokenService : ITokenService
         _logger.LogInformation(
             "Generated tokens for user {UserId} in organization {OrgId}",
             user.Id, organization.Id);
-
-        return new TokenResponse
-        {
-            AccessToken = accessToken,
-            RefreshToken = refreshToken,
-            ExpiresIn = _config.AccessTokenLifetimeMinutes * 60
-        };
-    }
-
-    /// <inheritdoc />
-    public async Task<TokenResponse> GeneratePublicUserTokenAsync(
-        PublicIdentity identity,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(identity);
-
-        var accessTokenJti = Guid.NewGuid().ToString();
-        var refreshTokenJti = Guid.NewGuid().ToString();
-
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, identity.Id.ToString()),
-            new(JwtRegisteredClaimNames.Jti, accessTokenJti),
-            new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
-            new("auth_method", "passkey")
-        };
-
-        // Add device type if available
-        if (!string.IsNullOrEmpty(identity.DeviceType))
-        {
-            claims.Add(new Claim("device_type", identity.DeviceType));
-        }
-
-        var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
-        var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
-
-        var accessToken = GenerateToken(claims, accessTokenExpiry);
-        var refreshToken = GenerateRefreshToken(refreshTokenJti, identity.Id.ToString(), null, refreshTokenExpiry);
-
-        // Track tokens
-        await _revocationService.TrackTokenAsync(
-            accessTokenJti, identity.Id.ToString(), null, accessTokenExpiry, cancellationToken);
-        await _revocationService.TrackTokenAsync(
-            refreshTokenJti, identity.Id.ToString(), null, refreshTokenExpiry, cancellationToken);
-
-        _logger.LogInformation("Generated tokens for public user {UserId}", identity.Id);
 
         return new TokenResponse
         {
