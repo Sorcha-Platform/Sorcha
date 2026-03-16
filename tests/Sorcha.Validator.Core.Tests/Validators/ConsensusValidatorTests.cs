@@ -242,33 +242,30 @@ public class ConsensusValidatorTests
     #region ValidateQuorum Tests
 
     [Theory]
-    [InlineData(7, 10, 0.66, true)]  // 70% > 66%
-    [InlineData(8, 10, 0.75, true)]  // 80% > 75%
-    [InlineData(10, 10, 0.90, true)] // 100% > 90%
-    [InlineData(3, 4, 0.66, true)]   // 75% > 66%
+    [InlineData(7, 10, 0.66)]  // 70% > 66%
+    [InlineData(8, 10, 0.75)]  // 80% > 75%
+    [InlineData(10, 10, 0.90)] // 100% > 90%
+    [InlineData(3, 4, 0.66)]   // 75% > 66%
     public void ValidateQuorum_WithSufficientApprovals_ReturnsSuccess(
-        int approvalCount, int totalValidators, double threshold, bool expected)
+        int approvalCount, int totalValidators, double threshold)
     {
         // Act
         var result = _validator.ValidateQuorum(approvalCount, totalValidators, threshold);
 
         // Assert
-        result.IsValid.Should().Be(expected);
-        if (expected)
-        {
-            result.Metadata.Should().NotBeNull();
-            result.Metadata.Should().ContainKey("ApprovalPercentage");
-            result.Metadata.Should().ContainKey("ApprovalCount");
-        }
+        result.IsValid.Should().BeTrue();
+        result.Metadata.Should().NotBeNull();
+        result.Metadata.Should().ContainKey("ApprovalPercentage");
+        result.Metadata.Should().ContainKey("ApprovalCount");
     }
 
     [Theory]
-    [InlineData(5, 10, 0.50, false)] // 50% = 50% (not greater)
-    [InlineData(6, 10, 0.70, false)] // 60% < 70%
-    [InlineData(2, 10, 0.50, false)] // 20% < 50%
-    [InlineData(0, 10, 0.10, false)] // 0% < 10%
+    [InlineData(5, 10, 0.50)] // 50% = 50% (not greater)
+    [InlineData(6, 10, 0.70)] // 60% < 70%
+    [InlineData(2, 10, 0.50)] // 20% < 50%
+    [InlineData(0, 10, 0.10)] // 0% < 10%
     public void ValidateQuorum_WithInsufficientApprovals_ReturnsError(
-        int approvalCount, int totalValidators, double threshold, bool expected)
+        int approvalCount, int totalValidators, double threshold)
     {
         // Act
         var result = _validator.ValidateQuorum(approvalCount, totalValidators, threshold);

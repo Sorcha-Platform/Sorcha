@@ -25,7 +25,7 @@ public class ValidationEndpointTests
     public async Task ValidateTransaction_WithValidRequest_ReturnsOkOrBadRequest()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var request = CreateValidTransactionRequest();
 
         // Act
@@ -40,7 +40,7 @@ public class ValidationEndpointTests
     public async Task ValidateTransaction_WithInvalidPayloadHash_ReturnsBadRequest()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
 
         // Create request with invalid hash
         var payload = JsonSerializer.Deserialize<JsonElement>("{\"action\":\"test\"}");
@@ -75,7 +75,7 @@ public class ValidationEndpointTests
     public async Task GetMemPoolStats_WithValidRegisterId_ReturnsStats()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = "test-register-stats";
 
         // Act
@@ -89,7 +89,7 @@ public class ValidationEndpointTests
     public async Task ValidateTransaction_PostEndpoint_Exists()
     {
         // Arrange - Just verify the endpoint exists and accepts POST
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var emptyRequest = new { };
 
         // Act
@@ -103,7 +103,7 @@ public class ValidationEndpointTests
     public async Task GetMemPoolStats_GetEndpoint_Exists()
     {
         // Arrange - Just verify the endpoint exists
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
 
         // Act
         var response = await client.GetAsync("/api/v1/transactions/mempool/test-register");

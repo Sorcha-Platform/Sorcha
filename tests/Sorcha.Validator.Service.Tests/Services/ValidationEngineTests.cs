@@ -415,7 +415,7 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction();
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BlueprintModel?)null);
 
         // Act
@@ -431,9 +431,9 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(actionId: "999");
-        var blueprint = CreateTestBlueprint(tx.BlueprintId);
+        var blueprint = CreateTestBlueprint(tx.BlueprintId!);
 
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -616,9 +616,9 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(actionId: "not-a-number");
-        var blueprint = CreateTestBlueprint(tx.BlueprintId);
+        var blueprint = CreateTestBlueprint(tx.BlueprintId!);
 
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -755,8 +755,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(payloadJson: """{"name":"Alice","amount":100}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -771,8 +771,8 @@ public class ValidationEngineTests
     {
         // Arrange - payload missing "amount"
         var tx = CreateValidTransaction(payloadJson: """{"name":"Alice"}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -789,8 +789,8 @@ public class ValidationEngineTests
     {
         // Arrange - amount is string instead of number
         var tx = CreateValidTransaction(payloadJson: """{"name":"Alice","amount":"not-a-number"}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -806,8 +806,8 @@ public class ValidationEngineTests
     {
         // Arrange - action has no DataSchemas (null)
         var tx = CreateValidTransaction();
-        var blueprint = CreateTestBlueprint(tx.BlueprintId); // no schemas
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprint(tx.BlueprintId!); // no schemas
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -822,10 +822,10 @@ public class ValidationEngineTests
     {
         // Arrange - action has empty DataSchemas list
         var tx = CreateValidTransaction();
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId, schemaJson: null);
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!, schemaJson: null);
         // Override the action to have empty DataSchemas
         blueprint.Actions.First().DataSchemas = [];
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -875,9 +875,9 @@ public class ValidationEngineTests
     {
         // Arrange - action has invalid JSON schema
         var tx = CreateValidTransaction(payloadJson: """{"name":"Alice"}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId,
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!,
             schemaJson: """{"type": "invalid-type-value", "$schema": "not-a-schema"}""");
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -899,7 +899,7 @@ public class ValidationEngineTests
 
         var blueprint = new BlueprintModel
         {
-            Id = tx.BlueprintId,
+            Id = tx.BlueprintId!,
             Title = "Test Blueprint",
             Participants = [new Sorcha.Blueprint.Models.Participant { Id = "p-1", Name = "P1" }],
             Actions =
@@ -918,7 +918,7 @@ public class ValidationEngineTests
             ]
         };
 
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -934,8 +934,8 @@ public class ValidationEngineTests
     {
         // Arrange - payload missing "name" (required) AND "amount" is wrong type
         var tx = CreateValidTransaction(payloadJson: """{"amount":"not-a-number"}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -966,8 +966,8 @@ public class ValidationEngineTests
         }
         """;
         var tx = CreateValidTransaction(payloadJson: """{"address":{"zipCode":12345}}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId, schemaJson);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!, schemaJson);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -994,8 +994,8 @@ public class ValidationEngineTests
         }
         """;
         var tx = CreateValidTransaction(payloadJson: """{"status":"deleted"}""");
-        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId, schemaJson);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithSchema(tx.BlueprintId!, schemaJson);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -1462,8 +1462,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: true);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: true);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -1478,8 +1478,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: false);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: false);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Act
@@ -1495,8 +1495,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: true, walletAddress: "wallet-abc");
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: true, walletAddress: "wallet-abc");
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
             .Returns("wallet-abc");
@@ -1513,8 +1513,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: true, walletAddress: "expected-wallet");
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: true, walletAddress: "expected-wallet");
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
             .Returns("wrong-wallet");
@@ -1532,8 +1532,8 @@ public class ValidationEngineTests
     {
         // Arrange
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: true, walletAddress: null);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: true, walletAddress: null);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
             .Returns("any-wallet");
@@ -1550,8 +1550,8 @@ public class ValidationEngineTests
     {
         // Arrange — action 1 routes to action 2
         var tx = CreateValidTransaction(actionId: "2", previousTransactionId: "prev-tx-1");
-        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId, fromActionId: 1, toActionIds: [2, 3]);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId!, fromActionId: 1, toActionIds: [2, 3]);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _registerClientMock.Setup(r => r.GetTransactionAsync(tx.RegisterId, "prev-tx-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.TransactionModel
@@ -1573,10 +1573,10 @@ public class ValidationEngineTests
     {
         // Arrange — action 1 only routes to action 3, but current is action 2
         var tx = CreateValidTransaction(actionId: "2", previousTransactionId: "prev-tx-1");
-        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId, fromActionId: 1, toActionIds: [3]);
+        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId!, fromActionId: 1, toActionIds: [3]);
         // Add action 2 to the blueprint so the action lookup succeeds (the test is about route validation, not missing actions)
         blueprint.Actions = blueprint.Actions.Append(new ActionModel { Id = 2, Title = "Action 2", Sender = "participant-1" }).ToList();
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _registerClientMock.Setup(r => r.GetTransactionAsync(tx.RegisterId, "prev-tx-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.TransactionModel
@@ -1599,8 +1599,8 @@ public class ValidationEngineTests
     {
         // Arrange — action 1 routes to action 3 (normal), rejection targets action 2
         var tx = CreateValidTransaction(actionId: "2", previousTransactionId: "prev-tx-1");
-        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId, fromActionId: 1, toActionIds: [3], rejectionTargetActionId: 2);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithRoutes(tx.BlueprintId!, fromActionId: 1, toActionIds: [3], rejectionTargetActionId: 2);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _registerClientMock.Setup(r => r.GetTransactionAsync(tx.RegisterId, "prev-tx-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.TransactionModel
@@ -1622,10 +1622,10 @@ public class ValidationEngineTests
     {
         // Arrange — previous action has no routes defined
         var tx = CreateValidTransaction(actionId: "2", previousTransactionId: "prev-tx-1");
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: false);
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: false);
         // Add action 2 to blueprint
         blueprint.Actions = blueprint.Actions.Append(new ActionModel { Id = 2, Title = "Action 2", Sender = "participant-1" }).ToList();
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _registerClientMock.Setup(r => r.GetTransactionAsync(tx.RegisterId, "prev-tx-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.TransactionModel
@@ -1647,9 +1647,9 @@ public class ValidationEngineTests
     {
         // Arrange — previous transaction has no ActionId in metadata
         var tx = CreateValidTransaction(actionId: "2", previousTransactionId: "prev-tx-1");
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: false);
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: false);
         blueprint.Actions = blueprint.Actions.Append(new ActionModel { Id = 2, Title = "Action 2", Sender = "participant-1" }).ToList();
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _registerClientMock.Setup(r => r.GetTransactionAsync(tx.RegisterId, "prev-tx-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.TransactionModel
@@ -1730,8 +1730,8 @@ public class ValidationEngineTests
             _loggerMock.Object);
 
         var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId, isStartingAction: false);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: false);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Setup other validations to pass
@@ -2195,8 +2195,8 @@ public class ValidationEngineTests
             .Returns(hashBytes);
 
         // Setup blueprint cache
-        var blueprint = CreateTestBlueprint(tx.BlueprintId);
-        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId, It.IsAny<CancellationToken>()))
+        var blueprint = CreateTestBlueprint(tx.BlueprintId!);
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
 
         // Setup signature verification
@@ -2254,7 +2254,7 @@ public class ValidationEngineTests
                 {
                     Id = "participant-1",
                     Name = "Test Participant",
-                    WalletAddress = walletAddress
+                    WalletAddress = walletAddress!
                 }
             ],
             Actions =

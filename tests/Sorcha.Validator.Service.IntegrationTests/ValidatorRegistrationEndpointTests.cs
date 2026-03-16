@@ -26,7 +26,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task GetValidators_WithValidRegisterId_ReturnsValidators()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act
@@ -46,7 +46,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task GetValidators_EndpointExists()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
 
         // Act
         var response = await client.GetAsync("/api/validators/test-register");
@@ -59,7 +59,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task GetValidator_WithUnknownValidator_ReturnsNotFound()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = Guid.NewGuid().ToString("N");
         var validatorId = Guid.NewGuid().ToString("N");
 
@@ -74,7 +74,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task GetValidatorCount_WithValidRegisterId_ReturnsCount()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act
@@ -94,7 +94,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task GetValidatorCount_EndpointExists()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
 
         // Act
         var response = await client.GetAsync("/api/validators/test-register/count");
@@ -107,7 +107,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task RefreshValidators_WithValidRegisterId_ReturnsSuccess()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act
@@ -126,7 +126,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task RefreshValidators_EndpointExists()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
 
         // Act
         var response = await client.PostAsync("/api/validators/test-register/refresh", null);
@@ -139,7 +139,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task RegisterValidator_EndpointExists()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var request = new
         {
             RegisterId = Guid.NewGuid().ToString("N"),
@@ -159,7 +159,7 @@ public class ValidatorRegistrationEndpointTests
     public async Task RegisterValidator_WithValidRequest_ReturnsCreatedOrBadRequest()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateValidatorClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         var request = new
