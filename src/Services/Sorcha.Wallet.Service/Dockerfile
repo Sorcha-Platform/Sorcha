@@ -9,11 +9,12 @@ WORKDIR /src
 COPY ["Directory.Packages.props", "."]
 COPY ["src/Services/Directory.Build.props", "src/Services/"]
 COPY ["src/Common/Directory.Build.props", "src/Common/"]
+COPY ["src/Core/Directory.Build.props", "src/Core/"]
 
 # Copy project files for restore
 COPY ["src/Services/Sorcha.Wallet.Service/Sorcha.Wallet.Service.csproj", "src/Services/Sorcha.Wallet.Service/"]
 COPY ["src/Common/Sorcha.ServiceDefaults/Sorcha.ServiceDefaults.csproj", "src/Common/Sorcha.ServiceDefaults/"]
-COPY ["src/Common/Sorcha.Wallet.Core/Sorcha.Wallet.Core.csproj", "src/Common/Sorcha.Wallet.Core/"]
+COPY ["src/Core/Sorcha.Wallet.Core/Sorcha.Wallet.Core.csproj", "src/Core/Sorcha.Wallet.Core/"]
 COPY ["src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj", "src/Common/Sorcha.Cryptography/"]
 
 # Restore dependencies
