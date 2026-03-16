@@ -122,10 +122,10 @@
 
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Add `[SupplyParameterFromQuery]` for `blueprint` parameter to `Designer.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer.razor` — on init, if query param present, load blueprint via `BlueprintApiService.GetBlueprintDetailAsync(id)` and populate the diagram
-- [ ] T038 [US4] Update "Open in Visual Designer" button in `BlueprintChat.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` — change navigation from `/designer` to `/designer?blueprint={blueprintId}` so the visual designer loads the blueprint
-- [ ] T039 [US4] Add "Open in AI Chat" button to `Designer.razor` toolbar — navigates to `/designer/chat/{blueprintId}` (AI chat already supports loading via route param)
-- [ ] T040 [US4] Ensure both designers save to same Blueprint API record — verify that saving from visual designer after handoff from chat targets the same blueprint ID (no duplicate creation)
+- [x] T037 [US4] Add `[SupplyParameterFromQuery]` for `blueprint` parameter to `Designer.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer.razor` — on init, if query param present, load blueprint via `BlueprintApiService.GetBlueprintDetailAsync(id)` and populate the diagram
+- [x] T038 [US4] Update "Open in Visual Designer" button in `BlueprintChat.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` — change navigation from `/designer` to `/designer?blueprint={blueprintId}` so the visual designer loads the blueprint
+- [x] T039 [US4] Add "Open in AI Chat" button to `Designer.razor` toolbar — navigates to `/designer/chat/{blueprintId}` (AI chat already supports loading via route param)
+- [x] T040 [US4] Ensure both designers save to same Blueprint API record — verify that saving from visual designer after handoff from chat targets the same blueprint ID (no duplicate creation)
 
 **Checkpoint**: US4 complete — round-trip handoff works between both designers.
 

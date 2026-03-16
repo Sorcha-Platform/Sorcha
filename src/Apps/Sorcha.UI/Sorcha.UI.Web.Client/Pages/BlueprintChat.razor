@@ -77,7 +77,7 @@
                        Color="Color.Info"
                        Size="MudBlazor.Size.Small"
                        Variant="Variant.Text"
-                       Href="/designer"
+                       Href="@GetDesignerHandoffUrl()"
                        Disabled="@(Session?.Blueprint == null)">
                 Open in Visual Designer
             </MudButton>
@@ -629,5 +629,12 @@
         }
 
         _dotNetRef?.Dispose();
+    }
+
+    private string GetDesignerHandoffUrl()
+    {
+        if (Session?.Blueprint?.Id is { } id && !string.IsNullOrWhiteSpace(id))
+            return $"/designer?blueprint={id}";
+        return "/designer";
     }
 }

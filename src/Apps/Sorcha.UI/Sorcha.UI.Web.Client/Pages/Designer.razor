@@ -100,6 +100,14 @@
                     Import
                 </MudButton>
 
+                <MudButton StartIcon="@Icons.Material.Filled.SmartToy"
+                           Color="Color.Info"
+                           Size="MudBlazor.Size.Small"
+                           Variant="Variant.Text"
+                           Href="@($"/designer/chat?blueprint={CurrentBlueprint.Id}")">
+                    Open in AI Chat
+                </MudButton>
+
                 <MudButton StartIcon="@Icons.Material.Filled.Publish"
                            Color="Color.Warning"
                            Size="MudBlazor.Size.Small"
@@ -161,6 +169,12 @@
     [SupplyParameterFromQuery(Name = "id")]
     public string? BlueprintId { get; set; }
 
+    /// <summary>
+    /// Alternative query param for handoff from AI chat: /designer?blueprint={id}
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "blueprint")]
+    public string? BlueprintQueryParam { get; set; }
+
     private const string BLUEPRINTS_KEY = "sorcha:blueprints";
 
     protected override async Task OnInitializedAsync()
@@ -221,9 +235,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(BlueprintId) && BlueprintId != _persistedBlueprintId)
+        // Support both ?id= and ?blueprint= query params (handoff from AI chat uses ?blueprint=)
+        var targetId = BlueprintId ?? BlueprintQueryParam;
+        if (!string.IsNullOrEmpty(targetId) && targetId != _persistedBlueprintId)
         {
-            await LoadBlueprint(BlueprintId);
+            await LoadBlueprint(targetId);
         }
     }
 
