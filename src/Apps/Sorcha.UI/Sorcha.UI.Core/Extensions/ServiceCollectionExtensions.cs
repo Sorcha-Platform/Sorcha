@@ -638,6 +638,24 @@ public static class ServiceCollectionExtensions
             return new PlatformSettingsAdminService(httpClient, logger);
         });
 
+        // Platform Org Admin Service (058 - authenticated, SystemAdmin only)
+        services.AddScoped<IPlatformOrgAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            return new PlatformOrgAdminService(httpClient);
+        });
+
+        // Org Switcher Service (058 - authenticated)
+        services.AddScoped<IOrgSwitcherService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            return new OrgSwitcherService(httpClient);
+        });
+
         // Status List Service (050 - public endpoint, no auth needed)
         services.AddScoped<IStatusListService>(sp =>
         {

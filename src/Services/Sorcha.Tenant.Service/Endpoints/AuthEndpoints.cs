@@ -4,7 +4,9 @@
 using System.Security.Claims;
 
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -156,6 +158,28 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .Produces<SuccessResponse>()
             .Produces(StatusCodes.Status401Unauthorized);
+
+        // List user's organisations (for org switcher)
+        group.MapGet("/me/organizations", GetMyOrganizations)
+            .WithName("GetMyOrganizations")
+            .WithSummary("List organisations the current user belongs to")
+            .WithDescription("Returns all org memberships for the authenticated PlatformUser. "
+                + "Used by the org switcher UI. Includes org name, subdomain, role, and isCurrent flag.")
+            .RequireAuthorization()
+            .Produces<OrgMembershipListResponse>()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Switch active organisation
+        group.MapPost("/switch-org", SwitchOrganization)
+            .WithName("SwitchOrganization")
+            .WithSummary("Switch active organisation context")
+            .WithDescription("Issues a new JWT scoped to the target org. Validates the user has "
+                + "a PlatformUserOrgMembership for the target org and an active UserIdentity.")
+            .RequireAuthorization()
+            .Produces<TokenResponse>()
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
 
         // Create organisation (self-service, authenticated)
         group.MapPost("/create-org", CreateOrganization)
@@ -654,5 +678,116 @@ public static class AuthEndpoints
         }
 
         return TypedResults.Ok(result);
+    }
+
+    /// <summary>
+    /// GET /api/auth/me/organizations — list the current user's org memberships.
+    /// </summary>
+    private static async Task<IResult> GetMyOrganizations(
+        ClaimsPrincipal principal,
+        TenantDbContext db,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        // Current org from JWT
+        var currentOrgIdClaim = principal.FindFirst("org_id")?.Value;
+        Guid.TryParse(currentOrgIdClaim, out var currentOrgId);
+
+        var memberships = await db.PlatformUserOrgMemberships
+            .Where(m => m.PlatformUserId == platformUserId)
+            .Join(db.Organizations,
+                m => m.OrganizationId,
+                o => o.Id,
+                (m, o) => new OrgMembershipEntry
+                {
+                    OrganizationId = o.Id,
+                    OrganizationName = o.Name,
+                    Subdomain = o.Subdomain,
+                    Role = m.Role,
+                    IsCurrent = o.Id == currentOrgId
+                })
+            .OrderBy(e => e.OrganizationName)
+            .ToListAsync(cancellationToken);
+
+        return TypedResults.Ok(new OrgMembershipListResponse { Items = memberships });
+    }
+
+    /// <summary>
+    /// POST /api/auth/switch-org — switch active organisation and issue new JWT.
+    /// </summary>
+    private static async Task<IResult> SwitchOrganization(
+        SwitchOrgRequest request,
+        ClaimsPrincipal principal,
+        TenantDbContext db,
+        ITokenService tokenService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        // Validate request
+        if (request.OrganizationId == Guid.Empty)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["organizationId"] = ["Organization ID is required."]
+            });
+        }
+
+        var platformUserIdClaim = principal.FindFirst("platform_user_id")?.Value;
+        if (string.IsNullOrEmpty(platformUserIdClaim) || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        // Verify membership in target org
+        var membership = await db.PlatformUserOrgMemberships
+            .FirstOrDefaultAsync(m => m.PlatformUserId == platformUserId
+                && m.OrganizationId == request.OrganizationId, cancellationToken);
+
+        if (membership is null)
+        {
+            return TypedResults.Json(
+                new { error = "You are not a member of the target organisation." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Look up the target org
+        var targetOrg = await db.Organizations
+            .FirstOrDefaultAsync(o => o.Id == request.OrganizationId, cancellationToken);
+
+        if (targetOrg is null || targetOrg.Status != OrganizationStatus.Active)
+        {
+            return TypedResults.Json(
+                new { error = "Target organisation is not available." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Find the user's UserIdentity in the target org
+        var userIdentity = await db.UserIdentities
+            .FirstOrDefaultAsync(ui => ui.PlatformUserId == platformUserId
+                && ui.OrganizationId == request.OrganizationId
+                && ui.Status == IdentityStatus.Active, cancellationToken);
+
+        if (userIdentity is null)
+        {
+            return TypedResults.Json(
+                new { error = "No active identity found in the target organisation." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        // Issue new JWT scoped to target org
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(
+            userIdentity, targetOrg, platformUserId, cancellationToken);
+
+        logger.LogInformation(
+            "User {PlatformUserId} switched to org {OrgId} ({Subdomain})",
+            platformUserId, targetOrg.Id, targetOrg.Subdomain);
+
+        return TypedResults.Ok(tokenResponse);
     }
 }

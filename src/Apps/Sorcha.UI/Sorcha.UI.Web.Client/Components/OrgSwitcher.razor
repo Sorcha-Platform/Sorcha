@@ -1,0 +1,98 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Admin
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
+@using Sorcha.UI.Core.Models.Authentication
+
+@inject IOrgSwitcherService OrgSwitcherService
+@inject ITokenCache TokenCache
+@inject IConfigurationService ConfigurationService
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+@if (_organizations.Count > 1)
+{
+    <MudMenu Icon="@Icons.Material.Filled.SwapHoriz" Color="Color.Inherit"
+             AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+             Title="Switch Organisation">
+        @foreach (var org in _organizations)
+        {
+            <MudMenuItem OnClick="@(() => SwitchToOrg(org))" Disabled="@(org.IsCurrent || _switching)">
+                <div class="d-flex align-center gap-2">
+                    @if (org.IsCurrent)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" />
+                    }
+                    <div>
+                        <MudText Typo="Typo.body2">@org.OrganizationName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@org.Subdomain &middot; @org.Role</MudText>
+                    </div>
+                </div>
+            </MudMenuItem>
+        }
+    </MudMenu>
+}
+
+@code {
+    private List<OrgMembershipEntry> _organizations = [];
+    private bool _switching;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await OrgSwitcherService.GetMyOrganizationsAsync();
+            _organizations = result.Items.ToList();
+        }
+        catch (Exception)
+        {
+            // Resilience: org switcher is a non-critical UI element
+        }
+    }
+
+    private async Task SwitchToOrg(OrgMembershipEntry org)
+    {
+        if (org.IsCurrent || _switching) return;
+
+        _switching = true;
+        try
+        {
+            var tokenResponse = await OrgSwitcherService.SwitchOrgAsync(org.OrganizationId);
+            if (tokenResponse is null)
+            {
+                Snackbar.Add("Failed to switch organisation.", Severity.Error);
+                return;
+            }
+
+            // Store new tokens in cache
+            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+            var cacheEntry = TokenCacheEntry.FromTokenResponse(tokenResponse, profileName);
+            await TokenCache.StoreTokenAsync(profileName, cacheEntry);
+
+            // Notify auth state changed
+            AuthStateProvider.NotifyAuthenticationStateChanged();
+
+            Snackbar.Add($"Switched to {org.OrganizationName}", Severity.Success);
+
+            // Force full page reload to refresh all data contexts
+            Navigation.NavigateTo("dashboard", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error switching organisation: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _switching = false;
+        }
+    }
+}

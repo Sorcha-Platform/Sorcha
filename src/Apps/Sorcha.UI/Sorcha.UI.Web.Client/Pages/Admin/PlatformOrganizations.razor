@@ -1,0 +1,203 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/admin/platform-organizations"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "SystemAdmin,Administrator")]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Admin
+
+@inject IPlatformOrgAdminService OrgAdminService
+@inject ISnackbar Snackbar
+
+<PageTitle>Platform Organisations - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
+    <MudText Typo="Typo.h4" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.CorporateFare" Class="mr-2" />
+        Platform Organisations
+    </MudText>
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+        Create and manage organisations across the platform. System admin only.
+    </MudText>
+
+    @* Organisation creation form *@
+    <MudPaper Class="pa-6 mb-6" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-4">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-1" />
+            Create Organisation
+        </MudText>
+
+        @if (_success)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">
+                Organisation <strong>@_resultName</strong> created successfully!
+                @if (_adminDirectlyAdded)
+                {
+                    <span> Admin was directly added to the organisation.</span>
+                }
+                else
+                {
+                    <span> An invitation has been sent to the admin email.</span>
+                }
+            </MudAlert>
+
+            <MudSimpleTable Dense="true" Bordered="true" Class="mb-4">
+                <tbody>
+                    <tr><td><strong>Organisation ID</strong></td><td>@_resultOrgId</td></tr>
+                    <tr><td><strong>Name</strong></td><td>@_resultName</td></tr>
+                    <tr><td><strong>Subdomain</strong></td><td>@_resultSubdomain</td></tr>
+                    <tr><td><strong>Admin Status</strong></td><td>@(_adminDirectlyAdded ? "Added directly" : $"Invitation sent (ID: {_resultInvitationId})")</td></tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ResetForm">
+                Create Another
+            </MudButton>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_name" Label="Organisation Name" Required="true"
+                                  RequiredError="Name is required" Counter="100" MaxLength="100"
+                                  HelperText="3-100 characters" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_subdomain" Label="Subdomain" Required="true"
+                                  RequiredError="Subdomain is required" Counter="50" MaxLength="50"
+                                  HelperText="Lowercase letters, numbers, and hyphens (3-50 chars)"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.End" AdornmentText=".sorcha.io" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_adminEmail" Label="Invitee Email" Required="true"
+                                  RequiredError="Email is required"
+                                  InputType="InputType.Email"
+                                  HelperText="Existing users are added directly; new emails receive an invitation"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_role" Label="Invitee Role" Variant="Variant.Outlined"
+                               HelperText="Role assigned to the invited user">
+                        <MudSelectItem Value="@("Administrator")">Administrator</MudSelectItem>
+                        <MudSelectItem Value="@("Designer")">Designer</MudSelectItem>
+                        <MudSelectItem Value="@("Auditor")">Auditor</MudSelectItem>
+                        <MudSelectItem Value="@("Member")">Member</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_description" Label="Description" Lines="3"
+                                  Counter="500" MaxLength="500"
+                                  HelperText="Optional description for the organisation"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4 mb-2">@_error</MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4"
+                       Disabled="@(_loading || string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_subdomain) || string.IsNullOrWhiteSpace(_adminEmail))"
+                       OnClick="SubmitAsync">
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Creating...</span>
+                }
+                else
+                {
+                    <span>Create Organisation</span>
+                }
+            </MudButton>
+        }
+    </MudPaper>
+
+    @* Placeholder for org list (US7 T070 will add this) *@
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-4">
+        Organisation list and management will be available in a future update.
+    </MudText>
+</MudContainer>
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumbs =
+    [
+        new("Admin", href: "/admin/health"),
+        new("Platform Organisations", href: null, disabled: true)
+    ];
+
+    private string _name = string.Empty;
+    private string _subdomain = string.Empty;
+    private string _adminEmail = string.Empty;
+    private string _role = "Administrator";
+    private string? _description;
+    private string? _error;
+    private bool _loading;
+    private bool _success;
+
+    // Result display
+    private Guid? _resultOrgId;
+    private string? _resultName;
+    private string? _resultSubdomain;
+    private bool _adminDirectlyAdded;
+    private Guid? _resultInvitationId;
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        _loading = true;
+
+        try
+        {
+            var result = await OrgAdminService.CreateOrganizationAsync(
+                _name, _subdomain.ToLowerInvariant(), _adminEmail.Trim(), _role, _description);
+
+            if (result.Success)
+            {
+                _success = true;
+                _resultOrgId = result.OrganizationId;
+                _resultName = result.OrganizationName;
+                _resultSubdomain = result.Subdomain;
+                _adminDirectlyAdded = result.AdminDirectlyAdded;
+                _resultInvitationId = result.InvitationId;
+
+                var message = result.AdminDirectlyAdded
+                    ? "Organisation created! Admin added directly."
+                    : "Organisation created! Invitation sent to admin.";
+                Snackbar.Add(message, Severity.Success);
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to create organisation.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        _success = false;
+        _name = string.Empty;
+        _subdomain = string.Empty;
+        _adminEmail = string.Empty;
+        _role = "Administrator";
+        _description = null;
+        _error = null;
+        _resultOrgId = null;
+        _resultName = null;
+        _resultSubdomain = null;
+        _adminDirectlyAdded = false;
+        _resultInvitationId = null;
+    }
+}

@@ -26,6 +26,7 @@
         <MudSpacer />
         <AuthorizeView>
             <Authorized>
+                <OrgSwitcher />
                 <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleActivityLog" Title="Activity Log">
                     @if (_unreadCount > 0)
                     {
@@ -164,6 +165,9 @@
                                     <Authorized Context="sysAdminCtx">
                                         <MudNavLink Href="admin/settings/platform" Icon="@Icons.Material.Filled.Tune">
                                             Platform Settings
+                                        </MudNavLink>
+                                        <MudNavLink Href="admin/platform-organizations" Icon="@Icons.Material.Filled.CorporateFare">
+                                            Platform Organisations
                                         </MudNavLink>
                                     </Authorized>
                                 </AuthorizeView>

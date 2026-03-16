@@ -182,10 +182,10 @@
 
 ### Implementation for User Story 5
 
-- [ ] T055 [US5] Add `POST /api/platform/organizations` endpoint to `PlatformOrgEndpoints.cs` (RequireSystemAdmin) — create org with admin invite, reuse org provisioning from T051, generate invitation for specified adminEmail in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
-- [ ] T056 [US5] Implement invitation flow: if adminEmail matches existing PlatformUser → create UserIdentity + PlatformUserOrgMembership directly; if new email → create pending invitation record for acceptance on signup in `src/Services/Sorcha.Tenant.Service/Services/PlatformUserService.cs`
-- [ ] T057 [US5] Add FluentValidation validator for `CreateOrganizationRequest` (name, subdomain pattern, adminEmail format) in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T058 [P] [US5] Add admin org creation form to Platform Organisations admin page — org name, subdomain, admin email, description; success with org details display in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/PlatformOrganizations.razor`
+- [X] T055 [US5] Added `POST /api/platform/organizations` endpoint to `PlatformOrgEndpoints.cs` (RequireSystemAdmin) — creates org via `AdminProvisionAsync`, resolves admin email, returns 201 with org details and invitation status in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
+- [X] T056 [US5] Implemented invitation flow in `OrgProvisioningService.AdminProvisionAsync`: if adminEmail matches existing PlatformUser → creates UserIdentity + PlatformUserOrgMembership directly with AdminCreated provisioning; if new email → creates pending OrgInvitation via existing InvitationService in `src/Services/Sorcha.Tenant.Service/Services/OrgProvisioningService.cs`
+- [X] T057 [US5] Added `AdminCreateOrganizationRequest` and `AdminCreateOrganizationResponse` DTOs with inline validation (name 3-100, subdomain format, adminEmail format, description max 500) in `src/Services/Sorcha.Tenant.Service/Models/Dtos/OrganizationDtos.cs` — project uses inline validation, not FluentValidation
+- [X] T058 [P] [US5] Created Platform Organisations admin page with org creation form (name, subdomain, admin email, description), success display with org details and admin status, nav link added to SystemAdmin section in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PlatformOrganizations.razor`
 
 **Checkpoint**: System admins can create orgs and invite administrators. Both new and existing users can be invited.
 
@@ -201,12 +201,12 @@
 
 ### Implementation for User Story 6
 
-- [ ] T059 [US6] Create `GET /api/auth/me/organizations` endpoint (RequireAuthenticated) — query PlatformUserOrgMembership by platform_user_id claim, return org list with names, subdomains, roles, isCurrent flag in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T060 [US6] Create `POST /api/auth/switch-org` endpoint (RequireAuthenticated) — validate PlatformUserOrgMembership exists for target org, look up UserIdentity in target org, issue new JWT scoped to target org in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
-- [ ] T061 [US6] Add FluentValidation validator for `SwitchOrgRequest` (organizationId required, valid UUID) in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T062 [P] [US6] Create org switcher component in Main UI — dropdown/popover showing user's orgs with roles, click to switch, loading state during JWT re-issuance in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Shared/OrgSwitcher.razor`
-- [ ] T063 [US6] Integrate org switcher into Main UI navigation layout in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Shared/MainLayout.razor`
-- [ ] T064 [US6] Update Main UI auth state provider to handle org-switch token replacement and context refresh in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Services/`
+- [X] T059 [US6] Created `GET /api/auth/me/organizations` endpoint (RequireAuthenticated) — queries PlatformUserOrgMembership joined with Organizations, returns org list with names, subdomains, roles, isCurrent flag; added YARP route `auth-me-orgs-route` in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
+- [X] T060 [US6] Created `POST /api/auth/switch-org` endpoint (RequireAuthenticated) — validates PlatformUserOrgMembership, checks org is Active, finds active UserIdentity in target org, issues new JWT via TokenService in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs`
+- [X] T061 [US6] Added inline validation for `SwitchOrgRequest` (organizationId required, non-empty GUID) and `OrgMembershipEntry`/`OrgMembershipListResponse` DTOs in `src/Services/Sorcha.Tenant.Service/Models/Dtos/AuthDtos.cs` — project uses inline validation, not FluentValidation
+- [X] T062 [P] [US6] Created OrgSwitcher component — MudMenu dropdown showing user's orgs with roles and current indicator, click to switch with token replacement and page reload in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/OrgSwitcher.razor`
+- [X] T063 [US6] Integrated OrgSwitcher into Main UI app bar (before notifications icon) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
+- [X] T064 [US6] OrgSwitcher handles token replacement via ITokenCache + CustomAuthenticationStateProvider.NotifyAuthenticationStateChanged() + Navigation.NavigateTo with forceLoad for full context refresh; IOrgSwitcherService registered in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
 
 **Checkpoint**: Users can see their orgs and switch between them. Session context changes appropriately.
 

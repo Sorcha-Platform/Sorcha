@@ -4,6 +4,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Models.Dtos;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -17,6 +18,7 @@ public class OrgProvisioningService : IOrgProvisioningService
     private readonly TenantDbContext _db;
     private readonly IOrganizationService _orgService;
     private readonly IPlatformSettingsService _settingsService;
+    private readonly IInvitationService _invitationService;
     private readonly ILogger<OrgProvisioningService> _logger;
 
     /// <summary>
@@ -26,11 +28,13 @@ public class OrgProvisioningService : IOrgProvisioningService
         TenantDbContext db,
         IOrganizationService orgService,
         IPlatformSettingsService settingsService,
+        IInvitationService invitationService,
         ILogger<OrgProvisioningService> logger)
     {
         _db = db;
         _orgService = orgService;
         _settingsService = settingsService;
+        _invitationService = invitationService;
         _logger = logger;
     }
 
@@ -220,4 +224,202 @@ public class OrgProvisioningService : IOrgProvisioningService
             };
         }
     }
+
+    /// <inheritdoc />
+    public async Task<AdminProvisionResult> AdminProvisionAsync(
+        Guid adminPlatformUserId, string name, string subdomain,
+        string? description, string adminEmail, UserRole role, CancellationToken ct)
+    {
+        // Reject SystemAdmin role assignment (only valid in system admin org bootstrap)
+        if (role == UserRole.SystemAdmin)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = "Cannot assign SystemAdmin role via organisation creation.",
+                ErrorCode = "InvalidRole"
+            };
+        }
+
+        // 1. Validate org fields (name, subdomain)
+        if (string.IsNullOrWhiteSpace(name) || name.Length < 3 || name.Length > 100)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = "Organisation name must be between 3 and 100 characters.",
+                ErrorCode = "InvalidName"
+            };
+        }
+
+        if (!string.IsNullOrEmpty(description) && description.Length > 500)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = "Description cannot exceed 500 characters.",
+                ErrorCode = "InvalidDescription"
+            };
+        }
+
+        var (subdomainValid, subdomainError) = await _orgService.ValidateSubdomainAsync(subdomain, ct);
+        if (!subdomainValid)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = subdomainError,
+                ErrorCode = "InvalidSubdomain"
+            };
+        }
+
+        // 2. Validate admin email format
+        if (string.IsNullOrWhiteSpace(adminEmail) || !adminEmail.Contains('@') || adminEmail.Length > 320)
+        {
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = "A valid admin email address is required.",
+                ErrorCode = "InvalidAdminEmail"
+            };
+        }
+
+        try
+        {
+            // 3. Create the organisation
+            var org = new Organization
+            {
+                Name = name,
+                Subdomain = subdomain.ToLowerInvariant(),
+                Status = OrganizationStatus.Active,
+                OrgType = OrgType.Standard,
+                IsPlatformOrg = false,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _db.Organizations.Add(org);
+
+            // 4. Check if admin email matches an existing PlatformUser
+            var existingUser = await _db.PlatformUsers
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == adminEmail.ToLower(), ct);
+
+            bool adminDirectlyAdded = false;
+            Guid? invitationId = null;
+
+            if (existingUser is not null)
+            {
+                // Build role set: assigned role + implied subordinate roles
+                var roles = BuildRoleSet(role);
+
+                // Directly create UserIdentity + PlatformUserOrgMembership
+                var adminIdentity = new UserIdentity
+                {
+                    OrganizationId = org.Id,
+                    PlatformUserId = existingUser.Id,
+                    Email = existingUser.Email,
+                    DisplayName = existingUser.DisplayName,
+                    Roles = roles,
+                    Status = IdentityStatus.Active,
+                    ProvisionedVia = ProvisioningMethod.AdminCreated,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                _db.UserIdentities.Add(adminIdentity);
+
+                org.CreatorIdentityId = adminIdentity.Id;
+
+                _db.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+                {
+                    PlatformUserId = existingUser.Id,
+                    OrganizationId = org.Id,
+                    Role = role.ToString(),
+                    JoinedAt = DateTimeOffset.UtcNow
+                });
+
+                adminDirectlyAdded = true;
+
+                _logger.LogInformation(
+                    "Admin org creation: existing user {UserId} directly added as admin to org {OrgId}",
+                    existingUser.Id, org.Id);
+            }
+
+            // 5. Audit log
+            _db.AuditLogEntries.Add(new AuditLogEntry
+            {
+                EventType = AuditEventType.OrganizationCreated,
+                IdentityId = adminPlatformUserId,
+                OrganizationId = org.Id,
+                Timestamp = DateTimeOffset.UtcNow,
+                Details = new Dictionary<string, object>
+                {
+                    ["orgName"] = name,
+                    ["subdomain"] = subdomain,
+                    ["adminEmail"] = adminEmail,
+                    ["assignedRole"] = role.ToString(),
+                    ["adminDirectlyAdded"] = adminDirectlyAdded,
+                    ["createdBySystemAdmin"] = true
+                }
+            });
+
+            // 6. Single SaveChangesAsync — atomic commit for org + optional identity
+            await _db.SaveChangesAsync(ct);
+
+            // 7. If admin email is new, create invitation AFTER org is persisted
+            //    (InvitationService requires the org to exist)
+            if (!adminDirectlyAdded)
+            {
+                var invitationResponse = await _invitationService.CreateInvitationAsync(
+                    org.Id,
+                    new Models.Dtos.CreateInvitationRequest
+                    {
+                        Email = adminEmail,
+                        Role = role,
+                        ExpiryDays = 14
+                    },
+                    adminPlatformUserId,
+                    ct);
+
+                invitationId = invitationResponse.Id;
+
+                _logger.LogInformation(
+                    "Admin org creation: invitation {InvitationId} sent to {Email} for org {OrgId}",
+                    invitationId, adminEmail, org.Id);
+            }
+
+            _logger.LogInformation(
+                "Organisation provisioned by system admin: {OrgId} ({Subdomain}), admin={AdminEmail}, direct={Direct}",
+                org.Id, org.Subdomain, adminEmail, adminDirectlyAdded);
+
+            return new AdminProvisionResult
+            {
+                Success = true,
+                OrganizationId = org.Id,
+                OrganizationName = org.Name,
+                Subdomain = org.Subdomain,
+                AdminDirectlyAdded = adminDirectlyAdded,
+                InvitationId = invitationId
+            };
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _logger.LogWarning(ex, "Admin org provisioning failed due to unique constraint for subdomain {Subdomain}", subdomain);
+            return new AdminProvisionResult
+            {
+                Success = false,
+                Error = $"Subdomain '{subdomain}' is already taken.",
+                ErrorCode = "SubdomainConflict"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Builds a role set from a primary role, including implied subordinate roles.
+    /// Administrator implies Designer + Member. Designer implies Member. Auditor is standalone + Member.
+    /// </summary>
+    private static UserRole[] BuildRoleSet(UserRole primaryRole) => primaryRole switch
+    {
+        UserRole.Administrator => [UserRole.Administrator, UserRole.Designer, UserRole.Member],
+        UserRole.Designer => [UserRole.Designer, UserRole.Member],
+        UserRole.Auditor => [UserRole.Auditor, UserRole.Member],
+        UserRole.Member => [UserRole.Member],
+        _ => [primaryRole, UserRole.Member]
+    };
 }
