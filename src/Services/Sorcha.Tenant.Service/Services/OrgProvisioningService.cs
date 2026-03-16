@@ -236,8 +236,8 @@ public class OrgProvisioningService : IOrgProvisioningService
             return new AdminProvisionResult
             {
                 Success = false,
-                Error = "Cannot assign SystemAdmin role via organisation creation.",
-                ErrorCode = "InvalidRole"
+                Error = "SystemAdmin role can only be assigned in the system admin organisation.",
+                ErrorCode = "invalid_role"
             };
         }
 

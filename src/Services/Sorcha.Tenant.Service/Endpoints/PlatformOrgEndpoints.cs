@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -29,7 +32,23 @@ public static class PlatformOrgEndpoints
                 "Otherwise, a pending invitation is created. Requires SystemAdmin role.")
             .RequireAuthorization("RequireSystemAdmin");
 
-        // Additional endpoints will be added in US7 (T065-T067)
+        group.MapGet("/", ListOrganizations)
+            .WithName("ListPlatformOrganizations")
+            .WithSummary("List all organisations")
+            .WithDescription("Returns paginated list of all orgs with metadata. System admin only.")
+            .RequireAuthorization("RequireSystemAdmin");
+
+        group.MapPut("/{orgId:guid}/status", UpdateOrganizationStatus)
+            .WithName("UpdateOrganizationStatus")
+            .WithSummary("Update organisation status")
+            .WithDescription("Changes org status (Active/Suspended). Platform orgs cannot be suspended.")
+            .RequireAuthorization("RequireSystemAdmin");
+
+        group.MapGet("/{orgId:guid}/users", GetOrganizationUsers)
+            .WithName("GetOrganizationUsers")
+            .WithSummary("View organisation user list")
+            .WithDescription("Returns paginated user list for an org. Read-only audit view.")
+            .RequireAuthorization("RequirePlatformAuditor");
 
         return app;
     }
@@ -79,5 +98,164 @@ public static class PlatformOrgEndpoints
         };
 
         return TypedResults.Created($"/api/platform/organizations/{result.OrganizationId}", response);
+    }
+
+    /// <summary>
+    /// Returns a paginated list of all organisations with user counts.
+    /// </summary>
+    private static async Task<IResult> ListOrganizations(
+        string? status,
+        int page,
+        int pageSize,
+        TenantDbContext db,
+        CancellationToken ct)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.Organizations.AsQueryable();
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<OrganizationStatus>(status, ignoreCase: true, out var parsed))
+        {
+            query = query.Where(o => o.Status == parsed);
+        }
+
+        var totalCount = await query.CountAsync(ct);
+
+        var orgs = await query
+            .OrderBy(o => o.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var orgIds = orgs.Select(o => o.Id).ToList();
+
+        var userCounts = await db.PlatformUserOrgMemberships
+            .Where(m => orgIds.Contains(m.OrganizationId))
+            .GroupBy(m => m.OrganizationId)
+            .Select(g => new { OrgId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.OrgId, x => x.Count, ct);
+
+        var items = orgs.Select(o => new OrganizationSummaryResponse
+        {
+            Id = o.Id,
+            Name = o.Name,
+            Subdomain = o.Subdomain,
+            Status = o.Status,
+            OrgType = o.OrgType,
+            IsPlatformOrg = o.IsPlatformOrg,
+            UserCount = userCounts.GetValueOrDefault(o.Id),
+            CreatedAt = o.CreatedAt
+        }).ToList();
+
+        return TypedResults.Ok(new PlatformOrgListResponse
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
+    }
+
+    /// <summary>
+    /// Updates an organisation's status. Platform orgs cannot be suspended.
+    /// </summary>
+    private static async Task<IResult> UpdateOrganizationStatus(
+        Guid orgId,
+        UpdateOrgStatusRequest request,
+        TenantDbContext db,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        if (request.Status is not (OrganizationStatus.Active or OrganizationStatus.Suspended))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["Status"] = ["Status must be Active or Suspended."]
+            });
+        }
+
+        var org = await db.Organizations.FindAsync([orgId], ct);
+        if (org is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (org.IsPlatformOrg)
+        {
+            return TypedResults.Problem(
+                detail: "Cannot change status of platform organisations.",
+                statusCode: 400);
+        }
+
+        org.Status = request.Status;
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Organisation {OrgId} status changed to {Status}", orgId, request.Status);
+
+        var userCount = await db.PlatformUserOrgMemberships
+            .CountAsync(m => m.OrganizationId == orgId, ct);
+
+        return TypedResults.Ok(new OrganizationSummaryResponse
+        {
+            Id = org.Id,
+            Name = org.Name,
+            Subdomain = org.Subdomain,
+            Status = org.Status,
+            OrgType = org.OrgType,
+            IsPlatformOrg = org.IsPlatformOrg,
+            UserCount = userCount,
+            CreatedAt = org.CreatedAt
+        });
+    }
+
+    /// <summary>
+    /// Returns a paginated list of users in an organisation (read-only audit view).
+    /// </summary>
+    private static async Task<IResult> GetOrganizationUsers(
+        Guid orgId,
+        int page,
+        int pageSize,
+        TenantDbContext db,
+        CancellationToken ct)
+    {
+        var orgExists = await db.Organizations.AnyAsync(o => o.Id == orgId, ct);
+        if (!orgExists)
+        {
+            return TypedResults.NotFound();
+        }
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = db.PlatformUserOrgMemberships
+            .Where(m => m.OrganizationId == orgId)
+            .Join(db.PlatformUsers, m => m.PlatformUserId, p => p.Id,
+                (m, p) => new OrgUserSummaryResponse
+                {
+                    Id = p.Id,
+                    Email = p.Email,
+                    DisplayName = p.DisplayName,
+                    Roles = new[] { m.Role },
+                    Status = p.Status.ToString(),
+                    CreatedAt = m.JoinedAt,
+                    LastLoginAt = p.LastLoginAt
+                });
+
+        var totalCount = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(u => u.Email)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return TypedResults.Ok(new OrgUserListResponse
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        });
     }
 }

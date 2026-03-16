@@ -22,6 +22,57 @@ public record AdminOrgCreationResult
 }
 
 /// <summary>
+/// Summary of an organisation for the platform list view.
+/// </summary>
+public record PlatformOrgSummary
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string Subdomain { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public string OrgType { get; init; } = string.Empty;
+    public bool IsPlatformOrg { get; init; }
+    public int UserCount { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// Paginated org list response from the platform API.
+/// </summary>
+public record PlatformOrgListResult
+{
+    public IReadOnlyList<PlatformOrgSummary> Items { get; init; } = [];
+    public int TotalCount { get; init; }
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+}
+
+/// <summary>
+/// Summary of a user within an organisation for the audit view.
+/// </summary>
+public record PlatformOrgUser
+{
+    public Guid Id { get; init; }
+    public string Email { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string[] Roles { get; init; } = [];
+    public string Status { get; init; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? LastLoginAt { get; init; }
+}
+
+/// <summary>
+/// Paginated user list response from the platform API.
+/// </summary>
+public record PlatformOrgUserListResult
+{
+    public IReadOnlyList<PlatformOrgUser> Items { get; init; } = [];
+    public int TotalCount { get; init; }
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+}
+
+/// <summary>
 /// Client service for platform-level organisation management by system admins.
 /// </summary>
 public interface IPlatformOrgAdminService
@@ -32,6 +83,26 @@ public interface IPlatformOrgAdminService
     Task<AdminOrgCreationResult> CreateOrganizationAsync(
         string name, string subdomain, string adminEmail,
         string role = "Administrator", string? description = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all organisations with optional status filter and pagination.
+    /// </summary>
+    Task<PlatformOrgListResult> ListOrganizationsAsync(
+        string? statusFilter = null, int page = 1, int pageSize = 25,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates an organisation's status (Active/Suspended).
+    /// </summary>
+    Task<bool> UpdateOrganizationStatusAsync(
+        Guid orgId, string status, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the user list for an organisation.
+    /// </summary>
+    Task<PlatformOrgUserListResult> GetOrganizationUsersAsync(
+        Guid orgId, int page = 1, int pageSize = 25,
         CancellationToken ct = default);
 }
 
@@ -88,5 +159,38 @@ public class PlatformOrgAdminService : IPlatformOrgAdminService
             Success = false,
             Error = $"Request failed with status {(int)response.StatusCode}."
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<PlatformOrgListResult> ListOrganizationsAsync(
+        string? statusFilter = null, int page = 1, int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/platform/organizations?page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrEmpty(statusFilter))
+            url += $"&status={Uri.EscapeDataString(statusFilter)}";
+
+        var result = await _http.GetFromJsonAsync<PlatformOrgListResult>(url, JsonDefaults.Api, ct);
+        return result ?? new PlatformOrgListResult();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateOrganizationStatusAsync(
+        Guid orgId, string status, CancellationToken ct = default)
+    {
+        var request = new { Status = status };
+        var response = await _http.PutAsJsonAsync(
+            $"/api/platform/organizations/{orgId}/status", request, JsonDefaults.Api, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <inheritdoc />
+    public async Task<PlatformOrgUserListResult> GetOrganizationUsersAsync(
+        Guid orgId, int page = 1, int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/platform/organizations/{orgId}/users?page={page}&pageSize={pageSize}";
+        var result = await _http.GetFromJsonAsync<PlatformOrgUserListResult>(url, JsonDefaults.Api, ct);
+        return result ?? new PlatformOrgUserListResult();
     }
 }

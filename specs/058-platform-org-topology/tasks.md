@@ -222,13 +222,13 @@
 
 ### Implementation for User Story 7
 
-- [ ] T065 [US7] Add `GET /api/platform/organizations` endpoint to `PlatformOrgEndpoints.cs` (RequireSystemAdmin) — paginated org list with status filter, return name, subdomain, status, orgType, isPlatformOrg, userCount, createdAt in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
-- [ ] T066 [US7] Add `PUT /api/platform/organizations/{orgId}/status` (RequireSystemAdmin) — change org status (Active/Suspended); reject if IsPlatformOrg=true in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
-- [ ] T067 [US7] Add `GET /api/platform/organizations/{orgId}/users` (RequirePlatformAuditor) — paginated user list from per-org schema, read-only in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
-- [ ] T068 [US7] Add FluentValidation validator for `UpdateOrgStatusRequest` (status enum: Active, Suspended) in `src/Services/Sorcha.Tenant.Service/Models/`
-- [ ] T069 [US7] Enforce SystemAdmin role constraint: reject SystemAdmin role assignment in any org except system admin org (ID=...0001) in `src/Services/Sorcha.Tenant.Service/Services/` (user identity management or invitation acceptance)
-- [ ] T070 [P] [US7] Create Platform Organisations admin page — org list with status badges, filter by status, click-through to user list, suspend/enable actions in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/PlatformOrganizations.razor`
-- [ ] T071 [US7] Add Platform Organisations nav link in Admin UI sidebar in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Shared/NavMenu.razor`
+- [X] T065 [US7] Added `GET /api/platform/organizations` endpoint (RequireSystemAdmin) — paginated org list with status filter, batch user count via GroupBy, page/pageSize clamping in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
+- [X] T066 [US7] Added `PUT /api/platform/organizations/{orgId}/status` (RequireSystemAdmin) — inline validation rejects Deleted status, 400 for platform orgs, logs status change in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
+- [X] T067 [US7] Added `GET /api/platform/organizations/{orgId}/users` (RequirePlatformAuditor) — paginated user list via PlatformUserOrgMemberships + PlatformUsers join (public schema, no cross-schema queries) in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformOrgEndpoints.cs`
+- [X] T068 [US7] Inline validation for `UpdateOrgStatusRequest` — pattern match rejects non-Active/Suspended status; DTOs added to `src/Services/Sorcha.Tenant.Service/Models/Dtos/OrganizationDtos.cs`
+- [X] T069 [US7] SystemAdmin role constraint enforced in `OrgProvisioningService.AdminProvisionAsync` (error_code: invalid_role), `InvitationService.CreateInvitationAsync`, and `OrganizationEndpoints.ChangeUserRole` in `src/Services/Sorcha.Tenant.Service/Services/`
+- [X] T070 [P] [US7] Platform Organisations admin page with org list table, status badges, status filter, click-through user list, suspend/enable actions, pagination in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/PlatformOrganizations.razor`
+- [X] T071 [US7] Platform Organisations nav link already present in Main UI sidebar (added in Phase 2) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
 
 **Checkpoint**: Full platform governance — system admins can see all orgs, audit user lists, and manage org status. Permission boundaries enforced.
 

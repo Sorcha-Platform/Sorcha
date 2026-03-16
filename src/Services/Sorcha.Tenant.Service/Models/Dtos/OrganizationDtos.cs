@@ -206,3 +206,107 @@ public record OrganizationListResponse
     /// </summary>
     public int TotalCount { get; init; }
 }
+
+/// <summary>
+/// Request to update an organisation's status (Active/Suspended).
+/// </summary>
+public record UpdateOrgStatusRequest
+{
+    /// <summary>
+    /// New status for the organisation. Only Active and Suspended are valid.
+    /// </summary>
+    public required OrganizationStatus Status { get; init; }
+}
+
+/// <summary>
+/// Summary of an organisation for the platform list view.
+/// </summary>
+public record OrganizationSummaryResponse
+{
+    /// <summary>Organisation identifier.</summary>
+    public Guid Id { get; init; }
+
+    /// <summary>Organisation display name.</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>Organisation subdomain.</summary>
+    public string Subdomain { get; init; } = string.Empty;
+
+    /// <summary>Current organisation status.</summary>
+    public OrganizationStatus Status { get; init; }
+
+    /// <summary>Organisation type (Standard or Public).</summary>
+    public OrgType OrgType { get; init; }
+
+    /// <summary>Whether this is a platform-level organisation.</summary>
+    public bool IsPlatformOrg { get; init; }
+
+    /// <summary>Number of users in this organisation.</summary>
+    public int UserCount { get; init; }
+
+    /// <summary>Organisation creation timestamp.</summary>
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// Paginated list of organisations for the platform admin view.
+/// </summary>
+public record PlatformOrgListResponse
+{
+    /// <summary>Page of organisation summaries.</summary>
+    public IReadOnlyList<OrganizationSummaryResponse> Items { get; init; } = [];
+
+    /// <summary>Total number of organisations matching the filter.</summary>
+    public int TotalCount { get; init; }
+
+    /// <summary>Current page number (1-based).</summary>
+    public int Page { get; init; }
+
+    /// <summary>Number of items per page.</summary>
+    public int PageSize { get; init; }
+}
+
+/// <summary>
+/// Summary of a user within an organisation for the audit view.
+/// </summary>
+public record OrgUserSummaryResponse
+{
+    /// <summary>Platform user identifier.</summary>
+    public Guid Id { get; init; }
+
+    /// <summary>User email address.</summary>
+    public string Email { get; init; } = string.Empty;
+
+    /// <summary>User display name.</summary>
+    public string DisplayName { get; init; } = string.Empty;
+
+    /// <summary>Roles held in this organisation.</summary>
+    public string[] Roles { get; init; } = [];
+
+    /// <summary>Platform user account status.</summary>
+    public string Status { get; init; } = string.Empty;
+
+    /// <summary>When the user joined the organisation.</summary>
+    public DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>Last successful authentication timestamp.</summary>
+    public DateTimeOffset? LastLoginAt { get; init; }
+}
+
+/// <summary>
+/// Paginated list of users within an organisation for the audit view.
+/// </summary>
+public record OrgUserListResponse
+{
+    /// <summary>Page of user summaries.</summary>
+    public IReadOnlyList<OrgUserSummaryResponse> Items { get; init; } = [];
+
+    /// <summary>Total number of users in the organisation.</summary>
+    public int TotalCount { get; init; }
+
+    /// <summary>Current page number (1-based).</summary>
+    public int Page { get; init; }
+
+    /// <summary>Number of items per page.</summary>
+    public int PageSize { get; init; }
+}
