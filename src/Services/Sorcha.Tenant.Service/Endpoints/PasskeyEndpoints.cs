@@ -79,16 +79,11 @@ public static class PasskeyEndpoints
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
-        var userIdClaim = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
+        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
         {
             return TypedResults.Unauthorized();
         }
-
-        var orgIdClaim = user.FindFirst("org_id")?.Value;
-        Guid? organizationId = orgIdClaim is not null && Guid.TryParse(orgIdClaim, out var orgId)
-            ? orgId
-            : null;
 
         if (string.IsNullOrWhiteSpace(request.DisplayName))
         {
@@ -99,7 +94,7 @@ public static class PasskeyEndpoints
         }
 
         // Check credential limit
-        var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
+        var existingCredentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
         if (existingCredentials.Count >= MaxCredentialsPerUser)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
@@ -115,14 +110,12 @@ public static class PasskeyEndpoints
         try
         {
             var result = await passkeyService.CreateRegistrationOptionsAsync(
-                OwnerTypes.OrgUser,
-                userId,
-                organizationId,
+                platformUserId,
                 request.DisplayName,
                 existingCredentialIds,
                 cancellationToken);
 
-            logger.LogInformation("Passkey registration options created for user {UserId}", userId);
+            logger.LogInformation("Passkey registration options created for PlatformUser {PlatformUserId}", platformUserId);
 
             return TypedResults.Ok(new PasskeyRegistrationOptionsResponse
             {
@@ -132,7 +125,7 @@ public static class PasskeyEndpoints
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create passkey registration options for user {UserId}", userId);
+            logger.LogError(ex, "Failed to create passkey registration options for PlatformUser {PlatformUserId}", platformUserId);
             return TypedResults.Problem("Failed to create registration options.", statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -147,8 +140,8 @@ public static class PasskeyEndpoints
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
-        var userIdClaim = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
+        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
         {
             return TypedResults.Unauthorized();
         }
@@ -169,8 +162,8 @@ public static class PasskeyEndpoints
                 persist: true,
                 cancellationToken);
 
-            logger.LogInformation("Passkey credential registered for user {UserId}: {CredentialId}",
-                userId, credential.Id);
+            logger.LogInformation("Passkey credential registered for PlatformUser {PlatformUserId}: {CredentialId}",
+                platformUserId, credential.Id);
 
             return TypedResults.Created($"/api/passkey/credentials/{credential.Id}", new PasskeyCredentialResponse
             {
@@ -184,7 +177,7 @@ public static class PasskeyEndpoints
         }
         catch (InvalidOperationException ex)
         {
-            logger.LogWarning(ex, "Passkey registration verification failed for user {UserId}", userId);
+            logger.LogWarning(ex, "Passkey registration verification failed for PlatformUser {PlatformUserId}", platformUserId);
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["attestation_response"] = [ex.Message]
@@ -200,13 +193,13 @@ public static class PasskeyEndpoints
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {
-        var userIdClaim = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
+        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
         {
             return TypedResults.Unauthorized();
         }
 
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
 
         var response = new PasskeyCredentialListResponse
         {
@@ -236,17 +229,17 @@ public static class PasskeyEndpoints
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
-        var userIdClaim = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        var platformUserIdClaim = user.FindFirst("platform_user_id")?.Value;
+        if (platformUserIdClaim is null || !Guid.TryParse(platformUserIdClaim, out var platformUserId))
         {
             return TypedResults.Unauthorized();
         }
 
         // Check if this would leave the user with no auth methods.
         // Note: check-then-act is not fully atomic but rate limiting (5/min/IP) mitigates concurrent abuse.
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
         var activeCredentials = credentials.Where(c => c.Status == CredentialStatus.Active).ToList();
-        var totpStatus = await totpService.GetStatusAsync(userId, cancellationToken);
+        var totpStatus = await totpService.GetStatusAsync(platformUserId, cancellationToken);
 
         // If this is the only active passkey and TOTP is not enabled, prevent deletion
         var isTargetActive = activeCredentials.Any(c => c.Id == id);
@@ -258,14 +251,14 @@ public static class PasskeyEndpoints
             });
         }
 
-        var revoked = await passkeyService.RevokeCredentialAsync(id, OwnerTypes.OrgUser, userId, cancellationToken);
+        var revoked = await passkeyService.RevokeCredentialAsync(id, platformUserId, cancellationToken);
 
         if (!revoked)
         {
             return TypedResults.NotFound();
         }
 
-        logger.LogInformation("Passkey credential {CredentialId} revoked for user {UserId}", id, userId);
+        logger.LogInformation("Passkey credential {CredentialId} revoked for PlatformUser {PlatformUserId}", id, platformUserId);
 
         return TypedResults.NoContent();
     }

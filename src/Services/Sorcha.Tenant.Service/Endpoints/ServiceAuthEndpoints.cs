@@ -238,41 +238,11 @@ public static class ServiceAuthEndpoints
                 return TypedResults.Unauthorized();
             }
 
-            // Verify password hash exists (local auth user)
-            if (string.IsNullOrEmpty(user.PasswordHash))
-            {
-                logger.LogWarning("OAuth2 password grant failed: User has no password - {Email}", username);
-                return TypedResults.Unauthorized();
-            }
-
-            // Verify password using BCrypt
-            bool isPasswordValid = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
-
-            if (!isPasswordValid)
-            {
-                logger.LogWarning("OAuth2 password grant failed: Invalid password - {Email}", username);
-                return TypedResults.Unauthorized();
-            }
-
-            // Get user's organization
-            var organization = await organizationRepository.GetByIdAsync(user.OrganizationId, cancellationToken);
-
-            if (organization == null)
-            {
-                logger.LogError("OAuth2 password grant failed: Organization not found - {OrgId}", user.OrganizationId);
-                return TypedResults.Unauthorized();
-            }
-
-            // Update last login timestamp
-            user.LastLoginAt = DateTimeOffset.UtcNow;
-            await identityRepository.UpdateUserAsync(user, cancellationToken);
-
-            // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
-
-            logger.LogInformation("OAuth2 password grant successful - {Email} (UserId: {UserId})", username, user.Id);
-
-            return TypedResults.Ok(tokenResponse);
+            // TODO: PasswordHash removed from UserIdentity — password verification
+            // will be handled by PlatformUser in a future task. For now, the password
+            // grant type is non-functional and always returns unauthorized.
+            logger.LogWarning("OAuth2 password grant is not yet implemented with PlatformUser model - {Email}", username);
+            return TypedResults.Unauthorized();
         }
         catch (Exception ex)
         {

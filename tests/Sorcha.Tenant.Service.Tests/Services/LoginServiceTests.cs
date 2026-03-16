@@ -2,9 +2,11 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -16,7 +18,7 @@ namespace Sorcha.Tenant.Service.Tests.Services;
 /// Unit tests for <see cref="LoginService"/>: email/password authentication,
 /// BCrypt verification, 2FA detection, rate limiting, and token issuance.
 /// </summary>
-public class LoginServiceTests
+public class LoginServiceTests : IDisposable
 {
     private readonly Mock<IIdentityRepository> _identityRepo = new();
     private readonly Mock<IOrganizationRepository> _orgRepo = new();
@@ -25,9 +27,24 @@ public class LoginServiceTests
     private readonly Mock<IPasskeyService> _passkeyService = new();
     private readonly Mock<ITokenRevocationService> _revocationService = new();
     private readonly ILogger<LoginService> _logger = NullLogger<LoginService>.Instance;
+    private readonly TenantDbContext _dbContext;
+
+    public LoginServiceTests()
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: $"LoginServiceTests-{Guid.NewGuid()}")
+            .Options;
+        _dbContext = new TenantDbContext(options);
+    }
+
+    public void Dispose()
+    {
+        _dbContext.Dispose();
+    }
 
     private LoginService CreateService() =>
         new(
+            _dbContext,
             _identityRepo.Object,
             _orgRepo.Object,
             _tokenService.Object,
@@ -36,7 +53,7 @@ public class LoginServiceTests
             _revocationService.Object,
             _logger);
 
-    private static UserIdentity CreateTestUser(string email = "user@test.com", string? passwordHash = null)
+    private static UserIdentity CreateTestUser(string email = "user@test.com")
     {
         return new UserIdentity
         {
@@ -44,8 +61,8 @@ public class LoginServiceTests
             Email = email,
             DisplayName = "Test User",
             OrganizationId = Guid.NewGuid(),
-            Status = IdentityStatus.Active,
-            PasswordHash = passwordHash ?? BCrypt.Net.BCrypt.HashPassword("correct-password")
+            PlatformUserId = Guid.NewGuid(),
+            Status = IdentityStatus.Active
         };
     }
 
@@ -70,7 +87,7 @@ public class LoginServiceTests
         _totpService.Setup(t => t.GetStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TotpStatusResult { IsEnabled = false });
         _passkeyService.Setup(p => p.GetCredentialsByOwnerAsync(
-                It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PasskeyCredential>());
     }
 
@@ -92,7 +109,7 @@ public class LoginServiceTests
             .ReturnsAsync(user);
         _orgRepo.Setup(r => r.GetByIdAsync(user.OrganizationId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(org);
-        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<CancellationToken>()))
+        _tokenService.Setup(t => t.GenerateUserTokenAsync(user, org, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedTokens);
 
         var service = CreateService();
@@ -171,7 +188,7 @@ public class LoginServiceTests
         _totpService.Setup(t => t.GetStatusAsync(user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TotpStatusResult { IsEnabled = true });
         _passkeyService.Setup(p => p.GetCredentialsByOwnerAsync(
-                OwnerTypes.OrgUser, user.Id, It.IsAny<CancellationToken>()))
+                user.PlatformUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PasskeyCredential>());
         _totpService.Setup(t => t.GenerateLoginTokenAsync(user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync("login-token-abc");
@@ -190,7 +207,7 @@ public class LoginServiceTests
 
         // Should not issue JWT tokens when 2FA is required
         _tokenService.Verify(t => t.GenerateUserTokenAsync(
-            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -212,29 +229,6 @@ public class LoginServiceTests
 
         // Should not even attempt user lookup
         _identityRepo.Verify(r => r.GetUserByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task LoginAsync_ExternalIdpUser_ReturnsError()
-    {
-        // Arrange
-        var user = CreateTestUser(passwordHash: null!);
-        user.PasswordHash = null; // External IDP user has no password
-
-        SetupNoRateLimit();
-        _identityRepo.Setup(r => r.GetUserByEmailAsync("external@test.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(user);
-
-        var service = CreateService();
-
-        // Act
-        var result = await service.LoginAsync("external@test.com", "any-password");
-
-        // Assert
-        result.Success.Should().BeFalse();
-        result.Error.Should().Be("Invalid email or password.");
-
-        _revocationService.Verify(r => r.IncrementFailedAuthAttemptsAsync("external@test.com", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -279,13 +273,12 @@ public class LoginServiceTests
             Id = Guid.NewGuid(),
             CredentialId = [1, 2, 3],
             PublicKeyCose = [4, 5, 6],
-            OwnerType = OwnerTypes.OrgUser,
-            OwnerId = user.Id,
+            PlatformUserId = user.PlatformUserId,
             Status = CredentialStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
         _passkeyService.Setup(p => p.GetCredentialsByOwnerAsync(
-                OwnerTypes.OrgUser, user.Id, It.IsAny<CancellationToken>()))
+                user.PlatformUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { activePasskey });
         _totpService.Setup(t => t.GenerateLoginTokenAsync(user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync("passkey-login-token");

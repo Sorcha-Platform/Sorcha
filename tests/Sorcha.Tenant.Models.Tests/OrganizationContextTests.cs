@@ -26,7 +26,7 @@ public class OrganizationContextTests
             UserEmail = "admin@acme.com",
             Roles = ["Administrator", "Member"],
             IsServicePrincipal = false,
-            IsPublicIdentity = false,
+            IsPlatformUser = false,
             ServiceName = null
         };
 
@@ -37,7 +37,7 @@ public class OrganizationContextTests
         context.UserEmail.Should().Be("admin@acme.com");
         context.Roles.Should().BeEquivalentTo(["Administrator", "Member"]);
         context.IsServicePrincipal.Should().BeFalse();
-        context.IsPublicIdentity.Should().BeFalse();
+        context.IsPlatformUser.Should().BeFalse();
         context.ServiceName.Should().BeNull();
     }
 
@@ -58,7 +58,7 @@ public class OrganizationContextTests
         context.OrganizationId.Should().BeNull();
         context.UserId.Should().BeNull();
         context.UserEmail.Should().BeNull();
-        context.IsPublicIdentity.Should().BeFalse();
+        context.IsPlatformUser.Should().BeFalse();
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class OrganizationContextTests
     {
         var context = new OrganizationContext
         {
-            IsPublicIdentity = true,
+            IsPlatformUser = true,
             OrganizationId = null,
             Subdomain = null,
             OrganizationName = null,
@@ -74,7 +74,7 @@ public class OrganizationContextTests
             UserEmail = null
         };
 
-        context.IsPublicIdentity.Should().BeTrue();
+        context.IsPlatformUser.Should().BeTrue();
         context.OrganizationId.Should().BeNull();
         context.Subdomain.Should().BeNull();
         context.OrganizationName.Should().BeNull();
@@ -93,7 +93,7 @@ public class OrganizationContextTests
         context.UserEmail.Should().BeNull();
         context.Roles.Should().BeEmpty();
         context.IsServicePrincipal.Should().BeFalse();
-        context.IsPublicIdentity.Should().BeFalse();
+        context.IsPlatformUser.Should().BeFalse();
         context.ServiceName.Should().BeNull();
     }
 }

@@ -167,8 +167,7 @@ public class DatabaseInitializer
                 OrganizationId = DefaultOrganizationId,
                 Email = adminEmail,
                 DisplayName = "System Administrator",
-                PasswordHash = passwordHash,
-                ExternalIdpSubject = null, // Local authentication
+                PlatformUserId = DefaultAdminUserId, // Will be updated in T028 bootstrap rewrite
                 Roles =
                 [
                     UserRole.Administrator,

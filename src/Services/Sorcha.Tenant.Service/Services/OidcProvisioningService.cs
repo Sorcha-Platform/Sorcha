@@ -33,10 +33,11 @@ public class OidcProvisioningService : IOidcProvisioningService
     public async Task<(UserIdentity User, bool IsFirstLogin)> ProvisionOrMatchUserAsync(
         Guid orgId, OidcUserClaims claims, CancellationToken cancellationToken)
     {
-        // Match returning user by ExternalIdpSubject within the organization
+        // TODO: ExternalIdpSubject removed from UserIdentity — matching by external subject
+        // will be handled by PlatformSocialLogin in a future task. For now, match by email as fallback.
         var existingUser = await _dbContext.UserIdentities
             .FirstOrDefaultAsync(
-                u => u.OrganizationId == orgId && u.ExternalIdpSubject == claims.Subject,
+                u => u.OrganizationId == orgId && u.Email == claims.Email,
                 cancellationToken);
 
         if (existingUser is not null)
@@ -59,14 +60,12 @@ public class OidcProvisioningService : IOidcProvisioningService
         var newUser = new UserIdentity
         {
             OrganizationId = orgId,
-            ExternalIdpSubject = claims.Subject,
+            // TODO: ExternalIdpSubject removed — external subject tracking moves to PlatformSocialLogin
             Email = email ?? string.Empty,
             DisplayName = displayName ?? string.Empty,
             Roles = [UserRole.Member],
             ProvisionedVia = ProvisioningMethod.Oidc,
             Status = IdentityStatus.Active,
-            EmailVerified = claims.EmailVerified,
-            EmailVerifiedAt = claims.EmailVerified ? DateTimeOffset.UtcNow : null,
             ProfileCompleted = !string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(displayName),
             LastLoginAt = DateTimeOffset.UtcNow,
             CreatedAt = DateTimeOffset.UtcNow

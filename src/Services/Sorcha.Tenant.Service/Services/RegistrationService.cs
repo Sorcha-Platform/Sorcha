@@ -95,14 +95,31 @@ public class RegistrationService : IRegistrationService
             }
         }
 
-        // Create the user
+        // Create or find PlatformUser for this registration
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Email == email, ct);
+        if (platformUser is null)
+        {
+            platformUser = new PlatformUser
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                DisplayName = displayName,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                Status = PlatformUserStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _dbContext.PlatformUsers.Add(platformUser);
+        }
+
+        // Create the user identity (org-scoped)
         var user = new UserIdentity
         {
             Id = Guid.NewGuid(),
             OrganizationId = org.Id,
+            PlatformUserId = platformUser.Id,
             Email = email,
             DisplayName = displayName,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Status = IdentityStatus.Active,
             Roles = [UserRole.Member],
             ProvisionedVia = ProvisioningMethod.Local,
@@ -111,6 +128,16 @@ public class RegistrationService : IRegistrationService
         };
 
         _dbContext.UserIdentities.Add(user);
+
+        // Create org membership link
+        _dbContext.Set<PlatformUserOrgMembership>().Add(new PlatformUserOrgMembership
+        {
+            Id = Guid.NewGuid(),
+            PlatformUserId = platformUser.Id,
+            OrganizationId = org.Id,
+            Role = nameof(UserRole.Member),
+            JoinedAt = DateTimeOffset.UtcNow
+        });
 
         // Log audit event
         _dbContext.AuditLogEntries.Add(new AuditLogEntry

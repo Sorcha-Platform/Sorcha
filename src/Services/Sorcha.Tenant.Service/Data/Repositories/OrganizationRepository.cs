@@ -21,14 +21,14 @@ public class OrganizationRepository : IOrganizationRepository
     public async Task<Organization?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Organizations
-            .Include(o => o.IdentityProvider)
+            .Include(o => o.IdentityProviders)
             .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
     }
 
     public async Task<Organization?> GetBySubdomainAsync(string subdomain, CancellationToken cancellationToken = default)
     {
         return await _context.Organizations
-            .Include(o => o.IdentityProvider)
+            .Include(o => o.IdentityProviders)
             .FirstOrDefaultAsync(o => o.Subdomain == subdomain, cancellationToken);
     }
 
@@ -36,14 +36,14 @@ public class OrganizationRepository : IOrganizationRepository
     {
         return await _context.Organizations
             .Where(o => o.Status == OrganizationStatus.Active)
-            .Include(o => o.IdentityProvider)
+            .Include(o => o.IdentityProviders)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<List<Organization>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Organizations
-            .Include(o => o.IdentityProvider)
+            .Include(o => o.IdentityProviders)
             .ToListAsync(cancellationToken);
     }
 

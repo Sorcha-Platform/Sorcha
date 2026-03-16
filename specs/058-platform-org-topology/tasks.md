@@ -19,12 +19,12 @@
 
 **Purpose**: Remove obsolete code and prepare for new entity model
 
-- [ ] T001 Delete `PublicIdentity.cs` from `src/Services/Sorcha.Tenant.Service/Models/PublicIdentity.cs`
-- [ ] T002 [P] Delete `SocialLoginLink.cs` from `src/Services/Sorcha.Tenant.Service/Models/SocialLoginLink.cs`
-- [ ] T003 [P] Delete `OwnerTypes.cs` from `src/Services/Sorcha.Tenant.Service/Models/OwnerTypes.cs`
-- [ ] T004 [P] Delete `IPublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/IPublicUserService.cs`
-- [ ] T005 [P] Delete `PublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/PublicUserService.cs`
-- [ ] T006 [P] Delete `PublicAuthEndpoints.cs` from `src/Services/Sorcha.Tenant.Service/Endpoints/PublicAuthEndpoints.cs`
+- [X] T001 Delete `PublicIdentity.cs` from `src/Services/Sorcha.Tenant.Service/Models/PublicIdentity.cs`
+- [X] T002 [P] Delete `SocialLoginLink.cs` from `src/Services/Sorcha.Tenant.Service/Models/SocialLoginLink.cs`
+- [X] T003 [P] Delete `OwnerTypes.cs` from `src/Services/Sorcha.Tenant.Service/Models/OwnerTypes.cs`
+- [X] T004 [P] Delete `IPublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/IPublicUserService.cs`
+- [X] T005 [P] Delete `PublicUserService.cs` from `src/Services/Sorcha.Tenant.Service/Services/PublicUserService.cs`
+- [X] T006 [P] Delete `PublicAuthEndpoints.cs` from `src/Services/Sorcha.Tenant.Service/Endpoints/PublicAuthEndpoints.cs`
 - [ ] T007 Remove all references to deleted types (PublicIdentity, SocialLoginLink, OwnerTypes, IPublicUserService, PublicUserService, PublicAuthEndpoints) across the solution — update DI registration in `Program.cs`, endpoint mappings, DbContext configurations, and any consuming code
 
 ---
@@ -37,19 +37,19 @@
 
 ### New Entities
 
-- [ ] T008 [P] Create `PlatformUserStatus.cs` enum (Active=0, Suspended=1, Deleted=2) in `src/Services/Sorcha.Tenant.Service/Models/PlatformUserStatus.cs`
-- [ ] T009 Create `PlatformUser.cs` entity with all 17 fields, navigations (SocialLogins, PasskeyCredentials, OrgMemberships), unique index on Email, index on Status in `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs`
-- [ ] T010 [P] Create `PlatformSocialLogin.cs` entity with 8 fields, FK to PlatformUser, unique index on (Provider, Subject) in `src/Services/Sorcha.Tenant.Service/Models/PlatformSocialLogin.cs`
-- [ ] T011 [P] Create `PlatformUserOrgMembership.cs` entity with 5 fields, FK to PlatformUser and Organization, unique index on (PlatformUserId, OrganizationId) in `src/Services/Sorcha.Tenant.Service/Models/PlatformUserOrgMembership.cs`
-- [ ] T012 [P] Create `PlatformSettings.cs` singleton entity with 5 fields (Id, PublicOrgEnabled, MaxOrgsPerUser, UpdatedAt, UpdatedBy) in `src/Services/Sorcha.Tenant.Service/Models/PlatformSettings.cs`
+- [X] T008 [P] Create `PlatformUserStatus.cs` enum (Active=0, Suspended=1, Deleted=2) in `src/Services/Sorcha.Tenant.Service/Models/PlatformUserStatus.cs`
+- [X] T009 Create `PlatformUser.cs` entity with all 17 fields, navigations (SocialLogins, PasskeyCredentials, OrgMemberships), unique index on Email, index on Status in `src/Services/Sorcha.Tenant.Service/Models/PlatformUser.cs`
+- [X] T010 [P] Create `PlatformSocialLogin.cs` entity with 8 fields, FK to PlatformUser, unique index on (Provider, Subject) in `src/Services/Sorcha.Tenant.Service/Models/PlatformSocialLogin.cs`
+- [X] T011 [P] Create `PlatformUserOrgMembership.cs` entity with 5 fields, FK to PlatformUser and Organization, unique index on (PlatformUserId, OrganizationId) in `src/Services/Sorcha.Tenant.Service/Models/PlatformUserOrgMembership.cs`
+- [X] T012 [P] Create `PlatformSettings.cs` singleton entity with 5 fields (Id, PublicOrgEnabled, MaxOrgsPerUser, UpdatedAt, UpdatedBy) in `src/Services/Sorcha.Tenant.Service/Models/PlatformSettings.cs`
 
 ### Modified Entities
 
-- [ ] T013 Add `IsPlatformOrg` (bool, default false) field to `Organization.cs`; change `IdentityProvider` navigation to `IdentityProviders` (`ICollection<IdentityProviderConfiguration>`) in `src/Services/Sorcha.Tenant.Service/Models/Organization.cs`
-- [ ] T014 [P] Modify `IdentityProviderConfiguration.cs`: remove unique constraint on OrganizationId, add composite unique index on (OrganizationId, ProviderPreset); add `GitHub` value to `IdentityProviderType` enum in `src/Services/Sorcha.Tenant.Service/Models/IdentityProviderConfiguration.cs`
-- [ ] T015 [P] Add `AdminCreated = 4` to `ProvisioningMethod` enum in `src/Services/Sorcha.Tenant.Service/Models/ProvisioningMethod.cs`
-- [ ] T016 Modify `UserIdentity.cs`: add `PlatformUserId` (Guid, Required) field; remove `PasswordHash`, `ExternalIdpSubject`, `EmailVerified`, `EmailVerifiedAt`, `VerificationToken`, `VerificationTokenExpiresAt`, `PasswordResetTokenHash`, `PasswordResetTokenExpiresAt`, `FailedLoginCount`, `LockedUntil`, `LockedPermanently` fields in `src/Services/Sorcha.Tenant.Service/Models/UserIdentity.cs`
-- [ ] T017 Modify `PasskeyCredential.cs`: remove `OwnerType`, `OwnerId`, `OrganizationId` fields and their indexes; add `PlatformUserId` (Guid, FK → PlatformUser, Required) with indexes on PlatformUserId and (PlatformUserId, Status) in `src/Services/Sorcha.Tenant.Service/Models/PasskeyCredential.cs`
+- [X] T013 Add `IsPlatformOrg` (bool, default false) field to `Organization.cs`; change `IdentityProvider` navigation to `IdentityProviders` (`ICollection<IdentityProviderConfiguration>`) in `src/Services/Sorcha.Tenant.Service/Models/Organization.cs`
+- [X] T014 [P] Modify `IdentityProviderConfiguration.cs`: remove unique constraint on OrganizationId, add composite unique index on (OrganizationId, ProviderPreset); add `GitHub` value to `IdentityProviderType` enum in `src/Services/Sorcha.Tenant.Service/Models/IdentityProviderConfiguration.cs`
+- [X] T015 [P] Add `AdminCreated = 4` to `ProvisioningMethod` enum in `src/Services/Sorcha.Tenant.Service/Models/ProvisioningMethod.cs`
+- [X] T016 Modify `UserIdentity.cs`: add `PlatformUserId` (Guid, Required) field; remove `PasswordHash`, `ExternalIdpSubject`, `EmailVerified`, `EmailVerifiedAt`, `VerificationToken`, `VerificationTokenExpiresAt`, `PasswordResetTokenHash`, `PasswordResetTokenExpiresAt`, `FailedLoginCount`, `LockedUntil`, `LockedPermanently` fields in `src/Services/Sorcha.Tenant.Service/Models/UserIdentity.cs`
+- [X] T017 Modify `PasskeyCredential.cs`: remove `OwnerType`, `OwnerId`, `OrganizationId` fields and their indexes; add `PlatformUserId` (Guid, FK → PlatformUser, Required) with indexes on PlatformUserId and (PlatformUserId, Status) in `src/Services/Sorcha.Tenant.Service/Models/PasskeyCredential.cs`
 - [ ] T017b Update passkey authentication flow to resolve PlatformUser via `PlatformUserId` FK instead of polymorphic `OwnerType`/`OwnerId`; update passkey registration and assertion endpoints to use PlatformUser as the credential owner in `src/Services/Sorcha.Tenant.Service/Endpoints/AuthEndpoints.cs` and related services
 
 ### EF Core Configuration

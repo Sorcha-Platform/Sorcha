@@ -27,9 +27,8 @@ public record AssertionOptionsResult(string TransactionId, AssertionOptions Opti
 /// Result of a successful assertion (login) verification, identifying the credential owner.
 /// </summary>
 /// <param name="Credential">The matched passkey credential that was used for authentication.</param>
-/// <param name="OwnerType">Type of the credential owner ("OrgUser" or "PublicIdentity").</param>
-/// <param name="OwnerId">ID of the credential owner (UserIdentity.Id or PublicIdentity.Id).</param>
-public record AssertionVerificationResult(PasskeyCredential Credential, string OwnerType, Guid OwnerId);
+/// <param name="PlatformUserId">The platform user ID that owns the credential.</param>
+public record AssertionVerificationResult(PasskeyCredential Credential, Guid PlatformUserId);
 
 /// <summary>
 /// Service interface for FIDO2/WebAuthn passkey operations.
@@ -41,17 +40,13 @@ public interface IPasskeyService
     /// Creates registration options for a new passkey credential.
     /// Generates a challenge and stores it in the distributed cache for verification.
     /// </summary>
-    /// <param name="ownerType">Type of the credential owner ("OrgUser" or "PublicIdentity").</param>
-    /// <param name="ownerId">ID of the credential owner.</param>
-    /// <param name="organizationId">Organization ID for OrgUser owners; null for PublicIdentity.</param>
+    /// <param name="platformUserId">The platform user ID that will own the credential.</param>
     /// <param name="displayName">Human-readable name for the credential.</param>
     /// <param name="existingCredentialIds">Existing credential IDs to exclude (prevent duplicate registration).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Registration options result containing a transaction ID and credential creation options.</returns>
     Task<RegistrationOptionsResult> CreateRegistrationOptionsAsync(
-        string ownerType,
-        Guid ownerId,
-        Guid? organizationId,
+        Guid platformUserId,
         string displayName,
         IEnumerable<byte[]>? existingCredentialIds = null,
         CancellationToken cancellationToken = default);
@@ -99,29 +94,25 @@ public interface IPasskeyService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets all passkey credentials for a specific owner.
+    /// Gets all passkey credentials for a specific platform user.
     /// </summary>
-    /// <param name="ownerType">Type of the credential owner ("OrgUser" or "PublicIdentity").</param>
-    /// <param name="ownerId">ID of the credential owner.</param>
+    /// <param name="platformUserId">The platform user ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Read-only list of passkey credentials belonging to the owner.</returns>
+    /// <returns>Read-only list of passkey credentials belonging to the platform user.</returns>
     Task<IReadOnlyList<PasskeyCredential>> GetCredentialsByOwnerAsync(
-        string ownerType,
-        Guid ownerId,
+        Guid platformUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Revokes a passkey credential, preventing its future use for authentication.
-    /// The credential must belong to the specified owner.
+    /// The credential must belong to the specified platform user.
     /// </summary>
     /// <param name="credentialId">ID of the credential to revoke.</param>
-    /// <param name="ownerType">Type of the credential owner ("OrgUser" or "PublicIdentity").</param>
-    /// <param name="ownerId">ID of the credential owner.</param>
+    /// <param name="platformUserId">The platform user ID that owns the credential.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if the credential was found and revoked; false if not found.</returns>
     Task<bool> RevokeCredentialAsync(
         Guid credentialId,
-        string ownerType,
-        Guid ownerId,
+        Guid platformUserId,
         CancellationToken cancellationToken = default);
 }

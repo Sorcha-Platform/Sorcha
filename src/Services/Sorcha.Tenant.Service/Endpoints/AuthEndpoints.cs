@@ -279,7 +279,7 @@ public static class AuthEndpoints
         await identityRepository.UpdateUserAsync(user, cancellationToken);
 
         // Generate tokens
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
 
         logger.LogInformation("User completed 2FA login - UserId: {UserId}, OrgId: {OrgId}",
             user.Id, organization.Id);
@@ -498,7 +498,7 @@ public static class AuthEndpoints
         }
 
         // Get user's active passkey credentials
-        var credentials = await passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, userId.Value, cancellationToken);
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(userId.Value, cancellationToken);
         var activeCredentialIds = credentials
             .Where(c => c.Status == CredentialStatus.Active)
             .Select(c => c.CredentialId)
@@ -569,16 +569,16 @@ public static class AuthEndpoints
                 request.AssertionResponse,
                 cancellationToken);
 
-            // Ensure the assertion credential belongs to the login token's user
-            if (assertionResult.OwnerId != userId.Value)
-            {
-                logger.LogWarning("Passkey 2FA verification failed: credential owner {OwnerId} does not match login user {UserId}",
-                    assertionResult.OwnerId, userId.Value);
-                return TypedResults.Unauthorized();
-            }
-
             // Look up user and org, then issue JWT
             var user = await identityRepository.GetUserByIdAsync(userId.Value, cancellationToken);
+
+            // Ensure the assertion credential belongs to the login token's user
+            if (user is null || assertionResult.PlatformUserId != user.PlatformUserId)
+            {
+                logger.LogWarning("Passkey 2FA verification failed: credential owner {PlatformUserId} does not match login user {UserId}",
+                    assertionResult.PlatformUserId, userId.Value);
+                return TypedResults.Unauthorized();
+            }
             if (user is null || user.Status != IdentityStatus.Active)
             {
                 return TypedResults.Unauthorized();
@@ -595,7 +595,7 @@ public static class AuthEndpoints
             await identityRepository.UpdateUserAsync(user, cancellationToken);
 
             // Generate tokens
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, cancellationToken);
 
             logger.LogInformation("User completed passkey 2FA login - UserId: {UserId}, OrgId: {OrgId}, CredentialId: {CredentialId}",
                 user.Id, organization.Id, assertionResult.Credential.Id);

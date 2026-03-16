@@ -129,8 +129,7 @@ public static class BootstrapEndpoints
                 OrganizationId = organization.Id,
                 Email = request.AdminEmail,
                 DisplayName = request.AdminName,
-                PasswordHash = passwordHash,
-                ExternalIdpSubject = null, // Local authentication user
+                PlatformUserId = Guid.NewGuid(), // TODO: T028 — create PlatformUser in bootstrap
                 Roles = new[] { UserRole.Administrator },
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow
@@ -151,7 +150,7 @@ public static class BootstrapEndpoints
                     Name = organization.Name,
                     Subdomain = organization.Subdomain
                 };
-                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity);
+                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity, createdUser.PlatformUserId);
                 adminAccessToken = tokenResponse.AccessToken;
                 adminRefreshToken = tokenResponse.RefreshToken;
             }

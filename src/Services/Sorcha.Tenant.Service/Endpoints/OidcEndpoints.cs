@@ -260,7 +260,7 @@ public static class OidcEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // Issue full JWT
-        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
+        var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken);
         return TypedResults.Ok(new OidcCallbackResult
         {
             Success = true,
@@ -329,7 +329,7 @@ public static class OidcEndpoints
             user.Id);
         if (org is not null)
         {
-            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, cancellationToken);
+            var tokenResponse = await tokenService.GenerateUserTokenAsync(user, org, user.PlatformUserId, cancellationToken);
             return TypedResults.Ok(new OidcCallbackResult
             {
                 Success = true,

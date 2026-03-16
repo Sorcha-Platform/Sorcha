@@ -8,7 +8,7 @@ namespace Sorcha.Tenant.Service.Data.Repositories;
 
 /// <summary>
 /// Repository implementation for Identity entity operations.
-/// Handles UserIdentity, PublicIdentity, and ServicePrincipal entities.
+/// Handles UserIdentity and ServicePrincipal entities.
 /// </summary>
 public class IdentityRepository : IIdentityRepository
 {
@@ -24,12 +24,6 @@ public class IdentityRepository : IIdentityRepository
     {
         return await _context.UserIdentities
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
-    }
-
-    public async Task<UserIdentity?> GetUserByExternalIdAsync(string externalIdpSubject, CancellationToken cancellationToken = default)
-    {
-        return await _context.UserIdentities
-            .FirstOrDefaultAsync(u => u.ExternalIdpSubject == externalIdpSubject, cancellationToken);
     }
 
     /// <inheritdoc />

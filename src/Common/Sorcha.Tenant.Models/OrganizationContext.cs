@@ -48,9 +48,9 @@ public class OrganizationContext
     public bool IsServicePrincipal { get; init; }
 
     /// <summary>
-    /// Whether this is a public identity (PassKey user without organization).
+    /// Whether this is a platform user (e.g., PassKey user without organization).
     /// </summary>
-    public bool IsPublicIdentity { get; init; }
+    public bool IsPlatformUser { get; init; }
 
     /// <summary>
     /// Service name if this is a service principal (e.g., "Blueprint", "Wallet").

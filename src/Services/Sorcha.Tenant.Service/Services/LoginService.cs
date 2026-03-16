@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.EntityFrameworkCore;
+
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
 
@@ -12,6 +15,7 @@ namespace Sorcha.Tenant.Service.Services;
 /// </summary>
 public class LoginService : ILoginService
 {
+    private readonly TenantDbContext _dbContext;
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ITokenService _tokenService;
@@ -24,6 +28,7 @@ public class LoginService : ILoginService
     /// Initializes a new instance of the <see cref="LoginService"/> class.
     /// </summary>
     public LoginService(
+        TenantDbContext dbContext,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
         ITokenService tokenService,
@@ -32,6 +37,7 @@ public class LoginService : ILoginService
         ITokenRevocationService revocationService,
         ILogger<LoginService> logger)
     {
+        _dbContext = dbContext;
         _identityRepository = identityRepository;
         _organizationRepository = organizationRepository;
         _tokenService = tokenService;
@@ -64,8 +70,17 @@ public class LoginService : ILoginService
                 return new LoginResult(false, Error: "Invalid email or password.");
             }
 
+            // Look up PlatformUser for authentication fields
+            var platformUser = await _dbContext.PlatformUsers
+                .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, ct);
+            if (platformUser is null)
+            {
+                _logger.LogError("Login failed: PlatformUser not found for user {UserId}", user.Id);
+                return new LoginResult(false, Error: "Invalid email or password.");
+            }
+
             // Password hash check (null means external IDP user)
-            if (string.IsNullOrEmpty(user.PasswordHash))
+            if (string.IsNullOrEmpty(platformUser.PasswordHash))
             {
                 _logger.LogWarning("Login failed: User has no password (external IDP user?) - {Email}", email);
                 await _revocationService.IncrementFailedAuthAttemptsAsync(email, ct);
@@ -73,7 +88,7 @@ public class LoginService : ILoginService
             }
 
             // BCrypt verification
-            if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+            if (!BCrypt.Net.BCrypt.Verify(password, platformUser.PasswordHash))
             {
                 _logger.LogWarning("Login failed: Invalid password - {Email}", email);
                 await _revocationService.IncrementFailedAuthAttemptsAsync(email, ct);
@@ -94,7 +109,7 @@ public class LoginService : ILoginService
 
             // Check if user has TOTP 2FA or passkeys enabled
             var totpStatus = await _totpService.GetStatusAsync(user.Id, ct);
-            var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(OwnerTypes.OrgUser, user.Id, ct);
+            var passkeys = await _passkeyService.GetCredentialsByOwnerAsync(user.PlatformUserId, ct);
             var hasActivePasskeys = passkeys.Any(p => p.Status == CredentialStatus.Active);
 
             if (totpStatus.IsEnabled || hasActivePasskeys)
@@ -118,7 +133,7 @@ public class LoginService : ILoginService
             await _identityRepository.UpdateUserAsync(user, ct);
 
             // Generate tokens
-            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, ct);
+            var tokenResponse = await _tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, ct);
 
             _logger.LogInformation("User logged in successfully - {Email} (UserId: {UserId}, OrgId: {OrgId})",
                 user.Email, user.Id, organization.Id);
