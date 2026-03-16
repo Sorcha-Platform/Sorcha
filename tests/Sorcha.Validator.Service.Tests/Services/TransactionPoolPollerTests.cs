@@ -14,7 +14,8 @@ namespace Sorcha.Validator.Service.Tests.Services;
 
 /// <summary>
 /// Unit tests for TransactionPoolPoller
-/// Tests cover Redis-backed transaction pool operations
+/// Tests cover Redis-backed transaction pool operations including
+/// normal operations, exception handling, configuration, and edge cases.
 /// </summary>
 public class TransactionPoolPollerTests
 {
@@ -181,6 +182,43 @@ public class TransactionPoolPollerTests
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task SubmitTransactionAsync_WhenRedisTransactionFails_ReturnsFalse()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+
+        var mockTransaction = new Mock<ITransaction>();
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>()))
+            .Returns(mockTransaction.Object);
+
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(false);
+
+        // Redis transaction commit fails
+        mockTransaction.Setup(x => x.ExecuteAsync(It.IsAny<CommandFlags>()))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await poller.SubmitTransactionAsync("register-1", transaction);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SubmitTransactionAsync_WithWhitespaceRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.SubmitTransactionAsync("   ", transaction));
+    }
+
     #endregion
 
     #region PollTransactionsAsync Tests
@@ -258,6 +296,180 @@ public class TransactionPoolPollerTests
             () => poller.PollTransactionsAsync(null!, 10));
     }
 
+    [Fact]
+    public async Task PollTransactionsAsync_WithNegativeMaxCount_ReturnsEmpty()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act
+        var result = await poller.PollTransactionsAsync("register-1", -1);
+
+        // Assert
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PollTransactionsAsync_WithEmptyRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.PollTransactionsAsync("", 10));
+    }
+
+    [Fact]
+    public async Task PollTransactionsAsync_WhenDataExpiredMidPoll_SkipsAndContinues()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction2 = CreateValidTransaction("tx-2");
+        var json2 = JsonSerializer.Serialize(transaction2, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+
+        var popCallCount = 0;
+        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                popCallCount++;
+                return popCallCount switch
+                {
+                    1 => (RedisValue)"tx-1",  // First tx - data will be expired
+                    2 => (RedisValue)"tx-2",  // Second tx - data available
+                    _ => RedisValue.Null
+                };
+            });
+
+        var getCallCount = 0;
+        _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                getCallCount++;
+                // First call: data expired (null), second call: data available
+                return getCallCount == 1 ? RedisValue.Null : (RedisValue)json2;
+            });
+
+        _mockDatabase.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        _mockDatabase.Setup(x => x.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await poller.PollTransactionsAsync("register-1", 10);
+
+        // Assert - should skip tx-1 (expired) and return tx-2
+        result.Should().HaveCount(1);
+        result[0].TransactionId.Should().Be("tx-2");
+    }
+
+    [Fact]
+    public async Task PollTransactionsAsync_WithMultipleTransactions_ReturnsAll()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
+        var tx1 = CreateValidTransaction("tx-1");
+        var tx2 = CreateValidTransaction("tx-2");
+        var tx3 = CreateValidTransaction("tx-3");
+        var json1 = JsonSerializer.Serialize(tx1, jsonOptions);
+        var json2 = JsonSerializer.Serialize(tx2, jsonOptions);
+        var json3 = JsonSerializer.Serialize(tx3, jsonOptions);
+
+        var popCallCount = 0;
+        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                popCallCount++;
+                return popCallCount switch
+                {
+                    1 => (RedisValue)"tx-1",
+                    2 => (RedisValue)"tx-2",
+                    3 => (RedisValue)"tx-3",
+                    _ => RedisValue.Null
+                };
+            });
+
+        var getCallCount = 0;
+        _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                getCallCount++;
+                return getCallCount switch
+                {
+                    1 => (RedisValue)json1,
+                    2 => (RedisValue)json2,
+                    3 => (RedisValue)json3,
+                    _ => RedisValue.Null
+                };
+            });
+
+        _mockDatabase.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        _mockDatabase.Setup(x => x.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await poller.PollTransactionsAsync("register-1", 10);
+
+        // Assert
+        result.Should().HaveCount(3);
+        result[0].TransactionId.Should().Be("tx-1");
+        result[1].TransactionId.Should().Be("tx-2");
+        result[2].TransactionId.Should().Be("tx-3");
+    }
+
+    [Fact]
+    public async Task PollTransactionsAsync_RespectsMaxCountLimit()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+
+        var tx = CreateValidTransaction("tx-1");
+        var json = JsonSerializer.Serialize(tx, jsonOptions);
+
+        // Queue has many items, but we only request 2
+        var popCallCount = 0;
+        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(() =>
+            {
+                popCallCount++;
+                return (RedisValue)$"tx-{popCallCount}";
+            });
+
+        _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(json);
+
+        _mockDatabase.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        _mockDatabase.Setup(x => x.SortedSetRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        // Act - request only 2
+        var result = await poller.PollTransactionsAsync("register-1", 2);
+
+        // Assert - should only pop exactly 2 times
+        result.Should().HaveCount(2);
+        popCallCount.Should().Be(2);
+    }
+
     #endregion
 
     #region GetUnverifiedCountAsync Tests
@@ -287,6 +499,17 @@ public class TransactionPoolPollerTests
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => poller.GetUnverifiedCountAsync(null!));
+    }
+
+    [Fact]
+    public async Task GetUnverifiedCountAsync_WithEmptyRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.GetUnverifiedCountAsync(""));
     }
 
     #endregion
@@ -347,6 +570,28 @@ public class TransactionPoolPollerTests
             () => poller.ExistsAsync("register-1", null!));
     }
 
+    [Fact]
+    public async Task ExistsAsync_WithEmptyRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.ExistsAsync("", "tx-1"));
+    }
+
+    [Fact]
+    public async Task ExistsAsync_WithEmptyTransactionId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.ExistsAsync("register-1", ""));
+    }
+
     #endregion
 
     #region RemoveTransactionAsync Tests
@@ -395,6 +640,50 @@ public class TransactionPoolPollerTests
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task RemoveTransactionAsync_WithNullRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => poller.RemoveTransactionAsync(null!, "tx-1"));
+    }
+
+    [Fact]
+    public async Task RemoveTransactionAsync_WithEmptyRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.RemoveTransactionAsync("", "tx-1"));
+    }
+
+    [Fact]
+    public async Task RemoveTransactionAsync_WithNullTransactionId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => poller.RemoveTransactionAsync("register-1", null!));
+    }
+
+    [Fact]
+    public async Task RemoveTransactionAsync_WithEmptyTransactionId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.RemoveTransactionAsync("register-1", ""));
+    }
+
     #endregion
 
     #region GetStatsAsync Tests
@@ -433,6 +722,65 @@ public class TransactionPoolPollerTests
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => poller.GetStatsAsync(null!));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_WithEmptyRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => poller.GetStatsAsync(""));
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_WithSortedSetEntries_CalculatesOldestTimeAndAverageAge()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var now = DateTimeOffset.UtcNow;
+
+        // Transactions that expire 30 min and 60 min from now
+        var expiryScore1 = now.AddMinutes(30).ToUnixTimeSeconds();
+        var expiryScore2 = now.AddMinutes(60).ToUnixTimeSeconds();
+
+        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(2);
+
+        // First call (0, 0) returns oldest entry only
+        // Second call (0, -1) returns all entries
+        var rankCallCount = 0;
+        _mockDatabase.Setup(x => x.SortedSetRangeByRankWithScoresAsync(
+            It.IsAny<RedisKey>(),
+            It.IsAny<long>(),
+            It.IsAny<long>(),
+            It.IsAny<Order>(),
+            It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey _, long start, long stop, Order _, CommandFlags _) =>
+            {
+                rankCallCount++;
+                if (rankCallCount == 1) // oldest only (0, 0)
+                {
+                    return new[] { new SortedSetEntry("tx-1", expiryScore1) };
+                }
+                // all entries (0, -1)
+                return new[]
+                {
+                    new SortedSetEntry("tx-1", expiryScore1),
+                    new SortedSetEntry("tx-2", expiryScore2)
+                };
+            });
+
+        // Act
+        var stats = await poller.GetStatsAsync("register-1");
+
+        // Assert
+        stats.RegisterId.Should().Be("register-1");
+        stats.TotalTransactions.Should().Be(2);
+        stats.OldestTransactionTime.Should().NotBeNull();
+        stats.AverageAgeMs.Should().BeGreaterThan(0);
     }
 
     #endregion
@@ -490,6 +838,36 @@ public class TransactionPoolPollerTests
 
         // Assert
         transaction.RetryCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ReturnTransactionsAsync_WithMultipleTransactions_IncrementsAllRetryCounts()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var tx1 = CreateValidTransaction("tx-1");
+        tx1.RetryCount = 0;
+        var tx2 = CreateValidTransaction("tx-2");
+        tx2.RetryCount = 2;
+
+        var mockTransaction = new Mock<ITransaction>();
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>()))
+            .Returns(mockTransaction.Object);
+
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(false);
+
+        mockTransaction.Setup(x => x.ExecuteAsync(It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        var transactions = new List<Transaction> { tx1, tx2 };
+
+        // Act
+        await poller.ReturnTransactionsAsync("register-1", transactions);
+
+        // Assert
+        tx1.RetryCount.Should().Be(1);
+        tx2.RetryCount.Should().Be(3);
     }
 
     #endregion
@@ -557,6 +935,218 @@ public class TransactionPoolPollerTests
 
         // Assert
         result.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CleanupExpiredAsync_WithNullRegisterId_ThrowsArgumentException()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => poller.CleanupExpiredAsync(null!));
+    }
+
+    #endregion
+
+    #region Exception Handling Tests
+
+    [Fact]
+    public async Task SubmitTransactionAsync_WhenRedisThrows_ReturnsFalseAndHandlesGracefully()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.SubmitTransactionAsync("register-1", transaction);
+
+        // Assert - should not throw, returns false
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PollTransactionsAsync_WhenRedisThrows_ReturnsEmptyListAndHandlesGracefully()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        _mockDatabase.Setup(x => x.ListRightPopAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.PollTransactionsAsync("register-1", 10);
+
+        // Assert - should not throw, returns empty
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetUnverifiedCountAsync_WhenRedisThrows_ReturnsZero()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.GetUnverifiedCountAsync("register-1");
+
+        // Assert - should handle gracefully and return 0
+        result.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExistsAsync_WhenRedisThrows_ReturnsFalse()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.ExistsAsync("register-1", "tx-1");
+
+        // Assert - should handle gracefully and return false
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RemoveTransactionAsync_WhenRedisThrows_ReturnsFalse()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        _mockDatabase.Setup(x => x.ListRemoveAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.RemoveTransactionAsync("register-1", "tx-1");
+
+        // Assert - should handle gracefully and return false
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CleanupExpiredAsync_WhenRedisThrows_ReturnsZeroAndHandlesGracefully()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        _mockDatabase.Setup(x => x.SortedSetRangeByScoreAsync(
+            It.IsAny<RedisKey>(),
+            It.IsAny<double>(),
+            It.IsAny<double>(),
+            It.IsAny<Exclude>(),
+            It.IsAny<Order>(),
+            It.IsAny<long>(),
+            It.IsAny<long>(),
+            It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var result = await poller.CleanupExpiredAsync("register-1");
+
+        // Assert - should handle gracefully and return 0
+        result.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_WhenRedisThrowsOnSortedSet_ReturnsPartialStats()
+    {
+        // Arrange
+        var poller = new TransactionPoolPoller(_mockRedis.Object, _options, _mockLogger.Object);
+
+        // ListLength works for count
+        _mockDatabase.Setup(x => x.ListLengthAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(5);
+
+        // SortedSet throws for stats
+        _mockDatabase.Setup(x => x.SortedSetRangeByRankWithScoresAsync(
+            It.IsAny<RedisKey>(),
+            It.IsAny<long>(),
+            It.IsAny<long>(),
+            It.IsAny<Order>(),
+            It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+
+        // Act
+        var stats = await poller.GetStatsAsync("register-1");
+
+        // Assert - should return partial stats without crashing
+        stats.RegisterId.Should().Be("register-1");
+        stats.TotalTransactions.Should().Be(5);
+        stats.OldestTransactionTime.Should().BeNull();
+        stats.AverageAgeMs.Should().Be(0);
+    }
+
+    #endregion
+
+    #region Configuration Tests
+
+    [Fact]
+    public async Task SubmitTransactionAsync_UsesConfiguredKeyPrefix()
+    {
+        // Arrange
+        var customConfig = new TransactionPoolPollerConfiguration
+        {
+            KeyPrefix = "custom:prefix:",
+            BatchSize = 50,
+            TransactionTtl = TimeSpan.FromHours(1),
+            MaxRetries = 3
+        };
+        var customOptions = Options.Create(customConfig);
+        var poller = new TransactionPoolPoller(_mockRedis.Object, customOptions, _mockLogger.Object);
+        var transaction = CreateValidTransaction("tx-1");
+
+        RedisKey capturedExistsKey = default;
+        _mockDatabase.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .Callback<RedisKey, CommandFlags>((key, _) => capturedExistsKey = key)
+            .ReturnsAsync(false);
+
+        var mockTransaction = new Mock<ITransaction>();
+        _mockDatabase.Setup(x => x.CreateTransaction(It.IsAny<object>()))
+            .Returns(mockTransaction.Object);
+
+        mockTransaction.Setup(x => x.ExecuteAsync(It.IsAny<CommandFlags>()))
+            .ReturnsAsync(true);
+
+        // Act
+        await poller.SubmitTransactionAsync("register-1", transaction);
+
+        // Assert - key should use the custom prefix
+        capturedExistsKey.ToString().Should().StartWith("custom:prefix:register-1:data:");
+    }
+
+    [Fact]
+    public void Configuration_DefaultValues_AreCorrect()
+    {
+        // Arrange & Act
+        var config = new TransactionPoolPollerConfiguration();
+
+        // Assert
+        config.PollingInterval.Should().Be(TimeSpan.FromMilliseconds(100));
+        config.BatchSize.Should().Be(50);
+        config.KeyPrefix.Should().Be("sorcha:validator:unverified:");
+        config.BlockingTimeout.Should().Be(TimeSpan.FromSeconds(5));
+        config.UseBlockingPop.Should().BeTrue();
+        config.MaxRetries.Should().Be(3);
+        config.RetryDelay.Should().Be(TimeSpan.FromMilliseconds(500));
+        config.TransactionTtl.Should().Be(TimeSpan.FromHours(1));
+        config.Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Configuration_SectionName_IsCorrect()
+    {
+        // Assert
+        TransactionPoolPollerConfiguration.SectionName.Should().Be("TransactionPoolPoller");
     }
 
     #endregion

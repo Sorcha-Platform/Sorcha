@@ -41,7 +41,8 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
             new("organization_id", "test-org-id"),
             new("org_id", "test-org-id"),
             new("validator_id", "test-validator-id"),
-            new("wallet_address", "test-wallet-address")
+            new("wallet_address", "test-wallet-address"),
+            new("token_type", "service")
         };
 
         // Check for role override header

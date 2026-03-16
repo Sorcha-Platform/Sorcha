@@ -11,6 +11,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using MongoDB.Driver;
+using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Peer;
@@ -125,7 +127,11 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
                 // Validator Registry
                 ["ValidatorRegistry:KeyPrefix"] = "test:validators:",
-                ["ValidatorRegistry:CacheTtl"] = "00:05:00"
+                ["ValidatorRegistry:CacheTtl"] = "00:05:00",
+
+                // MongoDB (mocked, but config must parse)
+                ["RegisterStorage:MongoDB:ConnectionString"] = "mongodb://localhost:27017",
+                ["RegisterStorage:MongoDB:DatabaseName"] = "sorcha_test"
             };
 
             config.AddInMemoryCollection(testConfig);
@@ -153,6 +159,12 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
             services.RemoveAll<IWalletServiceClient>();
             services.AddScoped(_ => WalletClientMock.Object);
+
+            // Replace MongoDB with mocks to avoid requiring a real MongoDB connection
+            services.RemoveAll<IMongoClient>();
+            services.AddSingleton(new Mock<IMongoClient>().Object);
+            services.RemoveAll<IReadOnlyRegisterRepository>();
+            services.AddSingleton(new Mock<IReadOnlyRegisterRepository>().Object);
 
             // Remove all existing authentication
             services.RemoveAll<IAuthenticationService>();

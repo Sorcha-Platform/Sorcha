@@ -9,7 +9,7 @@ namespace Sorcha.Validator.Service.IntegrationTests;
 
 /// <summary>
 /// Integration tests for admin endpoints.
-/// Note: Admin endpoints currently don't require authentication in the implementation.
+/// Admin endpoints require the RequireAdministrator policy.
 /// </summary>
 [Collection("ValidatorService")]
 public class AdminEndpointTests
@@ -26,7 +26,7 @@ public class AdminEndpointTests
     public async Task StartValidator_WithValidRequest_ReturnsOk()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var request = new { RegisterId = Guid.NewGuid().ToString("N") };
 
         // Act
@@ -44,7 +44,7 @@ public class AdminEndpointTests
     public async Task StartValidator_WithEmptyRegisterId_ReturnsBadRequest()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var request = new { RegisterId = "" };
 
         // Act
@@ -58,7 +58,7 @@ public class AdminEndpointTests
     public async Task StopValidator_WithNotStartedValidator_ReturnsError()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var registerId = Guid.NewGuid().ToString("N");
         var request = new { RegisterId = registerId, PersistMemPool = true };
 
@@ -73,7 +73,7 @@ public class AdminEndpointTests
     public async Task StopValidator_WithEmptyRegisterId_ReturnsBadRequest()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var request = new { RegisterId = "", PersistMemPool = false };
 
         // Act
@@ -87,7 +87,7 @@ public class AdminEndpointTests
     public async Task GetValidatorStatus_WithUnknownRegisterId_ReturnsNotFound()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act - validator not started, so status should return 404
@@ -101,7 +101,7 @@ public class AdminEndpointTests
     public async Task ProcessValidationPipeline_WithNoTransactions_ReturnsOkWithMessage()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act - no validator started, no transactions
@@ -121,7 +121,7 @@ public class AdminEndpointTests
     public async Task StartValidator_ReturnsExpectedResponseStructure()
     {
         // Arrange
-        using var client = _factory.CreateClient();
+        using var client = _factory.CreateAdminClient();
         var registerId = Guid.NewGuid().ToString("N");
 
         // Act - Start validator

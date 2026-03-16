@@ -117,7 +117,7 @@ public class BadActorDetectorTests
     }
 
     [Fact]
-    public void LogDocketRejection_WithDetails_IncludesDetailsInIncident()
+    public async Task LogDocketRejection_WithDetails_IncludesDetailsInIncident()
     {
         // Arrange
         const string registerId = "register-1";
@@ -130,20 +130,20 @@ public class BadActorDetectorTests
             DocketRejectionReason.InvalidDocketHash, details);
 
         // Assert
-        var incidents = _detector.GetIncidentsAsync(registerId, initiatorId).Result;
+        var incidents = await _detector.GetIncidentsAsync(registerId, initiatorId);
         incidents.Should().HaveCount(1);
         incidents[0].Details.Should().Contain(details);
     }
 
     [Fact]
-    public void LogDocketRejection_CriticalReason_SetsCriticalSeverity()
+    public async Task LogDocketRejection_CriticalReason_SetsCriticalSeverity()
     {
         // Arrange - UnauthorizedInitiator is considered critical
         _detector.LogDocketRejection("register-1", "validator-1", "docket-1",
             DocketRejectionReason.UnauthorizedInitiator);
 
         // Act
-        var incidents = _detector.GetIncidentsAsync("register-1", "validator-1").Result;
+        var incidents = await _detector.GetIncidentsAsync("register-1", "validator-1");
 
         // Assert
         incidents[0].Severity.Should().Be(IncidentSeverity.Critical);
@@ -172,11 +172,11 @@ public class BadActorDetectorTests
     }
 
     [Fact]
-    public void LogTransactionValidationFailure_SetsInfoSeverity()
+    public async Task LogTransactionValidationFailure_SetsInfoSeverity()
     {
         // Arrange & Act
         _detector.LogTransactionValidationFailure("register-1", "sender-1", "tx-1", "Schema");
-        var incidents = _detector.GetIncidentsAsync("register-1", "sender-1").Result;
+        var incidents = await _detector.GetIncidentsAsync("register-1", "sender-1");
 
         // Assert
         incidents[0].Severity.Should().Be(IncidentSeverity.Info);
@@ -187,7 +187,7 @@ public class BadActorDetectorTests
     #region LogDoubleVote Tests
 
     [Fact]
-    public void LogDoubleVote_ValidInput_RecordsHighSeverityIncident()
+    public async Task LogDoubleVote_ValidInput_RecordsHighSeverityIncident()
     {
         // Arrange
         const string registerId = "register-1";
@@ -199,7 +199,7 @@ public class BadActorDetectorTests
         _detector.LogDoubleVote(registerId, validatorId, docketId, term);
 
         // Assert
-        var incidents = _detector.GetIncidentsAsync(registerId, validatorId).Result;
+        var incidents = await _detector.GetIncidentsAsync(registerId, validatorId);
         incidents.Should().HaveCount(1);
         incidents[0].IncidentType.Should().Be(BadActorIncidentType.DoubleVoteAttempt);
         incidents[0].Severity.Should().Be(IncidentSeverity.High);
@@ -210,7 +210,7 @@ public class BadActorDetectorTests
     #region LogLeaderImpersonation Tests
 
     [Fact]
-    public void LogLeaderImpersonation_ValidInput_RecordsCriticalIncident()
+    public async Task LogLeaderImpersonation_ValidInput_RecordsCriticalIncident()
     {
         // Arrange
         const string registerId = "register-1";
@@ -222,7 +222,7 @@ public class BadActorDetectorTests
         _detector.LogLeaderImpersonation(registerId, fakeLeaderId, actualLeaderId, term);
 
         // Assert
-        var incidents = _detector.GetIncidentsAsync(registerId, fakeLeaderId).Result;
+        var incidents = await _detector.GetIncidentsAsync(registerId, fakeLeaderId);
         incidents.Should().HaveCount(1);
         incidents[0].IncidentType.Should().Be(BadActorIncidentType.LeaderImpersonation);
         incidents[0].Severity.Should().Be(IncidentSeverity.Critical);
