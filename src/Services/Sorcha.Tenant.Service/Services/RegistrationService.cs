@@ -87,7 +87,7 @@ public class RegistrationService : IRegistrationService
                 email, orgSubdomain);
 
             return new RegistrationResult(true,
-                UserId: existingUser.Id,
+                UserId: Guid.Empty,
                 Message: "Account created. Please check your email to verify your address.");
         }
 

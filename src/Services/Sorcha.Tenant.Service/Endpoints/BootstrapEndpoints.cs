@@ -239,7 +239,22 @@ public static class BootstrapEndpoints
                 Value = DateTimeOffset.UtcNow.ToString("O"),
                 CreatedAt = DateTimeOffset.UtcNow
             });
-            await dbContext.SaveChangesAsync();
+
+            try
+            {
+                await dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // Race condition: another concurrent request already wrote BootstrapCompleted
+                logger.LogWarning("Bootstrap race condition detected — another request completed bootstrap first");
+                return TypedResults.Conflict(new ProblemDetails
+                {
+                    Title = "Already Bootstrapped",
+                    Detail = "Platform has already been bootstrapped by a concurrent request.",
+                    Status = StatusCodes.Status409Conflict
+                });
+            }
 
             logger.LogInformation("Bootstrap completed successfully for organization: {OrgId}", organization.Id);
 

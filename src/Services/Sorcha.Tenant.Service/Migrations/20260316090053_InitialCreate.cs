@@ -784,10 +784,10 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_UserIdentities_Email",
+                name: "UQ_UserIdentity_Org_Email",
                 schema: "public",
                 table: "UserIdentities",
-                column: "Email",
+                columns: new[] { "OrganizationId", "Email" },
                 unique: true);
 
             migrationBuilder.CreateIndex(

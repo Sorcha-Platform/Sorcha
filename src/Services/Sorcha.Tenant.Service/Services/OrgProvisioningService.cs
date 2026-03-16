@@ -284,6 +284,7 @@ public class OrgProvisioningService : IOrgProvisioningService
             };
         }
 
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
             // 3. Create the organisation
@@ -359,11 +360,11 @@ public class OrgProvisioningService : IOrgProvisioningService
                 }
             });
 
-            // 6. Single SaveChangesAsync — atomic commit for org + optional identity
+            // 6. Save org + optional identity within transaction
             await _db.SaveChangesAsync(ct);
 
-            // 7. If admin email is new, create invitation AFTER org is persisted
-            //    (InvitationService requires the org to exist)
+            // 7. If admin email is new, create invitation within the same transaction
+            //    (InvitationService requires the org to exist — it does within this transaction)
             if (!adminDirectlyAdded)
             {
                 var invitationResponse = await _invitationService.CreateInvitationAsync(
@@ -383,6 +384,9 @@ public class OrgProvisioningService : IOrgProvisioningService
                     "Admin org creation: invitation {InvitationId} sent to {Email} for org {OrgId}",
                     invitationId, adminEmail, org.Id);
             }
+
+            // 8. Commit the full transaction (org + identity/invitation)
+            await transaction.CommitAsync(ct);
 
             _logger.LogInformation(
                 "Organisation provisioned by system admin: {OrgId} ({Subdomain}), admin={AdminEmail}, direct={Direct}",

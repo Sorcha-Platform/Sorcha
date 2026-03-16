@@ -376,8 +376,9 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.ProvisionedVia).HasConversion<string>().HasMaxLength(20);
 
-            entity.HasIndex(e => e.Email)
-                .IsUnique();  // Email must be unique within organization
+            entity.HasIndex(e => new { e.OrganizationId, e.Email })
+                .IsUnique()
+                .HasDatabaseName("UQ_UserIdentity_Org_Email");  // Email must be unique within organization
 
             entity.HasIndex(e => e.OrganizationId);
             entity.HasIndex(e => e.Status);
