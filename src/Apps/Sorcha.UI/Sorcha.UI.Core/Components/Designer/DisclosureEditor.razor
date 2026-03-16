@@ -1,0 +1,170 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.Blueprint.Models
+
+<div>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+        <MudText Typo="Typo.subtitle2">Disclosures</MudText>
+        <MudButton StartIcon="@Icons.Material.Filled.Add"
+                   Color="Color.Primary"
+                   Size="Size.Small"
+                   Variant="Variant.Outlined"
+                   OnClick="AddDisclosure">
+            Add Disclosure
+        </MudButton>
+    </MudStack>
+
+    @if (Disclosures != null && Disclosures.Any())
+    {
+        @foreach (var (disclosure, index) in Disclosures.Select((d, i) => (d, i)))
+        {
+            <MudPaper Class="pa-3 mb-2" Outlined="true">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info" />
+                        <MudText Typo="Typo.subtitle2">Disclosure @(index + 1)</MudText>
+                    </MudStack>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Size="Size.Small"
+                                   Color="Color.Error"
+                                   OnClick="@(() => RemoveDisclosure(index))" />
+                </MudStack>
+
+                @if (Participants != null && Participants.Any())
+                {
+                    <MudSelect T="string" @bind-Value="disclosure.ParticipantAddress"
+                               Label="Participant"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Class="mb-2">
+                        @foreach (var participant in Participants)
+                        {
+                            var address = !string.IsNullOrEmpty(participant.WalletAddress) ? participant.WalletAddress : participant.Name;
+                            <MudSelectItem T="string" Value="@address">
+                                @participant.Name @(string.IsNullOrEmpty(participant.WalletAddress) ? "" : $"({participant.WalletAddress[..Math.Min(8, participant.WalletAddress.Length)]}...)")
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudTextField @bind-Value="disclosure.ParticipantAddress"
+                                  Label="Participant Address"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="mb-2" />
+                }
+
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">Data Pointers</MudText>
+                <MudStack Row="true" Spacing="1" Class="mb-2" Style="flex-wrap: wrap;">
+                    @foreach (var pointer in disclosure.DataPointers)
+                    {
+                        var currentPointer = pointer;
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning"
+                                 OnClose="@(() => RemoveDataPointer(disclosure, currentPointer))">
+                            @currentPointer
+                        </MudChip>
+                    }
+                </MudStack>
+
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudTextField @bind-Value="_newPointerText"
+                                  Label="Add data pointer"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  HelperText="e.g., /fieldName, /*, /nested/field"
+                                  Style="flex: 1;" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   OnClick="@(() => AddDataPointer(disclosure))" />
+                    @if (AvailableFields != null && AvailableFields.Any())
+                    {
+                        <MudMenu Icon="@Icons.Material.Filled.List"
+                                 Color="Color.Info"
+                                 Size="Size.Small"
+                                 Dense="true"
+                                 AnchorOrigin="Origin.BottomLeft">
+                            <MudMenuItem OnClick="@(() => AddDataPointerFromField(disclosure, "/*"))">/* (All Fields)</MudMenuItem>
+                            @foreach (var field in AvailableFields)
+                            {
+                                var fieldCopy = field;
+                                <MudMenuItem OnClick="@(() => AddDataPointerFromField(disclosure, $"/{fieldCopy}"))">/@fieldCopy</MudMenuItem>
+                            }
+                        </MudMenu>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">
+            No disclosures defined. Disclosures control which data is visible to which participants.
+        </MudAlert>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<Disclosure>? Disclosures { get; set; }
+
+    [Parameter]
+    public EventCallback<List<Disclosure>> DisclosuresChanged { get; set; }
+
+    [Parameter]
+    public List<Participant>? Participants { get; set; }
+
+    [Parameter]
+    public List<string>? AvailableFields { get; set; }
+
+    private string _newPointerText = string.Empty;
+
+    private async Task AddDisclosure()
+    {
+        Disclosures ??= [];
+        Disclosures.Add(new Disclosure
+        {
+            ParticipantAddress = string.Empty,
+            DataPointers = ["/*"]
+        });
+        await DisclosuresChanged.InvokeAsync(Disclosures);
+    }
+
+    private async Task RemoveDisclosure(int index)
+    {
+        if (Disclosures is null || index < 0 || index >= Disclosures.Count) return;
+        Disclosures.RemoveAt(index);
+        await DisclosuresChanged.InvokeAsync(Disclosures);
+    }
+
+    private async Task AddDataPointer(Disclosure disclosure)
+    {
+        if (string.IsNullOrWhiteSpace(_newPointerText)) return;
+
+        var pointer = _newPointerText.StartsWith('/') ? _newPointerText : $"/{_newPointerText}";
+        if (!disclosure.DataPointers.Contains(pointer))
+        {
+            disclosure.DataPointers.Add(pointer);
+            await DisclosuresChanged.InvokeAsync(Disclosures);
+        }
+        _newPointerText = string.Empty;
+    }
+
+    private async Task AddDataPointerFromField(Disclosure disclosure, string pointer)
+    {
+        if (!disclosure.DataPointers.Contains(pointer))
+        {
+            disclosure.DataPointers.Add(pointer);
+            await DisclosuresChanged.InvokeAsync(Disclosures);
+        }
+    }
+
+    private async Task RemoveDataPointer(Disclosure disclosure, string pointer)
+    {
+        disclosure.DataPointers.Remove(pointer);
+        await DisclosuresChanged.InvokeAsync(Disclosures);
+    }
+}

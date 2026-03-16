@@ -1,0 +1,256 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Models.Admin
+
+<div>
+    @if (_loading)
+    {
+        <MudGrid>
+            @for (var i = 0; i < 3; i++)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard Elevation="2">
+                        <MudCardContent>
+                            <MudSkeleton Width="60%" Height="24px" Class="mb-2" />
+                            <MudSkeleton Width="100%" Height="16px" Class="mb-2" />
+                            <MudSkeleton Width="40%" Height="16px" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else if (_error)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+            Unable to load published blueprints from the system register. The register service may be unavailable.
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadBlueprintsAsync">
+            Retry
+        </MudButton>
+    }
+    else if (_blueprints.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">
+            No blueprints have been published to the system register yet.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var bp in _blueprints)
+            {
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard Elevation="2" Class="published-bp-card" @onclick="() => SelectBlueprint(bp)">
+                        <MudCardContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                                <MudText Typo="Typo.h6">@(string.IsNullOrEmpty(bp.Title) ? bp.BlueprintId[..Math.Min(8, bp.BlueprintId.Length)] + "..." : bp.Title)</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                                    <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" Class="mr-1" />
+                                    Signed
+                                </MudChip>
+                            </MudStack>
+
+                            @if (!string.IsNullOrWhiteSpace(bp.Description))
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                                    @bp.Description
+                                </MudText>
+                            }
+
+                            <MudDivider Class="my-2" />
+
+                            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    v@(bp.Version)
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(bp.PublishedBy))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                        @bp.PublishedBy[..Math.Min(8, bp.PublishedBy.Length)]...
+                                    </MudText>
+                                }
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Size="Size.Small" />
+                                    @bp.PublishedAt.ToString("yyyy-MM-dd")
+                                </MudText>
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton StartIcon="@Icons.Material.Filled.Add"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Variant="Variant.Text"
+                                       OnClick="@(() => OnUseBlueprint.InvokeAsync(bp.BlueprintId))">
+                                Use
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+
+        @* Version history dialog *@
+        @if (_selectedBlueprint is not null)
+        {
+            <MudDialog @bind-Visible="_showVersionDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />
+                        @(_selectedDetail?.Title ?? _selectedBlueprint.BlueprintId) — Version History
+                    </MudText>
+                </TitleContent>
+                <DialogContent>
+                    @if (_loadingDetail)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                    else if (_selectedDetail is not null)
+                    {
+                        <MudStack Spacing="2" Class="pa-2">
+                            <MudText Typo="Typo.body1">@_selectedDetail.Description</MudText>
+                            <MudStack Row="true" Spacing="3">
+                                <MudText Typo="Typo.caption">Participants: @_selectedDetail.ParticipantCount</MudText>
+                                <MudText Typo="Typo.caption">Actions: @_selectedDetail.ActionCount</MudText>
+                            </MudStack>
+
+                            @if (_selectedDetail.AvailableVersions.Count > 0)
+                            {
+                                <MudDivider Class="my-2" />
+                                <MudText Typo="Typo.subtitle2">Available Versions</MudText>
+                                <MudSimpleTable Dense="true" Hover="true">
+                                    <thead>
+                                        <tr>
+                                            <th>Version</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var version in _selectedDetail.AvailableVersions.OrderByDescending(v => v))
+                                        {
+                                            <tr>
+                                                <td>v@(version)</td>
+                                                <td>
+                                                    @if (version == _selectedDetail.Version)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">Current</MudChip>
+                                                    }
+                                                    else
+                                                    {
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Historical</MudText>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            }
+                        </MudStack>
+                    }
+                </DialogContent>
+                <DialogActions>
+                    <MudButton OnClick="CloseVersionDialog">Close</MudButton>
+                </DialogActions>
+            </MudDialog>
+        }
+    }
+</div>
+
+<style>
+    .published-bp-card {
+        cursor: pointer;
+        transition: transform 0.2s ease-in-out;
+    }
+
+    .published-bp-card:hover {
+        transform: translateY(-2px);
+    }
+</style>
+
+@code {
+    [Parameter]
+    public ISystemRegisterService RegisterService { get; set; } = null!;
+
+    /// <summary>
+    /// Callback when user clicks "Use" on a published blueprint.
+    /// Passes the blueprint ID to create a new instance from.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnUseBlueprint { get; set; }
+
+    private List<BlueprintDetailViewModel> _blueprints = [];
+    private bool _loading = true;
+    private bool _error;
+    private BlueprintDetailViewModel? _selectedBlueprint;
+    private BlueprintDetailViewModel? _selectedDetail;
+    private bool _showVersionDialog;
+    private bool _loadingDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBlueprintsAsync();
+    }
+
+    private async Task LoadBlueprintsAsync()
+    {
+        _loading = true;
+        _error = false;
+
+        try
+        {
+            var result = await RegisterService.GetBlueprintsAsync(page: 1, pageSize: 50);
+            if (result is not null)
+            {
+                // Fetch detail for each blueprint to get title/description
+                _blueprints = [];
+                foreach (var summary in result.Items)
+                {
+                    var detail = await RegisterService.GetBlueprintAsync(summary.BlueprintId);
+                    if (detail is not null)
+                        _blueprints.Add(detail);
+                }
+            }
+        }
+        catch
+        {
+            _error = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SelectBlueprint(BlueprintDetailViewModel bp)
+    {
+        _selectedBlueprint = bp;
+        _showVersionDialog = true;
+        _loadingDetail = true;
+        StateHasChanged();
+
+        try
+        {
+            _selectedDetail = await RegisterService.GetBlueprintAsync(bp.BlueprintId);
+        }
+        catch
+        {
+            _selectedDetail = bp;
+        }
+        finally
+        {
+            _loadingDetail = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseVersionDialog()
+    {
+        _showVersionDialog = false;
+        _selectedBlueprint = null;
+        _selectedDetail = null;
+    }
+}

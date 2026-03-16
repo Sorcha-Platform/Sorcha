@@ -139,13 +139,13 @@
 
 ### Implementation for User Story 5
 
-- [ ] T041 [US5] Create `TemplateSeedService.cs` as IHostedService in `src/Services/Sorcha.Blueprint.Service/Services/TemplateSeedService.cs` — on startup, scan `{AppContext.BaseDirectory}/blueprints/templates/*.json`, parse each as BlueprintTemplate, upsert into InMemoryDocumentStore (idempotent, skip if same version exists)
-- [ ] T042 [US5] Register `TemplateSeedService` in `src/Services/Sorcha.Blueprint.Service/Program.cs` — add `builder.Services.AddHostedService<TemplateSeedService>()`
-- [ ] T043 [US5] Create `PublishedBlueprintList.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/PublishedBlueprintList.razor` — query `/api/system-register/blueprints` endpoint, display cards with title, version (major.minor), author, publish date, signed provenance badge
-- [ ] T044 [US5] Add version history detail to `PublishedBlueprintList.razor` — on card click, show version history from `/api/system-register/blueprints/{id}/versions` with change type labels (structural vs documentation)
-- [ ] T045 [US5] Update `Templates.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor` — add MudTabs with two sections: "Templates" (existing template list) and "Published Blueprints" (new PublishedBlueprintList)
-- [ ] T046 [US5] Add "Use" button for published blueprints — create new blueprint instance from published version and open in designer
-- [ ] T047 [US5] Write unit tests for TemplateSeedService in `tests/Sorcha.Blueprint.Service.Tests/Services/TemplateSeedServiceTests.cs` — test seeds from files, idempotent on restart, skips invalid JSON
+- [x] T041 [US5] Create `TemplateSeedService.cs` as IHostedService in `src/Services/Sorcha.Blueprint.Service/Services/TemplateSeedService.cs` — on startup, scan `{AppContext.BaseDirectory}/blueprints/templates/*.json`, parse each as BlueprintTemplate, upsert into InMemoryDocumentStore (idempotent, skip if same version exists)
+- [x] T042 [US5] Register `TemplateSeedService` in `src/Services/Sorcha.Blueprint.Service/Program.cs` — add `builder.Services.AddHostedService<TemplateSeedService>()`
+- [x] T043 [US5] Create `PublishedBlueprintList.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Templates/PublishedBlueprintList.razor` — query `/api/system-register/blueprints` endpoint, display cards with title, version (major.minor), author, publish date, signed provenance badge
+- [x] T044 [US5] Add version history detail to `PublishedBlueprintList.razor` — on card click, show version history from `/api/system-register/blueprints/{id}/versions` with change type labels (structural vs documentation)
+- [x] T045 [US5] Update `Templates.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Templates.razor` — add MudTabs with two sections: "Templates" (existing template list) and "Published Blueprints" (new PublishedBlueprintList)
+- [x] T046 [US5] Add "Use" button for published blueprints — create new blueprint instance from published version and open in designer
+- [x] T047 [US5] Write unit tests for TemplateSeedService in `tests/Sorcha.Blueprint.Service.Tests/Services/TemplateSeedServiceTests.cs` — test seeds from files, idempotent on restart, skips invalid JSON
 
 **Checkpoint**: US5 complete — catalogue is dual-source with auto-seeded templates and published blueprint browser.
 
@@ -159,11 +159,11 @@
 
 ### Implementation for User Story 6
 
-- [ ] T048 [US6] Create `InstructionExportService.cs` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/InstructionExportService.cs` — export all instruction strings as flat key-value JSON per research.md R10 format (blueprint.overview, action.N.instructions, control.actionN./scope.instructions, participant.name.instructions)
-- [ ] T049 [US6] Add import functionality to `InstructionExportService.cs` — parse imported JSON, validate locale tag, if primary locale update inline text, if different locale create/update InstructionSet entry
-- [ ] T050 [US6] Add "Export Strings" and "Import Translations" buttons to `InstructionsTab.razor` — export triggers file download via JSInterop, import opens file upload dialog and calls InstructionExportService
-- [ ] T051 [US6] Add stale instruction detection to `InstructionsTab.razor` — compare instruction keys against current blueprint structure (action IDs, control scopes, participant names), highlight orphaned instructions with warning icon and message
-- [ ] T052 [US6] Write unit tests for InstructionExportService in `tests/Sorcha.UI.Core.Tests/Services/InstructionExportServiceTests.cs` — test export produces correct keys, import updates primary locale, import creates InstructionSet for foreign locale, round-trip export/import preserves content
+- [x] T048 [US6] Create `InstructionExportService.cs` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/InstructionExportService.cs` — export all instruction strings as flat key-value JSON per research.md R10 format (blueprint.overview, action.N.instructions, control.actionN./scope.instructions, participant.name.instructions)
+- [x] T049 [US6] Add import functionality to `InstructionExportService.cs` — parse imported JSON, validate locale tag, if primary locale update inline text, if different locale create/update InstructionSet entry
+- [x] T050 [US6] Add "Export Strings" and "Import Translations" buttons to `InstructionsTab.razor` — export triggers file download via JSInterop, import opens file upload dialog and calls InstructionExportService
+- [x] T051 [US6] Add stale instruction detection to `InstructionsTab.razor` — compare instruction keys against current blueprint structure (action IDs, control scopes, participant names), highlight orphaned instructions with warning icon and message
+- [x] T052 [US6] Write unit tests for InstructionExportService in `tests/Sorcha.UI.Core.Tests/Services/InstructionExportServiceTests.cs` — test export produces correct keys, import updates primary locale, import creates InstructionSet for foreign locale, round-trip export/import preserves content
 
 **Checkpoint**: US6 complete — instructions can be edited, exported for translation, and re-imported with locale tags.
 
@@ -177,13 +177,13 @@
 
 ### Implementation for User Story 7
 
-- [ ] T053 [P] [US7] Fix AI chat export in `BlueprintChat.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` — replace modal display with JSInterop file download using same `downloadFile` helper as visual designer's ExportDialog
-- [ ] T054 [P] [US7] Fix clipboard copy in `BlueprintJsonView.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintJsonView.razor` — implement `navigator.clipboard.writeText` via JSInterop, replace TODO comment and snackbar message
-- [ ] T055 [P] [US7] Replace hardcoded fields in condition editor — update `GetAvailableFieldsForCondition()` in `Designer.razor` (or PropertiesPanel) to call `SchemaFieldResolver.ResolveFieldsAsync(action.DataSchemas)` instead of returning `["amount", "status", "approved"]`
-- [ ] T056 [P] [US7] Replace hardcoded fields in calculation editor — update `GetAvailableFieldsForCalculation()` similarly to use SchemaFieldResolver
-- [ ] T057 [US7] Create `RouteEditor.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/RouteEditor.razor` — display and edit action.Routes in properties panel: list routes with condition, nextActionIds, isDefault flag; add/edit/remove routes with condition editor integration
-- [ ] T058 [US7] Create `DisclosureEditor.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/DisclosureEditor.razor` — display and edit action.Disclosures in properties panel: list participant-field mappings; add/edit/remove disclosures with participant dropdown and field selector
-- [ ] T059 [US7] Integrate RouteEditor and DisclosureEditor into `PropertiesPanel.razor` — add as sections in the action detail view, replacing read-only displays
+- [x] T053 [P] [US7] Fix AI chat export in `BlueprintChat.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` — replace modal display with JSInterop file download using same `downloadFile` helper as visual designer's ExportDialog
+- [x] T054 [P] [US7] Fix clipboard copy in `BlueprintJsonView.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/BlueprintJsonView.razor` — implement `navigator.clipboard.writeText` via JSInterop, replace TODO comment and snackbar message
+- [x] T055 [P] [US7] Replace hardcoded fields in condition editor — update `GetAvailableFieldsForCondition()` in `Designer.razor` (or PropertiesPanel) to call `SchemaFieldResolver.ResolveFieldsAsync(action.DataSchemas)` instead of returning `["amount", "status", "approved"]`
+- [x] T056 [P] [US7] Replace hardcoded fields in calculation editor — update `GetAvailableFieldsForCalculation()` similarly to use SchemaFieldResolver
+- [x] T057 [US7] Create `RouteEditor.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/RouteEditor.razor` — display and edit action.Routes in properties panel: list routes with condition, nextActionIds, isDefault flag; add/edit/remove routes with condition editor integration
+- [x] T058 [US7] Create `DisclosureEditor.razor` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Designer/DisclosureEditor.razor` — display and edit action.Disclosures in properties panel: list participant-field mappings; add/edit/remove disclosures with participant dropdown and field selector
+- [x] T059 [US7] Integrate RouteEditor and DisclosureEditor into `PropertiesPanel.razor` — add as sections in the action detail view, replacing read-only displays
 
 **Checkpoint**: US7 complete — all previously stubbed features now functional.
 

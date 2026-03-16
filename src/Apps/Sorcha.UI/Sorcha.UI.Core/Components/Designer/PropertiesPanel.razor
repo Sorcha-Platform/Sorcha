@@ -297,15 +297,35 @@
                     </ChildContent>
                 </MudExpansionPanel>
 
+                <!-- Routes Section -->
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.AltRoute" Class="mr-2" Size="Size.Small" />
+                            <MudText>Routes</MudText>
+                            @if (_editedRoutes != null)
+                            {
+                                <MudChip T="string" Size="Size.Small" Class="ml-2">@_editedRoutes.Count</MudChip>
+                            }
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                            Define conditional routing rules to determine the next action(s)
+                        </MudText>
+                        <RouteEditor Routes="_editedRoutes" RoutesChanged="OnRoutesChanged" />
+                    </ChildContent>
+                </MudExpansionPanel>
+
                 <!-- Disclosures Section -->
                 <MudExpansionPanel>
                     <TitleContent>
                         <div class="d-flex align-center">
                             <MudIcon Icon="@Icons.Material.Filled.Visibility" Class="mr-2" Size="Size.Small" />
                             <MudText>Disclosures</MudText>
-                            @if (editedAction.Disclosures != null)
+                            @if (_editedDisclosures != null)
                             {
-                                <MudChip T="string" Size="Size.Small" Class="ml-2">@editedAction.Disclosures.Count()</MudChip>
+                                <MudChip T="string" Size="Size.Small" Class="ml-2">@_editedDisclosures.Count</MudChip>
                             }
                         </div>
                     </TitleContent>
@@ -313,30 +333,10 @@
                         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                             Define which data fields are disclosed to which participants
                         </MudText>
-                        @if (editedAction.Disclosures != null && editedAction.Disclosures.Any())
-                        {
-                            @foreach (var disclosure in editedAction.Disclosures.Select((d, i) => new { Disclosure = d, Index = i }))
-                            {
-                                <MudPaper Class="pa-3 mb-2" Outlined="true">
-                                    <MudTextField @bind-Value="@disclosure.Disclosure.ParticipantAddress"
-                                                  Label="Participant Address"
-                                                  Variant="Variant.Outlined"
-                                                  Class="mb-2"
-                                                  Margin="Margin.Dense" />
-                                    <MudText Typo="Typo.caption" Class="mb-1">Data Pointers</MudText>
-                                    @foreach (var pointer in disclosure.Disclosure.DataPointers)
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="mb-1 mr-1">
-                                            @pointer
-                                        </MudChip>
-                                    }
-                                </MudPaper>
-                            }
-                        }
-                        else
-                        {
-                            <MudAlert Severity="Severity.Info" Dense="true">No disclosures defined</MudAlert>
-                        }
+                        <DisclosureEditor Disclosures="_editedDisclosures"
+                                          DisclosuresChanged="OnDisclosuresChanged"
+                                          Participants="Blueprint?.Participants"
+                                          AvailableFields="GetAvailableFieldsForCondition()" />
                     </ChildContent>
                 </MudExpansionPanel>
 
@@ -500,6 +500,8 @@
     [Inject]
     private ISchemaLibraryApiService SchemaLibraryApi { get; set; } = null!;
 
+    private readonly SchemaFieldResolver _schemaFieldResolver = new();
+
     [Parameter]
     public Blueprint Blueprint { get; set; } = new();
 
@@ -518,6 +520,8 @@
     private Blueprint editedBlueprint = new();
     private BlueprintAction editedAction = new();
     private bool _showInstructionsPreview;
+    private List<Route>? _editedRoutes;
+    private List<Disclosure>? _editedDisclosures;
 
     protected override void OnParametersSet()
     {
@@ -538,8 +542,17 @@
                 Condition = actionNode.Action.Condition,
                 RequiredActionData = actionNode.Action.RequiredActionData,
                 BlueprintId = actionNode.Action.BlueprintId,
-                Instructions = actionNode.Action.Instructions
+                Instructions = actionNode.Action.Instructions,
+                Routes = actionNode.Action.Routes
             };
+
+            // Initialize mutable lists for editors
+            _editedRoutes = actionNode.Action.Routes?.ToList() ?? [];
+            _editedDisclosures = actionNode.Action.Disclosures?.Select(d => new Disclosure
+            {
+                ParticipantAddress = d.ParticipantAddress,
+                DataPointers = d.DataPointers.ToList()
+            }).ToList() ?? [];
         }
         else
         {
@@ -731,29 +744,21 @@
 
     private List<string> GetAvailableFieldsForCondition()
     {
-        // Extract field names from data schemas if available
-        var fields = new List<string>();
+        // Resolve field names from action's data schemas via SchemaFieldResolver
+        var schemaFields = _schemaFieldResolver.ResolveFieldNames(editedAction.DataSchemas);
 
-        // Add data schema count info (JsonDocument doesn't expose field names easily)
-        if (Blueprint?.DataSchemas != null && Blueprint.DataSchemas.Any())
-        {
-            for (var i = 0; i < Blueprint.DataSchemas.Count; i++)
-            {
-                fields.Add($"data.schema{i}");
-            }
-        }
+        if (schemaFields.Count > 0)
+            return schemaFields;
 
-        // Add common fields as fallback
-        if (!fields.Any())
-        {
-            fields.AddRange([
-                "amount", "status", "approved", "quantity",
+        // Fallback: try blueprint-level schemas
+        var blueprintFields = _schemaFieldResolver.ResolveFieldNames(Blueprint?.DataSchemas);
+        if (blueprintFields.Count > 0)
+            return blueprintFields;
+
+        // Last resort fallback for blueprints without schemas
+        return ["amount", "status", "approved", "quantity",
                 "total", "balance", "percentage", "rating",
-                "category", "type", "name", "id"
-            ]);
-        }
-
-        return fields;
+                "category", "type", "name", "id"];
     }
 
     private async Task OpenAddCalculationDialog()
@@ -855,17 +860,23 @@
             fields.AddRange(editedAction.Calculations.Keys.Select(k => $"calculations.{k}"));
         }
 
-        // Add data schema count info (JsonDocument doesn't expose field names easily)
-        if (Blueprint?.DataSchemas != null && Blueprint.DataSchemas.Any())
+        // Resolve field names from action's data schemas via SchemaFieldResolver
+        var schemaFields = _schemaFieldResolver.ResolveFieldNames(editedAction.DataSchemas);
+        if (schemaFields.Count > 0)
         {
-            // Add placeholder for schema fields
-            for (var i = 0; i < Blueprint.DataSchemas.Count; i++)
-            {
-                fields.Add($"data.schema{i}");
-            }
+            fields.AddRange(schemaFields);
+            return fields;
         }
 
-        // Add common numeric fields as fallback
+        // Fallback: try blueprint-level schemas
+        var blueprintFields = _schemaFieldResolver.ResolveFieldNames(Blueprint?.DataSchemas);
+        if (blueprintFields.Count > 0)
+        {
+            fields.AddRange(blueprintFields);
+            return fields;
+        }
+
+        // Last resort fallback for blueprints without schemas
         if (!fields.Any())
         {
             fields.AddRange([
@@ -876,6 +887,22 @@
         }
 
         return fields;
+    }
+
+    private Task OnRoutesChanged(List<Route> routes)
+    {
+        _editedRoutes = routes;
+        editedAction.Routes = routes;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDisclosuresChanged(List<Disclosure> disclosures)
+    {
+        _editedDisclosures = disclosures;
+        editedAction.Disclosures = disclosures;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task OpenSchemaPickerDialog()

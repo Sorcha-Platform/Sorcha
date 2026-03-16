@@ -535,15 +535,22 @@
         {
             var content = await ChatHub.ExportBlueprintAsync(SessionId, format);
 
-            // TODO: Trigger file download in browser
-            // For now, show in a dialog
-            var parameters = new DialogParameters
-            {
-                { "Content", content },
-                { "Format", format }
-            };
+            // Trigger file download via JSInterop
+            var fileName = $"blueprint-{Session?.Blueprint?.Id ?? "export"}.{format}";
+            var mimeType = format == "yaml" ? "application/x-yaml" : "application/json";
+            var serializedContent = System.Text.Json.JsonSerializer.Serialize(content);
 
-            await DialogService.ShowAsync<ExportContentDialog>($"Export as {format.ToUpperInvariant()}", parameters);
+            var script = "(function() { " +
+                "let b = new Blob([" + serializedContent + "], { type: '" + mimeType + "' }); " +
+                "let u = URL.createObjectURL(b); " +
+                "let a = document.createElement('a'); " +
+                "a.href = u; a.download = '" + fileName + "'; " +
+                "document.body.appendChild(a); a.click(); " +
+                "document.body.removeChild(a); URL.revokeObjectURL(u); })();";
+
+            await JS.InvokeVoidAsync("eval", script);
+
+            Snackbar.Add($"Blueprint exported as {format.ToUpperInvariant()}", Severity.Success);
         }
         catch (Exception ex)
         {

@@ -201,6 +201,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Sorcha.Blueprint.S
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISectorFilterService,
     Sorcha.Blueprint.Service.Services.SectorFilterService>();
 
+// Seed blueprint templates from JSON files on startup (059 US5)
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeedService>();
+
 // Add Status List Manager (039-verifiable-presentations)
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
     Sorcha.Blueprint.Service.Services.StatusListManager>();
