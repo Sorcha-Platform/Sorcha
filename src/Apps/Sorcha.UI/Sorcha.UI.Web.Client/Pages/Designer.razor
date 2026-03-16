@@ -100,6 +100,14 @@
                     Import
                 </MudButton>
 
+                <MudButton StartIcon="@Icons.Material.Filled.Publish"
+                           Color="Color.Warning"
+                           Size="MudBlazor.Size.Small"
+                           Variant="Variant.Filled"
+                           OnClick="@PublishBlueprint">
+                    Publish
+                </MudButton>
+
                 <MudDivider Vertical="true" FlexItem="true" Class="mx-2" />
 
                 <OfflineSyncIndicator />
@@ -921,6 +929,26 @@
                 context.PreventNavigation();
             }
         }
+    }
+
+    private async Task PublishBlueprint()
+    {
+        // Check if blueprint has governance roles defined
+        var governanceRoles = CurrentBlueprint.Instructions?.GovernanceRoles;
+        if (governanceRoles is not null && governanceRoles.Count > 0)
+        {
+            // Blueprint defines its own governance model
+            var rolesDisplay = string.Join(", ", governanceRoles.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+            await DialogService.ShowMessageBoxAsync(
+                "Blueprint Governance Model",
+                $"This blueprint defines its own governance roles:\n{rolesDisplay}\n\nThese roles take precedence over organisational admin role assignments.",
+                yesText: "Proceed to Publish");
+        }
+
+        // Navigate to publishing workflow
+        // TODO: initiate the Blueprint Publishing workflow with CurrentBlueprint as submission data
+        Snackbar.Add("Blueprint publishing workflow initiated", Severity.Info);
+        Navigation.NavigateTo($"/templates?publish={CurrentBlueprint.Id}");
     }
 
     public void Dispose()
