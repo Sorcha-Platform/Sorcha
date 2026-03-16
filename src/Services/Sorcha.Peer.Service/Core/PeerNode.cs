@@ -18,6 +18,11 @@ public class PeerNode : IEquatable<PeerNode>
     public string PeerId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Human-readable display name for the peer node
+    /// </summary>
+    public string? NodeName { get; set; }
+
+    /// <summary>
     /// Network address of the peer (IP or hostname)
     /// </summary>
     [Required]

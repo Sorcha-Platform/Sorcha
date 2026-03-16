@@ -171,6 +171,7 @@ public class PeerDiscoveryService : IDisposable
                 PeerInfo = new PeerInfo
                 {
                     PeerId = _configuration.NodeId ?? "unknown",
+                    NodeName = _configuration.NodeId ?? Environment.MachineName,
                     Address = externalAddress,
                     Port = _configuration.ListenPort,
                     SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }
@@ -238,6 +239,7 @@ public class PeerDiscoveryService : IDisposable
         return new PeerNode
         {
             PeerId = peerInfo.PeerId,
+            NodeName = string.IsNullOrEmpty(peerInfo.NodeName) ? null : peerInfo.NodeName,
             Address = peerInfo.Address,
             Port = peerInfo.Port,
             SupportedProtocols = peerInfo.SupportedProtocols.ToList(),

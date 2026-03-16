@@ -61,6 +61,9 @@ message PeerInfo {
 
   // Whether this peer is a seed node
   bool is_seed_node = 8;
+
+  // Human-readable node name (e.g. "peer-001", "peer-dev")
+  string node_name = 9;
 }
 
 // Capabilities of a peer

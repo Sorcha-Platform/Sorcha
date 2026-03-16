@@ -238,6 +238,7 @@ public class PeerDiscoveryServiceImpl : PeerDiscovery.PeerDiscoveryBase
         var peerInfo = new PeerInfo
         {
             PeerId = peer.PeerId,
+            NodeName = peer.NodeName ?? "",
             Address = peer.Address,
             Port = peer.Port,
             IsSeedNode = peer.IsSeedNode,
@@ -267,6 +268,7 @@ public class PeerDiscoveryServiceImpl : PeerDiscovery.PeerDiscoveryBase
         return new PeerNode
         {
             PeerId = peerInfo.PeerId,
+            NodeName = string.IsNullOrEmpty(peerInfo.NodeName) ? null : peerInfo.NodeName,
             Address = peerInfo.Address,
             Port = peerInfo.Port,
             SupportedProtocols = peerInfo.SupportedProtocols.ToList(),

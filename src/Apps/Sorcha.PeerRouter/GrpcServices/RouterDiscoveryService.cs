@@ -60,10 +60,11 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
             });
         }
 
-        var isNew = _routingTable.RegisterPeer(peerInfo);
+        var isNew = _routingTable.RegisterPeer(peerInfo, context.Peer);
         _logger.LogInformation(
-            "Peer {PeerId} {Action} at {Address}:{Port} from {ClientAddress}",
+            "Peer {PeerId} ({NodeName}) {Action} at {Address}:{Port} from {ClientAddress}",
             peerInfo.PeerId,
+            peerInfo.NodeName,
             isNew ? "registered" : "updated",
             peerInfo.Address,
             peerInfo.Port,
@@ -145,7 +146,7 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
             if (IsSelf(peerInfo.PeerId))
                 continue;
 
-            _routingTable.RegisterPeer(peerInfo);
+            _routingTable.RegisterPeer(peerInfo, context.Peer);
             registeredCount++;
         }
 
@@ -223,6 +224,7 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
         var peerInfo = new PeerInfo
         {
             PeerId = entry.PeerId,
+            NodeName = entry.NodeName ?? "",
             Address = entry.Address,
             Port = entry.Port,
             LastSeen = entry.LastSeen.ToUnixTimeMilliseconds(),
