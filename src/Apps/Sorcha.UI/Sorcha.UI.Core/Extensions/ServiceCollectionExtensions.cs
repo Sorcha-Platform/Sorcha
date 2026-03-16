@@ -614,6 +614,16 @@ public static class ServiceCollectionExtensions
             return new DomainRestrictionClientService(httpClient, logger);
         });
 
+        // Platform Settings Admin Service (058 - authenticated, SystemAdmin only)
+        services.AddScoped<IPlatformSettingsAdminService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<PlatformSettingsAdminService>>();
+            return new PlatformSettingsAdminService(httpClient, logger);
+        });
+
         // Status List Service (050 - public endpoint, no auth needed)
         services.AddScoped<IStatusListService>(sp =>
         {

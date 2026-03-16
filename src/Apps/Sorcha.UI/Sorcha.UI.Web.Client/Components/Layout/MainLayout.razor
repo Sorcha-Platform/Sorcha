@@ -160,6 +160,13 @@
                                 </MudNavLink>
                             </MudNavGroup>
                             <MudNavGroup Title="System" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
+                                <AuthorizeView Roles="SystemAdmin">
+                                    <Authorized Context="sysAdminCtx">
+                                        <MudNavLink Href="admin/settings/platform" Icon="@Icons.Material.Filled.Tune">
+                                            Platform Settings
+                                        </MudNavLink>
+                                    </Authorized>
+                                </AuthorizeView>
                                 <MudNavLink Href="admin/health" Icon="@Icons.Material.Filled.HealthAndSafety">
                                     @Loc.T("nav.systemHealth")
                                 </MudNavLink>

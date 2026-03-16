@@ -94,13 +94,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T028 [US1] Modify `DatabaseInitializer.cs` bootstrap flow: create system admin org (IsPlatformOrg=true, Status=Active) and public org (ID=...0002, IsPlatformOrg=true, Status=Suspended, OrgType=Public); create admin PlatformUser; create admin UserIdentity in system admin org with PlatformUserId; create PlatformUserOrgMembership for admin; seed PlatformSettings (PublicOrgEnabled=false, MaxOrgsPerUser=1) in `src/Services/Sorcha.Tenant.Service/Data/DatabaseInitializer.cs`
-- [ ] T029 [US1] Modify `BootstrapEndpoints.cs` to return bootstrap response including both org IDs and confirm PlatformUser creation in `src/Services/Sorcha.Tenant.Service/Endpoints/BootstrapEndpoints.cs`
-- [ ] T030 [P] [US1] Create `PlatformSettingsEndpoints.cs` with 3 endpoints: `GET /api/platform/settings` (RequireSystemAdmin), `PUT /api/platform/settings/public-org` (toggle public org + self-registration atomically), `PUT /api/platform/settings/max-orgs` (update MaxOrgsPerUser) — with `.WithSummary()` and `.WithDescription()` per OpenAPI contract in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformSettingsEndpoints.cs`
-- [ ] T031 [US1] Add FluentValidation validators for `UpdatePublicOrgRequest` and `UpdateMaxOrgsRequest` in `src/Services/Sorcha.Tenant.Service/Models/` (or `Validators/`)
-- [ ] T032 [P] [US1] Create Platform Settings admin page in Blazor WASM — toggle for public org enable/disable, MaxOrgsPerUser input, display current status in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Pages/PlatformSettings.razor`
-- [ ] T033 [US1] Add Platform Settings service client for Admin UI HTTP calls in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Services/`
-- [ ] T034 [US1] Add Platform Settings nav link in Admin UI sidebar in `src/Apps/Sorcha.Admin/Sorcha.Admin.Client/Shared/NavMenu.razor`
+- [X] T028 [US1] Modify `DatabaseInitializer.cs` bootstrap flow: create system admin org (IsPlatformOrg=true, Status=Active) and public org (ID=...0002, IsPlatformOrg=true, Status=Suspended, OrgType=Public); create admin PlatformUser; create admin UserIdentity in system admin org with PlatformUserId; create PlatformUserOrgMembership for admin; seed PlatformSettings (PublicOrgEnabled=false, MaxOrgsPerUser=1) in `src/Services/Sorcha.Tenant.Service/Data/DatabaseInitializer.cs`
+- [X] T029 [US1] Modify `BootstrapEndpoints.cs` to return bootstrap response including both org IDs and confirm PlatformUser creation in `src/Services/Sorcha.Tenant.Service/Endpoints/BootstrapEndpoints.cs`
+- [X] T030 [P] [US1] Create `PlatformSettingsEndpoints.cs` with 3 endpoints: `GET /api/platform/settings` (RequireSystemAdmin), `PUT /api/platform/settings/public-org` (toggle public org + self-registration atomically), `PUT /api/platform/settings/max-orgs` (update MaxOrgsPerUser) — with `.WithSummary()` and `.WithDescription()` per OpenAPI contract in `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformSettingsEndpoints.cs`
+- [X] T031 [US1] Add inline validators (project uses custom InputValidation, not FluentValidation) for `UpdatePublicOrgRequest` and `UpdateMaxOrgsRequest` in `src/Services/Sorcha.Tenant.Service/Models/` (or `Validators/`)
+- [X] T032 [P] [US1] Create Platform Settings admin page in Blazor WASM — toggle for public org enable/disable, MaxOrgsPerUser input, display current status in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/Settings/PlatformSettings.razor` (Admin app was migrated to Sorcha.UI)
+- [X] T033 [US1] Add Platform Settings service client for UI HTTP calls in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/PlatformSettingsAdminService.cs`
+- [X] T034 [US1] Add Platform Settings nav link in UI sidebar in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
 
 **Checkpoint**: Bootstrap creates two orgs + PlatformSettings. System admin can enable/disable public org. Foundation for all subsequent stories.
 

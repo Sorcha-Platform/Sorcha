@@ -7,6 +7,7 @@ using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
+using WellKnownIds = Sorcha.Tenant.Service.Services.WellKnownIds;
 
 namespace Sorcha.Tenant.Service.Endpoints;
 
@@ -117,26 +118,51 @@ public static class BootstrapEndpoints
             var organization = await organizationService.CreateOrganizationAsync(createOrgRequest, bootstrapUserId);
             logger.LogInformation("Organization created: {OrgId}", organization.Id);
 
-            // Step 2: Create admin user with password hashing
-            logger.LogInformation("Creating administrator user: {Email}", request.AdminEmail);
+            // Step 2: Create admin PlatformUser + UserIdentity
+            logger.LogInformation("Creating administrator: {Email}", request.AdminEmail);
 
-            // Hash password using BCrypt (work factor: 12)
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.AdminPassword);
 
-            // Create user entity directly (bypass AddUserToOrganizationAsync which requires ExternalIdpUserId)
+            // Create platform-wide identity
+            var platformUser = new PlatformUser
+            {
+                Email = request.AdminEmail,
+                DisplayName = request.AdminName,
+                PasswordHash = passwordHash,
+                EmailVerified = true,
+                EmailVerifiedAt = DateTimeOffset.UtcNow,
+                Status = PlatformUserStatus.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            dbContext.PlatformUsers.Add(platformUser);
+            await dbContext.SaveChangesAsync();
+
+            // Create per-org identity in the bootstrapped org
             var adminUser = new UserIdentity
             {
                 OrganizationId = organization.Id,
                 Email = request.AdminEmail,
                 DisplayName = request.AdminName,
-                PlatformUserId = Guid.NewGuid(), // TODO: T028 — create PlatformUser in bootstrap
+                PlatformUserId = platformUser.Id,
                 Roles = new[] { UserRole.Administrator },
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow
             };
 
             var createdUser = await identityRepository.CreateUserAsync(adminUser);
-            logger.LogInformation("Administrator user created: {UserId}", createdUser.Id);
+
+            // Create org membership
+            dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+            {
+                PlatformUserId = platformUser.Id,
+                OrganizationId = organization.Id,
+                Role = UserRole.Administrator.ToString(),
+                JoinedAt = DateTimeOffset.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+
+            logger.LogInformation("Administrator created: PlatformUser={PlatformUserId}, UserIdentity={UserId}",
+                platformUser.Id, createdUser.Id);
 
             // Step 3: Generate JWT tokens for immediate use
             string adminAccessToken;
@@ -150,7 +176,7 @@ public static class BootstrapEndpoints
                     Name = organization.Name,
                     Subdomain = organization.Subdomain
                 };
-                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity, createdUser.PlatformUserId);
+                var tokenResponse = await tokenService.GenerateUserTokenAsync(createdUser, orgEntity, platformUser.Id);
                 adminAccessToken = tokenResponse.AccessToken;
                 adminRefreshToken = tokenResponse.RefreshToken;
             }
@@ -200,6 +226,9 @@ public static class BootstrapEndpoints
                 ServicePrincipalId = servicePrincipalId,
                 ServicePrincipalClientId = servicePrincipalClientId,
                 ServicePrincipalClientSecret = servicePrincipalSecret,
+                SystemAdminOrgId = WellKnownIds.SystemAdminOrgId,
+                PublicOrgId = WellKnownIds.PublicOrgId,
+                PlatformUserId = platformUser.Id,
                 CreatedAt = DateTime.UtcNow
             };
 
