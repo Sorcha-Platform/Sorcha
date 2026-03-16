@@ -784,13 +784,6 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "UQ_UserIdentity_Org_Email",
-                schema: "public",
-                table: "UserIdentities",
-                columns: new[] { "OrganizationId", "Email" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_UserIdentities_OrganizationId",
                 schema: "public",
                 table: "UserIdentities",
@@ -807,6 +800,13 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public",
                 table: "UserIdentities",
                 column: "PlatformUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "UQ_UserIdentity_Org_Email",
+                schema: "public",
+                table: "UserIdentities",
+                columns: new[] { "OrganizationId", "Email" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "UQ_UserPreferences_UserId",

@@ -14,7 +14,7 @@ using Sorcha.Tenant.Service.Data;
 namespace Sorcha.Tenant.Service.Migrations
 {
     [DbContext(typeof(TenantDbContext))]
-    [Migration("20260316090053_InitialCreate")]
+    [Migration("20260316141840_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -1008,15 +1008,16 @@ namespace Sorcha.Tenant.Service.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
-                        .IsUnique();
-
                     b.HasIndex("OrganizationId");
 
                     b.HasIndex("PlatformUserId")
                         .HasDatabaseName("IX_UserIdentity_PlatformUserId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("OrganizationId", "Email")
+                        .IsUnique()
+                        .HasDatabaseName("UQ_UserIdentity_Org_Email");
 
                     b.ToTable("UserIdentities", "public");
                 });
