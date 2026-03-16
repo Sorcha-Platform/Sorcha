@@ -183,7 +183,7 @@ public static class AuthEndpoints
 
         // Create organisation (self-service, authenticated)
         group.MapPost("/create-org", CreateOrganization)
-            .WithName("CreateOrganization")
+            .WithName("CreateOrganizationSelfService")
             .WithSummary("Create a new private organisation")
             .WithDescription("Self-service org creation for public org members. Validates eligibility "
                 + "(email verified, within org limit, subdomain available) and atomically provisions "

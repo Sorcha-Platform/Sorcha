@@ -45,7 +45,7 @@ public static class PlatformOrgEndpoints
             .RequireAuthorization("RequireSystemAdmin");
 
         group.MapGet("/{orgId:guid}/users", GetOrganizationUsers)
-            .WithName("GetOrganizationUsers")
+            .WithName("GetOrganizationUsersPlatform")
             .WithSummary("View organisation user list")
             .WithDescription("Returns paginated user list for an org. Read-only audit view.")
             .RequireAuthorization("RequirePlatformAuditor");
