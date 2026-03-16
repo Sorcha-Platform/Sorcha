@@ -36,6 +36,9 @@ public sealed record RouterConfiguration
     /// <summary>Seconds without a heartbeat before a peer is marked unhealthy.</summary>
     public int PeerTimeoutSeconds { get; init; } = 60;
 
+    /// <summary>Seconds after last heartbeat before a stale peer entry is removed entirely. Default: 3600 (60 min).</summary>
+    public int EvictionTimeoutSeconds { get; init; } = 3600;
+
     /// <summary>
     /// The router's peer identity on the network. Peers using this ID will be rejected
     /// from registration to prevent the router from appearing in its own peer table.
@@ -74,6 +77,9 @@ public sealed record RouterConfiguration
                 case "--peer-timeout" when i + 1 < args.Length:
                     config = config with { PeerTimeoutSeconds = int.Parse(args[++i]) };
                     break;
+                case "--eviction-timeout" when i + 1 < args.Length:
+                    config = config with { EvictionTimeoutSeconds = int.Parse(args[++i]) };
+                    break;
                 case "--peer-id" when i + 1 < args.Length:
                     config = config with { PeerId = args[++i] };
                     break;
@@ -104,6 +110,9 @@ public sealed record RouterConfiguration
 
         if (int.TryParse(Environment.GetEnvironmentVariable("PEERROUTER__PEER_TIMEOUT"), out var timeout))
             config = config with { PeerTimeoutSeconds = timeout };
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("PEERROUTER__EVICTION_TIMEOUT"), out var eviction))
+            config = config with { EvictionTimeoutSeconds = eviction };
 
         var peerId = Environment.GetEnvironmentVariable("PEERROUTER__PEER_ID");
         if (!string.IsNullOrEmpty(peerId))

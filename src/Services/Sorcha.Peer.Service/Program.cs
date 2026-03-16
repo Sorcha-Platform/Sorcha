@@ -108,6 +108,16 @@ builder.AddSorchaOpenApi("Sorcha Peer Service API", "P2P networking, peer discov
 builder.Services.Configure<PeerServiceConfiguration>(
     builder.Configuration.GetSection("PeerService"));
 
+// Warn if NodeId is not explicitly configured (transient container IDs cause ghost peers)
+var configuredNodeId = builder.Configuration.GetValue<string>("PeerService:NodeId");
+if (string.IsNullOrEmpty(configuredNodeId))
+{
+    var machineName = Environment.MachineName;
+    Console.WriteLine(
+        $"[WRN] NodeId not configured, using MachineName '{machineName}'. " +
+        "Set PeerService:NodeId for stable peer identity across container restarts.");
+}
+
 // Register gRPC auth interceptor (FR-014: authenticated peers get higher trust)
 builder.Services.AddSingleton<Sorcha.Peer.Service.GrpcServices.PeerAuthInterceptor>();
 
