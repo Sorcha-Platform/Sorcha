@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Sorcha.Blueprint.Models;
 using Sorcha.Register.Service.Services;
 
 namespace Sorcha.Register.Service.Endpoints;
@@ -221,6 +222,146 @@ public static class SystemRegisterEndpoints
         .Produces<object>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/blueprints/{blueprintId}/versions", async (
+            SystemRegisterService service,
+            StructuralDiffService diffService,
+            string blueprintId,
+            CancellationToken ct) =>
+        {
+            // TODO: add server-side filtering by blueprintId to avoid loading entire catalogue
+            var transactions = await service.GetAllBlueprintsAsync(ct);
+            var matching = transactions
+                .Where(t => t.BlueprintId == blueprintId)
+                .OrderBy(t => t.PublishedAt)
+                .ToList();
+
+            if (matching.Count == 0)
+            {
+                return Results.NotFound(new { error = $"Blueprint '{blueprintId}' not found in system register" });
+            }
+
+            var versions = new List<BlueprintVersion>();
+            int currentMajor = 0, currentMinor = 0;
+
+            foreach (var entry in matching)
+            {
+                var changeType = entry.Metadata?.GetValueOrDefault("changeType") ?? "structural";
+                var hash = entry.Metadata?.GetValueOrDefault("structuralHash") ?? "";
+
+                if (versions.Count == 0)
+                {
+                    currentMajor = 1;
+                    currentMinor = 0;
+                }
+                else if (changeType == "documentation")
+                {
+                    currentMinor++;
+                }
+                else
+                {
+                    currentMajor++;
+                    currentMinor = 0;
+                }
+
+                versions.Add(new BlueprintVersion
+                {
+                    Major = currentMajor,
+                    Minor = currentMinor,
+                    ChangeType = changeType,
+                    StructuralHash = hash,
+                    PublishedAt = entry.PublishedAt,
+                    PublishedBy = entry.PublishedBy,
+                    TransactionId = entry.PublicationTransactionId ?? ""
+                });
+            }
+
+            return Results.Ok(new
+            {
+                blueprintId,
+                latestVersion = new { major = currentMajor, minor = currentMinor },
+                versions
+            });
+        })
+        .WithName("GetBlueprintVersions")
+        .WithSummary("Query version history for a published blueprint")
+        .WithDescription(
+            "Returns the complete version history for a blueprint including change type " +
+            "(structural vs documentation), structural hash, signer identity, and timestamps.")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/blueprints/{blueprintId}/classify-change", async (
+            SystemRegisterService service,
+            StructuralDiffService diffService,
+            string blueprintId,
+            ClassifyChangeRequest request,
+            CancellationToken ct) =>
+        {
+            var latestEntry = await service.GetBlueprintAsync(blueprintId, ct);
+
+            string newHash = diffService.ComputeStructuralHash(request.NewBlueprint);
+
+            if (latestEntry is null)
+            {
+                // First publish
+                return Results.Ok(new
+                {
+                    changeType = "structural",
+                    currentVersion = (object?)null,
+                    proposedVersion = new { major = 1, minor = 0 },
+                    structuralHashNew = newHash,
+                    structuralFieldsChanged = true
+                });
+            }
+
+            // Compute current structural hash from stored blueprint
+            string currentHash = "";
+            if (latestEntry.Document is not null)
+            {
+                currentHash = diffService.ComputeStructuralHash(latestEntry.Document.RootElement);
+            }
+
+            var changeType = StructuralDiffService.ClassifyChange(currentHash, newHash);
+
+            // Reconstruct current version from metadata
+            var currentMajor = int.TryParse(
+                latestEntry.Metadata?.GetValueOrDefault("versionMajor"), out var cm) ? cm : 1;
+            var currentMinor = int.TryParse(
+                latestEntry.Metadata?.GetValueOrDefault("versionMinor"), out var cmin) ? cmin : 0;
+
+            var (proposedMajor, proposedMinor) = VersionCalculator.ComputeNextVersion(
+                currentMajor, currentMinor, changeType);
+
+            return Results.Ok(new
+            {
+                changeType,
+                currentVersion = new { major = currentMajor, minor = currentMinor },
+                proposedVersion = new { major = proposedMajor, minor = proposedMinor },
+                structuralHashCurrent = currentHash,
+                structuralHashNew = newHash,
+                structuralFieldsChanged = changeType == "structural"
+            });
+        })
+        .WithName("ClassifyBlueprintChange")
+        .WithSummary("Classify a proposed blueprint change as structural or documentation")
+        .WithDescription(
+            "Compares a new blueprint against the latest published version to determine " +
+            "whether the change is structural (major bump) or documentation-only (minor bump). " +
+            "Returns the proposed next version number.")
+        .Accepts<ClassifyChangeRequest>("application/json")
+        .Produces<object>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
+    }
+
+    /// <summary>
+    /// Request body for classifying a blueprint change.
+    /// </summary>
+    private record ClassifyChangeRequest
+    {
+        /// <summary>The new blueprint JSON to compare against the current published version.</summary>
+        public required JsonElement NewBlueprint { get; init; }
     }
 
     /// <summary>

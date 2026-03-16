@@ -1,7 +1,9 @@
+@using Microsoft.JSInterop
 @using Sorcha.Blueprint.Models
 @using Sorcha.UI.Core.Components.Shared
 @using System.Text.Json
 @using System.Text.Json.Nodes
+@inject IJSRuntime JSRuntime
 
 <div style="height: 100%; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 16px;">
     @if (Blueprint != null)
@@ -84,12 +86,16 @@
 
     private async Task CopyToClipboard()
     {
-        // Note: In Blazor WASM, we'd need JSInterop for clipboard access
-        // For now, we'll just show a message
-        Snackbar?.Add("JSON copied to clipboard (feature requires JSInterop)", Severity.Info);
-
-        // TODO: Implement actual clipboard copy with JSInterop
-        // await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", jsonText);
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", jsonText);
+            Snackbar?.Add("JSON copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            // Fallback for browsers that block clipboard API (e.g., non-HTTPS)
+            Snackbar?.Add("Unable to copy to clipboard — check browser permissions", Severity.Warning);
+        }
     }
 }
 

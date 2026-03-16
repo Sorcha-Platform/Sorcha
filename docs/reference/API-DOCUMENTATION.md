@@ -1196,6 +1196,29 @@ GET /api/system-register/blueprints/{blueprintId}
 GET /api/system-register/blueprints/{blueprintId}/versions/{version}
 ```
 
+#### 6. Query Blueprint Version History (Feature 059)
+
+Returns semantic version history for a published blueprint.
+
+```http
+GET /api/system-register/blueprints/{blueprintId}/versions
+```
+
+**Response:** `200 OK` — Array of version entries with `major`, `minor`, `changeType` (structural/documentation), `structuralHash`, `publishedAt`, `publishedBy`, `transactionId`.
+
+#### 7. Classify Blueprint Change (Feature 059)
+
+Compares a new blueprint against the latest published version to determine change type.
+
+```http
+POST /api/system-register/blueprints/{blueprintId}/classify-change
+Content-Type: application/json
+
+{ "newBlueprint": { /* full blueprint JSON */ } }
+```
+
+**Response:** `200 OK` — `changeType`, `currentVersion`, `proposedVersion`, `structuralHashCurrent`, `structuralHashNew`, `structuralFieldsChanged`.
+
 ---
 
 ## Action Workflow API

@@ -77,7 +77,7 @@
                        Color="Color.Info"
                        Size="MudBlazor.Size.Small"
                        Variant="Variant.Text"
-                       Href="/designer"
+                       Href="@GetDesignerHandoffUrl()"
                        Disabled="@(Session?.Blueprint == null)">
                 Open in Visual Designer
             </MudButton>
@@ -535,15 +535,14 @@
         {
             var content = await ChatHub.ExportBlueprintAsync(SessionId, format);
 
-            // TODO: Trigger file download in browser
-            // For now, show in a dialog
-            var parameters = new DialogParameters
-            {
-                { "Content", content },
-                { "Format", format }
-            };
+            // Trigger file download via JSInterop (safe — data passed as arguments, not interpolated into JS)
+            var fileName = $"blueprint-{Session?.Blueprint?.Id ?? "export"}.{format}";
+            var mimeType = format == "yaml" ? "application/x-yaml" : "application/json";
 
-            await DialogService.ShowAsync<ExportContentDialog>($"Export as {format.ToUpperInvariant()}", parameters);
+            await EnsureDownloadFunction();
+            await JS.InvokeVoidAsync("sorcha.downloadFile", fileName, mimeType, content);
+
+            Snackbar.Add($"Blueprint exported as {format.ToUpperInvariant()}", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -629,5 +628,26 @@
         }
 
         _dotNetRef?.Dispose();
+    }
+
+    private async Task EnsureDownloadFunction()
+    {
+        // Register the download helper once — data is always passed as arguments, never interpolated
+        await JS.InvokeVoidAsync("eval",
+            "window.sorcha = window.sorcha || {}; " +
+            "window.sorcha.downloadFile = window.sorcha.downloadFile || function(fileName, mimeType, content) { " +
+            "var blob = new Blob([content], { type: mimeType }); " +
+            "var url = URL.createObjectURL(blob); " +
+            "var a = document.createElement('a'); " +
+            "a.href = url; a.download = fileName; " +
+            "document.body.appendChild(a); a.click(); " +
+            "document.body.removeChild(a); URL.revokeObjectURL(url); };");
+    }
+
+    private string GetDesignerHandoffUrl()
+    {
+        if (Session?.Blueprint?.Id is { } id && !string.IsNullOrWhiteSpace(id))
+            return $"/designer?blueprint={id}";
+        return "/designer";
     }
 }

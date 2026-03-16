@@ -1,48 +1,12 @@
-@using Blazor.Diagrams
-@using Blazor.Diagrams.Core.Geometry
-@using Blazor.Diagrams.Core.Models
-@using Blazor.Diagrams.Options
-@using Blazor.Diagrams.Components
 @using Sorcha.UI.Core.Models.Designer
-@using Sorcha.UI.Core.Services
 @using BlueprintAction = Sorcha.Blueprint.Models.Action
 
-@inject BlueprintLayoutService LayoutService
+@* BlueprintViewerDiagram now delegates to the unified BlueprintDiagram in Preview mode *@
 
-<!-- Participant Legend -->
-@if (_layout is not null && _layout.ParticipantLegend.Count > 0)
-{
-    <div class="viewer-legend">
-        @foreach (var p in _layout.ParticipantLegend)
-        {
-            <div class="legend-item">
-                <span class="legend-dot" style="background-color: @p.Colour"></span>
-                <span class="legend-name">@p.Name</span>
-            </div>
-        }
-    </div>
-}
-
-<!-- Diagram Canvas -->
-<div class="viewer-container" style="height: @Height">
-    @if (_diagram is not null && _layout is not null)
-    {
-        <CascadingValue Value="_layout.ParticipantLegend" Name="ParticipantLegend" IsFixed="false">
-            <CascadingValue Value="_layout" Name="DiagramLayout" IsFixed="false">
-                <CascadingValue Value="_diagram" IsFixed="true">
-                    <DiagramCanvas></DiagramCanvas>
-                </CascadingValue>
-            </CascadingValue>
-        </CascadingValue>
-    }
-    else if (_loading)
-    {
-        <div class="viewer-loading">
-            <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Medium" />
-            <MudText Typo="Typo.caption" Class="mt-2">Building diagram...</MudText>
-        </div>
-    }
-</div>
+<BlueprintDiagram Blueprint="Blueprint"
+                  Mode="DiagramMode.Preview"
+                  Height="@Height"
+                  OnActionClicked="OnActionClicked" />
 
 @code {
     [Parameter, EditorRequired]
@@ -53,107 +17,4 @@
 
     [Parameter]
     public EventCallback<BlueprintAction> OnActionClicked { get; set; }
-
-    private BlazorDiagram? _diagram;
-    private DiagramLayout? _layout;
-    private bool _loading;
-
-    protected override void OnParametersSet()
-    {
-        if (Blueprint is not null)
-        {
-            BuildDiagram();
-        }
-    }
-
-    private void BuildDiagram()
-    {
-        _loading = true;
-
-        try
-        {
-            _layout = LayoutService.ComputeLayout(Blueprint);
-
-            var options = new BlazorDiagramOptions
-            {
-                AllowMultiSelection = false
-            };
-            options.Zoom.Enabled = true;
-            options.Links.DefaultColor = "#666666";
-
-            _diagram = new BlazorDiagram(options);
-            _diagram.RegisterComponent<ActionNodeModel, ReadOnlyActionNodeWidget>();
-
-            // Create nodes
-            var nodeMap = new Dictionary<int, ActionNodeModel>();
-            foreach (var diagramNode in _layout.Nodes)
-            {
-                var action = Blueprint.Actions.FirstOrDefault(a => a.Id == diagramNode.ActionId);
-                if (action is null) continue;
-
-                var nodeModel = new ActionNodeModel(action, diagramNode.Position);
-                nodeModel.Locked = true;
-                nodeModel.AddPort(PortAlignment.Top);
-                nodeModel.AddPort(PortAlignment.Bottom);
-                _diagram.Nodes.Add(nodeModel);
-                nodeMap[action.Id] = nodeModel;
-            }
-
-            // Create links
-            foreach (var edge in _layout.Edges)
-            {
-                if (edge.TargetActionId < 0) continue; // Skip terminal markers
-
-                if (!nodeMap.TryGetValue(edge.SourceActionId, out var sourceNode)) continue;
-                if (!nodeMap.TryGetValue(edge.TargetActionId, out var targetNode)) continue;
-
-                var sourcePort = sourceNode.Ports.FirstOrDefault(p => p.Alignment == PortAlignment.Bottom);
-                var targetPort = targetNode.Ports.FirstOrDefault(p => p.Alignment == PortAlignment.Top);
-
-                if (sourcePort is not null && targetPort is not null)
-                {
-                    var link = new LinkModel(sourcePort, targetPort);
-                    link.Color = GetEdgeColor(edge.EdgeType);
-                    if (edge.Label is not null)
-                    {
-                        link.Labels.Add(new LinkLabelModel(link, edge.Label));
-                    }
-                    _diagram.Links.Add(link);
-                }
-            }
-
-            // Handle selection for action click callback
-            _diagram.SelectionChanged += OnSelectionChanged;
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private void OnSelectionChanged(Blazor.Diagrams.Core.Models.Base.Model model)
-    {
-        if (model is ActionNodeModel actionNode && actionNode.Selected && OnActionClicked.HasDelegate)
-        {
-            OnActionClicked.InvokeAsync(actionNode.Action);
-        }
-    }
-
-    private static string GetEdgeColor(EdgeType edgeType) => edgeType switch
-    {
-        EdgeType.Default => "#1976d2",
-        EdgeType.Conditional => "#ff9800",
-        EdgeType.Rejection => "#f44336",
-        EdgeType.BackEdge => "#9c27b0",
-        EdgeType.Terminal => "#f44336",
-        _ => "#666666"
-    };
-
-    public void Dispose()
-    {
-        if (_diagram is not null)
-        {
-            _diagram.SelectionChanged -= OnSelectionChanged;
-        }
-    }
 }

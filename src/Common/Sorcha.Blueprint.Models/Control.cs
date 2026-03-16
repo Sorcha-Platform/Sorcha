@@ -54,6 +54,15 @@ public class Control
     public JsonNode? Schema { get; set; }
 
     /// <summary>
+    /// Per-field help text override (Markdown, max 500 chars).
+    /// Takes priority over schema property description for this control.
+    /// </summary>
+    [DataAnnotations.MaxLength(500)]
+    [JsonPropertyName("instructions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Instructions { get; set; }
+
+    /// <summary>
     /// Sub-elements or sub-controls
     /// </summary>
     [JsonPropertyName("elements")]

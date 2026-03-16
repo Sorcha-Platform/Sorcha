@@ -93,6 +93,27 @@ public class Blueprint : IEquatable<Blueprint>
     public string? OrganizationId { get; set; }
 
     /// <summary>
+    /// Semantic major version number (structural changes increment this).
+    /// Use VersionMajor.VersionMinor for display (e.g., "v2.1").
+    /// </summary>
+    [JsonPropertyName("versionMajor")]
+    public int VersionMajor { get; set; } = 1;
+
+    /// <summary>
+    /// Semantic minor version number (documentation-only changes increment this; resets on major bump).
+    /// </summary>
+    [JsonPropertyName("versionMinor")]
+    public int VersionMinor { get; set; } = 0;
+
+    /// <summary>
+    /// Instructions container with overview, per-action/per-participant guidance,
+    /// linked translations, and governance roles.
+    /// </summary>
+    [JsonPropertyName("instructions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlueprintInstructions? Instructions { get; set; }
+
+    /// <summary>
     /// Metadata for the blueprint
     /// </summary>
     [JsonPropertyName("metadata")]

@@ -13,6 +13,7 @@
 @using Sorcha.UI.Core.Services
 @inject ITemplateApiService TemplateApi
 @inject IBlueprintApiService BlueprintApi
+@inject ISystemRegisterService RegisterService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
@@ -21,7 +22,7 @@
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     @if (_selectedTemplate == null)
     {
-        @* State A: Full-width template list *@
+        @* State A: Full-width catalogue with tabs *@
         <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
             <MudStack Spacing="0">
                 <MudText Typo="Typo.h4">
@@ -29,7 +30,7 @@
                     Catalogue
                 </MudText>
                 <MudText Typo="Typo.body1" Color="Color.Secondary">
-                    Browse workflow templates and create blueprints from proven patterns.
+                    Browse workflow templates and published blueprints from proven patterns.
                 </MudText>
             </MudStack>
 
@@ -38,37 +39,44 @@
                           Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 300px;" />
         </MudStack>
 
-        @if (_serviceError)
-        {
-            <ServiceUnavailable ServiceName="Template Service" OnRetry="LoadTemplatesAsync" />
-        }
-        else if (_loading)
-        {
-            <MudGrid>
-                @for (var i = 0; i < 6; i++)
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-0 mt-3">
+            <MudTabPanel Text="Templates" Icon="@Icons.Material.Filled.ContentCopy">
+                @if (_serviceError)
                 {
-                    <MudItem xs="12" md="6" lg="4">
-                        <MudCard Elevation="2">
-                            <MudCardContent>
-                                <MudSkeleton Width="60%" Height="24px" Class="mb-2" />
-                                <MudSkeleton Width="100%" Height="16px" Class="mb-2" />
-                                <MudSkeleton Width="40%" Height="16px" />
-                            </MudCardContent>
-                        </MudCard>
-                    </MudItem>
+                    <ServiceUnavailable ServiceName="Template Service" OnRetry="LoadTemplatesAsync" />
                 }
-            </MudGrid>
-        }
-        else if (!FilteredTemplates.Any())
-        {
-            <EmptyState Icon="@Icons.Material.Filled.ContentCopy"
-                        Title="No Templates Available"
-                        Description="No templates are available. Contact your administrator to seed the template library." />
-        }
-        else
-        {
-            <TemplateList Templates="@FilteredTemplates.ToList()" OnSelect="SelectTemplate" />
-        }
+                else if (_loading)
+                {
+                    <MudGrid>
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            <MudItem xs="12" md="6" lg="4">
+                                <MudCard Elevation="2">
+                                    <MudCardContent>
+                                        <MudSkeleton Width="60%" Height="24px" Class="mb-2" />
+                                        <MudSkeleton Width="100%" Height="16px" Class="mb-2" />
+                                        <MudSkeleton Width="40%" Height="16px" />
+                                    </MudCardContent>
+                                </MudCard>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+                else if (!FilteredTemplates.Any())
+                {
+                    <EmptyState Icon="@Icons.Material.Filled.ContentCopy"
+                                Title="No Templates Available"
+                                Description="No templates are available. Contact your administrator to seed the template library." />
+                }
+                else
+                {
+                    <TemplateList Templates="@FilteredTemplates.ToList()" OnSelect="SelectTemplate" />
+                }
+            </MudTabPanel>
+            <MudTabPanel Text="Published Blueprints" Icon="@Icons.Material.Filled.VerifiedUser">
+                <PublishedBlueprintList RegisterService="RegisterService" />
+            </MudTabPanel>
+        </MudTabs>
     }
     else
     {

@@ -1,0 +1,130 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.Blueprint.Models
+@using System.Text.Json.Nodes
+
+<div>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+        <MudText Typo="Typo.subtitle2">Routes</MudText>
+        <MudButton StartIcon="@Icons.Material.Filled.Add"
+                   Color="Color.Primary"
+                   Size="Size.Small"
+                   Variant="Variant.Outlined"
+                   OnClick="AddRoute">
+            Add Route
+        </MudButton>
+    </MudStack>
+
+    @if (Routes != null && Routes.Any())
+    {
+        @foreach (var (route, index) in Routes.Select((r, i) => (r, i)))
+        {
+            <MudPaper Class="pa-3 mb-2" Outlined="true">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.AltRoute" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.subtitle2">Route @(index + 1)</MudText>
+                        @if (route.IsDefault)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Default</MudChip>
+                        }
+                    </MudStack>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Size="Size.Small"
+                                   Color="Color.Error"
+                                   OnClick="@(() => RemoveRoute(index))" />
+                </MudStack>
+
+                <MudTextField @bind-Value="route.Id"
+                              Label="Route ID"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="mb-2" />
+
+                <MudTextField Value="@GetNextActionIdsString(route)"
+                              ValueChanged="@((string val) => SetNextActionIds(route, val))"
+                              Label="Next Action IDs (comma-separated)"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              HelperText="e.g., 2,3 for parallel branches"
+                              Class="mb-2" />
+
+                <MudTextField @bind-Value="route.Description"
+                              Label="Description"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Lines="2"
+                              Class="mb-2" />
+
+                @if (route.Condition != null)
+                {
+                    <MudTextField Value="@route.Condition.ToJsonString()"
+                                  Label="Condition (JSON Logic)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Lines="3"
+                                  ReadOnly="true"
+                                  Style="font-family: monospace;" />
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudCheckBox T="bool" @bind-Value="route.IsDefault"
+                                 Label="Default Route"
+                                 Color="Color.Warning"
+                                 Dense="true" />
+                </MudStack>
+            </MudPaper>
+        }
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Dense="true">
+            No routes defined. Routes determine the next action(s) in the workflow.
+        </MudAlert>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<Route>? Routes { get; set; }
+
+    [Parameter]
+    public EventCallback<List<Route>> RoutesChanged { get; set; }
+
+    private async Task AddRoute()
+    {
+        Routes ??= [];
+        Routes.Add(new Route
+        {
+            Id = $"route-{Routes.Count + 1}",
+            NextActionIds = [],
+            IsDefault = !Routes.Any()
+        });
+        await RoutesChanged.InvokeAsync(Routes);
+    }
+
+    private async Task RemoveRoute(int index)
+    {
+        if (Routes is null || index < 0 || index >= Routes.Count) return;
+        Routes.RemoveAt(index);
+        await RoutesChanged.InvokeAsync(Routes);
+    }
+
+    private static string GetNextActionIdsString(Route route)
+    {
+        return string.Join(", ", route.NextActionIds);
+    }
+
+    private async Task SetNextActionIds(Route route, string value)
+    {
+        var ids = value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => int.TryParse(s, out _))
+            .Select(int.Parse)
+            .ToList();
+        route.NextActionIds = ids;
+        await RoutesChanged.InvokeAsync(Routes);
+    }
+}

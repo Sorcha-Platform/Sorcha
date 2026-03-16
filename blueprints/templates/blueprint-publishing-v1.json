@@ -1,0 +1,298 @@
+{
+  "id": "blueprint-publishing-v1",
+  "title": "Blueprint Publishing Workflow",
+  "description": "Governance workflow for publishing blueprints to the system register. Supports major (structural) and minor (documentation-only) version publishing with review and sign-off.",
+  "version": 1,
+  "category": "governance",
+  "tags": ["governance", "publishing", "versioning", "review", "sign-off"],
+  "author": "Sorcha Team",
+  "published": true,
+  "metadata": {
+    "singlePersonGovernanceWarning": "When reviewer and publisher are the same participant, an audit log entry at Warning level should be generated during workflow execution."
+  },
+  "template": {
+    "@context": "https://sorcha.dev/blueprints/v1",
+    "id": "blueprint-publishing-v1",
+    "title": "Blueprint Publishing Workflow",
+    "description": "Governance workflow for publishing blueprints to the system register with semantic versioning, review, and signed publication.",
+    "version": 1,
+    "versionMajor": 1,
+    "versionMinor": 0,
+    "instructions": {
+      "overview": "## Blueprint Publishing\n\nThis workflow governs the publication of blueprints to the Sorcha system register.\n\n### Version Types\n- **Major version** (structural): Changes to actions, routes, schemas, or participants\n- **Minor version** (documentation): Changes to instructions, help text, or translations only\n\n### Process\n1. Author submits a blueprint draft\n2. System classifies the change type (structural vs documentation)\n3. Reviewer examines and approves or rejects\n4. Publisher signs and commits to the system register",
+      "locale": "en-GB",
+      "actionInstructions": {
+        "0": "Submit the blueprint you wish to publish. Include the full blueprint JSON and any change notes.",
+        "1": "The system will compare the blueprint against the latest published version to determine if this is a structural or documentation-only change.",
+        "2": "Perform a full review of the blueprint including structure, schema compatibility, and compliance. Approve or reject with comments.",
+        "3": "Perform a documentation review. Verify instruction text, translations, and help content are accurate and complete.",
+        "4": "Sign and publish the approved blueprint to the system register. This creates an immutable, signed transaction."
+      },
+      "participantInstructions": {
+        "Author": "You are submitting a blueprint for publication. Ensure all structural elements and instructions are complete before submission.",
+        "Reviewer": "You are responsible for validating the blueprint meets quality and compliance standards. Full review for structural changes; documentation review for text-only changes.",
+        "Publisher": "You are the final sign-off authority. Your signature commits the blueprint to the system register as an immutable transaction."
+      },
+      "governanceRoles": {
+        "reviewer": "",
+        "publisher": ""
+      }
+    },
+    "participants": [
+      {
+        "id": "author",
+        "name": "Author",
+        "organisation": "Blueprint Author",
+        "walletAddress": "",
+        "instructions": "Submit blueprint drafts for publication. You can revise and resubmit if rejected."
+      },
+      {
+        "id": "reviewer",
+        "name": "Reviewer",
+        "organisation": "Blueprint Reviewer",
+        "walletAddress": "",
+        "instructions": "Review submitted blueprints for quality and compliance. Approve or reject with comments."
+      },
+      {
+        "id": "publisher",
+        "name": "Publisher",
+        "organisation": "Blueprint Publisher",
+        "walletAddress": "",
+        "instructions": "Sign and publish approved blueprints to the system register."
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Submit Draft",
+        "description": "Author submits a blueprint for publication review",
+        "sender": "author",
+        "isStartingAction": true,
+        "instructions": "Submit the complete blueprint JSON along with change notes describing what was modified.",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Blueprint Submission",
+            "required": ["blueprintJson", "changeNotes"],
+            "properties": {
+              "blueprintJson": {
+                "type": "string",
+                "description": "The full blueprint JSON to be published"
+              },
+              "changeNotes": {
+                "type": "string",
+                "description": "Description of changes from the previous version",
+                "maxLength": 2000
+              },
+              "blueprintId": {
+                "type": "string",
+                "description": "Blueprint identifier for version tracking"
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "author", "dataPointers": ["/*"] },
+          { "participantAddress": "reviewer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-classify",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Send to change classification"
+          }
+        ],
+        "rejectionConfig": null
+      },
+      {
+        "id": 1,
+        "title": "Classify Change",
+        "description": "System compares structural hash to classify change type",
+        "sender": "author",
+        "isStartingAction": false,
+        "instructions": "The system will automatically compare the structural hash of your submission against the latest published version.",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Change Classification",
+            "required": ["changeType", "proposedVersion"],
+            "properties": {
+              "changeType": {
+                "type": "string",
+                "enum": ["structural", "documentation"],
+                "description": "Whether the change affects structure or only documentation"
+              },
+              "proposedVersion": {
+                "type": "string",
+                "description": "The proposed semantic version (e.g., v2.0 or v1.3)"
+              },
+              "structuralHash": {
+                "type": "string",
+                "description": "SHA-256 hash of the blueprint with instructions stripped"
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "author", "dataPointers": ["/*"] },
+          { "participantAddress": "reviewer", "dataPointers": ["/*"] }
+        ],
+        "calculations": {
+          "changeType": { "if": [{ "==": [{ "var": "structuralFieldsChanged" }, true] }, "structural", "documentation"] }
+        },
+        "routes": [
+          {
+            "id": "structural-review",
+            "nextActionIds": [2],
+            "condition": { "==": [{ "var": "changeType" }, "structural"] },
+            "description": "Structural change → full review"
+          },
+          {
+            "id": "documentation-review",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Documentation change → light review"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Full Review",
+        "description": "Reviewer performs comprehensive review of structural changes",
+        "sender": "reviewer",
+        "isStartingAction": false,
+        "instructions": "Review the complete blueprint for structural integrity, schema compatibility, participant definitions, and routing correctness.",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Review Decision",
+            "required": ["approved"],
+            "properties": {
+              "approved": {
+                "type": "boolean",
+                "description": "Whether the blueprint is approved for publication"
+              },
+              "comments": {
+                "type": "string",
+                "description": "Review comments and feedback",
+                "maxLength": 5000
+              },
+              "reviewerAddress": {
+                "type": "string",
+                "description": "Reviewer's wallet address for audit trail"
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "reviewer", "dataPointers": ["/*"] },
+          { "participantAddress": "author", "dataPointers": ["/approved", "/comments"] },
+          { "participantAddress": "publisher", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-publish",
+            "nextActionIds": [4],
+            "condition": { "==": [{ "var": "approved" }, true] },
+            "description": "Approved → sign and publish"
+          },
+          {
+            "id": "rejected-to-revise",
+            "nextActionIds": [0],
+            "isDefault": true,
+            "description": "Rejected → return to author for revision"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Documentation Review",
+        "description": "Reviewer performs lightweight review of documentation-only changes",
+        "sender": "reviewer",
+        "isStartingAction": false,
+        "instructions": "Review the instruction text, translations, and help content for accuracy and completeness. No structural review needed.",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Documentation Review Decision",
+            "required": ["approved"],
+            "properties": {
+              "approved": {
+                "type": "boolean",
+                "description": "Whether the documentation changes are approved"
+              },
+              "comments": {
+                "type": "string",
+                "description": "Review comments",
+                "maxLength": 2000
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "reviewer", "dataPointers": ["/*"] },
+          { "participantAddress": "author", "dataPointers": ["/approved", "/comments"] },
+          { "participantAddress": "publisher", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "doc-approved",
+            "nextActionIds": [4],
+            "condition": { "==": [{ "var": "approved" }, true] },
+            "description": "Approved → sign and publish"
+          },
+          {
+            "id": "doc-rejected",
+            "nextActionIds": [0],
+            "isDefault": true,
+            "description": "Rejected → return to author"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Sign & Publish",
+        "description": "Publisher signs and commits the blueprint to the system register",
+        "sender": "publisher",
+        "isStartingAction": false,
+        "instructions": "Sign the approved blueprint with your wallet key. This creates an immutable, signed transaction on the system register.",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "title": "Publication Record",
+            "required": ["transactionId"],
+            "properties": {
+              "transactionId": {
+                "type": "string",
+                "description": "System register transaction ID"
+              },
+              "publishedVersion": {
+                "type": "string",
+                "description": "The published semantic version"
+              },
+              "publishedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Publication timestamp"
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "publisher", "dataPointers": ["/*"] },
+          { "participantAddress": "author", "dataPointers": ["/*"] },
+          { "participantAddress": "reviewer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "published",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Blueprint published — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}
