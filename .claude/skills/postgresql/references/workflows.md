@@ -15,7 +15,7 @@
 
 ```bash
 # From solution root
-cd src/Common/Sorcha.Wallet.Core
+cd src/Core/Sorcha.Wallet.Core
 dotnet ef migrations add MyMigrationName --startup-project ../../Services/Sorcha.Wallet.Service
 ```
 

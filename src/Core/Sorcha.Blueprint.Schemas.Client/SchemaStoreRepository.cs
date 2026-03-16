@@ -4,7 +4,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Repository for schemas from SchemaStore.org.

@@ -34,7 +34,7 @@
     <ProjectReference Include="..\..\Core\Sorcha.Blueprint.Engine\Sorcha.Blueprint.Engine.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
-    <ProjectReference Include="..\..\Common\Sorcha.Wallet.Core\Sorcha.Wallet.Core.csproj" />
+    <ProjectReference Include="..\..\Core\Sorcha.Wallet.Core\Sorcha.Wallet.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

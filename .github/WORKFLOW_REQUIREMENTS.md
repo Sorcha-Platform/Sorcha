@@ -123,7 +123,7 @@ Common (Level 1)
 
 **Core (Level 2):**
 - `Sorcha.Blueprint.Fluent` (depends on: Blueprint.Models)
-- `Sorcha.Blueprint.Schemas`
+- `Sorcha.Blueprint.Schemas.Client`
 - `Sorcha.Blueprint.Engine`
 
 **Services (Level 3):**
@@ -133,7 +133,7 @@ Common (Level 1)
 
 **Apps (Level 4):**
 - `Sorcha.AppHost`
-- `Sorcha.Blueprint.Designer.Client` (depends on: Blueprint.Fluent, Blueprint.Models, Blueprint.Schemas)
+- `Sorcha.Blueprint.Designer.Client` (depends on: Blueprint.Fluent, Blueprint.Models, Blueprint.Schemas.Client)
 
 ### Dependency Testing Rules
 
@@ -329,7 +329,7 @@ src/Common/Sorcha.ServiceDefaults
 
 # Core layer
 src/Core/Sorcha.Blueprint.Fluent
-src/Core/Sorcha.Blueprint.Schemas
+src/Core/Sorcha.Blueprint.Schemas.Client
 src/Core/Sorcha.Blueprint.Engine
 
 # Services layer

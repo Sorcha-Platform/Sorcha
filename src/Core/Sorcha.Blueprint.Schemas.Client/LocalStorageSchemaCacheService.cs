@@ -4,7 +4,7 @@
 using Blazored.LocalStorage;
 using Microsoft.Extensions.Logging;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// LocalStorage-based implementation of schema caching.

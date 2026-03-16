@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Logging.Abstractions;
-using Sorcha.Blueprint.Schemas;
+using Sorcha.Blueprint.Schemas.Client;
 
 namespace Sorcha.Blueprint.Schemas.Core.Tests;
 

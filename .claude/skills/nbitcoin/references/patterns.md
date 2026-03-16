@@ -16,7 +16,7 @@ Sorcha wraps NBitcoin types in domain value objects to enforce invariants and pr
 ### Mnemonic Value Object
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Domain/ValueObjects/Mnemonic.cs
+// src/Core/Sorcha.Wallet.Core/Domain/ValueObjects/Mnemonic.cs
 public record Mnemonic
 {
     private readonly NBitcoin.Mnemonic _mnemonic;
@@ -56,7 +56,7 @@ public record Mnemonic
 ### DerivationPath Value Object
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Domain/ValueObjects/DerivationPath.cs
+// src/Core/Sorcha.Wallet.Core/Domain/ValueObjects/DerivationPath.cs
 public record DerivationPath
 {
     private readonly KeyPath _keyPath;
@@ -79,7 +79,7 @@ public record DerivationPath
 ### Master Key from Mnemonic
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:43-59
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:43-59
 public Task<byte[]> DeriveMasterKeyAsync(Mnemonic mnemonic, string? passphrase = null)
 {
     var seed = mnemonic.DeriveSeed(passphrase);  // Uses NBitcoin.Mnemonic.DeriveExtKey()
@@ -90,7 +90,7 @@ public Task<byte[]> DeriveMasterKeyAsync(Mnemonic mnemonic, string? passphrase =
 ### Child Key at BIP44 Path
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:74-80
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:74-80
 var extKey = ExtKey.CreateFromSeed(masterKey);       // NBitcoin: seed → ExtKey
 var derived = extKey.Derive(derivationPath.KeyPath); // NBitcoin: BIP32 derivation
 var privateKeyBytes = derived.PrivateKey.ToBytes();  // NBitcoin: extract raw bytes
@@ -106,7 +106,7 @@ var keySetResult = await _cryptoModule.GenerateKeySetAsync(network, privateKeyBy
 ### Extract Path Components
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Domain/ValueObjects/DerivationPath.cs:73-101
+// src/Core/Sorcha.Wallet.Core/Domain/ValueObjects/DerivationPath.cs:73-101
 public static bool TryParseBip44(string path, out uint coinType, out uint account, out uint change, out uint addressIndex)
 {
     coinType = account = change = addressIndex = 0;
@@ -161,7 +161,7 @@ _logger.LogDebug("Mnemonic: {Phrase}", mnemonic.Phrase);  // SECURITY VIOLATION
 ### Encrypt Private Keys Before Storage
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:142-165
+// src/Core/Sorcha.Wallet.Core/Services/Implementation/KeyManagementService.cs:142-165
 var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(privateKey, string.Empty);
 // Store encryptedKey and keyId in database - NEVER store raw privateKey
 ```

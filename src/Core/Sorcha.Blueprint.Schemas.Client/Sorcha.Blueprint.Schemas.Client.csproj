@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Client-side schema library for Blazor WASM UI: browsing, caching, local storage -->
   <PropertyGroup>
-    <PackageId>Sorcha.Blueprint.Schemas</PackageId>
+    <PackageId>Sorcha.Blueprint.Schemas.Client</PackageId>
     <Version>2.0.0</Version>
-    <Description>Schema management with FHIR, ISO 20022, UBL, W3C VC, and Schema.org providers</Description>
+    <RootNamespace>Sorcha.Blueprint.Schemas.Client</RootNamespace>
+    <Description>Client-side schema library for Blazor WASM: schema browsing, caching, and local storage</Description>
   </PropertyGroup>
 
   <ItemGroup>

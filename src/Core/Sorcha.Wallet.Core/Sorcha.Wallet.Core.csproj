@@ -11,9 +11,9 @@
 
   <ItemGroup>
     <!-- Internal Dependencies -->
-    <ProjectReference Include="..\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
-    <ProjectReference Include="..\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
-    <ProjectReference Include="..\Sorcha.Storage.Abstractions\Sorcha.Storage.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Storage.Abstractions\Sorcha.Storage.Abstractions.csproj" />
 
 
     <!-- Database -->

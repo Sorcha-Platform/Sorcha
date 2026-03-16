@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Sorcha.Blueprint.Schemas;
+namespace Sorcha.Blueprint.Schemas.Client;
 
 /// <summary>
 /// Extracts property descriptions from JSON Schema documents for a given Control.Scope.

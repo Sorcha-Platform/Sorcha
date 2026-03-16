@@ -31,7 +31,7 @@ services.AddDbContext<WalletDbContext>((sp, options) =>
 
 ```bash
 # From project directory containing DbContext
-dotnet ef migrations add InitialSchema --project src/Common/Sorcha.Wallet.Core --startup-project src/Services/Sorcha.Wallet.Service
+dotnet ef migrations add InitialSchema --project src/Core/Sorcha.Wallet.Core --startup-project src/Services/Sorcha.Wallet.Service
 ```
 
 ### Apply Migrations Programmatically
@@ -58,7 +58,7 @@ if (pending.Any())
 ### Repository with Optional Eager Loading
 
 ```csharp
-// src/Common/Sorcha.Wallet.Core/Repositories/EfCoreWalletRepository.cs
+// src/Core/Sorcha.Wallet.Core/Repositories/EfCoreWalletRepository.cs
 public async Task<WalletEntity?> GetByAddressAsync(string address, bool includeAddresses = false)
 {
     IQueryable<WalletEntity> query = _context.Wallets;

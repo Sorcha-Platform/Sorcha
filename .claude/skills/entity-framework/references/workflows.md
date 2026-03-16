@@ -17,14 +17,14 @@
 
 # 2. Generate migration (from solution root)
 dotnet ef migrations add AddWalletTags \
-    --project src/Common/Sorcha.Wallet.Core \
+    --project src/Core/Sorcha.Wallet.Core \
     --startup-project src/Services/Sorcha.Wallet.Service
 
 # 3. Review generated migration in Migrations/ folder
 
 # 4. Apply locally
 dotnet ef database update \
-    --project src/Common/Sorcha.Wallet.Core \
+    --project src/Core/Sorcha.Wallet.Core \
     --startup-project src/Services/Sorcha.Wallet.Service
 ```
 
@@ -66,10 +66,10 @@ public async Task InitializeAsync()
 
 ```bash
 # Rollback to specific migration
-dotnet ef database update InitialCreate --project src/Common/Sorcha.Wallet.Core
+dotnet ef database update InitialCreate --project src/Core/Sorcha.Wallet.Core
 
 # Remove last migration (if not applied)
-dotnet ef migrations remove --project src/Common/Sorcha.Wallet.Core
+dotnet ef migrations remove --project src/Core/Sorcha.Wallet.Core
 ```
 
 ---
@@ -153,7 +153,7 @@ public class WalletRepositoryTests : IDisposable
 ```bash
 # Build self-contained migration executable
 dotnet ef migrations bundle \
-    --project src/Common/Sorcha.Wallet.Core \
+    --project src/Core/Sorcha.Wallet.Core \
     --startup-project src/Services/Sorcha.Wallet.Service \
     --output ./artifacts/efbundle.exe
 
