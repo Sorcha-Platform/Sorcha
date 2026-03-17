@@ -751,6 +751,10 @@ A `BackgroundService` processes accumulated notification events, groups them by 
 }
 ```
 
+### Notification Preference Provider (Feature 062)
+
+**TenantNotificationPreferenceProvider** replaces `DefaultNotificationPreferenceProvider` for resolving per-user notification delivery preferences (delivery mode and frequency). It calls the Tenant Service `GET /api/preferences` endpoint to retrieve user settings and caches results for 5 minutes per user to reduce cross-service calls.
+
 ### gRPC Services
 
 **WalletNotificationGrpcService** — Receives inbound transaction notifications from the Register Service.

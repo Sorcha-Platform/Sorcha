@@ -136,6 +136,64 @@ public class InMemoryInstanceStore : IInstanceStore
     }
 
     /// <inheritdoc/>
+    public Task<IEnumerable<PendingActionSummary>> GetPendingActionsByWalletAsync(
+        string walletAddress,
+        int skip = 0,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        // Only return actions where the wallet is the assigned participant for that action.
+        // ParticipantWallets maps participant IDs to wallet addresses; we need to find
+        // which participant ID this wallet owns, then only include actions targeting that participant.
+        var results = _instances.Values
+            .Where(i => i.State == InstanceState.Active)
+            .Where(i => i.ParticipantWallets.Values.Contains(walletAddress))
+            .SelectMany(i =>
+            {
+                // Find the participant ID(s) this wallet is assigned to
+                var participantIds = i.ParticipantWallets
+                    .Where(kv => kv.Value == walletAddress)
+                    .Select(kv => kv.Key)
+                    .ToHashSet();
+
+                // Only include current actions — in the in-memory store we don't have
+                // per-action participant assignment, so we include actions where this wallet
+                // is a participant in the instance. This is a best-effort filter; production
+                // storage will join with blueprint action definitions for exact matching.
+                return i.CurrentActionIds.Select(actionId => new PendingActionSummary
+                {
+                    InstanceId = i.Id,
+                    ActionId = actionId,
+                    ActionTitle = $"Action {actionId}",
+                    BlueprintId = i.BlueprintId,
+                    BlueprintTitle = i.Metadata.GetValueOrDefault("BlueprintTitle", i.BlueprintId),
+                    RegisterId = i.RegisterId,
+                    TransactionId = i.LastTransactionId ?? string.Empty,
+                    NavigationPath = $"/blueprints/{i.BlueprintId}/instances/{i.Id}/actions/{actionId}",
+                    ReceivedAt = i.UpdatedAt
+                });
+            })
+            .OrderByDescending(s => s.ReceivedAt)
+            .Skip(skip)
+            .Take(take);
+
+        return Task.FromResult(results);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> GetPendingActionCountByWalletAsync(
+        string walletAddress,
+        CancellationToken cancellationToken = default)
+    {
+        var count = _instances.Values
+            .Where(i => i.State == InstanceState.Active)
+            .Where(i => i.ParticipantWallets.Values.Contains(walletAddress))
+            .Sum(i => i.CurrentActionIds.Count);
+
+        return Task.FromResult(count);
+    }
+
+    /// <inheritdoc/>
     public Task<bool> DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_instances.TryRemove(instanceId, out _));

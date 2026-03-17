@@ -228,6 +228,21 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 |-----|----------|--------|
 | ActionsHub | `/actionshub` | `TransactionConfirmed`, `ActionRejected` |
 
+### Pending Action Notifications (Feature 062)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/actions/pending` | Get pending actions (paginated, urgency filter, blueprintId filter) |
+| GET | `/api/actions/pending/count` | Get pending action count (for badge display) |
+
+**NotificationConfig on Action Model:** The `Action` class in `Sorcha.Blueprint.Models` now includes a `NotificationConfig` property that defines per-action notification behavior (summary template, urgency rules, deadline).
+
+**Utilities:**
+- **SummaryTemplateRenderer** — Renders human-readable notification summaries from action metadata using configurable templates
+- **UrgencyCalculator** — Computes notification urgency (Low/Medium/High/Critical) based on deadline proximity and action configuration
+
+**EventsHubNotificationBridge Enhancements:** The bridge now enriches inbound action notifications with summary text, urgency level, and deadline information before delivery. It also persists `ActivityEvent` records for notification history tracking.
+
 For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7081/scalar`.
 
 ---

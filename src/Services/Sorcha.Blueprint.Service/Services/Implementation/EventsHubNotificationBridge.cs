@@ -5,6 +5,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Hubs;
+using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Events.Models;
 using Sorcha.ServiceClients.Models;
 using Sorcha.ServiceClients.Participant;
 using StackExchange.Redis;
@@ -136,9 +138,10 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
 
     private async Task<InboundActionNotification> EnrichEventAsync(InboundActionEvent actionEvent)
     {
-        // Resolve blueprint name
+        // Resolve blueprint name and notification config
         string? blueprintName = null;
         string? actionDescription = null;
+        Blueprint.Models.NotificationConfig? notificationConfig = null;
         if (!string.IsNullOrEmpty(actionEvent.BlueprintId))
         {
             try
@@ -147,10 +150,11 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
                 if (blueprint is not null)
                 {
                     blueprintName = blueprint.Title;
-                    // Resolve action description from the blueprint's actions list
+                    // Resolve action description and notification config from the blueprint's actions list
                     var action = blueprint.Actions?.FirstOrDefault(
                         a => a.Id == (int)actionEvent.ActionId);
                     actionDescription = action?.Description ?? action?.Title;
+                    notificationConfig = action?.Notification;
                 }
             }
             catch (Exception ex)
@@ -190,19 +194,107 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             ? $"/blueprints/{actionEvent.BlueprintId}/instances/{actionEvent.InstanceId}/actions/{actionEvent.ActionId}"
             : null;
 
-        return new InboundActionNotification
+        // Enrichment: summary, urgency, deadline, groupKey
+        var resolvedBlueprintName = blueprintName ?? actionEvent.BlueprintId ?? "Unknown Blueprint";
+        var resolvedActionTitle = actionDescription ?? $"Action {actionEvent.ActionId}";
+        var defaultSummary = $"{resolvedBlueprintName} — {resolvedActionTitle}";
+
+        // Resolve payload from Instance.AccumulatedData for template rendering.
+        // IInstanceStore is resolved via scope factory to avoid captive dependency issues
+        // if the store implementation is ever scoped (e.g., MongoDB).
+        JsonElement? payload = null;
+        if (notificationConfig is not null && !string.IsNullOrEmpty(actionEvent.InstanceId))
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var instanceStore = scope.ServiceProvider
+                    .GetRequiredService<Storage.IInstanceStore>();
+                var instance = await instanceStore.GetAsync(actionEvent.InstanceId);
+                if (instance?.AccumulatedData is { Count: > 0 })
+                {
+                    // Convert AccumulatedData dictionary to JsonElement for template rendering
+                    var payloadJson = JsonSerializer.Serialize(instance.AccumulatedData, JsonOptions);
+                    payload = JsonSerializer.Deserialize<JsonElement>(payloadJson);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to resolve instance payload for template rendering, using defaults");
+            }
+        }
+
+        // Use NotificationConfig when available for template-based rendering
+        var summary = notificationConfig?.SummaryTemplate is not null
+            ? SummaryTemplateRenderer.Render(notificationConfig.SummaryTemplate, payload, defaultSummary)
+            : defaultSummary;
+        var urgency = UrgencyCalculator.Calculate(notificationConfig, payload);
+        var deadline = UrgencyCalculator.ExtractDeadline(notificationConfig, payload);
+        // TODO: Resolve GroupBy from NotificationConfig.GroupBy field path + payload (P3 feature)
+        string? groupKey = null;
+
+        var notification = new InboundActionNotification
         {
             EventId = actionEvent.Id,
-            BlueprintName = blueprintName ?? actionEvent.BlueprintId ?? "Unknown Blueprint",
-            ActionDescription = actionDescription ?? $"Action {actionEvent.ActionId}",
+            BlueprintName = resolvedBlueprintName,
+            ActionDescription = resolvedActionTitle,
             SenderDisplayName = senderDisplayName,
             NavigationPath = navigationPath,
             TransactionId = actionEvent.TransactionId,
             RegisterId = actionEvent.RegisterId,
             WalletAddress = actionEvent.WalletAddress,
             Timestamp = actionEvent.Timestamp,
-            IsRecoveryEvent = actionEvent.IsRecoveryEvent
+            IsRecoveryEvent = actionEvent.IsRecoveryEvent,
+            Summary = summary,
+            Urgency = urgency,
+            Deadline = deadline,
+            GroupKey = groupKey
         };
+
+        // Persist as ActivityEvent via Tenant Service (best-effort)
+        await PersistActivityEventAsync(actionEvent, notification);
+
+        return notification;
+    }
+
+    private async Task PersistActivityEventAsync(InboundActionEvent actionEvent, InboundActionNotification notification)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var eventClient = scope.ServiceProvider.GetRequiredService<IEventServiceClient>();
+
+            var severity = notification.Urgency switch
+            {
+                "urgent" => "Error",
+                "warning" => "Warning",
+                _ => "Info"
+            };
+
+            var request = new CreateActivityEventRequest(
+                OrganizationId: Guid.TryParse(actionEvent.TenantId, out var tenantGuid) ? tenantGuid : Guid.Empty,
+                UserId: Guid.TryParse(actionEvent.UserId, out var userGuid) ? userGuid : Guid.Empty,
+                EventType: "PendingAction",
+                Severity: severity,
+                Title: notification.ActionDescription,
+                Message: notification.Summary,
+                SourceService: "Blueprint",
+                EntityId: actionEvent.InstanceId,
+                EntityType: "BlueprintInstance");
+
+            await eventClient.CreateEventAsync(request);
+
+            _logger.LogDebug(
+                "Persisted PendingAction activity event for user {UserId}, instance {InstanceId}",
+                actionEvent.UserId, actionEvent.InstanceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to persist PendingAction activity event for user {UserId}",
+                actionEvent.UserId);
+        }
     }
 }
 
@@ -240,4 +332,16 @@ public record InboundActionNotification
 
     /// <summary>Whether this was detected during recovery mode.</summary>
     public bool IsRecoveryEvent { get; init; }
+
+    /// <summary>Rendered summary from NotificationConfig template (or default "{BlueprintName} — {ActionTitle}").</summary>
+    public string Summary { get; init; } = string.Empty;
+
+    /// <summary>Calculated urgency level: "normal", "warning", or "urgent".</summary>
+    public string Urgency { get; init; } = "normal";
+
+    /// <summary>Parsed deadline value, if configured via NotificationConfig.</summary>
+    public DateTimeOffset? Deadline { get; init; }
+
+    /// <summary>Resolved grouping key value from NotificationConfig.GroupBy.</summary>
+    public string? GroupKey { get; init; }
 }

@@ -18,7 +18,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
-**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060
+**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications)
 **Remaining:** 62 tasks across 6 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
@@ -174,6 +174,12 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | **Total** | | **52** (5 ✅, 47 remaining) | **500-720h** | |
+
+### Completed Features (not in themes above)
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Feature 062 | ✅ | **Pending Action Notifications** — NotificationConfig on Action model, SummaryTemplateRenderer, UrgencyCalculator, EventsHubNotificationBridge enrichment with ActivityEvent persistence, PendingActionToast/PendingActionInbox UI components, GET /api/actions/pending + /count endpoints, PendingActionService HTTP client, TenantNotificationPreferenceProvider (Wallet Service), notification delivery preferences UI, notification history inbox. Unit tests for SummaryTemplateRenderer, UrgencyCalculator, TenantNotificationPreferenceProvider. |
 
 ### Release Gating
 

@@ -275,6 +275,16 @@ public static class ServiceCollectionExtensions
             return new UserPreferencesService(httpClient, logger);
         });
 
+        // Pending Action Service (062)
+        services.AddScoped<IPendingActionService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<PendingActionService>>();
+            return new PendingActionService(httpClient, logger);
+        });
+
         // Actions Hub Connection (SignalR for real-time action notifications)
         services.AddActionsHubServices(baseAddress);
 

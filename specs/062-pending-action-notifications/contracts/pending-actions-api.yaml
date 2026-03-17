@@ -1,0 +1,56 @@
+# Pending Action Notifications - API Contracts
+# Feature: 062-pending-action-notifications
+
+# Blueprint Service - New Endpoints
+
+## GET /api/actions/pending
+# Returns all pending actions for the authenticated user across all registers
+# Query params: page (int), pageSize (int), urgency (normal|warning|urgent), blueprintId (string)
+# Response: PendingActionListResponse
+#   - items: PendingActionSummary[]
+#   - totalCount: int
+#   - page: int
+#   - pageSize: int
+
+## GET /api/actions/pending/count
+# Returns count of pending actions (for badge display)
+# Response: { count: int, urgentCount: int }
+
+# Wallet Service - Modified Endpoint
+
+## NotificationDeliveryService.DeliverAsync
+# Modified to:
+# 1. Resolve user preferences from Tenant Service (replace hardcoded defaults)
+# 2. Extract NotificationConfig from blueprint action definition
+# 3. Render summary template with payload values
+# 4. Calculate urgency from deadline field
+# 5. Persist ActivityEvent to Tenant Service
+
+# Tenant Service - Existing Endpoints (no changes needed)
+
+## GET /api/preferences
+# Already returns NotificationsEnabled, NotificationMethod, NotificationFrequency
+
+## PUT /api/preferences
+# Already accepts partial updates to notification settings
+
+## GET /api/events?unreadOnly=true&severity=info
+# Already returns paginated, filtered activity events
+
+## POST /api/events/mark-read
+# Already marks events as read (specific IDs or all)
+
+## GET /api/events/unread-count
+# Already returns unread count for badge
+
+# SignalR - EventsHub (existing, wiring needed)
+
+## Server → Client Methods (existing)
+# InboundActionReceived(InboundActionNotification) - already sent by bridge, not handled by UI
+# DigestNotificationReceived(DigestNotification) - already sent by bridge, not handled by UI
+# EventReceived(ActivityEventDto) - already handled by UI
+# UnreadCountUpdated(int) - already handled by UI
+
+## Client → Server Methods (existing)
+# Subscribe() - joins user:{userId} group
+# Unsubscribe() - leaves user:{userId} group

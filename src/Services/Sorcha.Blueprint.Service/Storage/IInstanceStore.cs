@@ -83,6 +83,28 @@ public interface IInstanceStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets pending action summaries for a participant wallet address.
+    /// Returns active instances where the wallet is a participant and has pending actions.
+    /// </summary>
+    /// <param name="walletAddress">The wallet address</param>
+    /// <param name="skip">Number of items to skip</param>
+    /// <param name="take">Number of items to take</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of pending action summaries with blueprint context</returns>
+    Task<IEnumerable<PendingActionSummary>> GetPendingActionsByWalletAsync(
+        string walletAddress,
+        int skip = 0,
+        int take = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets total count of pending actions for a wallet address.
+    /// </summary>
+    Task<int> GetPendingActionCountByWalletAsync(
+        string walletAddress,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes an instance
     /// </summary>
     /// <param name="instanceId">The instance ID</param>

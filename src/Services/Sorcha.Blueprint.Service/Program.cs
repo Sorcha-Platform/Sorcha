@@ -502,6 +502,9 @@ app.MapCredentialEndpoints();
 // Map status list endpoints (GET public, POST/PUT internal)
 app.MapStatusListEndpoints();
 
+// Map pending action endpoints (Feature 062)
+app.MapActionEndpoints();
+
 // ===========================
 // Template Endpoints
 // ===========================

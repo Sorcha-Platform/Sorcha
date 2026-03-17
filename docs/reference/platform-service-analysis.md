@@ -86,6 +86,10 @@ This document provides a comprehensive analysis of every Sorcha service: test co
 | GAP-008 | Blueprint/Validator wire-format identity encoding | P2 | 8h |
 | TRUST-001 | Verifiable calculations (Validator re-executes JSON Logic) | P2 | 32h |
 
+### Feature 062: Pending Action Notifications
+
+Added pending action notification pipeline: `GET /api/actions/pending` and `GET /api/actions/pending/count` endpoints, `NotificationConfig` on the Action model, `SummaryTemplateRenderer` and `UrgencyCalculator` utilities, and `EventsHubNotificationBridge` enrichment with summary/urgency/deadline and `ActivityEvent` persistence. UI components include `PendingActionToast`, `PendingActionInbox`, and notification delivery preference settings. `TenantNotificationPreferenceProvider` (in Wallet Service) replaces the default provider with Tenant Service-backed user preferences (5-min cache).
+
 ### Production Gaps
 
 - **In-memory storage** for blueprints, templates, documents, encryption operations -- data lost on restart. Needs EF Core + PostgreSQL migration.
