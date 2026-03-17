@@ -9,6 +9,12 @@
     <Router AppAssembly="@typeof(Routes).Assembly">
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Components.Layout.MainLayout)">
+                <Authorizing>
+                    <div class="loading-container">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Authenticating...</div>
+                    </div>
+                </Authorizing>
                 <NotAuthorized>
                     @{
                         var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);

@@ -23,34 +23,40 @@
 
         try
         {
+            // First, try the legacy path: getAndClear() in case the auth provider hasn't consumed yet
             var result = await JSRuntime.InvokeAsync<FragmentTokenResult?>("sorcha.fragmentHandoff.getAndClear");
-            if (result?.Token is null)
-                return;
-
-            // Decode the JWT to get expiration
-            var jwt = JwtHandler.ReadJwtToken(result.Token);
-            var expiresIn = (int)(jwt.ValidTo - DateTime.UtcNow).TotalSeconds;
-            if (expiresIn <= 0)
-                return;
-
-            // Store the token under the active profile
-            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
-            var cacheEntry = new TokenCacheEntry
+            if (result?.Token is not null)
             {
-                AccessToken = result.Token,
-                RefreshToken = result.Refresh,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn),
-                ProfileName = profileName,
-                IssuedAt = DateTime.UtcNow
-            };
-            await TokenCache.StoreTokenAsync(profileName, cacheEntry);
+                // Auth provider hasn't consumed the token yet - process it here
+                var jwt = JwtHandler.ReadJwtToken(result.Token);
+                var expiresIn = (int)(jwt.ValidTo - DateTime.UtcNow).TotalSeconds;
+                if (expiresIn > 0)
+                {
+                    var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+                    var cacheEntry = new TokenCacheEntry
+                    {
+                        AccessToken = result.Token,
+                        RefreshToken = result.Refresh,
+                        ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn),
+                        ProfileName = profileName,
+                        IssuedAt = DateTime.UtcNow
+                    };
+                    await TokenCache.StoreTokenAsync(profileName, cacheEntry);
+                    AuthStateProvider.NotifyAuthenticationStateChanged();
+                }
 
-            // Notify Blazor auth system
-            AuthStateProvider.NotifyAuthenticationStateChanged();
+                // Navigate to return URL or dashboard
+                var destination = IsValidReturnUrl(result.ReturnUrl) ? result.ReturnUrl! : "dashboard";
+                NavigationManager.NavigateTo(destination, forceLoad: false);
+                return;
+            }
 
-            // Navigate to return URL or dashboard (validate to prevent open redirect)
-            var destination = IsValidReturnUrl(result.ReturnUrl) ? result.ReturnUrl! : "dashboard";
-            NavigationManager.NavigateTo(destination, forceLoad: false);
+            // Token was already consumed by CustomAuthenticationStateProvider - just handle return URL
+            var returnUrl = await JSRuntime.InvokeAsync<string?>("sorcha.fragmentHandoff.getReturnUrl");
+            if (IsValidReturnUrl(returnUrl))
+            {
+                NavigationManager.NavigateTo(returnUrl!, forceLoad: false);
+            }
         }
         catch (Exception ex)
         {
