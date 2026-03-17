@@ -15,6 +15,7 @@ namespace Sorcha.Blueprint.Schemas.DTOs;
 /// <param name="FileMatch">Optional file patterns this schema applies to (e.g., "package.json").</param>
 /// <param name="Versions">Optional list of available versions.</param>
 /// <param name="Content">The full JSON Schema content (populated when fetching individual schema).</param>
+/// <param name="SectorTags">Optional per-schema sector tags. When set, overrides the provider's default sector tags.</param>
 public record ExternalSchemaResult(
     string Name,
     string Description,
@@ -22,4 +23,5 @@ public record ExternalSchemaResult(
     string Provider,
     IReadOnlyList<string>? FileMatch = null,
     IReadOnlyList<string>? Versions = null,
-    JsonDocument? Content = null);
+    JsonDocument? Content = null,
+    string[]? SectorTags = null);

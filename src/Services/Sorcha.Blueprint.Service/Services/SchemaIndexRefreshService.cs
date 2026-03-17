@@ -103,7 +103,7 @@ public class SchemaIndexRefreshService : BackgroundService
                 SourceUri: entry.Url,
                 Title: entry.Name,
                 Description: entry.Description,
-                SectorTags: provider.DefaultSectorTags,
+                SectorTags: entry.SectorTags ?? provider.DefaultSectorTags,
                 SchemaVersion: "1.0.0",
                 Content: entry.Content ?? CreateMinimalSchema(entry.Name, entry.Description)
             )).ToList();

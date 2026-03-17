@@ -184,6 +184,8 @@ builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
 builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
     StaticFileSchemaProvider.CreateIfcProvider(
         sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<StaticFileSchemaProvider>>()));
+builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
+    new DppSchemaProvider(sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DppSchemaProvider>>()));
 
 // Add Schema Library services (034-schema-library)
 builder.Services.AddSingleton<Sorcha.Blueprint.Schemas.Repositories.ISchemaIndexRepository>(sp =>

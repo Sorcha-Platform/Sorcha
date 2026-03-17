@@ -84,6 +84,13 @@ public sealed record SchemaSector
         },
         new SchemaSector
         {
+            Id = "sustainability",
+            DisplayName = "Sustainability & DPP",
+            Description = "Digital product passports, circular economy, carbon footprint, and environmental compliance",
+            Icon = "Icons.Material.Filled.Recycling"
+        },
+        new SchemaSector
+        {
             Id = "general",
             DisplayName = "General Purpose",
             Description = "Cross-domain schemas for common data structures",
