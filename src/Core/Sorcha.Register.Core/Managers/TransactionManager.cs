@@ -247,10 +247,13 @@ public class TransactionManager
             throw new ArgumentException("Transaction SenderWallet is required", nameof(transaction));
         }
 
-        // Genesis/control transactions don't require user signatures at the transaction level.
+        // Genesis/system transactions don't require user signatures at the transaction level.
         // They are signed by the Validator Service system wallet and validated before storage.
+        // Scope the bypass to: legacy "system" sender OR genesis control TXs (no previous TX).
+        var isGenesisTransaction = string.IsNullOrEmpty(transaction.PrevTxId)
+            && transaction.MetaData?.TransactionType == TransactionType.Control;
         var isSystemTransaction = transaction.SenderWallet.Equals("system", StringComparison.OrdinalIgnoreCase)
-            || transaction.MetaData?.TransactionType == TransactionType.Control;
+            || isGenesisTransaction;
 
         if (!isSystemTransaction && string.IsNullOrWhiteSpace(transaction.Signature))
         {

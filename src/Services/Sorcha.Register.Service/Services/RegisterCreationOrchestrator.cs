@@ -305,11 +305,16 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             "Control record constructed successfully with {AttestationCount} verified attestations",
             controlRecord.Attestations.Count);
 
-        // Extract the owner's wallet address from the first owner attestation subject
+        // Extract the owner's wallet address from the first owner attestation subject.
         // Subject format: "did:sorcha:w:{walletAddress}"
+        const string didPrefix = "did:sorcha:w:";
         var ownerAttestation = controlRecord.Attestations
-            .FirstOrDefault(a => a.Role == RegisterRole.Owner);
-        var ownerWalletAddress = ownerAttestation?.Subject?.Replace("did:sorcha:w:", "") ?? "system";
+            .FirstOrDefault(a => a.Role == RegisterRole.Owner)
+            ?? throw new InvalidOperationException("Control record has no Owner attestation");
+        var ownerWalletAddress = ownerAttestation.Subject.StartsWith(didPrefix, StringComparison.Ordinal)
+            ? ownerAttestation.Subject[didPrefix.Length..]
+            : throw new InvalidOperationException(
+                $"Owner attestation subject '{ownerAttestation.Subject}' does not match expected DID format '{didPrefix}...'");
 
         // Create genesis transaction with control record payload (includes real PayloadHash)
         var genesisTransaction = CreateGenesisTransaction(pending.RegisterId, controlRecord, ownerWalletAddress);
