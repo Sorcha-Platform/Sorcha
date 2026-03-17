@@ -374,6 +374,45 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("OrgInvitations", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrgRecoveryConfig", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RecoveryKeyId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RecoveryPublicKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("RotatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OrgRecoveryConfig_OrganizationId");
+
+                    b.ToTable("OrgRecoveryConfigs", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.Organization", b =>
                 {
                     b.Property<Guid>("Id")

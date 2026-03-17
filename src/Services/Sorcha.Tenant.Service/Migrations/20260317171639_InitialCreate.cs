@@ -146,6 +146,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "OrgRecoveryConfigs",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RecoveryPublicKey = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    RecoveryKeyId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    CreatedBy = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    RotatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrgRecoveryConfigs", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ParticipantIdentities",
                 schema: "public",
                 columns: table => new
@@ -653,6 +671,13 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_OrgRecoveryConfig_OrganizationId",
+                schema: "public",
+                table: "OrgRecoveryConfigs",
+                column: "OrganizationId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Audit_Actor_Time",
                 schema: "public",
                 table: "ParticipantAuditEntries",
@@ -857,6 +882,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "OrgInvitations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "OrgRecoveryConfigs",
                 schema: "public");
 
             migrationBuilder.DropTable(
