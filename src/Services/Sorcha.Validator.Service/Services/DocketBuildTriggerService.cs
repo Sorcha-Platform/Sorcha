@@ -408,12 +408,16 @@ public class DocketBuildTriggerService : BackgroundService
                         ? Base64Url.EncodeToString(System.Text.Encoding.UTF8.GetBytes(t.Payload.GetRawText()))
                         : string.Empty;
 
-                    // Extract transaction type from metadata
+                    // Extract transaction type from metadata.
+                    // "Genesis" is used by RegisterCreationOrchestrator but isn't an enum member —
+                    // it maps to Control (genesis is a control record that bootstraps the register).
                     var txType = Sorcha.Register.Models.Enums.TransactionType.Action;
-                    if (t.Metadata.TryGetValue("Type", out var typeStr)
-                        && Enum.TryParse<Sorcha.Register.Models.Enums.TransactionType>(typeStr, ignoreCase: true, out var parsed))
+                    if (t.Metadata.TryGetValue("Type", out var typeStr))
                     {
-                        txType = parsed;
+                        if (typeStr.Equals("Genesis", StringComparison.OrdinalIgnoreCase))
+                            txType = Sorcha.Register.Models.Enums.TransactionType.Control;
+                        else if (Enum.TryParse<Sorcha.Register.Models.Enums.TransactionType>(typeStr, ignoreCase: true, out var parsed))
+                            txType = parsed;
                     }
 
                     return new Sorcha.Register.Models.TransactionModel
