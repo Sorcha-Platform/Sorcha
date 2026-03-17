@@ -5,6 +5,11 @@
 // After login, the server redirects to /app/#token=...&refresh=...&returnUrl=...
 // This script eagerly extracts the tokens from the fragment on load (before Blazor boots),
 // clears the URL to prevent token leakage, and stages them for the auth provider.
+//
+// The token is staged in both localStorage and window.__sorcha_fragment_token (a temporary
+// window global) because Blazor WASM's JS interop may not be able to read localStorage
+// set by inline scripts in all contexts. The window global is cleared as soon as the
+// auth provider consumes it. The exposure window is sub-second during WASM boot only.
 window.sorcha = window.sorcha || {};
 window.sorcha.fragmentHandoff = (function () {
     var _pending = null;
@@ -45,10 +50,6 @@ window.sorcha.fragmentHandoff = (function () {
             try { localStorage.removeItem('sorcha:fragment-pending'); } catch (e) {}
             return result;
         },
-        // Checks if there's a pending token without consuming it
-        hasPending: function () {
-            return _pending !== null && _pending.token !== null;
-        },
         // Returns and clears the return URL (consumed by FragmentTokenHandler after auth completes)
         getReturnUrl: function () {
             var url = _returnUrl;
@@ -59,10 +60,9 @@ window.sorcha.fragmentHandoff = (function () {
         getWindowToken: function () {
             return window.__sorcha_fragment_token || null;
         },
-        // Clears all staging locations in a single call (reduces JS interop round-trips)
-        clearAll: function () {
+        // Clears token staging locations (preserves returnUrl for FragmentTokenHandler)
+        clearTokenStaging: function () {
             _pending = null;
-            _returnUrl = null;
             window.__sorcha_fragment_token = null;
             try { localStorage.removeItem('sorcha:fragment-pending'); } catch (e) {}
         }

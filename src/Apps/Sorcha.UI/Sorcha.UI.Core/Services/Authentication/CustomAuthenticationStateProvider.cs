@@ -115,25 +115,24 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             if (string.IsNullOrEmpty(json))
                 return null;
 
-            // Clear all staging locations in a single JS interop call
-            await _jsRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearAll");
+            // Clear token staging (preserves returnUrl for FragmentTokenHandler navigation)
+            await _jsRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearTokenStaging");
 
             var result = JsonSerializer.Deserialize<FragmentTokenResult>(json, CaseInsensitiveJson);
             if (result?.Token is null)
                 return null;
 
             var jwt = _jwtHandler.ReadJwtToken(result.Token);
-            var expiresIn = (int)(jwt.ValidTo - DateTime.UtcNow).TotalSeconds;
-            if (expiresIn <= 0)
+            if (jwt.ValidTo <= DateTime.UtcNow)
                 return null;
 
             var entry = new TokenCacheEntry
             {
                 AccessToken = result.Token,
                 RefreshToken = result.Refresh,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn),
+                ExpiresAt = jwt.ValidTo,
                 ProfileName = profileName,
-                IssuedAt = DateTime.UtcNow
+                IssuedAt = jwt.IssuedAt
             };
 
             await _tokenCache.StoreTokenAsync(profileName, entry);
