@@ -18,7 +18,7 @@
         <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => IsOpen = false)" />
     </MudDrawerHeader>
 
-    <MudTabs @bind-ActivePanelIndex="_activeTab" ApplyEffectsToContainer="true" PanelClass="pa-0">
+    <MudTabs ActivePanelIndex="_activeTab" ActivePanelIndexChanged="OnTabChanged" ApplyEffectsToContainer="true" PanelClass="pa-0">
         <MudTabPanel Text="Active" Icon="@Icons.Material.Filled.Inbox" />
         <MudTabPanel Text="History" Icon="@Icons.Material.Filled.History" />
     </MudTabs>
@@ -139,6 +139,12 @@
         {
             await LoadCurrentTab();
         }
+    }
+
+    private async Task OnTabChanged(int index)
+    {
+        _activeTab = index;
+        await LoadCurrentTab();
     }
 
     private async Task LoadCurrentTab()

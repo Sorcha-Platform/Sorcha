@@ -108,7 +108,7 @@ public class SummaryTemplateRendererTests
     }
 
     [Fact]
-    public void Render_MixedResolvedAndUnresolved_ReturnsPartialRender()
+    public void Render_MixedResolvedAndUnresolved_ReturnsFallback()
     {
         var payload = Parse("""{"known": "value"}""");
         var result = SummaryTemplateRenderer.Render(
@@ -116,6 +116,7 @@ public class SummaryTemplateRendererTests
             payload,
             "fallback");
 
-        result.Should().Be("value and {{payload.unknown}}");
+        // Falls back when any tokens remain unresolved to avoid leaking raw tokens into UI
+        result.Should().Be("fallback");
     }
 }

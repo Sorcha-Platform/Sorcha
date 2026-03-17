@@ -49,5 +49,5 @@ public class PendingActionSummary
     public string? NavigationPath { get; init; }
 
     /// <summary>When the notification was created.</summary>
-    public DateTimeOffset ReceivedAt { get; init; } = DateTimeOffset.UtcNow;
+    public required DateTimeOffset ReceivedAt { get; init; }
 }

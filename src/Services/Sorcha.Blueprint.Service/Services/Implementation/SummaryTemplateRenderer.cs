@@ -36,8 +36,9 @@ public static partial class SummaryTemplateRenderer
             return resolved ?? match.Value;
         });
 
-        // If no tokens were resolved (result unchanged) and template had tokens, use fallback
-        if (result == template && TokenPattern().IsMatch(template))
+        // If any unresolved tokens remain in the result, use fallback to avoid
+        // leaking raw {{payload.field}} tokens into the UI
+        if (TokenPattern().IsMatch(result))
             return fallback;
 
         return result;
