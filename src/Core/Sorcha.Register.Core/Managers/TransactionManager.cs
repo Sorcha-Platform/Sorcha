@@ -4,6 +4,7 @@
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Core.Managers;
 
@@ -246,9 +247,10 @@ public class TransactionManager
             throw new ArgumentException("Transaction SenderWallet is required", nameof(transaction));
         }
 
-        // Genesis/system transactions (SenderWallet = "system") don't require signatures
-        // They are validated by the Validator Service before storage
-        var isSystemTransaction = transaction.SenderWallet.Equals("system", StringComparison.OrdinalIgnoreCase);
+        // Genesis/control transactions don't require user signatures at the transaction level.
+        // They are signed by the Validator Service system wallet and validated before storage.
+        var isSystemTransaction = transaction.SenderWallet.Equals("system", StringComparison.OrdinalIgnoreCase)
+            || transaction.MetaData?.TransactionType == TransactionType.Control;
 
         if (!isSystemTransaction && string.IsNullOrWhiteSpace(transaction.Signature))
         {
