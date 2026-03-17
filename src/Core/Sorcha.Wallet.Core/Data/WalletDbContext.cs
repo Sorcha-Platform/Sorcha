@@ -39,6 +39,16 @@ public class WalletDbContext : DbContext
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
 
     /// <summary>
+    /// Recovery key wraps (one per wallet per recovery path)
+    /// </summary>
+    public DbSet<RecoveryKeyWrap> RecoveryKeyWraps => Set<RecoveryKeyWrap>();
+
+    /// <summary>
+    /// Recovery audit log (immutable trail of recovery operations)
+    /// </summary>
+    public DbSet<RecoveryAuditLog> RecoveryAuditLogs => Set<RecoveryAuditLog>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -70,6 +80,8 @@ public class WalletDbContext : DbContext
         ConfigureWalletAccess(modelBuilder);
         ConfigureWalletTransaction(modelBuilder);
         ConfigureCredential(modelBuilder);
+        ConfigureRecoveryKeyWrap(modelBuilder);
+        ConfigureRecoveryAuditLog(modelBuilder);
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)
@@ -160,6 +172,13 @@ public class WalletDbContext : DbContext
 
             entity.HasIndex(e => new { e.Tenant, e.Status })
                 .HasDatabaseName("IX_Wallets_Tenant_Status");
+
+            // Recovery fields (Feature 060)
+            entity.Property(e => e.EncryptedMasterKeyBlob)
+                .HasMaxLength(16384);
+
+            entity.Property(e => e.RecoveryEnabled)
+                .HasDefaultValue(false);
 
             // Soft delete filter
             entity.HasQueryFilter(e => e.DeletedAt == null);
@@ -433,6 +452,97 @@ public class WalletDbContext : DbContext
 
             entity.HasIndex(e => e.IssuerDid)
                 .HasDatabaseName("IX_Credentials_IssuerDid");
+        });
+    }
+
+    private static void ConfigureRecoveryKeyWrap(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RecoveryKeyWrap>(entity =>
+        {
+            entity.ToTable("RecoveryKeyWraps");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.WalletAddress)
+                .IsRequired()
+                .HasColumnType("text");
+
+            entity.Property(e => e.RecoveryPath)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(e => e.EncryptedRecoveryKey)
+                .IsRequired()
+                .HasMaxLength(8192);
+
+            entity.Property(e => e.RecipientKeyId)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Algorithm)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(e => e.Wallet)
+                .WithMany(w => w.RecoveryKeyWraps)
+                .HasForeignKey(e => e.WalletAddress)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.WalletAddress)
+                .HasDatabaseName("IX_RecoveryKeyWraps_WalletAddress");
+
+            entity.HasIndex(e => e.RecipientKeyId)
+                .HasDatabaseName("IX_RecoveryKeyWraps_RecipientKeyId");
+
+            entity.HasIndex(e => new { e.WalletAddress, e.RecoveryPath })
+                .HasDatabaseName("IX_RecoveryKeyWraps_Wallet_Path");
+        });
+    }
+
+    private static void ConfigureRecoveryAuditLog(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RecoveryAuditLog>(entity =>
+        {
+            entity.ToTable("RecoveryAuditLogs");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.UserId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.TenantId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.RecoveryPath)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(e => e.InitiatedBy)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.IpAddress)
+                .HasMaxLength(45);
+
+            entity.Property(e => e.Timestamp)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.UserId)
+                .HasDatabaseName("IX_RecoveryAuditLogs_UserId");
+
+            entity.HasIndex(e => new { e.UserId, e.Timestamp })
+                .HasDatabaseName("IX_RecoveryAuditLogs_User_Timestamp");
         });
     }
 }

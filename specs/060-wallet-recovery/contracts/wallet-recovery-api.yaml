@@ -1,0 +1,118 @@
+# Wallet Recovery API Contracts
+# Feature: 060-wallet-recovery
+
+# ============================================================
+# Wallet Service — Recovery Endpoints (New)
+# ============================================================
+
+## POST /api/v1/wallets/recover/passkey
+# Initiate passkey-bound recovery for all user wallets
+# Auth: Bearer JWT (from passkey authentication)
+# Request:
+#   passkeyCredentialId: string (base64) — credential ID used for auth
+#   challengeResponse: string (base64) — signed WebAuthn assertion
+# Response: RecoveryResult
+#   walletsRecovered: int
+#   walletAddresses: string[] — all restored wallet addresses
+#   delegationsRevoked: int
+#   delegationsPendingReview: DelegationReviewItem[]
+# Errors:
+#   401 — Invalid/expired passkey assertion
+#   404 — No recovery key wraps found for this passkey
+#   409 — Recovery already in progress
+
+## POST /api/v1/wallets/recover/org
+# Initiate org-managed recovery for a user's wallets
+# Auth: Bearer JWT (org admin with Administrator role + MFA)
+# Request:
+#   userId: string — target user ID to recover
+#   orgRecoveryKeySignature: string (base64) — proof of org recovery private key possession
+#   skipDelegationRevocation: bool (default false) — admin opt-out
+# Response: RecoveryResult (same as above)
+# Errors:
+#   401 — Admin not authenticated or MFA not satisfied
+#   403 — Not org admin for user's organization
+#   404 — No org recovery config or no wallets for user
+
+## POST /api/v1/wallets/recover/delegations/preserve
+# After recovery, selectively preserve specific delegations
+# Auth: Bearer JWT (recovered user)
+# Request:
+#   walletAddress: string — wallet to modify
+#   delegationIds: Guid[] — WalletAccess IDs to restore
+# Response:
+#   preserved: int — count of delegations re-granted
+# Errors:
+#   400 — No pending delegation review
+#   404 — Wallet or delegation not found
+
+## GET /api/v1/wallets/recovery-status
+# Check recovery capabilities for the authenticated user
+# Auth: Bearer JWT
+# Response: RecoveryStatusResponse
+#   mnemonicRecoveryAvailable: bool (always true)
+#   passkeyRecoveryAvailable: bool — user has passkey with recovery wraps
+#   orgRecoveryAvailable: bool — user's org has recovery config
+#   walletsWithRecovery: int — count of wallets with EncryptedMasterKeyBlob
+#   walletsWithoutRecovery: int — wallets created before feature (mnemonic only)
+
+# ============================================================
+# Wallet Service — Wallet Creation (Modified)
+# ============================================================
+
+## POST /api/v1/wallets (existing, modified)
+# Modified to generate recovery key and wraps at creation time
+# New fields in CreateWalletResponse:
+#   recoveryEnabled: bool — whether recovery wraps were created
+#   recoveryPaths: string[] — which paths are configured (e.g., ["Passkey", "OrgManaged"])
+
+# ============================================================
+# Tenant Service — Org Recovery Config Endpoints (New)
+# ============================================================
+
+## POST /api/organizations/{orgId}/recovery-config
+# Configure organization recovery key pair
+# Auth: Bearer JWT (org admin, RequireAdministrator)
+# Request:
+#   recoveryPublicKey: string (base64) — ED25519 public key
+# Response: OrgRecoveryConfigResponse
+#   recoveryKeyId: string — stable key identifier
+#   createdAt: string (ISO 8601)
+# Errors:
+#   403 — Not org admin
+#   409 — Recovery already configured (use PUT to rotate)
+
+## GET /api/organizations/{orgId}/recovery-config
+# Get organization recovery configuration
+# Auth: Bearer JWT (org member)
+# Response: OrgRecoveryConfigResponse
+#   recoveryKeyId: string
+#   hasRecoveryKey: bool
+#   createdAt: string
+#   rotatedAt: string? (nullable)
+# Errors:
+#   404 — No recovery config
+
+## PUT /api/organizations/{orgId}/recovery-config
+# Rotate organization recovery key
+# Auth: Bearer JWT (org admin, RequireAdministrator + MFA)
+# Request:
+#   newRecoveryPublicKey: string (base64)
+#   reWrapExistingWallets: bool (default true) — re-wrap all org wallets
+# Response: RotationResult
+#   walletsReWrapped: int
+#   rotatedAt: string
+
+# ============================================================
+# Tenant Service — Passkey Public Key Retrieval (New)
+# ============================================================
+
+## GET /api/users/{userId}/passkeys/recovery-key
+# Get the primary passkey's public key for recovery key wrapping
+# Auth: Service-to-service JWT
+# Response:
+#   credentialId: string (base64)
+#   publicKeyCose: string (base64) — CBOR-encoded COSE public key
+#   algorithm: string — e.g., "ES256", "RS256"
+# Errors:
+#   404 — User has no passkey registered

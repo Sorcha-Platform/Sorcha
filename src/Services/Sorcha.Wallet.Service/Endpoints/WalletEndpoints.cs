@@ -61,6 +61,45 @@ public static class WalletEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
+        // POST /api/v1/wallets/recover/passkey - Passkey-bound recovery (Feature 060)
+        walletGroup.MapPost("/recover/passkey", RecoverViaPasskey)
+            .WithName("RecoverWalletViaPasskey")
+            .WithSummary("Recover wallets using passkey authentication")
+            .WithDescription("Recovers all wallets for the authenticated user using their FIDO2 passkey. "
+                + "Revokes all delegations by default; returns pending review items for selective preservation.")
+            .Produces<RecoveryResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // POST /api/v1/wallets/recover/org - Organization-managed recovery (Feature 060)
+        walletGroup.MapPost("/recover/org", RecoverViaOrg)
+            .WithName("RecoverWalletViaOrg")
+            .WithSummary("Recover wallets via organization admin")
+            .WithDescription("Org admin recovers all wallets for a member. Requires Administrator role. "
+                + "Delegation revocation can be skipped by the admin.")
+            .Produces<RecoveryResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // POST /api/v1/wallets/recover/delegations/preserve - Selective delegation preservation (Feature 060)
+        walletGroup.MapPost("/recover/delegations/preserve", PreserveDelegations)
+            .WithName("PreserveDelegations")
+            .WithSummary("Selectively preserve delegations after recovery")
+            .WithDescription("After recovery, re-grants specific delegations that were revoked. "
+                + "Must be called by the recovered user.")
+            .Produces<PreserveDelegationsResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // GET /api/v1/wallets/recovery-status - Check recovery capabilities (Feature 060)
+        walletGroup.MapGet("/recovery-status", GetRecoveryStatus)
+            .WithName("GetRecoveryStatus")
+            .WithSummary("Check recovery capabilities for current user")
+            .WithDescription("Returns which recovery paths are available for the authenticated user, "
+                + "and counts of wallets with/without recovery enabled.")
+            .Produces<RecoveryStatusResponse>(StatusCodes.Status200OK);
+
         // GET /api/v1/wallets - List wallets for current user
         walletGroup.MapGet("/", ListWallets)
             .WithName("ListWallets")
@@ -1437,4 +1476,183 @@ public static class WalletEndpoints
         return context.User.FindFirstValue("tenant") ?? "default";
     }
 
+    // ========================
+    // Feature 060: Recovery endpoints
+    // ========================
+
+    /// <summary>
+    /// POST /api/v1/wallets/recover/passkey — passkey-bound wallet recovery.
+    /// </summary>
+    private static async Task<IResult> RecoverViaPasskey(
+        RecoverPasskeyRequest request,
+        Services.Interfaces.IPasskeyRecoveryService recoveryService,
+        HttpContext context,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var tenantId = GetCurrentTenant(context);
+
+        if (string.IsNullOrEmpty(userId))
+            return TypedResults.Unauthorized();
+
+        try
+        {
+            var ipAddress = context.Connection.RemoteIpAddress?.ToString();
+            var result = await recoveryService.RecoverAsync(
+                userId, tenantId, request.PasskeyCredentialId, ipAddress, cancellationToken);
+
+            if (result.WalletsRecovered == 0)
+                return TypedResults.NotFound(new { error = "No recoverable wallets found for this passkey" });
+
+            return TypedResults.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Passkey recovery failed for user {UserId}", userId);
+            return TypedResults.Problem("Recovery failed", statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// POST /api/v1/wallets/recover/org — org admin wallet recovery.
+    /// </summary>
+    private static async Task<IResult> RecoverViaOrg(
+        RecoverOrgRequest request,
+        Services.Interfaces.IOrgRecoveryService recoveryService,
+        HttpContext context,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        var adminUserId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var tenantId = GetCurrentTenant(context);
+
+        if (string.IsNullOrEmpty(adminUserId))
+            return TypedResults.Unauthorized();
+
+        // Verify admin role
+        if (!context.User.IsInRole("Administrator"))
+            return TypedResults.Forbid();
+
+        try
+        {
+            var ipAddress = context.Connection.RemoteIpAddress?.ToString();
+            var result = await recoveryService.RecoverAsync(
+                adminUserId, request.UserId, tenantId,
+                request.OrgRecoveryKeySignature,
+                request.SkipDelegationRevocation,
+                ipAddress, cancellationToken);
+
+            if (result.WalletsRecovered == 0)
+                return TypedResults.NotFound(new { error = "No recoverable wallets found for target user" });
+
+            return TypedResults.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Org recovery failed for user {TargetUserId} by admin {AdminUserId}",
+                request.UserId, adminUserId);
+            return TypedResults.Problem("Recovery failed", statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// POST /api/v1/wallets/recover/delegations/preserve — selective delegation preservation.
+    /// </summary>
+    private static async Task<IResult> PreserveDelegations(
+        PreserveDelegationsRequest request,
+        Sorcha.Wallet.Core.Data.WalletDbContext dbContext,
+        Sorcha.Wallet.Core.Services.Interfaces.IDelegationService delegationService,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return TypedResults.Unauthorized();
+
+        var preserved = 0;
+        foreach (var delegationId in request.DelegationIds)
+        {
+            var delegation = await dbContext.WalletAccess.FindAsync([delegationId], cancellationToken);
+            if (delegation is null) continue;
+
+            // Verify the wallet belongs to this user
+            var wallet = await dbContext.Wallets.FindAsync([delegation.ParentWalletAddress], cancellationToken);
+            if (wallet?.Owner != userId) continue;
+
+            // Re-grant the delegation
+            await delegationService.GrantAccessAsync(
+                delegation.ParentWalletAddress,
+                delegation.Subject,
+                delegation.AccessRight,
+                userId,
+                $"Preserved during recovery (original: {delegation.Reason})",
+                delegation.ExpiresAt,
+                cancellationToken);
+            preserved++;
+        }
+
+        return TypedResults.Ok(new PreserveDelegationsResult { Preserved = preserved });
+    }
+
+    /// <summary>
+    /// GET /api/v1/wallets/recovery-status — check recovery capabilities.
+    /// </summary>
+    private static async Task<IResult> GetRecoveryStatus(
+        Sorcha.Wallet.Core.Data.WalletDbContext dbContext,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return TypedResults.Unauthorized();
+
+        var wallets = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .ToListAsync(dbContext.Wallets.Where(w => w.Owner == userId), cancellationToken);
+
+        var withRecovery = wallets.Count(w => w.RecoveryEnabled);
+
+        var hasPasskeyWrap = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .AnyAsync(dbContext.RecoveryKeyWraps
+                .Where(r => r.RecoveryPath == Sorcha.Wallet.Core.Domain.RecoveryPathType.Passkey
+                    && r.RevokedAt == null
+                    && wallets.Select(w => w.Address).Contains(r.WalletAddress)),
+                cancellationToken);
+
+        var hasOrgWrap = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .AnyAsync(dbContext.RecoveryKeyWraps
+                .Where(r => r.RecoveryPath == Sorcha.Wallet.Core.Domain.RecoveryPathType.OrgManaged
+                    && r.RevokedAt == null
+                    && wallets.Select(w => w.Address).Contains(r.WalletAddress)),
+                cancellationToken);
+
+        return TypedResults.Ok(new RecoveryStatusResponse
+        {
+            PasskeyRecoveryAvailable = hasPasskeyWrap,
+            OrgRecoveryAvailable = hasOrgWrap,
+            WalletsWithRecovery = withRecovery,
+            WalletsWithoutRecovery = wallets.Count - withRecovery
+        });
+    }
+}
+
+/// <summary>
+/// Request to selectively preserve delegations after recovery.
+/// </summary>
+public class PreserveDelegationsRequest
+{
+    /// <summary>Wallet address to modify.</summary>
+    public required string WalletAddress { get; set; }
+
+    /// <summary>WalletAccess IDs to restore.</summary>
+    public required Guid[] DelegationIds { get; set; }
+}
+
+/// <summary>
+/// Result of delegation preservation.
+/// </summary>
+public class PreserveDelegationsResult
+{
+    /// <summary>Number of delegations re-granted.</summary>
+    public int Preserved { get; set; }
 }

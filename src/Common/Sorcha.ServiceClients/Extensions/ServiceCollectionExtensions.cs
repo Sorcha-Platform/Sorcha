@@ -99,6 +99,10 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<EventServiceClient>();
         services.AddScoped<IEventServiceClient, EventServiceClient>();
 
+        // Feature 060: Passkey public key retrieval for recovery key wrapping
+        services.AddHttpClient<Passkey.PasskeyServiceClient>();
+        services.AddScoped<Passkey.IPasskeyServiceClient, Passkey.PasskeyServiceClient>();
+
         // Feature 047: Inbound transaction routing gRPC clients via GrpcClientFactory.
         // Named clients are resolved per-call via GrpcClientFactory.CreateClient<T>(name),
         // which is safe for Singleton consumers (no captive dependency).

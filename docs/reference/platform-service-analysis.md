@@ -364,6 +364,10 @@ Root cause: `IdpConfigurationService` was changed to return a default config (20
 7. Notification pipeline (gRPC inbound, Redis pub/sub, rate limiting, digest batching)
 8. EF Core + PostgreSQL persistence
 
+### Feature 060: Wallet Recovery
+
+Added passkey-based and organization-delegated wallet recovery: `RecoveryKeyWrap` and `RecoveryAuditLog` entities, `RecoveryPathType` enum, `IRecoveryKeyService`/`RecoveryKeyService` (AES-256-GCM key gen, asymmetric wrap/unwrap), `PasskeyRecoveryService`, `OrgRecoveryService` with delegation revocation, `PasskeyServiceClient` for Tenant Service integration. Wallet entity extended with `EncryptedMasterKeyBlob` and `RecoveryEnabled`. Recovery endpoints: `POST recover/passkey`, `POST recover/org`, `POST recover/delegations/preserve`, `GET recovery-status`. Automatic recovery key generation on wallet creation. 28 new unit tests. Tenant Service extended with `OrgRecoveryConfig` entity and POST/GET endpoints.
+
 ### Deferred Work
 
 | ID | Task | Priority | Effort |

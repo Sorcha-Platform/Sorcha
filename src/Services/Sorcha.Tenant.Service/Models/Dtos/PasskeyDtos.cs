@@ -116,6 +116,24 @@ public record PasskeyCredentialListResponse
 }
 
 /// <summary>
+/// Response containing a passkey's public key for recovery key wrapping (Feature 060).
+/// </summary>
+public record PasskeyRecoveryKeyResponse
+{
+    /// <summary>FIDO2 credential ID (Base64).</summary>
+    [JsonPropertyName("credential_id")]
+    public required string CredentialId { get; init; }
+
+    /// <summary>CBOR-encoded COSE public key (Base64).</summary>
+    [JsonPropertyName("public_key_cose")]
+    public required string PublicKeyCose { get; init; }
+
+    /// <summary>Algorithm identifier (e.g., "ES256").</summary>
+    [JsonPropertyName("algorithm")]
+    public required string Algorithm { get; init; }
+}
+
+/// <summary>
 /// Request to verify a passkey assertion during 2FA login.
 /// </summary>
 public record PasskeyVerifyRequest
