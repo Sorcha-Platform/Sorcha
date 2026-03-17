@@ -34,7 +34,6 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
     private readonly IHubContext<EventsHub> _hubContext;
     private readonly IBlueprintStore _blueprintStore;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly Storage.IInstanceStore _instanceStore;
     private readonly ILogger<EventsHubNotificationBridge> _logger;
     private ISubscriber? _subscriber;
 
@@ -42,14 +41,12 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         IConnectionMultiplexer redis,
         IHubContext<EventsHub> hubContext,
         IBlueprintStore blueprintStore,
-        Storage.IInstanceStore instanceStore,
         IServiceScopeFactory scopeFactory,
         ILogger<EventsHubNotificationBridge> logger)
     {
         _redis = redis;
         _hubContext = hubContext;
         _blueprintStore = blueprintStore;
-        _instanceStore = instanceStore;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -202,13 +199,18 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         var resolvedActionTitle = actionDescription ?? $"Action {actionEvent.ActionId}";
         var defaultSummary = $"{resolvedBlueprintName} — {resolvedActionTitle}";
 
-        // Resolve payload from Instance.AccumulatedData for template rendering
+        // Resolve payload from Instance.AccumulatedData for template rendering.
+        // IInstanceStore is resolved via scope factory to avoid captive dependency issues
+        // if the store implementation is ever scoped (e.g., MongoDB).
         JsonElement? payload = null;
         if (notificationConfig is not null && !string.IsNullOrEmpty(actionEvent.InstanceId))
         {
             try
             {
-                var instance = await _instanceStore.GetAsync(actionEvent.InstanceId);
+                using var scope = _scopeFactory.CreateScope();
+                var instanceStore = scope.ServiceProvider
+                    .GetRequiredService<Storage.IInstanceStore>();
+                var instance = await instanceStore.GetAsync(actionEvent.InstanceId);
                 if (instance?.AccumulatedData is { Count: > 0 })
                 {
                     // Convert AccumulatedData dictionary to JsonElement for template rendering
@@ -229,6 +231,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             : defaultSummary;
         var urgency = UrgencyCalculator.Calculate(notificationConfig, payload);
         var deadline = UrgencyCalculator.ExtractDeadline(notificationConfig, payload);
+        // TODO: Resolve GroupBy from NotificationConfig.GroupBy field path + payload (P3 feature)
         string? groupKey = null;
 
         var notification = new InboundActionNotification

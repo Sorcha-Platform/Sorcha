@@ -62,7 +62,10 @@ public sealed class TenantNotificationPreferenceProvider : INotificationPreferen
         try
         {
             // Pass userId as query parameter for service-to-service context where
-            // no user JWT is available (Wallet Service resolves preferences on behalf of users)
+            // no user JWT is available (Wallet Service resolves preferences on behalf of users).
+            // NOTE: The Tenant Service /api/preferences endpoint currently reads from the JWT.
+            // Until a service-to-service userId override is added to the Tenant Service,
+            // this will fall back to defaults gracefully (safe default: RealTime + InApp).
             var response = await _httpClient.GetAsync($"api/preferences?userId={Uri.EscapeDataString(userId)}", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
