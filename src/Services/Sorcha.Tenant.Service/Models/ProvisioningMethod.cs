@@ -34,5 +34,10 @@ public enum ProvisioningMethod
     /// <summary>
     /// Created directly by a system administrator.
     /// </summary>
-    AdminCreated
+    AdminCreated,
+
+    /// <summary>
+    /// Provisioned via FIDO2/WebAuthn passkey registration.
+    /// </summary>
+    Passkey
 }

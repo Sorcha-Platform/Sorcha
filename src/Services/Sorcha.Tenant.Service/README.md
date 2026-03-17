@@ -304,19 +304,19 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/auth/verify-passkey/options` | POST | Get passkey assertion options for 2FA verification during login |
 | `/api/auth/verify-passkey` | POST | Verify passkey assertion to complete 2FA login |
 
-### Public User Passkey API (`/api/auth/public/passkey`)
+### Public User Passkey API (`/api/auth/public/passkey`) — Anonymous, Rate-Limited
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/public/passkey/register/options` | POST | Get passkey registration options for public signup |
-| `/api/auth/public/passkey/register/verify` | POST | Complete passkey registration and issue tokens |
+| `/api/auth/public/passkey/register/options` | POST | Create PlatformUser + generate FIDO2 registration options for public signup |
+| `/api/auth/public/passkey/register/verify` | POST | Verify attestation, create UserIdentity in public org, issue JWT |
 
-### Public User Passkey Sign-in (`/api/auth/passkey`)
+### Public User Passkey Sign-in (`/api/auth/passkey`) — Anonymous, Rate-Limited
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/auth/passkey/assertion/options` | POST | Get discoverable passkey assertion options (no email needed) |
-| `/api/auth/passkey/assertion/verify` | POST | Verify passkey assertion and issue tokens |
+| `/api/auth/passkey/assertion/options` | POST | Generate discoverable passkey assertion options (optional email filter) |
+| `/api/auth/passkey/assertion/verify` | POST | Verify assertion, resolve user, issue JWT |
 
 ### Public User Social Login (`/api/auth/public/social`)
 

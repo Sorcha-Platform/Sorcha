@@ -167,6 +167,7 @@ app.MapOrganizationEndpoints();
 app.MapParticipantEndpoints();
 app.MapAuthEndpoints();
 app.MapPasskeyEndpoints();
+app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapTotpEndpoints();
