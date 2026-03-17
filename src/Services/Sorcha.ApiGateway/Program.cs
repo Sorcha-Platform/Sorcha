@@ -31,7 +31,9 @@ builder.Services.AddSingleton<HealthAggregationService>();
 // Configure Tenant Service HTTP client for URL resolution
 builder.Services.AddHttpClient("TenantService", client =>
 {
-    var tenantServiceUrl = builder.Configuration.GetValue<string>("Services:TenantService:BaseUrl") ?? "http://tenant-service";
+    var tenantServiceUrl = builder.Configuration.GetValue<string>("Services:TenantService:BaseUrl")
+        ?? builder.Configuration.GetValue<string>("Services:Tenant:Url")
+        ?? "http://tenant-service:8080";
     client.BaseAddress = new Uri(tenantServiceUrl);
 });
 
