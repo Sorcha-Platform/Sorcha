@@ -51,9 +51,9 @@ public class PendingActionService : IPendingActionService
         {
             var url = $"/api/actions/pending?page={page}&pageSize={pageSize}";
             if (!string.IsNullOrEmpty(urgency))
-                url += $"&urgency={urgency}";
+                url += $"&urgency={Uri.EscapeDataString(urgency)}";
             if (!string.IsNullOrEmpty(blueprintId))
-                url += $"&blueprintId={blueprintId}";
+                url += $"&blueprintId={Uri.EscapeDataString(blueprintId)}";
 
             var response = await _httpClient.GetFromJsonAsync<PendingActionListResponse>(url);
             return response ?? new PendingActionListResponse();

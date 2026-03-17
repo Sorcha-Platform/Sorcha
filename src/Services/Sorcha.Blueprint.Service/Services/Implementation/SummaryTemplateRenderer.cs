@@ -36,13 +36,9 @@ public static partial class SummaryTemplateRenderer
             return resolved ?? match.Value;
         });
 
-        // If the result still contains only unresolved tokens and nothing else meaningful, use fallback
-        if (string.Equals(result, template, StringComparison.Ordinal))
-        {
-            var hasAnyResolved = !TokenPattern().IsMatch(result);
-            if (!hasAnyResolved && TokenPattern().Matches(template).Count > 0)
-                return fallback;
-        }
+        // If no tokens were resolved (result unchanged) and template had tokens, use fallback
+        if (result == template && TokenPattern().IsMatch(template))
+            return fallback;
 
         return result;
     }

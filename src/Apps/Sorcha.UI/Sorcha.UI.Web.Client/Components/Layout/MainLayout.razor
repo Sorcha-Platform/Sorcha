@@ -364,9 +364,19 @@
         _activityLogOpen = !_activityLogOpen;
     }
 
-    private void TogglePendingInbox()
+    private async Task TogglePendingInbox()
     {
         _pendingInboxOpen = !_pendingInboxOpen;
+        if (_pendingInboxOpen)
+        {
+            // Reset badge when opening inbox — user is now viewing pending actions
+            _pendingActionCount = 0;
+        }
+        else
+        {
+            // Refresh count when closing inbox to get accurate server-side count
+            await RefreshPendingActionCount();
+        }
     }
 
     private void OnPendingActionReceived(Sorcha.UI.Core.Models.PendingActionNotificationDto _)

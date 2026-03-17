@@ -23,9 +23,7 @@ public static class ActionEndpoints
             HttpContext httpContext,
             IInstanceStore instanceStore,
             int page = 1,
-            int pageSize = 20,
-            string? urgency = null,
-            string? blueprintId = null) =>
+            int pageSize = 20) =>
         {
             var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
             if (string.IsNullOrEmpty(walletAddress))
@@ -51,7 +49,7 @@ public static class ActionEndpoints
         .WithName("GetPendingActions")
         .WithSummary("Get pending actions for the authenticated user")
         .WithDescription("Returns all pending actions across blueprint instances for the user's wallet address. "
-            + "Supports pagination and optional urgency/blueprint filtering.");
+            + "Supports pagination. Urgency and blueprint filtering will be added in a future iteration.");
 
         group.MapGet("/pending/count", async (
             HttpContext httpContext,
@@ -65,11 +63,13 @@ public static class ActionEndpoints
 
             var count = await instanceStore.GetPendingActionCountByWalletAsync(walletAddress);
 
+            // TODO: urgentCount requires urgency-aware query — tracked for next iteration
             return Results.Ok(new { count, urgentCount = 0 });
         })
         .WithName("GetPendingActionCount")
         .WithSummary("Get pending action count for badge display")
-        .WithDescription("Returns the count of pending actions for the authenticated user's wallet address.");
+        .WithDescription("Returns the count of pending actions for the authenticated user's wallet address. "
+            + "urgentCount is currently always 0 — urgency-aware counting will be added in a future iteration.");
 
         return routes;
     }

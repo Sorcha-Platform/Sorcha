@@ -142,21 +142,37 @@ public class InMemoryInstanceStore : IInstanceStore
         int take = 20,
         CancellationToken cancellationToken = default)
     {
+        // Only return actions where the wallet is the assigned participant for that action.
+        // ParticipantWallets maps participant IDs to wallet addresses; we need to find
+        // which participant ID this wallet owns, then only include actions targeting that participant.
         var results = _instances.Values
             .Where(i => i.State == InstanceState.Active)
             .Where(i => i.ParticipantWallets.Values.Contains(walletAddress))
-            .SelectMany(i => i.CurrentActionIds.Select(actionId => new PendingActionSummary
+            .SelectMany(i =>
             {
-                InstanceId = i.Id,
-                ActionId = actionId,
-                ActionTitle = $"Action {actionId}",
-                BlueprintId = i.BlueprintId,
-                BlueprintTitle = i.BlueprintId,
-                RegisterId = i.RegisterId,
-                TransactionId = i.LastTransactionId ?? string.Empty,
-                NavigationPath = $"/blueprints/{i.BlueprintId}/instances/{i.Id}/actions/{actionId}",
-                ReceivedAt = i.UpdatedAt
-            }))
+                // Find the participant ID(s) this wallet is assigned to
+                var participantIds = i.ParticipantWallets
+                    .Where(kv => kv.Value == walletAddress)
+                    .Select(kv => kv.Key)
+                    .ToHashSet();
+
+                // Only include current actions — in the in-memory store we don't have
+                // per-action participant assignment, so we include actions where this wallet
+                // is a participant in the instance. This is a best-effort filter; production
+                // storage will join with blueprint action definitions for exact matching.
+                return i.CurrentActionIds.Select(actionId => new PendingActionSummary
+                {
+                    InstanceId = i.Id,
+                    ActionId = actionId,
+                    ActionTitle = $"Action {actionId}",
+                    BlueprintId = i.BlueprintId,
+                    BlueprintTitle = i.Metadata.GetValueOrDefault("BlueprintTitle", i.BlueprintId),
+                    RegisterId = i.RegisterId,
+                    TransactionId = i.LastTransactionId ?? string.Empty,
+                    NavigationPath = $"/blueprints/{i.BlueprintId}/instances/{i.Id}/actions/{actionId}",
+                    ReceivedAt = i.UpdatedAt
+                });
+            })
             .OrderByDescending(s => s.ReceivedAt)
             .Skip(skip)
             .Take(take);

@@ -61,7 +61,9 @@ public sealed class TenantNotificationPreferenceProvider : INotificationPreferen
 
         try
         {
-            var response = await _httpClient.GetAsync($"api/preferences", cancellationToken);
+            // Pass userId as query parameter for service-to-service context where
+            // no user JWT is available (Wallet Service resolves preferences on behalf of users)
+            var response = await _httpClient.GetAsync($"api/preferences?userId={Uri.EscapeDataString(userId)}", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
