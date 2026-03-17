@@ -23,7 +23,10 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     private readonly IConfigurationService _configurationService;
     private readonly IJSRuntime _jsRuntime;
     private readonly JwtSecurityTokenHandler _jwtHandler = new() { MapInboundClaims = false };
-    private Task<AuthenticationState>? _pendingAuthTask;
+
+    // Caches the in-flight or completed auth state task to prevent concurrent callers
+    // from racing to consume the one-time fragment token
+    private Task<AuthenticationState>? _authStateTask;
 
     public CustomAuthenticationStateProvider(
         ITokenCache tokenCache,
@@ -38,9 +41,7 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     /// <inheritdoc />
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        // Deduplicate concurrent calls to prevent multiple callers from racing
-        // to consume the one-time fragment token
-        return _pendingAuthTask ??= GetAuthenticationStateCoreAsync();
+        return _authStateTask ??= GetAuthenticationStateCoreAsync();
     }
 
     private async Task<AuthenticationState> GetAuthenticationStateCoreAsync()
@@ -52,9 +53,6 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 
             if (entry == null || entry.IsExpired)
             {
-                // Check if there's a pending fragment token from the login redirect.
-                // The fragment-handoff.js eagerly extracts the token on load (before Blazor boots),
-                // so we can consume it here before the AuthorizeRouteView evaluates auth state.
                 entry = await TryConsumeFragmentTokenAsync(activeProfileName);
             }
 
@@ -66,7 +64,6 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             var jwtToken = _jwtHandler.ReadJwtToken(entry.AccessToken);
             var claims = jwtToken.Claims.ToList();
 
-            // Ensure we have name and role claims
             if (!claims.Any(c => c.Type == ClaimTypes.Name))
             {
                 var subClaim = claims.FirstOrDefault(c => c.Type == "sub");
@@ -83,7 +80,6 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         }
         catch (Exception)
         {
-            // Resilience: invalid or corrupt JWT returns anonymous identity rather than crashing
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
     }
@@ -93,38 +89,34 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     /// </summary>
     public void NotifyAuthenticationStateChanged()
     {
-        _pendingAuthTask = null;
+        _authStateTask = null;
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
     /// <summary>
     /// Checks for a pending fragment token from login redirect and caches it if found.
-    /// This prevents the race condition where AuthorizeRouteView fires before
-    /// FragmentTokenHandler.OnAfterRenderAsync can extract the token.
+    /// The fragment-handoff.js IIFE eagerly extracts the token on page load and stages it
+    /// in both localStorage and a window global. This method reads from those staging
+    /// locations and clears them atomically to prevent double-processing.
     /// </summary>
     private async Task<TokenCacheEntry?> TryConsumeFragmentTokenAsync(string profileName)
     {
         try
         {
-            // Check localStorage for a staged fragment token.
-            // The fragment-handoff.js IIFE stores the token here on page load (before Blazor boots)
-            // using the same localStorage.getItem pattern that BrowserTokenCache already uses.
+            // Try localStorage first (primary staging location)
             var json = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", "sorcha:fragment-pending");
 
-            // Fallback: check window global (localStorage may not be readable from WASM context)
+            // Fallback: window global (localStorage may not be readable across WASM/page contexts)
             if (string.IsNullOrEmpty(json))
             {
-                json = await _jsRuntime.InvokeAsync<string?>("eval", "window.__sorcha_fragment_token || null");
+                json = await _jsRuntime.InvokeAsync<string?>("sorcha.fragmentHandoff.getWindowToken");
             }
 
             if (string.IsNullOrEmpty(json))
                 return null;
 
-            // Clear all staging locations (localStorage, window global, and JS closure)
-            // so FragmentTokenHandler.OnAfterRenderAsync doesn't double-process the token
-            await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "sorcha:fragment-pending");
-            await _jsRuntime.InvokeVoidAsync("eval", "window.__sorcha_fragment_token = null");
-            await _jsRuntime.InvokeAsync<object?>("sorcha.fragmentHandoff.getAndClear");
+            // Clear all staging locations in a single JS interop call
+            await _jsRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearAll");
 
             var result = JsonSerializer.Deserialize<FragmentTokenResult>(json, CaseInsensitiveJson);
             if (result?.Token is null)
@@ -149,14 +141,9 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         }
         catch
         {
-            // JS interop may not be available in certain contexts; fall through gracefully
+            // JS interop may not be available in certain contexts (e.g. prerendering);
+            // fall through gracefully to allow normal auth flow
             return null;
         }
-    }
-
-    private sealed class FragmentTokenResult
-    {
-        public string? Token { get; set; }
-        public string? Refresh { get; set; }
     }
 }

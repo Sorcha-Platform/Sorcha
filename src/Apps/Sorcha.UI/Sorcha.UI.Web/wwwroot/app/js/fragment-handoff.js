@@ -37,10 +37,11 @@ window.sorcha.fragmentHandoff = (function () {
     }
 
     return {
-        // Returns the pending token and clears it
+        // Returns the pending token and clears all staging locations
         getAndClear: function () {
             var result = _pending;
             _pending = null;
+            window.__sorcha_fragment_token = null;
             try { localStorage.removeItem('sorcha:fragment-pending'); } catch (e) {}
             return result;
         },
@@ -53,6 +54,17 @@ window.sorcha.fragmentHandoff = (function () {
             var url = _returnUrl;
             _returnUrl = null;
             return url;
+        },
+        // Returns the window-global staged token (CSP-friendly alternative to eval)
+        getWindowToken: function () {
+            return window.__sorcha_fragment_token || null;
+        },
+        // Clears all staging locations in a single call (reduces JS interop round-trips)
+        clearAll: function () {
+            _pending = null;
+            _returnUrl = null;
+            window.__sorcha_fragment_token = null;
+            try { localStorage.removeItem('sorcha:fragment-pending'); } catch (e) {}
         }
     };
 })();

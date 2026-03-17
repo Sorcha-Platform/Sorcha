@@ -71,10 +71,4 @@
         return url.StartsWith('/') && !url.StartsWith("//");
     }
 
-    private sealed class FragmentTokenResult
-    {
-        public string? Token { get; set; }
-        public string? Refresh { get; set; }
-        public string? ReturnUrl { get; set; }
-    }
 }

@@ -133,7 +133,7 @@ public class FirstUserJourneyTests : DockerTestBase
         }
 
         await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-        await Page.WaitForTimeoutAsync(3000);
+        await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
 
         // Step 1: Fill in wallet name
         var walletNameInput = Page.Locator("input").GetByPlaceholder("Wallet Name");
@@ -271,6 +271,7 @@ public class FirstUserJourneyTests : DockerTestBase
 
     /// <summary>
     /// Performs a fresh login from the login page in a clean browser context.
+    /// Asserts that login succeeds on the first attempt (no token bounce).
     /// </summary>
     private async Task PerformFreshLoginAsync()
     {
@@ -284,20 +285,6 @@ public class FirstUserJourneyTests : DockerTestBase
 
         await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
         await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
-
-        // If we bounced back, retry once (backwards compatibility until fix is deployed)
-        if (IsOnLoginPage())
-        {
-            var emailInput = Page.Locator("input[type='email']").First;
-            if (await emailInput.IsVisibleAsync())
-            {
-                await emailInput.FillAsync(TestConstants.TestEmail);
-                await Page.Locator("input[type='password']").First.FillAsync(TestConstants.TestPassword);
-                await Page.Locator("button:has-text('Sign In')").First.ClickAsync();
-                await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-                await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
-            }
-        }
     }
 
     #endregion
