@@ -308,36 +308,10 @@ public class ValidatorRegistry : IValidatorRegistry
                 "Validator {ValidatorId} registered for register {RegisterId} (order: {Order})",
                 registration.ValidatorId, registerId, orderIndex);
 
-            // Create registration transaction on chain
-            string txId;
-            try
-            {
-                var regTx = new Sorcha.Register.Models.TransactionModel
-                {
-                    TxId = GenerateTransactionId(),
-                    RegisterId = registerId,
-                    TimeStamp = DateTime.UtcNow,
-                    SenderWallet = "system:validator-registry",
-                    RecipientsWallets = [],
-                    Payloads = [],
-                    PayloadCount = 0,
-                    Signature = string.Empty,
-                    MetaData = new Sorcha.Register.Models.TransactionMetaData
-                    {
-                        RegisterId = registerId,
-                        TransactionType = Sorcha.Register.Models.Enums.TransactionType.Control
-                    }
-                };
-                var submitted = await _registerClient.SubmitTransactionAsync(registerId, regTx, ct);
-                txId = submitted.TxId;
-            }
-            catch (Exception txEx)
-            {
-                _logger.LogWarning(txEx, "Failed to record validator registration on chain — registration stored in Redis only");
-                txId = GenerateTransactionId();
-            }
-
-            return ValidatorRegistrationResult.Succeeded(txId, orderIndex);
+            // Registration is stored in Redis (source of truth for active validators).
+            // On-chain audit of validator registrations is deferred until the
+            // ControlDocketProcessor can create properly signed Control transactions.
+            return ValidatorRegistrationResult.Succeeded(GenerateTransactionId(), orderIndex);
         }
         catch (Exception ex)
         {
@@ -486,36 +460,10 @@ public class ValidatorRegistry : IValidatorRegistry
                 "Validator {ValidatorId} approved for register {RegisterId} (order: {Order})",
                 request.ValidatorId, registerId, updatedValidator.OrderIndex);
 
-            // Create approval transaction on chain
-            string txId;
-            try
-            {
-                var approvalTx = new Sorcha.Register.Models.TransactionModel
-                {
-                    TxId = GenerateTransactionId(),
-                    RegisterId = registerId,
-                    TimeStamp = DateTime.UtcNow,
-                    SenderWallet = "system:validator-registry",
-                    RecipientsWallets = [],
-                    Payloads = [],
-                    PayloadCount = 0,
-                    Signature = string.Empty,
-                    MetaData = new Sorcha.Register.Models.TransactionMetaData
-                    {
-                        RegisterId = registerId,
-                        TransactionType = Sorcha.Register.Models.Enums.TransactionType.Control
-                    }
-                };
-                var submitted = await _registerClient.SubmitTransactionAsync(registerId, approvalTx, ct);
-                txId = submitted.TxId;
-            }
-            catch (Exception txEx)
-            {
-                _logger.LogWarning(txEx, "Failed to record validator approval on chain — approval stored in Redis only");
-                txId = GenerateTransactionId();
-            }
-
-            return ValidatorApprovalResult.Succeeded(txId, updatedValidator.OrderIndex ?? 0, approvedAt);
+            // Approval is stored in Redis (source of truth for active validators).
+            // On-chain audit of validator approvals is deferred until the
+            // ControlDocketProcessor can create properly signed Control transactions.
+            return ValidatorApprovalResult.Succeeded(GenerateTransactionId(), updatedValidator.OrderIndex ?? 0, approvedAt);
         }
         catch (Exception ex)
         {
