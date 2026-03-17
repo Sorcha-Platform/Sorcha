@@ -40,6 +40,7 @@ public static class WalletServiceExtensions
     {
         // Register Cryptography services (required by WalletService)
         services.AddSingleton<ICryptoModule, CryptoModule>();
+        services.AddSingleton<ISymmetricCrypto, SymmetricCrypto>();
         services.AddSingleton<IHashProvider, HashProvider>();
         services.AddSingleton<IWalletUtilities, Sorcha.Cryptography.Utilities.WalletUtilities>();
 
