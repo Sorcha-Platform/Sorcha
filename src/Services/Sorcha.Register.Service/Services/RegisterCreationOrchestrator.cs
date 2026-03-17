@@ -305,8 +305,19 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             "Control record constructed successfully with {AttestationCount} verified attestations",
             controlRecord.Attestations.Count);
 
+        // Extract the owner's wallet address from the first owner attestation subject.
+        // Subject format: "did:sorcha:w:{walletAddress}"
+        const string didPrefix = "did:sorcha:w:";
+        var ownerAttestation = controlRecord.Attestations
+            .FirstOrDefault(a => a.Role == RegisterRole.Owner)
+            ?? throw new InvalidOperationException("Control record has no Owner attestation");
+        var ownerWalletAddress = ownerAttestation.Subject.StartsWith(didPrefix, StringComparison.Ordinal)
+            ? ownerAttestation.Subject[didPrefix.Length..]
+            : throw new InvalidOperationException(
+                $"Owner attestation subject '{ownerAttestation.Subject}' does not match expected DID format '{didPrefix}...'");
+
         // Create genesis transaction with control record payload (includes real PayloadHash)
-        var genesisTransaction = CreateGenesisTransaction(pending.RegisterId, controlRecord);
+        var genesisTransaction = CreateGenesisTransaction(pending.RegisterId, controlRecord, ownerWalletAddress);
 
         _logger.LogInformation(
             "Created genesis transaction {TransactionId} for register {RegisterId}",
@@ -555,7 +566,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     /// <summary>
     /// Creates a genesis transaction with control record payload and computed PayloadHash
     /// </summary>
-    private TransactionModel CreateGenesisTransaction(string registerId, RegisterControlRecord controlRecord)
+    private TransactionModel CreateGenesisTransaction(string registerId, RegisterControlRecord controlRecord, string ownerWalletAddress)
     {
         // Serialize to canonical form, then re-canonicalize through JsonElement round-trip.
         // This ensures the hash matches what the Validator computes when it receives the payload
@@ -578,7 +589,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         {
             TxId = genesisTxId,
             RegisterId = registerId,
-            SenderWallet = "system", // System transaction
+            SenderWallet = ownerWalletAddress, // Owner who initiated register creation
             TimeStamp = controlRecord.CreatedAt.UtcDateTime,
             PrevTxId = string.Empty, // Genesis has no previous transaction
             PayloadCount = 1, // One payload containing the control record
