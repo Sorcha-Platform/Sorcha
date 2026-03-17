@@ -27,7 +27,7 @@ public class TokenRefreshServiceTests
     public TokenRefreshServiceTests()
     {
         _configService.Setup(x => x.GetActiveProfileNameAsync()).ReturnsAsync(ProfileName);
-        _authStateProvider = new CustomAuthenticationStateProvider(_tokenCache.Object, _configService.Object);
+        _authStateProvider = new CustomAuthenticationStateProvider(_tokenCache.Object, _configService.Object, _jsRuntime.Object);
     }
 
     private TokenRefreshService CreateService()

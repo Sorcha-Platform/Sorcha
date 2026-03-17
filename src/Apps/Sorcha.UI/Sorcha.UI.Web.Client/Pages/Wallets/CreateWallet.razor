@@ -265,7 +265,7 @@
         if ((_isWizard || _isFirstLogin) && walletAddress != null)
         {
             await WalletPreferences.SetDefaultWalletAsync(walletAddress);
-            Navigation.NavigateTo("/");
+            Navigation.NavigateTo("/app/dashboard");
         }
         else if (walletAddress != null)
         {
