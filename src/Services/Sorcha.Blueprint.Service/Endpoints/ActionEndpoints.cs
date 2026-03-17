@@ -28,7 +28,7 @@ public static class ActionEndpoints
             var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
             if (string.IsNullOrEmpty(walletAddress))
             {
-                return Results.BadRequest(new { error = "No wallet_address claim in token" });
+                return Results.Ok(new { items = Array.Empty<object>(), totalCount = 0, page, pageSize });
             }
 
             var skip = (page - 1) * pageSize;
@@ -58,7 +58,7 @@ public static class ActionEndpoints
             var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
             if (string.IsNullOrEmpty(walletAddress))
             {
-                return Results.BadRequest(new { error = "No wallet_address claim in token" });
+                return Results.Ok(new { count = 0, urgentCount = 0 });
             }
 
             var count = await instanceStore.GetPendingActionCountByWalletAsync(walletAddress);
