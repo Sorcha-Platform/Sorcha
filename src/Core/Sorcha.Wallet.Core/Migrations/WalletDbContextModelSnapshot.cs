@@ -123,6 +123,115 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("Credentials", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.RecoveryAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<int>("DelegationsPreserved")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DelegationsRevoked")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InitiatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<string>("RecoveryPath")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("WalletsRecovered")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_RecoveryAuditLogs_UserId");
+
+                    b.HasIndex("UserId", "Timestamp")
+                        .HasDatabaseName("IX_RecoveryAuditLogs_User_Timestamp");
+
+                    b.ToTable("RecoveryAuditLogs", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.RecoveryKeyWrap", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("EncryptedRecoveryKey")
+                        .IsRequired()
+                        .HasMaxLength(8192)
+                        .HasColumnType("character varying(8192)");
+
+                    b.Property<string>("RecipientKeyId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("RecoveryPath")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WalletAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientKeyId")
+                        .HasDatabaseName("IX_RecoveryKeyWraps_RecipientKeyId");
+
+                    b.HasIndex("WalletAddress")
+                        .HasDatabaseName("IX_RecoveryKeyWraps_WalletAddress");
+
+                    b.HasIndex("WalletAddress", "RecoveryPath")
+                        .HasDatabaseName("IX_RecoveryKeyWraps_Wallet_Path");
+
+                    b.ToTable("RecoveryKeyWraps", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.Wallet", b =>
                 {
                     b.Property<string>("Address")
@@ -145,6 +254,10 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("EncryptedMasterKeyBlob")
+                        .HasMaxLength(16384)
+                        .HasColumnType("character varying(16384)");
 
                     b.Property<string>("EncryptedPrivateKey")
                         .IsRequired()
@@ -180,6 +293,11 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<string>("PublicKey")
                         .HasMaxLength(8192)
                         .HasColumnType("character varying(8192)");
+
+                    b.Property<bool>("RecoveryEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -438,6 +556,17 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("WalletTransactions", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.RecoveryKeyWrap", b =>
+                {
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.Wallet", "Wallet")
+                        .WithMany("RecoveryKeyWraps")
+                        .HasForeignKey("WalletAddress")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.WalletAccess", b =>
                 {
                     b.HasOne("Sorcha.Wallet.Core.Domain.Entities.Wallet", "Wallet")
@@ -476,6 +605,8 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Navigation("Addresses");
 
                     b.Navigation("Delegates");
+
+                    b.Navigation("RecoveryKeyWraps");
 
                     b.Navigation("Transactions");
                 });
