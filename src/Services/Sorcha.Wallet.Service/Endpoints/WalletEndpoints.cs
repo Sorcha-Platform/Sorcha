@@ -1482,14 +1482,22 @@ public static class WalletEndpoints
 
     /// <summary>
     /// POST /api/v1/wallets/recover/passkey — passkey-bound wallet recovery.
+    /// SECURITY: WebAuthn assertion verification is not yet implemented.
+    /// This endpoint is gated behind the "WalletRecovery" feature flag.
     /// </summary>
     private static async Task<IResult> RecoverViaPasskey(
         RecoverPasskeyRequest request,
         Services.Interfaces.IPasskeyRecoveryService recoveryService,
+        IConfiguration configuration,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
+        // Feature gate: recovery endpoints are disabled until WebAuthn assertion verification is implemented
+        if (!configuration.GetValue<bool>("Features:WalletRecoveryEnabled"))
+            return TypedResults.Problem("Wallet recovery is not yet enabled. WebAuthn assertion verification pending.",
+                statusCode: StatusCodes.Status501NotImplemented);
+
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         var tenantId = GetCurrentTenant(context);
 
@@ -1516,14 +1524,22 @@ public static class WalletEndpoints
 
     /// <summary>
     /// POST /api/v1/wallets/recover/org — org admin wallet recovery.
+    /// SECURITY: Org recovery key signature verification is not yet implemented.
+    /// This endpoint is gated behind the "WalletRecovery" feature flag.
     /// </summary>
     private static async Task<IResult> RecoverViaOrg(
         RecoverOrgRequest request,
         Services.Interfaces.IOrgRecoveryService recoveryService,
+        IConfiguration configuration,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
+        // Feature gate: recovery endpoints are disabled until signature verification is implemented
+        if (!configuration.GetValue<bool>("Features:WalletRecoveryEnabled"))
+            return TypedResults.Problem("Wallet recovery is not yet enabled. Signature verification pending.",
+                statusCode: StatusCodes.Status501NotImplemented);
+
         var adminUserId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         var tenantId = GetCurrentTenant(context);
 

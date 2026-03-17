@@ -199,13 +199,14 @@ public static class OrganizationEndpoints
             .WithSummary("Configure organization recovery key pair")
             .WithDescription("Sets the organization's ED25519 recovery public key for wrapping wallet recovery keys. "
                 + "Requires Administrator role.")
+            .RequireAuthorization("RequireAdministrator")
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status409Conflict);
 
         group.MapGet("/{orgId:guid}/recovery-config", GetOrgRecoveryConfig)
             .WithName("GetOrgRecoveryConfig")
             .WithSummary("Get organization recovery configuration")
-            .WithDescription("Returns the organization's recovery key configuration status.")
+            .WithDescription("Returns the organization's recovery key configuration status. Requires org membership.")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 

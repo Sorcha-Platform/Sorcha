@@ -52,7 +52,8 @@ public class DelegationServiceTests : IDisposable
             _delegationService,
             _repository,
             eventPublisher,
-            Mock.Of<ILogger<WalletManager>>());
+            Mock.Of<ILogger<WalletManager>>(),
+            Mock.Of<IRecoveryKeyService>());
     }
 
     private void SetupCryptoMocks(Mock<ICryptoModule> mockCrypto, Mock<IWalletUtilities> mockUtilities)

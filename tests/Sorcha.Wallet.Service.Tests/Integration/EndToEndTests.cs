@@ -50,7 +50,8 @@ public class EndToEndTests : IDisposable
             delegationService,
             _repository,
             _eventPublisher,
-            Mock.Of<ILogger<WalletManager>>());
+            Mock.Of<ILogger<WalletManager>>(),
+            Mock.Of<IRecoveryKeyService>());
     }
 
     private void SetupCryptoModule()

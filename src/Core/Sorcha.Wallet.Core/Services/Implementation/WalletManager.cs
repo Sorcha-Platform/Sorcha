@@ -21,7 +21,7 @@ public class WalletManager : IWalletService
     private readonly IDelegationService _delegationService;
     private readonly IWalletRepository _repository;
     private readonly IEventPublisher _eventPublisher;
-    private readonly IRecoveryKeyService? _recoveryKeyService;
+    private readonly IRecoveryKeyService _recoveryKeyService;
     private readonly ILogger<WalletManager> _logger;
 
     /// <summary>
@@ -43,14 +43,14 @@ public class WalletManager : IWalletService
         IWalletRepository repository,
         IEventPublisher eventPublisher,
         ILogger<WalletManager> logger,
-        IRecoveryKeyService? recoveryKeyService = null)
+        IRecoveryKeyService recoveryKeyService)
     {
         _keyManagement = keyManagement ?? throw new ArgumentNullException(nameof(keyManagement));
         _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
         _delegationService = delegationService ?? throw new ArgumentNullException(nameof(delegationService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
-        _recoveryKeyService = recoveryKeyService;
+        _recoveryKeyService = recoveryKeyService ?? throw new ArgumentNullException(nameof(recoveryKeyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -115,7 +115,6 @@ public class WalletManager : IWalletService
             };
 
             // Generate recovery key and encrypt master key (Feature 060)
-            if (_recoveryKeyService is not null)
             {
                 try
                 {

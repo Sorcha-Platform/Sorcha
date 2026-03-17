@@ -39,13 +39,20 @@ public class WalletManagerTests
         _eventPublisherMock = new Mock<IEventPublisher>();
         var loggerMock = new Mock<ILogger<WalletManager>>();
 
+        var recoveryKeyServiceMock = new Mock<IRecoveryKeyService>();
+        recoveryKeyServiceMock.Setup(r => r.GenerateRecoveryKeyAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new byte[32]);
+        recoveryKeyServiceMock.Setup(r => r.EncryptMasterKeyAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("encrypted-master-key-blob");
+
         _sut = new WalletManager(
             _keyManagementMock.Object,
             _transactionServiceMock.Object,
             _delegationServiceMock.Object,
             _repositoryMock.Object,
             _eventPublisherMock.Object,
-            loggerMock.Object);
+            loggerMock.Object,
+            recoveryKeyServiceMock.Object);
     }
 
     private void SetupKeyManagementForCreate()
