@@ -21,6 +21,8 @@ public class DocketBuildTriggerService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRegisterMonitoringRegistry _registry;
     private readonly DocketBuildConfiguration _config;
+    private readonly ValidatorConfiguration _validatorConfig;
+    private readonly ISystemWalletProvider _systemWalletProvider;
     private readonly ILogger<DocketBuildTriggerService> _logger;
 
     // Track last build time per register
@@ -36,11 +38,15 @@ public class DocketBuildTriggerService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IRegisterMonitoringRegistry registry,
         IOptions<DocketBuildConfiguration> config,
+        IOptions<ValidatorConfiguration> validatorConfig,
+        ISystemWalletProvider systemWalletProvider,
         ILogger<DocketBuildTriggerService> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
+        _validatorConfig = validatorConfig?.Value ?? throw new ArgumentNullException(nameof(validatorConfig));
+        _systemWalletProvider = systemWalletProvider ?? throw new ArgumentNullException(nameof(systemWalletProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -48,6 +54,11 @@ public class DocketBuildTriggerService : BackgroundService
     {
         _logger.LogInformation("Docket build trigger service starting. Time threshold: {TimeThreshold}, Size threshold: {SizeThreshold}",
             _config.TimeThreshold, _config.SizeThreshold);
+
+        // Reconcile genesis state for registers that were created before this service started.
+        // Without this, _genesisWritten stays empty after restart and the minValidators check
+        // is never applied (isGenesisBuild stays true for existing registers).
+        await ReconcileGenesisStateAsync(stoppingToken);
 
         // Use time threshold as the check interval (or minimum of 1 second)
         var checkInterval = _config.TimeThreshold > TimeSpan.FromSeconds(1)
@@ -81,6 +92,49 @@ public class DocketBuildTriggerService : BackgroundService
         catch (OperationCanceledException)
         {
             _logger.LogInformation("Docket build trigger service stopping");
+        }
+    }
+
+    /// <summary>
+    /// On startup, checks all monitored registers and reconciles in-memory genesis state.
+    /// For registers that already have a genesis docket (height > 0), marks them in
+    /// _genesisWritten and ensures this validator is registered.
+    /// </summary>
+    private async Task ReconcileGenesisStateAsync(CancellationToken cancellationToken)
+    {
+        var activeRegisters = _registry.GetAll().ToList();
+        if (activeRegisters.Count == 0)
+            return;
+
+        _logger.LogInformation(
+            "Reconciling genesis state for {Count} monitored registers on startup",
+            activeRegisters.Count);
+
+        using var scope = _scopeFactory.CreateScope();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+        foreach (var registerId in activeRegisters)
+        {
+            try
+            {
+                var height = await registerClient.GetRegisterHeightAsync(registerId, cancellationToken);
+                if (height > 0)
+                {
+                    _genesisWritten[registerId] = true;
+                    _logger.LogDebug(
+                        "Register {RegisterId} has genesis (height={Height}), reconciled",
+                        registerId, height);
+
+                    // Ensure this validator is registered for the register
+                    await AutoRegisterValidatorAsync(scope, registerId, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to reconcile genesis state for register {RegisterId}, will detect on first build cycle",
+                    registerId);
+            }
         }
     }
 
@@ -181,7 +235,10 @@ public class DocketBuildTriggerService : BackgroundService
 
                         // Only mark genesis as written on successful write
                         if (docket.DocketNumber == 0)
+                        {
                             _genesisWritten[registerId] = true;
+                            await AutoRegisterValidatorAsync(scope, registerId, cancellationToken);
+                        }
                     }
                     catch (Exception ex) when (docket.DocketNumber == 0)
                     {
@@ -218,7 +275,10 @@ public class DocketBuildTriggerService : BackgroundService
 
                     // Only mark genesis as written on successful write
                     if (docket.DocketNumber == 0)
+                    {
                         _genesisWritten[registerId] = true;
+                        await AutoRegisterValidatorAsync(scope, registerId, cancellationToken);
+                    }
                 }
                 catch (Exception ex) when (docket.DocketNumber == 0)
                 {
@@ -265,6 +325,58 @@ public class DocketBuildTriggerService : BackgroundService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Auto-registers this validator for a register after genesis docket is written.
+    /// The genesis docket bootstraps the register, but post-genesis docket builds
+    /// require at least MinValidators active validators. Without auto-registration,
+    /// transactions would be stuck in the verified queue permanently.
+    /// </summary>
+    private async Task AutoRegisterValidatorAsync(
+        IServiceScope scope,
+        string registerId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var validatorRegistry = scope.ServiceProvider.GetRequiredService<IValidatorRegistry>();
+            var systemWalletId = _systemWalletProvider.GetSystemWalletId() ?? _validatorConfig.SystemWalletAddress;
+
+            var registration = new ValidatorRegistration
+            {
+                ValidatorId = _validatorConfig.ValidatorId,
+                PublicKey = systemWalletId,
+                GrpcEndpoint = _validatorConfig.GrpcEndpoint ?? string.Empty,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["autoRegistered"] = "true",
+                    ["registeredAt"] = DateTimeOffset.UtcNow.ToString("O")
+                }
+            };
+
+            var result = await validatorRegistry.RegisterAsync(registerId, registration, cancellationToken);
+
+            if (result.Success)
+            {
+                _logger.LogInformation(
+                    "Auto-registered validator {ValidatorId} for register {RegisterId} after genesis (order: {OrderIndex})",
+                    _validatorConfig.ValidatorId, registerId, result.OrderIndex);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Auto-registration failed for validator {ValidatorId} on register {RegisterId}: {Error}",
+                    _validatorConfig.ValidatorId, registerId, result.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to auto-register validator {ValidatorId} for register {RegisterId}. " +
+                "Manual registration via POST /api/validators/register may be required.",
+                _validatorConfig.ValidatorId, registerId);
+        }
     }
 
     /// <summary>
