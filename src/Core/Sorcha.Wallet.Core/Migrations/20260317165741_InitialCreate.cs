@@ -1,6 +1,4 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 Sorcha Contributors
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -48,6 +46,27 @@ namespace Sorcha.Wallet.Core.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "RecoveryAuditLogs",
+                schema: "wallet",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
+                    UserId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    TenantId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    RecoveryPath = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    InitiatedBy = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    WalletsRecovered = table.Column<int>(type: "integer", nullable: false),
+                    DelegationsRevoked = table.Column<int>(type: "integer", nullable: false),
+                    DelegationsPreserved = table.Column<int>(type: "integer", nullable: false),
+                    IpAddress = table.Column<string>(type: "character varying(45)", maxLength: 45, nullable: true),
+                    Timestamp = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RecoveryAuditLogs", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Wallets",
                 schema: "wallet",
                 columns: table => new
@@ -68,12 +87,40 @@ namespace Sorcha.Wallet.Core.Migrations
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
                     LastAccessedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
                     DeletedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    EncryptedMasterKeyBlob = table.Column<string>(type: "character varying(16384)", maxLength: 16384, nullable: true),
+                    RecoveryEnabled = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
                     Version = table.Column<int>(type: "integer", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "bytea", rowVersion: true, nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Wallets", x => x.Address);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "RecoveryKeyWraps",
+                schema: "wallet",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
+                    WalletAddress = table.Column<string>(type: "text", nullable: false),
+                    RecoveryPath = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    EncryptedRecoveryKey = table.Column<string>(type: "character varying(8192)", maxLength: 8192, nullable: false),
+                    RecipientKeyId = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Algorithm = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RecoveryKeyWraps", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_RecoveryKeyWraps_Wallets_WalletAddress",
+                        column: x => x.WalletAddress,
+                        principalSchema: "wallet",
+                        principalTable: "Wallets",
+                        principalColumn: "Address",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -197,6 +244,36 @@ namespace Sorcha.Wallet.Core.Migrations
                 column: "WalletAddress");
 
             migrationBuilder.CreateIndex(
+                name: "IX_RecoveryAuditLogs_User_Timestamp",
+                schema: "wallet",
+                table: "RecoveryAuditLogs",
+                columns: new[] { "UserId", "Timestamp" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RecoveryAuditLogs_UserId",
+                schema: "wallet",
+                table: "RecoveryAuditLogs",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RecoveryKeyWraps_RecipientKeyId",
+                schema: "wallet",
+                table: "RecoveryKeyWraps",
+                column: "RecipientKeyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RecoveryKeyWraps_Wallet_Path",
+                schema: "wallet",
+                table: "RecoveryKeyWraps",
+                columns: new[] { "WalletAddress", "RecoveryPath" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RecoveryKeyWraps_WalletAddress",
+                schema: "wallet",
+                table: "RecoveryKeyWraps",
+                column: "WalletAddress");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_WalletAccess_Parent_Subject",
                 schema: "wallet",
                 table: "WalletAccess",
@@ -312,6 +389,14 @@ namespace Sorcha.Wallet.Core.Migrations
         {
             migrationBuilder.DropTable(
                 name: "Credentials",
+                schema: "wallet");
+
+            migrationBuilder.DropTable(
+                name: "RecoveryAuditLogs",
+                schema: "wallet");
+
+            migrationBuilder.DropTable(
+                name: "RecoveryKeyWraps",
                 schema: "wallet");
 
             migrationBuilder.DropTable(
