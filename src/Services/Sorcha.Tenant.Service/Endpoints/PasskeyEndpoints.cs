@@ -66,6 +66,17 @@ public static class PasskeyEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Feature 060: Service-to-service endpoint for recovery key wrapping
+        app.MapGet("/api/users/{userId}/passkeys/recovery-key", GetRecoveryPublicKey)
+            .WithTags("Passkey")
+            .WithName("GetPasskeyRecoveryKey")
+            .WithSummary("Get passkey public key for recovery key wrapping")
+            .WithDescription("Returns the primary passkey's public key for the specified user. "
+                + "Used by Wallet Service for recovery key wrapping during wallet creation.")
+            .RequireAuthorization()
+            .Produces<PasskeyRecoveryKeyResponse>()
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 
@@ -216,6 +227,45 @@ public static class PasskeyEndpoints
         };
 
         return TypedResults.Ok(response);
+    }
+
+    /// <summary>
+    /// GET /api/users/{userId}/passkeys/recovery-key — get primary passkey public key for recovery wrapping.
+    /// </summary>
+    private static async Task<IResult> GetRecoveryPublicKey(
+        string userId,
+        IPasskeyService passkeyService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(userId, out var platformUserId))
+        {
+            return TypedResults.BadRequest("Invalid user ID format");
+        }
+
+        var credentials = await passkeyService.GetCredentialsByOwnerAsync(platformUserId, cancellationToken);
+        var activeCredential = credentials
+            .Where(c => c.Status == CredentialStatus.Active)
+            .OrderBy(c => c.CreatedAt) // Primary = oldest active
+            .FirstOrDefault();
+
+        if (activeCredential is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        return TypedResults.Ok(new PasskeyRecoveryKeyResponse
+        {
+            CredentialId = Convert.ToBase64String(activeCredential.CredentialId),
+            PublicKeyCose = Convert.ToBase64String(activeCredential.PublicKeyCose),
+            Algorithm = MapCoseAlgorithm(activeCredential.AaGuid)
+        });
+    }
+
+    private static string MapCoseAlgorithm(Guid aaGuid)
+    {
+        // Default to ES256 (P-256) which is the most common WebAuthn algorithm
+        return "ES256";
     }
 
     /// <summary>

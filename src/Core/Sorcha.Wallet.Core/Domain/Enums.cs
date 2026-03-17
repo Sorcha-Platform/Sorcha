@@ -50,6 +50,27 @@ public enum AccessRight
 }
 
 /// <summary>
+/// Represents the recovery path used for wallet recovery
+/// </summary>
+public enum RecoveryPathType
+{
+    /// <summary>
+    /// Existing mnemonic-based recovery (Path 1)
+    /// </summary>
+    Mnemonic,
+
+    /// <summary>
+    /// Organization-managed recovery via org admin (Path 3)
+    /// </summary>
+    OrgManaged,
+
+    /// <summary>
+    /// Passkey-bound recovery via FIDO2/WebAuthn (Path 4)
+    /// </summary>
+    Passkey
+}
+
+/// <summary>
 /// Represents the state of a wallet transaction
 /// </summary>
 public enum TransactionState

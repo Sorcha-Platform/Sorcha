@@ -34,6 +34,7 @@ public class TenantDbContext : DbContext
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
+    public DbSet<OrgRecoveryConfig> OrgRecoveryConfigs => Set<OrgRecoveryConfig>();
 
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
@@ -85,6 +86,9 @@ public class TenantDbContext : DbContext
 
         // Configure ServicePrincipal entity
         ConfigureServicePrincipal(modelBuilder);
+
+        // Configure OrgRecoveryConfig entity (Feature 060)
+        ConfigureOrgRecoveryConfig(modelBuilder);
 
         // Configure UserIdentity entity (per-org schema)
         ConfigureUserIdentity(modelBuilder);
@@ -989,6 +993,37 @@ public class TenantDbContext : DbContext
             else
                 entity.ToTable("PlatformSettings", "public");
             entity.HasKey(e => e.Id);
+        });
+    }
+
+    private void ConfigureOrgRecoveryConfig(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.IsInMemory();
+
+        modelBuilder.Entity<OrgRecoveryConfig>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("OrgRecoveryConfigs");
+            else
+                entity.ToTable("OrgRecoveryConfigs", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.RecoveryPublicKey)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.RecoveryKeyId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.CreatedBy)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.HasIndex(e => e.OrganizationId)
+                .IsUnique()
+                .HasDatabaseName("IX_OrgRecoveryConfig_OrganizationId");
         });
     }
 }

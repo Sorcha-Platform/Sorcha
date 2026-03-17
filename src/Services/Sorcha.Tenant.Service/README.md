@@ -450,6 +450,17 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | GET | `/api/platform/settings` | Get platform settings | SystemAdmin |
 | PUT | `/api/platform/settings/public-org` | Enable/disable public org | SystemAdmin |
 
+### Organization Recovery Configuration API (`/api/organizations/{orgId}/recovery-config`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/organizations/{orgId}/recovery-config` | POST | Create or update organization recovery configuration (admin) |
+| `/api/organizations/{orgId}/recovery-config` | GET | Get organization recovery configuration |
+
+**OrgRecoveryConfig entity**: Stores the organization's recovery public key and policy settings for organization-delegated wallet recovery (Feature 060). Administrators configure this to enable org-level wallet recovery for their users.
+
+The Tenant Service also exposes passkey public key data used by the Wallet Service's `PasskeyServiceClient` during passkey-based wallet recovery key wrapping.
+
 ### Internal API (`/api/internal`)
 
 | Endpoint | Method | Description |

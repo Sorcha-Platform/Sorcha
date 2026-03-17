@@ -21,6 +21,7 @@ public class WalletManager : IWalletService
     private readonly IDelegationService _delegationService;
     private readonly IWalletRepository _repository;
     private readonly IEventPublisher _eventPublisher;
+    private readonly IRecoveryKeyService _recoveryKeyService;
     private readonly ILogger<WalletManager> _logger;
 
     /// <summary>
@@ -41,13 +42,15 @@ public class WalletManager : IWalletService
         IDelegationService delegationService,
         IWalletRepository repository,
         IEventPublisher eventPublisher,
-        ILogger<WalletManager> logger)
+        ILogger<WalletManager> logger,
+        IRecoveryKeyService recoveryKeyService)
     {
         _keyManagement = keyManagement ?? throw new ArgumentNullException(nameof(keyManagement));
         _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
         _delegationService = delegationService ?? throw new ArgumentNullException(nameof(delegationService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
+        _recoveryKeyService = recoveryKeyService ?? throw new ArgumentNullException(nameof(recoveryKeyService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -110,6 +113,25 @@ public class WalletManager : IWalletService
                     ["DerivationPath"] = path.Path
                 }
             };
+
+            // Generate recovery key and encrypt master key (Feature 060)
+            {
+                try
+                {
+                    var recoveryKey = await _recoveryKeyService.GenerateRecoveryKeyAsync(cancellationToken);
+                    wallet.EncryptedMasterKeyBlob = await _recoveryKeyService.EncryptMasterKeyAsync(
+                        masterKey, recoveryKey, cancellationToken);
+                    wallet.RecoveryEnabled = true;
+
+                    _logger.LogDebug("Recovery key generated for wallet {Address}", address);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to generate recovery key for wallet {Address} — wallet created without recovery",
+                        address);
+                }
+            }
 
             // Save to repository
             await _repository.AddAsync(wallet, cancellationToken);

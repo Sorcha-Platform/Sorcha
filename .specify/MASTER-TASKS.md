@@ -179,6 +179,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | Feature | Status | Description |
 |---------|--------|-------------|
+| Feature 060 | 🚧 | **Wallet Recovery** — RecoveryKeyWrap, RecoveryAuditLog entities, RecoveryPathType enum, IRecoveryKeyService/RecoveryKeyService (AES-256-GCM key gen, asymmetric wrap/unwrap), PasskeyRecoveryService, OrgRecoveryService with delegation revocation, PasskeyServiceClient, OrgRecoveryConfig in Tenant Service with POST/GET endpoints, recovery endpoints (recover/passkey, recover/org, delegations/preserve, recovery-status), automatic recovery key generation on wallet creation, API Gateway routes for /api/organizations. 28 unit tests. |
 | Feature 062 | ✅ | **Pending Action Notifications** — NotificationConfig on Action model, SummaryTemplateRenderer, UrgencyCalculator, EventsHubNotificationBridge enrichment with ActivityEvent persistence, PendingActionToast/PendingActionInbox UI components, GET /api/actions/pending + /count endpoints, PendingActionService HTTP client, TenantNotificationPreferenceProvider (Wallet Service), notification delivery preferences UI, notification history inbox. Unit tests for SummaryTemplateRenderer, UrgencyCalculator, TenantNotificationPreferenceProvider. |
 
 ### Release Gating

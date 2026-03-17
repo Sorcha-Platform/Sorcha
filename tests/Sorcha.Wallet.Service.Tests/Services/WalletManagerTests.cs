@@ -59,7 +59,8 @@ public class WalletManagerTests : IDisposable
             delegationService,
             _repository,
             _eventPublisher,
-            Mock.Of<ILogger<WalletManager>>());
+            Mock.Of<ILogger<WalletManager>>(),
+            Mock.Of<IRecoveryKeyService>());
 
         // Setup default crypto module behavior
         SetupDefaultCryptoModule();

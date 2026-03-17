@@ -63,6 +63,9 @@ public static class WalletServiceExtensions
 
         services.AddScoped<WalletManager>();
 
+        // Feature 060: Recovery key service
+        services.AddScoped<IRecoveryKeyService, RecoveryKeyService>();
+
         // Register SD-JWT service for credential issuance
         services.AddSdJwtServices();
 

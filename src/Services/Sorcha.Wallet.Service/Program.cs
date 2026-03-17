@@ -42,6 +42,12 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
+// Feature 060: Wallet recovery services
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPasskeyRecoveryService,
+    Sorcha.Wallet.Service.Services.Implementation.PasskeyRecoveryService>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgRecoveryService,
+    Sorcha.Wallet.Service.Services.Implementation.OrgRecoveryService>();
+
 // Feature 047: Notification metrics (T047 — observability)
 builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.NotificationMetrics>();
 

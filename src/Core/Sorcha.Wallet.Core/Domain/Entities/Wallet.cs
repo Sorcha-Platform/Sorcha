@@ -103,6 +103,22 @@ public class Wallet
     public ICollection<WalletTransaction> Transactions { get; set; } = new List<WalletTransaction>();
 
     /// <summary>
+    /// Recovery key wraps for this wallet (one per enabled recovery path).
+    /// </summary>
+    public ICollection<RecoveryKeyWrap> RecoveryKeyWraps { get; set; } = new List<RecoveryKeyWrap>();
+
+    /// <summary>
+    /// Master key encrypted with recovery key (AES-256-GCM, Base64).
+    /// Null for wallets created before recovery feature.
+    /// </summary>
+    public string? EncryptedMasterKeyBlob { get; set; }
+
+    /// <summary>
+    /// Whether recovery key wraps exist for this wallet.
+    /// </summary>
+    public bool RecoveryEnabled { get; set; }
+
+    /// <summary>
     /// Schema version for migrations
     /// </summary>
     public int Version { get; set; } = 1;

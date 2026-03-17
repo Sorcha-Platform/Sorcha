@@ -193,7 +193,81 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
+        // Feature 060: Organization recovery config endpoints
+        group.MapPost("/{orgId:guid}/recovery-config", CreateOrgRecoveryConfig)
+            .WithName("CreateOrgRecoveryConfig")
+            .WithSummary("Configure organization recovery key pair")
+            .WithDescription("Sets the organization's ED25519 recovery public key for wrapping wallet recovery keys. "
+                + "Requires Administrator role.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status409Conflict);
+
+        group.MapGet("/{orgId:guid}/recovery-config", GetOrgRecoveryConfig)
+            .WithName("GetOrgRecoveryConfig")
+            .WithSummary("Get organization recovery configuration")
+            .WithDescription("Returns the organization's recovery key configuration status. Requires org membership.")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
+    }
+
+    // Feature 060: Org recovery config handlers
+
+    private static async Task<IResult> CreateOrgRecoveryConfig(
+        Guid orgId,
+        OrgRecoveryConfigRequest request,
+        TenantDbContext dbContext,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return TypedResults.Unauthorized();
+
+        // Check if config already exists
+        var existing = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .FirstOrDefaultAsync(dbContext.OrgRecoveryConfigs.Where(c => c.OrganizationId == orgId), cancellationToken);
+        if (existing is not null)
+            return TypedResults.Conflict(new { error = "Recovery config already exists. Use PUT to rotate." });
+
+        var config = new OrgRecoveryConfig
+        {
+            OrganizationId = orgId,
+            RecoveryPublicKey = request.RecoveryPublicKey,
+            RecoveryKeyId = $"org-recovery:{orgId}:{Guid.NewGuid():N}",
+            CreatedBy = userId
+        };
+
+        dbContext.OrgRecoveryConfigs.Add(config);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Created($"/api/organizations/{orgId}/recovery-config", new
+        {
+            recoveryKeyId = config.RecoveryKeyId,
+            createdAt = config.CreatedAt
+        });
+    }
+
+    private static async Task<IResult> GetOrgRecoveryConfig(
+        Guid orgId,
+        TenantDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var config = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .FirstOrDefaultAsync(dbContext.OrgRecoveryConfigs.Where(c => c.OrganizationId == orgId), cancellationToken);
+
+        if (config is null)
+            return TypedResults.NotFound();
+
+        return TypedResults.Ok(new
+        {
+            recoveryKeyId = config.RecoveryKeyId,
+            hasRecoveryKey = true,
+            createdAt = config.CreatedAt,
+            rotatedAt = config.RotatedAt
+        });
     }
 
     private static async Task<Results<Ok, NotFound>> UnlockUser(

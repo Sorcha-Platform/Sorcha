@@ -59,7 +59,8 @@ public class HybridSigningIntegrationTests
             delegationService,
             _repository,
             _eventPublisher,
-            Mock.Of<ILogger<WalletManager>>());
+            Mock.Of<ILogger<WalletManager>>(),
+            Mock.Of<IRecoveryKeyService>());
     }
 
     [Fact]
