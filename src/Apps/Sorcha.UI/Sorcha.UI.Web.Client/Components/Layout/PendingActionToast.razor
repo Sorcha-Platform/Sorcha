@@ -1,0 +1,65 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@implements IDisposable
+@inject EventsHubConnection EventsHub
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Services
+@using MudBlazor
+
+@code {
+    private readonly Queue<PendingActionNotificationDto> _queue = new();
+    private bool _processing;
+
+    /// <inheritdoc />
+    protected override void OnInitialized()
+    {
+        EventsHub.OnPendingActionReceived += HandlePendingAction;
+    }
+
+    private void HandlePendingAction(PendingActionNotificationDto dto)
+    {
+        InvokeAsync(async () =>
+        {
+            _queue.Enqueue(dto);
+            if (_processing) return;
+            _processing = true;
+
+            while (_queue.Count > 0)
+            {
+                var notification = _queue.Dequeue();
+                ShowToast(notification);
+                if (_queue.Count > 0)
+                    await Task.Delay(300); // Brief delay between queued toasts
+            }
+
+            _processing = false;
+        });
+    }
+
+    private void ShowToast(PendingActionNotificationDto dto)
+    {
+        var severity = dto.Urgency switch
+        {
+            "urgent" => Severity.Error,
+            "warning" => Severity.Warning,
+            _ => Severity.Info
+        };
+
+        var message = $"{dto.SenderDisplayName} — {dto.ActionTitle}: {dto.Summary}";
+
+        Snackbar.Add(message, severity, config =>
+        {
+            config.VisibleStateDuration = dto.Urgency == "urgent" ? 10000 : 5000;
+            config.ShowCloseIcon = true;
+        });
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        EventsHub.OnPendingActionReceived -= HandlePendingAction;
+    }
+}

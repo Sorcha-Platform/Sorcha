@@ -4,9 +4,12 @@
 @page "/settings/notifications"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
+@using Sorcha.UI.Core.Models
 @using Sorcha.UI.Core.Models.Admin
+@using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Admin
 @inject IPushNotificationService PushService
+@inject IUserPreferencesService PreferencesService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 
@@ -19,7 +22,7 @@
         Notification Settings
     </MudText>
     <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
-        Manage your push notification preferences
+        Manage your notification delivery preferences
     </MudText>
 
     @if (_isLoading)
@@ -31,7 +34,30 @@
     }
     else
     {
+        <MudPaper Elevation="2" Class="pa-6 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-3">Delivery Preferences</MudText>
+            <MudStack Spacing="3">
+                <MudSwitch T="bool"
+                           Label="Enable Notifications"
+                           Color="Color.Primary"
+                           Value="_notificationsEnabled"
+                           ValueChanged="OnNotificationsEnabledChanged" />
+
+                <MudSelect T="string"
+                           Label="Delivery Mode"
+                           Value="_notificationFrequency"
+                           ValueChanged="OnFrequencyChanged"
+                           Variant="Variant.Outlined"
+                           Disabled="@(!_notificationsEnabled)">
+                    <MudSelectItem T="string" Value="@("RealTime")">Real-time</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("HourlyDigest")">Hourly Digest</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("DailyDigest")">Daily Digest</MudSelectItem>
+                </MudSelect>
+            </MudStack>
+        </MudPaper>
+
         <MudPaper Elevation="2" Class="pa-6">
+            <MudText Typo="Typo.h6" Class="mb-3">Push Notifications</MudText>
             <MudStack Spacing="4">
                 <MudSwitch T="bool"
                            Label="Enable Push Notifications"
@@ -70,6 +96,8 @@
     private bool _isEnabled;
     private bool _isLoading = true;
     private bool _permissionDenied;
+    private bool _notificationsEnabled = true;
+    private string _notificationFrequency = "RealTime";
 
     private readonly List<BreadcrumbItem> _breadcrumbs =
     [
@@ -87,8 +115,14 @@
         _isLoading = true;
         try
         {
-            var status = await PushService.GetStatusAsync();
-            _isEnabled = status.HasActiveSubscription;
+            var statusTask = PushService.GetStatusAsync();
+            var prefsTask = PreferencesService.GetUserPreferencesAsync();
+            await Task.WhenAll(statusTask, prefsTask);
+
+            _isEnabled = statusTask.Result.HasActiveSubscription;
+            var prefs = prefsTask.Result;
+            _notificationsEnabled = prefs.NotificationsEnabled;
+            _notificationFrequency = prefs.NotificationFrequency;
         }
         catch (Exception)
         {
@@ -97,6 +131,35 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task OnNotificationsEnabledChanged(bool value)
+    {
+        _notificationsEnabled = value;
+        await SaveDeliveryPreferences();
+    }
+
+    private async Task OnFrequencyChanged(string value)
+    {
+        _notificationFrequency = value;
+        await SaveDeliveryPreferences();
+    }
+
+    private async Task SaveDeliveryPreferences()
+    {
+        try
+        {
+            await PreferencesService.UpdateUserPreferencesAsync(new UpdateUserPreferencesRequest
+            {
+                NotificationsEnabled = _notificationsEnabled,
+                NotificationFrequency = _notificationFrequency
+            });
+            Snackbar.Add("Notification preferences saved", Severity.Success);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to save preferences", Severity.Error);
         }
     }
 

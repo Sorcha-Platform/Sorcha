@@ -35,8 +35,10 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IAddressReg
     Sorcha.Wallet.Service.Services.Implementation.AddressRegistrationService>();
 builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.INotificationRateLimiter,
     Sorcha.Wallet.Service.Services.Implementation.NotificationRateLimiter>();
-builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Interfaces.INotificationPreferenceProvider,
-    Sorcha.Wallet.Service.Services.Implementation.DefaultNotificationPreferenceProvider>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<Sorcha.Wallet.Service.Services.Implementation.TenantNotificationPreferenceProvider>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationPreferenceProvider,
+    Sorcha.Wallet.Service.Services.Implementation.TenantNotificationPreferenceProvider>();
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 

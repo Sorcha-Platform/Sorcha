@@ -12,6 +12,7 @@
 @inject IJSRuntime JSRuntime
 @inject EventsHubConnection EventsHub
 @inject ILocalizationService Loc
+@inject IPendingActionService PendingActionService
 
 <MudThemeProvider Theme="_theme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -27,6 +28,12 @@
         <AuthorizeView>
             <Authorized>
                 <OrgSwitcher />
+                <MudIconButton Icon="@Icons.Material.Filled.Inbox" Color="Color.Inherit" OnClick="@TogglePendingInbox" Title="Pending Actions">
+                    @if (_pendingActionCount > 0)
+                    {
+                        <MudBadge Content="@_pendingActionCount" Color="Color.Warning" Overlap="true" />
+                    }
+                </MudIconButton>
                 <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" OnClick="@ToggleActivityLog" Title="Activity Log">
                     @if (_unreadCount > 0)
                     {
@@ -240,6 +247,8 @@
     <StatusFooter />
     <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
     <OperationNotificationListener />
+    <PendingActionToast />
+    <PendingActionInbox @bind-IsOpen="_pendingInboxOpen" />
 </MudLayout>
 
 </CascadingAuthenticationState>
@@ -248,7 +257,9 @@
     private bool _drawerOpen = true;
     private bool _tokenRefreshStarted;
     private bool _activityLogOpen;
+    private bool _pendingInboxOpen;
     private int _unreadCount;
+    private int _pendingActionCount;
     private bool _isDarkMode;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -267,9 +278,11 @@
             await Loc.InitializeAsync();
 
             EventsHub.OnUnreadCountUpdated += OnUnreadCountUpdated;
+            EventsHub.OnPendingActionReceived += OnPendingActionReceived;
             try
             {
                 await EventsHub.ConnectAsync();
+                await RefreshPendingActionCount();
             }
             catch (Exception)
             {
@@ -285,6 +298,7 @@
         ThemeService.OnThemeChanged -= OnThemeChanged;
         Loc.OnLanguageChanged -= OnLanguageChanged;
         EventsHub.OnUnreadCountUpdated -= OnUnreadCountUpdated;
+        EventsHub.OnPendingActionReceived -= OnPendingActionReceived;
         await EventsHub.DisconnectAsync();
         await TokenRefreshService.StopAsync();
     }
@@ -348,6 +362,31 @@
     private void ToggleActivityLog()
     {
         _activityLogOpen = !_activityLogOpen;
+    }
+
+    private void TogglePendingInbox()
+    {
+        _pendingInboxOpen = !_pendingInboxOpen;
+    }
+
+    private void OnPendingActionReceived(Sorcha.UI.Core.Models.PendingActionNotificationDto _)
+    {
+        _pendingActionCount++;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshPendingActionCount()
+    {
+        try
+        {
+            var response = await PendingActionService.GetPendingActionCountAsync();
+            _pendingActionCount = response.Count;
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+            // Non-critical UI element
+        }
     }
 
     private async Task RefreshUnreadCount()

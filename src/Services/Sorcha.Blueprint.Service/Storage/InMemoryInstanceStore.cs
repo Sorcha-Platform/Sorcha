@@ -136,6 +136,48 @@ public class InMemoryInstanceStore : IInstanceStore
     }
 
     /// <inheritdoc/>
+    public Task<IEnumerable<PendingActionSummary>> GetPendingActionsByWalletAsync(
+        string walletAddress,
+        int skip = 0,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var results = _instances.Values
+            .Where(i => i.State == InstanceState.Active)
+            .Where(i => i.ParticipantWallets.Values.Contains(walletAddress))
+            .SelectMany(i => i.CurrentActionIds.Select(actionId => new PendingActionSummary
+            {
+                InstanceId = i.Id,
+                ActionId = actionId,
+                ActionTitle = $"Action {actionId}",
+                BlueprintId = i.BlueprintId,
+                BlueprintTitle = i.BlueprintId,
+                RegisterId = i.RegisterId,
+                TransactionId = i.LastTransactionId ?? string.Empty,
+                NavigationPath = $"/blueprints/{i.BlueprintId}/instances/{i.Id}/actions/{actionId}",
+                ReceivedAt = i.UpdatedAt
+            }))
+            .OrderByDescending(s => s.ReceivedAt)
+            .Skip(skip)
+            .Take(take);
+
+        return Task.FromResult(results);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> GetPendingActionCountByWalletAsync(
+        string walletAddress,
+        CancellationToken cancellationToken = default)
+    {
+        var count = _instances.Values
+            .Where(i => i.State == InstanceState.Active)
+            .Where(i => i.ParticipantWallets.Values.Contains(walletAddress))
+            .Sum(i => i.CurrentActionIds.Count);
+
+        return Task.FromResult(count);
+    }
+
+    /// <inheritdoc/>
     public Task<bool> DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_instances.TryRemove(instanceId, out _));

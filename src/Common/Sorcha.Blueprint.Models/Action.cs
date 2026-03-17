@@ -213,4 +213,12 @@ public class Action
     [JsonPropertyName("credentialIssuanceConfig")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CredentialIssuanceConfig? CredentialIssuanceConfig { get; set; }
+
+    /// <summary>
+    /// Optional per-action notification configuration.
+    /// Controls how notifications appear when this action becomes pending for a participant.
+    /// </summary>
+    [JsonPropertyName("notification")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public NotificationConfig? Notification { get; set; }
 }

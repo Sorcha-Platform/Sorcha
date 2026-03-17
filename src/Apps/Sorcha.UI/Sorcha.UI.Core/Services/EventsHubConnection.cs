@@ -50,9 +50,24 @@ public class EventsHubConnection : IAsyncDisposable
     public event Action<EncryptionOperationCompletedDto>? OnEncryptionOperationCompleted;
 
     /// <summary>
+    /// Event raised when a pending action notification is received (real-time).
+    /// </summary>
+    public event Action<PendingActionNotificationDto>? OnPendingActionReceived;
+
+    /// <summary>
+    /// Event raised when a digest notification is received.
+    /// </summary>
+    public event Action<string>? OnDigestReceived;
+
+    /// <summary>
     /// Event raised when connection state changes.
     /// </summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
+
+    /// <summary>
+    /// Event raised after reconnection, allowing listeners to catch up on missed events.
+    /// </summary>
+    public event Action? OnReconnected;
 
     /// <summary>
     /// Current connection state.
@@ -133,6 +148,9 @@ public class EventsHubConnection : IAsyncDisposable
 
                 // Re-subscribe to personal events after reconnection
                 await SubscribeAsync();
+
+                // Notify listeners that reconnection happened so they can catch up on missed events
+                OnReconnected?.Invoke();
             };
 
             _hubConnection.Closed += error =>
@@ -238,6 +256,25 @@ public class EventsHubConnection : IAsyncDisposable
                 dto.IsSuccess);
 
             OnEncryptionOperationCompleted?.Invoke(dto);
+        });
+
+        // InboundActionReceived - pending action notification from EventsHubNotificationBridge
+        _hubConnection.On<PendingActionNotificationDto>("InboundActionReceived", dto =>
+        {
+            _logger.LogDebug(
+                "Pending action received: EventId={EventId}, Summary={Summary}, Urgency={Urgency}",
+                dto.EventId,
+                dto.Summary,
+                dto.Urgency);
+
+            OnPendingActionReceived?.Invoke(dto);
+        });
+
+        // DigestNotificationReceived - batched digest notification
+        _hubConnection.On<string>("DigestNotificationReceived", json =>
+        {
+            _logger.LogDebug("Digest notification received");
+            OnDigestReceived?.Invoke(json);
         });
     }
 
