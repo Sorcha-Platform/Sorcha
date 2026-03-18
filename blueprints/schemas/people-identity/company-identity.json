@@ -1,0 +1,65 @@
+{
+  "identifier": "company-identity",
+  "title": "Company Identity",
+  "description": "UK company registration details including Companies House number and VAT registration",
+  "version": "1.0.0",
+  "category": "people-identity",
+  "tags": ["company", "identity", "registration", "vat", "business", "uk"],
+  "keywords": ["company", "registration", "vat", "sic code", "companies house", "business"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "companyName": {
+        "type": "string",
+        "title": "Company Name",
+        "description": "Registered company name",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "registrationNumber": {
+        "type": "string",
+        "title": "Registration Number",
+        "description": "Companies House registration number (8 digits)",
+        "pattern": "^[0-9]{8}$"
+      },
+      "vatNumber": {
+        "type": "string",
+        "title": "VAT Number",
+        "description": "UK VAT registration number (e.g., GB123456789)",
+        "pattern": "^GB\\d{9}$"
+      },
+      "sicCode": {
+        "type": "string",
+        "title": "SIC Code",
+        "description": "Standard Industrial Classification code",
+        "maxLength": 10
+      },
+      "registeredAddress": {
+        "type": "string",
+        "title": "Registered Address",
+        "description": "Registered office address",
+        "maxLength": 500
+      }
+    },
+    "required": ["companyName", "registrationNumber"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "companyName", "title": "Company Name" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "registrationNumber", "title": "Registration Number" },
+          { "type": "TextLine", "scope": "vatNumber", "title": "VAT Number" }
+        ]
+      },
+      { "type": "TextLine", "scope": "sicCode", "title": "SIC Code" },
+      { "type": "TextLine", "scope": "registeredAddress", "title": "Registered Address" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": ["registrationNumber"],
+    "recommendation": "Company registration number is publicly available via Companies House but should be treated with care in cross-border workflows. VAT number may be shared for invoicing purposes."
+  }
+}

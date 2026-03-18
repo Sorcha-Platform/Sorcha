@@ -1,0 +1,66 @@
+{
+  "identifier": "uk-address",
+  "title": "UK Address",
+  "description": "Standard UK postal address with Royal Mail postcode validation",
+  "version": "1.0.0",
+  "category": "people-identity",
+  "tags": ["address", "uk", "postal", "location", "geography"],
+  "keywords": ["address", "postcode", "street", "city", "county", "uk"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "addressLine1": {
+        "type": "string",
+        "title": "Address Line 1",
+        "description": "Building number and street name",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "addressLine2": {
+        "type": "string",
+        "title": "Address Line 2",
+        "description": "Additional address details (flat, suite, etc.)",
+        "maxLength": 100
+      },
+      "city": {
+        "type": "string",
+        "title": "City / Town",
+        "description": "City or town name",
+        "minLength": 1,
+        "maxLength": 50
+      },
+      "county": {
+        "type": "string",
+        "title": "County",
+        "description": "County or region",
+        "maxLength": 50
+      },
+      "postcode": {
+        "type": "string",
+        "title": "Postcode",
+        "description": "UK postcode (e.g., SW1A 1AA)",
+        "pattern": "^[A-Z]{1,2}\\d[A-Z\\d]?\\s?\\d[A-Z]{2}$"
+      }
+    },
+    "required": ["addressLine1", "city", "postcode"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "addressLine1", "title": "Address Line 1" },
+      { "type": "TextLine", "scope": "addressLine2", "title": "Address Line 2" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "city", "title": "City / Town" },
+          { "type": "TextLine", "scope": "county", "title": "County" }
+        ]
+      },
+      { "type": "TextLine", "scope": "postcode", "title": "Postcode" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Full address is generally needed by all recipients in the workflow. Consider restricting to postcode only for summary views or when full address is not operationally required."
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "identifier": "patient-reference",
+  "title": "Patient Reference",
+  "description": "NHS patient identification with NHS number, name, and date of birth for clinical workflows",
+  "version": "1.0.0",
+  "category": "healthcare",
+  "tags": ["patient", "nhs", "healthcare", "clinical", "identity"],
+  "keywords": ["patient", "nhs number", "name", "date of birth", "healthcare", "clinical"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "nhsNumber": {
+        "type": "string",
+        "title": "NHS Number",
+        "description": "10-digit NHS number",
+        "pattern": "^[0-9]{10}$"
+      },
+      "patientName": {
+        "type": "string",
+        "title": "Patient Name",
+        "description": "Full name of the patient",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "dateOfBirth": {
+        "type": "string",
+        "title": "Date of Birth",
+        "description": "Patient date of birth",
+        "format": "date"
+      }
+    },
+    "required": ["nhsNumber", "patientName", "dateOfBirth"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "nhsNumber", "title": "NHS Number" },
+      { "type": "TextLine", "scope": "patientName", "title": "Patient Name" },
+      { "type": "TextLine", "scope": "dateOfBirth", "title": "Date of Birth" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": ["nhsNumber", "dateOfBirth"],
+    "recommendation": "Patient identifiable data. Only disclose to healthcare professionals directly involved in care. NHS number should never be disclosed to non-clinical participants."
+  }
+}

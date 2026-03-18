@@ -1,0 +1,79 @@
+{
+  "identifier": "international-address",
+  "title": "International Address",
+  "description": "International postal address with ISO 3166-1 country code support for cross-border workflows",
+  "version": "1.0.0",
+  "category": "people-identity",
+  "tags": ["address", "international", "postal", "location", "geography", "global"],
+  "keywords": ["address", "city", "country", "postal code", "international", "state"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "addressLine1": {
+        "type": "string",
+        "title": "Address Line 1",
+        "description": "Primary street address",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "addressLine2": {
+        "type": "string",
+        "title": "Address Line 2",
+        "description": "Additional address details (apartment, suite, floor, etc.)",
+        "maxLength": 200
+      },
+      "city": {
+        "type": "string",
+        "title": "City",
+        "description": "City or town name",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "stateProvince": {
+        "type": "string",
+        "title": "State / Province",
+        "description": "State, province, or region",
+        "maxLength": 100
+      },
+      "postalCode": {
+        "type": "string",
+        "title": "Postal Code",
+        "description": "Postal or ZIP code",
+        "minLength": 1,
+        "maxLength": 20
+      },
+      "country": {
+        "type": "string",
+        "title": "Country",
+        "description": "Country code (ISO 3166-1 alpha-2)",
+        "enum": ["GB", "US", "CA", "AU", "NZ", "IE", "DE", "FR", "ES", "IT", "NL", "BE", "CH", "AT", "SE", "NO", "DK", "FI", "PT", "JP", "SG", "HK", "AE", "ZA", "IN", "BR", "MX"]
+      }
+    },
+    "required": ["addressLine1", "city", "postalCode", "country"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "addressLine1", "title": "Address Line 1" },
+      { "type": "TextLine", "scope": "addressLine2", "title": "Address Line 2" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "city", "title": "City" },
+          { "type": "TextLine", "scope": "stateProvince", "title": "State / Province" }
+        ]
+      },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "postalCode", "title": "Postal Code" },
+          { "type": "Dropdown", "scope": "country", "title": "Country" }
+        ]
+      }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Full address is generally needed by all recipients in the workflow. Consider restricting to country and postal code only for summary views."
+  }
+}

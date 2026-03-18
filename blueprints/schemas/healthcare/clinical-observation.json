@@ -1,0 +1,72 @@
+{
+  "identifier": "clinical-observation",
+  "title": "Clinical Observation",
+  "description": "Structured clinical observation recording type, value, units, timestamp, and practitioner details",
+  "version": "1.0.0",
+  "category": "healthcare",
+  "tags": ["clinical", "observation", "healthcare", "medical", "practitioner"],
+  "keywords": ["clinical", "observation", "value", "units", "practitioner", "medical"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "observationType": {
+        "type": "string",
+        "title": "Observation Type",
+        "description": "Type of clinical observation (e.g., blood pressure, temperature, heart rate)",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "value": {
+        "type": "string",
+        "title": "Value",
+        "description": "Observed value or reading",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "units": {
+        "type": "string",
+        "title": "Units",
+        "description": "Unit of measurement (e.g., mmHg, bpm, celsius)",
+        "maxLength": 50
+      },
+      "observationDate": {
+        "type": "string",
+        "title": "Observation Date",
+        "description": "Date and time the observation was recorded",
+        "format": "date-time"
+      },
+      "practitioner": {
+        "type": "string",
+        "title": "Practitioner",
+        "description": "Name or identifier of the recording practitioner",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "required": ["observationType", "value", "observationDate", "practitioner"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "observationType", "title": "Observation Type" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "value", "title": "Value" },
+          { "type": "TextLine", "scope": "units", "title": "Units" }
+        ]
+      },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "observationDate", "title": "Observation Date" },
+          { "type": "TextLine", "scope": "practitioner", "title": "Practitioner" }
+        ]
+      }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Clinical observations contain patient health data. Only disclose to healthcare professionals with a direct care relationship. Restrict from administrative and non-clinical participants."
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "identifier": "invoice-line-item",
+  "title": "Invoice Line Item",
+  "description": "Individual invoice line item with quantity, unit price, VAT rate, and calculated total",
+  "version": "1.0.0",
+  "category": "financial",
+  "tags": ["invoice", "line-item", "billing", "vat", "finance"],
+  "keywords": ["invoice", "line item", "quantity", "unit price", "vat", "billing"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "description": {
+        "type": "string",
+        "title": "Description",
+        "description": "Description of the goods or services",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "quantity": {
+        "type": "integer",
+        "title": "Quantity",
+        "description": "Number of units",
+        "minimum": 1
+      },
+      "unitPrice": {
+        "type": "number",
+        "title": "Unit Price",
+        "description": "Price per unit",
+        "minimum": 0
+      },
+      "vatRate": {
+        "type": "number",
+        "title": "VAT Rate (%)",
+        "description": "VAT rate as a percentage (e.g., 20 for 20%)",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "lineTotal": {
+        "type": "number",
+        "title": "Line Total",
+        "description": "Total amount for this line item",
+        "minimum": 0
+      }
+    },
+    "required": ["description", "quantity", "unitPrice"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "description", "title": "Description" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "Number", "scope": "quantity", "title": "Quantity" },
+          { "type": "Number", "scope": "unitPrice", "title": "Unit Price" }
+        ]
+      },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "Number", "scope": "vatRate", "title": "VAT Rate (%)" },
+          { "type": "Number", "scope": "lineTotal", "title": "Line Total" }
+        ]
+      }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Invoice line items are typically shared between buyer, seller, and finance teams. Line-level detail may be restricted for summary-only participants."
+  }
+}

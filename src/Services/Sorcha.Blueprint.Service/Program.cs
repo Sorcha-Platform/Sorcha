@@ -203,8 +203,21 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Sorcha.Blueprint.S
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Interfaces.ISectorFilterService,
     Sorcha.Blueprint.Service.Services.SectorFilterService>();
 
+// Register MongoDB schema repository for persistent schema storage (063 AI Builder)
+builder.Services.Configure<Sorcha.Blueprint.Schemas.Repositories.MongoSchemaStorageConfiguration>(options =>
+{
+    options.ConnectionString = builder.Configuration.GetConnectionString("mongodb") ?? "mongodb://localhost:27017";
+    options.DatabaseName = "sorcha-blueprints";
+    options.CollectionName = "schemas";
+});
+builder.Services.AddScoped<Sorcha.Blueprint.Schemas.Repositories.ISchemaRepository,
+    Sorcha.Blueprint.Schemas.Repositories.MongoSchemaRepository>();
+
 // Seed blueprint templates from JSON files on startup (059 US5)
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeedService>();
+
+// Seed standardised data schemas from JSON files on startup (063 AI Builder)
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.SchemaSeedService>();
 
 // Add Status List Manager (039-verifiable-presentations)
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,

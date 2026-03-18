@@ -1,0 +1,57 @@
+{
+  "identifier": "payment-details",
+  "title": "Payment Details",
+  "description": "Payment amount, currency, and reference for financial transactions within workflows",
+  "version": "1.0.0",
+  "category": "financial",
+  "tags": ["payment", "amount", "currency", "finance", "transaction"],
+  "keywords": ["payment", "amount", "currency", "reference", "date", "money"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "amount": {
+        "type": "number",
+        "title": "Amount",
+        "description": "Payment amount",
+        "minimum": 0
+      },
+      "currency": {
+        "type": "string",
+        "title": "Currency",
+        "description": "Payment currency (ISO 4217)",
+        "enum": ["GBP", "USD", "EUR", "CHF", "JPY", "CAD", "AUD"]
+      },
+      "reference": {
+        "type": "string",
+        "title": "Payment Reference",
+        "description": "Payment reference or description",
+        "maxLength": 50
+      },
+      "paymentDate": {
+        "type": "string",
+        "title": "Payment Date",
+        "description": "Date of payment in ISO 8601 format",
+        "format": "date"
+      }
+    },
+    "required": ["amount", "currency"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "Number", "scope": "amount", "title": "Amount" },
+          { "type": "Dropdown", "scope": "currency", "title": "Currency" }
+        ]
+      },
+      { "type": "TextLine", "scope": "reference", "title": "Payment Reference" },
+      { "type": "TextLine", "scope": "paymentDate", "title": "Payment Date" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Payment details are typically shared with payer, payee, and finance teams. Restrict to summary amounts only for audit or oversight participants."
+  }
+}

@@ -7,9 +7,11 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Blueprint.Fluent;
+using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Blueprint.Service.Templates;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
 namespace Sorcha.Blueprint.Service.Tests.Services;
@@ -23,6 +25,8 @@ public class ChatOrchestrationServiceTests
     private readonly Mock<IAIProviderService> _aiProviderMock;
     private readonly Mock<IBlueprintToolExecutor> _toolExecutorMock;
     private readonly Mock<IBlueprintStore> _blueprintStoreMock;
+    private readonly Mock<ISchemaStore> _schemaStoreMock;
+    private readonly Mock<IBlueprintTemplateService> _templateServiceMock;
     private readonly Mock<ILogger<ChatOrchestrationService>> _loggerMock;
     private readonly ChatOrchestrationService _service;
 
@@ -32,13 +36,33 @@ public class ChatOrchestrationServiceTests
         _aiProviderMock = new Mock<IAIProviderService>();
         _toolExecutorMock = new Mock<IBlueprintToolExecutor>();
         _blueprintStoreMock = new Mock<IBlueprintStore>();
+        _schemaStoreMock = new Mock<ISchemaStore>();
+        _templateServiceMock = new Mock<IBlueprintTemplateService>();
         _loggerMock = new Mock<ILogger<ChatOrchestrationService>>();
+
+        // Default: return empty schema and template lists so BuildSystemPromptAsync succeeds
+        _schemaStoreMock
+            .Setup(s => s.ListAsync(
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaCategory?>(),
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaStatus?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<Sorcha.Blueprint.Schemas.Models.SchemaEntry>().AsReadOnly(), 0, (string?)null));
+
+        _templateServiceMock
+            .Setup(s => s.GetPublishedTemplatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Sorcha.Blueprint.Models.BlueprintTemplate>());
 
         _service = new ChatOrchestrationService(
             _sessionStoreMock.Object,
             _aiProviderMock.Object,
             _toolExecutorMock.Object,
             _blueprintStoreMock.Object,
+            _schemaStoreMock.Object,
+            _templateServiceMock.Object,
             _loggerMock.Object);
     }
 
@@ -502,6 +526,203 @@ public class ChatOrchestrationServiceTests
         // Assert
         _sessionStoreMock.Verify(s => s.ClearActiveSessionForUserAsync("user-123"), Times.Once);
         _sessionStoreMock.Verify(s => s.DeleteSessionAsync("session-123"), Times.Once);
+    }
+
+    #endregion
+
+    #region Dynamic System Prompt Tests (T017)
+
+    [Fact]
+    public async Task BuildSystemPrompt_IncludesSchemaTable()
+    {
+        // Arrange — set up schema store to return schemas
+        var schemas = new List<Sorcha.Blueprint.Schemas.Models.SchemaEntry>
+        {
+            new()
+            {
+                Identifier = "invoice-schema",
+                Title = "Invoice Schema",
+                Description = "Standard invoice fields",
+                Version = "1.0.0",
+                Category = Sorcha.Blueprint.Schemas.Models.SchemaCategory.Custom,
+                Source = Sorcha.Blueprint.Schemas.Models.SchemaSource.Internal(),
+                Content = System.Text.Json.JsonDocument.Parse("{}"),
+                SectorTags = new[] { "finance" },
+                FieldCount = 5
+            }
+        };
+
+        _schemaStoreMock
+            .Setup(s => s.ListAsync(
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaCategory?>(),
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaStatus?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((schemas.AsReadOnly(), schemas.Count, (string?)null));
+
+        var user = CreateUser("user-1", "org-1");
+        var session = CreateSession("s1", "user-1", "org-1");
+
+        _sessionStoreMock.Setup(s => s.GetActiveSessionForUserAsync("user-1"))
+            .ReturnsAsync((ChatSession?)null);
+        _sessionStoreMock.Setup(s => s.CreateSessionAsync("user-1", "org-1", null))
+            .ReturnsAsync(session);
+
+        // Act — CreateSessionAsync triggers BuildSystemPromptAsync indirectly
+        await _service.CreateSessionAsync(user);
+
+        // Assert — Verify that schemas were loaded
+        // Since BuildSystemPromptAsync is private, we verify indirectly via ProcessMessageAsync
+        // which calls it. For this test, we verify the schema store was queried during session creation.
+        // The system prompt is built during ProcessMessageAsync, so set up a full message flow.
+        _sessionStoreMock.Setup(s => s.GetSessionAsync("s1")).ReturnsAsync(session);
+        _sessionStoreMock.Setup(s => s.GetMessagesAsync("s1")).ReturnsAsync([]);
+        _sessionStoreMock.Setup(s => s.AddMessageAsync("s1", It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
+        _sessionStoreMock.Setup(s => s.UpdateSessionAsync(It.IsAny<ChatSession>())).Returns(Task.CompletedTask);
+
+        _toolExecutorMock.Setup(t => t.GetToolDefinitions()).Returns([]);
+
+        string? capturedPrompt = null;
+        _aiProviderMock
+            .Setup(a => a.StreamCompletionAsync(
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<IReadOnlyList<ToolDefinition>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, string, CancellationToken>(
+                (_, _, prompt, _) => capturedPrompt = prompt)
+            .Returns(CreateEmptyStream());
+
+        await _service.ProcessMessageAsync("s1", "Hello",
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
+
+        // Assert
+        capturedPrompt.Should().NotBeNull();
+        capturedPrompt.Should().Contain("invoice-schema");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_IncludesTemplateTable()
+    {
+        // Arrange
+        var templates = new List<Sorcha.Blueprint.Models.BlueprintTemplate>
+        {
+            new()
+            {
+                Id = "t1",
+                Title = "Loan Application",
+                Description = "Standard loan workflow",
+                Category = "finance",
+                Published = true
+            }
+        };
+
+        _templateServiceMock
+            .Setup(s => s.GetPublishedTemplatesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(templates);
+
+        var session = CreateSession("s1", "user-1", "org-1");
+        _sessionStoreMock.Setup(s => s.GetSessionAsync("s1")).ReturnsAsync(session);
+        _sessionStoreMock.Setup(s => s.GetMessagesAsync("s1")).ReturnsAsync([]);
+        _sessionStoreMock.Setup(s => s.AddMessageAsync("s1", It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
+        _sessionStoreMock.Setup(s => s.UpdateSessionAsync(It.IsAny<ChatSession>())).Returns(Task.CompletedTask);
+
+        _toolExecutorMock.Setup(t => t.GetToolDefinitions()).Returns([]);
+
+        string? capturedPrompt = null;
+        _aiProviderMock
+            .Setup(a => a.StreamCompletionAsync(
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<IReadOnlyList<ToolDefinition>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, string, CancellationToken>(
+                (_, _, prompt, _) => capturedPrompt = prompt)
+            .Returns(CreateEmptyStream());
+
+        // Act
+        await _service.ProcessMessageAsync("s1", "Hello",
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
+
+        // Assert
+        capturedPrompt.Should().NotBeNull();
+        capturedPrompt.Should().Contain("Loan Application");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_HandlesEmptySchemas()
+    {
+        // Arrange — empty schemas already set up in constructor defaults
+        var session = CreateSession("s1", "user-1", "org-1");
+        _sessionStoreMock.Setup(s => s.GetSessionAsync("s1")).ReturnsAsync(session);
+        _sessionStoreMock.Setup(s => s.GetMessagesAsync("s1")).ReturnsAsync([]);
+        _sessionStoreMock.Setup(s => s.AddMessageAsync("s1", It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
+        _sessionStoreMock.Setup(s => s.UpdateSessionAsync(It.IsAny<ChatSession>())).Returns(Task.CompletedTask);
+
+        _toolExecutorMock.Setup(t => t.GetToolDefinitions()).Returns([]);
+
+        string? capturedPrompt = null;
+        _aiProviderMock
+            .Setup(a => a.StreamCompletionAsync(
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<IReadOnlyList<ToolDefinition>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, string, CancellationToken>(
+                (_, _, prompt, _) => capturedPrompt = prompt)
+            .Returns(CreateEmptyStream());
+
+        // Act
+        await _service.ProcessMessageAsync("s1", "Hello",
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
+
+        // Assert
+        capturedPrompt.Should().NotBeNull();
+        capturedPrompt.Should().Contain("No standardised schemas");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_IncludesConsultativeWorkflow()
+    {
+        // Arrange
+        var session = CreateSession("s1", "user-1", "org-1");
+        _sessionStoreMock.Setup(s => s.GetSessionAsync("s1")).ReturnsAsync(session);
+        _sessionStoreMock.Setup(s => s.GetMessagesAsync("s1")).ReturnsAsync([]);
+        _sessionStoreMock.Setup(s => s.AddMessageAsync("s1", It.IsAny<ChatMessage>())).Returns(Task.CompletedTask);
+        _sessionStoreMock.Setup(s => s.UpdateSessionAsync(It.IsAny<ChatSession>())).Returns(Task.CompletedTask);
+
+        _toolExecutorMock.Setup(t => t.GetToolDefinitions()).Returns([]);
+
+        string? capturedPrompt = null;
+        _aiProviderMock
+            .Setup(a => a.StreamCompletionAsync(
+                It.IsAny<IReadOnlyList<ChatMessage>>(),
+                It.IsAny<IReadOnlyList<ToolDefinition>>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, string, CancellationToken>(
+                (_, _, prompt, _) => capturedPrompt = prompt)
+            .Returns(CreateEmptyStream());
+
+        // Act
+        await _service.ProcessMessageAsync("s1", "Hello",
+            _ => Task.CompletedTask,
+            (_, _) => Task.CompletedTask,
+            (_, _) => Task.CompletedTask);
+
+        // Assert
+        capturedPrompt.Should().NotBeNull();
+        capturedPrompt.Should().Contain("Understand Intent");
+        capturedPrompt.Should().Contain("Confirm Participants");
     }
 
     #endregion

@@ -1,0 +1,67 @@
+{
+  "identifier": "inspection-record",
+  "title": "Inspection Record",
+  "description": "Quality inspection record with inspector details, result, defect codes, and photographic evidence",
+  "version": "1.0.0",
+  "category": "supply-chain",
+  "tags": ["inspection", "quality", "defect", "supply-chain", "compliance"],
+  "keywords": ["inspection", "inspector", "result", "defect", "quality", "photos"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "inspector": {
+        "type": "string",
+        "title": "Inspector",
+        "description": "Name or identifier of the inspector",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "inspectionDate": {
+        "type": "string",
+        "title": "Inspection Date",
+        "description": "Date the inspection was conducted",
+        "format": "date"
+      },
+      "result": {
+        "type": "string",
+        "title": "Result",
+        "description": "Inspection outcome",
+        "enum": ["pass", "fail"]
+      },
+      "defectCodes": {
+        "type": "array",
+        "title": "Defect Codes",
+        "description": "List of defect codes identified during inspection",
+        "items": {
+          "type": "string"
+        }
+      },
+      "photos": {
+        "type": "string",
+        "title": "Photos",
+        "description": "Photographic evidence from the inspection",
+        "format": "binary"
+      }
+    },
+    "required": ["inspector", "inspectionDate", "result"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "inspector", "title": "Inspector" },
+          { "type": "TextLine", "scope": "inspectionDate", "title": "Inspection Date" }
+        ]
+      },
+      { "type": "Dropdown", "scope": "result", "title": "Result" },
+      { "type": "TextLine", "scope": "defectCodes", "title": "Defect Codes" },
+      { "type": "FileUpload", "scope": "photos", "title": "Photos" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Inspection records should be shared with quality assurance, supplier, and buyer participants. Defect details may be commercially sensitive between supplier and buyer."
+  }
+}

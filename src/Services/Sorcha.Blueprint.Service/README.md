@@ -29,6 +29,27 @@ This service acts as the central hub for:
 - **File Attachments**: Upload and download support for action-related documents
 - **Template System**: JSON-e based blueprint templates with parameter substitution
 - **Execution Helpers**: Validation, calculation, routing, and disclosure endpoints for client applications
+- **AI Chat Designer**: SignalR-based conversational blueprint builder with 13 AI tools, standardised schema library (26 schemas), and Verified Credential support
+
+### AI Chat Designer Tools
+
+The AI blueprint designer uses these tools through the Anthropic API:
+
+| Tool | Purpose |
+|------|---------|
+| `search_schemas` | Query the standardised schema library (26 schemas across 7 categories) |
+| `use_standard_schema` | Apply a schema's fields + form layout to a blueprint action |
+| `search_templates` | Query the blueprint template catalogue |
+| `create_blueprint` | Create a new blueprint with title and description |
+| `add_participant` | Add a participant to the workflow |
+| `remove_participant` | Remove a participant |
+| `add_action` | Add a workflow step with data fields |
+| `update_action` | Modify an existing action |
+| `set_disclosure` | Configure data visibility rules |
+| `add_routing` | Add conditional routing logic |
+| `require_credential` | Require a Verified Credential to perform an action |
+| `issue_credential` | Issue a Verified Credential on action completion |
+| `validate_blueprint` | Check blueprint validity |
 
 ---
 
