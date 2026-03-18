@@ -18,7 +18,7 @@
             <div style="width: 32px; height: 3px; border-radius: 2px; background-color: var(--mud-palette-text-secondary); opacity: 0.4;"></div>
         </div>
 
-        <div data-role="bottom-panel" style="height: @($"{_currentHeightPercent:F1}%"); overflow: auto; flex-shrink: 0;">
+        <div data-role="bottom-panel" style="height: @($"{_currentHeightPercent:F1}%"); min-height: @($"{MinBottomHeight}px"); overflow: auto; flex-shrink: 0;">
             @BottomContent
         </div>
     }
@@ -28,6 +28,8 @@
     private ElementReference _containerRef;
     private ElementReference _splitterRef;
     private double _currentHeightPercent;
+    private bool _previousShowBottom;
+    private bool _jsInitialized;
 
     [Parameter]
     public string StorageKey { get; set; } = "sorcha:panel-height:register-detail";
@@ -57,10 +59,18 @@
         ? "flex: 1 1 auto; overflow: auto; min-height: 0;"
         : "flex: 1 1 auto; overflow: auto;";
 
+    protected override void OnInitialized()
+    {
+        _currentHeightPercent = DefaultHeightPercent;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        // Initialize JS interop when the bottom panel first becomes visible
+        // (can't init on firstRender because the splitter element may not exist yet)
+        if (ShowBottom && !_jsInitialized)
         {
+            _jsInitialized = true;
             var dotNetRef = DotNetObjectReference.Create(this);
             var stored = await JS.InvokeAsync<double>(
                 "resizablePanel.init",
@@ -74,6 +84,8 @@
             _currentHeightPercent = stored;
             StateHasChanged();
         }
+
+        _previousShowBottom = ShowBottom;
     }
 
     private async Task OnPointerDown(PointerEventArgs e)
