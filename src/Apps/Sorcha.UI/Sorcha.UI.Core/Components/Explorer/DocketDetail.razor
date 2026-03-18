@@ -6,144 +6,115 @@
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Registers
 @using Sorcha.UI.Core.Services
-@using Microsoft.JSInterop
 
 @inject IDocketService DocketService
-@inject IJSRuntime JSRuntime
-@inject ISnackbar Snackbar
 
 @if (Docket != null)
 {
-    <MudPaper Elevation="1" Class="pa-4 mt-3">
-        <MudText Typo="Typo.h6" Class="mb-3">
-            <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
-            Docket #@Docket.Version Details
+    <MudText Typo="Typo.h6" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
+        Docket #@Docket.Version Details
+    </MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudField Label="Height" Variant="Variant.Text">
+                @Docket.Version
+            </MudField>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudField Label="Integrity" Variant="Variant.Text">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(Docket.IsIntegrityValid ? Color.Success : Color.Error)"
+                         Icon="@(Docket.IsIntegrityValid ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)">
+                    @(Docket.IsIntegrityValid ? "Valid" : "Invalid")
+                </MudChip>
+            </MudField>
+        </MudItem>
+        <MudItem xs="12">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Hash</MudText>
+                <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
+                    @Docket.Hash
+                </MudText>
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Previous Hash</MudText>
+                @if (!string.IsNullOrEmpty(Docket.PreviousHash))
+                {
+                    <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
+                        @Docket.PreviousHash
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Genesis docket</MudText>
+                }
+            </MudStack>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudField Label="Transaction Count" Variant="Variant.Text">
+                @Docket.TransactionCount
+            </MudField>
+        </MudItem>
+        <MudItem xs="6" md="3">
+            <MudField Label="Created" Variant="Variant.Text">
+                @Docket.CreatedAt.ToString("MMM dd, yyyy HH:mm:ss")
+            </MudField>
+        </MudItem>
+        @if (!string.IsNullOrEmpty(Docket.State))
+        {
+            <MudItem xs="6" md="3">
+                <MudField Label="State" Variant="Variant.Text">
+                    @Docket.State
+                </MudField>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (Docket.TransactionIds.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">
+            Transactions in this Docket (@Docket.TransactionCount)
         </MudText>
 
-        <MudGrid>
-            <MudItem xs="12" md="6">
-                <MudField Label="Height" Variant="Variant.Text">
-                    @Docket.Version
-                </MudField>
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudField Label="Integrity" Variant="Variant.Text">
-                    <MudChip T="string" Size="Size.Small"
-                             Color="@(Docket.IsIntegrityValid ? Color.Success : Color.Error)"
-                             Icon="@(Docket.IsIntegrityValid ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)">
-                        @(Docket.IsIntegrityValid ? "Valid" : "Invalid")
-                    </MudChip>
-                </MudField>
-            </MudItem>
-            <MudItem xs="12">
-                <MudStack Spacing="0">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">Hash</MudText>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
-                            @Docket.Hash
-                        </MudText>
-                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                       Size="Size.Small"
-                                       OnClick="@(() => CopyToClipboardAsync(Docket.Hash))"
-                                       aria-label="Copy hash" />
-                    </MudStack>
-                </MudStack>
-            </MudItem>
-            <MudItem xs="12">
-                <MudStack Spacing="0">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">Previous Hash</MudText>
-                    @if (!string.IsNullOrEmpty(Docket.PreviousHash))
-                    {
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                            <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
-                                @Docket.PreviousHash
-                            </MudText>
-                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
-                                           Size="Size.Small"
-                                           OnClick="@(() => CopyToClipboardAsync(Docket.PreviousHash))"
-                                           aria-label="Copy previous hash" />
-                        </MudStack>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Genesis docket</MudText>
-                    }
-                </MudStack>
-            </MudItem>
-            <MudItem xs="6" md="3">
-                <MudField Label="Transaction Count" Variant="Variant.Text">
-                    @Docket.TransactionCount
-                </MudField>
-            </MudItem>
-            <MudItem xs="6" md="3">
-                <MudField Label="Created" Variant="Variant.Text">
-                    @Docket.CreatedAt.ToString("MMM dd, yyyy HH:mm:ss")
-                </MudField>
-            </MudItem>
-            @if (!string.IsNullOrEmpty(Docket.State))
-            {
-                <MudItem xs="6" md="3">
-                    <MudField Label="State" Variant="Variant.Text">
-                        @Docket.State
-                    </MudField>
-                </MudItem>
-            }
-        </MudGrid>
-
-        @if (Docket.TransactionIds.Count > 0)
+        @if (_loadingTransactions)
         {
-            <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">
-                Transactions in this Docket (@Docket.TransactionCount)
-            </MudText>
-
-            @if (_loadingTransactions)
+            <MudProgressLinear Indeterminate="true" Class="mb-2" />
+        }
+        else
+        {
+            @foreach (var tx in _transactions)
             {
-                <MudProgressLinear Indeterminate="true" Class="mb-2" />
+                <TransactionRow Transaction="@tx"
+                                IsSelected="false"
+                                OnClick="OnTransactionClicked" />
             }
-            else
+            @if (_transactions.Count == 0)
             {
-                <MudGrid Spacing="3">
-                    <MudItem xs="12" md="@(_selectedTransaction is not null ? 7 : 12)">
-                        @foreach (var tx in _transactions)
+                @* Fallback to TxID list if full transaction data unavailable *@
+                <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Transaction ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < Docket.TransactionIds.Count; i++)
                         {
-                            <TransactionRow Transaction="@tx"
-                                            IsSelected="@(_selectedTransaction?.TxId == tx.TxId)"
-                                            OnClick="SelectTransaction" />
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td class="monospace-text" style="word-break: break-all;">@Docket.TransactionIds[i]</td>
+                            </tr>
                         }
-                        @if (_transactions.Count == 0)
-                        {
-                            @* Fallback to TxID list if full transaction data unavailable *@
-                            <MudSimpleTable Dense="true" Hover="true" Striped="true">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Transaction ID</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @for (var i = 0; i < Docket.TransactionIds.Count; i++)
-                                    {
-                                        <tr>
-                                            <td>@(i + 1)</td>
-                                            <td class="monospace-text" style="word-break: break-all;">@Docket.TransactionIds[i]</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </MudSimpleTable>
-                        }
-                    </MudItem>
-
-                    @if (_selectedTransaction is not null)
-                    {
-                        <MudItem xs="12" md="5">
-                            <TransactionDetail Transaction="@_selectedTransaction"
-                                               OnClose="ClearSelection" />
-                        </MudItem>
-                    }
-                </MudGrid>
+                    </tbody>
+                </MudSimpleTable>
             }
         }
-    </MudPaper>
+    }
 }
 
 @code {
@@ -153,8 +124,13 @@
     [Parameter]
     public string RegisterId { get; set; } = "";
 
+    /// <summary>
+    /// Fired when a transaction row is clicked, passing the selected transaction to the parent
+    /// </summary>
+    [Parameter]
+    public EventCallback<TransactionViewModel> OnTransactionSelected { get; set; }
+
     private List<TransactionViewModel> _transactions = [];
-    private TransactionViewModel? _selectedTransaction;
     private bool _loadingTransactions;
     private string? _lastLoadedDocketId;
 
@@ -163,13 +139,11 @@
         if (Docket is not null && Docket.DocketId != _lastLoadedDocketId && Docket.TransactionIds.Count > 0)
         {
             _lastLoadedDocketId = Docket.DocketId;
-            _selectedTransaction = null;
             await LoadTransactionsAsync();
         }
         else if (Docket is null)
         {
             _transactions = [];
-            _selectedTransaction = null;
             _lastLoadedDocketId = null;
         }
     }
@@ -195,50 +169,9 @@
         }
     }
 
-    private void SelectTransaction(TransactionViewModel tx)
+    private async Task OnTransactionClicked(TransactionViewModel tx)
     {
-        _selectedTransaction = _selectedTransaction?.TxId == tx.TxId ? null : tx;
-    }
-
-    private void ClearSelection()
-    {
-        _selectedTransaction = null;
-    }
-
-    private async Task CopyToClipboardAsync(string text)
-    {
-        try
-        {
-            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", text);
-            if (success)
-            {
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            else
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
-        catch
-        {
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
-                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 1500;
-                    config.ShowCloseIcon = false;
-                });
-            }
-            catch
-            {
-                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
-            }
-        }
+        await OnTransactionSelected.InvokeAsync(tx);
     }
 }
 

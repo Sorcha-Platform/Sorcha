@@ -1,0 +1,105 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@inject IJSRuntime JS
+
+<div @ref="_containerRef" class="d-flex flex-column" style="height: 100%; overflow: hidden;">
+    <div style="@TopPanelStyle">
+        @TopContent
+    </div>
+
+    @if (ShowBottom)
+    {
+        <div @ref="_splitterRef"
+             class="resizable-splitter-handle"
+             style="height: 8px; cursor: row-resize; background-color: var(--mud-palette-lines-default); flex-shrink: 0; display: flex; align-items: center; justify-content: center;"
+             @onpointerdown="OnPointerDown"
+             @onpointerdown:preventDefault="true">
+            <div style="width: 32px; height: 3px; border-radius: 2px; background-color: var(--mud-palette-text-secondary); opacity: 0.4;"></div>
+        </div>
+
+        <div data-role="bottom-panel" style="height: @($"{_currentHeightPercent:F1}%"); overflow: auto; flex-shrink: 0;">
+            @BottomContent
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _containerRef;
+    private ElementReference _splitterRef;
+    private double _currentHeightPercent;
+
+    [Parameter]
+    public string StorageKey { get; set; } = "sorcha:panel-height:register-detail";
+
+    [Parameter]
+    public int MinTopHeight { get; set; } = 200;
+
+    [Parameter]
+    public int MinBottomHeight { get; set; } = 150;
+
+    [Parameter]
+    public double DefaultHeightPercent { get; set; } = 40.0;
+
+    [Parameter]
+    public EventCallback<double> OnHeightChanged { get; set; }
+
+    [Parameter]
+    public RenderFragment? TopContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? BottomContent { get; set; }
+
+    [Parameter]
+    public bool ShowBottom { get; set; }
+
+    private string TopPanelStyle => ShowBottom
+        ? "flex: 1 1 auto; overflow: auto; min-height: 0;"
+        : "flex: 1 1 auto; overflow: auto;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dotNetRef = DotNetObjectReference.Create(this);
+            var stored = await JS.InvokeAsync<double>(
+                "resizablePanel.init",
+                _splitterRef,
+                dotNetRef,
+                DefaultHeightPercent,
+                MinTopHeight,
+                MinBottomHeight,
+                StorageKey);
+
+            _currentHeightPercent = stored;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPointerDown(PointerEventArgs e)
+    {
+        var dotNetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync(
+            "resizablePanel.startDrag",
+            _splitterRef,
+            dotNetRef,
+            e.ClientY,
+            _containerRef,
+            MinTopHeight,
+            MinBottomHeight,
+            StorageKey);
+    }
+
+    [JSInvokable]
+    public async Task OnResizeComplete(double newHeightPercent)
+    {
+        _currentHeightPercent = newHeightPercent;
+
+        if (OnHeightChanged.HasDelegate)
+        {
+            await OnHeightChanged.InvokeAsync(newHeightPercent);
+        }
+
+        StateHasChanged();
+    }
+}

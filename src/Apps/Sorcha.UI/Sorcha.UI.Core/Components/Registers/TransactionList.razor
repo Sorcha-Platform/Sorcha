@@ -6,7 +6,10 @@
 
 @inject ITransactionService TransactionService
 
-<div class="transaction-list-container" data-testid="transaction-list">
+<div class="transaction-list-container" data-testid="transaction-list"
+     tabindex="0"
+     @onkeydown="OnKeyDown"
+     @onfocusout="OnFocusOut">
     @if (_isLoading && _transactions.Count == 0)
     {
         <MudStack Spacing="2" Class="pa-4">
@@ -65,6 +68,7 @@
             {
                 <TransactionRow Transaction="@tx"
                                 IsSelected="@(SelectedTransaction?.TxId == tx.TxId)"
+                                IsHighlighted="@(_highlightedIndex >= 0 && _highlightedIndex < _transactions.Count && _transactions[_highlightedIndex].TxId == tx.TxId)"
                                 OnClick="SelectTransaction" />
             }
 
@@ -121,6 +125,7 @@
     private bool _hasMore;
     private int _totalTransactions;
     private ElementReference _scrollContainer;
+    private int _highlightedIndex = -1;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -157,6 +162,7 @@
             {
                 _currentPage = 1;
                 _transactions.Clear();
+                _highlightedIndex = -1;
             }
 
             var response = await TransactionService.GetTransactionsAsync(
@@ -196,6 +202,10 @@
 
     private async Task SelectTransaction(TransactionViewModel transaction)
     {
+        // Sync highlight index with clicked row
+        var index = _transactions.FindIndex(t => t.TxId == transaction.TxId);
+        _highlightedIndex = index;
+
         if (SelectedTransaction?.TxId == transaction.TxId)
         {
             // Deselect if clicking the same transaction
@@ -205,6 +215,50 @@
         {
             await SelectedTransactionChanged.InvokeAsync(transaction);
         }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (_transactions.Count == 0)
+            return;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _highlightedIndex = Math.Min(_highlightedIndex + 1, _transactions.Count - 1);
+                break;
+
+            case "ArrowUp":
+                _highlightedIndex = Math.Max(_highlightedIndex - 1, 0);
+                break;
+
+            case "Enter":
+                if (_highlightedIndex >= 0 && _highlightedIndex < _transactions.Count)
+                {
+                    var tx = _transactions[_highlightedIndex];
+                    if (SelectedTransaction?.TxId == tx.TxId)
+                    {
+                        await SelectedTransactionChanged.InvokeAsync(null);
+                    }
+                    else
+                    {
+                        await SelectedTransactionChanged.InvokeAsync(tx);
+                    }
+                }
+                break;
+
+            case "Escape":
+                _highlightedIndex = -1;
+                break;
+
+            default:
+                return;
+        }
+    }
+
+    private void OnFocusOut()
+    {
+        _highlightedIndex = -1;
     }
 
     private async Task OnScroll(EventArgs e)

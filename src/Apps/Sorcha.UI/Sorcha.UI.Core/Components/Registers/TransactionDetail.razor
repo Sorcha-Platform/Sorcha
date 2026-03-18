@@ -7,21 +7,7 @@
 @inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
 
-<MudPaper Elevation="1" Class="pa-4" data-testid="transaction-detail">
-    <MudStack Row="true"
-              Justify="Justify.SpaceBetween"
-              AlignItems="AlignItems.Center"
-              Class="mb-3">
-        <MudText Typo="Typo.h6">Transaction Details</MudText>
-        <MudIconButton Icon="@Icons.Material.Filled.Close"
-                       Size="Size.Small"
-                       OnClick="OnCloseClicked"
-                       aria-label="Close details"
-                       data-testid="close-detail" />
-    </MudStack>
-
-    <MudDivider Class="mb-4" />
-
+<div data-testid="transaction-detail">
     @* Transaction ID Section *@
     <MudStack Spacing="3">
         <MudStack Spacing="0">
@@ -82,7 +68,20 @@
                 <MudText Typo="Typo.caption" Color="Color.Secondary">Docket Number</MudText>
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                     <MudIcon Icon="@Icons.Material.Filled.Layers" Size="Size.Small" Color="Color.Secondary" />
-                    <MudText Typo="Typo.body1">@Transaction.DocketNumber</MudText>
+                    @if (OnNavigateToDocket.HasDelegate)
+                    {
+                        <MudLink Typo="Typo.body1"
+                                 Color="Color.Primary"
+                                 Underline="Underline.Hover"
+                                 OnClick="@(() => OnNavigateToDocket.InvokeAsync(Transaction.DocketNumber.Value))"
+                                 data-testid="docket-number-link">
+                            @Transaction.DocketNumber
+                        </MudLink>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body1">@Transaction.DocketNumber</MudText>
+                    }
                 </MudStack>
             </MudStack>
         }
@@ -149,92 +148,6 @@
                            data-testid="copy-signature" />
         </MudStack>
 
-        @* Payload Information *@
-        <MudStack Spacing="1">
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Payloads (@Transaction.PayloadCount)
-            </MudText>
-            @if (Transaction.Payloads.Count > 0)
-            {
-                <MudExpansionPanels MultiExpansion="true" Elevation="0" Dense="true">
-                    @foreach (var payload in Transaction.Payloads)
-                    {
-                        <MudExpansionPanel data-testid="@($"payload-panel-{payload.Index}")">
-                            <TitleContent>
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                                    <MudIcon Icon="@Icons.Material.Filled.Attachment" Size="Size.Small" Color="Color.Secondary" />
-                                    <MudText Typo="Typo.body2">Payload @payload.Index</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@payload.PayloadSizeFormatted</MudText>
-                                </MudStack>
-                            </TitleContent>
-                            <ChildContent>
-                                <MudStack Spacing="2" Class="pa-2">
-                                    <MudStack Spacing="0">
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Hash</MudText>
-                                        <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
-                                            @payload.Hash
-                                        </MudText>
-                                    </MudStack>
-
-                                    @if (payload.WalletAccess.Count > 0)
-                                    {
-                                        <MudStack Spacing="0">
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                Wallet Access (@payload.WalletAccess.Count)
-                                            </MudText>
-                                            @foreach (var wallet in payload.WalletAccess)
-                                            {
-                                                <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;">
-                                                    @wallet
-                                                </MudText>
-                                            }
-                                        </MudStack>
-                                    }
-
-                                    <MudGrid Spacing="2">
-                                        @if (!string.IsNullOrEmpty(payload.PayloadFlags))
-                                        {
-                                            <MudItem xs="6">
-                                                <MudText Typo="Typo.caption" Color="Color.Secondary">Flags</MudText>
-                                                <MudText Typo="Typo.body2">@payload.PayloadFlags</MudText>
-                                            </MudItem>
-                                        }
-                                        <MudItem xs="6">
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Encrypted</MudText>
-                                            <MudText Typo="Typo.body2">@(payload.HasIV ? "Yes" : "No")</MudText>
-                                        </MudItem>
-                                        @if (payload.ChallengeCount > 0)
-                                        {
-                                            <MudItem xs="6">
-                                                <MudText Typo="Typo.caption" Color="Color.Secondary">Challenges</MudText>
-                                                <MudText Typo="Typo.body2">@payload.ChallengeCount</MudText>
-                                            </MudItem>
-                                        }
-                                    </MudGrid>
-
-                                    @if (!string.IsNullOrEmpty(payload.Data))
-                                    {
-                                        <MudStack Spacing="0">
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Data</MudText>
-                                            <div class="payload-data-container">
-                                                <MudText Typo="Typo.body2" Class="monospace-text">
-                                                    @payload.Data
-                                                </MudText>
-                                            </div>
-                                        </MudStack>
-                                    }
-                                </MudStack>
-                            </ChildContent>
-                        </MudExpansionPanel>
-                    }
-                </MudExpansionPanels>
-            }
-            else
-            {
-                <MudText Typo="Typo.body2" Color="Color.Secondary">No payload details available</MudText>
-            }
-        </MudStack>
-
         @* Action ID (if applicable) *@
         @if (Transaction.ActionId.HasValue)
         {
@@ -243,8 +156,29 @@
                 <MudText Typo="Typo.body1">@Transaction.ActionId</MudText>
             </MudStack>
         }
+
+        @* Blueprint / Instance IDs (if present in metadata) *@
+        @if (!string.IsNullOrEmpty(Transaction.BlueprintId))
+        {
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Blueprint ID</MudText>
+                <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;" data-testid="blueprint-id">
+                    @Transaction.BlueprintId
+                </MudText>
+            </MudStack>
+        }
+
+        @if (!string.IsNullOrEmpty(Transaction.InstanceId))
+        {
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Instance ID</MudText>
+                <MudText Typo="Typo.body2" Class="monospace-text" Style="word-break: break-all;" data-testid="instance-id">
+                    @Transaction.InstanceId
+                </MudText>
+            </MudStack>
+        }
     </MudStack>
-</MudPaper>
+</div>
 
 @code {
     /// <summary>
@@ -254,10 +188,10 @@
     public required TransactionViewModel Transaction { get; set; }
 
     /// <summary>
-    /// Callback when the close button is clicked
+    /// Callback when the docket number link is clicked, passing the docket version number
     /// </summary>
     [Parameter]
-    public EventCallback OnClose { get; set; }
+    public EventCallback<ulong> OnNavigateToDocket { get; set; }
 
     private Color GetTypeColor() => Transaction.TransactionType switch
     {
@@ -268,11 +202,6 @@
         "Docket" => Color.Info,
         _ => Color.Default
     };
-
-    private async Task OnCloseClicked()
-    {
-        await OnClose.InvokeAsync();
-    }
 
     private async Task CopyTxId()
     {
@@ -342,14 +271,5 @@
         word-break: break-all;
         max-height: 60px;
         overflow-y: auto;
-    }
-
-    .payload-data-container {
-        max-height: 200px;
-        overflow-y: auto;
-        background: var(--mud-palette-background-grey);
-        border-radius: 4px;
-        padding: 8px;
-        word-break: break-all;
     }
 </style>

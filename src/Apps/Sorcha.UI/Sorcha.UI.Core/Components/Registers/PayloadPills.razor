@@ -1,0 +1,59 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Registers
+
+@if (Payloads.Count > 1)
+{
+    <MudStack Row="true" Spacing="1" Class="mb-2" data-testid="payload-pills">
+        @for (var i = 0; i < Payloads.Count; i++)
+        {
+            var index = i;
+            var payload = Payloads[index];
+            <MudChip T="string"
+                     Color="@(index == SelectedIndex ? Color.Primary : Color.Default)"
+                     Variant="@(index == SelectedIndex ? Variant.Filled : Variant.Outlined)"
+                     Size="Size.Small"
+                     OnClick="@(() => OnPayloadSelected.InvokeAsync(index))"
+                     data-testid="@($"payload-pill-{index}")">
+                Payload @index (@payload.PayloadSizeFormatted)
+                <EncryptionIndicator IsEncrypted="@payload.IsEncrypted"
+                                     IsAccessible="@IsPayloadAccessible(payload)" />
+            </MudChip>
+        }
+    </MudStack>
+}
+
+@code {
+    /// <summary>
+    /// List of payloads to display as selectable pills
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<PayloadViewModel> Payloads { get; set; } = [];
+
+    /// <summary>
+    /// Currently selected payload index
+    /// </summary>
+    [Parameter]
+    public int SelectedIndex { get; set; }
+
+    /// <summary>
+    /// Fired when a payload pill is clicked
+    /// </summary>
+    [Parameter]
+    public EventCallback<int> OnPayloadSelected { get; set; }
+
+    /// <summary>
+    /// Current user's wallet address for computing payload accessibility
+    /// </summary>
+    [Parameter]
+    public string? CurrentUserWallet { get; set; }
+
+    private bool IsPayloadAccessible(PayloadViewModel payload)
+    {
+        if (string.IsNullOrEmpty(CurrentUserWallet) || payload.WalletAccess.Count == 0)
+            return false;
+
+        return payload.WalletAccess.Any(w => w == CurrentUserWallet);
+    }
+}

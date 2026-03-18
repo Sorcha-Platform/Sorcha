@@ -246,6 +246,9 @@ public static class ServiceCollectionExtensions
         // Admin Services
         services.AddAdminServices(baseAddress);
 
+        // Graph Layout Service (stateless — singleton)
+        services.AddSingleton<IGraphLayoutService, GraphLayoutService>();
+
         // Register Services
         services.AddRegisterServices(baseAddress);
 
@@ -696,6 +699,22 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<ILogger<RegisterService>>();
             return new RegisterService(httpClient, logger);
         });
+
+        // Payload Decoder Service
+        services.AddSingleton<IPayloadDecoderService, PayloadDecoderService>();
+
+        // Blueprint Schema Service (schema overlay for Transaction Explorer)
+        services.AddScoped<IBlueprintSchemaService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<BlueprintSchemaService>>();
+            return new BlueprintSchemaService(httpClient, logger);
+        });
+
+        // Current User Wallet Service (encryption-aware display)
+        services.AddScoped<ICurrentUserWalletService, CurrentUserWalletService>();
 
         // Transaction Service
         services.AddScoped<ITransactionService>(sp =>

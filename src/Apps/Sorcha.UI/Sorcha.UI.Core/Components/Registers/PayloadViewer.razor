@@ -1,0 +1,532 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Components.Shared
+
+@inject IPayloadDecoderService Decoder
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@inject ICurrentUserWalletService CurrentUserWalletService
+@inject IBlueprintSchemaService BlueprintSchemaService
+
+<div data-testid="payload-viewer">
+    <PayloadPills Payloads="@Payloads"
+                  SelectedIndex="@_selectedPayloadIndex"
+                  OnPayloadSelected="OnPayloadIndexChanged"
+                  CurrentUserWallet="@_currentUserWallet" />
+
+    @{ var encryptionSummary = GetEncryptionSummary(); }
+    @if (encryptionSummary is not null)
+    {
+        <MudAlert Severity="Severity.Info"
+                  Variant="Variant.Outlined"
+                  Dense="true"
+                  Class="mb-2"
+                  Icon="@encryptionSummary.Value.Icon"
+                  data-testid="encryption-summary">
+            @encryptionSummary.Value.Message
+        </MudAlert>
+    }
+
+    <MudTabs @bind-ActivePanelIndex="_activeTabIndex"
+             Elevation="0"
+             Rounded="true"
+             ApplyEffectsToContainer="true"
+             PanelClass="pa-0">
+        <MudTabPanel Text="Raw" data-testid="tab-raw">
+            <div class="payload-code-container" data-testid="raw-content">
+                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                               Size="Size.Small"
+                               Class="copy-button"
+                               OnClick="CopyRaw"
+                               aria-label="Copy raw payload"
+                               data-testid="copy-raw" />
+                <pre class="payload-monospace">@_rawContent</pre>
+            </div>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Decoded" data-testid="tab-decoded">
+            <div class="payload-code-container" data-testid="decoded-content">
+                @if (IsSelectedPayloadEncryptedAndInaccessible())
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true"
+                              data-testid="encrypted-inaccessible-warning">
+                        This payload is encrypted. Your wallet address is not in the access list.
+                    </MudAlert>
+                    <div class="encrypted-redacted-block" data-testid="redacted-block">
+                        <div class="redacted-line" style="width: 90%"></div>
+                        <div class="redacted-line" style="width: 75%"></div>
+                        <div class="redacted-line" style="width: 85%"></div>
+                        <div class="redacted-line" style="width: 60%"></div>
+                        <div class="redacted-line" style="width: 80%"></div>
+                    </div>
+                }
+                else if (_decodeFailed)
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                        Unable to decode payload data
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                   Size="Size.Small"
+                                   Class="copy-button"
+                                   OnClick="CopyDecoded"
+                                   aria-label="Copy decoded payload"
+                                   data-testid="copy-decoded" />
+                    @if (_schemaFields is not null && _isJson && _jsonElement.HasValue)
+                    {
+                        <div class="payload-monospace payload-wrap" data-testid="decoded-annotated">
+                            @RenderAnnotatedJson()
+                        </div>
+                    }
+                    else
+                    {
+                        <pre class="payload-monospace payload-wrap">@_displayContent</pre>
+                    }
+                }
+            </div>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Tree" data-testid="tab-tree">
+            <div class="payload-code-container" data-testid="tree-content">
+                @if (IsSelectedPayloadEncryptedAndInaccessible())
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true"
+                              data-testid="encrypted-inaccessible-warning-tree">
+                        This payload is encrypted. Your wallet address is not in the access list.
+                    </MudAlert>
+                    <div class="encrypted-redacted-block" data-testid="redacted-block-tree">
+                        <div class="redacted-line" style="width: 90%"></div>
+                        <div class="redacted-line" style="width: 75%"></div>
+                        <div class="redacted-line" style="width: 85%"></div>
+                        <div class="redacted-line" style="width: 60%"></div>
+                        <div class="redacted-line" style="width: 80%"></div>
+                    </div>
+                }
+                else if (_isJson && _jsonElement.HasValue)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                   Size="Size.Small"
+                                   Class="copy-button"
+                                   OnClick="CopyTree"
+                                   aria-label="Copy JSON payload"
+                                   data-testid="copy-tree" />
+                    <JsonTreeView JsonElement="@_jsonElement" RootName="payload" SchemaFields="@_schemaFields" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
+                        Tree view is only available for JSON payloads.
+                    </MudText>
+                }
+            </div>
+        </MudTabPanel>
+    </MudTabs>
+</div>
+
+@code {
+    /// <summary>
+    /// All payloads for the transaction
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<PayloadViewModel> Payloads { get; set; } = [];
+
+    /// <summary>
+    /// Blueprint ID for schema overlay (optional — fetched from transaction metadata)
+    /// </summary>
+    [Parameter]
+    public string? BlueprintId { get; set; }
+
+    /// <summary>
+    /// Action ID for schema overlay (optional — fetched from transaction metadata)
+    /// </summary>
+    [Parameter]
+    public uint? ActionId { get; set; }
+
+    private int _selectedPayloadIndex;
+    private int _activeTabIndex = 1; // Default to Decoded tab
+
+    private string _rawContent = string.Empty;
+    private string? _decodedContent;
+    private bool _isJson;
+    private string? _prettyJson;
+    private string _displayContent = string.Empty;
+    private bool _decodeFailed;
+    private JsonElement? _jsonElement;
+    private string? _currentUserWallet;
+    private Dictionary<string, SchemaOverlayFieldInfo>? _schemaFields;
+    private string? _lastSchemaKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserWallet = await CurrentUserWalletService.GetWalletAddressAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        ComputePayloadContent();
+        _ = FetchSchemaFieldsAsync();
+    }
+
+    private async Task FetchSchemaFieldsAsync()
+    {
+        if (string.IsNullOrEmpty(BlueprintId) || !ActionId.HasValue)
+        {
+            _schemaFields = null;
+            _lastSchemaKey = null;
+            return;
+        }
+
+        var schemaKey = $"{BlueprintId}:{ActionId}";
+        if (schemaKey == _lastSchemaKey)
+        {
+            return; // Already fetched for this blueprint/action
+        }
+
+        _lastSchemaKey = schemaKey;
+
+        try
+        {
+            _schemaFields = await BlueprintSchemaService.GetActionSchemaFieldsAsync(
+                BlueprintId, ActionId.Value);
+            StateHasChanged();
+        }
+        catch
+        {
+            // Schema overlay is best-effort — never fail the UI
+            _schemaFields = null;
+        }
+    }
+
+    private RenderFragment RenderAnnotatedJson() => builder =>
+    {
+        if (_jsonElement is null || !_jsonElement.HasValue)
+            return;
+
+        var element = _jsonElement.Value;
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            // Non-object JSON — just render pretty-printed
+            builder.AddContent(0, _displayContent);
+            return;
+        }
+
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        var lines = (_prettyJson ?? _displayContent).Split('\n');
+        var seq = 0;
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+
+            // Try to match a JSON property key: "fieldName": ...
+            if (trimmed.StartsWith("\"") && _schemaFields is not null)
+            {
+                var colonIndex = trimmed.IndexOf("\":", 1);
+                if (colonIndex > 0)
+                {
+                    var fieldName = trimmed.Substring(1, colonIndex - 1);
+
+                    if (_schemaFields.TryGetValue(fieldName, out var fieldInfo))
+                    {
+                        // Render the line with an inline schema label
+                        var indent = line[..^trimmed.Length];
+                        builder.OpenElement(seq++, "span");
+                        builder.AddContent(seq++, indent);
+                        builder.AddContent(seq++, line.TrimEnd());
+                        builder.AddContent(seq++, " ");
+
+                        // Schema label with tooltip
+                        if (!string.IsNullOrEmpty(fieldInfo.Description))
+                        {
+                            builder.OpenComponent<MudTooltip>(seq++);
+                            builder.AddAttribute(seq++, "Text", fieldInfo.Description);
+                            builder.AddAttribute(seq++, "ChildContent",
+                                (RenderFragment)(tooltipBuilder =>
+                                {
+                                    tooltipBuilder.OpenElement(0, "span");
+                                    tooltipBuilder.AddAttribute(1, "class", "schema-label");
+                                    tooltipBuilder.AddAttribute(2, "data-testid", $"schema-label-{fieldName}");
+                                    tooltipBuilder.AddContent(3, $"// {fieldInfo.Label}");
+                                    tooltipBuilder.CloseElement();
+                                }));
+                            builder.CloseComponent();
+                        }
+                        else
+                        {
+                            builder.OpenElement(seq++, "span");
+                            builder.AddAttribute(seq++, "class", "schema-label");
+                            builder.AddAttribute(seq++, "data-testid", $"schema-label-{fieldName}");
+                            builder.AddContent(seq++, $"// {fieldInfo.Label}");
+                            builder.CloseElement();
+                        }
+
+                        builder.AddContent(seq++, "\n");
+                        builder.CloseElement();
+                        continue;
+                    }
+                }
+            }
+
+            // No annotation — render line as-is
+            builder.AddContent(seq++, line);
+            builder.AddContent(seq++, "\n");
+        }
+    };
+
+    private void OnPayloadIndexChanged(int index)
+    {
+        _selectedPayloadIndex = index;
+        ComputePayloadContent();
+    }
+
+    /// <summary>
+    /// Returns whether the given payload is accessible to the current user.
+    /// </summary>
+    private bool IsPayloadAccessible(PayloadViewModel payload)
+    {
+        if (string.IsNullOrEmpty(_currentUserWallet) || payload.WalletAccess.Count == 0)
+            return false;
+
+        return payload.WalletAccess.Any(w => w == _currentUserWallet);
+    }
+
+    /// <summary>
+    /// Returns whether the currently selected payload is encrypted and not accessible.
+    /// </summary>
+    private bool IsSelectedPayloadEncryptedAndInaccessible()
+    {
+        if (Payloads.Count == 0 || _selectedPayloadIndex >= Payloads.Count)
+            return false;
+
+        var payload = Payloads[_selectedPayloadIndex];
+        return payload.IsEncrypted && !IsPayloadAccessible(payload);
+    }
+
+    /// <summary>
+    /// Computes the encryption summary bar content. Returns null if no encryption present.
+    /// </summary>
+    private (string Message, string Icon)? GetEncryptionSummary()
+    {
+        if (Payloads.Count == 0)
+            return null;
+
+        var encryptedPayloads = Payloads.Where(p => p.IsEncrypted).ToList();
+        if (encryptedPayloads.Count == 0)
+            return null;
+
+        var accessibleCount = encryptedPayloads.Count(p => IsPayloadAccessible(p));
+
+        if (Payloads.Count == 1)
+        {
+            // Single payload
+            return accessibleCount > 0
+                ? ("Payload accessible", Icons.Material.Filled.LockOpen)
+                : ("Payload encrypted — you are not in the access list", Icons.Material.Filled.Lock);
+        }
+
+        // Multiple payloads
+        return ($"{accessibleCount}/{encryptedPayloads.Count} payloads accessible",
+            accessibleCount > 0 ? Icons.Material.Filled.LockOpen : Icons.Material.Filled.Lock);
+    }
+
+    private void ComputePayloadContent()
+    {
+        if (Payloads.Count == 0)
+        {
+            _rawContent = string.Empty;
+            _decodedContent = null;
+            _isJson = false;
+            _prettyJson = null;
+            _displayContent = string.Empty;
+            _decodeFailed = false;
+            _jsonElement = null;
+            return;
+        }
+
+        // Clamp index
+        if (_selectedPayloadIndex >= Payloads.Count)
+        {
+            _selectedPayloadIndex = 0;
+        }
+
+        var payload = Payloads[_selectedPayloadIndex];
+
+        // Raw content
+        _rawContent = payload.Data is not null
+            ? Decoder.TrimBase64(payload.Data)
+            : string.Empty;
+
+        // Decoded content
+        if (payload.DecodedContent is not null)
+        {
+            _decodedContent = payload.DecodedContent;
+            _decodeFailed = false;
+        }
+        else if (payload.Data is not null)
+        {
+            var trimmed = Decoder.TrimBase64(payload.Data);
+            _decodedContent = Decoder.DecodeBase64ToUtf8(trimmed);
+            _decodeFailed = _decodedContent is null;
+        }
+        else
+        {
+            _decodedContent = null;
+            _decodeFailed = true;
+        }
+
+        // JSON detection
+        if (payload.IsJson && payload.PrettyJson is not null)
+        {
+            _isJson = true;
+            _prettyJson = payload.PrettyJson;
+        }
+        else if (_decodedContent is not null)
+        {
+            var (isJson, prettyPrinted) = Decoder.TryFormatJson(_decodedContent);
+            _isJson = isJson;
+            _prettyJson = prettyPrinted;
+        }
+        else
+        {
+            _isJson = false;
+            _prettyJson = null;
+        }
+
+        // Display content for decoded tab
+        _displayContent = _isJson && _prettyJson is not null
+            ? _prettyJson
+            : _decodedContent ?? string.Empty;
+
+        // Parse JsonElement for tree view
+        if (_isJson && _decodedContent is not null)
+        {
+            try
+            {
+                _jsonElement = JsonSerializer.Deserialize<JsonElement>(_decodedContent);
+            }
+            catch
+            {
+                _jsonElement = null;
+            }
+        }
+        else
+        {
+            _jsonElement = null;
+        }
+    }
+
+    private async Task CopyRaw()
+    {
+        await CopyToClipboardAsync(_rawContent);
+    }
+
+    private async Task CopyDecoded()
+    {
+        await CopyToClipboardAsync(_displayContent);
+    }
+
+    private async Task CopyTree()
+    {
+        await CopyToClipboardAsync(_prettyJson ?? _decodedContent ?? string.Empty);
+    }
+
+    private async Task CopyToClipboardAsync(string text)
+    {
+        try
+        {
+            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", text);
+            if (success)
+            {
+                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 1500;
+                    config.ShowCloseIcon = false;
+                });
+            }
+            else
+            {
+                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+            }
+        }
+        catch
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+                Snackbar.Add("Copied to clipboard", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 1500;
+                    config.ShowCloseIcon = false;
+                });
+            }
+            catch
+            {
+                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+            }
+        }
+    }
+}
+
+<style>
+    .payload-code-container {
+        position: relative;
+        background: var(--mud-palette-background-grey);
+        border-radius: 4px;
+        padding: 12px;
+        max-height: 100%;
+        overflow: auto;
+    }
+
+    .payload-monospace {
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.85rem;
+        margin: 0;
+        white-space: pre;
+        overflow-x: auto;
+    }
+
+    .payload-wrap {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .copy-button {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        z-index: 1;
+        opacity: 0.7;
+    }
+
+    .copy-button:hover {
+        opacity: 1;
+    }
+
+    .encrypted-redacted-block {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .redacted-line {
+        height: 12px;
+        background: var(--mud-palette-text-disabled);
+        border-radius: 4px;
+        opacity: 0.25;
+        filter: blur(2px);
+    }
+
+    .schema-label {
+        color: #6a9955;
+        font-style: italic;
+        opacity: 0.85;
+        cursor: default;
+    }
+</style>
