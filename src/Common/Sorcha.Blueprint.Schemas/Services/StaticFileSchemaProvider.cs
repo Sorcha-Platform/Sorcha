@@ -33,6 +33,7 @@ public class StaticFileSchemaProvider : IExternalSchemaProvider
     }
 
     public string ProviderName => _providerName;
+    public Models.ProviderType ProviderType => Models.ProviderType.StaticFile;
     public string[] DefaultSectorTags => _sectorTags;
 
     public Task<ExternalSchemaSearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)

@@ -44,7 +44,9 @@ builder.Services.AddScoped<BlueprintLayoutService>();
 // Add passkey interop service for WebAuthn browser API calls
 builder.Services.AddScoped<PasskeyInteropService>();
 
-// Add schema library service with caching (for designer and schema library pages)
+// Add schema library service with caching
+// All schemas (local defaults, external, remote) are served through the unified
+// schema index API — the client only needs the Blueprint Service repository.
 builder.Services.AddScoped<ISchemaCacheService, LocalStorageSchemaCacheService>();
 builder.Services.AddScoped<SchemaLibraryService>(sp =>
 {
@@ -53,13 +55,7 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
     var schemaLibrary = new SchemaLibraryService(cacheService, loggerFactory);
 
     var httpClient = sp.GetRequiredService<HttpClient>();
-
-    // Add Blueprint Service repository for system and custom schemas (with ETag caching)
     schemaLibrary.AddRepository(new BlueprintServiceRepository(httpClient));
-
-    // Add SchemaStore repository for external schemas
-    var schemaStoreLogger = loggerFactory.CreateLogger<SchemaStoreRepository>();
-    schemaLibrary.AddRepository(new SchemaStoreRepository(httpClient, schemaStoreLogger));
 
     return schemaLibrary;
 });

@@ -35,13 +35,13 @@ public class SchemaIndexService : ISchemaIndexService
         _providers = providers;
         _logger = logger;
 
-        // Initialize provider statuses
+        // Initialize provider statuses from self-declared ProviderType
         foreach (var provider in _providers)
         {
             _providerStatuses.TryAdd(provider.ProviderName, new SchemaProviderStatus
             {
                 ProviderName = provider.ProviderName,
-                ProviderType = ProviderType.LiveApi,
+                ProviderType = provider.ProviderType,
                 HealthStatus = ProviderHealth.Unknown
             });
         }
@@ -319,6 +319,7 @@ public class SchemaIndexService : ISchemaIndexService
             doc.RequiredFields?.Length ?? 0,
             doc.SchemaVersion,
             doc.Status,
-            doc.LastFetchedAt);
+            doc.LastFetchedAt,
+            doc.FieldNames);
     }
 }

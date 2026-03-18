@@ -19,7 +19,8 @@ public sealed record SchemaIndexEntryViewModel(
     int RequiredFieldCount,
     string SchemaVersion,
     string Status,
-    DateTimeOffset LastFetchedAt);
+    DateTimeOffset LastFetchedAt,
+    string[]? FieldNames = null);
 
 /// <summary>
 /// Full detail of a schema index entry including content.

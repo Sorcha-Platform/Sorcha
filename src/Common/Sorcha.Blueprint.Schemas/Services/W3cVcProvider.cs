@@ -25,6 +25,7 @@ public class W3cVcProvider : IExternalSchemaProvider
     }
 
     public string ProviderName => ProviderDisplayName;
+    public Models.ProviderType ProviderType => Models.ProviderType.StaticFile;
     public string[] DefaultSectorTags => ["identity", "government"];
 
     public Task<ExternalSchemaSearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)

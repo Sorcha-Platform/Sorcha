@@ -29,6 +29,9 @@ public class DppSchemaProvider : IExternalSchemaProvider
     public string ProviderName => ProviderDisplayName;
 
     /// <inheritdoc />
+    public Models.ProviderType ProviderType => Models.ProviderType.StaticFile;
+
+    /// <inheritdoc />
     public string[] DefaultSectorTags => ["sustainability"];
 
     /// <inheritdoc />

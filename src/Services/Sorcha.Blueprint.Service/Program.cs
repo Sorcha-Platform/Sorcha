@@ -171,6 +171,15 @@ builder.Services.AddHttpClient<FhirSchemaProvider>(client =>
 }).AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(2, attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
 builder.Services.AddSingleton<IExternalSchemaProvider>(sp => sp.GetRequiredService<FhirSchemaProvider>());
 
+// Local schemas — Sorcha's curated defaults from blueprints/schemas/ (UK Address, etc.)
+builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
+{
+    var env = sp.GetRequiredService<IWebHostEnvironment>();
+    var schemasPath = LocalSchemaProvider.ResolveSchemasPath(env.ContentRootPath);
+    return new LocalSchemaProvider(schemasPath,
+        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LocalSchemaProvider>>());
+});
+
 // Static providers (no HTTP client needed)
 builder.Services.AddSingleton<IExternalSchemaProvider>(sp =>
     new W3cVcProvider(sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<W3cVcProvider>>()));
@@ -216,8 +225,8 @@ builder.Services.AddScoped<Sorcha.Blueprint.Schemas.Repositories.ISchemaReposito
 // Seed blueprint templates from JSON files on startup (059 US5)
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeedService>();
 
-// Seed standardised data schemas from JSON files on startup (063 AI Builder)
-builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.SchemaSeedService>();
+// Note: SchemaSeedService removed — LocalSchemaProvider now feeds schemas from
+// blueprints/schemas/ into the unified schema index, serving both UI and AI tools.
 
 // Add Status List Manager (039-verifiable-presentations)
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
