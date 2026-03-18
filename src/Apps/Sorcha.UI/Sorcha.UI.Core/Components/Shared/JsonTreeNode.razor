@@ -1,4 +1,5 @@
 @using System.Text.Json
+@using Sorcha.UI.Core.Services
 
 <div class="json-node" style="margin-left: @(Level * 20)px;">
     @if (Element.ValueKind == JsonValueKind.Object)
@@ -10,6 +11,11 @@
             @if (!string.IsNullOrEmpty(PropertyName))
             {
                 <span class="json-property" style="color: #9cdcfe;">@PropertyName</span><span style="color: #d4d4d4;">: </span>
+            }
+            @RenderSchemaAnnotation()
+            @if (IsEncryptedPath)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Style="color: #808080; vertical-align: middle; font-size: 14px;" />
             }
             <span style="color: #d4d4d4;">{</span>
             @if (!isExpanded)
@@ -23,7 +29,13 @@
         {
             @foreach (var property in Element.EnumerateObject())
             {
-                <JsonTreeNode Element="property.Value" PropertyName="@property.Name" Level="@(Level + 1)" />
+                <JsonTreeNode Element="property.Value"
+                              PropertyName="@property.Name"
+                              Level="@(Level + 1)"
+                              Path="@($"{Path}.{property.Name}")"
+                              OnNodeClick="OnNodeClick"
+                              EncryptedPaths="EncryptedPaths"
+                              SchemaFields="SchemaFields" />
             }
             <div style="margin-left: @(Level * 20)px; color: #d4d4d4;">}</div>
         }
@@ -38,6 +50,11 @@
             {
                 <span class="json-property" style="color: #9cdcfe;">@PropertyName</span><span style="color: #d4d4d4;">: </span>
             }
+            @RenderSchemaAnnotation()
+            @if (IsEncryptedPath)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Style="color: #808080; vertical-align: middle; font-size: 14px;" />
+            }
             <span style="color: #d4d4d4;">[</span>
             @if (!isExpanded)
             {
@@ -51,7 +68,13 @@
             int index = 0;
             @foreach (var item in Element.EnumerateArray())
             {
-                <JsonTreeNode Element="item" PropertyName="@index.ToString()" Level="@(Level + 1)" />
+                <JsonTreeNode Element="item"
+                              PropertyName="@index.ToString()"
+                              Level="@(Level + 1)"
+                              Path="@($"{Path}[{index}]")"
+                              OnNodeClick="OnNodeClick"
+                              EncryptedPaths="EncryptedPaths"
+                              SchemaFields="SchemaFields" />
                 index++;
             }
             <div style="margin-left: @(Level * 20)px; color: #d4d4d4;">]</div>
@@ -59,10 +82,15 @@
     }
     else
     {
-        <div class="json-value">
+        <div class="json-value" @onclick="HandleValueClick" style="@(OnNodeClick.HasDelegate ? "cursor: pointer;" : "")">
             @if (!string.IsNullOrEmpty(PropertyName))
             {
                 <span class="json-property" style="color: #9cdcfe;">@PropertyName</span><span style="color: #d4d4d4;">: </span>
+            }
+            @RenderSchemaAnnotation()
+            @if (IsEncryptedPath)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Style="color: #808080; vertical-align: middle; font-size: 14px;" />
             }
             @switch (Element.ValueKind)
             {
@@ -97,7 +125,43 @@
     [Parameter]
     public int Level { get; set; }
 
+    /// <summary>
+    /// The dot-notation path to this node (e.g. "root.items[0].name")
+    /// </summary>
+    [Parameter]
+    public string Path { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional callback fired when a value node is clicked
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnNodeClick { get; set; }
+
+    /// <summary>
+    /// Optional set of JSON paths that should display lock icons
+    /// </summary>
+    [Parameter]
+    public HashSet<string>? EncryptedPaths { get; set; }
+
+    /// <summary>
+    /// Optional schema field metadata for annotating property names with labels and descriptions.
+    /// Only rendered for top-level properties (Level == 1).
+    /// </summary>
+    [Parameter]
+    public Dictionary<string, SchemaOverlayFieldInfo>? SchemaFields { get; set; }
+
     private bool isExpanded = false;
+
+    private bool IsEncryptedPath => EncryptedPaths is not null && EncryptedPaths.Contains(Path);
+
+    /// <summary>
+    /// Gets the schema field info for the current property, if applicable (Level == 1 only).
+    /// </summary>
+    private SchemaOverlayFieldInfo? CurrentSchemaField =>
+        Level == 1 && SchemaFields is not null && PropertyName is not null &&
+        SchemaFields.TryGetValue(PropertyName, out var info)
+            ? info
+            : null;
 
     protected override void OnInitialized()
     {
@@ -109,4 +173,49 @@
     {
         isExpanded = !isExpanded;
     }
+
+    private async Task HandleValueClick()
+    {
+        if (OnNodeClick.HasDelegate)
+        {
+            var value = Element.ValueKind == JsonValueKind.String
+                ? Element.GetString() ?? string.Empty
+                : Element.GetRawText();
+            await OnNodeClick.InvokeAsync(value);
+        }
+    }
+
+    private RenderFragment RenderSchemaAnnotation() => builder =>
+    {
+        var field = CurrentSchemaField;
+        if (field is null)
+            return;
+
+        var seq = 0;
+        if (!string.IsNullOrEmpty(field.Description))
+        {
+            builder.OpenComponent<MudTooltip>(seq++);
+            builder.AddAttribute(seq++, "Text", field.Description);
+            builder.AddAttribute(seq++, "ChildContent",
+                (RenderFragment)(tooltipBuilder =>
+                {
+                    tooltipBuilder.OpenElement(0, "span");
+                    tooltipBuilder.AddAttribute(1, "style",
+                        "color: #6a9955; font-style: italic; opacity: 0.85; cursor: default; margin-right: 4px;");
+                    tooltipBuilder.AddAttribute(2, "data-testid", $"tree-schema-label-{PropertyName}");
+                    tooltipBuilder.AddContent(3, $"({field.Label})");
+                    tooltipBuilder.CloseElement();
+                }));
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "style",
+                "color: #6a9955; font-style: italic; opacity: 0.85; cursor: default; margin-right: 4px;");
+            builder.AddAttribute(seq++, "data-testid", $"tree-schema-label-{PropertyName}");
+            builder.AddContent(seq++, $"({field.Label})");
+            builder.CloseElement();
+        }
+    };
 }

@@ -49,6 +49,36 @@ public record PayloadViewModel
     public string? Data { get; init; }
 
     /// <summary>
+    /// UTF-8 decoded text content (null if decoding failed or data unavailable)
+    /// </summary>
+    public string? DecodedContent { get; init; }
+
+    /// <summary>
+    /// Whether the decoded content is valid JSON
+    /// </summary>
+    public bool IsJson { get; init; }
+
+    /// <summary>
+    /// Pretty-printed JSON content (null if not JSON)
+    /// </summary>
+    public string? PrettyJson { get; init; }
+
+    /// <summary>
+    /// Detected or declared MIME content type
+    /// </summary>
+    public string? ContentType { get; init; }
+
+    /// <summary>
+    /// Whether the payload is encrypted (has an initialization vector)
+    /// </summary>
+    public bool IsEncrypted => HasIV;
+
+    /// <summary>
+    /// Whether the current user can decrypt this payload
+    /// </summary>
+    public bool IsAccessible { get; init; }
+
+    /// <summary>
     /// Computed: Human-readable payload size
     /// </summary>
     public string PayloadSizeFormatted => PayloadSize switch

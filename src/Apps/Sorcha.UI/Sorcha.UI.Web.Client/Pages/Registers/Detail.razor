@@ -6,6 +6,7 @@
 @using Sorcha.UI.Core.Components.Explorer
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Models.Explorer
 @using Sorcha.UI.Core.Services
 @implements IAsyncDisposable
 
@@ -17,7 +18,8 @@
 
 <PageTitle>@(_register?.Name ?? "Register") - Sorcha</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4" data-testid="register-detail-page">
+<div @onkeydown="OnKeyDown" tabindex="0" data-testid="register-detail-page" class="register-detail-container">
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
     @* Header with back navigation *@
     <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-4">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
@@ -155,44 +157,103 @@
         </MudStack>
 
         @* Tabbed content area *@
-        <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" Class="mb-4">
+        <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" Class="mb-4"
+                 ActivePanelIndex="_activeTabIndex" ActivePanelIndexChanged="OnActiveTabChanged">
             <MudTabPanel Text="Transactions" Icon="@Icons.Material.Filled.Receipt">
-                <MudGrid Spacing="3" Class="pa-3">
-                    @* Transaction list (takes full width when no selection, or 60% when selected) *@
-                    <MudItem xs="12" md="@(_selectedTransaction is not null ? 7 : 12)">
-                        <MudPaper Elevation="0" Class="transaction-list-paper" data-testid="transaction-list">
-                            <div class="transaction-list-content">
-                                <TransactionList RegisterId="@RegisterId"
-                                                 @ref="_transactionListRef"
-                                                 @bind-SelectedTransaction="_selectedTransaction"
-                                                 OnTransactionsLoaded="OnTransactionsLoaded" />
-                            </div>
-                        </MudPaper>
-                    </MudItem>
-
-                    @* Transaction detail panel (shows when a transaction is selected) *@
-                    @if (_selectedTransaction is not null)
-                    {
-                        <MudItem xs="12" md="5">
-                            <TransactionDetail Transaction="@_selectedTransaction"
-                                               OnClose="ClearSelection" />
-                        </MudItem>
-                    }
-                </MudGrid>
-            </MudTabPanel>
-
-            <MudTabPanel Text="Docket Chain" Icon="@Icons.Material.Filled.Link">
-                <div class="pa-3">
-                    <DocketChain RegisterId="@RegisterId" @ref="_docketChainRef" />
+                <div class="pa-3 transactions-tab-container">
+                    <ResizableSplitter ShowBottom="@(_selectedTransaction is not null)"
+                                       StorageKey="sorcha:panel-height:register-detail">
+                        <TopContent>
+                            <MudPaper Elevation="0" Class="transaction-list-paper" data-testid="transaction-list">
+                                <div class="transaction-list-content">
+                                    <TransactionList RegisterId="@RegisterId"
+                                                     @ref="_transactionListRef"
+                                                     SelectedTransaction="_selectedTransaction"
+                                                     SelectedTransactionChanged="OnTransactionSelected"
+                                                     OnTransactionsLoaded="OnTransactionsLoaded" />
+                                </div>
+                            </MudPaper>
+                        </TopContent>
+                        <BottomContent>
+                            @if (_selectedTransaction is not null)
+                            {
+                                <TransactionDetailPanel Transaction="@_selectedTransaction"
+                                                        NavigationContext="@_navContext"
+                                                        OnClose="ClearSelection"
+                                                        OnBreadcrumbNavigate="OnBreadcrumbNavigate"
+                                                        OnShowInMap="ShowInMap"
+                                                        OnNavigateToDocket="OnNavigateToDocketAsync" />
+                            }
+                        </BottomContent>
+                    </ResizableSplitter>
                 </div>
             </MudTabPanel>
 
-            <MudTabPanel Text="Policy" Icon="@Icons.Material.Filled.Policy">
+            <MudTabPanel Text="Docket Chain" Icon="@Icons.Material.Filled.Link">
+                <div class="pa-3 docket-tab-container">
+                    <ResizableSplitter ShowBottom="@(_selectedDocket is not null || (_selectedTransaction is not null && _navContext.Level == NavigationLevel.Transaction && _activeTabIndex == 1))"
+                                       StorageKey="sorcha:panel-height:docket-detail">
+                        <TopContent>
+                            <MudPaper Elevation="0" Class="docket-list-paper">
+                                <div class="docket-list-content">
+                                    <DocketChain RegisterId="@RegisterId"
+                                                 @ref="_docketChainRef"
+                                                 SelectedDocketId="@_selectedDocket?.DocketId"
+                                                 OnDocketSelected="OnDocketSelectedAsync" />
+                                </div>
+                            </MudPaper>
+                        </TopContent>
+                        <BottomContent>
+                            @if (_navContext.Level == NavigationLevel.Transaction && _selectedTransaction is not null)
+                            {
+                                <TransactionDetailPanel Transaction="@_selectedTransaction"
+                                                        NavigationContext="@_navContext"
+                                                        OnClose="ClearDocketDrillThrough"
+                                                        OnBreadcrumbNavigate="OnDocketBreadcrumbNavigate"
+                                                        OnNavigateToDocket="OnNavigateToDocketAsync" />
+                            }
+                            else if (_selectedDocket is not null)
+                            {
+                                <div class="docket-detail-panel">
+                                    <div class="panel-header">
+                                        <div class="panel-header-left">
+                                            <BreadcrumbNav Context="@_navContext"
+                                                           OnNavigate="OnDocketBreadcrumbNavigate" />
+                                        </div>
+                                        <div class="panel-header-right">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                           Size="Size.Small"
+                                                           OnClick="ClearDocketDrillThrough"
+                                                           aria-label="Close docket panel"
+                                                           data-testid="close-docket-panel" />
+                                        </div>
+                                    </div>
+                                    <MudDivider Class="mb-3" />
+                                    <DocketDetail Docket="@_selectedDocket"
+                                                  RegisterId="@RegisterId"
+                                                  OnTransactionSelected="OnDocketTransactionSelected" />
+                                </div>
+                            }
+                        </BottomContent>
+                    </ResizableSplitter>
+                </div>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Governance" Icon="@Icons.Material.Filled.Policy">
                 <RegisterPolicyTab RegisterId="@RegisterId" />
+            </MudTabPanel>
+
+            <MudTabPanel Text="Register Map" Icon="@Icons.Material.Filled.Map">
+                <div class="pa-3" style="height: calc(100vh - 380px); min-height: 400px;">
+                    <RegisterMap RegisterId="@RegisterId"
+                                 OnTransactionSelected="OnMapTransactionSelected"
+                                 @ref="_registerMapRef" />
+                </div>
             </MudTabPanel>
         </MudTabs>
     }
 </MudContainer>
+</div>
 
 @code {
     [Parameter]
@@ -202,14 +263,18 @@
     private bool _isLoadingRegister = true;
     private string? _registerError;
     private TransactionViewModel? _selectedTransaction;
+    private DocketViewModel? _selectedDocket;
     private int _totalTransactions;
     private TransactionList? _transactionListRef;
     private DocketChain? _docketChainRef;
+    private RegisterMap? _registerMapRef;
+    private int _activeTabIndex;
     private ConnectionState _connectionState = new();
     private bool _realtimeEnabled = true;
     private int _newTransactionsCount;
     private int _newDocketsCount;
     private List<string> _pendingTransactionIds = [];
+    private ExplorerNavigationContext _navContext = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -395,9 +460,202 @@
         StateHasChanged();
     }
 
+    private void OnTransactionSelected(TransactionViewModel? transaction)
+    {
+        _selectedTransaction = transaction;
+
+        if (_selectedTransaction is not null)
+        {
+            _navContext = new ExplorerNavigationContext
+            {
+                Level = NavigationLevel.Transaction,
+                TransactionId = _selectedTransaction.TxId
+            };
+        }
+        else
+        {
+            _navContext = new ExplorerNavigationContext();
+        }
+    }
+
     private void ClearSelection()
     {
         _selectedTransaction = null;
+        _navContext = new ExplorerNavigationContext();
+    }
+
+    private void OnBreadcrumbNavigate(NavigationLevel level)
+    {
+        if (level == NavigationLevel.Register)
+        {
+            ClearSelection();
+        }
+    }
+
+    private void OnActiveTabChanged(int index)
+    {
+        _activeTabIndex = index;
+
+        // When switching away from Docket Chain tab, clear docket drill-through state
+        if (index != 1)
+        {
+            _selectedDocket = null;
+            // Only clear transaction if it was from docket drill-through (not from Transactions tab)
+            if (_navContext.DocketId is not null)
+            {
+                _selectedTransaction = null;
+                _navContext = new ExplorerNavigationContext();
+            }
+        }
+    }
+
+    private async Task OnMapTransactionSelected(TransactionGraphNode node)
+    {
+        var transaction = await TransactionService.GetTransactionAsync(RegisterId, node.TxId);
+        if (transaction is not null)
+        {
+            _selectedTransaction = transaction;
+            _navContext = new ExplorerNavigationContext
+            {
+                Level = NavigationLevel.Transaction,
+                TransactionId = transaction.TxId
+            };
+        }
+    }
+
+    private async Task ShowInMap(string txId)
+    {
+        // Switch to the Register Map tab (index 3: Transactions=0, Docket Chain=1, Governance=2, Register Map=3)
+        _activeTabIndex = 3;
+        StateHasChanged();
+
+        // Allow render to complete before highlighting
+        await Task.Yield();
+
+        _registerMapRef?.HighlightTransaction(txId);
+    }
+
+    private void OnDocketSelectedAsync(DocketViewModel? docket)
+    {
+        if (docket is null)
+        {
+            // Deselection
+            _selectedDocket = null;
+            _selectedTransaction = null;
+            _navContext = new ExplorerNavigationContext();
+        }
+        else
+        {
+            _selectedDocket = docket;
+            _selectedTransaction = null;
+            _navContext = new ExplorerNavigationContext
+            {
+                Level = NavigationLevel.Docket,
+                DocketId = docket.DocketId,
+                DocketVersion = (ulong)docket.Version
+            };
+        }
+    }
+
+    private void OnDocketTransactionSelected(TransactionViewModel tx)
+    {
+        _selectedTransaction = tx;
+        _navContext = new ExplorerNavigationContext
+        {
+            Level = NavigationLevel.Transaction,
+            DocketId = _selectedDocket?.DocketId,
+            DocketVersion = _selectedDocket is not null ? (ulong)_selectedDocket.Version : null,
+            TransactionId = tx.TxId
+        };
+    }
+
+    private void OnDocketBreadcrumbNavigate(NavigationLevel level)
+    {
+        switch (level)
+        {
+            case NavigationLevel.Register:
+                // Clear everything
+                _selectedTransaction = null;
+                _selectedDocket = null;
+                _navContext = new ExplorerNavigationContext();
+                break;
+
+            case NavigationLevel.Docket:
+                // Clear transaction, keep docket
+                _selectedTransaction = null;
+                if (_selectedDocket is not null)
+                {
+                    _navContext = new ExplorerNavigationContext
+                    {
+                        Level = NavigationLevel.Docket,
+                        DocketId = _selectedDocket.DocketId,
+                        DocketVersion = (ulong)_selectedDocket.Version
+                    };
+                }
+                else
+                {
+                    _navContext = new ExplorerNavigationContext();
+                }
+                break;
+        }
+    }
+
+    private void ClearDocketDrillThrough()
+    {
+        _selectedTransaction = null;
+        _selectedDocket = null;
+        _navContext = new ExplorerNavigationContext();
+    }
+
+    private async Task OnNavigateToDocketAsync(ulong docketVersion)
+    {
+        // Switch to the Docket Chain tab (index 1)
+        _activeTabIndex = 1;
+
+        // Clear any existing transaction selection from the Transactions tab
+        _selectedTransaction = null;
+
+        StateHasChanged();
+
+        // Allow render to complete so DocketChain is available
+        await Task.Yield();
+
+        // Find the docket by version from the loaded dockets
+        var docket = _docketChainRef?.FindDocketByVersion(docketVersion);
+        if (docket is not null)
+        {
+            _selectedDocket = docket;
+            _navContext = new ExplorerNavigationContext
+            {
+                Level = NavigationLevel.Docket,
+                DocketId = docket.DocketId,
+                DocketVersion = (ulong)docket.Version
+            };
+            StateHasChanged();
+        }
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (_selectedTransaction is not null)
+            {
+                if (_activeTabIndex == 1 && _selectedDocket is not null)
+                {
+                    // In Docket Chain tab with transaction selected: go back to docket level
+                    OnDocketBreadcrumbNavigate(NavigationLevel.Docket);
+                }
+                else
+                {
+                    ClearSelection();
+                }
+            }
+            else if (_selectedDocket is not null)
+            {
+                ClearDocketDrillThrough();
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -421,9 +679,17 @@
 }
 
 <style>
-    .transaction-list-paper {
+    .register-detail-container:focus {
+        outline: none;
+    }
+
+    .transactions-tab-container {
         height: calc(100vh - 300px);
         min-height: 400px;
+    }
+
+    .transaction-list-paper {
+        height: 100%;
         display: flex;
         flex-direction: column;
     }
@@ -435,5 +701,46 @@
 
     .border-bottom {
         border-bottom: 1px solid var(--mud-palette-divider);
+    }
+
+    .docket-tab-container {
+        height: calc(100vh - 300px);
+        min-height: 400px;
+    }
+
+    .docket-list-paper {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .docket-list-content {
+        flex: 1;
+        overflow: auto;
+    }
+
+    .docket-detail-panel {
+        padding: 16px;
+        height: 100%;
+        overflow: auto;
+    }
+
+    .docket-detail-panel .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .docket-detail-panel .panel-header-left {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .docket-detail-panel .panel-header-right {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
     }
 </style>

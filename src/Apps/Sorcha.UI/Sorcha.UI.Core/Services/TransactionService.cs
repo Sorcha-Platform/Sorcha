@@ -156,6 +156,79 @@ public class TransactionService : ITransactionService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<TransactionGraphResponse> GetTransactionGraphAsync(
+        string registerId, int limit = 200, string? before = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"/api/registers/{Uri.EscapeDataString(registerId)}/transactions/graph?limit={limit}";
+            if (!string.IsNullOrEmpty(before))
+            {
+                url += $"&before={Uri.EscapeDataString(before)}";
+            }
+
+            var response = await _httpClient.GetAsync(url, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to fetch transaction graph for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return new TransactionGraphResponse { RegisterId = registerId };
+            }
+
+            var apiResponse = await response.Content.ReadFromJsonAsync<ApiTransactionGraphResponse>(
+                JsonOptions, ct);
+
+            if (apiResponse is null)
+            {
+                return new TransactionGraphResponse { RegisterId = registerId };
+            }
+
+            return new TransactionGraphResponse
+            {
+                RegisterId = apiResponse.RegisterId ?? registerId,
+                TotalCount = apiResponse.TotalCount,
+                HasMore = apiResponse.HasMore,
+                Nodes = apiResponse.Nodes?.Select(MapToGraphNode).ToArray() ?? []
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching transaction graph for register {RegisterId}", registerId);
+            return new TransactionGraphResponse { RegisterId = registerId };
+        }
+    }
+
+    private static TransactionGraphNode MapToGraphNode(ApiGraphNode apiNode)
+    {
+        // Map transaction type int to string using the same logic as TransactionViewModel
+        var transactionType = apiNode.TransactionType switch
+        {
+            0 => "Control",
+            1 => "Action",
+            2 => "Docket",
+            3 => "Participant",
+            _ => apiNode.ActionId.HasValue
+                ? "Action"
+                : !string.IsNullOrEmpty(apiNode.BlueprintId)
+                    ? "Blueprint"
+                    : "Transfer"
+        };
+
+        return new TransactionGraphNode
+        {
+            TxId = apiNode.TxId ?? "",
+            PrevTxId = apiNode.PrevTxId ?? "",
+            SenderWallet = apiNode.SenderWallet ?? "",
+            TimeStamp = apiNode.TimeStamp,
+            DocketNumber = apiNode.DocketNumber,
+            BlueprintId = apiNode.BlueprintId,
+            InstanceId = apiNode.InstanceId,
+            TransactionType = transactionType
+        };
+    }
+
     private static TransactionViewModel MapToViewModel(TransactionModel transaction)
     {
         return new TransactionViewModel
@@ -192,7 +265,7 @@ public class TransactionService : ITransactionService
             PayloadFlags = p.PayloadFlags,
             HasIV = p.IV is not null,
             ChallengeCount = p.Challenges?.Length ?? 0,
-            Data = p.Data
+            Data = p.Data?.Trim()
         }).ToList();
     }
 
@@ -226,5 +299,32 @@ public class TransactionService : ITransactionService
         public required TransactionModel Transaction { get; init; }
         public required string RegisterId { get; init; }
         public required string RegisterName { get; init; }
+    }
+
+    /// <summary>
+    /// API response model for transaction graph endpoint
+    /// </summary>
+    private record ApiTransactionGraphResponse
+    {
+        public string? RegisterId { get; init; }
+        public ApiGraphNode[]? Nodes { get; init; }
+        public int TotalCount { get; init; }
+        public bool HasMore { get; init; }
+    }
+
+    /// <summary>
+    /// API node model for transaction graph
+    /// </summary>
+    private record ApiGraphNode
+    {
+        public string? TxId { get; init; }
+        public string? PrevTxId { get; init; }
+        public string? SenderWallet { get; init; }
+        public DateTime TimeStamp { get; init; }
+        public ulong? DocketNumber { get; init; }
+        public string? BlueprintId { get; init; }
+        public string? InstanceId { get; init; }
+        public uint? ActionId { get; init; }
+        public int? TransactionType { get; init; }
     }
 }

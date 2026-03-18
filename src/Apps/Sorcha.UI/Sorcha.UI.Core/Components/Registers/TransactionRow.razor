@@ -64,6 +64,12 @@
     public bool IsSelected { get; set; }
 
     /// <summary>
+    /// Whether this transaction is highlighted via keyboard navigation
+    /// </summary>
+    [Parameter]
+    public bool IsHighlighted { get; set; }
+
+    /// <summary>
     /// Callback when the row is clicked
     /// </summary>
     [Parameter]
@@ -76,6 +82,11 @@
         if (IsSelected)
         {
             baseClass += " selected";
+        }
+
+        if (IsHighlighted)
+        {
+            baseClass += " highlighted";
         }
 
         if (Transaction.IsRecent)
@@ -115,6 +126,18 @@
 
     .transaction-row.selected {
         background-color: var(--mud-palette-primary-lighten);
+    }
+
+    .transaction-row.highlighted {
+        outline: 2px dashed var(--mud-palette-primary);
+        outline-offset: -2px;
+        background-color: var(--mud-palette-action-default-hover);
+    }
+
+    .transaction-row.selected.highlighted {
+        background-color: var(--mud-palette-primary-lighten);
+        outline: 2px dashed var(--mud-palette-primary);
+        outline-offset: -2px;
     }
 
     .transaction-row.recent {

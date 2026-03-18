@@ -1053,7 +1053,39 @@ GET /api/registers/reg-101/transactions?senderAddress=wallet-789&startTime=2025-
 }
 ```
 
-#### 5. Seal Docket (Create Block)
+#### 5. Transaction Graph (Register Map)
+
+```http
+GET /api/registers/{registerId}/transactions/graph
+```
+
+Returns a lightweight transaction graph for DAG visualization in the Transaction Explorer UI.
+
+**Query Parameters:**
+- `limit` (int, default 200, max 1000) — maximum nodes to return
+- `before` (string, optional) — cursor TxId for pagination
+
+**Response:** `200 OK`
+```json
+{
+  "nodes": [
+    {
+      "txId": "tx-abc123",
+      "prevTxId": "tx-abc122",
+      "senderWallet": "wallet-789",
+      "timeStamp": "2025-11-17T13:05:00Z",
+      "docketNumber": 1,
+      "blueprintId": "bp-123",
+      "instanceId": "inst-456",
+      "transactionType": "Action"
+    }
+  ],
+  "totalCount": 150,
+  "hasMore": true
+}
+```
+
+#### 6. Seal Docket (Create Block)
 
 ```http
 POST /api/registers/{id}/dockets/seal

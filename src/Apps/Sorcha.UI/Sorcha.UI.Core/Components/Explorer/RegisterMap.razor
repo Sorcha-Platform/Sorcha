@@ -1,0 +1,394 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Globalization
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Services
+
+@inject ITransactionService TransactionService
+@inject IGraphLayoutService GraphLayoutService
+@inject IJSRuntime JS
+
+<div class="register-map-container" data-testid="register-map">
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="ma-4" data-testid="register-map-error">
+            @_error
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="LoadGraphAsync" Class="ml-2">
+                Retry
+            </MudButton>
+        </MudAlert>
+    }
+    else if (_nodes.Count == 0)
+    {
+        <EmptyState Icon="@Icons.Material.Filled.Map"
+                    Title="No transactions in this register yet"
+                    Description="Transactions will appear here as a directed acyclic graph once they are confirmed" />
+    }
+    else
+    {
+        @* Toolbar *@
+        <div style="position: absolute; top: 8px; right: 8px; z-index: 10; display: flex; gap: 4px;">
+            <MudIconButton Icon="@Icons.Material.Filled.ZoomIn" Size="Size.Small" OnClick="ZoomIn"
+                           Title="Zoom in" data-testid="zoom-in" />
+            <MudIconButton Icon="@Icons.Material.Filled.ZoomOut" Size="Size.Small" OnClick="ZoomOut"
+                           Title="Zoom out" data-testid="zoom-out" />
+            <MudIconButton Icon="@Icons.Material.Filled.FitScreen" Size="Size.Small" OnClick="ResetView"
+                           Title="Reset view" data-testid="reset-view" />
+            <MudIconButton Icon="@(_leftToRight ? Icons.Material.Filled.ViewColumn : Icons.Material.Filled.ViewStream)"
+                           Size="Size.Small" OnClick="ToggleLayout"
+                           Title="@(_leftToRight ? "Switch to top-to-bottom" : "Switch to left-to-right")"
+                           data-testid="toggle-layout" />
+        </div>
+
+        @if (_hasMore)
+        {
+            <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 10;">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="LoadEarlier"
+                           data-testid="load-earlier">Load Earlier</MudButton>
+            </div>
+        }
+
+        <svg width="100%" height="100%"
+             @onpointerdown="OnPointerDown"
+             @onpointermove="OnPointerMove"
+             @onpointerup="OnPointerUp"
+             @onwheel="OnWheel"
+             style="cursor: @(_isDragging ? "grabbing" : "grab");"
+             data-testid="register-map-svg">
+            <g transform="translate(@Fmt(_translateX), @Fmt(_translateY)) scale(@Fmt(_scale))">
+                @* Edges first (behind nodes) *@
+                @foreach (var edge in _edges)
+                {
+                    <path d="@ComputeEdgePath(edge)"
+                          stroke="@(edge.IsHighlighted ? "#1976d2" : "#666")"
+                          stroke-width="@(edge.IsHighlighted ? "2.5" : "1.5")"
+                          fill="none"
+                          opacity="@(edge.IsHighlighted ? "1" : "0.4")" />
+                }
+
+                @* Nodes *@
+                @foreach (var node in _nodes)
+                {
+                    <g transform="translate(@Fmt(node.X), @Fmt(node.Y))"
+                       @onclick="() => SelectNode(node)"
+                       @onclick:stopPropagation="true"
+                       style="cursor: pointer;"
+                       data-testid="graph-node-@node.TxId">
+                        <rect x="-60" y="-20" width="120" height="40" rx="6" ry="6"
+                              fill="@GetNodeColor(node)"
+                              stroke="@(node.IsHighlighted ? "#1976d2" : (_selectedTxId == node.TxId ? "#fff" : "transparent"))"
+                              stroke-width="@(node.IsHighlighted || _selectedTxId == node.TxId ? "2" : "0")"
+                              opacity="@(HasHighlights && !node.IsHighlighted ? "0.3" : "1")" />
+                        <text x="0" y="-4" text-anchor="middle" fill="white" font-size="11"
+                              font-family="Consolas, monospace">
+                            @node.TxIdTruncated
+                        </text>
+                        <text x="0" y="12" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9"
+                              font-family="sans-serif">
+                            @node.TransactionType
+                        </text>
+                    </g>
+                }
+            </g>
+        </svg>
+    }
+</div>
+
+@code {
+    private const string LayoutStorageKey = "sorcha:map-layout";
+    private const double MinScale = 0.1;
+    private const double MaxScale = 5.0;
+    private const double ZoomFactor = 1.2;
+
+    /// <summary>
+    /// Register to load graph for.
+    /// </summary>
+    [Parameter]
+    public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Fired when a graph node is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TransactionGraphNode> OnTransactionSelected { get; set; }
+
+    private List<TransactionGraphNode> _nodes = [];
+    private List<TransactionGraphEdge> _edges = [];
+    private bool _leftToRight = true;
+    private bool _loading = true;
+    private string? _error;
+    private bool _hasMore;
+    private string? _selectedTxId;
+
+    // Pan/zoom state
+    private double _translateX;
+    private double _translateY;
+    private double _scale = 1.0;
+
+    // Drag state
+    private bool _isDragging;
+    private double _dragStartX;
+    private double _dragStartY;
+
+    private bool HasHighlights => _nodes.Any(n => n.IsHighlighted);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadGraphAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var stored = await JS.InvokeAsync<string?>("localStorage.getItem", LayoutStorageKey);
+                if (stored is not null)
+                {
+                    var newLeftToRight = stored == "ltr";
+                    if (newLeftToRight != _leftToRight)
+                    {
+                        _leftToRight = newLeftToRight;
+                        RecomputeLayout();
+                        StateHasChanged();
+                    }
+                }
+            }
+            catch
+            {
+                // localStorage may not be available (SSR, etc.) — use default
+            }
+        }
+    }
+
+    private async Task LoadGraphAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            StateHasChanged();
+
+            var response = await TransactionService.GetTransactionGraphAsync(RegisterId, 200);
+            _hasMore = response.HasMore;
+
+            var (nodes, edges) = GraphLayoutService.ComputeLayout(response.Nodes, _leftToRight);
+            _nodes = nodes;
+            _edges = edges;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load transaction graph: {ex.Message}";
+            _nodes = [];
+            _edges = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void RecomputeLayout()
+    {
+        if (_nodes.Count == 0) return;
+
+        var (nodes, edges) = GraphLayoutService.ComputeLayout(_nodes, _leftToRight);
+        _nodes = nodes;
+        _edges = edges;
+    }
+
+    private async Task LoadEarlier()
+    {
+        if (_nodes.Count == 0) return;
+
+        var oldestTxId = _nodes.OrderBy(n => n.TimeStamp).FirstOrDefault()?.TxId;
+        if (oldestTxId is null) return;
+
+        try
+        {
+            var response = await TransactionService.GetTransactionGraphAsync(RegisterId, 200, before: oldestTxId);
+            _hasMore = response.HasMore;
+
+            // Merge new nodes with existing (avoid duplicates)
+            var existingIds = _nodes.Select(n => n.TxId).ToHashSet();
+            var newNodes = response.Nodes.Where(n => !existingIds.Contains(n.TxId)).ToList();
+
+            if (newNodes.Count > 0)
+            {
+                var allNodes = newNodes.Concat(_nodes).ToList();
+                var (nodes, edges) = GraphLayoutService.ComputeLayout(allNodes, _leftToRight);
+                _nodes = nodes;
+                _edges = edges;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load earlier transactions: {ex.Message}";
+        }
+    }
+
+    private async Task SelectNode(TransactionGraphNode node)
+    {
+        _selectedTxId = node.TxId;
+        GraphLayoutService.HighlightChain(_nodes, _edges, node.TxId);
+
+        if (OnTransactionSelected.HasDelegate)
+        {
+            await OnTransactionSelected.InvokeAsync(node);
+        }
+    }
+
+    /// <summary>
+    /// Highlights a transaction in the map (for external callers such as "Show in Map").
+    /// </summary>
+    public void HighlightTransaction(string txId)
+    {
+        var node = _nodes.FirstOrDefault(n => n.TxId == txId);
+        if (node is null) return;
+
+        _selectedTxId = txId;
+        GraphLayoutService.HighlightChain(_nodes, _edges, txId);
+        StateHasChanged();
+    }
+
+    private string ComputeEdgePath(TransactionGraphEdge edge)
+    {
+        var source = _nodes.FirstOrDefault(n => n.TxId == edge.SourceTxId);
+        var target = _nodes.FirstOrDefault(n => n.TxId == edge.TargetTxId);
+
+        if (source is null || target is null)
+            return string.Empty;
+
+        var sx = source.X;
+        var sy = source.Y;
+        var tx = target.X;
+        var ty = target.Y;
+
+        double cx1, cy1, cx2, cy2;
+
+        if (_leftToRight)
+        {
+            var midX = (sx + tx) / 2.0;
+            cx1 = midX;
+            cy1 = sy;
+            cx2 = midX;
+            cy2 = ty;
+        }
+        else
+        {
+            var midY = (sy + ty) / 2.0;
+            cx1 = sx;
+            cy1 = midY;
+            cx2 = tx;
+            cy2 = midY;
+        }
+
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "M {0:F0} {1:F0} C {2:F0} {3:F0}, {4:F0} {5:F0}, {6:F0} {7:F0}",
+            sx, sy, cx1, cy1, cx2, cy2, tx, ty);
+    }
+
+    private string GetNodeColor(TransactionGraphNode node)
+    {
+        if (!string.IsNullOrEmpty(node.InstanceId))
+        {
+            var hue = Math.Abs(node.InstanceId.GetHashCode()) % 360;
+            return $"hsl({hue}, 55%, 45%)";
+        }
+
+        return node.TransactionType switch
+        {
+            "Action" => "#1976d2",
+            "Blueprint" => "#7b1fa2",
+            "Control" => "#f57c00",
+            "Docket" => "#0097a7",
+            "Participant" => "#388e3c",
+            _ => "#616161"
+        };
+    }
+
+    private void ZoomIn()
+    {
+        _scale = Math.Min(_scale * ZoomFactor, MaxScale);
+    }
+
+    private void ZoomOut()
+    {
+        _scale = Math.Max(_scale / ZoomFactor, MinScale);
+    }
+
+    private void ResetView()
+    {
+        _translateX = 0;
+        _translateY = 0;
+        _scale = 1.0;
+    }
+
+    private async Task ToggleLayout()
+    {
+        _leftToRight = !_leftToRight;
+        RecomputeLayout();
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", LayoutStorageKey, _leftToRight ? "ltr" : "ttb");
+        }
+        catch
+        {
+            // localStorage may not be available
+        }
+    }
+
+    private void OnPointerDown(PointerEventArgs e)
+    {
+        _isDragging = true;
+        _dragStartX = e.ClientX - _translateX;
+        _dragStartY = e.ClientY - _translateY;
+    }
+
+    private void OnPointerMove(PointerEventArgs e)
+    {
+        if (!_isDragging) return;
+
+        _translateX = e.ClientX - _dragStartX;
+        _translateY = e.ClientY - _dragStartY;
+    }
+
+    private void OnPointerUp(PointerEventArgs e)
+    {
+        _isDragging = false;
+    }
+
+    private void OnWheel(WheelEventArgs e)
+    {
+        if (e.DeltaY < 0)
+        {
+            _scale = Math.Min(_scale * 1.1, MaxScale);
+        }
+        else
+        {
+            _scale = Math.Max(_scale / 1.1, MinScale);
+        }
+    }
+
+    private static string Fmt(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
+}
+
+<style>
+    .register-map-container {
+        width: 100%;
+        height: 100%;
+        min-height: 400px;
+        overflow: hidden;
+        position: relative;
+        background: var(--mud-palette-background-gray);
+        border-radius: 4px;
+    }
+</style>

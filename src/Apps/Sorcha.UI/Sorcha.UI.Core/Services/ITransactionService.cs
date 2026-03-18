@@ -49,6 +49,17 @@ public interface ITransactionService
         int page = 1,
         int pageSize = 20,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets transaction graph data for DAG visualization.
+    /// </summary>
+    /// <param name="registerId">Register identifier.</param>
+    /// <param name="limit">Maximum number of nodes to return (default 200).</param>
+    /// <param name="before">Cursor for pagination — return transactions before this TxId.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Transaction graph response with nodes for DAG rendering.</returns>
+    Task<TransactionGraphResponse> GetTransactionGraphAsync(
+        string registerId, int limit = 200, string? before = null, CancellationToken ct = default);
 }
 
 /// <summary>

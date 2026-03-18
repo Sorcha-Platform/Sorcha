@@ -29,7 +29,7 @@ else
             <MudTimelineItem Color="@(docket.IsIntegrityValid ? Color.Primary : Color.Error)" Size="Size.Small"
                              Variant="Variant.Filled">
                 <ItemContent>
-                    <MudCard Elevation="0" Outlined="true" Class="@($"mb-2 {(_selectedDocketId == docket.DocketId ? "mud-border-primary" : "")}")"
+                    <MudCard Elevation="0" Outlined="true" Class="@($"mb-2 {(SelectedDocketId == docket.DocketId ? "mud-border-primary" : "")}")"
                              @onclick="() => SelectDocket(docket)">
                         <MudCardContent Class="pa-3" Style="cursor: pointer">
                             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
@@ -77,20 +77,25 @@ else
             </MudTimelineItem>
         }
     </MudTimeline>
-
-    @if (_selectedDocket != null)
-    {
-        <DocketDetail Docket="_selectedDocket" RegisterId="@RegisterId" />
-    }
 }
 
 @code {
     [Parameter]
     public string RegisterId { get; set; } = "";
 
+    /// <summary>
+    /// The currently selected docket ID, managed by the parent for highlight styling
+    /// </summary>
+    [Parameter]
+    public string? SelectedDocketId { get; set; }
+
+    /// <summary>
+    /// Fired when a docket is selected or deselected in the timeline
+    /// </summary>
+    [Parameter]
+    public EventCallback<DocketViewModel> OnDocketSelected { get; set; }
+
     private List<DocketViewModel> _dockets = [];
-    private DocketViewModel? _selectedDocket;
-    private string? _selectedDocketId;
     private bool _loading = true;
     private bool _error;
 
@@ -106,6 +111,14 @@ else
     {
         await LoadDocketsAsync();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Find a docket by its version number from the loaded dockets list.
+    /// </summary>
+    public DocketViewModel? FindDocketByVersion(ulong version)
+    {
+        return _dockets.FirstOrDefault(d => (ulong)d.Version == version);
     }
 
     private async Task LoadDocketsAsync()
@@ -127,17 +140,16 @@ else
         }
     }
 
-    private void SelectDocket(DocketViewModel docket)
+    private async Task SelectDocket(DocketViewModel docket)
     {
-        if (_selectedDocketId == docket.DocketId)
+        if (SelectedDocketId == docket.DocketId)
         {
-            _selectedDocket = null;
-            _selectedDocketId = null;
+            // Deselect: emit with null to signal deselection
+            await OnDocketSelected.InvokeAsync(null!);
         }
         else
         {
-            _selectedDocket = docket;
-            _selectedDocketId = docket.DocketId;
+            await OnDocketSelected.InvokeAsync(docket);
         }
     }
 }

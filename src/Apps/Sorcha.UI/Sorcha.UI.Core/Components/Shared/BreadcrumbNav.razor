@@ -1,0 +1,87 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Registers
+
+<MudBreadcrumbs Items="_items" Class="pa-0 ma-0">
+    <ItemTemplate Context="item">
+        @if (item.Href is null)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Default">@item.Text</MudText>
+        }
+        else
+        {
+            <MudLink Typo="Typo.body2"
+                     Color="Color.Primary"
+                     Underline="Underline.Hover"
+                     OnClick="@(() => HandleClick(item))">
+                @item.Text
+            </MudLink>
+        }
+    </ItemTemplate>
+</MudBreadcrumbs>
+
+@code {
+    private List<BreadcrumbItem> _items = new();
+
+    [Parameter]
+    public ExplorerNavigationContext Context { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<NavigationLevel> OnNavigate { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        BuildBreadcrumbs();
+    }
+
+    private void BuildBreadcrumbs()
+    {
+        _items = new List<BreadcrumbItem>();
+
+        if (Context.Level == NavigationLevel.Register)
+        {
+            // Register is the current level — not clickable
+            _items.Add(new BreadcrumbItem("Register", href: null));
+        }
+        else
+        {
+            // Register is a parent level — clickable
+            _items.Add(new BreadcrumbItem("Register", href: "#register"));
+
+            if (Context.Level == NavigationLevel.Docket)
+            {
+                // Docket is current — not clickable
+                var docketLabel = Context.DocketVersion.HasValue
+                    ? $"Docket #{Context.DocketVersion}"
+                    : "Docket";
+                _items.Add(new BreadcrumbItem(docketLabel, href: null));
+            }
+            else if (Context.Level == NavigationLevel.Transaction)
+            {
+                // Docket is a parent — clickable
+                var docketLabel = Context.DocketVersion.HasValue
+                    ? $"Docket #{Context.DocketVersion}"
+                    : "Docket";
+                _items.Add(new BreadcrumbItem(docketLabel, href: "#docket"));
+
+                // Transaction is current — not clickable
+                _items.Add(new BreadcrumbItem($"TX {Context.TransactionIdTruncated}", href: null));
+            }
+        }
+    }
+
+    private async Task HandleClick(BreadcrumbItem item)
+    {
+        if (!OnNavigate.HasDelegate) return;
+
+        var level = item.Href switch
+        {
+            "#register" => NavigationLevel.Register,
+            "#docket" => NavigationLevel.Docket,
+            _ => NavigationLevel.Register
+        };
+
+        await OnNavigate.InvokeAsync(level);
+    }
+}

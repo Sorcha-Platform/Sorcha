@@ -1,9 +1,16 @@
 @using System.Text.Json
+@using Sorcha.UI.Core.Services
 
 <div class="json-tree-view" style="font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; line-height: 1.8;">
     @if (JsonElement.HasValue)
     {
-        <JsonTreeNode Element="JsonElement.Value" PropertyName="@RootName" Level="0" />
+        <JsonTreeNode Element="JsonElement.Value"
+                      PropertyName="@RootName"
+                      Level="0"
+                      Path="@RootName"
+                      OnNodeClick="OnNodeClick"
+                      EncryptedPaths="EncryptedPaths"
+                      SchemaFields="SchemaFields" />
     }
 </div>
 
@@ -13,4 +20,23 @@
 
     [Parameter]
     public string RootName { get; set; } = "root";
+
+    /// <summary>
+    /// Optional callback fired when a value node is clicked (passes the value as string)
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnNodeClick { get; set; }
+
+    /// <summary>
+    /// Optional set of JSON paths that should display lock icons (for encrypted fields)
+    /// </summary>
+    [Parameter]
+    public HashSet<string>? EncryptedPaths { get; set; }
+
+    /// <summary>
+    /// Optional schema field metadata for annotating property names with labels and descriptions.
+    /// Only applies to top-level properties (Level == 1).
+    /// </summary>
+    [Parameter]
+    public Dictionary<string, SchemaOverlayFieldInfo>? SchemaFields { get; set; }
 }

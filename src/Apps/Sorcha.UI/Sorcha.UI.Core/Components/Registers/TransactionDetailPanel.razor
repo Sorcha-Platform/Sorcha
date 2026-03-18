@@ -1,0 +1,239 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Components.Shared
+
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<div data-testid="transaction-detail-panel" class="transaction-detail-panel">
+    @* Header row: breadcrumb left, close button right *@
+    <div class="panel-header">
+        <div class="panel-header-left">
+            <BreadcrumbNav Context="@NavigationContext"
+                           OnNavigate="OnBreadcrumbNavigateClicked" />
+        </div>
+        <div class="panel-header-right">
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" data-testid="quick-actions-area">
+                <MudTooltip Text="Copy TX ID">
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                   Size="Size.Small"
+                                   OnClick="CopyTxIdAsync"
+                                   aria-label="Copy TX ID"
+                                   data-testid="copy-txid-button" />
+                </MudTooltip>
+                <MudTooltip Text="Copy Decoded Payload">
+                    <MudIconButton Icon="@Icons.Material.Filled.Code"
+                                   Size="Size.Small"
+                                   OnClick="CopyDecodedPayloadAsync"
+                                   Disabled="@(!HasPayloads)"
+                                   aria-label="Copy Decoded Payload"
+                                   data-testid="copy-payload-button" />
+                </MudTooltip>
+                <MudTooltip Text="Download Raw Payload">
+                    <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                   Size="Size.Small"
+                                   OnClick="DownloadRawPayloadAsync"
+                                   Disabled="@(!HasPayloads)"
+                                   aria-label="Download Raw Payload"
+                                   data-testid="download-payload-button" />
+                </MudTooltip>
+                @if (OnShowInMap.HasDelegate)
+                {
+                    <MudTooltip Text="Show in Map">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Map"
+                                       Size="Size.Small"
+                                       OnClick="OnShowInMapClicked"
+                                       aria-label="Show in Map"
+                                       data-testid="show-in-map-button" />
+                    </MudTooltip>
+                }
+            </MudStack>
+            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                           Size="Size.Small"
+                           OnClick="OnCloseClicked"
+                           aria-label="Close detail panel"
+                           data-testid="close-detail-panel" />
+        </div>
+    </div>
+
+    <MudDivider Class="mb-3" />
+
+    @* Two-column layout: metadata left, payload viewer right *@
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="5">
+            <TransactionDetail Transaction="@Transaction"
+                               OnNavigateToDocket="OnNavigateToDocketClicked" />
+        </MudItem>
+        <MudItem xs="12" md="7">
+            <PayloadViewer Payloads="@Transaction.Payloads"
+                              BlueprintId="@Transaction.BlueprintId"
+                              ActionId="@Transaction.ActionId" />
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    /// <summary>
+    /// The transaction to display in the detail panel
+    /// </summary>
+    [Parameter]
+    public required TransactionViewModel Transaction { get; set; }
+
+    /// <summary>
+    /// Navigation context for breadcrumb rendering
+    /// </summary>
+    [Parameter]
+    public ExplorerNavigationContext NavigationContext { get; set; } = new();
+
+    /// <summary>
+    /// Callback when the close button is clicked
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when a breadcrumb segment is clicked
+    /// </summary>
+    [Parameter]
+    public EventCallback<NavigationLevel> OnBreadcrumbNavigate { get; set; }
+
+    /// <summary>
+    /// Callback when "Show in Map" is clicked, passing the transaction ID
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnShowInMap { get; set; }
+
+    /// <summary>
+    /// Callback when the docket number link is clicked, passing the docket version number
+    /// </summary>
+    [Parameter]
+    public EventCallback<ulong> OnNavigateToDocket { get; set; }
+
+    private async Task OnCloseClicked()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task OnBreadcrumbNavigateClicked(NavigationLevel level)
+    {
+        await OnBreadcrumbNavigate.InvokeAsync(level);
+    }
+
+    private async Task OnShowInMapClicked()
+    {
+        await OnShowInMap.InvokeAsync(Transaction.TxId);
+    }
+
+    private async Task OnNavigateToDocketClicked(ulong docketVersion)
+    {
+        await OnNavigateToDocket.InvokeAsync(docketVersion);
+    }
+
+    private bool HasPayloads => Transaction.Payloads.Count > 0;
+
+    private async Task CopyTxIdAsync()
+    {
+        try
+        {
+            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", Transaction.TxId);
+            if (success)
+            {
+                Snackbar.Add("TX ID copied to clipboard", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 2000;
+                });
+            }
+            else
+            {
+                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+        }
+    }
+
+    private async Task CopyDecodedPayloadAsync()
+    {
+        if (!HasPayloads)
+            return;
+
+        var payload = Transaction.Payloads[0];
+        var content = payload.DecodedContent ?? payload.Data ?? string.Empty;
+
+        try
+        {
+            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", content);
+            if (success)
+            {
+                Snackbar.Add("Payload copied to clipboard", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 2000;
+                });
+            }
+            else
+            {
+                Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+        }
+    }
+
+    private async Task DownloadRawPayloadAsync()
+    {
+        if (!HasPayloads)
+            return;
+
+        var payload = Transaction.Payloads[0];
+        var rawContent = payload.Data ?? string.Empty;
+        var txIdPrefix = Transaction.TxId.Length >= 8 ? Transaction.TxId[..8] : Transaction.TxId;
+        var filename = $"payload-{txIdPrefix}.b64";
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("downloadFile", filename, "application/octet-stream", rawContent);
+            Snackbar.Add($"Downloaded {filename}", Severity.Success, config =>
+            {
+                config.VisibleStateDuration = 2000;
+            });
+        }
+        catch
+        {
+            Snackbar.Add("Failed to download payload", Severity.Error);
+        }
+    }
+}
+
+<style>
+    .transaction-detail-panel {
+        padding: 16px;
+        height: 100%;
+        overflow: auto;
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .panel-header-left {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .panel-header-right {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+    }
+
+</style>

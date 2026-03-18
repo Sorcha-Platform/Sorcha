@@ -642,6 +642,76 @@ transactionsGroup.MapGet("/", async (
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status401Unauthorized);
 
+// <summary>
+// Get lightweight transaction graph for DAG visualization
+// </summary>
+transactionsGroup.MapGet("/graph", async (
+    IRegisterRepository repository,
+    string registerId,
+    [Microsoft.AspNetCore.Mvc.FromQuery] int? limit,
+    [Microsoft.AspNetCore.Mvc.FromQuery] string? before) =>
+{
+    // Validate limit parameter
+    var effectiveLimit = limit ?? 200;
+    if (effectiveLimit < 1 || effectiveLimit > 1000)
+    {
+        return Results.BadRequest(new { error = "limit must be between 1 and 1000" });
+    }
+
+    // Verify register exists
+    var register = await repository.GetRegisterAsync(registerId);
+    if (register is null)
+    {
+        return Results.NotFound(new { error = "Register not found" });
+    }
+
+    // Get all transactions for the register
+    var transactionsQuery = await repository.GetTransactionsAsync(registerId);
+    var transactions = transactionsQuery.OrderByDescending(t => t.TimeStamp).AsEnumerable();
+
+    // Cursor-based pagination: if 'before' is specified, find that transaction's timestamp
+    // and filter to transactions older than it
+    if (!string.IsNullOrEmpty(before))
+    {
+        var cursorTx = transactionsQuery.FirstOrDefault(t => t.TxId == before);
+        if (cursorTx is not null)
+        {
+            transactions = transactions.Where(t => t.TimeStamp < cursorTx.TimeStamp);
+        }
+    }
+
+    var allFiltered = transactions.ToList();
+    var totalCount = allFiltered.Count;
+
+    var nodes = allFiltered
+        .Take(effectiveLimit)
+        .Select(t => new TransactionGraphNodeDto(
+            t.TxId,
+            t.PrevTxId,
+            t.SenderWallet,
+            t.TimeStamp,
+            t.DocketNumber,
+            t.MetaData?.BlueprintId,
+            t.MetaData?.InstanceId,
+            t.MetaData is not null ? (int?)t.MetaData.TransactionType : null))
+        .ToArray();
+
+    return Results.Ok(new TransactionGraphResponse(
+        registerId,
+        nodes,
+        totalCount,
+        totalCount > nodes.Length));
+})
+.WithName("GetTransactionGraph")
+.WithSummary("Get lightweight transaction graph for DAG visualization")
+.WithDescription("Returns transaction IDs and PrevTxId links without payload data. Used by the Register Map UI for building the transaction lineage DAG.")
+.WithTags("Query")
+.RequireAuthorization("CanReadTransactions")
+.Produces<TransactionGraphResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
+
 // ===========================
 // Query API
 // ===========================
@@ -2154,3 +2224,20 @@ record VerifyInclusionProofRequest(
     string ProofData,
     string[] MerkleProofPath,
     string VerificationKey);
+
+// Transaction Graph DTOs (T021 — DAG visualization)
+record TransactionGraphNodeDto(
+    string TxId,
+    string PrevTxId,
+    string SenderWallet,
+    DateTime TimeStamp,
+    ulong? DocketNumber,
+    string? BlueprintId,
+    string? InstanceId,
+    int? TransactionType);
+
+record TransactionGraphResponse(
+    string RegisterId,
+    TransactionGraphNodeDto[] Nodes,
+    int TotalCount,
+    bool HasMore);

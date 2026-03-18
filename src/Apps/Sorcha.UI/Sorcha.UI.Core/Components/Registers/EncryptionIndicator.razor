@@ -1,0 +1,44 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@if (IsEncrypted)
+{
+    @if (IsAccessible)
+    {
+        <MudTooltip Text="Payload accessible — your wallet is in the access list">
+            <MudIcon Icon="@Icons.Material.Filled.LockOpen"
+                     Size="Size.Small"
+                     Color="Color.Success"
+                     data-testid="encryption-indicator-accessible" />
+        </MudTooltip>
+    }
+    else
+    {
+        <MudTooltip Text="Payload encrypted — you are not in the access list">
+            <MudIcon Icon="@Icons.Material.Filled.Lock"
+                     Size="Size.Small"
+                     Color="Color.Error"
+                     data-testid="encryption-indicator-locked" />
+        </MudTooltip>
+    }
+}
+
+@code {
+    /// <summary>
+    /// Whether the payload has an initialization vector (encryption present)
+    /// </summary>
+    [Parameter]
+    public bool IsEncrypted { get; set; }
+
+    /// <summary>
+    /// Whether the current user can decrypt this payload
+    /// </summary>
+    [Parameter]
+    public bool IsAccessible { get; set; }
+
+    /// <summary>
+    /// Field-level encryption metadata — reserved for future use
+    /// </summary>
+    [Parameter]
+    public object? FieldLevelMetadata { get; set; }
+}
