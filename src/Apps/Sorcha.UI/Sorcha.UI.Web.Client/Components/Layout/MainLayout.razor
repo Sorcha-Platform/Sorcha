@@ -4,6 +4,7 @@
 @using MudBlazor
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Components.Shared
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ITokenRefreshService TokenRefreshService
@@ -40,21 +41,7 @@
                         <MudBadge Content="@_unreadCount" Color="Color.Error" Overlap="true" />
                     }
                 </MudIconButton>
-                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                    <MudMenuItem>
-                        <div class="d-flex flex-column py-2 px-3">
-                            <MudText Typo="Typo.body2" Color="Color.Primary">@context.User.Identity?.Name</MudText>
-                            <MudText Typo="Typo.caption" Class="mt-1">@GetUserRole(context)</MudText>
-                        </div>
-                    </MudMenuItem>
-                    <MudDivider />
-                    <MudMenuItem Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Navigation.NavigateTo("settings"))">
-                        @Loc.T("nav.settings")
-                    </MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@HandleLogout">
-                        @Loc.T("nav.logout")
-                    </MudMenuItem>
-                </MudMenu>
+                <UserProfileMenu />
             </Authorized>
             <NotAuthorized>
                 <MudButton OnClick="@(() => Navigation.NavigateTo("/auth/login", forceLoad: true))" Variant="Variant.Text" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.Login">
@@ -345,18 +332,6 @@
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
-    }
-
-    private string GetUserRole(AuthenticationState authState)
-    {
-        var roleClaim = authState.User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role);
-        return roleClaim?.Value ?? "User";
-    }
-
-    private void HandleLogout()
-    {
-        // Navigate to logout page using relative path
-        Navigation.NavigateTo("auth/logout", forceLoad: false);
     }
 
     private void ToggleActivityLog()

@@ -1,0 +1,252 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.IdentityModel.Tokens.Jwt
+@using System.Security.Claims
+
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<MudDialog Style="max-width: 700px;">
+    <TitleContent>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icons.Material.Filled.Token" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Bearer Token</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_claims.Count > 0)
+        {
+            @* Identity section *@
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">Identity</MudText>
+            <MudSimpleTable Dense="true" Bordered="true" Class="mb-4" Style="table-layout: fixed;">
+                <tbody>
+                    @foreach (var claim in _identityClaims)
+                    {
+                        <tr>
+                            <td style="width: 160px; font-weight: 500; white-space: nowrap;">@claim.Label</td>
+                            <td style="word-break: break-all; font-family: var(--mud-typography-body2-family); font-size: 0.85rem;">@claim.Value</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            @* Organisation section *@
+            @if (_orgClaims.Count > 0)
+            {
+                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">Organisation</MudText>
+                <MudSimpleTable Dense="true" Bordered="true" Class="mb-4" Style="table-layout: fixed;">
+                    <tbody>
+                        @foreach (var claim in _orgClaims)
+                        {
+                            <tr>
+                                <td style="width: 160px; font-weight: 500; white-space: nowrap;">@claim.Label</td>
+                                <td style="word-break: break-all; font-family: var(--mud-typography-body2-family); font-size: 0.85rem;">@claim.Value</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            @* Roles section *@
+            @if (_roles.Count > 0)
+            {
+                <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">Roles</MudText>
+                <MudStack Row="true" Spacing="1" Class="mb-4" Wrap="Wrap.Wrap">
+                    @foreach (var role in _roles)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@role</MudChip>
+                    }
+                </MudStack>
+            }
+
+            @* Token Lifetime section *@
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-1">Token Lifetime</MudText>
+            <MudSimpleTable Dense="true" Bordered="true" Class="mb-4" Style="table-layout: fixed;">
+                <tbody>
+                    @foreach (var claim in _lifetimeClaims)
+                    {
+                        <tr>
+                            <td style="width: 160px; font-weight: 500; white-space: nowrap;">@claim.Label</td>
+                            <td style="word-break: break-all; font-family: var(--mud-typography-body2-family); font-size: 0.85rem;">@claim.Value</td>
+                        </tr>
+                    }
+                    <tr>
+                        <td style="width: 160px; font-weight: 500; white-space: nowrap;">Remaining</td>
+                        <td>
+                            @if (_timeRemaining.HasValue)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(_timeRemaining.Value.TotalMinutes < 5 ? Color.Warning : Color.Success)"
+                                         Variant="Variant.Filled">
+                                    @FormatTimeRemaining(_timeRemaining.Value)
+                                </MudChip>
+                            }
+                        </td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+
+            @* Raw Token (collapsible) *@
+            <MudExpansionPanels Elevation="0">
+                <MudExpansionPanel Text="Raw Token" MaxHeight="200" Dense="true">
+                    <div style="word-break: break-all; font-family: monospace; font-size: 0.75rem; line-height: 1.4; padding: 8px; background: var(--mud-palette-background-grey); border-radius: 4px; max-height: 180px; overflow: auto;">
+                        @AccessToken
+                    </div>
+                    <MudButton OnClick="CopyRawToken"
+                               Variant="Variant.Text"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.ContentCopy"
+                               Class="mt-2">
+                        Copy Token
+                    </MudButton>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning">No token available or token could not be decoded.</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Variant="Variant.Text">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string? AccessToken { get; set; }
+
+    private record ClaimDisplay(string Label, string Value);
+
+    private List<Claim> _claims = [];
+    private List<ClaimDisplay> _identityClaims = [];
+    private List<ClaimDisplay> _orgClaims = [];
+    private List<ClaimDisplay> _lifetimeClaims = [];
+    private List<string> _roles = [];
+    private TimeSpan? _timeRemaining;
+
+    // Known claim types to friendly labels
+    private static readonly Dictionary<string, string> ClaimLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["sub"] = "Subject",
+        ["name"] = "Display Name",
+        ["email"] = "Email",
+        ["jti"] = "Token ID",
+        ["token_type"] = "Token Type",
+        ["platform_user_id"] = "Platform User",
+        ["org_id"] = "Organisation ID",
+        ["org_name"] = "Organisation",
+        ["iss"] = "Issuer",
+        ["aud"] = "Audience",
+        ["iat"] = "Issued At",
+        ["nbf"] = "Not Before",
+        ["exp"] = "Expires",
+    };
+
+    private static readonly HashSet<string> IdentityClaimTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sub", "name", "email", "platform_user_id", "token_type", "jti"
+    };
+
+    private static readonly HashSet<string> OrgClaimTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "org_id", "org_name", "delegated_user_id", "delegated_org_id"
+    };
+
+    private static readonly HashSet<string> LifetimeClaimTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "iat", "nbf", "exp", "iss", "aud"
+    };
+
+    private static readonly HashSet<string> RoleClaimTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "role", ClaimTypes.Role
+    };
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(AccessToken))
+            return;
+
+        try
+        {
+            var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+            var jwt = handler.ReadJwtToken(AccessToken);
+            _claims = jwt.Claims.ToList();
+
+            _identityClaims = _claims
+                .Where(c => IdentityClaimTypes.Contains(c.Type))
+                .Select(c => new ClaimDisplay(ClaimLabels.GetValueOrDefault(c.Type, c.Type), c.Value))
+                .ToList();
+
+            _orgClaims = _claims
+                .Where(c => OrgClaimTypes.Contains(c.Type))
+                .Select(c => new ClaimDisplay(ClaimLabels.GetValueOrDefault(c.Type, c.Type), c.Value))
+                .ToList();
+
+            _roles = _claims
+                .Where(c => RoleClaimTypes.Contains(c.Type))
+                .Select(c => c.Value)
+                .Distinct()
+                .ToList();
+
+            _lifetimeClaims = _claims
+                .Where(c => LifetimeClaimTypes.Contains(c.Type))
+                .Select(c => new ClaimDisplay(
+                    ClaimLabels.GetValueOrDefault(c.Type, c.Type),
+                    FormatClaimValue(c.Type, c.Value)))
+                .ToList();
+
+            if (jwt.ValidTo > DateTime.MinValue)
+            {
+                _timeRemaining = jwt.ValidTo - DateTime.UtcNow;
+            }
+        }
+        catch
+        {
+            // Token decode failure — _claims stays empty, UI shows warning
+        }
+    }
+
+    private static string FormatClaimValue(string type, string value)
+    {
+        if (type is "iat" or "nbf" or "exp" && long.TryParse(value, out var epoch))
+        {
+            var dt = DateTimeOffset.FromUnixTimeSeconds(epoch);
+            return $"{dt.LocalDateTime:yyyy-MM-dd HH:mm:ss} ({value})";
+        }
+
+        return value;
+    }
+
+    private static string FormatTimeRemaining(TimeSpan ts)
+    {
+        if (ts.TotalSeconds <= 0) return "Expired";
+        if (ts.TotalMinutes < 1) return $"{ts.Seconds}s";
+        if (ts.TotalHours < 1) return $"{ts.Minutes}m {ts.Seconds}s";
+        return $"{(int)ts.TotalHours}h {ts.Minutes}m";
+    }
+
+    private async Task CopyRawToken()
+    {
+        try
+        {
+            var success = await JSRuntime.InvokeAsync<bool>("clipboardInterop.copyText", AccessToken);
+            Snackbar.Add(success ? "Token copied to clipboard" : "Failed to copy", success ? Severity.Success : Severity.Error,
+                config => config.VisibleStateDuration = 2000);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy to clipboard", Severity.Error);
+        }
+    }
+
+    private void Close()
+    {
+        MudDialog.Cancel();
+    }
+}

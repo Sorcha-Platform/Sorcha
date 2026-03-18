@@ -1,0 +1,87 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
+
+@inject IAuthenticationService AuthService
+@inject IConfigurationService ConfigurationService
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icons.Material.Filled.Logout" Color="Color.Warning" />
+            <MudText Typo="Typo.h6">Sign Out</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-2">
+            Are you sure you want to sign out@(_orgName is not null ? $" from {_orgName}" : "")?
+        </MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Your session tokens will be cleared and you will be redirected to the login page.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="ConfirmLogout"
+                   Variant="Variant.Filled"
+                   Color="Color.Error"
+                   Disabled="_isLoggingOut"
+                   StartIcon="@Icons.Material.Filled.Logout">
+            @if (_isLoggingOut)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Signing out...</span>
+            }
+            else
+            {
+                <span>Sign Out</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string? OrgName { get; set; }
+
+    private string? _orgName;
+    private bool _isLoggingOut;
+
+    protected override void OnInitialized()
+    {
+        _orgName = OrgName;
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task ConfirmLogout()
+    {
+        _isLoggingOut = true;
+
+        try
+        {
+            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+            await AuthService.LogoutAsync(profileName);
+            AuthStateProvider.NotifyAuthenticationStateChanged();
+            MudDialog.Close(DialogResult.Ok(true));
+            Navigation.NavigateTo("/auth/login", forceLoad: true);
+        }
+        catch
+        {
+            // Even if logout fails, clear state and redirect
+            AuthStateProvider.NotifyAuthenticationStateChanged();
+            MudDialog.Close(DialogResult.Ok(true));
+            Navigation.NavigateTo("/auth/login", forceLoad: true);
+        }
+    }
+}

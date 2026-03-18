@@ -1,0 +1,163 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.IdentityModel.Tokens.Jwt
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ITokenCache TokenCache
+@inject IConfigurationService ConfigurationService
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject ILocalizationService Loc
+
+<MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit"
+         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+    <MudMenuItem>
+        <div class="d-flex align-center gap-3 py-2 px-1" style="min-width: 240px;">
+            <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                @GetInitials()
+            </MudAvatar>
+            <div class="d-flex flex-column" style="min-width: 0;">
+                <MudText Typo="Typo.body1" Style="font-weight: 600;">
+                    @(_displayName ?? "User")
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    @(_email ?? "")
+                </MudText>
+                @if (!string.IsNullOrEmpty(_orgName))
+                {
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mt-1">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@_orgName</MudText>
+                    </MudStack>
+                }
+                @if (!string.IsNullOrEmpty(_role))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" Class="mt-1"
+                             Style="height: 20px; font-size: 0.7rem;">
+                        @_role
+                    </MudChip>
+                }
+            </div>
+        </div>
+    </MudMenuItem>
+    <MudDivider />
+    <MudMenuItem Icon="@Icons.Material.Filled.Token" OnClick="OpenJwtViewer">
+        View Token
+    </MudMenuItem>
+    <MudMenuItem Icon="@Icons.Material.Filled.Settings" OnClick="@(() => Navigation.NavigateTo("settings"))">
+        @Loc.T("nav.settings")
+    </MudMenuItem>
+    <MudDivider />
+    <MudMenuItem Icon="@Icons.Material.Filled.Logout" IconColor="Color.Error" OnClick="OpenLogoutDialog">
+        @Loc.T("nav.logout")
+    </MudMenuItem>
+</MudMenu>
+
+@code {
+    private string? _displayName;
+    private string? _email;
+    private string? _orgName;
+    private string? _role;
+    private string? _accessToken;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfoAsync();
+    }
+
+    private async Task LoadUserInfoAsync()
+    {
+        try
+        {
+            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+            var entry = await TokenCache.GetTokenAsync(profileName);
+
+            if (entry is null || entry.IsExpired)
+                return;
+
+            _accessToken = entry.AccessToken;
+
+            var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+            var jwt = handler.ReadJwtToken(entry.AccessToken);
+            var claims = jwt.Claims.ToList();
+
+            _displayName = claims.FirstOrDefault(c => c.Type == "name")?.Value;
+            _email = claims.FirstOrDefault(c => c.Type == "email")?.Value;
+            _orgName = claims.FirstOrDefault(c => c.Type == "org_name")?.Value;
+
+            var roles = claims
+                .Where(c => c.Type is "role" || c.Type == ClaimTypes.Role)
+                .Select(c => c.Value)
+                .ToList();
+            _role = roles.Count > 0 ? string.Join(", ", roles) : null;
+
+            // Fall back to sub if no display name
+            _displayName ??= claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+        }
+        catch
+        {
+            // Resilience: profile menu is non-critical
+        }
+    }
+
+    private string GetInitials()
+    {
+        if (string.IsNullOrWhiteSpace(_displayName))
+            return "?";
+
+        var parts = _displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant()
+            : _displayName[..1].ToUpperInvariant();
+    }
+
+    private async Task OpenJwtViewer()
+    {
+        // Re-fetch token in case it was refreshed
+        try
+        {
+            var profileName = await ConfigurationService.GetActiveProfileNameAsync();
+            var entry = await TokenCache.GetTokenAsync(profileName);
+            _accessToken = entry?.AccessToken;
+        }
+        catch
+        {
+            // Use last known token
+        }
+
+        var parameters = new DialogParameters<JwtViewerDialog>
+        {
+            { x => x.AccessToken, _accessToken }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<JwtViewerDialog>("Bearer Token", parameters, options);
+    }
+
+    private async Task OpenLogoutDialog()
+    {
+        var parameters = new DialogParameters<LogoutConfirmDialog>
+        {
+            { x => x.OrgName, _orgName }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<LogoutConfirmDialog>("Sign Out", parameters, options);
+    }
+}
