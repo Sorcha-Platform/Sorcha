@@ -990,7 +990,7 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
 
     // Verify caller has publishing rights via governance roster
     var roster = await rosterService.GetCurrentRosterAsync(registerId);
-    if (roster != null)
+    if (roster != null && roster.ControlRecord.Attestations.Count > 0)
     {
         var hasPublishRights = roster.ControlRecord.Attestations.Any(a =>
             a.Role.ToString() is "Owner" or "Admin" or "Designer");

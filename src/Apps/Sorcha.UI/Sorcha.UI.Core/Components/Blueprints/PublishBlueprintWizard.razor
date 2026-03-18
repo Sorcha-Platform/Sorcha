@@ -493,9 +493,9 @@
         try
         {
             var roster = await RegisterService.GetGovernanceRosterAsync(_state.SelectedRegisterId);
-            if (roster is null)
+            if (roster is null || roster.Members is null || roster.Members.Count == 0)
             {
-                // No roster found — could be a new register with no governance yet
+                // No roster or empty roster — new register with no governance yet
                 // Allow publishing by default (server will enforce)
                 _state = _state with
                 {
