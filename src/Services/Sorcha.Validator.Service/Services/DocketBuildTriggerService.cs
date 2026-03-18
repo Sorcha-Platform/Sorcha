@@ -75,6 +75,19 @@ public class DocketBuildTriggerService : BackgroundService
                 _logger.LogTrace("Checking docket build triggers for {RegisterCount} active registers",
                     activeRegisters.Count);
 
+                // Heartbeat: re-register this validator for all monitored registers
+                // to refresh the operational TTL on the Redis key.
+                using (var heartbeatScope = _scopeFactory.CreateScope())
+                {
+                    foreach (var registerId in activeRegisters)
+                    {
+                        if (_genesisWritten.ContainsKey(registerId))
+                        {
+                            await AutoRegisterValidatorAsync(heartbeatScope, registerId, stoppingToken);
+                        }
+                    }
+                }
+
                 // Check each active register
                 foreach (var registerId in activeRegisters)
                 {
@@ -363,7 +376,7 @@ public class DocketBuildTriggerService : BackgroundService
                     "Auto-registered validator {ValidatorId} for register {RegisterId} after genesis (order: {OrderIndex})",
                     _validatorConfig.ValidatorId, registerId, result.OrderIndex);
             }
-            else
+            else if (result.ErrorMessage?.Contains("already registered", StringComparison.OrdinalIgnoreCase) != true)
             {
                 _logger.LogWarning(
                     "Auto-registration failed for validator {ValidatorId} on register {RegisterId}: {Error}",
