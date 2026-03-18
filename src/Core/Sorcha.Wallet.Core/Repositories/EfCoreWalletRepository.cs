@@ -316,6 +316,12 @@ public class EfCoreWalletRepository : IWalletRepository
     }
 
     /// <inheritdoc />
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Wallets.CountAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         await _context.SaveChangesAsync(cancellationToken);

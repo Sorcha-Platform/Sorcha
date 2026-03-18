@@ -357,6 +357,13 @@ public class InMemoryWalletRepository : IWalletRepository
     }
 
     /// <inheritdoc/>
+    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_wallets.Count);
+    }
+
+    /// <inheritdoc/>
     public Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         // No-op for in-memory implementation

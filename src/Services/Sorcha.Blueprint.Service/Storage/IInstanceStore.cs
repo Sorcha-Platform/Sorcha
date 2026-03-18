@@ -111,4 +111,19 @@ public interface IInstanceStore
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if deleted, false if not found</returns>
     Task<bool> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the total count of all instances
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Total number of instances</returns>
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the count of instances in a specific state
+    /// </summary>
+    /// <param name="state">The instance state to count</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Number of instances in the specified state</returns>
+    Task<int> CountByStateAsync(InstanceState state, CancellationToken cancellationToken = default);
 }

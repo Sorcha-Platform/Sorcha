@@ -1875,6 +1875,46 @@ app.MapGet("/api/health", async (IBlueprintStore blueprintStore, IPublishedBluep
 .WithTags("Health")
 .AllowAnonymous();
 
+// ===========================
+// Statistics Endpoint (public, no auth)
+// ===========================
+
+app.MapGet("/api/stats", async (
+    IBlueprintStore blueprintStore,
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore) =>
+{
+    try
+    {
+        var blueprints = await blueprintStore.GetAllAsync();
+        var blueprintCount = blueprints.Count();
+        var instanceCount = await instanceStore.CountAsync();
+        var activeInstanceCount = await instanceStore.CountByStateAsync(
+            Sorcha.Blueprint.Service.Models.InstanceState.Active);
+
+        return Results.Ok(new
+        {
+            blueprintCount,
+            instanceCount,
+            activeInstanceCount
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to get blueprint statistics");
+        return Results.Ok(new
+        {
+            blueprintCount = 0,
+            instanceCount = 0,
+            activeInstanceCount = 0
+        });
+    }
+})
+.WithName("GetBlueprintStats")
+.WithSummary("Get blueprint statistics (public)")
+.WithDescription("Returns aggregate counts of blueprints and instances. No authentication required.")
+.WithTags("Statistics")
+.AllowAnonymous();
+
 app.Run();
 
 // ===========================

@@ -121,6 +121,30 @@ app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 
+// ===========================
+// Statistics Endpoint (public, no auth)
+// ===========================
+
+app.MapGet("/api/stats", async (
+    Sorcha.Wallet.Core.Repositories.Interfaces.IWalletRepository walletRepository) =>
+{
+    try
+    {
+        var walletCount = await walletRepository.CountAsync();
+        return Results.Ok(new { walletCount });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to get wallet statistics");
+        return Results.Ok(new { walletCount = 0 });
+    }
+})
+.WithName("GetWalletStats")
+.WithSummary("Get wallet statistics (public)")
+.WithDescription("Returns aggregate wallet count. No authentication required.")
+.WithTags("Statistics")
+.AllowAnonymous();
+
 app.Run();
 
 // Make the implicit Program class public for integration tests

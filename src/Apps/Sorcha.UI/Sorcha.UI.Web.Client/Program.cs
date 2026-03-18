@@ -62,5 +62,10 @@ builder.Services.AddScoped<SchemaLibraryService>(sp =>
 
 var host = builder.Build();
 
+// Eagerly load default (English) translations before the first render so that
+// translation keys (e.g. "nav.signIn") never flash as raw text in the UI.
+var localization = host.Services.GetRequiredService<ILocalizationService>();
+await localization.LoadDefaultTranslationsAsync();
+
 // Run the WASM application
 await host.RunAsync();

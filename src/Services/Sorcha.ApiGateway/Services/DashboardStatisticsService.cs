@@ -54,42 +54,25 @@ public class DashboardStatisticsService
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            // Query blueprints endpoint
-            var response = await client.GetAsync($"{baseUrl}/api/blueprints", cancellationToken);
+            var response = await client.GetAsync($"{baseUrl}/api/stats", cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var doc = JsonDocument.Parse(content);
 
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("blueprintCount", out var blueprintCount))
                 {
-                    stats.TotalBlueprints = doc.RootElement.GetArrayLength();
+                    stats.TotalBlueprints = blueprintCount.GetInt32();
                 }
-            }
 
-            // Query instances endpoint
-            var instancesResponse = await client.GetAsync($"{baseUrl}/api/instances", cancellationToken);
-            if (instancesResponse.IsSuccessStatusCode)
-            {
-                var content = await instancesResponse.Content.ReadAsStringAsync(cancellationToken);
-                using var doc = JsonDocument.Parse(content);
-
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("instanceCount", out var instanceCount))
                 {
-                    stats.TotalBlueprintInstances = doc.RootElement.GetArrayLength();
+                    stats.TotalBlueprintInstances = instanceCount.GetInt32();
+                }
 
-                    // Count active instances
-                    foreach (var instance in doc.RootElement.EnumerateArray())
-                    {
-                        if (instance.TryGetProperty("status", out var status))
-                        {
-                            var statusValue = status.GetString()?.ToLowerInvariant();
-                            if (statusValue == "active" || statusValue == "in_progress" || statusValue == "running")
-                            {
-                                stats.ActiveBlueprintInstances++;
-                            }
-                        }
-                    }
+                if (doc.RootElement.TryGetProperty("activeInstanceCount", out var activeCount))
+                {
+                    stats.ActiveBlueprintInstances = activeCount.GetInt32();
                 }
             }
         }
@@ -107,16 +90,15 @@ public class DashboardStatisticsService
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            // Query wallets endpoint
-            var response = await client.GetAsync($"{baseUrl}/api/v1/wallets", cancellationToken);
+            var response = await client.GetAsync($"{baseUrl}/api/stats", cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var doc = JsonDocument.Parse(content);
 
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("walletCount", out var walletCount))
                 {
-                    stats.TotalWallets = doc.RootElement.GetArrayLength();
+                    stats.TotalWallets = walletCount.GetInt32();
                 }
             }
         }
@@ -134,29 +116,20 @@ public class DashboardStatisticsService
             var client = _httpClientFactory.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(5);
 
-            // Query registers endpoint
-            var response = await client.GetAsync($"{baseUrl}/api/registers", cancellationToken);
+            var response = await client.GetAsync($"{baseUrl}/api/stats", cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync(cancellationToken);
                 using var doc = JsonDocument.Parse(content);
 
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("registerCount", out var registerCount))
                 {
-                    stats.TotalRegisters = doc.RootElement.GetArrayLength();
+                    stats.TotalRegisters = registerCount.GetInt32();
                 }
-            }
 
-            // Query transactions endpoint
-            var transactionsResponse = await client.GetAsync($"{baseUrl}/api/transactions", cancellationToken);
-            if (transactionsResponse.IsSuccessStatusCode)
-            {
-                var content = await transactionsResponse.Content.ReadAsStringAsync(cancellationToken);
-                using var doc = JsonDocument.Parse(content);
-
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                if (doc.RootElement.TryGetProperty("transactionCount", out var transactionCount))
                 {
-                    stats.TotalTransactions = doc.RootElement.GetArrayLength();
+                    stats.TotalTransactions = transactionCount.GetInt32();
                 }
             }
         }

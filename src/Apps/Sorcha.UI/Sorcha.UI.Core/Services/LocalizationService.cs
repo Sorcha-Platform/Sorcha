@@ -36,6 +36,12 @@ public interface ILocalizationService
     Task SetLanguageAsync(string languageCode);
 
     /// <summary>
+    /// Loads default (English) translations eagerly so keys resolve before full initialization.
+    /// Call this at app startup before the first render to avoid showing raw translation keys.
+    /// </summary>
+    Task LoadDefaultTranslationsAsync();
+
+    /// <summary>
     /// Translates a dot-notation key (e.g. "nav.home"). Returns the key itself if not found.
     /// </summary>
     /// <param name="key">The translation key.</param>
@@ -78,6 +84,14 @@ public class LocalizationService : ILocalizationService
         _userPreferencesService = userPreferencesService;
         _jsRuntime = jsRuntime;
         _logger = logger;
+    }
+
+    public async Task LoadDefaultTranslationsAsync()
+    {
+        if (_translations.Count == 0)
+        {
+            await LoadTranslationsAsync("en");
+        }
     }
 
     public async Task InitializeAsync()

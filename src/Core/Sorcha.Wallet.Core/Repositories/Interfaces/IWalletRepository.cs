@@ -154,6 +154,13 @@ public interface IWalletRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the total count of wallets
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Total number of wallets</returns>
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Saves all changes
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>

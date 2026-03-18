@@ -198,4 +198,17 @@ public class InMemoryInstanceStore : IInstanceStore
     {
         return Task.FromResult(_instances.TryRemove(instanceId, out _));
     }
+
+    /// <inheritdoc/>
+    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_instances.Count);
+    }
+
+    /// <inheritdoc/>
+    public Task<int> CountByStateAsync(InstanceState state, CancellationToken cancellationToken = default)
+    {
+        var count = _instances.Values.Count(i => i.State == state);
+        return Task.FromResult(count);
+    }
 }

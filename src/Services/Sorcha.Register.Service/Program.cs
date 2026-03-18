@@ -2174,6 +2174,48 @@ static async IAsyncEnumerable<string> ExtractAddressStrings(IAsyncEnumerable<Sor
     }
 }
 
+// ===========================
+// Statistics Endpoint (public, no auth)
+// ===========================
+
+app.MapGet("/api/stats", async (
+    IRegisterRepository repository) =>
+{
+    try
+    {
+        var registerCount = await repository.CountRegistersAsync();
+
+        // Sum docket heights across all registers as a transaction count proxy
+        var registers = await repository.GetRegistersAsync();
+        var transactionCount = 0;
+        foreach (var register in registers)
+        {
+            var transactions = await repository.GetTransactionsAsync(register.Id);
+            transactionCount += transactions.Count();
+        }
+
+        return Results.Ok(new
+        {
+            registerCount,
+            transactionCount
+        });
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to get register statistics");
+        return Results.Ok(new
+        {
+            registerCount = 0,
+            transactionCount = 0
+        });
+    }
+})
+.WithName("GetRegisterStats")
+.WithSummary("Get register statistics (public)")
+.WithDescription("Returns aggregate counts of registers and transactions. No authentication required.")
+.WithTags("Statistics")
+.AllowAnonymous();
+
 app.Run();
 
 // ===========================
