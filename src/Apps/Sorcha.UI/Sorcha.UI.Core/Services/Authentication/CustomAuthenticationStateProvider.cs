@@ -115,9 +115,6 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             if (string.IsNullOrEmpty(json))
                 return null;
 
-            // Clear token staging (preserves returnUrl for FragmentTokenHandler navigation)
-            await _jsRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearTokenStaging");
-
             var result = JsonSerializer.Deserialize<FragmentTokenResult>(json, CaseInsensitiveJson);
             if (result?.Token is null)
                 return null;
@@ -135,7 +132,13 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
                 IssuedAt = jwt.IssuedAt
             };
 
+            // Store token BEFORE clearing staging — if store fails, token is preserved
+            // for FragmentTokenHandler fallback
             await _tokenCache.StoreTokenAsync(profileName, entry);
+
+            // Clear token staging only after successful store
+            await _jsRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearTokenStaging");
+
             return entry;
         }
         catch
