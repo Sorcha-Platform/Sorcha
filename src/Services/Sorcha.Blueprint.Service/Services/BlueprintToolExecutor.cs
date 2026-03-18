@@ -4,7 +4,6 @@
 using System.Text.Json;
 using Sorcha.Blueprint.Fluent;
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Templates;
@@ -17,7 +16,7 @@ namespace Sorcha.Blueprint.Service.Services;
 public class BlueprintToolExecutor : IBlueprintToolExecutor
 {
     private readonly ILogger<BlueprintToolExecutor> _logger;
-    private readonly ISchemaStore _schemaStore;
+    private readonly ISchemaIndexService _schemaIndexService;
     private readonly IBlueprintTemplateService _templateService;
     private readonly IReadOnlyList<ToolDefinition> _toolDefinitions;
 
@@ -25,15 +24,15 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
     /// Initializes a new instance of the <see cref="BlueprintToolExecutor"/> class.
     /// </summary>
     /// <param name="logger">Logger instance.</param>
-    /// <param name="schemaStore">Schema store for searching and retrieving standard schemas.</param>
+    /// <param name="schemaIndexService">Schema index service for unified schema search and retrieval.</param>
     /// <param name="templateService">Template service for searching blueprint templates.</param>
     public BlueprintToolExecutor(
         ILogger<BlueprintToolExecutor> logger,
-        ISchemaStore schemaStore,
+        ISchemaIndexService schemaIndexService,
         IBlueprintTemplateService templateService)
     {
         _logger = logger;
-        _schemaStore = schemaStore;
+        _schemaIndexService = schemaIndexService;
         _templateService = templateService;
         _toolDefinitions = CreateToolDefinitions();
     }
@@ -468,29 +467,24 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
 
         _logger.LogDebug("Searching schemas with query '{Query}', category '{Category}'", query, category);
 
-        var (schemas, totalCount, _) = await _schemaStore.ListAsync(
+        // Search the unified schema index — covers local, external, and all providers
+        var sectors = !string.IsNullOrEmpty(category) ? new[] { category } : null;
+        var response = await _schemaIndexService.SearchAsync(
             search: query,
+            sectors: sectors,
+            limit: 50,
             cancellationToken: cancellationToken);
 
-        var results = schemas.AsEnumerable();
-
-        // Filter by category (sector tag) if provided
-        if (!string.IsNullOrEmpty(category))
+        var resultList = response.Results.Select(s => new
         {
-            results = results.Where(s =>
-                s.SectorTags != null &&
-                s.SectorTags.Any(t => t.Equals(category, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var resultList = results.Select(s => new
-        {
-            identifier = s.Identifier,
+            identifier = s.ShortCode,
+            sourceUri = s.SourceUri,
+            provider = s.SourceProvider,
             title = s.Title,
-            category = s.SectorTags?.FirstOrDefault() ?? s.Category.ToString(),
+            category = s.SectorTags.FirstOrDefault() ?? "general",
             description = s.Description ?? string.Empty,
-            fieldCount = s.FieldCount ?? 0,
-            fieldNames = s.FieldNames ?? [],
-            tags = s.SectorTags ?? []
+            fieldCount = s.FieldCount,
+            tags = s.SectorTags
         }).ToList();
 
         return ToolResult.Succeeded(
@@ -518,8 +512,9 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
 
         _logger.LogDebug("Applying schema '{SchemaId}' to action {ActionId}, merge={Merge}", schemaId, actionId, merge);
 
-        var schema = await _schemaStore.GetByIdentifierAsync(schemaId, cancellationToken: cancellationToken);
-        if (schema == null)
+        // Fetch full schema content from the unified index (by short code)
+        var schemaContent = await _schemaIndexService.GetContentByShortCodeAsync(schemaId, cancellationToken);
+        if (schemaContent == null)
         {
             return ToolResult.Failed(
                 Guid.NewGuid().ToString(),
@@ -536,7 +531,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         }
 
         // Extract properties from the schema content
-        var content = schema.Content.RootElement;
+        var content = schemaContent.RootElement;
         var fieldsAdded = new List<string>();
         string? disclosureRecommendation = null;
 
@@ -654,7 +649,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             Guid.NewGuid().ToString(),
             new
             {
-                message = $"Applied '{schema.Title}' schema to action '{action.Title}'",
+                message = $"Applied schema '{schemaId}' to action '{action.Title}'",
                 schemaId,
                 actionId,
                 fieldsAdded,

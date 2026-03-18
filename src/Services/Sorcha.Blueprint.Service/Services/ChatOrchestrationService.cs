@@ -5,8 +5,6 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Sorcha.Blueprint.Fluent;
-using Sorcha.Blueprint.Schemas.Models;
-using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Templates;
@@ -25,7 +23,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
     private readonly IAIProviderService _aiProvider;
     private readonly IBlueprintToolExecutor _toolExecutor;
     private readonly IBlueprintStore _blueprintStore;
-    private readonly ISchemaStore _schemaStore;
+    private readonly ISchemaIndexService _schemaIndexService;
     private readonly IBlueprintTemplateService _templateService;
     private readonly ILogger<ChatOrchestrationService> _logger;
 
@@ -176,7 +174,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
         IAIProviderService aiProvider,
         IBlueprintToolExecutor toolExecutor,
         IBlueprintStore blueprintStore,
-        ISchemaStore schemaStore,
+        ISchemaIndexService schemaIndexService,
         IBlueprintTemplateService templateService,
         ILogger<ChatOrchestrationService> logger)
     {
@@ -184,7 +182,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
         _aiProvider = aiProvider;
         _toolExecutor = toolExecutor;
         _blueprintStore = blueprintStore;
-        _schemaStore = schemaStore;
+        _schemaIndexService = schemaIndexService;
         _templateService = templateService;
         _logger = logger;
     }
@@ -505,20 +503,20 @@ public class ChatOrchestrationService : IChatOrchestrationService
         var sb = new StringBuilder();
         sb.Append(BaseSystemPrompt);
 
-        // Inject available schemas summary
+        // Inject available schemas summary from unified schema index
         try
         {
-            var (schemas, _, _) = await _schemaStore.ListAsync(
-                status: SchemaStatus.Active, limit: 100, cancellationToken: cancellationToken);
-            if (schemas.Count > 0)
+            var response = await _schemaIndexService.SearchAsync(
+                limit: 100, cancellationToken: cancellationToken);
+            if (response.Results.Count > 0)
             {
-                sb.AppendLine("| Schema | Category | Description | Fields |");
-                sb.AppendLine("|--------|----------|-------------|--------|");
-                foreach (var schema in schemas)
+                sb.AppendLine("| Schema | Provider | Category | Description | Fields |");
+                sb.AppendLine("|--------|----------|----------|-------------|--------|");
+                foreach (var schema in response.Results)
                 {
-                    var category = schema.SectorTags?.FirstOrDefault() ?? schema.Category.ToString().ToLowerInvariant();
+                    var category = schema.SectorTags.FirstOrDefault() ?? "general";
                     var description = Truncate(schema.Description, 60);
-                    sb.AppendLine($"| {schema.Identifier} | {category} | {description} | {schema.FieldCount ?? 0} |");
+                    sb.AppendLine($"| {schema.ShortCode} | {schema.SourceProvider} | {category} | {description} | {schema.FieldCount} |");
                 }
             }
             else

@@ -35,13 +35,25 @@ public class SchemaIndexService : ISchemaIndexService
         _providers = providers;
         _logger = logger;
 
-        // Initialize provider statuses
+        // Initialize provider statuses with correct type detection
         foreach (var provider in _providers)
         {
+            var providerType = provider switch
+            {
+                LocalSchemaProvider => ProviderType.StaticFile,
+                StaticFileSchemaProvider => ProviderType.StaticFile,
+                W3cVcProvider => ProviderType.StaticFile,
+                UblSchemaProvider => ProviderType.StaticFile,
+                Iso20022Provider => ProviderType.StaticFile,
+                DppSchemaProvider => ProviderType.StaticFile,
+                RegisterSchemaProvider => ProviderType.LiveApi,
+                _ => ProviderType.LiveApi
+            };
+
             _providerStatuses.TryAdd(provider.ProviderName, new SchemaProviderStatus
             {
                 ProviderName = provider.ProviderName,
-                ProviderType = ProviderType.LiveApi,
+                ProviderType = providerType,
                 HealthStatus = ProviderHealth.Unknown
             });
         }
