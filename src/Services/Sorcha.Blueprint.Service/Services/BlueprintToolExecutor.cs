@@ -39,7 +39,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
     }
 
     /// <inheritdoc />
-    public Task<ToolResult> ExecuteAsync(
+    public async Task<ToolResult> ExecuteAsync(
         string toolName,
         JsonDocument arguments,
         BlueprintBuilder builder,
@@ -50,7 +50,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
 
         try
         {
-            return toolName switch
+            return await (toolName switch
             {
                 "create_blueprint" => Task.FromResult(ExecuteCreateBlueprint(arguments, builder)),
                 "add_participant" => Task.FromResult(ExecuteAddParticipant(arguments, builder)),
@@ -66,12 +66,12 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 "require_credential" => Task.FromResult(ExecuteRequireCredential(arguments, builder)),
                 "issue_credential" => Task.FromResult(ExecuteIssueCredential(arguments, builder)),
                 _ => Task.FromResult(ToolResult.Failed(Guid.NewGuid().ToString(), $"Unknown tool: {toolName}"))
-            };
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error executing tool {ToolName}", toolName);
-            return Task.FromResult(ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message));
+            return ToolResult.Failed(Guid.NewGuid().ToString(), ex.Message);
         }
     }
 
@@ -546,6 +546,12 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                 ? reqArray.EnumerateArray().Select(r => r.GetString()!).ToHashSet()
                 : new HashSet<string>();
 
+            // When merge=false, clear existing data schemas before applying
+            if (!merge)
+            {
+                action.DataSchemas = [];
+            }
+
             builder.AddAction(actionId, a =>
             {
                 a.WithTitle(action.Title);
@@ -638,9 +644,10 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         }
 
         // Extract disclosure recommendation if present
-        if (content.TryGetProperty("x-sorcha-disclosure", out var disclosureProp))
+        if (content.TryGetProperty("x-sorcha-disclosure", out var disclosureProp)
+            && disclosureProp.TryGetProperty("recommendation", out var recProp))
         {
-            disclosureRecommendation = disclosureProp.GetString();
+            disclosureRecommendation = recProp.GetString();
         }
 
         return ToolResult.Succeeded(

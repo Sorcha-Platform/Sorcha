@@ -225,13 +225,15 @@ public class SchemaSeedService : IHostedService
         // Embed form layout as x-sorcha-formLayout extension
         if (file.FormLayout is not null)
         {
-            contentObj["x-sorcha-formLayout"] = file.FormLayout;
+            var layoutJson = file.FormLayout.Value.GetRawText();
+            contentObj["x-sorcha-formLayout"] = JsonSerializer.Deserialize<object>(layoutJson, CaseInsensitiveJson);
         }
 
         // Embed disclosure as x-sorcha-disclosure extension
         if (file.Disclosure is not null)
         {
-            contentObj["x-sorcha-disclosure"] = file.Disclosure;
+            var disclosureJson = file.Disclosure.Value.GetRawText();
+            contentObj["x-sorcha-disclosure"] = JsonSerializer.Deserialize<object>(disclosureJson, CaseInsensitiveJson);
         }
 
         var json = JsonSerializer.Serialize(contentObj);
@@ -306,7 +308,7 @@ public class SchemaSeedService : IHostedService
         public string[]? Tags { get; set; }
         public string[]? Keywords { get; set; }
         public JsonElement? Schema { get; set; }
-        public object? FormLayout { get; set; }
-        public object? Disclosure { get; set; }
+        public JsonElement? FormLayout { get; set; }
+        public JsonElement? Disclosure { get; set; }
     }
 }
