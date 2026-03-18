@@ -484,6 +484,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             category = s.SectorTags.FirstOrDefault() ?? "general",
             description = s.Description ?? string.Empty,
             fieldCount = s.FieldCount,
+            fieldNames = s.FieldNames ?? [],
             tags = s.SectorTags
         }).ToList();
 
@@ -649,7 +650,7 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
             Guid.NewGuid().ToString(),
             new
             {
-                message = $"Applied schema '{schemaId}' to action '{action.Title}'",
+                message = $"Applied '{(content.TryGetProperty("title", out var titleProp) ? titleProp.GetString() : schemaId)}' schema to action '{action.Title}'",
                 schemaId,
                 actionId,
                 fieldsAdded,

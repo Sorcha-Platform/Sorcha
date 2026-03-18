@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Blueprint.Schemas.DTOs;
+using Sorcha.Blueprint.Schemas.Models;
 
 namespace Sorcha.Blueprint.Schemas.Services;
 
@@ -14,6 +15,12 @@ public interface IExternalSchemaProvider
     /// Gets the name of this external schema provider.
     /// </summary>
     string ProviderName { get; }
+
+    /// <summary>
+    /// Self-declared provider type — determines how the provider is categorised
+    /// in the admin dashboard (Static vs LiveApi).
+    /// </summary>
+    ProviderType ProviderType => ProviderType.LiveApi;
 
     /// <summary>
     /// Searches for schemas matching the specified query.

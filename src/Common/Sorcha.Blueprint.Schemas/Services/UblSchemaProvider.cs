@@ -48,6 +48,7 @@ public class UblSchemaProvider : IExternalSchemaProvider
     }
 
     public string ProviderName => ProviderDisplayName;
+    public Models.ProviderType ProviderType => Models.ProviderType.StaticFile;
     public string[] DefaultSectorTags => ["finance", "commerce"];
 
     public Task<ExternalSchemaSearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)

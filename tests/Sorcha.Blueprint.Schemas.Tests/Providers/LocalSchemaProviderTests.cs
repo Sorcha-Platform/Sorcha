@@ -271,7 +271,9 @@ public class LocalSchemaProviderTests : IDisposable
             Path.Combine(Directory.GetCurrentDirectory()));
 
         if (!Directory.Exists(realPath))
-            return; // Skip if not running from solution root
+        {
+            Assert.Skip("blueprints/schemas directory not found — not running from solution root");
+        }
 
         var provider = new LocalSchemaProvider(realPath, _logger.Object);
         var catalog = (await provider.GetCatalogAsync()).ToList();

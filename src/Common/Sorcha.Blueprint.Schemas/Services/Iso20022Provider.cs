@@ -44,6 +44,7 @@ public class Iso20022Provider : IExternalSchemaProvider
     }
 
     public string ProviderName => ProviderDisplayName;
+    public Models.ProviderType ProviderType => Models.ProviderType.StaticFile;
     public string[] DefaultSectorTags => ["finance"];
 
     public Task<ExternalSchemaSearchResponse> SearchAsync(string query, CancellationToken cancellationToken = default)

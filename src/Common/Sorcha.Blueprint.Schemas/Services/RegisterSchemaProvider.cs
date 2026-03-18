@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Schemas.DTOs;
+using Sorcha.Blueprint.Schemas.Models;
 
 namespace Sorcha.Blueprint.Schemas.Services;
 
@@ -22,7 +22,7 @@ public class RegisterSchemaProvider : IExternalSchemaProvider
     private readonly HttpClient _httpClient;
     private readonly ILogger<RegisterSchemaProvider> _logger;
     private readonly string _registerId;
-    private List<ExternalSchemaResult>? _catalogCache;
+    private volatile List<ExternalSchemaResult>? _catalogCache;
     private DateTimeOffset? _catalogCacheExpiry;
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
@@ -38,7 +38,10 @@ public class RegisterSchemaProvider : IExternalSchemaProvider
     }
 
     /// <inheritdoc />
-    public string ProviderName => $"Register ({_registerId[..8]}...)";
+    public string ProviderName => $"Register ({_registerId[..Math.Min(8, _registerId.Length)]}...)";
+
+    /// <inheritdoc />
+    public ProviderType ProviderType => ProviderType.LiveApi;
 
     /// <inheritdoc />
     public string[] DefaultSectorTags => ["certified"];
@@ -91,16 +94,20 @@ public class RegisterSchemaProvider : IExternalSchemaProvider
 
     private async Task<List<ExternalSchemaResult>> GetOrFetchCatalogAsync(CancellationToken cancellationToken)
     {
-        if (_catalogCache is not null && _catalogCacheExpiry > DateTimeOffset.UtcNow)
-            return _catalogCache;
+        var cache = _catalogCache;
+        var expiry = _catalogCacheExpiry;
+        if (cache is not null && expiry > DateTimeOffset.UtcNow)
+            return cache;
 
         await _cacheLock.WaitAsync(cancellationToken);
         try
         {
-            if (_catalogCache is not null && _catalogCacheExpiry > DateTimeOffset.UtcNow)
-                return _catalogCache;
+            cache = _catalogCache;
+            expiry = _catalogCacheExpiry;
+            if (cache is not null && expiry > DateTimeOffset.UtcNow)
+                return cache;
 
-            _logger.LogInformation("Fetching certified schemas from register {RegisterId}", _registerId);
+            _logger.LogDebug("RegisterSchemaProvider not yet connected — returning empty catalog for register {RegisterId}", _registerId);
 
             // TODO: Implement when Register Service exposes schema publication endpoints.
             // Expected endpoint: GET /api/v1/registers/{registerId}/schemas
@@ -112,7 +119,6 @@ public class RegisterSchemaProvider : IExternalSchemaProvider
             // - Transaction ID on the register
             // - Attestation signatures from validators
 
-            _logger.LogDebug("RegisterSchemaProvider not yet connected — returning empty catalog");
             _catalogCache = [];
             _catalogCacheExpiry = DateTimeOffset.UtcNow.Add(CacheDuration);
             return _catalogCache;

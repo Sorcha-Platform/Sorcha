@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Schemas.DTOs;
+using Sorcha.Blueprint.Schemas.Models;
 
 namespace Sorcha.Blueprint.Schemas.Services;
 
@@ -17,11 +18,12 @@ namespace Sorcha.Blueprint.Schemas.Services;
 /// identifier, title, description, version, category, tags, keywords, schema,
 /// formLayout, and disclosure fields.
 /// </summary>
-public class LocalSchemaProvider : IExternalSchemaProvider
+public class LocalSchemaProvider : IExternalSchemaProvider, IDisposable
 {
     private readonly ILogger<LocalSchemaProvider> _logger;
     private readonly string _schemasPath;
-    private List<ExternalSchemaResult>? _catalogCache;
+    private readonly object _cacheLock = new();
+    private volatile List<ExternalSchemaResult>? _catalogCache;
 
     private static readonly JsonSerializerOptions CaseInsensitiveJson = new()
     {
@@ -36,6 +38,9 @@ public class LocalSchemaProvider : IExternalSchemaProvider
 
     /// <inheritdoc />
     public string ProviderName => "Sorcha Local";
+
+    /// <inheritdoc />
+    public ProviderType ProviderType => ProviderType.StaticFile;
 
     /// <inheritdoc />
     public string[] DefaultSectorTags => ["general"];
@@ -77,65 +82,87 @@ public class LocalSchemaProvider : IExternalSchemaProvider
     }
 
     /// <summary>
-    /// Invalidates the catalog cache, forcing a re-read from disk on next access.
+    /// Invalidates the catalog cache, disposing JsonDocument instances and forcing
+    /// a re-read from disk on next access.
     /// </summary>
     public void InvalidateCache()
     {
+        List<ExternalSchemaResult>? old;
+        lock (_cacheLock)
+        {
+            old = _catalogCache;
+            _catalogCache = null;
+        }
+
+        DisposeDocuments(old);
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        DisposeDocuments(_catalogCache);
         _catalogCache = null;
     }
 
     private List<ExternalSchemaResult> BuildCatalog()
     {
-        if (_catalogCache is not null) return _catalogCache;
+        var cache = _catalogCache;
+        if (cache is not null) return cache;
 
-        if (!Directory.Exists(_schemasPath))
+        lock (_cacheLock)
         {
-            _logger.LogWarning("Local schemas directory not found at {Path}", _schemasPath);
-            _catalogCache = [];
+            // Double-check inside lock
+            if (_catalogCache is not null) return _catalogCache;
+
+            if (!Directory.Exists(_schemasPath))
+            {
+                _logger.LogWarning("Local schemas directory not found at {Path}", _schemasPath);
+                _catalogCache = [];
+                return _catalogCache;
+            }
+
+            var files = Directory.GetFiles(_schemasPath, "*.json", SearchOption.AllDirectories);
+            var results = new List<ExternalSchemaResult>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var json = File.ReadAllText(file);
+                    var schemaFile = JsonSerializer.Deserialize<SchemaFileFormat>(json, CaseInsensitiveJson);
+
+                    if (schemaFile is null || string.IsNullOrWhiteSpace(schemaFile.Identifier)
+                                           || string.IsNullOrWhiteSpace(schemaFile.Title))
+                    {
+                        _logger.LogWarning("Skipping invalid schema file {File}", Path.GetFileName(file));
+                        continue;
+                    }
+
+                    var content = BuildContent(schemaFile);
+                    var sectorTags = BuildSectorTags(schemaFile);
+
+                    results.Add(new ExternalSchemaResult(
+                        Name: schemaFile.Title,
+                        Description: schemaFile.Description ?? $"Sorcha standard schema: {schemaFile.Title}",
+                        Url: $"urn:sorcha:schema:{schemaFile.Identifier}",
+                        Provider: ProviderName,
+                        Content: content,
+                        SectorTags: sectorTags));
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse schema file {File}", Path.GetFileName(file));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Error loading schema from {File}", Path.GetFileName(file));
+                }
+            }
+
+            _catalogCache = results;
+            _logger.LogInformation("Built catalog of {Count} local schemas from {Path}", results.Count, _schemasPath);
             return _catalogCache;
         }
-
-        var files = Directory.GetFiles(_schemasPath, "*.json", SearchOption.AllDirectories);
-        var results = new List<ExternalSchemaResult>();
-
-        foreach (var file in files)
-        {
-            try
-            {
-                var json = File.ReadAllText(file);
-                var schemaFile = JsonSerializer.Deserialize<SchemaFileFormat>(json, CaseInsensitiveJson);
-
-                if (schemaFile is null || string.IsNullOrWhiteSpace(schemaFile.Identifier)
-                                       || string.IsNullOrWhiteSpace(schemaFile.Title))
-                {
-                    _logger.LogWarning("Skipping invalid schema file {File}", Path.GetFileName(file));
-                    continue;
-                }
-
-                var content = BuildContent(schemaFile);
-                var sectorTags = BuildSectorTags(schemaFile);
-
-                results.Add(new ExternalSchemaResult(
-                    Name: schemaFile.Title,
-                    Description: schemaFile.Description ?? $"Sorcha standard schema: {schemaFile.Title}",
-                    Url: $"urn:sorcha:schema:{schemaFile.Identifier}",
-                    Provider: ProviderName,
-                    Content: content,
-                    SectorTags: sectorTags));
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse schema file {File}", Path.GetFileName(file));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex, "Error loading schema from {File}", Path.GetFileName(file));
-            }
-        }
-
-        _catalogCache = results;
-        _logger.LogInformation("Built catalog of {Count} local schemas from {Path}", results.Count, _schemasPath);
-        return _catalogCache;
     }
 
     /// <summary>
@@ -217,6 +244,15 @@ public class LocalSchemaProvider : IExternalSchemaProvider
         if (file.Tags is not null)
             tags.AddRange(file.Tags);
         return tags.Distinct().ToArray();
+    }
+
+    private static void DisposeDocuments(List<ExternalSchemaResult>? entries)
+    {
+        if (entries is null) return;
+        foreach (var entry in entries)
+        {
+            entry.Content?.Dispose();
+        }
     }
 
     /// <summary>
