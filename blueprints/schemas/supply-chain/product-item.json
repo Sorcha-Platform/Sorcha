@@ -1,0 +1,71 @@
+{
+  "identifier": "product-item",
+  "title": "Product Item",
+  "description": "Product or goods item with SKU, description, quantity, unit of measure, and batch tracking",
+  "version": "1.0.0",
+  "category": "supply-chain",
+  "tags": ["product", "item", "sku", "inventory", "supply-chain", "goods"],
+  "keywords": ["product", "sku", "quantity", "unit", "batch", "lot", "inventory"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "sku": {
+        "type": "string",
+        "title": "SKU",
+        "description": "Stock Keeping Unit identifier",
+        "minLength": 1,
+        "maxLength": 50
+      },
+      "description": {
+        "type": "string",
+        "title": "Description",
+        "description": "Product description",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "quantity": {
+        "type": "integer",
+        "title": "Quantity",
+        "description": "Number of units",
+        "minimum": 1
+      },
+      "unit": {
+        "type": "string",
+        "title": "Unit",
+        "description": "Unit of measure",
+        "enum": ["pieces", "kg", "litres", "metres", "boxes", "pallets"]
+      },
+      "batchLotNumber": {
+        "type": "string",
+        "title": "Batch / Lot Number",
+        "description": "Batch or lot number for traceability",
+        "maxLength": 50
+      }
+    },
+    "required": ["sku", "description", "quantity", "unit"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "sku", "title": "SKU" },
+          { "type": "TextLine", "scope": "batchLotNumber", "title": "Batch / Lot Number" }
+        ]
+      },
+      { "type": "TextLine", "scope": "description", "title": "Description" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "Number", "scope": "quantity", "title": "Quantity" },
+          { "type": "Dropdown", "scope": "unit", "title": "Unit" }
+        ]
+      }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Product item details are typically shared across supply chain participants. Batch and lot numbers should be disclosed for traceability and recall purposes."
+  }
+}

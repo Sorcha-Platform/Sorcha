@@ -1,0 +1,53 @@
+{
+  "identifier": "contact-details",
+  "title": "Contact Details",
+  "description": "Standard contact information for individuals including name, email, phone, and organisation",
+  "version": "1.0.0",
+  "category": "people-identity",
+  "tags": ["contact", "email", "phone", "name", "communication"],
+  "keywords": ["contact", "name", "email", "phone", "organisation", "details"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "fullName": {
+        "type": "string",
+        "title": "Full Name",
+        "description": "Full legal name of the individual",
+        "minLength": 2,
+        "maxLength": 100
+      },
+      "email": {
+        "type": "string",
+        "title": "Email Address",
+        "description": "Primary email address",
+        "format": "email"
+      },
+      "phoneNumber": {
+        "type": "string",
+        "title": "Phone Number",
+        "description": "International phone number (e.g., +44 7700 900000)",
+        "pattern": "^\\+[1-9]\\d{1,14}$"
+      },
+      "organisation": {
+        "type": "string",
+        "title": "Organisation",
+        "description": "Company or organisation name",
+        "maxLength": 200
+      }
+    },
+    "required": ["fullName", "email"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "fullName", "title": "Full Name" },
+      { "type": "TextLine", "scope": "email", "title": "Email Address" },
+      { "type": "TextLine", "scope": "phoneNumber", "title": "Phone Number" },
+      { "type": "TextLine", "scope": "organisation", "title": "Organisation" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Contact details are typically shared with all workflow participants. Restrict phone number if not operationally required."
+  }
+}

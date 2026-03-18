@@ -3,8 +3,11 @@
 
 using System.Text.Json;
 using Sorcha.Blueprint.Fluent;
+using Sorcha.Blueprint.Models.Credentials;
+using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Blueprint.Service.Templates;
 
 namespace Sorcha.Blueprint.Service.Services;
 
@@ -14,11 +17,24 @@ namespace Sorcha.Blueprint.Service.Services;
 public class BlueprintToolExecutor : IBlueprintToolExecutor
 {
     private readonly ILogger<BlueprintToolExecutor> _logger;
+    private readonly ISchemaStore _schemaStore;
+    private readonly IBlueprintTemplateService _templateService;
     private readonly IReadOnlyList<ToolDefinition> _toolDefinitions;
 
-    public BlueprintToolExecutor(ILogger<BlueprintToolExecutor> logger)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BlueprintToolExecutor"/> class.
+    /// </summary>
+    /// <param name="logger">Logger instance.</param>
+    /// <param name="schemaStore">Schema store for searching and retrieving standard schemas.</param>
+    /// <param name="templateService">Template service for searching blueprint templates.</param>
+    public BlueprintToolExecutor(
+        ILogger<BlueprintToolExecutor> logger,
+        ISchemaStore schemaStore,
+        IBlueprintTemplateService templateService)
     {
         _logger = logger;
+        _schemaStore = schemaStore;
+        _templateService = templateService;
         _toolDefinitions = CreateToolDefinitions();
     }
 
@@ -34,20 +50,23 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
 
         try
         {
-            var result = toolName switch
+            return toolName switch
             {
-                "create_blueprint" => ExecuteCreateBlueprint(arguments, builder),
-                "add_participant" => ExecuteAddParticipant(arguments, builder),
-                "remove_participant" => ExecuteRemoveParticipant(arguments, builder),
-                "add_action" => ExecuteAddAction(arguments, builder),
-                "update_action" => ExecuteUpdateAction(arguments, builder),
-                "set_disclosure" => ExecuteSetDisclosure(arguments, builder),
-                "add_routing" => ExecuteAddRouting(arguments, builder),
-                "validate_blueprint" => ExecuteValidateBlueprint(arguments, builder),
-                _ => ToolResult.Failed(Guid.NewGuid().ToString(), $"Unknown tool: {toolName}")
+                "create_blueprint" => Task.FromResult(ExecuteCreateBlueprint(arguments, builder)),
+                "add_participant" => Task.FromResult(ExecuteAddParticipant(arguments, builder)),
+                "remove_participant" => Task.FromResult(ExecuteRemoveParticipant(arguments, builder)),
+                "add_action" => Task.FromResult(ExecuteAddAction(arguments, builder)),
+                "update_action" => Task.FromResult(ExecuteUpdateAction(arguments, builder)),
+                "set_disclosure" => Task.FromResult(ExecuteSetDisclosure(arguments, builder)),
+                "add_routing" => Task.FromResult(ExecuteAddRouting(arguments, builder)),
+                "validate_blueprint" => Task.FromResult(ExecuteValidateBlueprint(arguments, builder)),
+                "search_schemas" => ExecuteSearchSchemasAsync(arguments, builder, cancellationToken),
+                "use_standard_schema" => ExecuteUseStandardSchemaAsync(arguments, builder, cancellationToken),
+                "search_templates" => ExecuteSearchTemplatesAsync(arguments, builder, cancellationToken),
+                "require_credential" => Task.FromResult(ExecuteRequireCredential(arguments, builder)),
+                "issue_credential" => Task.FromResult(ExecuteIssueCredential(arguments, builder)),
+                _ => Task.FromResult(ToolResult.Failed(Guid.NewGuid().ToString(), $"Unknown tool: {toolName}"))
             };
-
-            return Task.FromResult(result);
         }
         catch (Exception ex)
         {
@@ -438,6 +457,401 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
         return System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(jsonLogic));
     }
 
+    private async Task<ToolResult> ExecuteSearchSchemasAsync(
+        JsonDocument arguments,
+        BlueprintBuilder builder,
+        CancellationToken cancellationToken)
+    {
+        var root = arguments.RootElement;
+        var query = root.GetProperty("query").GetString()!;
+        var category = root.TryGetProperty("category", out var catProp) ? catProp.GetString() : null;
+
+        _logger.LogDebug("Searching schemas with query '{Query}', category '{Category}'", query, category);
+
+        var (schemas, totalCount, _) = await _schemaStore.ListAsync(
+            search: query,
+            cancellationToken: cancellationToken);
+
+        var results = schemas.AsEnumerable();
+
+        // Filter by category (sector tag) if provided
+        if (!string.IsNullOrEmpty(category))
+        {
+            results = results.Where(s =>
+                s.SectorTags != null &&
+                s.SectorTags.Any(t => t.Equals(category, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var resultList = results.Select(s => new
+        {
+            identifier = s.Identifier,
+            title = s.Title,
+            category = s.SectorTags?.FirstOrDefault() ?? s.Category.ToString(),
+            description = s.Description ?? string.Empty,
+            fieldCount = s.FieldCount ?? 0,
+            fieldNames = s.FieldNames ?? [],
+            tags = s.SectorTags ?? []
+        }).ToList();
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                results = resultList,
+                totalCount = resultList.Count,
+                message = resultList.Count > 0
+                    ? $"Found {resultList.Count} schema(s) matching '{query}'"
+                    : $"No schemas found matching '{query}'"
+            },
+            blueprintChanged: false);
+    }
+
+    private async Task<ToolResult> ExecuteUseStandardSchemaAsync(
+        JsonDocument arguments,
+        BlueprintBuilder builder,
+        CancellationToken cancellationToken)
+    {
+        var root = arguments.RootElement;
+        var schemaId = root.GetProperty("schemaId").GetString()!;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var merge = !root.TryGetProperty("merge", out var mergeProp) || mergeProp.GetBoolean();
+
+        _logger.LogDebug("Applying schema '{SchemaId}' to action {ActionId}, merge={Merge}", schemaId, actionId, merge);
+
+        var schema = await _schemaStore.GetByIdentifierAsync(schemaId, cancellationToken: cancellationToken);
+        if (schema == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Schema '{schemaId}' not found. Use search_schemas to find available schemas.");
+        }
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        // Extract properties from the schema content
+        var content = schema.Content.RootElement;
+        var fieldsAdded = new List<string>();
+        string? disclosureRecommendation = null;
+
+        if (content.TryGetProperty("properties", out var properties))
+        {
+            var requiredFields = content.TryGetProperty("required", out var reqArray)
+                ? reqArray.EnumerateArray().Select(r => r.GetString()!).ToHashSet()
+                : new HashSet<string>();
+
+            builder.AddAction(actionId, a =>
+            {
+                a.WithTitle(action.Title);
+                a.SentBy(action.Sender ?? string.Empty);
+                if (!string.IsNullOrEmpty(action.Description))
+                {
+                    a.WithDescription(action.Description);
+                }
+
+                a.RequiresData(d =>
+                {
+                    foreach (var prop in properties.EnumerateObject())
+                    {
+                        var fieldName = prop.Name;
+                        var fieldDef = prop.Value;
+                        var fieldType = fieldDef.TryGetProperty("type", out var typeProp)
+                            ? typeProp.GetString() ?? "string"
+                            : "string";
+                        var fieldTitle = fieldDef.TryGetProperty("title", out var titleProp)
+                            ? titleProp.GetString()
+                            : fieldName;
+                        var fieldDescription = fieldDef.TryGetProperty("description", out var descProp)
+                            ? descProp.GetString()
+                            : null;
+                        var isRequired = requiredFields.Contains(fieldName);
+
+                        switch (fieldType.ToLowerInvariant())
+                        {
+                            case "string":
+                                d.AddString(fieldName, f =>
+                                {
+                                    if (fieldTitle != null) f.WithTitle(fieldTitle);
+                                    if (fieldDescription != null) f.WithDescription(fieldDescription);
+                                    if (isRequired) f.IsRequired();
+                                    if (fieldDef.TryGetProperty("format", out var fmt))
+                                        f.WithFormat(fmt.GetString()!);
+                                    if (fieldDef.TryGetProperty("minLength", out var minLen))
+                                        f.WithMinLength(minLen.GetInt32());
+                                    if (fieldDef.TryGetProperty("maxLength", out var maxLen))
+                                        f.WithMaxLength(maxLen.GetInt32());
+                                    if (fieldDef.TryGetProperty("pattern", out var pat))
+                                        f.WithPattern(pat.GetString()!);
+                                });
+                                break;
+                            case "number":
+                                d.AddNumber(fieldName, f =>
+                                {
+                                    if (fieldTitle != null) f.WithTitle(fieldTitle);
+                                    if (fieldDescription != null) f.WithDescription(fieldDescription);
+                                    if (isRequired) f.IsRequired();
+                                    if (fieldDef.TryGetProperty("minimum", out var min))
+                                        f.WithMinimum(min.GetDouble());
+                                    if (fieldDef.TryGetProperty("maximum", out var max))
+                                        f.WithMaximum(max.GetDouble());
+                                });
+                                break;
+                            case "integer":
+                                d.AddInteger(fieldName, f =>
+                                {
+                                    if (fieldTitle != null) f.WithTitle(fieldTitle);
+                                    if (fieldDescription != null) f.WithDescription(fieldDescription);
+                                    if (isRequired) f.IsRequired();
+                                    if (fieldDef.TryGetProperty("minimum", out var min))
+                                        f.WithMinimum(min.GetInt32());
+                                    if (fieldDef.TryGetProperty("maximum", out var max))
+                                        f.WithMaximum(max.GetInt32());
+                                });
+                                break;
+                            case "boolean":
+                                d.AddBoolean(fieldName, f =>
+                                {
+                                    if (fieldTitle != null) f.WithTitle(fieldTitle);
+                                    if (fieldDescription != null) f.WithDescription(fieldDescription);
+                                    if (isRequired) f.IsRequired();
+                                });
+                                break;
+                            default:
+                                d.AddString(fieldName, f =>
+                                {
+                                    if (fieldTitle != null) f.WithTitle(fieldTitle);
+                                    if (isRequired) f.IsRequired();
+                                });
+                                break;
+                        }
+
+                        fieldsAdded.Add(fieldName);
+                    }
+                });
+            });
+        }
+
+        // Extract disclosure recommendation if present
+        if (content.TryGetProperty("x-sorcha-disclosure", out var disclosureProp))
+        {
+            disclosureRecommendation = disclosureProp.GetString();
+        }
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Applied '{schema.Title}' schema to action '{action.Title}'",
+                schemaId,
+                actionId,
+                fieldsAdded,
+                disclosureRecommendation = disclosureRecommendation ?? string.Empty,
+                blueprintChanged = true
+            },
+            blueprintChanged: true);
+    }
+
+    private async Task<ToolResult> ExecuteSearchTemplatesAsync(
+        JsonDocument arguments,
+        BlueprintBuilder builder,
+        CancellationToken cancellationToken)
+    {
+        var root = arguments.RootElement;
+        var query = root.GetProperty("query").GetString()!;
+        var category = root.TryGetProperty("category", out var catProp) ? catProp.GetString() : null;
+
+        _logger.LogDebug("Searching templates with query '{Query}', category '{Category}'", query, category);
+
+        var allTemplates = await _templateService.GetPublishedTemplatesAsync(cancellationToken);
+
+        var filtered = allTemplates.Where(t =>
+            (t.Title?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.Description?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.Category?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (t.Tags?.Any(tag => tag.Contains(query, StringComparison.OrdinalIgnoreCase)) ?? false));
+
+        if (!string.IsNullOrEmpty(category))
+        {
+            filtered = filtered.Where(t =>
+                t.Category != null &&
+                t.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var resultList = filtered.Select(t => new
+        {
+            id = t.Id,
+            title = t.Title,
+            category = t.Category ?? string.Empty,
+            description = t.Description,
+            version = t.Version
+        }).ToList();
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                results = resultList,
+                totalCount = resultList.Count,
+                message = resultList.Count > 0
+                    ? $"Found {resultList.Count} template(s) matching '{query}'"
+                    : $"No templates found matching '{query}'"
+            },
+            blueprintChanged: false);
+    }
+
+    private ToolResult ExecuteRequireCredential(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var credentialType = root.GetProperty("credentialType").GetString()!;
+        var description = root.TryGetProperty("description", out var descProp) ? descProp.GetString() : null;
+
+        // Parse revocation policy
+        var revocationPolicy = RevocationCheckPolicy.FailClosed;
+        if (root.TryGetProperty("revocationPolicy", out var revProp))
+        {
+            Enum.TryParse(revProp.GetString(), ignoreCase: true, out revocationPolicy);
+        }
+
+        // Parse accepted issuers
+        var acceptedIssuers = root.TryGetProperty("acceptedIssuers", out var issuersProp)
+            ? issuersProp.EnumerateArray().Select(i => i.GetString()!).ToList()
+            : new List<string>();
+
+        // Parse required claims
+        List<ClaimConstraint>? requiredClaims = null;
+        if (root.TryGetProperty("requiredClaims", out var claimsProp))
+        {
+            requiredClaims = claimsProp.EnumerateArray().Select(c =>
+            {
+                var constraint = new ClaimConstraint
+                {
+                    ClaimName = c.GetProperty("claimName").GetString()!
+                };
+                if (c.TryGetProperty("expectedValue", out var ev) && ev.ValueKind != JsonValueKind.Null)
+                {
+                    constraint.ExpectedValue = ev.ValueKind switch
+                    {
+                        JsonValueKind.String => ev.GetString(),
+                        JsonValueKind.Number => ev.GetDouble(),
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => ev.GetRawText()
+                    };
+                }
+                return constraint;
+            }).ToList();
+        }
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        var requirement = new CredentialRequirement
+        {
+            Type = credentialType,
+            AcceptedIssuers = acceptedIssuers,
+            RequiredClaims = requiredClaims,
+            RevocationCheckPolicy = revocationPolicy,
+            Description = description
+        };
+
+        // Add to action's credential requirements (convert to mutable list)
+        var requirements = action.CredentialRequirements?.ToList() ?? [];
+        requirements.Add(requirement);
+        action.CredentialRequirements = requirements;
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Added credential requirement '{credentialType}' to action '{action.Title}'",
+                actionId,
+                credentialType,
+                acceptedIssuers,
+                requiredClaims = requiredClaims?.Select(c => new { c.ClaimName, c.ExpectedValue }) ?? [],
+                revocationPolicy = revocationPolicy.ToString()
+            },
+            blueprintChanged: true);
+    }
+
+    private ToolResult ExecuteIssueCredential(JsonDocument arguments, BlueprintBuilder builder)
+    {
+        var root = arguments.RootElement;
+        var actionId = root.GetProperty("actionId").GetInt32();
+        var credentialType = root.GetProperty("credentialType").GetString()!;
+        var recipientParticipantId = root.GetProperty("recipientParticipantId").GetString()!;
+        var expiryDuration = root.TryGetProperty("expiryDuration", out var expProp) ? expProp.GetString() : null;
+
+        // Parse usage policy
+        var usagePolicy = UsagePolicy.Reusable;
+        if (root.TryGetProperty("usagePolicy", out var usageProp))
+        {
+            Enum.TryParse(usageProp.GetString(), ignoreCase: true, out usagePolicy);
+        }
+
+        // Parse claim mappings
+        var claimMappings = root.GetProperty("claimMappings").EnumerateArray().Select(m =>
+            new ClaimMapping
+            {
+                ClaimName = m.GetProperty("claimName").GetString()!,
+                SourceField = m.GetProperty("sourceField").GetString()!
+            }).ToList();
+
+        var draft = builder.BuildDraft();
+        var action = draft.Actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Action with ID {actionId} not found");
+        }
+
+        // Validate recipient participant exists
+        var participantIds = draft.Participants.Select(p => p.Id).ToHashSet();
+        if (!participantIds.Contains(recipientParticipantId))
+        {
+            return ToolResult.Failed(
+                Guid.NewGuid().ToString(),
+                $"Recipient participant '{recipientParticipantId}' not found. " +
+                $"Available participants: {string.Join(", ", participantIds)}");
+        }
+
+        action.CredentialIssuanceConfig = new CredentialIssuanceConfig
+        {
+            CredentialType = credentialType,
+            ClaimMappings = claimMappings,
+            RecipientParticipantId = recipientParticipantId,
+            ExpiryDuration = expiryDuration,
+            UsagePolicy = usagePolicy
+        };
+
+        return ToolResult.Succeeded(
+            Guid.NewGuid().ToString(),
+            new
+            {
+                message = $"Configured action '{action.Title}' to issue '{credentialType}' to '{recipientParticipantId}'",
+                actionId,
+                credentialType,
+                claimCount = claimMappings.Count,
+                recipientParticipantId,
+                expiryDuration = expiryDuration ?? "none",
+                usagePolicy = usagePolicy.ToString()
+            },
+            blueprintChanged: true);
+    }
+
     private ToolResult ExecuteValidateBlueprint(JsonDocument arguments, BlueprintBuilder builder)
     {
         var errors = new List<object>();
@@ -521,6 +935,43 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                                 location = $"actions[{action.Id}]"
                             });
                         }
+                    }
+                }
+            }
+
+            // Validate credential requirements (T023)
+            foreach (var action in draft.Actions)
+            {
+                if (action.CredentialRequirements?.Any() ?? false)
+                {
+                    foreach (var req in action.CredentialRequirements)
+                    {
+                        if (req.AcceptedIssuers == null || !req.AcceptedIssuers.Any())
+                        {
+                            warnings.Add(new
+                            {
+                                code = "OPEN_CREDENTIAL_ISSUER",
+                                message = $"Action '{action.Title}' requires credential '{req.Type}' but accepts any issuer. Consider specifying trusted issuers.",
+                                location = $"actions[{action.Id}].credentialRequirements"
+                            });
+                        }
+                    }
+                }
+
+                // Validate credential issuance (T027)
+                if (action.CredentialIssuanceConfig is not null)
+                {
+                    var issuance = action.CredentialIssuanceConfig;
+
+                    if (!string.IsNullOrEmpty(issuance.RecipientParticipantId) &&
+                        !participantIds.Contains(issuance.RecipientParticipantId))
+                    {
+                        warnings.Add(new
+                        {
+                            code = "INVALID_CREDENTIAL_RECIPIENT",
+                            message = $"Action '{action.Title}' issues credential to '{issuance.RecipientParticipantId}' which is not a known participant",
+                            location = $"actions[{action.Id}].credentialIssuanceConfig"
+                        });
                     }
                 }
             }
@@ -712,6 +1163,133 @@ public class BlueprintToolExecutor : IBlueprintToolExecutor
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>()
+                }),
+
+            ToolDefinition.Create(
+                "search_schemas",
+                "Search the standardised schema library for reusable data schemas. Returns matching schema summaries including identifier, title, category, description, and field count. Use this to find appropriate schemas before applying them with use_standard_schema.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "Search term to match against schema names, descriptions, tags, and keywords" },
+                        category = new
+                        {
+                            type = "string",
+                            @enum = new[] { "people-identity", "financial", "documents-evidence", "compliance-governance", "supply-chain", "healthcare", "credentials" },
+                            description = "Optional category filter"
+                        }
+                    },
+                    required = new[] { "query" }
+                }),
+
+            ToolDefinition.Create(
+                "use_standard_schema",
+                "Apply a standardised schema to a blueprint action's data definition. This imports all fields, types, constraints, and form layout from the schema. Call search_schemas first to find the schema identifier.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        schemaId = new { type = "string", description = "Schema identifier (e.g., 'uk-address', 'payment-details')" },
+                        actionId = new { type = "integer", description = "Action ID to apply the schema to" },
+                        merge = new { type = "boolean", description = "If true, merge with existing fields. If false, replace existing schema. Default: true" }
+                    },
+                    required = new[] { "schemaId", "actionId" }
+                }),
+
+            ToolDefinition.Create(
+                "search_templates",
+                "Search the blueprint template catalogue for existing templates that match the user's workflow needs. Returns template summaries including title, category, and description. If a good match exists, suggest using it as a starting point rather than building from scratch.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new { type = "string", description = "Search term to match against template titles, descriptions, categories, and tags" },
+                        category = new { type = "string", description = "Optional category filter (e.g., 'approval', 'finance', 'demo', 'system')" }
+                    },
+                    required = new[] { "query" }
+                }),
+
+            ToolDefinition.Create(
+                "require_credential",
+                "Add a Verified Credential requirement to a blueprint action. The participant performing this action must present a valid credential of the specified type before the action can be executed. Use schemas from the 'credentials' category to reference known credential types.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID to add the credential requirement to" },
+                        credentialType = new { type = "string", description = "Type of credential required (e.g., 'TrainingCertificate', 'ProfessionalLicense', 'ProductPassport')" },
+                        acceptedIssuers = new
+                        {
+                            type = "array",
+                            items = new { type = "string" },
+                            description = "List of trusted issuer DIDs or addresses. Empty array means any issuer is accepted."
+                        },
+                        requiredClaims = new
+                        {
+                            type = "array",
+                            description = "Claims that must be present in the credential",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    claimName = new { type = "string", description = "Claim name to require" },
+                                    expectedValue = new { description = "Optional expected value (null means any value accepted)" }
+                                },
+                                required = new[] { "claimName" }
+                            }
+                        },
+                        revocationPolicy = new
+                        {
+                            type = "string",
+                            @enum = new[] { "FailClosed", "FailOpen" },
+                            description = "What happens if revocation status cannot be checked. FailClosed (default): reject. FailOpen: accept."
+                        },
+                        description = new { type = "string", description = "Human-readable description of why this credential is required" }
+                    },
+                    required = new[] { "actionId", "credentialType" }
+                }),
+
+            ToolDefinition.Create(
+                "issue_credential",
+                "Configure a blueprint action to issue a Verified Credential when executed. The credential is signed by the action sender's wallet and delivered to the specified recipient. Use this for actions that produce certifications, approvals, or attestations.",
+                new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        actionId = new { type = "integer", description = "Action ID that issues the credential" },
+                        credentialType = new { type = "string", description = "Type of credential to issue (e.g., 'TrainingCompletionCertificate', 'ApprovalAttestation')" },
+                        claimMappings = new
+                        {
+                            type = "array",
+                            description = "Map action data fields to credential claims",
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    claimName = new { type = "string", description = "Claim name in the issued credential" },
+                                    sourceField = new { type = "string", description = "JSON Pointer to action data field (e.g., '/applicantName', '/courseTitle')" }
+                                },
+                                required = new[] { "claimName", "sourceField" }
+                            }
+                        },
+                        recipientParticipantId = new { type = "string", description = "Participant ID who receives the credential" },
+                        expiryDuration = new { type = "string", description = "ISO 8601 duration for credential validity (e.g., 'P365D' for 1 year, 'P2Y' for 2 years)" },
+                        usagePolicy = new
+                        {
+                            type = "string",
+                            @enum = new[] { "Reusable", "SingleUse", "LimitedUse" },
+                            description = "How many times the credential can be presented. Default: Reusable"
+                        }
+                    },
+                    required = new[] { "actionId", "credentialType", "claimMappings", "recipientParticipantId" }
                 })
         };
     }

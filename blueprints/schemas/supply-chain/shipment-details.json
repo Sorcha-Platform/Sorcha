@@ -1,0 +1,72 @@
+{
+  "identifier": "shipment-details",
+  "title": "Shipment Details",
+  "description": "Shipment logistics information including origin, destination, carrier, and tracking details",
+  "version": "1.0.0",
+  "category": "supply-chain",
+  "tags": ["shipment", "logistics", "delivery", "carrier", "tracking", "transport"],
+  "keywords": ["shipment", "origin", "destination", "carrier", "tracking", "delivery"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "origin": {
+        "type": "string",
+        "title": "Origin",
+        "description": "Shipment origin location",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "destination": {
+        "type": "string",
+        "title": "Destination",
+        "description": "Shipment destination location",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "carrier": {
+        "type": "string",
+        "title": "Carrier",
+        "description": "Shipping carrier or logistics provider",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "trackingReference": {
+        "type": "string",
+        "title": "Tracking Reference",
+        "description": "Carrier tracking number or reference",
+        "maxLength": 100
+      },
+      "estimatedDelivery": {
+        "type": "string",
+        "title": "Estimated Delivery",
+        "description": "Expected delivery date",
+        "format": "date"
+      }
+    },
+    "required": ["origin", "destination", "carrier"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "origin", "title": "Origin" },
+          { "type": "TextLine", "scope": "destination", "title": "Destination" }
+        ]
+      },
+      { "type": "TextLine", "scope": "carrier", "title": "Carrier" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "trackingReference", "title": "Tracking Reference" },
+          { "type": "TextLine", "scope": "estimatedDelivery", "title": "Estimated Delivery" }
+        ]
+      }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Shipment details are shared with sender, receiver, and logistics participants. Tracking references may be restricted if shipment security is a concern."
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "identifier": "risk-assessment",
+  "title": "Risk Assessment",
+  "description": "Structured risk assessment with severity level, likelihood, impact scoring, and mitigation planning",
+  "version": "1.0.0",
+  "category": "compliance-governance",
+  "tags": ["risk", "assessment", "compliance", "governance", "mitigation"],
+  "keywords": ["risk", "level", "likelihood", "impact", "mitigation", "assessment"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "riskLevel": {
+        "type": "string",
+        "title": "Risk Level",
+        "description": "Overall risk severity classification",
+        "enum": ["low", "medium", "high", "critical"]
+      },
+      "likelihood": {
+        "type": "integer",
+        "title": "Likelihood",
+        "description": "Probability of occurrence (1 = very unlikely, 5 = almost certain)",
+        "minimum": 1,
+        "maximum": 5
+      },
+      "impact": {
+        "type": "integer",
+        "title": "Impact",
+        "description": "Severity of impact if realised (1 = negligible, 5 = catastrophic)",
+        "minimum": 1,
+        "maximum": 5
+      },
+      "mitigationPlan": {
+        "type": "string",
+        "title": "Mitigation Plan",
+        "description": "Planned actions to mitigate the identified risk",
+        "maxLength": 2000
+      }
+    },
+    "required": ["riskLevel", "likelihood", "impact"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "Dropdown", "scope": "riskLevel", "title": "Risk Level" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "Number", "scope": "likelihood", "title": "Likelihood (1-5)" },
+          { "type": "Number", "scope": "impact", "title": "Impact (1-5)" }
+        ]
+      },
+      { "type": "TextArea", "scope": "mitigationPlan", "title": "Mitigation Plan" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Risk assessments should be shared with governance and compliance participants. Mitigation plans may contain commercially sensitive strategies — restrict to decision-makers."
+  }
+}

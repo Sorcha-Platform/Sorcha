@@ -93,6 +93,7 @@ This document now tracks **remaining work for the first production release**, or
 |---|------|----------|--------|--------|-------|
 | GAP-009 | Client-side SignalR integration (BP-5.8) | P2 | 8h | 📋 | Blazor WASM SignalR client wiring |
 | GAP-010 | RecoverKeySetAsync implementation (CRYPT-1) | P2 | 6h | 📋 | Currently stubbed — returns "not yet implemented" |
+| GAP-011 | AI Blueprint Builder Enhancement (063) | P2 | 40h | 🚧 | Schema library (26 schemas), 5 new AI tools, VC/DPP support, consultative prompt, chat UI fixes |
 
 ---
 

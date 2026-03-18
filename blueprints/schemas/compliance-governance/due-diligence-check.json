@@ -1,0 +1,58 @@
+{
+  "identifier": "due-diligence-check",
+  "title": "Due Diligence Check",
+  "description": "Record of a due diligence check with type, outcome, evidence reference, and expiry tracking",
+  "version": "1.0.0",
+  "category": "compliance-governance",
+  "tags": ["due-diligence", "compliance", "check", "verification", "kyc"],
+  "keywords": ["due diligence", "check", "outcome", "evidence", "expiry", "verification"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "checkType": {
+        "type": "string",
+        "title": "Check Type",
+        "description": "Type of due diligence check performed (e.g., KYC, AML, credit)",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "outcome": {
+        "type": "string",
+        "title": "Outcome",
+        "description": "Result of the due diligence check",
+        "enum": ["pass", "fail", "pending"]
+      },
+      "evidenceReference": {
+        "type": "string",
+        "title": "Evidence Reference",
+        "description": "Reference to supporting evidence or documentation",
+        "maxLength": 200
+      },
+      "expiryDate": {
+        "type": "string",
+        "title": "Expiry Date",
+        "description": "Date the check result expires and must be renewed",
+        "format": "date"
+      }
+    },
+    "required": ["checkType", "outcome"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "checkType", "title": "Check Type" },
+          { "type": "Dropdown", "scope": "outcome", "title": "Outcome" }
+        ]
+      },
+      { "type": "TextLine", "scope": "evidenceReference", "title": "Evidence Reference" },
+      { "type": "TextLine", "scope": "expiryDate", "title": "Expiry Date" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Due diligence outcomes should be shared with compliance officers and decision-makers. Detailed evidence references may be restricted to the performing party and auditors."
+  }
+}

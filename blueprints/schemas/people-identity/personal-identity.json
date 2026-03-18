@@ -1,0 +1,46 @@
+{
+  "identifier": "personal-identity",
+  "title": "Personal Identity",
+  "description": "Core personal identity fields for UK individuals including National Insurance number",
+  "version": "1.0.0",
+  "category": "people-identity",
+  "tags": ["identity", "personal", "nino", "date-of-birth", "uk"],
+  "keywords": ["identity", "name", "date of birth", "national insurance", "nino", "personal"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "fullName": {
+        "type": "string",
+        "title": "Full Name",
+        "description": "Full legal name",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "dateOfBirth": {
+        "type": "string",
+        "title": "Date of Birth",
+        "description": "Date of birth in ISO 8601 format",
+        "format": "date"
+      },
+      "nationalInsuranceNumber": {
+        "type": "string",
+        "title": "National Insurance Number",
+        "description": "UK National Insurance number (e.g., AB123456C)",
+        "pattern": "^[A-Z]{2}\\d{6}[A-D]$"
+      }
+    },
+    "required": ["fullName", "dateOfBirth"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "fullName", "title": "Full Name" },
+      { "type": "TextLine", "scope": "dateOfBirth", "title": "Date of Birth" },
+      { "type": "TextLine", "scope": "nationalInsuranceNumber", "title": "National Insurance Number" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": ["nationalInsuranceNumber", "dateOfBirth"],
+    "recommendation": "National Insurance number and date of birth are sensitive personal data. Only disclose to participants with a legitimate need, such as payroll or HMRC reporting."
+  }
+}

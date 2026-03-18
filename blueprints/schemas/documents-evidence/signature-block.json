@@ -1,0 +1,59 @@
+{
+  "identifier": "signature-block",
+  "title": "Signature Block",
+  "description": "Formal signature capture with signatory details, role, date, and optional digital signature reference",
+  "version": "1.0.0",
+  "category": "documents-evidence",
+  "tags": ["signature", "signatory", "approval", "legal", "verification"],
+  "keywords": ["signature", "signatory", "role", "date", "digital signature", "sign"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "signatoryName": {
+        "type": "string",
+        "title": "Signatory Name",
+        "description": "Full name of the signatory",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "role": {
+        "type": "string",
+        "title": "Role",
+        "description": "Role or title of the signatory",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "signatureDate": {
+        "type": "string",
+        "title": "Signature Date",
+        "description": "Date the document was signed",
+        "format": "date"
+      },
+      "digitalSignatureRef": {
+        "type": "string",
+        "title": "Digital Signature Reference",
+        "description": "Reference to the digital signature or certificate",
+        "maxLength": 200
+      }
+    },
+    "required": ["signatoryName", "role", "signatureDate"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "signatoryName", "title": "Signatory Name" },
+          { "type": "TextLine", "scope": "role", "title": "Role" }
+        ]
+      },
+      { "type": "TextLine", "scope": "signatureDate", "title": "Signature Date" },
+      { "type": "TextLine", "scope": "digitalSignatureRef", "title": "Digital Signature Reference" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Signature blocks are typically shared with all workflow participants as evidence of authorisation. Digital signature references may be restricted to verification participants."
+  }
+}

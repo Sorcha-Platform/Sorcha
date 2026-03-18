@@ -1,0 +1,46 @@
+{
+  "identifier": "approval-decision",
+  "title": "Approval Decision",
+  "description": "Formal approval, rejection, or deferral decision with rationale and optional conditions",
+  "version": "1.0.0",
+  "category": "compliance-governance",
+  "tags": ["approval", "decision", "governance", "review", "authorisation"],
+  "keywords": ["approval", "decision", "approved", "rejected", "deferred", "rationale", "conditions"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "decision": {
+        "type": "string",
+        "title": "Decision",
+        "description": "Approval outcome",
+        "enum": ["approved", "rejected", "deferred"]
+      },
+      "rationale": {
+        "type": "string",
+        "title": "Rationale",
+        "description": "Explanation for the decision",
+        "minLength": 10,
+        "maxLength": 2000
+      },
+      "conditions": {
+        "type": "string",
+        "title": "Conditions",
+        "description": "Any conditions attached to the approval",
+        "maxLength": 1000
+      }
+    },
+    "required": ["decision", "rationale"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "Dropdown", "scope": "decision", "title": "Decision" },
+      { "type": "TextArea", "scope": "rationale", "title": "Rationale" },
+      { "type": "TextArea", "scope": "conditions", "title": "Conditions" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Approval decisions are typically shared with all workflow participants. The rationale may contain sensitive reasoning — consider restricting detailed rationale to decision-makers and the applicant."
+  }
+}

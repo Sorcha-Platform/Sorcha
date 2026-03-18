@@ -1,0 +1,59 @@
+{
+  "identifier": "audit-entry",
+  "title": "Audit Entry",
+  "description": "Structured audit trail entry recording an action, the performer, timestamp, and optional notes",
+  "version": "1.0.0",
+  "category": "documents-evidence",
+  "tags": ["audit", "trail", "log", "compliance", "evidence", "record"],
+  "keywords": ["audit", "action", "log", "timestamp", "performed by", "notes"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "actionTaken": {
+        "type": "string",
+        "title": "Action Taken",
+        "description": "Description of the action performed",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "performedBy": {
+        "type": "string",
+        "title": "Performed By",
+        "description": "Name or identifier of the person who performed the action",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "timestamp": {
+        "type": "string",
+        "title": "Timestamp",
+        "description": "Date and time the action was performed",
+        "format": "date-time"
+      },
+      "notes": {
+        "type": "string",
+        "title": "Notes",
+        "description": "Additional notes or context about the action",
+        "maxLength": 1000
+      }
+    },
+    "required": ["actionTaken", "performedBy", "timestamp"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "actionTaken", "title": "Action Taken" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "performedBy", "title": "Performed By" },
+          { "type": "TextLine", "scope": "timestamp", "title": "Timestamp" }
+        ]
+      },
+      { "type": "TextArea", "scope": "notes", "title": "Notes" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Audit entries are typically shared with all participants for transparency. In sensitive workflows, restrict to compliance and governance participants only."
+  }
+}

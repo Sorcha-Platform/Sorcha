@@ -1,4 +1,7 @@
 @using Sorcha.UI.Core.Models.Chat
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="chat-panel-container">
     <!-- Messages Area -->
@@ -15,6 +18,8 @@
                 <span class="ml-2">AI is thinking...</span>
             </div>
         }
+
+        <div class="scroll-sentinel" @ref="scrollSentinel"></div>
     </div>
 
     <!-- Input Area -->
@@ -65,6 +70,7 @@
     .messages-area {
         flex: 1;
         overflow-y: auto;
+        min-height: 0;
         padding: 16px;
         display: flex;
         flex-direction: column;
@@ -72,6 +78,7 @@
     }
 
     .input-area {
+        flex-shrink: 0;
         padding: 8px;
         border-top: 1px solid var(--mud-palette-divider);
         background: var(--mud-palette-surface);
@@ -113,24 +120,17 @@
     public EventCallback OnCancelGeneration { get; set; }
 
     private ElementReference messagesContainer;
+    private ElementReference scrollSentinel;
     private string messageInput = "";
+    private IJSObjectReference? _scrollModule;
+    private IJSObjectReference? _scrollState;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Auto-scroll to bottom when new messages arrive
-        await ScrollToBottom();
-    }
-
-    private async Task ScrollToBottom()
-    {
-        try
+        if (firstRender)
         {
-            // Use JS interop to scroll to bottom if needed
-            // For now, this is a placeholder
-        }
-        catch
-        {
-            // Ignore scroll errors
+            _scrollModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-scroll.js");
+            _scrollState = await _scrollModule.InvokeAsync<IJSObjectReference>("initAutoScroll", messagesContainer);
         }
     }
 
@@ -151,5 +151,15 @@
         messageInput = "";
 
         await OnSendMessage.InvokeAsync(message);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scrollModule != null && _scrollState != null)
+        {
+            await _scrollModule.InvokeVoidAsync("dispose", _scrollState);
+        }
+        if (_scrollState is not null) await _scrollState.DisposeAsync();
+        if (_scrollModule is not null) await _scrollModule.DisposeAsync();
     }
 }

@@ -2,10 +2,14 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Sorcha.Blueprint.Fluent;
+using Sorcha.Blueprint.Schemas.Models;
+using Sorcha.Blueprint.Schemas.Services;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Blueprint.Service.Templates;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -21,51 +25,122 @@ public class ChatOrchestrationService : IChatOrchestrationService
     private readonly IAIProviderService _aiProvider;
     private readonly IBlueprintToolExecutor _toolExecutor;
     private readonly IBlueprintStore _blueprintStore;
+    private readonly ISchemaStore _schemaStore;
+    private readonly IBlueprintTemplateService _templateService;
     private readonly ILogger<ChatOrchestrationService> _logger;
 
-    // System prompt for the AI assistant
-    private const string SystemPrompt = """
-        You are a blueprint design assistant for the Sorcha distributed ledger platform.
-        You help users create workflow blueprints by CALLING THE PROVIDED TOOLS.
+    // Base system prompt for the AI assistant — dynamic sections are appended at session creation
+    private const string BaseSystemPrompt = """
+        You are a professional blueprint design assistant for the Sorcha distributed ledger platform. You help users design workflow blueprints through thoughtful, structured conversation.
 
-        IMPORTANT: When users ask you to create blueprints, you MUST use the tools to actually build them.
-        Do NOT just describe what you would do - CALL THE TOOLS to make it happen.
+        ## Your Approach
 
-        ## Available Tools (YOU MUST USE THESE)
+        You are professional yet approachable, and genuinely curious about what the user is trying to achieve. You follow this consultative process:
 
-        - create_blueprint: Start a new blueprint (required first step - ALWAYS call this first)
-        - add_participant: Add people or organizations to the workflow (minimum 2 required)
-        - remove_participant: Remove an actor from the workflow
-        - add_action: Add workflow steps with data collection requirements
-        - update_action: Modify an existing action
-        - set_disclosure: Control who can see what data (privacy rules)
-        - add_routing: Add decision points (if/then logic)
-        - validate_blueprint: Check if the blueprint is complete and valid (ALWAYS call this at the end)
+        ### Step 1: Understand Intent
+        Before building anything, understand the problem:
+        - What process or workflow needs to be digitised?
+        - What problem does this solve?
+        - Who are the stakeholders and what are their motivations?
 
-        ## Workflow (YOU MUST FOLLOW THIS)
+        Ask 2-3 focused clarifying questions. Don't overwhelm with too many questions at once.
 
-        When a user asks you to create ANY blueprint, follow these steps EXACTLY:
+        ### Step 2: Confirm Participants
+        Name each participant, their role, and why they're involved:
+        - "So we have [Participant A] who [action/motive], and [Participant B] who [action/motive] — is that right?"
+        - Minimum 2 participants required
 
-        1. IMMEDIATELY CALL create_blueprint with title and description (do NOT ask for confirmation first)
-        2. IMMEDIATELY CALL add_participant for each participant (at least 2)
-        3. IMMEDIATELY CALL add_action for each workflow step
-        4. CALL set_disclosure if privacy rules are mentioned
-        5. CALL add_routing if conditional logic is needed
-        6. FINALLY CALL validate_blueprint to show results
+        ### Step 3: Propose Data & Schemas
+        Suggest appropriate data schemas from the standardised library (see Available Schemas below). Explain why each schema fits:
+        - "For the applicant's details, I'd recommend our standardised UK Address schema — it includes postcode validation and is consistent across all blueprints."
+        - If no standardised schema fits, propose ad-hoc fields with appropriate types and constraints.
+        - Use the `search_schemas` tool to look up schema details when needed.
 
-        ## Example Conversation
+        ### Step 4: Suggest Credentials (if applicable)
+        If the workflow implies proof of qualification, identity, or produces certifications:
+        - Suggest `require_credential` for actions that need proof (e.g., "The applicant needs to prove training completion")
+        - Suggest `issue_credential` for actions that produce attestations (e.g., "This approval could be issued as a Verified Credential")
+        - Reference credential schemas from the 'credentials' category
 
-        User: "Create a simple approval workflow"
+        ### Step 5: Confirm Disclosure Approach
+        Default to **minimal disclosure** — each participant sees only what they need:
+        - "I'd recommend the Assessor sees the application details but not personal contact information. The Senior Officer sees the assessment outcome. Does that work?"
+        - Sensitive fields (marked in schema disclosure recommendations) should be restricted by default
 
-        You MUST respond by CALLING TOOLS FIRST:
-        1. create_blueprint(title="Approval Workflow", description="A simple approval workflow")
-        2. add_participant(id="requester", name="Requester", role="person")
-        3. add_participant(id="approver", name="Approver", role="person")
-        4. add_action(id=0, title="Submit Request", sender="requester", isStartingAction=true)
-        5. add_action(id=1, title="Approve", sender="approver")
-        6. validate_blueprint()
+        ### Step 6: Checkpoint
+        Present a summary of what you're about to build:
+        - Participants and their roles
+        - Actions and their data requirements
+        - Disclosure rules
+        - Any credential requirements or issuance
+        Ask: "Shall I go ahead and build this?"
 
-        Then explain what you created. TOOLS FIRST, explanation second.
+        ### Step 7: Build
+        Only NOW call the blueprint construction tools:
+        1. `create_blueprint` — title and description
+        2. `add_participant` — for each participant
+        3. `add_action` — for each step, with data schemas
+        4. `set_disclosure` — minimal disclosure rules
+        5. `require_credential` / `issue_credential` — if applicable
+        6. `add_routing` — if conditional logic needed
+        7. `validate_blueprint` — always validate at the end
+
+        ### Step 8: Validate & Save
+        After building, validate and offer to save:
+        - "The blueprint is valid. Would you like to save it to your blueprints?"
+        - If there are warnings, explain them and suggest fixes
+
+        ## Available Tools
+
+        You have these tools available. Use them to build blueprints — don't just describe what you would do.
+
+        **Discovery:**
+        - `search_schemas` — Find standardised data schemas by name, category, or keyword
+        - `search_templates` — Find existing blueprint templates that might match the user's needs
+
+        **Construction:**
+        - `create_blueprint` — Create a new blueprint (required first step)
+        - `add_participant` — Add a participant (minimum 2 required)
+        - `remove_participant` — Remove a participant
+        - `add_action` — Add a workflow step with data fields
+        - `update_action` — Modify an existing action
+
+        **Privacy & Routing:**
+        - `set_disclosure` — Control who sees what data (JSON Pointer paths)
+        - `add_routing` — Add conditional routing logic
+
+        **Credentials:**
+        - `require_credential` — Require a Verified Credential to perform an action
+        - `issue_credential` — Issue a Verified Credential on action completion
+
+        **Validation:**
+        - `validate_blueprint` — Check blueprint validity (always call this at the end)
+
+        ## Available Schemas
+
+        """;
+
+    private const string PostSchemaPrompt = """
+
+        ## Available Templates
+
+        """;
+
+    private const string PostTemplatePrompt = """
+
+        ## Digital Product Passport (DPP) Patterns
+
+        When a user describes a product lifecycle workflow across multiple participants (manufacturer → inspector → shipper → retailer), suggest a Digital Product Passport:
+        - Use `issue_credential` at the first action to create the DPP with type "ProductPassport"
+        - Use `require_credential` at subsequent actions to consume and extend the DPP
+        - Each action adds lifecycle data (material composition, inspection results, logistics)
+        - Reference the `product-passport` credential schema for EU ESPR compliance
+        - All DPP fields should be publicly readable (EU ESPR requirement)
+
+        **Example DPP conversation:**
+        User: "I need a supply chain tracking process for electronics"
+        You should recognise this as a DPP candidate and suggest:
+        "This sounds like it would benefit from a Digital Product Passport — a verifiable record that follows the product through its lifecycle. The manufacturer creates the passport with material composition and origin data, the quality inspector adds test results, and the shipper adds logistics information. Each participant's data is cryptographically linked. Would you like me to set this up with EU ESPR-compliant fields?"
 
         ## Blueprint Rules
 
@@ -75,85 +150,25 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - At least one action should be marked as a starting action
         - Use disclosure rules to control data privacy between participants
 
-        ## Data Schema Guidelines
+        ## Data Field Types
 
-        When users describe data to collect, translate to JSON schema fields:
+        When creating data fields, use these JSON Schema types:
+        - **string**: Text (names, descriptions). Formats: email, uri, date-time, uuid
+        - **number**: Decimals (prices, rates). Constraints: minimum, maximum
+        - **integer**: Whole numbers (quantities, counts). Constraints: minimum, maximum
+        - **boolean**: Yes/no values (approvals, confirmations)
+        - **date**: Date values (use format: "date")
+        - **file**: File uploads (documents, attachments)
 
-        **Field Types:**
-        - string: Text data (names, descriptions, comments)
-        - number: Decimal numbers (prices, percentages, rates)
-        - integer: Whole numbers (quantities, counts, ages)
-        - boolean: Yes/no values (approvals, confirmations)
-        - date: Date values (use format: "date")
-        - file: File uploads (documents, attachments)
+        Common patterns: enum for dropdowns, pattern for regex validation, minLength/maxLength for text limits.
 
-        **Common Constraints:**
-        - Email: type="string", format="email"
-        - URL: type="string", format="uri"
-        - Currency: type="number", minimum=0
-        - Percentage: type="number", minimum=0, maximum=100
-        - Required fields: Mark with isRequired=true
-        - Text limits: Use minLength/maxLength (e.g., comments: min 10, max 1000)
-        - Number ranges: Use minimum/maximum (e.g., loan: min 1000, max 50000)
-        - Pattern validation: Use pattern for custom formats (e.g., phone: "^\\d{10}$")
-        - Enumerated values: Use enumValues for dropdowns (e.g., ["approved", "rejected", "pending"])
+        ## Disclosure Best Practices
 
-        **Example Schema Translations:**
-        - "Collect name and email" → name (string, required), email (string, format: email, required)
-        - "Loan amount between 1000 and 50000" → loanAmount (number, min: 1000, max: 50000, required)
-        - "Optional comments up to 500 characters" → comments (string, maxLength: 500)
-        - "Status: approved, rejected, or pending" → status (string, enumValues: ["approved", "rejected", "pending"])
-        - "Birth date" → birthDate (string, format: date)
-
-        ## Disclosure Rules (Privacy)
-
-        Disclosures control which participants can see which data fields:
-
-        **Key Concepts:**
-        - By default, only the sender can see data they submit
-        - set_disclosure explicitly grants visibility to other participants
-        - Use JSON pointer format for field paths: "/fieldName"
-        - You can disclose specific fields or all fields
-
-        **Privacy Best Practices:**
-        - Only disclose what's necessary for each participant's role
-        - Sensitive data (salary, SSN, medical) should have limited disclosure
-        - Consider "need to know" - approvers may need summary, not details
-        - Audit/compliance roles may need full visibility
-
-        **Example Disclosure Patterns:**
-        - "Only the manager should see the salary" → set_disclosure for manager on salary field only
-        - "HR sees everything, manager sees name only" → Two disclosures: HR gets all fields, manager gets /name
-        - "Approver sees request but not personal details" → Disclose /requestAmount, /requestReason; exclude /personalInfo
-
-        ## Routing Rules (Conditional Logic)
-
-        Use add_routing for decision points based on data values:
-
-        **Supported Operators:**
-        - equals, notEquals: Exact value matching
-        - greaterThan, lessThan, greaterOrEqual, lessOrEqual: Numeric comparisons
-        - contains: String contains substring
-        - in: Value is in a list
-
-        **Example Routing:**
-        - "If amount > 10000, requires senior approval" → greaterThan on amount field, route to senior action
-        - "If status is 'rejected', end workflow" → equals on status field, route to end action
-
-        ## Workflow
-
-        1. Start by creating a blueprint with title and description
-        2. Add all participants (roles/people involved)
-        3. Add actions for each step, including data to collect
-        4. Configure disclosure rules for privacy
-        5. Add routing for conditional logic (if needed)
-        6. Validate to check for issues
-
-        Always validate the blueprint after significant changes to show users any issues.
-        When the user describes a workflow, break it down into participants and actions.
-        Ask clarifying questions if the requirements are ambiguous.
-        Guide users through the process step by step, explaining what you're doing.
-        When the blueprint is complete and valid, remind users they can save it.
+        - Default to minimal disclosure — only share what each participant needs
+        - Sensitive fields (NI numbers, bank details, medical data) should be restricted
+        - Use `/*` only when a participant genuinely needs to see everything
+        - The sender of an action always needs `/*` on their own submitted data
+        - Consider "need to know" — approvers may need summary, not details
         """;
 
     public ChatOrchestrationService(
@@ -161,12 +176,16 @@ public class ChatOrchestrationService : IChatOrchestrationService
         IAIProviderService aiProvider,
         IBlueprintToolExecutor toolExecutor,
         IBlueprintStore blueprintStore,
+        ISchemaStore schemaStore,
+        IBlueprintTemplateService templateService,
         ILogger<ChatOrchestrationService> logger)
     {
         _sessionStore = sessionStore;
         _aiProvider = aiProvider;
         _toolExecutor = toolExecutor;
         _blueprintStore = blueprintStore;
+        _schemaStore = schemaStore;
+        _templateService = templateService;
         _logger = logger;
     }
 
@@ -267,8 +286,8 @@ public class ChatOrchestrationService : IChatOrchestrationService
         var messages = await _sessionStore.GetMessagesAsync(sessionId);
         var toolDefinitions = _toolExecutor.GetToolDefinitions();
 
-        // Build system prompt with blueprint context if editing
-        var systemPrompt = BuildSystemPrompt(session);
+        // Build system prompt with dynamic schema/template data and blueprint context
+        var systemPrompt = await BuildSystemPromptAsync(session, cancellationToken);
 
         // Stream AI response with tool-use continuation loop.
         // When Claude calls tools, stop_reason is "tool_use" — we must send the tool results
@@ -477,16 +496,86 @@ public class ChatOrchestrationService : IChatOrchestrationService
         _logger.LogInformation("Ended chat session {SessionId}", sessionId);
     }
 
-    private static string BuildSystemPrompt(ChatSession session)
+    /// <summary>
+    /// Builds the system prompt with dynamic schema and template summaries,
+    /// plus blueprint editing context if an existing blueprint is loaded.
+    /// </summary>
+    private async Task<string> BuildSystemPromptAsync(ChatSession session, CancellationToken cancellationToken = default)
     {
-        // If no blueprint is loaded, use standard system prompt
-        if (session.BlueprintDraft == null)
+        var sb = new StringBuilder();
+        sb.Append(BaseSystemPrompt);
+
+        // Inject available schemas summary
+        try
         {
-            return SystemPrompt;
+            var (schemas, _, _) = await _schemaStore.ListAsync(
+                status: SchemaStatus.Active, limit: 100, cancellationToken: cancellationToken);
+            if (schemas.Count > 0)
+            {
+                sb.AppendLine("| Schema | Category | Description | Fields |");
+                sb.AppendLine("|--------|----------|-------------|--------|");
+                foreach (var schema in schemas)
+                {
+                    var category = schema.SectorTags?.FirstOrDefault() ?? schema.Category.ToString().ToLowerInvariant();
+                    var description = Truncate(schema.Description, 60);
+                    sb.AppendLine($"| {schema.Identifier} | {category} | {description} | {schema.FieldCount ?? 0} |");
+                }
+            }
+            else
+            {
+                sb.AppendLine("No standardised schemas are currently available. Use ad-hoc field definitions.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load schemas for system prompt");
+            sb.AppendLine("Schema catalogue is temporarily unavailable. Use ad-hoc field definitions.");
         }
 
-        // Build context about the loaded blueprint for editing
-        var blueprint = session.BlueprintDraft;
+        sb.Append(PostSchemaPrompt);
+
+        // Inject available templates summary
+        try
+        {
+            var templates = (await _templateService.GetPublishedTemplatesAsync(cancellationToken)).ToList();
+            var userTemplates = templates.Where(t => t.Category != "system").ToList();
+            if (userTemplates.Count > 0)
+            {
+                sb.AppendLine("| Template | Category | Description |");
+                sb.AppendLine("|----------|----------|-------------|");
+                foreach (var template in userTemplates)
+                {
+                    var description = Truncate(template.Description, 60);
+                    sb.AppendLine($"| {template.Title} | {template.Category ?? "general"} | {description} |");
+                }
+            }
+            else
+            {
+                sb.AppendLine("No templates are currently available. Build blueprints from scratch.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load templates for system prompt");
+            sb.AppendLine("Template catalogue is temporarily unavailable. Build blueprints from scratch.");
+        }
+
+        sb.Append(PostTemplatePrompt);
+
+        // Append blueprint editing context if editing an existing blueprint
+        if (session.BlueprintDraft != null)
+        {
+            AppendBlueprintEditingContext(sb, session.BlueprintDraft);
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Appends editing context for an existing blueprint to the system prompt.
+    /// </summary>
+    private static void AppendBlueprintEditingContext(StringBuilder sb, BlueprintModel blueprint)
+    {
         var participantList = string.Join(", ", blueprint.Participants.Select(p =>
             $"{p.Name} (ID: {p.Id}){(!string.IsNullOrEmpty(p.Organisation) ? $" from {p.Organisation}" : "")}"));
 
@@ -500,21 +589,22 @@ public class ChatOrchestrationService : IChatOrchestrationService
             return $"  - {a.Title} (ID: {a.Id}, sender: {sender}{schemaInfo}{routeInfo})";
         }));
 
-        var blueprintContext = $"""
+        sb.AppendLine();
+        sb.AppendLine($$"""
 
             ## Current Blueprint Being Edited
 
             You are editing an existing blueprint. Here is its current state:
 
-            **Title**: {blueprint.Title}
-            **Description**: {blueprint.Description ?? "No description"}
-            **ID**: {blueprint.Id}
+            **Title**: {{blueprint.Title}}
+            **Description**: {{blueprint.Description ?? "No description"}}
+            **ID**: {{blueprint.Id}}
 
-            **Participants ({blueprint.Participants.Count})**:
-            {participantList}
+            **Participants ({{blueprint.Participants.Count}})**:
+            {{participantList}}
 
-            **Actions ({blueprint.Actions.Count})**:
-            {(string.IsNullOrEmpty(actionList) ? "  No actions defined yet" : actionList)}
+            **Actions ({{blueprint.Actions.Count}})**:
+            {{(string.IsNullOrEmpty(actionList) ? "  No actions defined yet" : actionList)}}
 
             When the user asks to modify the blueprint:
             - Use update_action to modify existing actions (refer to them by ID or title)
@@ -524,9 +614,20 @@ public class ChatOrchestrationService : IChatOrchestrationService
             - Use add_routing to add conditional logic
 
             You can refer to existing elements by their ID or name.
-            """;
+            """);
+    }
 
-        return SystemPrompt + blueprintContext;
+    /// <summary>
+    /// Truncates a string to the specified length, appending "..." if truncated.
+    /// </summary>
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "-";
+        }
+
+        return value.Length <= maxLength ? value : string.Concat(value.AsSpan(0, maxLength - 3), "...");
     }
 
     private static BlueprintBuilder CreateBuilderFromBlueprint(BlueprintModel blueprint)

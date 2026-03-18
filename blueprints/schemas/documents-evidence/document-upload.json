@@ -1,0 +1,52 @@
+{
+  "identifier": "document-upload",
+  "title": "Document Upload",
+  "description": "File upload with document type classification, description, and version tracking",
+  "version": "1.0.0",
+  "category": "documents-evidence",
+  "tags": ["document", "upload", "file", "attachment", "evidence"],
+  "keywords": ["document", "upload", "file", "attachment", "pdf", "version"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "file": {
+        "type": "string",
+        "title": "Upload Document",
+        "description": "Document file to upload",
+        "format": "binary"
+      },
+      "documentType": {
+        "type": "string",
+        "title": "Document Type",
+        "description": "Type of document being uploaded",
+        "enum": ["pdf", "image", "spreadsheet", "presentation", "other"]
+      },
+      "description": {
+        "type": "string",
+        "title": "Description",
+        "description": "Brief description of the document contents",
+        "maxLength": 500
+      },
+      "version": {
+        "type": "string",
+        "title": "Version",
+        "description": "Document version identifier",
+        "maxLength": 20
+      }
+    },
+    "required": ["file", "documentType"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "FileUpload", "scope": "file", "title": "Upload Document" },
+      { "type": "Dropdown", "scope": "documentType", "title": "Document Type" },
+      { "type": "TextLine", "scope": "description", "title": "Description" },
+      { "type": "TextLine", "scope": "version", "title": "Version" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": [],
+    "recommendation": "Document contents may contain sensitive information depending on the workflow context. Apply disclosure rules based on the nature of the uploaded document."
+  }
+}

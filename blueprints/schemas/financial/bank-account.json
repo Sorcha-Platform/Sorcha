@@ -1,0 +1,58 @@
+{
+  "identifier": "bank-account",
+  "title": "Bank Account",
+  "description": "UK bank account details with sort code, account number, and optional IBAN for payment processing",
+  "version": "1.0.0",
+  "category": "financial",
+  "tags": ["bank", "account", "sort-code", "iban", "payment", "finance"],
+  "keywords": ["bank account", "sort code", "account number", "iban", "payment", "banking"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "sortCode": {
+        "type": "string",
+        "title": "Sort Code",
+        "description": "UK bank sort code (6 digits)",
+        "pattern": "^[0-9]{6}$"
+      },
+      "accountNumber": {
+        "type": "string",
+        "title": "Account Number",
+        "description": "UK bank account number (8 digits)",
+        "pattern": "^[0-9]{8}$"
+      },
+      "accountName": {
+        "type": "string",
+        "title": "Account Name",
+        "description": "Name on the bank account",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "iban": {
+        "type": "string",
+        "title": "IBAN",
+        "description": "International Bank Account Number",
+        "pattern": "^[A-Z]{2}\\d{2}[A-Z0-9]{4,30}$"
+      }
+    },
+    "required": ["sortCode", "accountNumber", "accountName"]
+  },
+  "formLayout": {
+    "type": "VerticalLayout",
+    "elements": [
+      { "type": "TextLine", "scope": "accountName", "title": "Account Name" },
+      {
+        "type": "HorizontalLayout",
+        "elements": [
+          { "type": "TextLine", "scope": "sortCode", "title": "Sort Code" },
+          { "type": "TextLine", "scope": "accountNumber", "title": "Account Number" }
+        ]
+      },
+      { "type": "TextLine", "scope": "iban", "title": "IBAN" }
+    ]
+  },
+  "disclosure": {
+    "sensitive": ["sortCode", "accountNumber", "iban"],
+    "recommendation": "Bank account details are highly sensitive financial data. Only disclose to participants directly involved in payment processing. Never disclose to audit-only or read-only participants."
+  }
+}
