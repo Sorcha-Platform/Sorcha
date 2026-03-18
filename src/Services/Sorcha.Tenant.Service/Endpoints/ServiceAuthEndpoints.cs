@@ -2,8 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Http.HttpResults;
-using Sorcha.Tenant.Service.Data.Repositories;
-using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -138,8 +136,7 @@ public static class ServiceAuthEndpoints
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> GetOAuth2Token(
         HttpContext context,
         IServiceAuthService serviceAuthService,
-        IIdentityRepository identityRepository,
-        IOrganizationRepository organizationRepository,
+        ILoginService loginService,
         ITokenService tokenService,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
@@ -191,7 +188,7 @@ public static class ServiceAuthEndpoints
 
         return grantType switch
         {
-            "password" => await HandlePasswordGrant(username, password, clientId, identityRepository, organizationRepository, tokenService, logger, cancellationToken),
+            "password" => await HandlePasswordGrant(username, password, loginService, logger, cancellationToken),
             "client_credentials" => await HandleClientCredentialsGrant(clientId, clientSecret, scope, serviceAuthService, cancellationToken),
             "refresh_token" => await HandleRefreshTokenGrant(refreshToken, tokenService, cancellationToken),
             _ => TypedResults.ValidationProblem(new Dictionary<string, string[]>
@@ -204,10 +201,7 @@ public static class ServiceAuthEndpoints
     private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, ValidationProblem>> HandlePasswordGrant(
         string username,
         string password,
-        string clientId,
-        IIdentityRepository identityRepository,
-        IOrganizationRepository organizationRepository,
-        ITokenService tokenService,
+        ILoginService loginService,
         ILogger<Program> logger,
         CancellationToken cancellationToken)
     {
@@ -229,20 +223,15 @@ public static class ServiceAuthEndpoints
 
         try
         {
-            // Look up user by email
-            var user = await identityRepository.GetUserByEmailAsync(username, cancellationToken);
+            var result = await loginService.LoginAsync(username, password, cancellationToken);
 
-            if (user == null || user.Status != IdentityStatus.Active)
+            if (!result.Success || result.Tokens is null)
             {
-                logger.LogWarning("OAuth2 password grant failed: User not found or inactive - {Email}", username);
+                logger.LogWarning("OAuth2 password grant failed for {Email}", username);
                 return TypedResults.Unauthorized();
             }
 
-            // TODO: PasswordHash removed from UserIdentity — password verification
-            // will be handled by PlatformUser in a future task. For now, the password
-            // grant type is non-functional and always returns unauthorized.
-            logger.LogWarning("OAuth2 password grant is not yet implemented with PlatformUser model - {Email}", username);
-            return TypedResults.Unauthorized();
+            return TypedResults.Ok(result.Tokens);
         }
         catch (Exception ex)
         {
