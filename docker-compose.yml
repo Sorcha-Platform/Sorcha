@@ -398,6 +398,7 @@ services:
       # SystemWalletAddress left empty - wallet created automatically on startup
       Validator__SystemWalletAddress: ""
       # Service client configuration for inter-service communication
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://sorcha-register-service:8080
