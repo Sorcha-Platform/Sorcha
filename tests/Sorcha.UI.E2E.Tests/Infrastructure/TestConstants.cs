@@ -30,6 +30,26 @@ public static class TestConstants
     public const int NetworkIdleWait = 3000;
     public const int ShortWait = 1000;
 
+    // Long-running test timeouts (ms)
+    public const int LongRunningTestTimeout = 1_200_000; // 20 minutes
+    public const int ActionProcessingTimeout = 60_000;    // 1 minute for validator pipeline
+    public const int MultiUserLoginTimeout = 30_000;      // 30 seconds per user login
+
+    // Council E2E test credentials
+    public static class CouncilTestUsers
+    {
+        public const string CouncilAdminEmail = "council.admin@eastbourne.test";
+        public const string IdDeptEmail = "id.dept@eastbourne.test";
+        public const string ServiceDeptEmail = "service.dept@eastbourne.test";
+        public const string ReturnDeptEmail = "return.dept@eastbourne.test";
+        public const string StaffPassword = "Council_Staff_2026!";
+        public const string CitizenEmail = "jane.citizen@email.test";
+        public const string CitizenPassword = "Citizen_Pass_2026!";
+        public const string CitizenDisplayName = "Jane Citizen";
+        public const string CouncilOrgName = "Eastbourne Council";
+        public const string CouncilSubdomain = "eastbourne";
+    }
+
     /// <summary>
     /// Console error patterns that are expected from Blazor WASM and should not fail tests.
     /// </summary>

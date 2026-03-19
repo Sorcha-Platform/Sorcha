@@ -1,0 +1,171 @@
+{
+  "id": "council-id-application-001",
+  "title": "Council ID Application",
+  "description": "A three-action workflow where a citizen applies for a council digital ID credential. The identity department verifies the citizen's documents and issues an SD-JWT VC credential. Demonstrates credential issuance from civic identity flows.",
+  "version": 1,
+  "category": "credentials",
+  "tags": ["credentials", "issuance", "council", "identity", "digital-id", "sd-jwt-vc"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "council-id-application-generated",
+    "title": "Council ID Application",
+    "description": "Citizen applies for a council digital ID. Identity department verifies documents and issues an SD-JWT VC credential.",
+    "version": 1,
+    "metadata": {
+      "category": "credentials",
+      "author": "Sorcha Team",
+      "hasCycles": "false"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Member of the public applying for a council digital ID"
+      },
+      {
+        "id": "id-dept",
+        "name": "Identity Department",
+        "organisation": "Eastbourne Council",
+        "description": "Council department that verifies identity documents and issues digital ID credentials"
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Apply for ID",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "fullName": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "dateOfBirth": { "type": "string", "format": "date" },
+              "address": { "type": "string", "minLength": 1, "maxLength": 500 },
+              "councilReferenceId": { "type": "string", "minLength": 1, "maxLength": 50 }
+            },
+            "required": ["fullName", "dateOfBirth", "address", "councilReferenceId"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "id-dept",
+            "paths": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "apply-to-verify",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Route application to identity department for verification"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Verify Identity",
+        "sender": "id-dept",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": { "type": "string", "enum": ["approved", "rejected"] },
+              "verificationMethod": { "type": "string", "enum": ["document", "in-person", "video-call"] },
+              "verifiedAt": { "type": "string", "format": "date-time" },
+              "notes": { "type": "string", "maxLength": 1000 }
+            },
+            "required": ["decision", "verificationMethod", "verifiedAt"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/decision"]
+          },
+          {
+            "participantId": "id-dept",
+            "paths": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-issue",
+            "nextActionIds": [2],
+            "condition": { "==": [{ "var": "decision" }, "approved"] },
+            "description": "Approved — route to credential issuance"
+          },
+          {
+            "id": "rejected-end",
+            "nextActionIds": [],
+            "condition": { "==": [{ "var": "decision" }, "rejected"] },
+            "description": "Rejected — workflow ends"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Issue ID Credential",
+        "sender": "id-dept",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialNumber": { "type": "string", "minLength": 1, "maxLength": 50 },
+              "validFrom": { "type": "string", "format": "date" }
+            },
+            "required": ["credentialNumber", "validFrom"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "CouncilDigitalIdCredential",
+          "claimMappings": [
+            { "claimName": "holder_name", "sourceField": "/fullName" },
+            { "claimName": "date_of_birth", "sourceField": "/dateOfBirth" },
+            { "claimName": "address", "sourceField": "/address" },
+            { "claimName": "council_reference", "sourceField": "/councilReferenceId" },
+            { "claimName": "credential_number", "sourceField": "/credentialNumber" },
+            { "claimName": "valid_from", "sourceField": "/validFrom" }
+          ],
+          "recipientParticipantId": "citizen",
+          "expiryDuration": "P1825D",
+          "registerId": "council-register",
+          "disclosable": ["holder_name", "credential_number", "valid_from"]
+        },
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "id-dept",
+            "paths": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "issue-end",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential issued — workflow complete"
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "standard-id-application",
+      "description": "Standard council ID application with document verification",
+      "parameters": {}
+    }
+  ]
+}
