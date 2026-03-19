@@ -21,7 +21,7 @@ public static class MetricsEndpoints
     {
         var group = app.MapGroup("/api/metrics")
             .WithTags("Metrics")
-            .RequireAuthorization("RequireAuthenticated");
+            .AllowAnonymous();
 
         // Aggregated metrics endpoint
         group.MapGet("/", GetAggregatedMetrics)

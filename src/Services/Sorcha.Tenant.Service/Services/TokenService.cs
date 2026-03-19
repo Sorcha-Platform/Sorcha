@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Sorcha.ServiceClients.Auth;
+using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Extensions;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -21,6 +22,8 @@ public class TokenService : ITokenService
 {
     private readonly JwtConfiguration _config;
     private readonly ITokenRevocationService _revocationService;
+    private readonly IIdentityRepository _identityRepository;
+    private readonly IOrganizationRepository _organizationRepository;
     private readonly ILogger<TokenService> _logger;
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly SigningCredentials? _signingCredentials;
@@ -29,10 +32,14 @@ public class TokenService : ITokenService
     public TokenService(
         IOptions<JwtConfiguration> options,
         ITokenRevocationService revocationService,
+        IIdentityRepository identityRepository,
+        IOrganizationRepository organizationRepository,
         ILogger<TokenService> logger)
     {
         _config = options?.Value ?? new JwtConfiguration();
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
+        _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
+        _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tokenHandler = new JwtSecurityTokenHandler();
         _tokenHandler.MapInboundClaims = false;
@@ -205,7 +212,7 @@ public class TokenService : ITokenService
                 return null;
             }
 
-            // Extract claims for new token
+            // Extract user and org IDs from refresh token
             var userId = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
             var orgId = principal.FindFirst(TokenClaimConstants.OrgId)?.Value;
 
@@ -214,18 +221,63 @@ public class TokenService : ITokenService
                 return null;
             }
 
-            // Generate new access token with same claims but new JTI and expiry
+            // Look up the current user and organization to rebuild full claims
+            // (refresh tokens only contain sub + org_id, not roles/name/email)
+            if (!Guid.TryParse(userId, out var userGuid))
+            {
+                _logger.LogWarning("Invalid user ID in refresh token: {UserId}", userId);
+                return null;
+            }
+
+            var user = await _identityRepository.GetUserByIdAsync(userGuid, cancellationToken);
+            if (user is null || user.Status != IdentityStatus.Active)
+            {
+                _logger.LogWarning("User {UserId} not found or inactive during token refresh", userId);
+                return null;
+            }
+
+            Organization? organization = null;
+            if (!string.IsNullOrEmpty(orgId) && Guid.TryParse(orgId, out var orgGuid))
+            {
+                organization = await _organizationRepository.GetByIdAsync(orgGuid, cancellationToken);
+            }
+
+            // Generate new access token with full claims rebuilt from current user state
             var newAccessTokenJti = Guid.NewGuid().ToString();
             var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
 
-            var claims = principal.Claims
-                .Where(c => c.Type != JwtRegisteredClaimNames.Jti &&
-                            c.Type != JwtRegisteredClaimNames.Exp &&
-                            c.Type != JwtRegisteredClaimNames.Iat &&
-                            c.Type != "token_use")
-                .ToList();
+            var claims = new List<Claim>
+            {
+                new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new(JwtRegisteredClaimNames.Email, user.Email),
+                new(JwtRegisteredClaimNames.Jti, newAccessTokenJti),
+                new("name", user.DisplayName),
+                new(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser)
+            };
 
-            claims.Add(new Claim(JwtRegisteredClaimNames.Jti, newAccessTokenJti));
+            // Add org claims if available
+            if (organization is not null)
+            {
+                claims.Add(new Claim(TokenClaimConstants.OrgId, organization.Id.ToString()));
+                claims.Add(new Claim("org_name", organization.Name));
+            }
+            else if (!string.IsNullOrEmpty(orgId))
+            {
+                claims.Add(new Claim(TokenClaimConstants.OrgId, orgId));
+            }
+
+            // Add platform user ID if present in refresh token
+            var platformUserId = principal.FindFirst("platform_user_id")?.Value;
+            if (!string.IsNullOrEmpty(platformUserId))
+            {
+                claims.Add(new Claim("platform_user_id", platformUserId));
+            }
+
+            // Add current role claims from user record (critical: refresh tokens don't carry roles)
+            foreach (var role in user.Roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
+            }
 
             var accessToken = GenerateToken(claims, accessTokenExpiry);
 
