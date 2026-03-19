@@ -114,8 +114,9 @@ builder.Services.AddScoped<Sorcha.Validator.Service.Services.IValidatorOrchestra
 // Add consolidated service clients
 builder.Services.AddServiceClients(builder.Configuration);
 
-// Add blueprint cache and transaction pool poller (required by validation engine)
+// Add blueprint cache, fetcher, and transaction pool poller (required by validation engine)
 builder.Services.AddBlueprintCache(builder.Configuration);
+builder.Services.AddBlueprintFetcher(builder.Configuration);
 builder.Services.AddTransactionPoolPoller(builder.Configuration);
 
 // Add verified transaction queue (required by validation engine)

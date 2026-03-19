@@ -28,6 +28,7 @@ public class ValidationEngine : IValidationEngine
 {
     private readonly ValidationEngineConfiguration _config;
     private readonly IBlueprintCache _blueprintCache;
+    private readonly IBlueprintFetcher? _blueprintFetcher;
     private readonly IHashProvider _hashProvider;
     private readonly ICryptoModule _cryptoModule;
     private readonly IWalletUtilities _walletUtilities;
@@ -52,16 +53,23 @@ public class ValidationEngine : IValidationEngine
         IWalletUtilities walletUtilities,
         IRegisterServiceClient registerClient,
         IRightsEnforcementService rightsEnforcementService,
-        ILogger<ValidationEngine> logger)
+        ILogger<ValidationEngine> logger,
+        IBlueprintFetcher? blueprintFetcher = null)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _blueprintCache = blueprintCache ?? throw new ArgumentNullException(nameof(blueprintCache));
+        _blueprintFetcher = blueprintFetcher;
         _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _walletUtilities = walletUtilities ?? throw new ArgumentNullException(nameof(walletUtilities));
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _rightsEnforcementService = rightsEnforcementService ?? throw new ArgumentNullException(nameof(rightsEnforcementService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        if (_blueprintFetcher != null)
+        {
+            _logger.LogInformation("ValidationEngine initialized with BlueprintFetcher fallback enabled");
+        }
     }
 
     /// <inheritdoc/>
@@ -375,7 +383,7 @@ public class ValidationEngine : IValidationEngine
             }
 
             // Get the blueprint
-            var blueprint = await _blueprintCache.GetBlueprintAsync(transaction.BlueprintId!, ct);
+            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
             if (blueprint == null)
             {
                 errors.Add(CreateError("VAL_SCHEMA_001",
@@ -849,7 +857,7 @@ public class ValidationEngine : IValidationEngine
         try
         {
             // Blueprint + action lookup (reuse logic from ValidateSchemaAsync)
-            var blueprint = await _blueprintCache.GetBlueprintAsync(transaction.BlueprintId!, ct);
+            var blueprint = await ResolveBlueprintAsync(transaction.BlueprintId!, ct);
             if (blueprint == null)
             {
                 errors.Add(CreateError("VAL_SCHEMA_001",
@@ -1251,6 +1259,49 @@ public class ValidationEngine : IValidationEngine
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Resolves a blueprint by ID, checking cache first then falling back to BlueprintFetcher.
+    /// On successful fetch, the blueprint is cached for subsequent lookups.
+    /// </summary>
+    private async Task<BlueprintModel?> ResolveBlueprintAsync(string blueprintId, CancellationToken ct)
+    {
+        // Try cache first (L1 → L2)
+        var blueprint = await _blueprintCache.GetBlueprintAsync(blueprintId, ct);
+        if (blueprint != null)
+            return blueprint;
+
+        // Cache miss — try fetching from Blueprint Service
+        if (_blueprintFetcher != null)
+        {
+            _logger.LogInformation(
+                "Blueprint {BlueprintId} not in cache, fetching from Blueprint Service",
+                blueprintId);
+
+            try
+            {
+                blueprint = await _blueprintFetcher.FetchBlueprintAsync(blueprintId, ct);
+                if (blueprint != null)
+                {
+                    // Populate cache for future lookups
+                    await _blueprintCache.SetBlueprintAsync(blueprint, ct: ct);
+                    _logger.LogInformation(
+                        "Blueprint {BlueprintId} fetched and cached from Blueprint Service",
+                        blueprintId);
+                    return blueprint;
+                }
+
+                _logger.LogWarning("Blueprint {BlueprintId} not found in Blueprint Service", blueprintId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to fetch blueprint {BlueprintId} from Blueprint Service", blueprintId);
+            }
+        }
+
+        return null;
     }
 
 }
