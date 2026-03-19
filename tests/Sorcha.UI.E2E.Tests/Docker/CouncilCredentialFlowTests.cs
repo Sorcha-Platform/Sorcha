@@ -12,7 +12,7 @@ namespace Sorcha.UI.E2E.Tests.Docker;
 
 /// <summary>
 /// End-to-end integration test exercising the full Sorcha platform through a realistic
-/// civic scenario: a citizen obtains a digital ID credential from Eastbourne Council,
+/// civic scenario: a citizen obtains a digital ID credential from Ashwick Council,
 /// then uses that credential to access a council service (foodbank support).
 ///
 /// This is an exploratory/diagnostic test. The first pass identifies UI and backend
@@ -41,14 +41,14 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     // Council org
     private string _councilOrgId = null!;
-    private const string CouncilOrgName = "Eastbourne Council";
-    private const string CouncilSubdomain = "eastbourne";
+    private const string CouncilOrgName = "Ashwick Council";
+    private const string CouncilSubdomain = "ashwick";
 
     // Council staff users
-    private const string CouncilAdminEmail = "council.admin@eastbourne.test";
-    private const string IdDeptEmail = "id.dept@eastbourne.test";
-    private const string ServiceDeptEmail = "service.dept@eastbourne.test";
-    private const string ReturnDeptEmail = "return.dept@eastbourne.test";
+    private const string CouncilAdminEmail = "council.admin@ashwick.test";
+    private const string IdDeptEmail = "id.dept@ashwick.test";
+    private const string ServiceDeptEmail = "service.dept@ashwick.test";
+    private const string ReturnDeptEmail = "return.dept@ashwick.test";
     private const string StaffPassword = "Council_Staff_2026!";
 
     // Citizen
@@ -57,6 +57,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     private const string CitizenDisplayName = "Jane Citizen";
 
     // Wallet addresses (populated during setup)
+    private string _adminWallet = null!;
     private string _councilAdminWallet = null!;
     private string _idDeptWallet = null!;
     private string _serviceDeptWallet = null!;
@@ -124,8 +125,8 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             TestContext.Out.WriteLine("Pre-registering council admin user...");
             await RegisterUserViaPublicOrgAsync(CouncilAdminEmail, "Council Admin", StaffPassword);
 
-            // Step 4: Create Eastbourne Council organization (provisioner finds council admin, skips invite)
-            TestContext.Out.WriteLine("Creating Eastbourne Council organization...");
+            // Step 4: Create Ashwick Council organization (provisioner finds council admin, skips invite)
+            TestContext.Out.WriteLine("Creating Ashwick Council organization...");
             _councilOrgId = await CreateOrganizationAsync(adminToken, CouncilOrgName, CouncilSubdomain);
             TestContext.Out.WriteLine($"Council org created: {_councilOrgId}");
 
@@ -141,12 +142,16 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             TestContext.Out.WriteLine("Registering staff as participants in council org...");
             await RegisterStaffParticipantsAsync();
 
-            // Step 8: Create register owned by council admin
-            // Council admin owns and signs attestations for the council's register.
+            // Step 8: Create admin wallet for register ownership/attestation signing
+            TestContext.Out.WriteLine("Creating admin wallet for register...");
+            _adminWallet = await CreateWalletViaApiAsync("admin", "Register Owner Wallet");
+            TestContext.Out.WriteLine($"Admin wallet: {_adminWallet}");
+
+            // Step 9: Create register (system admin owns, council org tenant)
             TestContext.Out.WriteLine("Creating council services register...");
             await CreateRegisterAsync();
 
-            // Step 9: Publish blueprints to the council register
+            // Step 10: Publish blueprints to the council register
             TestContext.Out.WriteLine("Publishing blueprints...");
             await PublishBlueprintsAsync();
 
@@ -330,7 +335,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         {
             ["fullName"] = "Jane Citizen",
             ["dateOfBirth"] = "1990-05-15",
-            ["address"] = "42 High Street, Eastbourne, BN21 1AA",
+            ["address"] = "42 High Street, Ashwick, BN21 1AA",
             ["councilReferenceId"] = "EC-2026-001234"
         };
 
@@ -737,7 +742,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             ["fulfilmentDate"] = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd"),
             ["deliveryMethod"] = "collection",
             ["referenceNumber"] = $"FB-{DateTime.UtcNow:yyyyMMdd}-001",
-            ["completionNotes"] = "Foodbank parcel ready for collection at Eastbourne Community Centre. " +
+            ["completionNotes"] = "Foodbank parcel ready for collection at Ashwick Community Centre. " +
                 "Collection window: 9am-5pm weekdays."
         };
 
@@ -887,16 +892,22 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     {
         var response = await ApiPostAsync("/api/platform/organizations",
             new { name, subdomain, adminEmail = CouncilAdminEmail }, adminToken);
-        var json = await ReadJsonAsync(response);
+        var (createStatus, createBody) = await ReadResponseAsync(response);
+        TestContext.Out.WriteLine($"Create org '{name}': {createStatus}");
 
-        // Try common property names for the org ID
-        if (json.TryGetProperty("id", out var idProp))
-            return idProp.GetString()!;
-        if (json.TryGetProperty("organizationId", out var orgIdProp))
-            return orgIdProp.GetString()!;
+        // Parse successful creation
+        if (createStatus < 400 && !string.IsNullOrWhiteSpace(createBody))
+        {
+            using var doc = JsonDocument.Parse(createBody);
+            if (doc.RootElement.TryGetProperty("organizationId", out var orgIdProp))
+                return orgIdProp.GetString()!;
+            if (doc.RootElement.TryGetProperty("id", out var idProp))
+                return idProp.GetString()!;
+        }
 
-        // Fallback: if creation returned 409 (already exists), try to find it
-        var listResponse = await ApiGetAsync("/api/platform/organizations", adminToken);
+        // Already exists (400 subdomain taken, or 409) — look it up
+        TestContext.Out.WriteLine($"Org creation returned {createStatus}, looking up existing...");
+        var listResponse = await ApiGetAsync("/api/platform/organizations?page=1&pageSize=50", adminToken);
         var listJson = await ReadJsonAsync(listResponse);
 
         if (listJson.ValueKind == JsonValueKind.Array)
@@ -923,7 +934,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         }
 
         throw new InvalidOperationException(
-            $"Could not determine org ID from response: {json.GetRawText()}");
+            $"Could not find org '{name}' (subdomain: {subdomain}). Creation returned: {createStatus}");
     }
 
     private async Task CreateStaffUsersAsync(string adminToken)
@@ -1002,6 +1013,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                     var switchResponse = await ApiPostAsync("/api/auth/switch-org",
                         new { organizationId = _councilOrgId }, token);
                     var (switchStatus, switchBody) = await ReadResponseAsync(switchResponse);
+                    TestContext.Out.WriteLine($"Org switch for {user.Email}: {switchStatus}");
                     if (switchStatus == 200 && !string.IsNullOrWhiteSpace(switchBody))
                     {
                         using var switchDoc = JsonDocument.Parse(switchBody);
@@ -1011,11 +1023,15 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                             StoreUserToken(user.TokenKey, at.GetString()!);
                             TestContext.Out.WriteLine($"Switched {user.Email} to council org");
                         }
+                        else
+                        {
+                            TestContext.Out.WriteLine($"Switch response has no token. Keys: {string.Join(", ", switchDoc.RootElement.EnumerateObject().Select(p => p.Name))}");
+                        }
                     }
                 }
-                catch
+                catch (Exception switchEx)
                 {
-                    // Org switch not available or failed — proceed with original token
+                    TestContext.Out.WriteLine($"Org switch failed for {user.Email}: {switchEx.Message}");
                 }
             }
             catch (Exception ex)
@@ -1087,15 +1103,10 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     private async Task CreateRegisterAsync()
     {
-        // Use council admin as register owner — this is their register, not the system admin's.
-        var councilAdminToken = GetUserToken("council-admin");
-
-        // Extract council admin user ID from their token
-        var caPayload = councilAdminToken.Split('.')[1];
-        var caPadded = caPayload + new string('=', (4 - caPayload.Length % 4) % 4);
-        var caClaims = JsonDocument.Parse(
-            System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(caPadded)));
-        var councilAdminUserId = caClaims.RootElement.GetProperty("sub").GetString()!;
+        // System admin creates the register on behalf of the council org.
+        // The council admin's wallet is used as owner for attestation signing.
+        // System admin has universal access for register operations.
+        var adminToken = GetUserToken("admin");
 
         // Phase 1: Initiate register
         TestContext.Out.WriteLine("Register Phase 1: Initiating...");
@@ -1103,16 +1114,16 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             new
             {
                 name = "Council Services Register",
-                description = "Shared register for Eastbourne Council digital services and credentials",
+                description = "Shared register for Ashwick Council digital services and credentials",
                 tenantId = _councilOrgId,
                 advertise = true,
                 isPublic = true,
                 owners = new[]
                 {
-                    new { userId = councilAdminUserId, walletId = _councilAdminWallet }
+                    new { userId = _adminUserId, walletId = _adminWallet }
                 },
-                metadata = new { source = "e2e-test", council = "eastbourne" }
-            }, councilAdminToken);
+                metadata = new { source = "e2e-test", council = "ashwick" }
+            }, adminToken);
 
         var initiateJson = await ReadJsonAsync(initiateResponse);
         _registerId = initiateJson.TryGetProperty("registerId", out var rid)
@@ -1142,11 +1153,11 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                 var hexBytes = Convert.FromHexString(dataToSignHex);
                 var dataToSignBase64 = Convert.ToBase64String(hexBytes);
 
-                // Sign via wallet service (council admin's wallet)
+                // Sign via wallet service (council admin's wallet, admin token for auth)
                 var signResponse = await ApiPostAsync(
                     $"/api/v1/wallets/{walletId}/sign",
                     new { transactionData = dataToSignBase64, isPreHashed = true },
-                    councilAdminToken);
+                    adminToken);
 
                 var signJson = await ReadJsonAsync(signResponse);
                 var publicKey = signJson.GetProperty("publicKey").GetString()!;
@@ -1177,7 +1188,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                 registerId = _registerId,
                 nonce,
                 signedAttestations
-            }, councilAdminToken);
+            }, adminToken);
 
         var (finalizeStatus, finalizeBody) = await ReadResponseAsync(finalizeResponse);
         TestContext.Out.WriteLine($"Register finalize: {finalizeStatus}");
@@ -1217,8 +1228,8 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     private async Task PublishBlueprintsAsync()
     {
-        // Council admin publishes blueprints — they own the register
-        var councilToken = GetUserToken("council-admin");
+        // System admin publishes blueprints on behalf of the council
+        var councilToken = GetUserToken("admin");
 
         // Publish Council ID Application blueprint
         _idBlueprintId = await PublishBlueprintAsync(councilToken,

@@ -27,13 +27,13 @@
       {
         "id": "service-dept",
         "name": "Service Department",
-        "organisation": "Eastbourne Council",
+        "organisation": "Ashwick Council",
         "description": "Council service desk that receives and assesses service requests"
       },
       {
         "id": "return-dept",
         "name": "Fulfilment Department",
-        "organisation": "Eastbourne Council",
+        "organisation": "Ashwick Council",
         "description": "Council department that fulfils approved service requests"
       }
     ],

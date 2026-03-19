@@ -27,7 +27,7 @@
       {
         "id": "id-dept",
         "name": "Identity Department",
-        "organisation": "Eastbourne Council",
+        "organisation": "Ashwick Council",
         "description": "Council department that verifies identity documents and issues digital ID credentials"
       }
     ],

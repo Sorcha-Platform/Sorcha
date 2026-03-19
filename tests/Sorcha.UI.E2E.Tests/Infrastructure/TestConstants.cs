@@ -38,16 +38,16 @@ public static class TestConstants
     // Council E2E test credentials
     public static class CouncilTestUsers
     {
-        public const string CouncilAdminEmail = "council.admin@eastbourne.test";
-        public const string IdDeptEmail = "id.dept@eastbourne.test";
-        public const string ServiceDeptEmail = "service.dept@eastbourne.test";
-        public const string ReturnDeptEmail = "return.dept@eastbourne.test";
+        public const string CouncilAdminEmail = "council.admin@ashwick.test";
+        public const string IdDeptEmail = "id.dept@ashwick.test";
+        public const string ServiceDeptEmail = "service.dept@ashwick.test";
+        public const string ReturnDeptEmail = "return.dept@ashwick.test";
         public const string StaffPassword = "Council_Staff_2026!";
         public const string CitizenEmail = "jane.citizen@email.test";
         public const string CitizenPassword = "Citizen_Pass_2026!";
         public const string CitizenDisplayName = "Jane Citizen";
-        public const string CouncilOrgName = "Eastbourne Council";
-        public const string CouncilSubdomain = "eastbourne";
+        public const string CouncilOrgName = "Ashwick Council";
+        public const string CouncilSubdomain = "ashwick";
     }
 
     /// <summary>
