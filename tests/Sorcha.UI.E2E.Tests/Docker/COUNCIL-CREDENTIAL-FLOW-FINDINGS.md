@@ -1,13 +1,14 @@
 # Council Digital Credential E2E Flow — Test Findings
 
-**Test:** `CouncilCredentialFlowTests.cs` | **Date:** 2026-03-19 | **Iterations:** 14
+**Test:** `CouncilCredentialFlowTests.cs` | **Date:** 2026-03-19 | **Iterations:** 18
 
 ## Summary
 
 Long-running E2E integration test exercising a civic scenario: citizen obtains a council digital ID credential, then uses it to request a council service. Run against Docker stack with fresh volumes.
 
-**Setup phase:** Fully functional after fixes
-**Test flow phase:** Partially reached — blocked at participant registration (cross-org token handling)
+**Setup phase:** Fully functional after fixes (org creation, user provisioning, wallets, participants, blueprints)
+**Test 1:** PASSED — citizen registration, wallet, participant
+**Tests 2-9:** Blocked at instance creation (register not fully provisioned in Docker; register creation needs attestation signing which requires the full walkthrough bootstrap flow)
 
 ---
 
@@ -72,21 +73,38 @@ Long-running E2E integration test exercising a civic scenario: citizen obtains a
 
 ---
 
+### ISSUE-10: Register Creation Needs Full Attestation Flow
+- **Component:** Register Service
+- **Severity:** Major
+- **Problem:** The simplified register creation (initiate + finalize) in the E2E setup fails or produces an unusable register. The full register creation requires a 3-phase flow with attestation signing (as implemented in the walkthrough's `New-SorchaRegister`). Without a valid register, `CreateInstanceRequest` fails because the blueprint publish transaction doesn't exist on the register.
+- **Recommended fix:** Either (a) port the walkthrough's full `New-SorchaRegister` flow into the E2E test setup, or (b) add a simplified "create test register" admin endpoint that skips attestation for Development environments.
+
+### ISSUE-11: Blueprint Instance Creation Requires Published Register
+- **Component:** Blueprint Service
+- **Severity:** Informational
+- **Problem:** `POST /api/instances` with `CreateInstanceRequest { blueprintId, registerId }` expects the blueprint to have a publish transaction on the register. This is created during `POST /api/blueprints/{id}/publish`, which writes to the register. If the register isn't properly initialized, publishing succeeds (in-memory) but the register write fails silently.
+- **Impact:** Instance creation returns "Blueprint not found" or fails to chain from the publish transaction.
+- **Recommended fix:** Blueprint publish should fail explicitly if the register write fails, rather than succeeding with a partial state.
+
+---
+
 ## Test Infrastructure Notes
 
 ### What Works
-- `MultiUserTestBase` — per-user browser contexts, API token management, multi-user auth switching
+- `MultiUserTestBase` — per-user browser contexts, API token management, state persistence across ordered tests
 - `SignupPage` — email tab selection, form fill (selectors fixed for `#tab-email` scoping)
 - `CredentialsPage`, `ActionSubmissionPage` — created, not yet exercised
 - Blueprint template loading from repo root via `RepoPath()` helper
 - Auto email verification via Docker psql
 - Wallet creation via `/api/v1/wallets` (nested response parsing)
+- Participant self-registration with JWT org_id extraction
+- Blueprint creation with server-generated ID extraction
+- Staff user login via UI — all 3 council staff successfully authenticated
 
 ### What Needs Work
-- `LoginAsUserAsync` — needs org selection handling for multi-org users
-- Participant registration — needs cross-org awareness
-- Blueprint publishing — reached in setup but not yet tested (blocked by earlier failures)
-- Action execution — not yet reached
+- `LoginAsUserAsync` — needs org selection handling for multi-org users (citizen login blocked)
+- Register creation — needs full attestation signing flow (3-phase) from walkthrough
+- Action execution — not yet reached (blocked by register)
 - UI verification of workflows/credentials — not yet reached
 
 ---
