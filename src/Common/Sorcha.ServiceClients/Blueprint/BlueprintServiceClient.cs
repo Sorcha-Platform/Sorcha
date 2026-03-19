@@ -5,6 +5,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Blueprint;
 
@@ -14,6 +16,7 @@ namespace Sorcha.ServiceClients.Blueprint;
 public class BlueprintServiceClient : IBlueprintServiceClient
 {
     private readonly HttpClient _httpClient;
+    private readonly IServiceAuthClient _serviceAuth;
     private readonly ILogger<BlueprintServiceClient> _logger;
     private readonly string _serviceAddress;
 
@@ -25,10 +28,12 @@ public class BlueprintServiceClient : IBlueprintServiceClient
 
     public BlueprintServiceClient(
         HttpClient httpClient,
+        IServiceAuthClient serviceAuth,
         IConfiguration configuration,
         ILogger<BlueprintServiceClient> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         _serviceAddress = configuration["ServiceClients:BlueprintService:Address"]
@@ -52,6 +57,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         {
             _logger.LogDebug("Getting blueprint {BlueprintId}", blueprintId);
 
+            await SetAuthHeaderAsync(cancellationToken);
             var response = await _httpClient.GetAsync(
                 $"api/blueprints/{Uri.EscapeDataString(blueprintId)}",
                 cancellationToken);
@@ -105,6 +111,7 @@ public class BlueprintServiceClient : IBlueprintServiceClient
                 Data = JsonSerializer.Deserialize<JsonElement>(payload)
             };
 
+            await SetAuthHeaderAsync(cancellationToken);
             var response = await _httpClient.PostAsJsonAsync(
                 "api/execution/validate",
                 request,
@@ -151,6 +158,10 @@ public class BlueprintServiceClient : IBlueprintServiceClient
             return false;
         }
     }
+
+    private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
+        ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "BlueprintService", cancellationToken);
 
     /// <summary>
     /// Request DTO for validation endpoint
