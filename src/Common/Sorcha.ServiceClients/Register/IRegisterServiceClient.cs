@@ -282,6 +282,21 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Resolves a participant by blueprint role ID and optional organisation name.
+    /// Used for dynamic participant resolution at action execution time.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="participantId">Blueprint participant/role ID</param>
+    /// <param name="orgName">Optional organisation name filter</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Published participant record, or null if not found. Returns null if revoked.</returns>
+    Task<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord?> ResolveParticipantAsync(
+        string registerId,
+        string participantId,
+        string? orgName = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Resolves a participant's public key by wallet address for field-level encryption
     /// </summary>
     /// <param name="registerId">Register ID</param>

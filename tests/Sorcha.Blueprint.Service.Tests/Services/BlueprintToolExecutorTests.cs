@@ -8,8 +8,8 @@ using Moq;
 using Sorcha.Blueprint.Fluent;
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Models.Credentials;
-using Sorcha.Blueprint.Schemas.Models;
-using Sorcha.Blueprint.Schemas.Services;
+using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Service.Templates;
 
@@ -22,15 +22,15 @@ public class BlueprintToolExecutorTests
 {
     private readonly BlueprintToolExecutor _executor;
     private readonly Mock<ILogger<BlueprintToolExecutor>> _loggerMock;
-    private readonly Mock<ISchemaStore> _schemaStoreMock;
+    private readonly Mock<ISchemaIndexService> _schemaIndexServiceMock;
     private readonly Mock<IBlueprintTemplateService> _templateServiceMock;
 
     public BlueprintToolExecutorTests()
     {
         _loggerMock = new Mock<ILogger<BlueprintToolExecutor>>();
-        _schemaStoreMock = new Mock<ISchemaStore>();
+        _schemaIndexServiceMock = new Mock<ISchemaIndexService>();
         _templateServiceMock = new Mock<IBlueprintTemplateService>();
-        _executor = new BlueprintToolExecutor(_loggerMock.Object, _schemaStoreMock.Object, _templateServiceMock.Object);
+        _executor = new BlueprintToolExecutor(_loggerMock.Object, _schemaIndexServiceMock.Object, _templateServiceMock.Object);
     }
 
     #region GetToolDefinitions Tests
@@ -654,17 +654,17 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteSearchSchemas_ReturnsMatchingSchemas()
     {
         // Arrange
-        var schemas = new List<SchemaEntry>
+        var schemas = new List<SchemaIndexEntryDto>
         {
-            CreateSchemaEntry("invoice-schema", "Invoice Schema", "finance", fieldCount: 5,
+            CreateSchemaIndexEntry("invoice-schema", "Invoice Schema", "finance", fieldCount: 5,
                 fieldNames: new[] { "invoiceNumber", "amount", "currency", "date", "vendor" }),
-            CreateSchemaEntry("purchase-order", "Purchase Order", "finance", fieldCount: 3,
+            CreateSchemaIndexEntry("purchase-order", "Purchase Order", "finance", fieldCount: 3,
                 fieldNames: new[] { "poNumber", "items", "total" })
         };
 
-        _schemaStoreMock.Setup(s => s.ListAsync(
-                null, SchemaStatus.Active, "invoice", null, 50, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((schemas.AsReadOnly(), schemas.Count, (string?)null));
+        _schemaIndexServiceMock.Setup(s => s.SearchAsync(
+                "invoice", null, null, null, 50, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaIndexSearchResponse(schemas.AsReadOnly(), schemas.Count, null, null));
 
         var builder = BlueprintBuilder.Create();
         var args = CreateArgs(new { query = "invoice" });
@@ -684,15 +684,15 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteSearchSchemas_FiltersByCategory()
     {
         // Arrange
-        var schemas = new List<SchemaEntry>
+        var schemas = new List<SchemaIndexEntryDto>
         {
-            CreateSchemaEntry("invoice-schema", "Invoice Schema", "finance"),
-            CreateSchemaEntry("health-record", "Health Record", "healthcare")
+            CreateSchemaIndexEntry("invoice-schema", "Invoice Schema", "finance"),
+            CreateSchemaIndexEntry("health-record", "Health Record", "healthcare")
         };
 
-        _schemaStoreMock.Setup(s => s.ListAsync(
-                null, SchemaStatus.Active, "record", null, 50, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((schemas.AsReadOnly(), schemas.Count, (string?)null));
+        _schemaIndexServiceMock.Setup(s => s.SearchAsync(
+                "record", It.IsAny<string[]?>(), null, null, 50, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaIndexSearchResponse(schemas.AsReadOnly(), schemas.Count, null, null));
 
         var builder = BlueprintBuilder.Create();
         var args = CreateArgs(new { query = "record", category = "healthcare" });
@@ -711,9 +711,9 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteSearchSchemas_NoResults_ReturnsEmpty()
     {
         // Arrange
-        _schemaStoreMock.Setup(s => s.ListAsync(
-                null, SchemaStatus.Active, "nonexistent", null, 50, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((new List<SchemaEntry>().AsReadOnly(), 0, (string?)null));
+        _schemaIndexServiceMock.Setup(s => s.SearchAsync(
+                "nonexistent", null, null, null, 50, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaIndexSearchResponse(new List<SchemaIndexEntryDto>().AsReadOnly(), 0, null, null));
 
         var builder = BlueprintBuilder.Create();
         var args = CreateArgs(new { query = "nonexistent" });
@@ -731,15 +731,15 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteSearchSchemas_ReturnsFieldInfo()
     {
         // Arrange
-        var schemas = new List<SchemaEntry>
+        var schemas = new List<SchemaIndexEntryDto>
         {
-            CreateSchemaEntry("invoice-schema", "Invoice Schema", "finance",
+            CreateSchemaIndexEntry("invoice-schema", "Invoice Schema", "finance",
                 fieldCount: 3, fieldNames: new[] { "invoiceNumber", "amount", "currency" })
         };
 
-        _schemaStoreMock.Setup(s => s.ListAsync(
-                null, SchemaStatus.Active, "invoice", null, 50, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((schemas.AsReadOnly(), schemas.Count, (string?)null));
+        _schemaIndexServiceMock.Setup(s => s.SearchAsync(
+                "invoice", null, null, null, 50, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SchemaIndexSearchResponse(schemas.AsReadOnly(), schemas.Count, null, null));
 
         var builder = BlueprintBuilder.Create();
         var args = CreateArgs(new { query = "invoice" });
@@ -773,18 +773,8 @@ public class BlueprintToolExecutorTests
             }
             """);
 
-        var schema = new SchemaEntry
-        {
-            Identifier = "invoice-schema",
-            Title = "Invoice Schema",
-            Version = "1.0.0",
-            Category = SchemaCategory.Custom,
-            Source = SchemaSource.Internal(),
-            Content = schemaContent
-        };
-
-        _schemaStoreMock.Setup(s => s.GetByIdentifierAsync("invoice-schema", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(schema);
+        _schemaIndexServiceMock.Setup(s => s.GetContentByShortCodeAsync("invoice-schema", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(schemaContent);
 
         var builder = BlueprintBuilder.Create()
             .WithTitle("Test Blueprint")
@@ -807,8 +797,8 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteUseStandardSchema_SchemaNotFound_ReturnsError()
     {
         // Arrange
-        _schemaStoreMock.Setup(s => s.GetByIdentifierAsync("unknown", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((SchemaEntry?)null);
+        _schemaIndexServiceMock.Setup(s => s.GetContentByShortCodeAsync("unknown", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JsonDocument?)null);
 
         var builder = BlueprintBuilder.Create()
             .WithTitle("Test")
@@ -829,18 +819,10 @@ public class BlueprintToolExecutorTests
     public async Task ExecuteUseStandardSchema_ActionNotFound_ReturnsError()
     {
         // Arrange
-        var schema = new SchemaEntry
-        {
-            Identifier = "test-schema",
-            Title = "Test Schema",
-            Version = "1.0.0",
-            Category = SchemaCategory.Custom,
-            Source = SchemaSource.Internal(),
-            Content = JsonDocument.Parse("""{ "type": "object", "properties": {} }""")
-        };
+        var schemaContent = JsonDocument.Parse("""{ "type": "object", "properties": {} }""");
 
-        _schemaStoreMock.Setup(s => s.GetByIdentifierAsync("test-schema", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(schema);
+        _schemaIndexServiceMock.Setup(s => s.GetContentByShortCodeAsync("test-schema", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(schemaContent);
 
         var builder = BlueprintBuilder.Create()
             .WithTitle("Test")
@@ -1336,22 +1318,23 @@ public class BlueprintToolExecutorTests
         return JsonDocument.Parse(json);
     }
 
-    private static SchemaEntry CreateSchemaEntry(
-        string identifier, string title, string category,
-        int? fieldCount = null, string[]? fieldNames = null)
+    private static SchemaIndexEntryDto CreateSchemaIndexEntry(
+        string shortCode, string title, string category,
+        int fieldCount = 0, string[]? fieldNames = null)
     {
-        return new SchemaEntry
-        {
-            Identifier = identifier,
-            Title = title,
-            Version = "1.0.0",
-            Category = SchemaCategory.Custom,
-            Source = SchemaSource.Internal(),
-            Content = JsonDocument.Parse("{}"),
-            SectorTags = new[] { category },
-            FieldCount = fieldCount,
-            FieldNames = fieldNames
-        };
+        return new SchemaIndexEntryDto(
+            ShortCode: shortCode,
+            SourceProvider: "internal",
+            SourceUri: $"urn:sorcha:schema:{shortCode}",
+            Title: title,
+            Description: null,
+            SectorTags: new[] { category },
+            FieldCount: fieldCount,
+            RequiredFieldCount: 0,
+            SchemaVersion: "1.0.0",
+            Status: "Active",
+            LastFetchedAt: DateTimeOffset.UtcNow,
+            FieldNames: fieldNames);
     }
 
     private record ValidationOutput(bool isValid, ValidationError[] errors, ValidationWarning[] warnings);

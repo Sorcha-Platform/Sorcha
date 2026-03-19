@@ -7,7 +7,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Blueprint.Fluent;
-using Sorcha.Blueprint.Schemas.Services;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Models.Chat;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.Blueprint.Service.Services.Interfaces;
@@ -25,7 +25,7 @@ public class ChatOrchestrationServiceTests
     private readonly Mock<IAIProviderService> _aiProviderMock;
     private readonly Mock<IBlueprintToolExecutor> _toolExecutorMock;
     private readonly Mock<IBlueprintStore> _blueprintStoreMock;
-    private readonly Mock<ISchemaStore> _schemaStoreMock;
+    private readonly Mock<ISchemaIndexService> _schemaIndexServiceMock;
     private readonly Mock<IBlueprintTemplateService> _templateServiceMock;
     private readonly Mock<ILogger<ChatOrchestrationService>> _loggerMock;
     private readonly ChatOrchestrationService _service;
@@ -36,21 +36,26 @@ public class ChatOrchestrationServiceTests
         _aiProviderMock = new Mock<IAIProviderService>();
         _toolExecutorMock = new Mock<IBlueprintToolExecutor>();
         _blueprintStoreMock = new Mock<IBlueprintStore>();
-        _schemaStoreMock = new Mock<ISchemaStore>();
+        _schemaIndexServiceMock = new Mock<ISchemaIndexService>();
         _templateServiceMock = new Mock<IBlueprintTemplateService>();
         _loggerMock = new Mock<ILogger<ChatOrchestrationService>>();
 
-        // Default: return empty schema and template lists so BuildSystemPromptAsync succeeds
-        _schemaStoreMock
-            .Setup(s => s.ListAsync(
-                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaCategory?>(),
-                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaStatus?>(),
+        // Default: return empty schema search results so BuildSystemPromptAsync succeeds
+        _schemaIndexServiceMock
+            .Setup(s => s.SearchAsync(
                 It.IsAny<string?>(),
+                It.IsAny<string[]?>(),
                 It.IsAny<string?>(),
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaIndexStatus?>(),
                 It.IsAny<int>(),
                 It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((new List<Sorcha.Blueprint.Schemas.Models.SchemaEntry>().AsReadOnly(), 0, (string?)null));
+            .ReturnsAsync(new Sorcha.Blueprint.Service.Models.SchemaIndexSearchResponse(
+                Results: Array.Empty<Sorcha.Blueprint.Service.Models.SchemaIndexEntryDto>(),
+                TotalCount: 0,
+                NextCursor: null,
+                LoadingProviders: null));
 
         _templateServiceMock
             .Setup(s => s.GetPublishedTemplatesAsync(It.IsAny<CancellationToken>()))
@@ -61,7 +66,7 @@ public class ChatOrchestrationServiceTests
             _aiProviderMock.Object,
             _toolExecutorMock.Object,
             _blueprintStoreMock.Object,
-            _schemaStoreMock.Object,
+            _schemaIndexServiceMock.Object,
             _templateServiceMock.Object,
             _loggerMock.Object);
     }
@@ -552,16 +557,21 @@ public class ChatOrchestrationServiceTests
             }
         };
 
-        _schemaStoreMock
-            .Setup(s => s.ListAsync(
-                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaCategory?>(),
-                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaStatus?>(),
+        _schemaIndexServiceMock
+            .Setup(s => s.SearchAsync(
                 It.IsAny<string?>(),
+                It.IsAny<string[]?>(),
                 It.IsAny<string?>(),
+                It.IsAny<Sorcha.Blueprint.Schemas.Models.SchemaIndexStatus?>(),
                 It.IsAny<int>(),
                 It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((schemas.AsReadOnly(), schemas.Count, (string?)null));
+            .ReturnsAsync(new Sorcha.Blueprint.Service.Models.SchemaIndexSearchResponse(
+                Results: Array.Empty<Sorcha.Blueprint.Service.Models.SchemaIndexEntryDto>(),
+                TotalCount: 0,
+                NextCursor: null,
+                LoadingProviders: null));
 
         var user = CreateUser("user-1", "org-1");
         var session = CreateSession("s1", "user-1", "org-1");

@@ -40,6 +40,7 @@ public class RegisterManager
         bool isFullReplica = true,
         string? registerId = null,
         string? description = null,
+        bool devMode = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -60,6 +61,7 @@ public class RegisterManager
             Advertise = advertise,
             IsFullReplica = isFullReplica,
             TenantId = tenantId,
+            DevMode = devMode,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

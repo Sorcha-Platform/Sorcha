@@ -47,12 +47,12 @@ public class Participant : IEquatable<Participant>
     public string Organisation { get; set; } = string.Empty;
 
     /// <summary>
-    /// Wallet address of the participant
+    /// Wallet address of the participant (optional — resolved dynamically at execution time when absent)
     /// </summary>
     [DataAnnotations.MaxLength(100)]
-    [Json.Schema.Generation.Required]
     [JsonPropertyName("walletAddress")]
-    public string WalletAddress { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? WalletAddress { get; set; }
 
     /// <summary>
     /// Decentralized Identifier (DID) URI for the participant

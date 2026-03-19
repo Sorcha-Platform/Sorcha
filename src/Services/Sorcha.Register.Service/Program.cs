@@ -1651,6 +1651,43 @@ governanceGroup.MapPost("/crypto-policy", async (
 .Produces(StatusCodes.Status401Unauthorized);
 
 // ===========================
+// DevMode Toggle API
+// ===========================
+
+// <summary>
+// Toggle DevMode on a register
+// </summary>
+app.MapPut("/api/registers/{registerId}/devmode", async (
+    IRegisterRepository repository,
+    string registerId,
+    DevModeToggleRequest request,
+    CancellationToken cancellationToken) =>
+{
+    var register = await repository.GetRegisterAsync(registerId, cancellationToken);
+    if (register == null)
+        return Results.NotFound(new { error = "Register not found" });
+
+    register.DevMode = request.Enabled;
+    register.UpdatedAt = DateTime.UtcNow;
+    await repository.UpdateRegisterAsync(register, cancellationToken);
+
+    return Results.Ok(new
+    {
+        registerId = register.Id,
+        devMode = register.DevMode,
+        effectiveFrom = register.UpdatedAt
+    });
+})
+.WithName("ToggleDevMode")
+.WithTags("Registers")
+.WithSummary("Toggle DevMode on a register")
+.WithDescription("Enables or disables DevMode. When enabled, payloads are stored as plaintext with disclosure filtering at read time. When disabled, new payloads use envelope encryption.")
+.RequireAuthorization("CanManageRegisters")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
+
+// ===========================
 // Participant Query API
 // ===========================
 
@@ -1711,6 +1748,50 @@ participantsGroup.MapGet("/{participantId}", (
 .WithDescription("Returns the latest published version of a participant record by participant ID.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status401Unauthorized);
+
+// <summary>
+// Resolve a participant by blueprint role ID and organisation name
+// </summary>
+participantsGroup.MapGet("/resolve", (
+    ParticipantIndexService index,
+    string registerId,
+    string participantId,
+    string? orgName = null) =>
+{
+    var record = index.Resolve(registerId, participantId, orgName);
+    if (record is null)
+        return Results.NotFound(new { error = "No published participant record found" });
+
+    if (string.Equals(record.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status410Gone,
+            title: "Participant Revoked",
+            detail: $"Participant '{record.ParticipantId}' has been revoked");
+    }
+
+    return Results.Ok(new
+    {
+        participantId = record.ParticipantId,
+        participantName = record.ParticipantName,
+        organisationName = record.OrganizationName,
+        status = record.Status,
+        addresses = record.Addresses.Select(a => new
+        {
+            walletAddress = a.WalletAddress,
+            publicKey = a.PublicKey,
+            algorithm = a.Algorithm,
+            primary = a.Primary
+        })
+    });
+})
+.WithName("ResolveParticipant")
+.WithSummary("Resolve participant by role ID and organisation")
+.WithDescription("Resolves a participant by their blueprint role ID and optional organisation name. Returns the published participant record with wallet addresses.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status410Gone)
 .Produces(StatusCodes.Status401Unauthorized);
 
 // <summary>
@@ -2232,6 +2313,8 @@ record UpdateRegisterRequest(
     string? Name = null,
     RegisterStatus? Status = null,
     bool? Advertise = null);
+
+record DevModeToggleRequest(bool Enabled);
 
 record PublishBlueprintToRegisterRequest(
     string BlueprintId,
