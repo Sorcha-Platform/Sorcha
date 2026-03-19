@@ -290,6 +290,12 @@ services:
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
       ServiceClients__ValidatorService__Address: http://validator-service:8080
+      # Relaxed lockout thresholds for development/testing (production defaults: 5/10/15/20/25)
+      Security__Lockout__Tier1Threshold: "50"
+      Security__Lockout__Tier1Duration: "00:01:00"
+      Security__Lockout__Tier2Threshold: "100"
+      Security__Lockout__Tier2Duration: "00:05:00"
+      Security__Lockout__PermanentLockThreshold: "1000"
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
@@ -386,12 +392,13 @@ services:
       # Service-to-service auth for Wallet Service calls
       ServiceAuth__ClientId: validator-service
       ServiceAuth__ClientSecret: validator-service-secret
-      ServiceAuth__Scopes: "registers:write registers:read"
+      ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
       # Validator configuration
       Validator__ValidatorId: docker-validator-1
       # SystemWalletAddress left empty - wallet created automatically on startup
       Validator__SystemWalletAddress: ""
       # Service client configuration for inter-service communication
+      ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://sorcha-register-service:8080

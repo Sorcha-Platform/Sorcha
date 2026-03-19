@@ -1,0 +1,180 @@
+{
+  "id": "council-service-request-001",
+  "title": "Council Service Request",
+  "description": "A three-action workflow where a citizen requests a council service (foodbank, equipment, or financial support), presenting a digital credential. The service department assesses the request, and the fulfilment department delivers the service.",
+  "version": 1,
+  "category": "credentials",
+  "tags": ["service-request", "council", "fulfilment", "credential-presentation"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "council-service-request-generated",
+    "title": "Council Service Request",
+    "description": "Citizen requests a council service with credential presentation. Service desk assesses, fulfilment department delivers.",
+    "version": 1,
+    "metadata": {
+      "category": "credentials",
+      "author": "Sorcha Team",
+      "hasCycles": "false"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Member of the public requesting a council service"
+      },
+      {
+        "id": "service-dept",
+        "name": "Service Department",
+        "organisation": "Ashwick Council",
+        "description": "Council service desk that receives and assesses service requests"
+      },
+      {
+        "id": "return-dept",
+        "name": "Fulfilment Department",
+        "organisation": "Ashwick Council",
+        "description": "Council department that fulfils approved service requests"
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Request Service",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "serviceType": { "type": "string", "enum": ["foodbank", "equipment", "financial"] },
+              "credentialRef": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "justification": { "type": "string", "minLength": 1, "maxLength": 2000 }
+            },
+            "required": ["serviceType", "credentialRef", "justification"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "service-dept",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "return-dept",
+            "paths": ["/serviceType", "/credentialRef"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "request-to-assess",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Route service request to service department for assessment"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Assess Request",
+        "sender": "service-dept",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": { "type": "string", "enum": ["approved", "rejected", "referred"] },
+              "priority": { "type": "string", "enum": ["urgent", "standard", "low"] },
+              "assessmentNotes": { "type": "string", "maxLength": 2000 }
+            },
+            "required": ["decision", "priority"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/decision", "/priority"]
+          },
+          {
+            "participantId": "service-dept",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "return-dept",
+            "paths": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-fulfil",
+            "nextActionIds": [2],
+            "condition": { "==": [{ "var": "decision" }, "approved"] },
+            "description": "Approved — route to fulfilment department"
+          },
+          {
+            "id": "rejected-end",
+            "nextActionIds": [],
+            "condition": { "==": [{ "var": "decision" }, "rejected"] },
+            "description": "Rejected — workflow ends"
+          },
+          {
+            "id": "referred-end",
+            "nextActionIds": [],
+            "condition": { "==": [{ "var": "decision" }, "referred"] },
+            "description": "Referred to another service — workflow ends"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Fulfil Service",
+        "sender": "return-dept",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "fulfilmentDate": { "type": "string", "format": "date" },
+              "deliveryMethod": { "type": "string", "enum": ["collection", "delivery", "digital"] },
+              "referenceNumber": { "type": "string", "minLength": 1, "maxLength": 50 },
+              "completionNotes": { "type": "string", "maxLength": 2000 }
+            },
+            "required": ["fulfilmentDate", "deliveryMethod", "referenceNumber"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantId": "citizen",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "service-dept",
+            "paths": ["/*"]
+          },
+          {
+            "participantId": "return-dept",
+            "paths": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "fulfil-end",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Service fulfilled — workflow complete"
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "foodbank-request",
+      "description": "Citizen requests foodbank access with council ID credential",
+      "parameters": {}
+    }
+  ]
+}

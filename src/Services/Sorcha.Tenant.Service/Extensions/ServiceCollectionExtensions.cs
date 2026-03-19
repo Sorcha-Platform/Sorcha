@@ -89,11 +89,17 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = configuration.GetConnectionString("TenantDatabase");
 
-        services.AddDbContext<TenantDbContext>(options =>
+        if (!string.IsNullOrEmpty(connectionString))
         {
-            if (!string.IsNullOrEmpty(connectionString))
+            // Build a Npgsql data source with dynamic JSON support (required for
+            // Dictionary<string, object> → JSONB columns like AuditLogEntry.Details)
+            var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            var dataSource = dataSourceBuilder.Build();
+
+            services.AddDbContext<TenantDbContext>(options =>
             {
-                options.UseNpgsql(connectionString, npgsqlOptions =>
+                options.UseNpgsql(dataSource, npgsqlOptions =>
                 {
                     // Aggressive retry policy for startup resilience
                     // Max retry time: ~5 minutes (10 retries with exponential backoff up to 30s)
@@ -102,13 +108,16 @@ public static class ServiceCollectionExtensions
                         maxRetryDelay: TimeSpan.FromSeconds(30),
                         errorCodesToAdd: null);
                 });
-            }
-            else
+            });
+        }
+        else
+        {
+            services.AddDbContext<TenantDbContext>(options =>
             {
                 // Use in-memory database for testing
                 options.UseInMemoryDatabase("TenantServiceTestDb");
-            }
-        });
+            });
+        }
 
         return services;
     }

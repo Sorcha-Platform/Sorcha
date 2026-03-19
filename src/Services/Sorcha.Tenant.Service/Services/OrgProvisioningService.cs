@@ -284,134 +284,138 @@ public class OrgProvisioningService : IOrgProvisioningService
             };
         }
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-        try
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            // 3. Create the organisation
-            var org = new Organization
+            await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+            try
             {
-                Name = name,
-                Subdomain = subdomain.ToLowerInvariant(),
-                Status = OrganizationStatus.Active,
-                OrgType = OrgType.Standard,
-                IsPlatformOrg = false,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            _db.Organizations.Add(org);
-
-            // 4. Check if admin email matches an existing PlatformUser
-            var existingUser = await _db.PlatformUsers
-                .FirstOrDefaultAsync(u => u.Email.ToLower() == adminEmail.ToLower(), ct);
-
-            bool adminDirectlyAdded = false;
-            Guid? invitationId = null;
-
-            if (existingUser is not null)
-            {
-                // Build role set: assigned role + implied subordinate roles
-                var roles = BuildRoleSet(role);
-
-                // Directly create UserIdentity + PlatformUserOrgMembership
-                var adminIdentity = new UserIdentity
+                // 3. Create the organisation
+                var org = new Organization
                 {
-                    OrganizationId = org.Id,
-                    PlatformUserId = existingUser.Id,
-                    Email = existingUser.Email,
-                    DisplayName = existingUser.DisplayName,
-                    Roles = roles,
-                    Status = IdentityStatus.Active,
-                    ProvisionedVia = ProvisioningMethod.AdminCreated,
+                    Name = name,
+                    Subdomain = subdomain.ToLowerInvariant(),
+                    Status = OrganizationStatus.Active,
+                    OrgType = OrgType.Standard,
+                    IsPlatformOrg = false,
                     CreatedAt = DateTimeOffset.UtcNow
                 };
-                _db.UserIdentities.Add(adminIdentity);
+                _db.Organizations.Add(org);
 
-                org.CreatorIdentityId = adminIdentity.Id;
+                // 4. Check if admin email matches an existing PlatformUser
+                var existingUser = await _db.PlatformUsers
+                    .FirstOrDefaultAsync(u => u.Email.ToLower() == adminEmail.ToLower(), ct);
 
-                _db.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+                bool adminDirectlyAdded = false;
+                Guid? invitationId = null;
+
+                if (existingUser is not null)
                 {
-                    PlatformUserId = existingUser.Id,
+                    // Build role set: assigned role + implied subordinate roles
+                    var roles = BuildRoleSet(role);
+
+                    // Directly create UserIdentity + PlatformUserOrgMembership
+                    var adminIdentity = new UserIdentity
+                    {
+                        OrganizationId = org.Id,
+                        PlatformUserId = existingUser.Id,
+                        Email = existingUser.Email,
+                        DisplayName = existingUser.DisplayName,
+                        Roles = roles,
+                        Status = IdentityStatus.Active,
+                        ProvisionedVia = ProvisioningMethod.AdminCreated,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    _db.UserIdentities.Add(adminIdentity);
+
+                    org.CreatorIdentityId = adminIdentity.Id;
+
+                    _db.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+                    {
+                        PlatformUserId = existingUser.Id,
+                        OrganizationId = org.Id,
+                        Role = role.ToString(),
+                        JoinedAt = DateTimeOffset.UtcNow
+                    });
+
+                    adminDirectlyAdded = true;
+
+                    _logger.LogInformation(
+                        "Admin org creation: existing user {UserId} directly added as admin to org {OrgId}",
+                        existingUser.Id, org.Id);
+                }
+
+                // 5. Audit log
+                _db.AuditLogEntries.Add(new AuditLogEntry
+                {
+                    EventType = AuditEventType.OrganizationCreated,
+                    IdentityId = adminPlatformUserId,
                     OrganizationId = org.Id,
-                    Role = role.ToString(),
-                    JoinedAt = DateTimeOffset.UtcNow
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Details = new Dictionary<string, object>
+                    {
+                        ["orgName"] = name,
+                        ["subdomain"] = subdomain,
+                        ["adminEmail"] = adminEmail,
+                        ["assignedRole"] = role.ToString(),
+                        ["adminDirectlyAdded"] = adminDirectlyAdded,
+                        ["createdBySystemAdmin"] = true
+                    }
                 });
 
-                adminDirectlyAdded = true;
+                // 6. Save org + optional identity within transaction
+                await _db.SaveChangesAsync(ct);
 
-                _logger.LogInformation(
-                    "Admin org creation: existing user {UserId} directly added as admin to org {OrgId}",
-                    existingUser.Id, org.Id);
-            }
-
-            // 5. Audit log
-            _db.AuditLogEntries.Add(new AuditLogEntry
-            {
-                EventType = AuditEventType.OrganizationCreated,
-                IdentityId = adminPlatformUserId,
-                OrganizationId = org.Id,
-                Timestamp = DateTimeOffset.UtcNow,
-                Details = new Dictionary<string, object>
+                // 7. If admin email is new, create invitation within the same transaction
+                //    (InvitationService requires the org to exist — it does within this transaction)
+                if (!adminDirectlyAdded)
                 {
-                    ["orgName"] = name,
-                    ["subdomain"] = subdomain,
-                    ["adminEmail"] = adminEmail,
-                    ["assignedRole"] = role.ToString(),
-                    ["adminDirectlyAdded"] = adminDirectlyAdded,
-                    ["createdBySystemAdmin"] = true
+                    var invitationResponse = await _invitationService.CreateInvitationAsync(
+                        org.Id,
+                        new Models.Dtos.CreateInvitationRequest
+                        {
+                            Email = adminEmail,
+                            Role = role,
+                            ExpiryDays = 14
+                        },
+                        adminPlatformUserId,
+                        ct);
+
+                    invitationId = invitationResponse.Id;
+
+                    _logger.LogInformation(
+                        "Admin org creation: invitation {InvitationId} sent to {Email} for org {OrgId}",
+                        invitationId, adminEmail, org.Id);
                 }
-            });
 
-            // 6. Save org + optional identity within transaction
-            await _db.SaveChangesAsync(ct);
-
-            // 7. If admin email is new, create invitation within the same transaction
-            //    (InvitationService requires the org to exist — it does within this transaction)
-            if (!adminDirectlyAdded)
-            {
-                var invitationResponse = await _invitationService.CreateInvitationAsync(
-                    org.Id,
-                    new Models.Dtos.CreateInvitationRequest
-                    {
-                        Email = adminEmail,
-                        Role = role,
-                        ExpiryDays = 14
-                    },
-                    adminPlatformUserId,
-                    ct);
-
-                invitationId = invitationResponse.Id;
+                // 8. Commit the full transaction (org + identity/invitation)
+                await transaction.CommitAsync(ct);
 
                 _logger.LogInformation(
-                    "Admin org creation: invitation {InvitationId} sent to {Email} for org {OrgId}",
-                    invitationId, adminEmail, org.Id);
+                    "Organisation provisioned by system admin: {OrgId} ({Subdomain}), admin={AdminEmail}, direct={Direct}",
+                    org.Id, org.Subdomain, adminEmail, adminDirectlyAdded);
+
+                return new AdminProvisionResult
+                {
+                    Success = true,
+                    OrganizationId = org.Id,
+                    OrganizationName = org.Name,
+                    Subdomain = org.Subdomain,
+                    AdminDirectlyAdded = adminDirectlyAdded,
+                    InvitationId = invitationId
+                };
             }
-
-            // 8. Commit the full transaction (org + identity/invitation)
-            await transaction.CommitAsync(ct);
-
-            _logger.LogInformation(
-                "Organisation provisioned by system admin: {OrgId} ({Subdomain}), admin={AdminEmail}, direct={Direct}",
-                org.Id, org.Subdomain, adminEmail, adminDirectlyAdded);
-
-            return new AdminProvisionResult
+            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true)
             {
-                Success = true,
-                OrganizationId = org.Id,
-                OrganizationName = org.Name,
-                Subdomain = org.Subdomain,
-                AdminDirectlyAdded = adminDirectlyAdded,
-                InvitationId = invitationId
-            };
-        }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            _logger.LogWarning(ex, "Admin org provisioning failed due to unique constraint for subdomain {Subdomain}", subdomain);
-            return new AdminProvisionResult
-            {
-                Success = false,
-                Error = $"Subdomain '{subdomain}' is already taken.",
-                ErrorCode = "SubdomainConflict"
-            };
-        }
+                _logger.LogWarning(ex, "Admin org provisioning failed due to unique constraint for subdomain {Subdomain}", subdomain);
+                return new AdminProvisionResult
+                {
+                    Success = false,
+                    Error = $"Subdomain '{subdomain}' is already taken.",
+                    ErrorCode = "SubdomainConflict"
+                };
+            }
+        });
     }
 
     /// <summary>
