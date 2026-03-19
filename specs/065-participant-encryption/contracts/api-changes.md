@@ -68,25 +68,26 @@
 
 #### GET /api/instances/{instanceId}/actions/{actionId}
 
-**Change**: Response payload content depends on DevMode and caller's disclosure:
+**Change**: Response payload content depends on DevMode and caller's wallet identity:
 
-- **DevMode**: Returns disclosure-filtered plaintext JSON
-- **Encrypted**: Returns decrypted fields for caller's wallet (or empty if no access)
+- **DevMode**: Disclosure rules applied at read time — filters plaintext JSON to only the fields the caller's wallet is disclosed for. Caller identified by JWT `sub` claim → wallet lookup.
+- **Encrypted**: Locates the caller's wrapped key in the encrypted payload groups, decrypts the symmetric key, decrypts the ciphertext, returns only the disclosed fields. Returns empty payload if caller has no wrapped key (not a disclosed recipient).
+- **Auth**: Requires authenticated user. Caller's wallet resolved from JWT identity → instance participant bindings or published participant records.
 
 ### Register Service — Participant Resolution
 
 #### GET /api/registers/{registerId}/participants/resolve
 
-**New endpoint**: Resolve participant by role and organisation for a register.
+**New endpoint**: Resolve participant by blueprint role ID and organisation for a register.
 
 ```json
 // Request (query params)
-?participantName=id-dept&organisationName=Ashwick+Council
+?participantId=id-dept&organisationName=Ashwick+Council
 
 // Response 200
 {
-  "participantId": "...",
-  "participantName": "id-dept",
+  "participantId": "id-dept",
+  "participantName": "Identity Department",
   "organisationName": "Ashwick Council",
   "status": "Active",
   "addresses": [

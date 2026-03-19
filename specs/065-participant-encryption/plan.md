@@ -98,7 +98,7 @@ tests/
 4. Add participant resolve endpoint to Register Service
 5. Unit tests for validation logic, integration test with E2E flow
 
-**Exit criteria**: Council credential E2E test passes through all 9 actions in DevMode (plaintext).
+**Exit criteria**: Council credential E2E test passes through all 9 actions using the existing plaintext transaction path (DevMode is added in Phase B).
 
 ### Phase B: DevMode Per-Register (P2)
 

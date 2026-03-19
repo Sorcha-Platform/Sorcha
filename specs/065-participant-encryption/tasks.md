@@ -34,7 +34,7 @@
 
 **CRITICAL**: US1 and US2 cannot proceed without the register participant resolve endpoint.
 
-- [ ] T005 Add `GET /api/registers/{registerId}/participants/resolve` endpoint to `src/Services/Sorcha.Register.Service/Endpoints/ParticipantEndpoints.cs` — accepts `participantName` and `organisationName` query params, returns published participant record with addresses
+- [ ] T005 Add `GET /api/registers/{registerId}/participants/resolve` endpoint to `src/Services/Sorcha.Register.Service/Endpoints/ParticipantEndpoints.cs` — accepts `participantId` (blueprint role ID) and `organisationName` query params, returns published participant record with addresses
 - [ ] T006 [P] Add unit test for participant resolve endpoint in `tests/Sorcha.Register.Service.Tests/Endpoints/ParticipantResolveEndpointTests.cs` — test found, not-found, and revoked cases
 - [ ] T007 Add YARP route for participant resolve endpoint in `src/Services/Sorcha.ApiGateway/appsettings.json` — route to register-cluster with RequireAuthenticated policy
 - [ ] T008 Verify Register Service builds and participant resolve endpoint returns data: `dotnet test tests/Sorcha.Register.Service.Tests/`
@@ -51,7 +51,7 @@
 
 ### Tests for User Story 1
 
-- [ ] T009 [P] [US1] Unit test for starting action binding in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionStartingActionTests.cs` — test: any wallet accepted on starting action, wallet bound in ParticipantWallets, second submission from same wallet succeeds, submission from different wallet for same role rejects
+- [ ] T009 [P] [US1] Unit test for starting action binding in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionStartingActionTests.cs` — test: any wallet accepted on starting action, wallet bound in ParticipantWallets, second submission from same wallet succeeds, submission from different wallet for same role rejects (FR-008 immutability), wallet already bound to role A rejects when submitting for role B in same instance (edge case 1)
 - [ ] T010 [P] [US1] Unit test for VAL_BP_002 starting action skip in `tests/Sorcha.Validator.Service.Tests/Services/ValidationEngineStartingActionTests.cs` — test: starting action skips wallet validation, non-starting action without binding rejects
 
 ### Implementation for User Story 1
@@ -102,7 +102,7 @@
 
 - [ ] T022 [P] [US3] Unit test for DevMode register initiation in `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterInitiateDevModeTests.cs` — test: devMode parameter accepted, stored on register
 - [ ] T023 [P] [US3] Unit test for DevMode toggle endpoint in `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterDevModeToggleTests.cs` — test: enable/disable DevMode, only owner/admin can toggle
-- [ ] T024 [P] [US3] Unit test for plaintext path selection in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionDevModeTests.cs` — test: DevMode register skips encryption, non-DevMode register encrypts
+- [ ] T024 [P] [US3] Unit test for plaintext path selection in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionDevModeTests.cs` — test: DevMode register skips encryption, non-DevMode register encrypts, DevMode read path applies disclosure filtering (FR-011: participant queries return only disclosed fields even for plaintext payloads)
 
 ### Implementation for User Story 3
 
@@ -136,7 +136,7 @@
 - [ ] T034 [US4] Verify `ResolveRecipientKeysAsync` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` resolves keys from both instance bindings and register participant index — extend if needed
 - [ ] T035 [US4] Verify `EncryptionPipelineService.EncryptDisclosedPayloadsAsync` in `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs` handles resolved keys correctly — no changes expected, but integration test needed
 - [ ] T036 [US4] Create non-DevMode register in E2E test and execute action — verify payload stored encrypted in MongoDB
-- [ ] T037 [US4] Verify decryption path: participant queries return only their disclosed fields via the existing action query endpoint
+- [ ] T037 [US4] Verify decryption path: `GET /api/instances/{id}/actions/{actionId}` resolves caller's wallet from JWT, finds their wrapped key in encrypted payload groups, decrypts symmetric key, returns only disclosed fields. Unauthorised wallet receives empty payload.
 - [ ] T038 [US4] Verify size limit enforcement: submit oversized payload, confirm clear error before encryption
 
 **Checkpoint**: Full encrypt/decrypt round-trip works. Disclosure groups optimise correctly.
