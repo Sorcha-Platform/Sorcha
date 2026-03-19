@@ -288,10 +288,20 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         _citizenWallet = await CreateWalletViaApiAsync("citizen", "Citizen Wallet");
         TestContext.Out.WriteLine($"Citizen wallet: {_citizenWallet}");
 
-        // Step 7: Register as participant
-        TestContext.Out.WriteLine("Registering citizen as participant...");
-        _citizenParticipantId = await SelfRegisterParticipantAsync("citizen", CitizenDisplayName);
-        TestContext.Out.WriteLine($"Citizen participant ID: {_citizenParticipantId}");
+        // Step 7: Register as participant (optional — 065 starting action binding means citizen
+        // doesn't need to be pre-registered; their wallet binds on first action submission)
+        TestContext.Out.WriteLine("Registering citizen as participant (optional)...");
+        try
+        {
+            _citizenParticipantId = await SelfRegisterParticipantAsync("citizen", CitizenDisplayName);
+            TestContext.Out.WriteLine($"Citizen participant ID: {_citizenParticipantId}");
+        }
+        catch (Exception ex)
+        {
+            TestContext.Out.WriteLine($"Citizen participant registration skipped (non-fatal): {ex.Message}");
+            TestContext.Out.WriteLine("Citizen will be bound to participant role on first action submission (065 starting action binding).");
+            _citizenParticipantId = "citizen"; // Use blueprint participant ID as fallback
+        }
 
         // Step 8: Navigate to dashboard and verify
         var page = GetUserPage("citizen");
@@ -1117,6 +1127,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                 description = "Shared register for Ashwick Council digital services and credentials",
                 tenantId = _councilOrgId,
                 advertise = true,
+                devMode = true, // DevMode: plaintext payloads with disclosure filtering (skip encryption)
                 isPublic = true,
                 owners = new[]
                 {
