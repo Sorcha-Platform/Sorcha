@@ -79,7 +79,7 @@
 
         // Animate cards and sections
         const selectors = [
-            '.comparison-col', '.benefit-card',
+            '.risk-card', '.benefit-card',
             '.dad-card', '.standard-card', '.quantum-card',
             '.sector-card', '.toolkit-card',
             '.step-card', '.tech-item',
