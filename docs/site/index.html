@@ -142,40 +142,139 @@
     </section>
 
     <!-- ============================================================ -->
-    <!-- SECTION 2: THE PROBLEM — What's broken today                 -->
+    <!-- SECTION 2: THE OPPORTUNITY                                   -->
     <!-- ============================================================ -->
-    <section id="why" class="problem-section">
+    <section id="why" class="opportunity-section">
         <div class="container">
-            <div class="section-badge">The Problem</div>
-            <h2 class="section-title">Multi-Party Processes Are Broken</h2>
+            <div class="section-badge">The Opportunity</div>
+            <h2 class="section-title">You Already Share Sensitive Data Across Boundaries</h2>
             <p class="section-subtitle">
-                Every time organisations share data across boundaries, they accept risks
-                that no contract or NDA can truly eliminate.
+                Purchase orders, patient referrals, compliance reports, credentials —
+                your most valuable data crosses organisational lines every day.
+                What if every exchange was provable, private, and permanent?
             </p>
-            <div class="comparison-table">
-                <div class="comparison-col comparison-without">
-                    <div class="comparison-header">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
-                        Without Sorcha
+
+            <!-- Data Journey Diagram -->
+            <div class="journey-diagram">
+                <div class="journey-label">How data moves between organisations today</div>
+                <div class="journey-flow">
+                    <div class="journey-org">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        </div>
+                        <span class="journey-org-name">Your Organisation</span>
                     </div>
-                    <div class="comparison-item">You share <strong>entire documents</strong> when the recipient only needs three fields</div>
-                    <div class="comparison-item">You <strong>can't prove</strong> who changed what, or when</div>
-                    <div class="comparison-item">A single compromised system <strong>exposes everything</strong></div>
-                    <div class="comparison-item">Auditors ask for records and you <strong>hope they still exist</strong></div>
-                    <div class="comparison-item">Compliance is a <strong>manual checkbox exercise</strong></div>
-                    <div class="comparison-item">You need <strong>expensive intermediaries</strong> to establish trust</div>
+
+                    <div class="journey-gap">
+                        <div class="journey-gap-line"></div>
+                        <div class="journey-gap-risk">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Who sees what?
+                        </div>
+                    </div>
+
+                    <div class="journey-org">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <span class="journey-org-name">Partner</span>
+                    </div>
+
+                    <div class="journey-gap">
+                        <div class="journey-gap-line"></div>
+                        <div class="journey-gap-risk">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Did they change it?
+                        </div>
+                    </div>
+
+                    <div class="journey-org">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        </div>
+                        <span class="journey-org-name">Regulator</span>
+                    </div>
                 </div>
-                <div class="comparison-col comparison-with">
-                    <div class="comparison-header">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
-                        With Sorcha
+
+                <!-- Protected journey -->
+                <div class="journey-protected-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                    The same journey, with Sorcha
+                </div>
+                <div class="journey-flow journey-flow-protected">
+                    <div class="journey-org journey-org-protected">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        </div>
+                        <span class="journey-org-name">Your Organisation</span>
                     </div>
-                    <div class="comparison-item">Each party sees <strong>only the fields they're authorised</strong> to access</div>
-                    <div class="comparison-item">Every action is <strong>cryptographically signed</strong> and timestamped</div>
-                    <div class="comparison-item">Data is <strong>encrypted per-field</strong> — breach of one system reveals nothing</div>
-                    <div class="comparison-item">Records are <strong>immutable and replicated</strong> — they cannot be lost or altered</div>
-                    <div class="comparison-item">Compliance is <strong>built into the workflow</strong> — every step is auditable by design</div>
-                    <div class="comparison-item"><strong>Cryptographic trust</strong> replaces institutional trust — no middleman needed</div>
+
+                    <div class="journey-gap journey-gap-protected">
+                        <div class="journey-gap-line journey-gap-line-protected"></div>
+                        <div class="journey-gap-solution">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
+                            Selective disclosure
+                        </div>
+                    </div>
+
+                    <div class="journey-org journey-org-protected">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <span class="journey-org-name">Partner</span>
+                    </div>
+
+                    <div class="journey-gap journey-gap-protected">
+                        <div class="journey-gap-line journey-gap-line-protected"></div>
+                        <div class="journey-gap-solution">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
+                            Signed &amp; immutable
+                        </div>
+                    </div>
+
+                    <div class="journey-org journey-org-protected">
+                        <div class="journey-org-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        </div>
+                        <span class="journey-org-name">Regulator</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk/Opportunity Cards -->
+            <div class="risk-grid">
+                <div class="risk-card">
+                    <div class="risk-scenario">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Data gets shared more broadly than intended
+                    </div>
+                    <p class="risk-context">You send a spreadsheet to a partner. They only need three columns, but they can see all twenty. Every forwarded email, every shared drive link — it widens the exposure.</p>
+                    <div class="risk-pivot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
+                        Field-level disclosure means each party sees only their authorised view. The data itself enforces the boundary — not a policy document.
+                    </div>
+                </div>
+                <div class="risk-card">
+                    <div class="risk-scenario">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        You can't prove who changed what, or when
+                    </div>
+                    <p class="risk-context">A supplier disputes the terms. A regulator asks for the original. Version control says "last modified by: unknown". The audit trail is a folder of attachments with no chain of custody.</p>
+                    <div class="risk-pivot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
+                        Every action is cryptographically signed by the participant's wallet and hash-linked into an immutable chain. The maths proves it.
+                    </div>
+                </div>
+                <div class="risk-card">
+                    <div class="risk-scenario">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        Records disappear when you need them most
+                    </div>
+                    <p class="risk-context">A server fails. A retention policy expires. A departing employee deletes a mailbox. The records you need for a dispute, an audit, or a compliance review are gone — and no one noticed until it mattered.</p>
+                    <div class="risk-pivot">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>
+                        Peer-to-peer replication across the network means records are immutable and distributed. No single failure can destroy them.
+                    </div>
                 </div>
             </div>
         </div>
