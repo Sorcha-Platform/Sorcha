@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Sorcha.Tenant.Service.Data;
@@ -17,16 +18,19 @@ public class PlatformUserService : IPlatformUserService
 {
     private readonly TenantDbContext _db;
     private readonly ILogger<PlatformUserService> _logger;
+    private readonly LockoutConfig _lockoutConfig;
 
     /// <summary>
     /// Creates a new instance of <see cref="PlatformUserService"/>.
     /// </summary>
     /// <param name="db">The tenant database context.</param>
     /// <param name="logger">The logger instance.</param>
-    public PlatformUserService(TenantDbContext db, ILogger<PlatformUserService> logger)
+    /// <param name="configuration">Application configuration for lockout thresholds.</param>
+    public PlatformUserService(TenantDbContext db, ILogger<PlatformUserService> logger, IConfiguration configuration)
     {
         _db = db;
         _logger = logger;
+        _lockoutConfig = LockoutConfig.FromConfiguration(configuration);
     }
 
     /// <inheritdoc />
@@ -199,18 +203,18 @@ public class PlatformUserService : IPlatformUserService
         {
             platformUser.FailedLoginCount++;
 
-            // Progressive lockout thresholds
+            // Progressive lockout thresholds (configurable via Security:Lockout section)
             platformUser.LockedUntil = platformUser.FailedLoginCount switch
             {
-                >= 25 => null, // Permanent lockout handled below
-                >= 20 => DateTimeOffset.UtcNow.AddHours(4),
-                >= 15 => DateTimeOffset.UtcNow.AddHours(1),
-                >= 10 => DateTimeOffset.UtcNow.AddMinutes(30),
-                >= 5 => DateTimeOffset.UtcNow.AddMinutes(15),
+                _ when platformUser.FailedLoginCount >= _lockoutConfig.PermanentLockThreshold => null, // Permanent lockout handled below
+                _ when platformUser.FailedLoginCount >= _lockoutConfig.Tier4Threshold => DateTimeOffset.UtcNow.Add(_lockoutConfig.Tier4Duration),
+                _ when platformUser.FailedLoginCount >= _lockoutConfig.Tier3Threshold => DateTimeOffset.UtcNow.Add(_lockoutConfig.Tier3Duration),
+                _ when platformUser.FailedLoginCount >= _lockoutConfig.Tier2Threshold => DateTimeOffset.UtcNow.Add(_lockoutConfig.Tier2Duration),
+                _ when platformUser.FailedLoginCount >= _lockoutConfig.Tier1Threshold => DateTimeOffset.UtcNow.Add(_lockoutConfig.Tier1Duration),
                 _ => null
             };
 
-            if (platformUser.FailedLoginCount >= 25)
+            if (platformUser.FailedLoginCount >= _lockoutConfig.PermanentLockThreshold)
             {
                 platformUser.LockedPermanently = true;
                 _logger.LogWarning("Account {UserId} permanently locked after {Count} failed attempts",
@@ -298,5 +302,64 @@ public class PlatformUserService : IPlatformUserService
             newUser.Id, provider, subject);
 
         return (newUser, true);
+    }
+}
+
+/// <summary>
+/// Progressive lockout configuration. Reads from Security:Lockout config section
+/// with production-safe defaults. Development environments can override to higher
+/// thresholds to avoid lockout during automated testing.
+/// </summary>
+public class LockoutConfig
+{
+    /// <summary>Failed attempts before Tier 1 lockout. Default: 5.</summary>
+    public int Tier1Threshold { get; init; } = 5;
+
+    /// <summary>Tier 1 lockout duration. Default: 15 minutes.</summary>
+    public TimeSpan Tier1Duration { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>Failed attempts before Tier 2 lockout. Default: 10.</summary>
+    public int Tier2Threshold { get; init; } = 10;
+
+    /// <summary>Tier 2 lockout duration. Default: 30 minutes.</summary>
+    public TimeSpan Tier2Duration { get; init; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>Failed attempts before Tier 3 lockout. Default: 15.</summary>
+    public int Tier3Threshold { get; init; } = 15;
+
+    /// <summary>Tier 3 lockout duration. Default: 1 hour.</summary>
+    public TimeSpan Tier3Duration { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>Failed attempts before Tier 4 lockout. Default: 20.</summary>
+    public int Tier4Threshold { get; init; } = 20;
+
+    /// <summary>Tier 4 lockout duration. Default: 4 hours.</summary>
+    public TimeSpan Tier4Duration { get; init; } = TimeSpan.FromHours(4);
+
+    /// <summary>Failed attempts before permanent lockout. Default: 25.</summary>
+    public int PermanentLockThreshold { get; init; } = 25;
+
+    /// <summary>
+    /// Reads lockout configuration from the Security:Lockout config section.
+    /// Falls back to production-safe defaults if section is missing.
+    /// </summary>
+    public static LockoutConfig FromConfiguration(IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Security:Lockout");
+        if (!section.Exists())
+            return new LockoutConfig();
+
+        return new LockoutConfig
+        {
+            Tier1Threshold = section.GetValue("Tier1Threshold", 5),
+            Tier1Duration = section.GetValue("Tier1Duration", TimeSpan.FromMinutes(15)),
+            Tier2Threshold = section.GetValue("Tier2Threshold", 10),
+            Tier2Duration = section.GetValue("Tier2Duration", TimeSpan.FromMinutes(30)),
+            Tier3Threshold = section.GetValue("Tier3Threshold", 15),
+            Tier3Duration = section.GetValue("Tier3Duration", TimeSpan.FromHours(1)),
+            Tier4Threshold = section.GetValue("Tier4Threshold", 20),
+            Tier4Duration = section.GetValue("Tier4Duration", TimeSpan.FromHours(4)),
+            PermanentLockThreshold = section.GetValue("PermanentLockThreshold", 25),
+        };
     }
 }

@@ -290,6 +290,12 @@ services:
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
       ServiceClients__ValidatorService__Address: http://validator-service:8080
+      # Relaxed lockout thresholds for development/testing (production defaults: 5/10/15/20/25)
+      Security__Lockout__Tier1Threshold: "50"
+      Security__Lockout__Tier1Duration: "00:01:00"
+      Security__Lockout__Tier2Threshold: "100"
+      Security__Lockout__Tier2Duration: "00:05:00"
+      Security__Lockout__PermanentLockThreshold: "1000"
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
