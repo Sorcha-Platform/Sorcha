@@ -360,7 +360,7 @@ public class DatabaseInitializer
                 "Validator Service",
                 "validator-service",
                 "validator-service-secret",
-                new[] { "validator:read", "validator:write", "wallets:sign", "registers:read" }
+                new[] { "validator:read", "validator:write", "wallets:sign", "registers:read", "blueprints:read" }
             ),
             (
                 TenantServicePrincipalId,
