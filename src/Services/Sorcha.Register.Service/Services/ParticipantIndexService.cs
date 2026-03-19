@@ -166,6 +166,30 @@ public class ParticipantIndexService
     }
 
     /// <summary>
+    /// Resolves a participant by blueprint participant ID and optional organisation name.
+    /// Returns the first active match (participant ID is the primary key).
+    /// </summary>
+    public PublishedParticipantRecord? Resolve(string registerId, string participantId, string? organisationName = null)
+    {
+        if (!_participantIndex.TryGetValue(registerId, out var participants))
+            return null;
+
+        // Try exact participant ID match first
+        if (participants.TryGetValue(participantId, out var record))
+        {
+            if (organisationName == null || string.Equals(record.OrganizationName, organisationName, StringComparison.OrdinalIgnoreCase))
+                return record;
+        }
+
+        // Fall back to scanning by participant name + org (for when ID doesn't match directly)
+        return participants.Values.FirstOrDefault(p =>
+            (string.Equals(p.ParticipantId, participantId, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(p.ParticipantName, participantId, StringComparison.OrdinalIgnoreCase)) &&
+            (organisationName == null ||
+             string.Equals(p.OrganizationName, organisationName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
     /// Lists participants on a register with pagination and status filtering.
     /// </summary>
     public ParticipantPage List(string registerId, int skip = 0, int top = 20, string? statusFilter = "active")

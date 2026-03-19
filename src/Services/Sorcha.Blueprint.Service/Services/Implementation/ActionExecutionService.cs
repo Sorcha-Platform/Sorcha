@@ -218,6 +218,31 @@ public class ActionExecutionService : IActionExecutionService
             accumulatedState = accumulatedState with { PreviousTransactionId = blueprintTxId };
         }
 
+        // 5d. Starting action participant binding — bind sender wallet to participant role
+        if (actionDef.IsStartingAction && !string.IsNullOrWhiteSpace(actionDef.Sender))
+        {
+            var senderParticipantId = actionDef.Sender;
+            if (instance.ParticipantWallets.TryGetValue(senderParticipantId, out var boundWallet))
+            {
+                // Already bound — verify it's the same wallet (FR-008: immutable binding)
+                if (!string.Equals(boundWallet, request.SenderWallet, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Participant '{senderParticipantId}' is already bound to wallet {boundWallet}. " +
+                        $"Cannot rebind to {request.SenderWallet} (instance bindings are immutable).");
+                }
+            }
+            else
+            {
+                // Bind sender wallet to participant role
+                instance.ParticipantWallets[senderParticipantId] = request.SenderWallet;
+                await _instanceStore.UpdateAsync(instance, cancellationToken);
+                _logger.LogInformation(
+                    "Bound wallet {Wallet} to participant '{ParticipantId}' for instance {InstanceId}",
+                    request.SenderWallet, senderParticipantId, instanceId);
+            }
+        }
+
         // 6. Validate input data against schema
         var validationResult = await ValidateActionDataAsync(actionDef, request.PayloadData, cancellationToken);
         if (!validationResult.IsValid)
@@ -264,7 +289,7 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 9b. Apply disclosure rules for recipients
-        var disclosedPayloads = ApplyDisclosures(actionDef, payloadWithCalculations, blueprint, instance.ParticipantWallets);
+        var disclosedPayloads = await ApplyDisclosuresAsync(actionDef, payloadWithCalculations, blueprint, instance.ParticipantWallets, instance.RegisterId);
 
         // If no disclosure rules defined, default to full disclosure under sender's wallet.
         // This ensures the payload data is always present in the transaction for schema validation.
@@ -273,10 +298,23 @@ public class ActionExecutionService : IActionExecutionService
             disclosedPayloads[request.SenderWallet] = payloadWithCalculations;
         }
 
-        // 9c. Encrypt disclosed payloads (envelope encryption)
+        // 9c. Check register DevMode — skip encryption for DevMode registers
+        var registerDevMode = false;
+        try
+        {
+            var register = await _registerClient.GetRegisterAsync(instance.RegisterId, cancellationToken);
+            registerDevMode = register?.DevMode ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to check register DevMode for {RegisterId}, defaulting to encrypted path",
+                instance.RegisterId);
+        }
+
+        // 9d. Encrypt disclosed payloads (envelope encryption) — skipped for DevMode registers
         EncryptionResult? encryptionResult = null;
         DisclosureGroup[]? disclosureGroups = null;
-        if (_encryptionPipeline != null && disclosedPayloads.Count > 0)
+        if (!registerDevMode && _encryptionPipeline != null && disclosedPayloads.Count > 0)
         {
             // US4: Automatic register resolution with external key override
             var (recipients, resolveError) = await ResolveRecipientKeysAsync(
@@ -784,11 +822,12 @@ public class ActionExecutionService : IActionExecutionService
         }
     }
 
-    private Dictionary<string, Dictionary<string, object>> ApplyDisclosures(
+    private async Task<Dictionary<string, Dictionary<string, object>>> ApplyDisclosuresAsync(
         ActionModel action,
         Dictionary<string, object> data,
         BlueprintModel blueprint,
-        Dictionary<string, string> participantWallets)
+        Dictionary<string, string> participantWallets,
+        string registerId)
     {
         // Delegate to the Blueprint Engine for JSON Pointer disclosure filtering
         var engineResults = _executionEngine.ApplyDisclosures(data, action);
@@ -797,11 +836,41 @@ public class ActionExecutionService : IActionExecutionService
 
         foreach (var result in engineResults)
         {
-            // Resolve participant ID to wallet address
+            // Resolve participant ID to wallet address (2-tier: instance bindings → register)
             var recipientAddress = result.ParticipantId;
             if (participantWallets.TryGetValue(recipientAddress, out var walletAddress))
             {
                 recipientAddress = walletAddress;
+            }
+            else
+            {
+                // Tier 2: Try resolving from register participant index
+                var participant = blueprint.Participants.FirstOrDefault(p =>
+                    string.Equals(p.Id, recipientAddress, StringComparison.OrdinalIgnoreCase));
+
+                if (participant != null)
+                {
+                    try
+                    {
+                        var resolvedRecord = await _registerClient.ResolveParticipantAsync(
+                            registerId, participant.Id, participant.Organisation);
+
+                        if (resolvedRecord?.Addresses.Count > 0)
+                        {
+                            var primaryAddr = resolvedRecord.Addresses.FirstOrDefault(a => a.Primary)
+                                              ?? resolvedRecord.Addresses.First();
+                            recipientAddress = primaryAddr.WalletAddress;
+                            _logger.LogDebug(
+                                "Resolved disclosure recipient {ParticipantId} to wallet {Wallet} from register",
+                                result.ParticipantId, recipientAddress);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to resolve participant {ParticipantId} from register",
+                            result.ParticipantId);
+                    }
+                }
             }
 
             if (string.IsNullOrEmpty(recipientAddress))

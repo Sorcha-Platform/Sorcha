@@ -71,4 +71,10 @@ public class Register
     /// Consensus votes (implementation TBD)
     /// </summary>
     public string? Votes { get; set; }
+
+    /// <summary>
+    /// When true, payloads are stored as plaintext with disclosure filtering at read time.
+    /// When false (default), payloads use envelope encryption with disclosure groups.
+    /// </summary>
+    public bool DevMode { get; set; }
 }

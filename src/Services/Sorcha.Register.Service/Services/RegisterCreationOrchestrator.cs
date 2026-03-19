@@ -205,7 +205,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             ExpiresAt = expiresAt,
             Nonce = nonce,
             AttestationHashes = attestationHashes,
-            Advertise = request.Advertise
+            Advertise = request.Advertise,
+            DevMode = request.DevMode
         };
 
         _pendingStore.Add(registerId, pending);
@@ -397,6 +398,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             isFullReplica: true,
             registerId: pending.RegisterId,
             description: controlRecord.Description,
+            devMode: pending.DevMode,
             cancellationToken);
 
         _logger.LogInformation("Created register {RegisterId} in database after genesis success", register.Id);

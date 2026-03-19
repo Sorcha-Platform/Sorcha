@@ -895,7 +895,15 @@ public class ValidationEngine : IValidationEngine
             }
 
             // 2. Sender authorization — derive wallet from signature and compare to participant
-            if (transaction.Signatures.Count > 0)
+            //    Starting actions accept any wallet (binding happens in ActionExecutionService).
+            //    Non-starting actions validate against blueprint wallet or instance bindings.
+            if (action.IsStartingAction)
+            {
+                _logger.LogDebug(
+                    "Starting action {ActionId}: accepting any wallet (binding at execution time)",
+                    actionIdInt);
+            }
+            else if (transaction.Signatures.Count > 0)
             {
                 var firstSig = transaction.Signatures[0];
 
@@ -907,6 +915,7 @@ public class ValidationEngine : IValidationEngine
 
                     if (participant != null && !string.IsNullOrWhiteSpace(participant.WalletAddress))
                     {
+                        // Tier 1: Match against blueprint-hardcoded wallet address
                         if (!string.Equals(derivedWallet, participant.WalletAddress, StringComparison.OrdinalIgnoreCase))
                         {
                             errors.Add(CreateError("VAL_BP_002",
@@ -916,9 +925,37 @@ public class ValidationEngine : IValidationEngine
                     }
                     else if (participant != null && string.IsNullOrWhiteSpace(participant.WalletAddress))
                     {
-                        _logger.LogDebug(
-                            "Participant {ParticipantId} has no wallet address set, skipping sender authorization for action {ActionId}",
-                            action.Sender, actionIdInt);
+                        // Tier 2: Participant has no hardcoded wallet — resolve from register
+                        var resolvedRecord = await _registerClient.ResolveParticipantAsync(
+                            transaction.RegisterId,
+                            participant.Id,
+                            participant.Organisation,
+                            ct);
+
+                        if (resolvedRecord != null && resolvedRecord.Addresses.Count > 0)
+                        {
+                            var walletMatch = resolvedRecord.Addresses.Any(a =>
+                                string.Equals(a.WalletAddress, derivedWallet, StringComparison.OrdinalIgnoreCase));
+
+                            if (!walletMatch)
+                            {
+                                errors.Add(CreateError("VAL_BP_002",
+                                    $"Signer wallet {derivedWallet} not in published addresses for participant '{participant.Id}' on action {actionIdInt}",
+                                    ValidationErrorCategory.Permission, "Signatures"));
+                            }
+                            else
+                            {
+                                _logger.LogDebug(
+                                    "Participant {ParticipantId} resolved from register — wallet {Wallet} matches published address",
+                                    participant.Id, derivedWallet);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "Participant {ParticipantId} has no wallet and no register record, skipping sender authorization for action {ActionId}",
+                                action.Sender, actionIdInt);
+                        }
                     }
                 }
             }

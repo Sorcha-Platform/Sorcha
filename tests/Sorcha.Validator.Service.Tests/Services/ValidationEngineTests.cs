@@ -1511,9 +1511,9 @@ public class ValidationEngineTests
     [Fact]
     public async Task ValidateBlueprintConformanceAsync_WrongSender_ReturnsBP002Error()
     {
-        // Arrange
-        var tx = CreateValidTransaction(previousTransactionId: null);
-        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: true, walletAddress: "expected-wallet");
+        // Arrange — non-starting action with hardcoded wallet that doesn't match signer
+        var tx = CreateValidTransaction(previousTransactionId: "prev-tx-1");
+        var blueprint = CreateTestBlueprintWithConformance(tx.BlueprintId!, isStartingAction: false, walletAddress: "expected-wallet");
         _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(tx.BlueprintId!, It.IsAny<CancellationToken>()))
             .ReturnsAsync(blueprint);
         _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))

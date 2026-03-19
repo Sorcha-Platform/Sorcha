@@ -78,6 +78,13 @@ public class InitiateRegisterCreationRequest
     [RegularExpression("^[a-f0-9]{32}$")]
     [JsonPropertyName("registerId")]
     public string? RegisterId { get; set; }
+
+    /// <summary>
+    /// When true, payloads are stored as plaintext with disclosure filtering at read time.
+    /// When false (default), payloads use envelope encryption with disclosure groups.
+    /// </summary>
+    [JsonPropertyName("devMode")]
+    public bool DevMode { get; set; }
 }
 
 /// <summary>
@@ -428,6 +435,11 @@ public class PendingRegistration
     /// Whether to advertise this register to the peer network
     /// </summary>
     public bool Advertise { get; set; }
+
+    /// <summary>
+    /// Whether this register uses DevMode (plaintext payloads with disclosure filtering)
+    /// </summary>
+    public bool DevMode { get; set; }
 
     /// <summary>
     /// Checks if this pending registration has expired

@@ -1075,6 +1075,53 @@ public class RegisterServiceClient : IRegisterServiceClient
     }
 
     // =========================================================================
+    // Participant Resolution
+    // =========================================================================
+
+    /// <inheritdoc/>
+    public async Task<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord?> ResolveParticipantAsync(
+        string registerId,
+        string participantId,
+        string? orgName = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Resolving participant {ParticipantId} (org: {OrgName}) on register {RegisterId}",
+                participantId, orgName ?? "(any)", registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var url = $"api/registers/{Uri.EscapeDataString(registerId)}/participants/resolve?participantId={Uri.EscapeDataString(participantId)}";
+            if (!string.IsNullOrEmpty(orgName))
+                url += $"&orgName={Uri.EscapeDataString(orgName)}";
+
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Gone)
+            {
+                _logger.LogWarning("Participant {ParticipantId} has been revoked on register {RegisterId}",
+                    participantId, registerId);
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            return await response.Content.ReadFromJsonAsync<Sorcha.ServiceClients.Register.Models.PublishedParticipantRecord>(
+                JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error resolving participant {ParticipantId} on register {RegisterId}",
+                participantId, registerId);
+            return null;
+        }
+    }
+
+    // =========================================================================
     // Public Key Resolution
     // =========================================================================
 
