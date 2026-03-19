@@ -175,6 +175,9 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         }
 
         TestContext.Out.WriteLine("=== End Results ===");
+
+        // Clean up all browser contexts and API client
+        await DisposeAllUserContextsAsync();
     }
 
     #endregion
@@ -1216,13 +1219,24 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         // Create blueprint
         var createResponse = await ApiPostAsync("/api/blueprints", blueprint, token);
         var (createStatus, createBody) = await ReadResponseAsync(createResponse);
-        TestContext.Out.WriteLine($"Create blueprint {blueprintId}: {createStatus}");
+        TestContext.Out.WriteLine($"Create blueprint {idPrefix}: {createStatus}");
 
         if (createStatus >= 400)
         {
             throw new InvalidOperationException(
                 $"Blueprint creation failed ({createStatus}): {createBody}");
         }
+
+        // Extract the server-generated ID from the creation response
+        if (!string.IsNullOrWhiteSpace(createBody))
+        {
+            using var createDoc = JsonDocument.Parse(createBody);
+            if (createDoc.RootElement.TryGetProperty("id", out var idProp))
+                blueprintId = idProp.GetString() ?? blueprintId;
+            else if (createDoc.RootElement.TryGetProperty("blueprintId", out var bpIdProp))
+                blueprintId = bpIdProp.GetString() ?? blueprintId;
+        }
+        TestContext.Out.WriteLine($"Blueprint server ID: {blueprintId}");
 
         // Publish blueprint
         var publishResponse = await ApiPostAsync(
@@ -1410,8 +1424,8 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     private async Task<string> StartBlueprintInstanceAsync(string token, string blueprintId)
     {
         var response = await ApiPostAsync(
-            $"/api/blueprints/{blueprintId}/instances",
-            new { blueprintId }, token);
+            "/api/instances",
+            new { blueprintId, registerId = _registerId }, token);
 
         var json = await ReadJsonAsync(response);
 

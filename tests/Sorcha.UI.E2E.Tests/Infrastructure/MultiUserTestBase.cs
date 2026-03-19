@@ -64,7 +64,17 @@ public abstract class MultiUserTestBase : DockerTestBase
     [TearDown]
     public override async Task BaseTearDown()
     {
-        // Dispose all user contexts
+        // NOTE: Do NOT clear _userContexts, _userPages, or _userTokens here.
+        // For ordered sequential tests (NonParallelizable), state must persist
+        // across tests. Cleanup happens in OneTimeTearDown or when the fixture ends.
+        await base.BaseTearDown();
+    }
+
+    /// <summary>
+    /// Call from [OneTimeTearDown] to dispose all browser contexts and clear state.
+    /// </summary>
+    protected async Task DisposeAllUserContextsAsync()
+    {
         foreach (var (_, context) in _userContexts)
         {
             try { await context.CloseAsync(); } catch { /* ignore */ }
@@ -72,10 +82,7 @@ public abstract class MultiUserTestBase : DockerTestBase
         _userContexts.Clear();
         _userPages.Clear();
         _userTokens.Clear();
-
         ApiClient?.Dispose();
-
-        await base.BaseTearDown();
     }
 
     #region API Authentication
