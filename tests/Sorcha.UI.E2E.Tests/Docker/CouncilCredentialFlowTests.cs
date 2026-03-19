@@ -57,14 +57,13 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     private const string CitizenDisplayName = "Jane Citizen";
 
     // Wallet addresses (populated during setup)
-    private string _adminWallet = null!;
     private string _councilAdminWallet = null!;
     private string _idDeptWallet = null!;
     private string _serviceDeptWallet = null!;
     private string _returnDeptWallet = null!;
     private string _citizenWallet = null!;
 
-    // Admin user ID (from JWT)
+    // User IDs (from JWT)
     private string _adminUserId = null!;
 
     // Participant IDs
@@ -130,28 +129,24 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             _councilOrgId = await CreateOrganizationAsync(adminToken, CouncilOrgName, CouncilSubdomain);
             TestContext.Out.WriteLine($"Council org created: {_councilOrgId}");
 
-            // Step 5: Create remaining council staff users
+            // Step 5: Create remaining council staff users + get council-org tokens
             TestContext.Out.WriteLine("Creating council staff users...");
             await CreateStaffUsersAsync(adminToken);
 
-            // Step 5: Create wallets for staff users
+            // Step 6: Create wallets for all council staff
             TestContext.Out.WriteLine("Creating wallets for council staff...");
             await CreateStaffWalletsAsync();
 
-            // Step 6: Register participants and link wallets
-            TestContext.Out.WriteLine("Registering participants and linking wallets...");
+            // Step 7: Register staff as participants in the council org
+            TestContext.Out.WriteLine("Registering staff as participants in council org...");
             await RegisterStaffParticipantsAsync();
 
-            // Step 6b: Create admin wallet for register ownership/signing
-            TestContext.Out.WriteLine("Creating admin wallet...");
-            _adminWallet = await CreateWalletViaApiAsync("admin", "Admin Register Wallet");
-            TestContext.Out.WriteLine($"Admin wallet: {_adminWallet}");
-
-            // Step 7: Create register (full 3-phase: initiate → sign → finalize)
-            TestContext.Out.WriteLine("Creating council register...");
+            // Step 8: Create register owned by council admin
+            // Council admin owns and signs attestations for the council's register.
+            TestContext.Out.WriteLine("Creating council services register...");
             await CreateRegisterAsync();
 
-            // Step 8: Publish blueprints
+            // Step 9: Publish blueprints to the council register
             TestContext.Out.WriteLine("Publishing blueprints...");
             await PublishBlueprintsAsync();
 
@@ -1063,20 +1058,22 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     private async Task RegisterStaffParticipantsAsync()
     {
-        var participants = new (string UserKey, string DisplayName, Action<string> SetId)[]
+        // Council staff must register as participants in the council org (not public org).
+        // Use explicit orgIdOverride to ensure correct org alignment.
+        var participants = new (string UserKey, string DisplayName, string OrgId, Action<string> SetId)[]
         {
-            ("id-dept", "ID Department", id => _idDeptParticipantId = id),
-            ("service-dept", "Service Department", id => _serviceDeptParticipantId = id),
-            ("return-dept", "Fulfilment Department", id => _returnDeptParticipantId = id),
+            ("id-dept", "ID Department", _councilOrgId, id => _idDeptParticipantId = id),
+            ("service-dept", "Service Department", _councilOrgId, id => _serviceDeptParticipantId = id),
+            ("return-dept", "Fulfilment Department", _councilOrgId, id => _returnDeptParticipantId = id),
         };
 
-        foreach (var (userKey, displayName, setId) in participants)
+        foreach (var (userKey, displayName, orgId, setId) in participants)
         {
             try
             {
-                var participantId = await SelfRegisterParticipantAsync(userKey, displayName);
+                var participantId = await SelfRegisterParticipantAsync(userKey, displayName, orgId);
                 setId(participantId);
-                TestContext.Out.WriteLine($"Participant for {userKey}: {participantId}");
+                TestContext.Out.WriteLine($"Participant for {userKey}: {participantId} (org: {orgId})");
             }
             catch (Exception ex)
             {
@@ -1090,24 +1087,32 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     private async Task CreateRegisterAsync()
     {
-        var adminToken = GetUserToken("admin");
+        // Use council admin as register owner — this is their register, not the system admin's.
+        var councilAdminToken = GetUserToken("council-admin");
+
+        // Extract council admin user ID from their token
+        var caPayload = councilAdminToken.Split('.')[1];
+        var caPadded = caPayload + new string('=', (4 - caPayload.Length % 4) % 4);
+        var caClaims = JsonDocument.Parse(
+            System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(caPadded)));
+        var councilAdminUserId = caClaims.RootElement.GetProperty("sub").GetString()!;
 
         // Phase 1: Initiate register
         TestContext.Out.WriteLine("Register Phase 1: Initiating...");
         var initiateResponse = await ApiPostAsync("/api/registers/initiate",
             new
             {
-                name = "Eastbourne Council Register",
-                description = "Register for Eastbourne Council digital services",
-                tenantId = "00000000-0000-0000-0000-000000000001",
+                name = "Council Services Register",
+                description = "Shared register for Eastbourne Council digital services and credentials",
+                tenantId = _councilOrgId,
                 advertise = true,
                 isPublic = true,
                 owners = new[]
                 {
-                    new { userId = _adminUserId, walletId = _adminWallet }
+                    new { userId = councilAdminUserId, walletId = _councilAdminWallet }
                 },
-                metadata = new { source = "e2e-test" }
-            }, adminToken);
+                metadata = new { source = "e2e-test", council = "eastbourne" }
+            }, councilAdminToken);
 
         var initiateJson = await ReadJsonAsync(initiateResponse);
         _registerId = initiateJson.TryGetProperty("registerId", out var rid)
@@ -1137,11 +1142,11 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                 var hexBytes = Convert.FromHexString(dataToSignHex);
                 var dataToSignBase64 = Convert.ToBase64String(hexBytes);
 
-                // Sign via wallet service
+                // Sign via wallet service (council admin's wallet)
                 var signResponse = await ApiPostAsync(
                     $"/api/v1/wallets/{walletId}/sign",
                     new { transactionData = dataToSignBase64, isPreHashed = true },
-                    adminToken);
+                    councilAdminToken);
 
                 var signJson = await ReadJsonAsync(signResponse);
                 var publicKey = signJson.GetProperty("publicKey").GetString()!;
@@ -1172,7 +1177,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
                 registerId = _registerId,
                 nonce,
                 signedAttestations
-            }, adminToken);
+            }, councilAdminToken);
 
         var (finalizeStatus, finalizeBody) = await ReadResponseAsync(finalizeResponse);
         TestContext.Out.WriteLine($"Register finalize: {finalizeStatus}");
@@ -1212,10 +1217,11 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
     private async Task PublishBlueprintsAsync()
     {
-        var adminToken = GetUserToken("admin");
+        // Council admin publishes blueprints — they own the register
+        var councilToken = GetUserToken("council-admin");
 
         // Publish Council ID Application blueprint
-        _idBlueprintId = await PublishBlueprintAsync(adminToken,
+        _idBlueprintId = await PublishBlueprintAsync(councilToken,
             RepoPath("blueprints/templates/council-id-application-template.json"),
             "council-id-app",
             new Dictionary<string, string>
@@ -1226,7 +1232,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         TestContext.Out.WriteLine($"ID Blueprint published: {_idBlueprintId}");
 
         // Publish Council Service Request blueprint
-        _serviceBlueprintId = await PublishBlueprintAsync(adminToken,
+        _serviceBlueprintId = await PublishBlueprintAsync(councilToken,
             RepoPath("blueprints/templates/council-service-request-template.json"),
             "council-svc-req",
             new Dictionary<string, string>
