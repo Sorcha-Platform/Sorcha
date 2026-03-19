@@ -28,7 +28,7 @@ public abstract class MultiUserTestBase : DockerTestBase
     protected HttpClient ApiClient { get; private set; } = new()
     {
         BaseAddress = new Uri(TestConstants.ApiGatewayUrl),
-        Timeout = TimeSpan.FromSeconds(30)
+        Timeout = TimeSpan.FromSeconds(120)
     };
 
     /// <summary>

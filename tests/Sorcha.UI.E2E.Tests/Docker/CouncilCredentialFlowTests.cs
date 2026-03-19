@@ -57,11 +57,15 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     private const string CitizenDisplayName = "Jane Citizen";
 
     // Wallet addresses (populated during setup)
+    private string _adminWallet = null!;
     private string _councilAdminWallet = null!;
     private string _idDeptWallet = null!;
     private string _serviceDeptWallet = null!;
     private string _returnDeptWallet = null!;
     private string _citizenWallet = null!;
+
+    // Admin user ID (from JWT)
+    private string _adminUserId = null!;
 
     // Participant IDs
     private string _idDeptParticipantId = null!;
@@ -102,7 +106,14 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             var adminToken = await GetTokenAsync(AdminEmail, AdminPassword);
             StoreUserToken("admin", adminToken);
             SetApiToken(adminToken);
-            TestContext.Out.WriteLine("Admin token obtained.");
+
+            // Extract admin user ID from JWT for register ownership
+            var payload = adminToken.Split('.')[1];
+            var padded = payload + new string('=', (4 - payload.Length % 4) % 4);
+            var claims = JsonDocument.Parse(
+                System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(padded)));
+            _adminUserId = claims.RootElement.GetProperty("sub").GetString()!;
+            TestContext.Out.WriteLine($"Admin token obtained. UserId: {_adminUserId}");
 
             // Step 2: Enable public organization (required for self-registration)
             TestContext.Out.WriteLine("Enabling public organization...");
@@ -131,7 +142,12 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
             TestContext.Out.WriteLine("Registering participants and linking wallets...");
             await RegisterStaffParticipantsAsync();
 
-            // Step 7: Create register
+            // Step 6b: Create admin wallet for register ownership/signing
+            TestContext.Out.WriteLine("Creating admin wallet...");
+            _adminWallet = await CreateWalletViaApiAsync("admin", "Admin Register Wallet");
+            TestContext.Out.WriteLine($"Admin wallet: {_adminWallet}");
+
+            // Step 7: Create register (full 3-phase: initiate → sign → finalize)
             TestContext.Out.WriteLine("Creating council register...");
             await CreateRegisterAsync();
 
@@ -1076,49 +1092,108 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     {
         var adminToken = GetUserToken("admin");
 
-        try
-        {
-            // Initiate register
-            var initiateResponse = await ApiPostAsync("/api/registers/initiate",
-                new
-                {
-                    name = "Eastbourne Council Register",
-                    description = "Register for Eastbourne Council digital services"
-                }, adminToken);
-
-            var initiateJson = await ReadJsonAsync(initiateResponse);
-            _registerId = initiateJson.TryGetProperty("registerId", out var rid)
-                ? rid.GetString()!
-                : initiateJson.TryGetProperty("id", out var id)
-                    ? id.GetString()!
-                    : throw new InvalidOperationException(
-                        $"No registerId in response: {initiateJson.GetRawText()}");
-
-            TestContext.Out.WriteLine($"Register initiated: {_registerId}");
-
-            // Finalize register (simplified — full flow needs attestation signing)
-            var finalizeResponse = await ApiPostAsync(
-                $"/api/registers/finalize",
-                new { registerId = _registerId }, adminToken);
-
-            var (finalizeStatus, finalizeBody) = await ReadResponseAsync(finalizeResponse);
-            TestContext.Out.WriteLine($"Register finalize: {finalizeStatus}");
-
-            if (finalizeStatus >= 400)
+        // Phase 1: Initiate register
+        TestContext.Out.WriteLine("Register Phase 1: Initiating...");
+        var initiateResponse = await ApiPostAsync("/api/registers/initiate",
+            new
             {
-                LogIssue("SETUP-REG", "Register finalization issue", "Major", "Register",
-                    "Setup", "Register should finalize",
-                    $"Status {finalizeStatus}: {finalizeBody}. " +
-                    "May need attestation signing — using register ID as-is.");
+                name = "Eastbourne Council Register",
+                description = "Register for Eastbourne Council digital services",
+                tenantId = "00000000-0000-0000-0000-000000000001",
+                advertise = true,
+                isPublic = true,
+                owners = new[]
+                {
+                    new { userId = _adminUserId, walletId = _adminWallet }
+                },
+                metadata = new { source = "e2e-test" }
+            }, adminToken);
+
+        var initiateJson = await ReadJsonAsync(initiateResponse);
+        _registerId = initiateJson.TryGetProperty("registerId", out var rid)
+            ? rid.GetString()!
+            : initiateJson.TryGetProperty("id", out var id)
+                ? id.GetString()!
+                : throw new InvalidOperationException(
+                    $"No registerId in response: {initiateJson.GetRawText()}");
+
+        var nonce = initiateJson.TryGetProperty("nonce", out var n) ? n.GetString() : null;
+        TestContext.Out.WriteLine($"Register initiated: {_registerId}, nonce: {nonce}");
+
+        // Phase 2: Sign attestations
+        TestContext.Out.WriteLine("Register Phase 2: Signing attestations...");
+        var signedAttestations = new List<object>();
+
+        if (initiateJson.TryGetProperty("attestationsToSign", out var attestations))
+        {
+            foreach (var att in attestations.EnumerateArray())
+            {
+                var dataToSignHex = att.GetProperty("dataToSign").GetString()!;
+                var walletId = att.GetProperty("walletId").GetString()!;
+                var attestationData = att.GetProperty("attestationData");
+                var role = att.TryGetProperty("role", out var r) ? r.GetString() : "unknown";
+
+                // Convert hex → base64 (attestation data is a SHA256 hash in hex)
+                var hexBytes = Convert.FromHexString(dataToSignHex);
+                var dataToSignBase64 = Convert.ToBase64String(hexBytes);
+
+                // Sign via wallet service
+                var signResponse = await ApiPostAsync(
+                    $"/api/v1/wallets/{walletId}/sign",
+                    new { transactionData = dataToSignBase64, isPreHashed = true },
+                    adminToken);
+
+                var signJson = await ReadJsonAsync(signResponse);
+                var publicKey = signJson.GetProperty("publicKey").GetString()!;
+                var signature = signJson.GetProperty("signature").GetString()!;
+
+                signedAttestations.Add(new
+                {
+                    attestationData = JsonSerializer.Deserialize<object>(
+                        attestationData.GetRawText(), JsonOptions),
+                    publicKey,
+                    signature,
+                    algorithm = "ED25519"
+                });
+
+                TestContext.Out.WriteLine($"  Attestation signed for role: {role}");
             }
         }
-        catch (Exception ex)
+        else
         {
-            // Fallback: use a fixed register ID
-            _registerId = $"council-register-{DateTime.UtcNow:yyyyMMddHHmmss}";
-            LogIssue("SETUP-REG", "Register creation failed", "Major", "Register",
-                "Setup", "Register should be created",
-                $"Exception: {ex.Message}. Using fallback ID: {_registerId}");
+            TestContext.Out.WriteLine("  No attestations to sign.");
+        }
+
+        // Phase 3: Finalize register
+        TestContext.Out.WriteLine("Register Phase 3: Finalizing...");
+        var finalizeResponse = await ApiPostAsync("/api/registers/finalize",
+            new
+            {
+                registerId = _registerId,
+                nonce,
+                signedAttestations
+            }, adminToken);
+
+        var (finalizeStatus, finalizeBody) = await ReadResponseAsync(finalizeResponse);
+        TestContext.Out.WriteLine($"Register finalize: {finalizeStatus}");
+
+        if (finalizeStatus >= 400)
+        {
+            LogIssue("SETUP-REG", "Register finalization failed", "Major", "Register",
+                "Setup", "Register should finalize",
+                $"Status {finalizeStatus}: {finalizeBody}");
+        }
+        else
+        {
+            // Extract genesis transaction ID
+            try
+            {
+                using var finalizeDoc = JsonDocument.Parse(finalizeBody);
+                var genesisTxId = finalizeDoc.RootElement.TryGetProperty("genesisTransactionId", out var gid)
+                    ? gid.GetString() : "unknown";
+                TestContext.Out.WriteLine($"Register created. Genesis TX: {genesisTxId}");
+            }
+            catch { /* non-critical */ }
         }
     }
 
@@ -1445,7 +1520,7 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         var body = new Dictionary<string, object>
         {
             ["blueprintId"] = blueprintId,
-            ["actionId"] = actionId,
+            ["actionId"] = actionId.ToString(),
             ["instanceId"] = instanceId,
             ["senderWallet"] = senderWallet,
             ["registerAddress"] = registerAddress,
@@ -1470,8 +1545,8 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
 
         TestContext.Out.WriteLine($"Action {actionId} executed: {status}");
 
-        // Wait for validator processing
-        await Task.Delay(3000);
+        // Wait for validator pipeline processing (sign → validate → confirm)
+        await Task.Delay(10_000);
     }
 
     private async Task<string> GetInstanceStatusAsync(string token, string instanceId)
