@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceGroupName": { "value": "sorcha-n1" },
+    "location": { "value": "uksouth" },
+    "vmSize": { "value": "Standard_B2as_v2" },
+    "adminUsername": { "value": "sorcha" },
+    "sshPublicKey": { "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCKNWI5kaFRzw0Pl69WBc7X00AtxQzuQbXzcjsM0BQDYCR64Fb3Be3GZ7cT4oqK4ZtHa7TAL74QO27cFxOW3fSOeDhfr9EWH4Kdq3m62hmdVD/CnjOsRk9LJT27+Zmn/nu+eW//PtCQnRrOVE7VtUmDVGcZ+fs+JolA+fwS/bs8SnT+1rB9k7UjJvoXjnA7VxrGlWnTzGIuzjGZYW3nuYcFQjp333iMPsYR+BS/RZpOC8LsIPwDWaxlSXaRxJtQcyrE6OoZZXEXRWRbI5d29roJt1/767DhVLDFEX1kp+r0YwUx9Ibgj89QSay6qLUjyOHX9l2H/Jja3WmGt2CAE6lR" },
+    "allowedSshCidr": { "value": "92.40.195.17/32" }
+  }
+}

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Port override for n1.sorcha.dev - moves API Gateway off 80/443
+# so Caddy can handle TLS termination with Let's Encrypt
+# Usage: docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml up -d
+
+services:
+  api-gateway:
+    ports: !override
+      - "8880:8080"

@@ -1,0 +1,18 @@
+n1.sorcha.dev {
+	# Automatic HTTPS via Let's Encrypt
+	# Caddy handles certificate provisioning and renewal
+
+	# Proxy all traffic to the API Gateway
+	reverse_proxy api-gateway:8080
+
+	# Aspire dashboard on subdomain path
+	handle_path /aspire/* {
+		reverse_proxy aspire-dashboard:18888
+	}
+
+	# Logging
+	log {
+		output stdout
+		format console
+	}
+}
