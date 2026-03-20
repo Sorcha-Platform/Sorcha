@@ -182,7 +182,7 @@
 
     private void NavigateToParticipant(ParticipantListItemViewModel participant)
     {
-        Navigation.NavigateTo($"/participants/{participant.OrganizationId}/{participant.Id}");
+        Navigation.NavigateTo($"participants/{participant.OrganizationId}/{participant.Id}");
     }
 
     private async Task ShowEditParticipantDialog(ParticipantListItemViewModel participant)

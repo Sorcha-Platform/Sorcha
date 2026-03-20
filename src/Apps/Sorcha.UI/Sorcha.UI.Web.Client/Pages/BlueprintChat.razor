@@ -582,7 +582,7 @@
             if (result is { Canceled: false, Data: string blueprintId })
             {
                 // Navigate to edit the selected blueprint
-                Navigation.NavigateTo($"/designer/chat/{blueprintId}");
+                Navigation.NavigateTo($"designer/chat/{blueprintId}");
             }
         }
         catch (Exception ex)

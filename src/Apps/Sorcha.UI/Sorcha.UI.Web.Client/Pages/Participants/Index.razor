@@ -162,7 +162,7 @@
 
     private void NavigateToDetail(ParticipantListItemViewModel participant)
     {
-        Navigation.NavigateTo($"/participants/{participant.OrganizationId}/{participant.Id}");
+        Navigation.NavigateTo($"participants/{participant.OrganizationId}/{participant.Id}");
     }
 
     private static Color GetStatusColor(string status)
