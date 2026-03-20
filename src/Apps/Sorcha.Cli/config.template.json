@@ -28,6 +28,18 @@
       "verifySsl": false,
       "timeoutSeconds": 30
     },
+    "n1": {
+      "name": "n1",
+      "tenantServiceUrl": "https://n1.sorcha.dev/tenant",
+      "registerServiceUrl": "https://n1.sorcha.dev/register",
+      "peerServiceUrl": "https://n1.sorcha.dev/peer",
+      "walletServiceUrl": "https://n1.sorcha.dev/wallet",
+      "blueprintServiceUrl": "https://n1.sorcha.dev/blueprint",
+      "authTokenUrl": "https://n1.sorcha.dev/tenant/api/service-auth/token",
+      "defaultClientId": "sorcha-cli",
+      "verifySsl": true,
+      "timeoutSeconds": 30
+    },
     "production": {
       "name": "production",
       "tenantServiceUrl": "https://tenant.sorcha.io",

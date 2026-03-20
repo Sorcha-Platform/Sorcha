@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Docker Compose override for n1.sorcha.dev debug deployment
+# Usage: docker compose -f docker-compose.yml -f docker-compose.n1.yml up -d
+#
+# This override:
+# - Sets INSTALLATION_NAME to n1.sorcha.dev (JWT issuer/audience)
+# - Pulls pre-built images from DockerHub (sorchadev/*)
+# - Configures peer service identity as n1.sorcha.dev
+# - SSL handled by Caddy installed on the host (not in Docker)
+
+x-jwt-env: &jwt-env
+  JwtSettings__InstallationName: n1.sorcha.dev
+  JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLW4xLXNvcmNoYS1kZXYta2V5LTIwMjYtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
+
+services:
+  # ===========================
+  # Application Services - override JWT and peer config
+  # ===========================
+
+  blueprint-service:
+    image: sorchadev/blueprint-service:latest
+    environment:
+      <<: *jwt-env
+      AIProvider__ApiKey: ${ANTHROPIC_API_KEY:-}
+
+  wallet-service:
+    image: sorchadev/wallet-service:latest
+    environment:
+      <<: *jwt-env
+
+  register-service:
+    image: sorchadev/register-service:latest
+    environment:
+      <<: *jwt-env
+
+  tenant-service:
+    image: sorchadev/tenant-service:latest
+    environment:
+      <<: *jwt-env
+
+  peer-service:
+    image: sorchadev/peer-service:latest
+    environment:
+      <<: *jwt-env
+      PeerService__NodeId: n1.sorcha.dev
+      PeerService__PublicAddress: ${N1_PUBLIC_IP:-n1.sorcha.dev}
+
+  validator-service:
+    image: sorchadev/validator-service:latest
+    environment:
+      <<: *jwt-env
+
+  sorcha-ui-web:
+    image: sorchadev/ui-web:latest
+
+  api-gateway:
+    image: sorchadev/api-gateway:latest
+    ports:
+      - "8880:8080"    # Internal only - Caddy on host handles 80/443
+    environment:
+      <<: *jwt-env
+      Dashboard__AspireDashboardUrl: https://n1.sorcha.dev:18888
+      # Disable HTTPS on gateway - Caddy handles TLS
+      ASPNETCORE_URLS: http://+:8080
