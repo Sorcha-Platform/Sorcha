@@ -1,0 +1,169 @@
+{
+  "name": "Scenario A: Happy Path — Timber-Frame Bungalow",
+  "description": "Rural single-storey timber-frame bungalow on garden ground. No protected species, good ground conditions, standard strip foundations, mains water and septic tank. All consultations positive, planning approved, all 7 building standards pass, all inspections pass first time. 3 verifiable credentials issued across 2 registers.",
+  "expectedFoundationRiskScore": 2,
+  "expectedPlanningFee": 600,
+  "expectedWarrantFee": 600,
+  "expectedStructuralAdequacyScore": 1.8,
+  "expectedEnergyPerformanceCheck": "excellent",
+  "expectedPlanningPath": [1, 2, 3, 5, 6, 7],
+  "expectedWarrantPath": [1, 2, 3, 4, 5, 6, 7],
+  "skipsSpeciesMitigation": true,
+  "expectedRejection": false,
+  "planning": {
+    "1": {
+      "projectName": "Birchwood Cottage",
+      "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
+      "gridReference": "NH5130",
+      "plotSizeHectares": 0.25,
+      "dwellingType": "detached",
+      "storeys": 1,
+      "grossFloorArea": 120,
+      "bedrooms": 3,
+      "constructionMethod": "timber-frame",
+      "estimatedBuildCost": 220000,
+      "existingLandUse": "garden-ground",
+      "accessArrangement": "existing-access",
+      "withinConservationArea": false,
+      "designStatement": "A single-storey timber-frame dwelling designed to sit sympathetically within the existing landscape of Lochside Road. The design draws on the local Highland vernacular — natural larch cladding, natural slate roof, and generous glazing oriented south toward Loch Ness. The low profile and single-storey form minimises visual impact on neighbouring properties. The plot is served by an existing vehicular access from Lochside Road and has adequate space for two off-street parking spaces and a turning area."
+    },
+    "2": {
+      "soilClassification": "gravel",
+      "bearingCapacity": 250,
+      "waterTableDepth": 3.5,
+      "contaminationFound": false,
+      "radonRisk": "low",
+      "slopeStability": "stable",
+      "foundationRecommendation": "strip",
+      "assessmentNotes": "Good ground conditions. Free-draining gravel subsoil with adequate bearing capacity for single-storey construction. Water table well below foundation formation level. No contamination detected. Low radon risk — basic radon protection measures sufficient. Conventional strip foundations recommended at 600mm depth to formation."
+    },
+    "3": {
+      "habitatClassification": "garden-ground",
+      "protectedSpeciesPresent": false,
+      "speciesFound": [],
+      "ecologicalImpactRating": "negligible",
+      "seasonalConstraints": "None identified. Site is maintained garden ground with no significant ecological features.",
+      "surveyNotes": "Phase 1 habitat survey conducted on 15 March 2026. Site comprises maintained garden ground with ornamental planting and mown grass. No trees with bat roost potential. No badger setts within 30m. No evidence of red squirrel activity. No watercourses within 50m. Ecological impact of development is negligible. No further surveys or mitigation measures required."
+    },
+    "5": {
+      "waterSupplyFeasible": true,
+      "nearestMainDistance": 25,
+      "drainageSolution": "septic-tank",
+      "surfaceWaterPlan": "soakaway",
+      "capacityConfirmed": true,
+      "connectionCostEstimate": 3500,
+      "consultationOutcome": "feasible",
+      "consultationNotes": "Water main available on Lochside Road, 25m from plot boundary. Connection feasible with standard works. No public sewer available in this location — private septic tank with soakaway discharge is acceptable given the soil permeability (gravel subsoil). Surface water to soakaway within the plot boundary. No objections to the proposed development."
+    },
+    "6": {
+      "localPlanCompliance": true,
+      "designQuality": "good",
+      "landscapeImpact": "negligible",
+      "neighbourNotificationComplete": true,
+      "objectionsReceived": 0,
+      "accessAndParkingAdequate": true,
+      "decision": "approve",
+      "conditions": [
+        "Development to commence within 3 years of the date of this permission",
+        "External materials to be natural larch cladding and natural slate as specified",
+        "Landscaping scheme to be submitted and approved within 3 months of occupation",
+        "Construction hours: 08:00-19:00 Monday-Friday, 08:00-13:00 Saturday, no Sunday or bank holiday working"
+      ],
+      "planningNotes": "Application for a single-storey dwelling on garden ground at Lochside Road. The site is within the settlement boundary of Drumnadrochit as defined in the Highland-wide Local Development Plan. The proposed design is sympathetic to the local vernacular and the single-storey form minimises visual impact. All statutory consultations returned positive responses. No neighbour objections received. The development complies with Policy 28 (Sustainable Design) and Policy 29 (Design Quality and Place Making). Recommended for approval with standard conditions."
+    },
+    "7": {
+      "permitReference": "26/00142/FUL",
+      "grantDate": "2026-04-15",
+      "expiryDate": "2029-04-15",
+      "approvedPlanRefs": ["DWG-001-A Site Plan", "DWG-002-A Floor Plan", "DWG-003-A Elevations", "DWG-004-A Sections"],
+      "conditions": [
+        "Development to commence within 3 years of the date of this permission",
+        "External materials to be natural larch cladding and natural slate as specified",
+        "Landscaping scheme to be submitted and approved within 3 months of occupation",
+        "Construction hours: 08:00-19:00 Monday-Friday, 08:00-13:00 Saturday, no Sunday or bank holiday working"
+      ],
+      "informatives": [
+        "A separate building warrant will be required before construction commences",
+        "The applicant is advised to contact Scottish Water regarding water and drainage connections",
+        "Party wall notices may be required if construction is within prescribed distances of neighbouring boundaries"
+      ]
+    }
+  },
+  "warrant": {
+    "1": {
+      "planningPermitReference": "26/00142/FUL",
+      "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
+      "constructionMethod": "timber-frame",
+      "wallInsulationType": "mineral-wool",
+      "heatingSystem": "air-source-heat-pump",
+      "renewableEnergy": "solar-PV",
+      "estimatedBuildCost": 220000,
+      "proposedStartDate": "2026-06-01",
+      "sapRating": 86
+    },
+    "2": {
+      "structuralSystem": "timber-frame",
+      "foundationType": "strip",
+      "designWindSpeed": 28.5,
+      "designSnowLoad": 0.6,
+      "safetyFactorAchieved": 1.8,
+      "euroCodeCompliance": true,
+      "engineerNotes": "Timber-frame structure designed to BS EN 1995-1-1 (Eurocode 5). Strip foundations at 600mm depth on gravel formation. Wind loading calculated per BS EN 1991-1-4 for Highland exposure. Snow loading per BS EN 1991-1-3 zone 3. All structural elements have adequate safety margins. Timber frame manufacturer's engineering package reviewed and approved."
+    },
+    "3": {
+      "standard1Structure": "pass",
+      "standard2Fire": "pass",
+      "standard3Environment": "pass",
+      "standard4Safety": "pass",
+      "standard5Noise": "pass",
+      "standard6Energy": "pass",
+      "standard7Sustainability": "pass",
+      "overallDecision": "approve",
+      "reviewNotes": "Application reviewed against all 7 Scottish Building Standards. Structure: timber-frame engineering package and foundation design are adequate. Fire: smoke/heat detection to LD2 standard, escape windows to bedrooms, 30-minute fire resistance to party elements. Environment: radon barrier, DPC, and ventilation provision adequate. Safety: guarding, glazing, and electrical safety compliant. Noise: not applicable (detached dwelling). Energy: ASHP + solar PV + mineral wool insulation achieves SAP 86 (exceeds minimum). Sustainability: low/zero carbon heating via ASHP satisfies Gold standard. All standards met — warrant recommended."
+    },
+    "4": {
+      "warrantReference": "26/00142/BW",
+      "grantDate": "2026-05-20",
+      "expiryDate": "2029-05-20",
+      "approvedPlansReference": "DWG-001-A through DWG-012-A",
+      "stagedInspections": ["Foundation", "Structure & Weathertight", "Final Completion"],
+      "conditions": [
+        "Notify Building Standards 48 hours before each inspection stage",
+        "Do not backfill foundations until inspected and approved",
+        "Do not commence internal lining until structure inspection complete",
+        "Submit electrical installation certificate before final inspection"
+      ]
+    },
+    "5": {
+      "inspectionDate": "2026-08-12",
+      "foundationDepthMeasured": 620,
+      "concreteSpecVerified": true,
+      "reinforcementAsDrawing": true,
+      "dampProofMembraneInstalled": true,
+      "drainageRunsVerified": true,
+      "outcome": "pass",
+      "defectsNoted": "No defects. Foundations excavated to gravel formation at 620mm depth. C30 concrete as specified. Steel reinforcement to approved design. DPM correctly lapped and sealed. Foul and surface water drainage runs laid to correct falls."
+    },
+    "6": {
+      "inspectionDate": "2026-11-18",
+      "structuralFrameComplete": true,
+      "roofComplete": true,
+      "windowsDoorsInstalled": true,
+      "insulationAsSpec": true,
+      "airTightnessResult": 2.8,
+      "outcome": "pass",
+      "inspectorNotes": "Timber frame erected and braced correctly. Roof sarking, counter-battens, and natural slate installed. All windows and external doors fitted with correct thermal breaks. 140mm mineral wool between studs plus 50mm PIR service void insulation. Air tightness test achieved 2.8 m\u00b3/h/m\u00b2 @ 50Pa — excellent result, well within the 5.0 target. MVHR system ducting visible and correctly routed."
+    },
+    "7": {
+      "inspectionDate": "2027-02-10",
+      "allServicesConnected": true,
+      "fireSafetyVerified": true,
+      "electricalCertificateRef": "NICEIC-2027-HLD-004521",
+      "plumbingSignOff": true,
+      "epcRating": "A",
+      "finalSapScore": 89,
+      "habitable": true,
+      "completionRef": "CC-26/00142/BW"
+    }
+  }
+}

@@ -1,0 +1,1482 @@
+{
+  "id": "self-build-planning-permission-v1",
+  "title": "Self-Build Planning Permission (Scotland)",
+  "description": "Scottish planning permission workflow for a self-build dwelling. Involves the applicant (member of public), structural engineer, ecologist, Scottish Water, and the local authority planning department. Features conditional routing for protected species, document uploads, rejection paths, and Planning Permission Verifiable Credential issuance.",
+  "version": 1,
+  "category": "government",
+  "tags": ["planning", "self-build", "scotland", "multi-org", "conditional-routing", "verifiable-credential", "document-upload", "ecology"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "self-build-planning-generated",
+    "title": "Self-Build Planning Permission (Scotland)",
+    "description": "A realistic Scottish planning permission process for a self-build house. Six organisations and seven participants collaborate across six actions with conditional routing for protected species, document uploads as evidence, and a Planning Permission Verifiable Credential issued on approval.",
+    "version": 1,
+    "metadata": {
+      "category": "Government & Planning",
+      "complexity": "Complex",
+      "actions": "7",
+      "features": "Multi-Org, Conditional Routing, Calculations, Rejection, Verifiable Credential, Document Upload",
+      "sector": "Housing & Planning",
+      "jurisdiction": "Scotland"
+    },
+    "participants": [
+      {
+        "id": "self-builder",
+        "name": "Self-Builder",
+        "organisation": "Member of Public",
+        "description": "Applicant seeking planning permission for a self-build dwelling. Submits application with site plans, design statement, and supporting evidence."
+      },
+      {
+        "id": "structural-engineer",
+        "name": "Lead Engineer",
+        "organisation": "MacGregor Structural Engineers",
+        "description": "Conducts site investigation, produces ground conditions report, and recommends foundation type."
+      },
+      {
+        "id": "ecologist",
+        "name": "Senior Ecologist",
+        "organisation": "Glen Ecology Consultants",
+        "description": "Conducts Phase 1 habitat survey, assesses protected species, and produces mitigation plan if required."
+      },
+      {
+        "id": "utilities-officer",
+        "name": "Connections Officer",
+        "organisation": "Scottish Water",
+        "description": "Assesses water supply feasibility and drainage capacity for the proposed development."
+      },
+      {
+        "id": "planning-officer",
+        "name": "Planning Officer",
+        "organisation": "Highland Council — Planning",
+        "description": "Reviews planning application against local development plan, consults statutory bodies, and issues planning permission decision."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Planning Application",
+        "description": "Self-builder submits planning application with site plans, design statement, and building specifications. This is the entry point for the planning process.",
+        "sender": "self-builder",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "projectName": {
+                "type": "string",
+                "title": "Project Name",
+                "minLength": 3,
+                "maxLength": 200
+              },
+              "siteAddress": {
+                "type": "string",
+                "title": "Site Address",
+                "minLength": 5,
+                "maxLength": 500
+              },
+              "gridReference": {
+                "type": "string",
+                "title": "OS Grid Reference",
+                "pattern": "^[A-Z]{2}\\d{4,10}$",
+                "maxLength": 14
+              },
+              "plotSizeHectares": {
+                "type": "number",
+                "title": "Plot Size (hectares)",
+                "minimum": 0.01,
+                "maximum": 50
+              },
+              "dwellingType": {
+                "type": "string",
+                "title": "Dwelling Type",
+                "enum": ["detached", "semi-detached", "terrace"]
+              },
+              "storeys": {
+                "type": "integer",
+                "title": "Number of Storeys",
+                "minimum": 1,
+                "maximum": 3
+              },
+              "grossFloorArea": {
+                "type": "number",
+                "title": "Gross Floor Area (m\u00b2)",
+                "minimum": 30,
+                "maximum": 1000
+              },
+              "bedrooms": {
+                "type": "integer",
+                "title": "Number of Bedrooms",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "constructionMethod": {
+                "type": "string",
+                "title": "Construction Method",
+                "enum": ["timber-frame", "masonry", "SIPs", "ICF", "steel-frame"]
+              },
+              "estimatedBuildCost": {
+                "type": "number",
+                "title": "Estimated Build Cost (GBP)",
+                "minimum": 50000
+              },
+              "existingLandUse": {
+                "type": "string",
+                "title": "Existing Land Use",
+                "enum": ["agricultural", "brownfield", "woodland", "garden-ground", "croft", "vacant"]
+              },
+              "accessArrangement": {
+                "type": "string",
+                "title": "Vehicular Access",
+                "enum": ["existing-access", "new-access-required", "shared-access"]
+              },
+              "withinConservationArea": {
+                "type": "boolean",
+                "title": "Within Conservation Area"
+              },
+              "designStatement": {
+                "type": "string",
+                "title": "Design & Access Statement",
+                "minLength": 50,
+                "maxLength": 5000
+              },
+              "siteLocationPlan": {
+                "type": "string",
+                "format": "binary",
+                "title": "Site Location Plan (1:2500)"
+              },
+              "proposedFloorPlans": {
+                "type": "string",
+                "format": "binary",
+                "title": "Proposed Floor Plans"
+              },
+              "elevationDrawings": {
+                "type": "string",
+                "format": "binary",
+                "title": "Elevation Drawings"
+              }
+            },
+            "required": [
+              "projectName",
+              "siteAddress",
+              "gridReference",
+              "plotSizeHectares",
+              "dwellingType",
+              "storeys",
+              "grossFloorArea",
+              "bedrooms",
+              "constructionMethod",
+              "estimatedBuildCost",
+              "existingLandUse",
+              "accessArrangement",
+              "withinConservationArea",
+              "designStatement"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "structural-engineer",
+            "dataPointers": [
+              "/projectName",
+              "/siteAddress",
+              "/gridReference",
+              "/plotSizeHectares",
+              "/storeys",
+              "/grossFloorArea",
+              "/constructionMethod",
+              "/existingLandUse"
+            ]
+          },
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-site-investigation",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to structural engineer for site investigation"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Planning Application",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Site Details",
+              "elements": [
+                {
+                  "type": "TextLine",
+                  "scope": "/projectName",
+                  "title": "Project Name"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/siteAddress",
+                  "title": "Site Address"
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/gridReference",
+                      "title": "OS Grid Reference (e.g. NH6645)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/plotSizeHectares",
+                      "title": "Plot Size (hectares)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/existingLandUse",
+                      "title": "Existing Land Use"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/accessArrangement",
+                      "title": "Vehicular Access"
+                    }
+                  ]
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/withinConservationArea",
+                  "title": "Site is within a Conservation Area"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Proposed Dwelling",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/dwellingType",
+                      "title": "Dwelling Type"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/constructionMethod",
+                      "title": "Construction Method"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/storeys",
+                      "title": "Number of Storeys"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/bedrooms",
+                      "title": "Number of Bedrooms"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/grossFloorArea",
+                      "title": "Gross Floor Area (m\u00b2)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/estimatedBuildCost",
+                      "title": "Estimated Build Cost (GBP)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Design Statement & Documents",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/designStatement",
+                  "title": "Design & Access Statement"
+                },
+                {
+                  "type": "File",
+                  "scope": "/siteLocationPlan",
+                  "title": "Site Location Plan (1:2500)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/proposedFloorPlans",
+                  "title": "Proposed Floor Plans"
+                },
+                {
+                  "type": "File",
+                  "scope": "/elevationDrawings",
+                  "title": "Elevation Drawings"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Site Investigation Report",
+        "description": "Structural engineer conducts site investigation, analyses ground conditions, and produces a report with foundation recommendations. Calculates a foundation risk score that informs downstream decisions.",
+        "sender": "structural-engineer",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "soilClassification": {
+                "type": "string",
+                "title": "Soil Classification",
+                "enum": ["rock", "gravel", "sand", "clay", "peat"]
+              },
+              "bearingCapacity": {
+                "type": "number",
+                "title": "Bearing Capacity (kN/m\u00b2)",
+                "minimum": 0
+              },
+              "waterTableDepth": {
+                "type": "number",
+                "title": "Water Table Depth (m)",
+                "minimum": 0
+              },
+              "contaminationFound": {
+                "type": "boolean",
+                "title": "Contamination Found"
+              },
+              "radonRisk": {
+                "type": "string",
+                "title": "Radon Risk Level",
+                "enum": ["low", "medium", "high"]
+              },
+              "slopeStability": {
+                "type": "string",
+                "title": "Slope Stability",
+                "enum": ["stable", "marginal", "unstable"]
+              },
+              "foundationRecommendation": {
+                "type": "string",
+                "title": "Recommended Foundation Type",
+                "enum": ["strip", "raft", "piled", "pad", "screw-pile"]
+              },
+              "assessmentNotes": {
+                "type": "string",
+                "title": "Assessment Notes",
+                "maxLength": 3000
+              },
+              "groundInvestigationReport": {
+                "type": "string",
+                "format": "binary",
+                "title": "Ground Investigation Report (PDF)"
+              },
+              "boreholeLog": {
+                "type": "string",
+                "format": "binary",
+                "title": "Borehole / Trial Pit Logs"
+              }
+            },
+            "required": [
+              "soilClassification",
+              "bearingCapacity",
+              "waterTableDepth",
+              "contaminationFound",
+              "radonRisk",
+              "slopeStability",
+              "foundationRecommendation",
+              "assessmentNotes"
+            ]
+          }
+        ],
+        "calculations": {
+          "foundationRiskScore": {
+            "+": [
+              {
+                "if": [
+                  { "==": [{ "var": "soilClassification" }, "peat"] }, 4,
+                  { "==": [{ "var": "soilClassification" }, "clay"] }, 3,
+                  { "==": [{ "var": "soilClassification" }, "sand"] }, 2,
+                  { "==": [{ "var": "soilClassification" }, "gravel"] }, 1,
+                  0
+                ]
+              },
+              {
+                "if": [
+                  { "<": [{ "var": "waterTableDepth" }, 1.0] }, 3,
+                  { "<": [{ "var": "waterTableDepth" }, 2.0] }, 2,
+                  { "<": [{ "var": "waterTableDepth" }, 3.0] }, 1,
+                  0
+                ]
+              },
+              {
+                "if": [{ "var": "contaminationFound" }, 3, 0]
+              },
+              {
+                "if": [
+                  { "==": [{ "var": "radonRisk" }, "high"] }, 2,
+                  { "==": [{ "var": "radonRisk" }, "medium"] }, 1,
+                  0
+                ]
+              },
+              {
+                "if": [
+                  { "==": [{ "var": "slopeStability" }, "unstable"] }, 3,
+                  { "==": [{ "var": "slopeStability" }, "marginal"] }, 1,
+                  0
+                ]
+              }
+            ]
+          }
+        },
+        "disclosures": [
+          {
+            "participantAddress": "structural-engineer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "ecologist",
+            "dataPointers": [
+              "/projectName",
+              "/siteAddress",
+              "/gridReference",
+              "/plotSizeHectares",
+              "/existingLandUse",
+              "/contaminationFound"
+            ]
+          },
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-ecology",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Route to ecological survey"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Site Investigation Report",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Ground Conditions",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/soilClassification",
+                      "title": "Soil Classification"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/bearingCapacity",
+                      "title": "Bearing Capacity (kN/m\u00b2)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/waterTableDepth",
+                      "title": "Water Table Depth (m)"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/slopeStability",
+                      "title": "Slope Stability"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Checkbox",
+                      "scope": "/contaminationFound",
+                      "title": "Contamination found on site"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/radonRisk",
+                      "title": "Radon Risk Level"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Recommendations",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/foundationRecommendation",
+                  "title": "Recommended Foundation Type"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/assessmentNotes",
+                  "title": "Assessment Notes"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Attached Reports",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/groundInvestigationReport",
+                  "title": "Ground Investigation Report (PDF)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/boreholeLog",
+                  "title": "Borehole / Trial Pit Logs"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "title": "Ecological Survey",
+        "description": "Ecologist conducts Phase 1 habitat survey, checks for protected species (bats, red squirrels, badgers, raptors), and assesses ecological impact. If protected species are found, routes to mitigation plan (Action 3b).",
+        "sender": "ecologist",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "habitatClassification": {
+                "type": "string",
+                "title": "Habitat Classification",
+                "enum": ["improved-grassland", "semi-natural-grassland", "woodland", "wetland", "moorland", "scrub", "garden-ground"]
+              },
+              "protectedSpeciesPresent": {
+                "type": "boolean",
+                "title": "Protected Species Present"
+              },
+              "speciesFound": {
+                "type": "array",
+                "title": "Protected Species Found",
+                "items": {
+                  "type": "string",
+                  "enum": ["bat", "red-squirrel", "badger", "otter", "great-crested-newt", "wildcat", "raptor-nest", "pine-marten"]
+                }
+              },
+              "ecologicalImpactRating": {
+                "type": "string",
+                "title": "Ecological Impact Rating",
+                "enum": ["negligible", "minor", "moderate", "significant"]
+              },
+              "seasonalConstraints": {
+                "type": "string",
+                "title": "Seasonal Construction Constraints",
+                "maxLength": 1000
+              },
+              "surveyNotes": {
+                "type": "string",
+                "title": "Survey Notes",
+                "maxLength": 3000
+              },
+              "habitatSurveyReport": {
+                "type": "string",
+                "format": "binary",
+                "title": "Phase 1 Habitat Survey Report (PDF)"
+              },
+              "sitePhotographs": {
+                "type": "string",
+                "format": "binary",
+                "title": "Site Photographs (GPS-tagged)"
+              }
+            },
+            "required": [
+              "habitatClassification",
+              "protectedSpeciesPresent",
+              "ecologicalImpactRating",
+              "surveyNotes"
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "id": "protected-species",
+            "nextActionIds": [4],
+            "condition": { "==": [{ "var": "protectedSpeciesPresent" }, true] },
+            "description": "Protected species found — mitigation plan required before proceeding"
+          },
+          {
+            "id": "no-species-concern",
+            "nextActionIds": [5],
+            "isDefault": true,
+            "description": "No protected species — proceed to utilities consultation"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "ecologist",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Ecological Survey",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Habitat Assessment",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/habitatClassification",
+                  "title": "Habitat Classification"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/ecologicalImpactRating",
+                  "title": "Ecological Impact Rating"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Protected Species",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/protectedSpeciesPresent",
+                  "title": "Protected species found on or near site"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/speciesFound",
+                  "title": "Species Identified"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Assessment",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/seasonalConstraints",
+                  "title": "Seasonal Construction Constraints"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/surveyNotes",
+                  "title": "Survey Notes"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Attached Evidence",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/habitatSurveyReport",
+                  "title": "Phase 1 Habitat Survey Report (PDF)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/sitePhotographs",
+                  "title": "Site Photographs (GPS-tagged)"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Species Mitigation Plan",
+        "description": "Conditional action — only reached if protected species were found in the ecological survey. Ecologist produces a Species Protection Plan with mitigation measures and any NatureScot licensing requirements.",
+        "sender": "ecologist",
+        "requiredPriorActions": [1, 3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "mitigationType": {
+                "type": "string",
+                "title": "Primary Mitigation Type",
+                "enum": ["avoidance", "translocation", "timing-restriction", "habitat-creation", "exclusion-zone"]
+              },
+              "licensingRequired": {
+                "type": "boolean",
+                "title": "NatureScot Licence Required"
+              },
+              "licenceReference": {
+                "type": "string",
+                "title": "NatureScot Licence Reference",
+                "maxLength": 50
+              },
+              "constructionTimingRestrictions": {
+                "type": "string",
+                "title": "Construction Timing Restrictions",
+                "maxLength": 1000
+              },
+              "mitigationMeasures": {
+                "type": "string",
+                "title": "Detailed Mitigation Measures",
+                "minLength": 50,
+                "maxLength": 5000
+              },
+              "estimatedMitigationCost": {
+                "type": "number",
+                "title": "Estimated Mitigation Cost (GBP)",
+                "minimum": 0
+              },
+              "speciesProtectionPlan": {
+                "type": "string",
+                "format": "binary",
+                "title": "Species Protection Plan (PDF)"
+              }
+            },
+            "required": [
+              "mitigationType",
+              "licensingRequired",
+              "constructionTimingRestrictions",
+              "mitigationMeasures",
+              "estimatedMitigationCost"
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-utilities",
+            "nextActionIds": [5],
+            "isDefault": true,
+            "description": "Mitigation plan complete — proceed to utilities consultation"
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "ecologist",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Species Mitigation Plan",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Mitigation Strategy",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/mitigationType",
+                  "title": "Primary Mitigation Type"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/mitigationMeasures",
+                  "title": "Detailed Mitigation Measures"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/constructionTimingRestrictions",
+                  "title": "Construction Timing Restrictions (e.g. no works March-August)"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Licensing",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/licensingRequired",
+                  "title": "NatureScot species licence required"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/licenceReference",
+                  "title": "NatureScot Licence Reference"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/estimatedMitigationCost",
+                  "title": "Estimated Mitigation Cost (GBP)"
+                }
+              ]
+            },
+            {
+              "type": "File",
+              "scope": "/speciesProtectionPlan",
+              "title": "Species Protection Plan (PDF)"
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Utilities Consultation",
+        "description": "Scottish Water assesses water supply feasibility and drainage capacity for the proposed development. Can reject the application if connection is not feasible.",
+        "sender": "utilities-officer",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "waterSupplyFeasible": {
+                "type": "boolean",
+                "title": "Water Supply Feasible"
+              },
+              "nearestMainDistance": {
+                "type": "number",
+                "title": "Distance to Nearest Water Main (m)",
+                "minimum": 0
+              },
+              "drainageSolution": {
+                "type": "string",
+                "title": "Drainage Solution",
+                "enum": ["public-sewer", "private-treatment", "septic-tank"]
+              },
+              "surfaceWaterPlan": {
+                "type": "string",
+                "title": "Surface Water Drainage",
+                "enum": ["soakaway", "SuDS", "watercourse-discharge"]
+              },
+              "capacityConfirmed": {
+                "type": "boolean",
+                "title": "Network Capacity Confirmed"
+              },
+              "connectionCostEstimate": {
+                "type": "number",
+                "title": "Estimated Connection Cost (GBP)",
+                "minimum": 0
+              },
+              "consultationOutcome": {
+                "type": "string",
+                "title": "Consultation Outcome",
+                "enum": ["feasible", "feasible-with-conditions", "not-feasible"]
+              },
+              "consultationNotes": {
+                "type": "string",
+                "title": "Consultation Notes",
+                "maxLength": 2000
+              },
+              "drainageAssessment": {
+                "type": "string",
+                "format": "binary",
+                "title": "Drainage Assessment Report (PDF)"
+              }
+            },
+            "required": [
+              "waterSupplyFeasible",
+              "nearestMainDistance",
+              "drainageSolution",
+              "surfaceWaterPlan",
+              "capacityConfirmed",
+              "connectionCostEstimate",
+              "consultationOutcome",
+              "consultationNotes"
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-planning-review",
+            "nextActionIds": [6],
+            "condition": { "!=": [{ "var": "consultationOutcome" }, "not-feasible"] },
+            "description": "Water/drainage feasible — proceed to planning review"
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 1,
+          "requireReason": true,
+          "isTerminal": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "utilities-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": [
+              "/consultationOutcome",
+              "/consultationNotes",
+              "/connectionCostEstimate",
+              "/drainageSolution"
+            ]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Utilities Consultation",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Water Supply",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Checkbox",
+                      "scope": "/waterSupplyFeasible",
+                      "title": "Water supply connection is feasible"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/nearestMainDistance",
+                      "title": "Distance to Nearest Main (m)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/capacityConfirmed",
+                  "title": "Network capacity confirmed"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Drainage",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/drainageSolution",
+                      "title": "Foul Water Drainage"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/surfaceWaterPlan",
+                      "title": "Surface Water Drainage"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Outcome",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/consultationOutcome",
+                      "title": "Consultation Outcome"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/connectionCostEstimate",
+                      "title": "Estimated Connection Cost (GBP)"
+                    }
+                  ]
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/consultationNotes",
+                  "title": "Consultation Notes"
+                }
+              ]
+            },
+            {
+              "type": "File",
+              "scope": "/drainageAssessment",
+              "title": "Drainage Assessment Report (PDF)"
+            }
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "title": "Planning Review & Decision",
+        "description": "Planning officer reviews all consultation responses, assesses compliance with the Highland Local Development Plan, and makes a decision. Can approve, request amendments, or refuse. Calculates the planning application fee.",
+        "sender": "planning-officer",
+        "requiredPriorActions": [1, 2, 3, 5],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "localPlanCompliance": {
+                "type": "boolean",
+                "title": "Compliant with Local Development Plan"
+              },
+              "designQuality": {
+                "type": "string",
+                "title": "Design Quality Assessment",
+                "enum": ["poor", "acceptable", "good", "excellent"]
+              },
+              "landscapeImpact": {
+                "type": "string",
+                "title": "Landscape & Visual Impact",
+                "enum": ["negligible", "minor", "moderate", "significant"]
+              },
+              "neighbourNotificationComplete": {
+                "type": "boolean",
+                "title": "Neighbour Notification Complete"
+              },
+              "objectionsReceived": {
+                "type": "integer",
+                "title": "Number of Objections Received",
+                "minimum": 0
+              },
+              "accessAndParkingAdequate": {
+                "type": "boolean",
+                "title": "Access and Parking Adequate"
+              },
+              "decision": {
+                "type": "string",
+                "title": "Planning Decision",
+                "enum": ["approve", "request-amendments", "refuse"]
+              },
+              "conditions": {
+                "type": "array",
+                "title": "Planning Conditions",
+                "items": { "type": "string", "maxLength": 500 }
+              },
+              "refusalReasons": {
+                "type": "array",
+                "title": "Refusal Reasons (if refusing)",
+                "items": { "type": "string", "maxLength": 500 }
+              },
+              "planningNotes": {
+                "type": "string",
+                "title": "Planning Officer Notes",
+                "maxLength": 3000
+              },
+              "officerReport": {
+                "type": "string",
+                "format": "binary",
+                "title": "Planning Officer Report (PDF)"
+              }
+            },
+            "required": [
+              "localPlanCompliance",
+              "designQuality",
+              "landscapeImpact",
+              "neighbourNotificationComplete",
+              "objectionsReceived",
+              "accessAndParkingAdequate",
+              "decision",
+              "planningNotes"
+            ]
+          }
+        ],
+        "calculations": {
+          "planningFee": {
+            "if": [
+              { "<=": [{ "var": "grossFloorArea" }, 75] }, 300,
+              { "<=": [{ "var": "grossFloorArea" }, 150] }, 600,
+              {
+                "+": [
+                  600,
+                  { "*": [{ "-": [{ "var": "grossFloorArea" }, 150] }, 2.50] }
+                ]
+              }
+            ]
+          }
+        },
+        "routes": [
+          {
+            "id": "approved",
+            "nextActionIds": [7],
+            "condition": { "==": [{ "var": "decision" }, "approve"] },
+            "description": "Application approved — issue planning permission"
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 1,
+          "requireReason": true,
+          "isTerminal": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": [
+              "/decision",
+              "/conditions",
+              "/refusalReasons",
+              "/planningNotes",
+              "/planningFee"
+            ]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Planning Review & Decision",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Policy Compliance",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/localPlanCompliance",
+                  "title": "Complies with Highland Local Development Plan"
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/designQuality",
+                      "title": "Design Quality"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/landscapeImpact",
+                      "title": "Landscape & Visual Impact"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Consultation & Notification",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Checkbox",
+                      "scope": "/neighbourNotificationComplete",
+                      "title": "Neighbour notification complete"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/objectionsReceived",
+                      "title": "Objections Received"
+                    }
+                  ]
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/accessAndParkingAdequate",
+                  "title": "Access and parking arrangements are adequate"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Decision",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/decision",
+                  "title": "Planning Decision"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/planningNotes",
+                  "title": "Planning Officer Notes"
+                }
+              ]
+            },
+            {
+              "type": "File",
+              "scope": "/officerReport",
+              "title": "Planning Officer Report (PDF)"
+            }
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "title": "Issue Planning Permission",
+        "description": "Planning officer formally issues planning permission. A Planning Permission Verifiable Credential is minted and issued to the self-builder, which becomes a prerequisite for the Building Warrant application on the Building Standards Register.",
+        "sender": "planning-officer",
+        "requiredPriorActions": [1, 2, 3, 5, 6],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "permitReference": {
+                "type": "string",
+                "title": "Planning Permission Reference",
+                "pattern": "^\\d{2}/\\d{5}/FUL$",
+                "maxLength": 20
+              },
+              "grantDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Date of Grant"
+              },
+              "expiryDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Permission Expiry Date"
+              },
+              "approvedPlanRefs": {
+                "type": "array",
+                "title": "Approved Plan Drawing References",
+                "items": { "type": "string", "maxLength": 50 }
+              },
+              "conditions": {
+                "type": "array",
+                "title": "Planning Conditions",
+                "items": { "type": "string", "maxLength": 500 }
+              },
+              "informatives": {
+                "type": "array",
+                "title": "Informatives (Advisory Notes)",
+                "items": { "type": "string", "maxLength": 500 }
+              }
+            },
+            "required": [
+              "permitReference",
+              "grantDate",
+              "expiryDate",
+              "approvedPlanRefs",
+              "conditions"
+            ]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "PlanningPermissionCredential",
+          "recipientParticipantId": "self-builder",
+          "expiryDuration": "P1095D",
+          "claimMappings": [
+            { "claimName": "permitReference", "sourceField": "/permitReference" },
+            { "claimName": "siteAddress", "sourceField": "/siteAddress" },
+            { "claimName": "dwellingType", "sourceField": "/dwellingType" },
+            { "claimName": "grossFloorArea", "sourceField": "/grossFloorArea" },
+            { "claimName": "constructionMethod", "sourceField": "/constructionMethod" },
+            { "claimName": "conditions", "sourceField": "/conditions" },
+            { "claimName": "grantDate", "sourceField": "/grantDate" },
+            { "claimName": "expiryDate", "sourceField": "/expiryDate" }
+          ],
+          "disclosable": [
+            "permitReference",
+            "siteAddress",
+            "dwellingType",
+            "grantDate",
+            "expiryDate"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "planning-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Issue Planning Permission",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Permission Details",
+              "elements": [
+                {
+                  "type": "TextLine",
+                  "scope": "/permitReference",
+                  "title": "Planning Reference (e.g. 26/00142/FUL)"
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "DateTime",
+                      "scope": "/grantDate",
+                      "title": "Date of Grant"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/expiryDate",
+                      "title": "Expiry Date (3 years)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Conditions & Informatives",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/conditions",
+                  "title": "Conditions Attached to Permission"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/informatives",
+                  "title": "Informatives (Advisory Notes)"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "parameterSchema": {
+    "type": "object",
+    "properties": {
+      "selfBuilderWallet": {
+        "type": "string",
+        "description": "Wallet address for the self-builder (member of public)"
+      },
+      "structuralEngineerWallet": {
+        "type": "string",
+        "description": "Wallet address for the structural engineer (MacGregor Structural)"
+      },
+      "ecologistWallet": {
+        "type": "string",
+        "description": "Wallet address for the ecologist (Glen Ecology Consultants)"
+      },
+      "utilitiesOfficerWallet": {
+        "type": "string",
+        "description": "Wallet address for the utilities officer (Scottish Water)"
+      },
+      "planningOfficerWallet": {
+        "type": "string",
+        "description": "Wallet address for the planning officer (Highland Council)"
+      }
+    },
+    "required": [
+      "selfBuilderWallet",
+      "structuralEngineerWallet",
+      "ecologistWallet",
+      "utilitiesOfficerWallet",
+      "planningOfficerWallet"
+    ]
+  },
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "Scenario A: Happy Path — Timber-Frame Bungalow",
+      "description": "Rural bungalow on garden ground, no protected species, standard foundations — 6 actions to planning permission",
+      "parameters": {
+        "selfBuilderWallet": "0xSELF_BUILDER_WALLET",
+        "structuralEngineerWallet": "0xSTRUCTURAL_ENGINEER_WALLET",
+        "ecologistWallet": "0xECOLOGIST_WALLET",
+        "utilitiesOfficerWallet": "0xUTILITIES_OFFICER_WALLET",
+        "planningOfficerWallet": "0xPLANNING_OFFICER_WALLET"
+      }
+    },
+    {
+      "name": "Scenario B: Protected Species — Woodland Edge",
+      "description": "Woodland edge plot with bat roost discovered, triggers mitigation plan — 7 actions including conditional species protection",
+      "parameters": {
+        "selfBuilderWallet": "0xSELF_BUILDER_WALLET",
+        "structuralEngineerWallet": "0xSTRUCTURAL_ENGINEER_WALLET",
+        "ecologistWallet": "0xECOLOGIST_WALLET",
+        "utilitiesOfficerWallet": "0xUTILITIES_OFFICER_WALLET",
+        "planningOfficerWallet": "0xPLANNING_OFFICER_WALLET"
+      }
+    },
+    {
+      "name": "Scenario C: Refused — Conservation Area",
+      "description": "Modern design in conservation area, refused for non-compliance with local plan — terminal rejection at action 6",
+      "parameters": {
+        "selfBuilderWallet": "0xSELF_BUILDER_WALLET",
+        "structuralEngineerWallet": "0xSTRUCTURAL_ENGINEER_WALLET",
+        "ecologistWallet": "0xECOLOGIST_WALLET",
+        "utilitiesOfficerWallet": "0xUTILITIES_OFFICER_WALLET",
+        "planningOfficerWallet": "0xPLANNING_OFFICER_WALLET"
+      }
+    }
+  ]
+}

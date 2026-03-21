@@ -1,0 +1,29 @@
+{
+  "name": "SelfBuildHouse",
+  "description": "Scottish self-build house — planning permission and building warrant across 2 registers, 6 organisations, 7 participants, with verifiable credentials, document uploads, and staged inspections.",
+  "category": "multi-org",
+  "organizations": [
+    { "name": "Self-Builder (Member of Public)", "subdomain": "self-builder", "role": "applicant" },
+    { "name": "Highland Council — Planning", "subdomain": "highland-planning", "role": "planning authority" },
+    { "name": "Highland Council — Building Standards", "subdomain": "highland-building-standards", "role": "building warrant + inspections" },
+    { "name": "Scottish Water", "subdomain": "scottish-water", "role": "utilities consultation" },
+    { "name": "MacGregor Structural Engineers", "subdomain": "macgregor-structural", "role": "site investigation + structural calcs" },
+    { "name": "Glen Ecology Consultants", "subdomain": "glen-ecology", "role": "habitat survey + environmental assessment" }
+  ],
+  "secretsKey": "self-build-house",
+  "requiresRegister": true,
+  "requiresParticipants": true,
+  "registers": [
+    { "name": "Highland Planning Register", "purpose": "Planning applications and decisions" },
+    { "name": "Highland Building Standards Register", "purpose": "Building warrants and completion certificates" }
+  ],
+  "templates": [
+    "planning-permission-template.json",
+    "building-warrant-template.json"
+  ],
+  "scenarios": [
+    "data/scenario-a-happy-path.json",
+    "data/scenario-b-protected-species.json",
+    "data/scenario-c-refused.json"
+  ]
+}

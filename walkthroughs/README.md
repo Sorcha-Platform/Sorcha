@@ -55,6 +55,7 @@ Multiple organizations with cross-org participants and complex workflows.
 | [OrganizationPingPong](./OrganizationPingPong/) | setup + run | Multi-participant ping-pong with published participants |
 | [ConstructionPermit](./ConstructionPermit/) | setup + run | 4-org, 5-participant permit workflow with conditional routing |
 | [MedicalEquipmentRefurb](./MedicalEquipmentRefurb/) | setup + run | 3-org, 4-participant refurbishment with participant publishing |
+| [SelfBuildHouse](./SelfBuildHouse/) | setup + run | 6-org, 7-participant self-build across 2 registers with cross-register VCs, staged inspections, and document uploads |
 
 ### Advanced
 

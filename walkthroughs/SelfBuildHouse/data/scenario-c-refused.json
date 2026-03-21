@@ -1,0 +1,74 @@
+{
+  "name": "Scenario C: Refused — Modern Design in Conservation Area",
+  "description": "A two-storey contemporary design proposed within a Highland conservation area village. Good ground conditions and ecology, but the modern flat-roof design clashes with the traditional village character. Planning officer refuses the application at Action 6 — terminal rejection. No planning permission credential issued, building warrant process never starts.",
+  "expectedFoundationRiskScore": 1,
+  "expectedPlanningFee": 600,
+  "expectedPlanningPath": [1, 2, 3, 5, 6],
+  "skipsSpeciesMitigation": true,
+  "expectedRejection": true,
+  "rejectionReason": "The proposed development is contrary to Policy 28 (Sustainable Design), Policy 57 (Natural, Built and Cultural Heritage), and the Cromarty Conservation Area Management Plan. The contemporary flat-roof design with rendered walls and large-format glazing is fundamentally incompatible with the traditional character of the conservation area, which is characterised by pitched-roof stone and slate buildings. The design fails to preserve or enhance the character and appearance of the conservation area as required by Section 64 of the Planning (Listed Buildings and Conservation Areas) (Scotland) Act 1997. A redesign incorporating traditional proportions, materials, and roof form would be welcome as a fresh application.",
+  "planning": {
+    "1": {
+      "projectName": "Harbour View",
+      "siteAddress": "Gap Site, Church Street, Cromarty, Ross-shire, IV11 8XA",
+      "gridReference": "NH7867",
+      "plotSizeHectares": 0.08,
+      "dwellingType": "detached",
+      "storeys": 2,
+      "grossFloorArea": 150,
+      "bedrooms": 3,
+      "constructionMethod": "ICF",
+      "estimatedBuildCost": 320000,
+      "existingLandUse": "vacant",
+      "accessArrangement": "existing-access",
+      "withinConservationArea": true,
+      "designStatement": "A bold contemporary dwelling on a gap site in Cromarty village. The design features a flat-roof form with full-height glazing to capture harbour views. White rendered walls with timber rain-screen cladding accents provide a clean modern aesthetic. The ICF (Insulated Concrete Form) construction method delivers exceptional thermal performance and air-tightness. While acknowledging the conservation area setting, the design takes the position that high-quality contemporary architecture can sit alongside traditional buildings and contribute positively to the village streetscape through its honest expression of modern materials and forms."
+    },
+    "2": {
+      "soilClassification": "rock",
+      "bearingCapacity": 500,
+      "waterTableDepth": 8.0,
+      "contaminationFound": false,
+      "radonRisk": "low",
+      "slopeStability": "stable",
+      "foundationRecommendation": "strip",
+      "assessmentNotes": "Excellent ground conditions. Sandstone bedrock at shallow depth with high bearing capacity. Deep water table — no groundwater issues. No contamination on this vacant site. Low radon risk. Conventional strip foundations easily achievable, trenched into rock."
+    },
+    "3": {
+      "habitatClassification": "garden-ground",
+      "protectedSpeciesPresent": false,
+      "speciesFound": [],
+      "ecologicalImpactRating": "negligible",
+      "seasonalConstraints": "None. Check for nesting birds if works commence between March and August.",
+      "surveyNotes": "Small vacant plot within the village. Managed grass and scrub vegetation only. No trees, no hedgerows of ecological value. No bat roost potential. No protected species evidence. Standard nesting bird precaution advised if clearing vegetation in breeding season."
+    },
+    "5": {
+      "waterSupplyFeasible": true,
+      "nearestMainDistance": 5,
+      "drainageSolution": "public-sewer",
+      "surfaceWaterPlan": "soakaway",
+      "capacityConfirmed": true,
+      "connectionCostEstimate": 2200,
+      "consultationOutcome": "feasible",
+      "consultationNotes": "Water main and public sewer both available on Church Street, 5m from plot boundary. Standard connections with no capacity concerns. Surface water to soakaway — rock subsoil gives excellent percolation. No objections."
+    },
+    "6": {
+      "localPlanCompliance": false,
+      "designQuality": "poor",
+      "landscapeImpact": "significant",
+      "neighbourNotificationComplete": true,
+      "objectionsReceived": 7,
+      "accessAndParkingAdequate": true,
+      "decision": "refuse",
+      "conditions": [],
+      "refusalReasons": [
+        "The proposed flat-roof contemporary design is fundamentally incompatible with the character and appearance of the Cromarty Conservation Area, contrary to Policy 57 (Natural, Built and Cultural Heritage)",
+        "The design fails to preserve or enhance the conservation area as required by Section 64 of the Planning (Listed Buildings and Conservation Areas) (Scotland) Act 1997",
+        "The rendered walls and large-format glazing do not reflect the local vernacular of sandstone and slate that defines the Church Street streetscape",
+        "7 objections received from local residents citing harm to the historic character of the village",
+        "The application is contrary to the adopted Cromarty Conservation Area Management Plan which specifically discourages flat-roof and overtly modern designs on gap sites within the historic core"
+      ],
+      "planningNotes": "Application for a two-storey contemporary dwelling on a gap site in Cromarty Conservation Area. While the technical aspects (ground conditions, ecology, utilities) are all satisfactory, the design is wholly inappropriate for its sensitive conservation area setting. Church Street is one of the finest intact 18th-century streetscapes in the Highlands, characterised by two-storey sandstone buildings with pitched slate roofs and traditional proportions. The proposed flat-roof, rendered design with large-format glazing would cause significant harm to the character and appearance of the conservation area. 7 objections received from neighbouring residents and the Cromarty & District Community Council. The application is recommended for refusal. The applicant is encouraged to submit a revised design that responds to the traditional character of the area — there is no in-principle objection to a dwelling on this gap site."
+    }
+  }
+}

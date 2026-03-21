@@ -1,0 +1,1451 @@
+{
+  "id": "self-build-building-warrant-v1",
+  "title": "Self-Build Building Warrant & Completion (Scotland)",
+  "description": "Scottish building warrant and staged inspection workflow for a self-build dwelling. Requires a Planning Permission Verifiable Credential as a prerequisite. Features structural calculations, Building Standards review against 7 Scottish standards, staged site inspections, and issuance of Building Warrant and Completion Certificate credentials.",
+  "version": 1,
+  "category": "government",
+  "tags": ["building-warrant", "self-build", "scotland", "inspections", "verifiable-credential", "credential-requirement", "multi-register", "completion-certificate"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "self-build-warrant-generated",
+    "title": "Self-Build Building Warrant & Completion (Scotland)",
+    "description": "Scottish building warrant process for a self-build house. Runs on the Building Standards Register and requires a Planning Permission Verifiable Credential issued from the Planning Register. Features structural calculations submission, 7-standard Building Standards review, staged inspections (foundation, structure, completion), and issuance of Building Warrant and Completion Certificate credentials.",
+    "version": 1,
+    "metadata": {
+      "category": "Government & Building Standards",
+      "complexity": "Complex",
+      "actions": "7",
+      "features": "Multi-Register, Credential Requirement, Staged Inspections, Calculations, Rejection, Verifiable Credential",
+      "sector": "Housing & Building Standards",
+      "jurisdiction": "Scotland"
+    },
+    "participants": [
+      {
+        "id": "self-builder",
+        "name": "Self-Builder",
+        "organisation": "Member of Public",
+        "description": "Applicant presenting Planning Permission VC and submitting building warrant application with technical drawings and specifications."
+      },
+      {
+        "id": "structural-engineer",
+        "name": "Lead Engineer",
+        "organisation": "MacGregor Structural Engineers",
+        "description": "Submits structural calculations package, foundation design, and wind/snow loading analysis."
+      },
+      {
+        "id": "building-standards-officer",
+        "name": "Building Standards Officer",
+        "organisation": "Highland Council — Building Standards",
+        "description": "Reviews application against the 7 Scottish Building Standards, calculates warrant fee, and issues Building Warrant."
+      },
+      {
+        "id": "building-inspector",
+        "name": "Building Inspector",
+        "organisation": "Highland Council — Building Standards",
+        "description": "Conducts staged site inspections (foundations, structure & weathertight, final completion) and issues Completion Certificate."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Building Warrant Application",
+        "description": "Self-builder submits building warrant application with approved planning drawings, building specifications, and energy performance calculations. Must present a valid Planning Permission Verifiable Credential from the Planning Register.",
+        "sender": "self-builder",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "PlanningPermissionCredential",
+            "requiredClaims": [
+              { "claimName": "permitReference" },
+              { "claimName": "siteAddress" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Valid planning permission is required before a building warrant can be applied for"
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "planningPermitReference": {
+                "type": "string",
+                "title": "Planning Permission Reference (from VC)",
+                "maxLength": 20
+              },
+              "siteAddress": {
+                "type": "string",
+                "title": "Site Address",
+                "maxLength": 500
+              },
+              "constructionMethod": {
+                "type": "string",
+                "title": "Construction Method",
+                "enum": ["timber-frame", "masonry", "SIPs", "ICF", "steel-frame"]
+              },
+              "wallInsulationType": {
+                "type": "string",
+                "title": "Wall Insulation Type",
+                "enum": ["mineral-wool", "PIR-board", "EPS", "wood-fibre", "spray-foam"]
+              },
+              "heatingSystem": {
+                "type": "string",
+                "title": "Heating System",
+                "enum": ["air-source-heat-pump", "ground-source-heat-pump", "biomass", "gas-boiler", "electric"]
+              },
+              "renewableEnergy": {
+                "type": "string",
+                "title": "Renewable Energy Provision",
+                "enum": ["solar-PV", "solar-thermal", "wind-turbine", "none"]
+              },
+              "estimatedBuildCost": {
+                "type": "number",
+                "title": "Estimated Build Cost (GBP)",
+                "minimum": 50000
+              },
+              "proposedStartDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Proposed Start Date"
+              },
+              "sapRating": {
+                "type": "number",
+                "title": "SAP Rating (1-100)",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "approvedPlanDrawings": {
+                "type": "string",
+                "format": "binary",
+                "title": "Approved Planning Drawings"
+              },
+              "buildingSpecification": {
+                "type": "string",
+                "format": "binary",
+                "title": "Building Specification (PDF)"
+              },
+              "energyCalculations": {
+                "type": "string",
+                "format": "binary",
+                "title": "SAP Energy Performance Calculations"
+              }
+            },
+            "required": [
+              "planningPermitReference",
+              "siteAddress",
+              "constructionMethod",
+              "wallInsulationType",
+              "heatingSystem",
+              "renewableEnergy",
+              "estimatedBuildCost",
+              "proposedStartDate",
+              "sapRating"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "structural-engineer",
+            "dataPointers": [
+              "/siteAddress",
+              "/constructionMethod",
+              "/estimatedBuildCost"
+            ]
+          },
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-structural-calcs",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to structural engineer for calculations"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Building Warrant Application",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Planning Reference",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/planningPermitReference",
+                      "title": "Planning Permission Reference"
+                    },
+                    {
+                      "type": "TextArea",
+                      "scope": "/siteAddress",
+                      "title": "Site Address"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Construction Details",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/constructionMethod",
+                      "title": "Construction Method"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/wallInsulationType",
+                      "title": "Wall Insulation"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/heatingSystem",
+                      "title": "Heating System"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/renewableEnergy",
+                      "title": "Renewable Energy"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Cost & Programme",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/estimatedBuildCost",
+                      "title": "Estimated Build Cost (GBP)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/sapRating",
+                      "title": "SAP Rating (1-100)"
+                    }
+                  ]
+                },
+                {
+                  "type": "DateTime",
+                  "scope": "/proposedStartDate",
+                  "title": "Proposed Start Date"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Supporting Documents",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/approvedPlanDrawings",
+                  "title": "Approved Planning Drawings"
+                },
+                {
+                  "type": "File",
+                  "scope": "/buildingSpecification",
+                  "title": "Building Specification (PDF)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/energyCalculations",
+                  "title": "SAP Energy Performance Calculations"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Structural Calculations Submission",
+        "description": "Structural engineer submits structural calculations package including foundation design, wind and snow loading analysis, and Eurocode compliance confirmation. Calculates a structural adequacy score.",
+        "sender": "structural-engineer",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "structuralSystem": {
+                "type": "string",
+                "title": "Structural System",
+                "enum": ["timber-frame", "masonry-loadbearing", "steel-frame", "SIPs-panel", "hybrid"]
+              },
+              "foundationType": {
+                "type": "string",
+                "title": "Foundation Type",
+                "enum": ["strip", "raft", "piled", "screw-pile", "pad"]
+              },
+              "designWindSpeed": {
+                "type": "number",
+                "title": "Design Wind Speed (m/s)",
+                "minimum": 0
+              },
+              "designSnowLoad": {
+                "type": "number",
+                "title": "Design Snow Load (kN/m\u00b2)",
+                "minimum": 0
+              },
+              "safetyFactorAchieved": {
+                "type": "number",
+                "title": "Safety Factor Achieved",
+                "minimum": 1.0
+              },
+              "euroCodeCompliance": {
+                "type": "boolean",
+                "title": "Eurocode Compliance Confirmed"
+              },
+              "engineerNotes": {
+                "type": "string",
+                "title": "Engineer Notes",
+                "maxLength": 3000
+              },
+              "structuralCalculations": {
+                "type": "string",
+                "format": "binary",
+                "title": "Structural Calculations Package (PDF)"
+              },
+              "foundationDesign": {
+                "type": "string",
+                "format": "binary",
+                "title": "Foundation Design Drawings"
+              }
+            },
+            "required": [
+              "structuralSystem",
+              "foundationType",
+              "designWindSpeed",
+              "designSnowLoad",
+              "safetyFactorAchieved",
+              "euroCodeCompliance",
+              "engineerNotes"
+            ]
+          }
+        ],
+        "calculations": {
+          "structuralAdequacyScore": {
+            "*": [
+              {
+                "min": [{ "var": "safetyFactorAchieved" }, 3.0]
+              },
+              {
+                "if": [{ "var": "euroCodeCompliance" }, 1.0, 0.5]
+              },
+              {
+                "if": [
+                  { "==": [{ "var": "foundationType" }, "piled"] }, 0.9,
+                  { "==": [{ "var": "foundationType" }, "raft"] }, 0.95,
+                  1.0
+                ]
+              }
+            ]
+          }
+        },
+        "disclosures": [
+          {
+            "participantAddress": "structural-engineer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-standards-review",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Route to Building Standards review"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Structural Calculations",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Structural Design",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/structuralSystem",
+                      "title": "Structural System"
+                    },
+                    {
+                      "type": "Selection",
+                      "scope": "/foundationType",
+                      "title": "Foundation Type"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Loading & Compliance",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/designWindSpeed",
+                      "title": "Design Wind Speed (m/s)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/designSnowLoad",
+                      "title": "Design Snow Load (kN/m\u00b2)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/safetyFactorAchieved",
+                      "title": "Safety Factor Achieved"
+                    },
+                    {
+                      "type": "Checkbox",
+                      "scope": "/euroCodeCompliance",
+                      "title": "Eurocode compliance confirmed"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "TextArea",
+              "scope": "/engineerNotes",
+              "title": "Engineer Notes"
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Attached Documents",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/structuralCalculations",
+                  "title": "Structural Calculations Package (PDF)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/foundationDesign",
+                  "title": "Foundation Design Drawings"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "title": "Building Standards Review",
+        "description": "Building Standards Officer reviews the application against the 7 Scottish Building Standards: Structure, Fire, Environment, Safety, Noise, Energy, and Sustainability. Calculates the building warrant fee based on estimated build cost.",
+        "sender": "building-standards-officer",
+        "requiredPriorActions": [1, 2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "standard1Structure": {
+                "type": "string",
+                "title": "Standard 1 — Structure",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard2Fire": {
+                "type": "string",
+                "title": "Standard 2 — Fire",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard3Environment": {
+                "type": "string",
+                "title": "Standard 3 — Environment",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard4Safety": {
+                "type": "string",
+                "title": "Standard 4 — Safety",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard5Noise": {
+                "type": "string",
+                "title": "Standard 5 — Noise",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard6Energy": {
+                "type": "string",
+                "title": "Standard 6 — Energy",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "standard7Sustainability": {
+                "type": "string",
+                "title": "Standard 7 — Sustainability",
+                "enum": ["pass", "fail", "minor-amendment"]
+              },
+              "overallDecision": {
+                "type": "string",
+                "title": "Overall Decision",
+                "enum": ["approve", "request-amendments", "refuse"]
+              },
+              "reviewNotes": {
+                "type": "string",
+                "title": "Review Notes",
+                "maxLength": 3000
+              },
+              "technicalReport": {
+                "type": "string",
+                "format": "binary",
+                "title": "Technical Assessment Report (PDF)"
+              }
+            },
+            "required": [
+              "standard1Structure",
+              "standard2Fire",
+              "standard3Environment",
+              "standard4Safety",
+              "standard5Noise",
+              "standard6Energy",
+              "standard7Sustainability",
+              "overallDecision",
+              "reviewNotes"
+            ]
+          }
+        ],
+        "calculations": {
+          "warrantFee": {
+            "if": [
+              { "<=": [{ "var": "estimatedBuildCost" }, 50000] }, 300,
+              { "<=": [{ "var": "estimatedBuildCost" }, 100000] }, 600,
+              { "<=": [{ "var": "estimatedBuildCost" }, 250000] }, 1200,
+              {
+                "+": [
+                  1200,
+                  {
+                    "*": [
+                      { "/": [{ "-": [{ "var": "estimatedBuildCost" }, 250000] }, 10000] },
+                      50
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "routes": [
+          {
+            "id": "approved",
+            "nextActionIds": [4],
+            "condition": { "==": [{ "var": "overallDecision" }, "approve"] },
+            "description": "All 7 standards satisfied — issue building warrant"
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 1,
+          "requireReason": true,
+          "isTerminal": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": [
+              "/standard1Structure",
+              "/standard2Fire",
+              "/standard3Environment",
+              "/standard4Safety",
+              "/standard5Noise",
+              "/standard6Energy",
+              "/standard7Sustainability",
+              "/overallDecision",
+              "/reviewNotes",
+              "/warrantFee"
+            ]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Building Standards Review",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Scottish Building Standards Assessment",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/standard1Structure",
+                  "title": "Standard 1 — Structure"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard2Fire",
+                  "title": "Standard 2 — Fire"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard3Environment",
+                  "title": "Standard 3 — Environment"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard4Safety",
+                  "title": "Standard 4 — Safety"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard5Noise",
+                  "title": "Standard 5 — Noise"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard6Energy",
+                  "title": "Standard 6 — Energy"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/standard7Sustainability",
+                  "title": "Standard 7 — Sustainability"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Decision",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/overallDecision",
+                  "title": "Overall Decision"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/reviewNotes",
+                  "title": "Review Notes"
+                }
+              ]
+            },
+            {
+              "type": "File",
+              "scope": "/technicalReport",
+              "title": "Technical Assessment Report (PDF)"
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Issue Building Warrant",
+        "description": "Building Standards Officer formally issues the building warrant. A Building Warrant Verifiable Credential is minted and issued to the self-builder, which is required for staged inspections.",
+        "sender": "building-standards-officer",
+        "requiredPriorActions": [1, 2, 3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "warrantReference": {
+                "type": "string",
+                "title": "Building Warrant Reference",
+                "pattern": "^\\d{2}/\\d{5}/BW$",
+                "maxLength": 20
+              },
+              "grantDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Date of Grant"
+              },
+              "expiryDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Warrant Expiry Date"
+              },
+              "approvedPlansReference": {
+                "type": "string",
+                "title": "Approved Plans Reference",
+                "maxLength": 100
+              },
+              "stagedInspections": {
+                "type": "array",
+                "title": "Required Staged Inspections",
+                "items": { "type": "string" }
+              },
+              "conditions": {
+                "type": "array",
+                "title": "Warrant Conditions",
+                "items": { "type": "string", "maxLength": 500 }
+              }
+            },
+            "required": [
+              "warrantReference",
+              "grantDate",
+              "expiryDate",
+              "approvedPlansReference",
+              "stagedInspections",
+              "conditions"
+            ]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "BuildingWarrantCredential",
+          "recipientParticipantId": "self-builder",
+          "expiryDuration": "P1095D",
+          "claimMappings": [
+            { "claimName": "warrantReference", "sourceField": "/warrantReference" },
+            { "claimName": "siteAddress", "sourceField": "/siteAddress" },
+            { "claimName": "approvedPlansReference", "sourceField": "/approvedPlansReference" },
+            { "claimName": "conditions", "sourceField": "/conditions" },
+            { "claimName": "grantDate", "sourceField": "/grantDate" },
+            { "claimName": "expiryDate", "sourceField": "/expiryDate" }
+          ],
+          "disclosable": [
+            "warrantReference",
+            "siteAddress",
+            "approvedPlansReference",
+            "grantDate"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "building-inspector",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-foundation-inspection",
+            "nextActionIds": [5],
+            "isDefault": true,
+            "description": "Warrant issued — construction begins, first inspection at foundations stage"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Issue Building Warrant",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Warrant Details",
+              "elements": [
+                {
+                  "type": "TextLine",
+                  "scope": "/warrantReference",
+                  "title": "Building Warrant Reference (e.g. 26/00142/BW)"
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "DateTime",
+                      "scope": "/grantDate",
+                      "title": "Date of Grant"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/expiryDate",
+                      "title": "Expiry Date (3 years)"
+                    }
+                  ]
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/approvedPlansReference",
+                  "title": "Approved Plans Reference"
+                }
+              ]
+            },
+            {
+              "type": "TextArea",
+              "scope": "/conditions",
+              "title": "Warrant Conditions"
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Foundation Inspection",
+        "description": "Building Inspector conducts on-site inspection of foundations before backfill. Verifies depth, concrete specification, reinforcement, damp-proof membrane, and drainage runs. Requires presentation of the Building Warrant credential.",
+        "sender": "building-inspector",
+        "requiredPriorActions": [1, 4],
+        "credentialRequirements": [
+          {
+            "type": "BuildingWarrantCredential",
+            "requiredClaims": [
+              { "claimName": "warrantReference" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Valid building warrant required for staged inspections"
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "inspectionDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Inspection Date"
+              },
+              "foundationDepthMeasured": {
+                "type": "number",
+                "title": "Foundation Depth Measured (mm)",
+                "minimum": 0
+              },
+              "concreteSpecVerified": {
+                "type": "boolean",
+                "title": "Concrete Specification Verified"
+              },
+              "reinforcementAsDrawing": {
+                "type": "boolean",
+                "title": "Reinforcement Matches Approved Drawings"
+              },
+              "dampProofMembraneInstalled": {
+                "type": "boolean",
+                "title": "Damp-Proof Membrane Installed"
+              },
+              "drainageRunsVerified": {
+                "type": "boolean",
+                "title": "Below-Ground Drainage Runs Verified"
+              },
+              "outcome": {
+                "type": "string",
+                "title": "Inspection Outcome",
+                "enum": ["pass", "conditional-pass", "fail"]
+              },
+              "defectsNoted": {
+                "type": "string",
+                "title": "Defects Noted",
+                "maxLength": 2000
+              },
+              "inspectionPhotos": {
+                "type": "string",
+                "format": "binary",
+                "title": "Inspection Photographs"
+              }
+            },
+            "required": [
+              "inspectionDate",
+              "foundationDepthMeasured",
+              "concreteSpecVerified",
+              "reinforcementAsDrawing",
+              "dampProofMembraneInstalled",
+              "drainageRunsVerified",
+              "outcome"
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "id": "pass",
+            "nextActionIds": [6],
+            "condition": { "!=": [{ "var": "outcome" }, "fail"] },
+            "description": "Foundations acceptable — proceed to structure inspection"
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 5,
+          "requireReason": true,
+          "isTerminal": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "building-inspector",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": [
+              "/inspectionDate",
+              "/outcome",
+              "/defectsNoted"
+            ]
+          },
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Foundation Inspection",
+          "elements": [
+            {
+              "type": "DateTime",
+              "scope": "/inspectionDate",
+              "title": "Inspection Date"
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Foundation Checks",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/foundationDepthMeasured",
+                  "title": "Foundation Depth (mm)"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/concreteSpecVerified",
+                  "title": "Concrete specification matches approved design"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/reinforcementAsDrawing",
+                  "title": "Reinforcement matches approved drawings"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/dampProofMembraneInstalled",
+                  "title": "Damp-proof membrane correctly installed"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/drainageRunsVerified",
+                  "title": "Below-ground drainage runs verified"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Outcome",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/outcome",
+                  "title": "Inspection Outcome"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/defectsNoted",
+                  "title": "Defects / Notes"
+                }
+              ]
+            },
+            {
+              "type": "File",
+              "scope": "/inspectionPhotos",
+              "title": "Inspection Photographs"
+            }
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "title": "Structure & Weathertight Inspection",
+        "description": "Building Inspector verifies structural frame completion, roof, windows/doors, insulation specification, and air-tightness test results. Calculates energy performance classification based on air-tightness result.",
+        "sender": "building-inspector",
+        "requiredPriorActions": [1, 4, 5],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "inspectionDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Inspection Date"
+              },
+              "structuralFrameComplete": {
+                "type": "boolean",
+                "title": "Structural Frame Complete"
+              },
+              "roofComplete": {
+                "type": "boolean",
+                "title": "Roof Complete and Watertight"
+              },
+              "windowsDoorsInstalled": {
+                "type": "boolean",
+                "title": "Windows and Doors Installed"
+              },
+              "insulationAsSpec": {
+                "type": "boolean",
+                "title": "Insulation Matches Specification"
+              },
+              "airTightnessResult": {
+                "type": "number",
+                "title": "Air Tightness Test Result (m\u00b3/h/m\u00b2 @ 50Pa)",
+                "minimum": 0
+              },
+              "outcome": {
+                "type": "string",
+                "title": "Inspection Outcome",
+                "enum": ["pass", "conditional-pass", "fail"]
+              },
+              "inspectorNotes": {
+                "type": "string",
+                "title": "Inspector Notes",
+                "maxLength": 2000
+              },
+              "inspectionPhotos": {
+                "type": "string",
+                "format": "binary",
+                "title": "Inspection Photographs"
+              },
+              "airTightnessReport": {
+                "type": "string",
+                "format": "binary",
+                "title": "Air Tightness Test Certificate (PDF)"
+              }
+            },
+            "required": [
+              "inspectionDate",
+              "structuralFrameComplete",
+              "roofComplete",
+              "windowsDoorsInstalled",
+              "insulationAsSpec",
+              "airTightnessResult",
+              "outcome"
+            ]
+          }
+        ],
+        "calculations": {
+          "energyPerformanceCheck": {
+            "if": [
+              { "<=": [{ "var": "airTightnessResult" }, 3.0] }, "excellent",
+              { "<=": [{ "var": "airTightnessResult" }, 5.0] }, "compliant",
+              { "<=": [{ "var": "airTightnessResult" }, 7.0] }, "remediation-needed",
+              "fail"
+            ]
+          }
+        },
+        "routes": [
+          {
+            "id": "pass",
+            "nextActionIds": [7],
+            "condition": { "!=": [{ "var": "outcome" }, "fail"] },
+            "description": "Structure and weathertight acceptable — proceed to final inspection"
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 6,
+          "requireReason": true,
+          "isTerminal": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "building-inspector",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": [
+              "/inspectionDate",
+              "/outcome",
+              "/airTightnessResult",
+              "/energyPerformanceCheck",
+              "/inspectorNotes"
+            ]
+          },
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Structure & Weathertight Inspection",
+          "elements": [
+            {
+              "type": "DateTime",
+              "scope": "/inspectionDate",
+              "title": "Inspection Date"
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Structural & Envelope Checks",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/structuralFrameComplete",
+                  "title": "Structural frame complete and plumb"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/roofComplete",
+                  "title": "Roof complete and watertight"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/windowsDoorsInstalled",
+                  "title": "Windows and external doors installed"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/insulationAsSpec",
+                  "title": "Insulation installed as per specification"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Air Tightness",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/airTightnessResult",
+                  "title": "Air Tightness Result (m\u00b3/h/m\u00b2 @ 50Pa) — target \u2264 5.0"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Outcome",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/outcome",
+                  "title": "Inspection Outcome"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/inspectorNotes",
+                  "title": "Inspector Notes"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Evidence",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/inspectionPhotos",
+                  "title": "Inspection Photographs"
+                },
+                {
+                  "type": "File",
+                  "scope": "/airTightnessReport",
+                  "title": "Air Tightness Test Certificate (PDF)"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "title": "Final Inspection & Completion Certificate",
+        "description": "Building Inspector conducts final inspection verifying all services connected, fire safety, electrical and plumbing certifications, and energy performance. Issues a Completion Certificate Verifiable Credential — legally required before the dwelling can be occupied.",
+        "sender": "building-inspector",
+        "requiredPriorActions": [1, 4, 5, 6],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "inspectionDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Final Inspection Date"
+              },
+              "allServicesConnected": {
+                "type": "boolean",
+                "title": "All Services Connected (water, electric, drainage)"
+              },
+              "fireSafetyVerified": {
+                "type": "boolean",
+                "title": "Fire Safety Measures Verified"
+              },
+              "electricalCertificateRef": {
+                "type": "string",
+                "title": "Electrical Installation Certificate Reference",
+                "maxLength": 50
+              },
+              "plumbingSignOff": {
+                "type": "boolean",
+                "title": "Plumbing & Heating Sign-Off"
+              },
+              "epcRating": {
+                "type": "string",
+                "title": "Energy Performance Certificate Rating",
+                "enum": ["A", "B", "C", "D", "E"]
+              },
+              "finalSapScore": {
+                "type": "number",
+                "title": "Final SAP Score",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "habitable": {
+                "type": "boolean",
+                "title": "Dwelling is Habitable"
+              },
+              "completionRef": {
+                "type": "string",
+                "title": "Completion Certificate Reference",
+                "maxLength": 30
+              },
+              "inspectionPhotos": {
+                "type": "string",
+                "format": "binary",
+                "title": "Final Inspection Photographs"
+              },
+              "electricalCertificate": {
+                "type": "string",
+                "format": "binary",
+                "title": "Electrical Installation Certificate (PDF)"
+              },
+              "epcCertificate": {
+                "type": "string",
+                "format": "binary",
+                "title": "Energy Performance Certificate (PDF)"
+              }
+            },
+            "required": [
+              "inspectionDate",
+              "allServicesConnected",
+              "fireSafetyVerified",
+              "electricalCertificateRef",
+              "plumbingSignOff",
+              "epcRating",
+              "finalSapScore",
+              "habitable",
+              "completionRef"
+            ]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "CompletionCertificateCredential",
+          "recipientParticipantId": "self-builder",
+          "claimMappings": [
+            { "claimName": "completionRef", "sourceField": "/completionRef" },
+            { "claimName": "warrantReference", "sourceField": "/warrantReference" },
+            { "claimName": "siteAddress", "sourceField": "/siteAddress" },
+            { "claimName": "epcRating", "sourceField": "/epcRating" },
+            { "claimName": "inspectionDate", "sourceField": "/inspectionDate" }
+          ],
+          "disclosable": [
+            "completionRef",
+            "siteAddress",
+            "epcRating",
+            "inspectionDate"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "building-inspector",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "self-builder",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "building-standards-officer",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Final Inspection & Completion Certificate",
+          "elements": [
+            {
+              "type": "DateTime",
+              "scope": "/inspectionDate",
+              "title": "Final Inspection Date"
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Compliance Checks",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/allServicesConnected",
+                  "title": "Water, electricity, and drainage connected"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/fireSafetyVerified",
+                  "title": "Fire detection, escape routes, and compartmentation verified"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/plumbingSignOff",
+                  "title": "Plumbing and heating systems tested and signed off"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/electricalCertificateRef",
+                  "title": "Electrical Installation Certificate Reference"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Energy Performance",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/epcRating",
+                      "title": "EPC Rating"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/finalSapScore",
+                      "title": "Final SAP Score"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Completion",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/habitable",
+                  "title": "Dwelling is habitable and fit for occupation"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/completionRef",
+                  "title": "Completion Certificate Reference"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Certificates & Evidence",
+              "elements": [
+                {
+                  "type": "File",
+                  "scope": "/inspectionPhotos",
+                  "title": "Final Inspection Photographs"
+                },
+                {
+                  "type": "File",
+                  "scope": "/electricalCertificate",
+                  "title": "Electrical Installation Certificate (PDF)"
+                },
+                {
+                  "type": "File",
+                  "scope": "/epcCertificate",
+                  "title": "Energy Performance Certificate (PDF)"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "parameterSchema": {
+    "type": "object",
+    "properties": {
+      "selfBuilderWallet": {
+        "type": "string",
+        "description": "Wallet address for the self-builder (member of public)"
+      },
+      "structuralEngineerWallet": {
+        "type": "string",
+        "description": "Wallet address for the structural engineer (MacGregor Structural)"
+      },
+      "buildingStandardsOfficerWallet": {
+        "type": "string",
+        "description": "Wallet address for the Building Standards Officer (Highland Council)"
+      },
+      "buildingInspectorWallet": {
+        "type": "string",
+        "description": "Wallet address for the Building Inspector (Highland Council)"
+      }
+    },
+    "required": [
+      "selfBuilderWallet",
+      "structuralEngineerWallet",
+      "buildingStandardsOfficerWallet",
+      "buildingInspectorWallet"
+    ]
+  },
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "Scenario A: Happy Path — Timber-Frame Bungalow",
+      "description": "All 7 standards pass, all inspections pass, Completion Certificate issued",
+      "parameters": {
+        "selfBuilderWallet": "0xSELF_BUILDER_WALLET",
+        "structuralEngineerWallet": "0xSTRUCTURAL_ENGINEER_WALLET",
+        "buildingStandardsOfficerWallet": "0xBUILDING_STANDARDS_OFFICER_WALLET",
+        "buildingInspectorWallet": "0xBUILDING_INSPECTOR_WALLET"
+      }
+    }
+  ]
+}
