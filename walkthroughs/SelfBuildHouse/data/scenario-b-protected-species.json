@@ -1,0 +1,188 @@
+{
+  "name": "Scenario B: Protected Species — Two-Storey Woodland Edge",
+  "description": "Two-storey timber-frame house on a woodland edge plot near Aviemore. Bat roost discovered in nearby trees triggers the conditional Species Mitigation Plan action. Clay subsoil with high water table requires raft foundations. NatureScot licence needed. All planning and building warrant stages eventually pass with conditions.",
+  "expectedFoundationRiskScore": 7,
+  "expectedPlanningFee": 725,
+  "expectedWarrantFee": 1200,
+  "expectedStructuralAdequacyScore": 1.9,
+  "expectedEnergyPerformanceCheck": "compliant",
+  "expectedPlanningPath": [1, 2, 3, 4, 5, 6, 7],
+  "expectedWarrantPath": [1, 2, 3, 4, 5, 6, 7],
+  "skipsSpeciesMitigation": false,
+  "expectedRejection": false,
+  "planning": {
+    "1": {
+      "projectName": "Cairngorm View",
+      "siteAddress": "Land East of Forest Lodge, Rothiemurchus, Aviemore, PH22 1QH",
+      "gridReference": "NH9010",
+      "plotSizeHectares": 0.4,
+      "dwellingType": "detached",
+      "storeys": 2,
+      "grossFloorArea": 200,
+      "bedrooms": 4,
+      "constructionMethod": "timber-frame",
+      "estimatedBuildCost": 380000,
+      "existingLandUse": "woodland",
+      "accessArrangement": "new-access-required",
+      "withinConservationArea": false,
+      "designStatement": "A two-storey timber-frame dwelling designed for the woodland edge setting of Rothiemurchus. The design uses locally-sourced larch cladding with a standing-seam zinc roof to minimise maintenance in the exposed Highland location. The building footprint has been positioned to avoid the principal mature Scots pines and to maintain a 15m buffer from the woodland edge. A new vehicular access is proposed from the existing forest track, with passing places as required by roads authority. The south-facing orientation maximises passive solar gain through triple-glazed windows. The design responds to the Cairngorms National Park design guidance for new housing in rural settings."
+    },
+    "2": {
+      "soilClassification": "clay",
+      "bearingCapacity": 120,
+      "waterTableDepth": 1.5,
+      "contaminationFound": false,
+      "radonRisk": "medium",
+      "slopeStability": "stable",
+      "foundationRecommendation": "raft",
+      "assessmentNotes": "Clay subsoil with moderate bearing capacity. Water table encountered at 1.5m depth — seasonal fluctuation likely. Raft foundation recommended to spread loading and manage water table proximity. Medium radon risk — full radon barrier required to BRE guidance. Some surface heave potential in summer months — raft design should incorporate anti-heave void formers. No contamination detected in trial pit samples. Ground investigation included 4 trial pits to 3m depth and 2 window samples to 5m."
+    },
+    "3": {
+      "habitatClassification": "woodland",
+      "protectedSpeciesPresent": true,
+      "speciesFound": ["bat", "red-squirrel"],
+      "ecologicalImpactRating": "moderate",
+      "seasonalConstraints": "No tree felling or demolition works between May and September (bat maternity season). Red squirrel buffer zone of 50m to retained dreys.",
+      "surveyNotes": "Phase 1 habitat survey conducted across the 0.4ha plot and 50m buffer zone. Mixed Scots pine and birch woodland with semi-natural ground flora. Two mature Scots pines within 20m of proposed building footprint have confirmed bat roost potential — emergence survey on 22 June confirmed a common pipistrelle summer roost (5-8 bats). Three red squirrel dreys identified in pines along eastern boundary. No badger setts. No watercourses on site but seasonal wet flush along northern boundary. Ecological impact assessed as moderate due to bat roost proximity and red squirrel presence. Species Protection Plan required — NatureScot licence needed for bat roost disturbance."
+    },
+    "4": {
+      "mitigationType": "timing-restriction",
+      "licensingRequired": true,
+      "licenceReference": "NS-BAT-2026-HLD-0089",
+      "constructionTimingRestrictions": "No tree felling, demolition, or ground works within 30m of confirmed bat roost trees between 1 May and 30 September. Red squirrel exclusion zones (50m from retained dreys) during kit construction. ECOW (Ecological Clerk of Works) to be present during initial site clearance.",
+      "mitigationMeasures": "1. Bat Mitigation: Three Schwegler 2FN bat boxes to be installed on retained mature pines prior to any works commencing, positioned at 4m height facing south-east. Sensitive lighting scheme — no direct illumination of roost trees or flight corridors, amber LED luminaires with full cut-off below horizontal. 2. Red Squirrel Mitigation: 50m buffer to retained dreys during construction. Supplementary feeders during construction phase. Two Nestbox Company squirrel boxes on retained boundary trees. 3. General: ECOW on site during initial clearance. Pre-commencement check within 48 hours of works starting. Construction Environmental Management Plan (CEMP) to be submitted and approved. 4. Habitat Enhancement: Native woodland planting scheme (0.1ha) to compensate for woodland edge disturbance — Scots pine, birch, rowan, and juniper.",
+      "estimatedMitigationCost": 8500
+    },
+    "5": {
+      "waterSupplyFeasible": true,
+      "nearestMainDistance": 180,
+      "drainageSolution": "private-treatment",
+      "surfaceWaterPlan": "SuDS",
+      "capacityConfirmed": true,
+      "connectionCostEstimate": 12000,
+      "consultationOutcome": "feasible-with-conditions",
+      "consultationNotes": "Water main available on B970 road, 180m from plot boundary. Extended connection route along forest track is feasible but at applicant's cost. No public sewer — private sewage treatment plant (Package Treatment Plant to BS EN 12566-3) with discharge to soakaway or constructed wetland required. Given clay subsoil, soakaway percolation tests may fail — SuDS with attenuation and controlled discharge to watercourse may be needed for surface water. Conditions: submit detailed drainage layout with percolation test results before connection approval."
+    },
+    "6": {
+      "localPlanCompliance": true,
+      "designQuality": "excellent",
+      "landscapeImpact": "minor",
+      "neighbourNotificationComplete": true,
+      "objectionsReceived": 1,
+      "accessAndParkingAdequate": true,
+      "decision": "approve",
+      "conditions": [
+        "Development to commence within 3 years of the date of this permission",
+        "Species Protection Plan (Glen Ecology, NatureScot Licence NS-BAT-2026-HLD-0089) to be implemented in full",
+        "No works within 30m of bat roost trees between 1 May and 30 September",
+        "ECOW to be present during initial site clearance — written confirmation to be submitted",
+        "Native woodland planting scheme (0.1ha) to be completed within first planting season after occupation",
+        "External materials as specified: larch cladding and zinc standing-seam roof",
+        "Construction hours: 08:00-19:00 Monday-Friday, 08:00-13:00 Saturday",
+        "Detailed drainage scheme to be submitted for approval before connection works",
+        "New access to be formed to Highland Council roads specification with visibility splays"
+      ],
+      "planningNotes": "Application for a two-storey dwelling on a woodland edge plot at Rothiemurchus within the Cairngorms National Park. The design is of high quality, responding well to the CNP design guidance. Ecological survey identified bat roost and red squirrel presence — a comprehensive Species Protection Plan has been produced with NatureScot licence secured. Scottish Water consultation returned feasible-with-conditions. One neighbour objection received (Forest Lodge) regarding potential light pollution — addressed through sensitive lighting condition. The development complies with Cairngorms LDP policies and is recommended for approval with conditions."
+    },
+    "7": {
+      "permitReference": "26/00287/FUL",
+      "grantDate": "2026-05-28",
+      "expiryDate": "2029-05-28",
+      "approvedPlanRefs": ["DWG-CV-001 Site Plan", "DWG-CV-002 Ground Floor Plan", "DWG-CV-003 First Floor Plan", "DWG-CV-004 Elevations", "DWG-CV-005 Sections", "DWG-CV-006 Landscape Plan"],
+      "conditions": [
+        "Development to commence within 3 years of the date of this permission",
+        "Species Protection Plan to be implemented in full",
+        "No works within 30m of bat roost trees between 1 May and 30 September",
+        "ECOW to be present during initial site clearance",
+        "Native woodland planting scheme (0.1ha) within first planting season",
+        "External materials as specified",
+        "Construction hours: 08:00-19:00 Mon-Fri, 08:00-13:00 Sat",
+        "Detailed drainage scheme to be approved before works",
+        "New access to Highland Council roads specification"
+      ],
+      "informatives": [
+        "A separate building warrant is required before construction commences",
+        "NatureScot licence conditions must be complied with at all times",
+        "Contact Scottish Water to arrange pre-connection inspection"
+      ]
+    }
+  },
+  "warrant": {
+    "1": {
+      "planningPermitReference": "26/00287/FUL",
+      "siteAddress": "Land East of Forest Lodge, Rothiemurchus, Aviemore, PH22 1QH",
+      "constructionMethod": "timber-frame",
+      "wallInsulationType": "wood-fibre",
+      "heatingSystem": "ground-source-heat-pump",
+      "renewableEnergy": "solar-PV",
+      "estimatedBuildCost": 380000,
+      "proposedStartDate": "2026-10-01",
+      "sapRating": 82
+    },
+    "2": {
+      "structuralSystem": "timber-frame",
+      "foundationType": "raft",
+      "designWindSpeed": 32.0,
+      "designSnowLoad": 0.8,
+      "safetyFactorAchieved": 2.0,
+      "euroCodeCompliance": true,
+      "engineerNotes": "Two-storey timber-frame on raft foundation designed for clay subsoil conditions. Raft incorporates anti-heave void formers per NHBC guidance. Higher wind loading reflects exposed Highland location — designed to 32 m/s peak gust. Snow loading zone 4 (Cairngorms) at 0.8 kN/m\u00b2. All elements verified to Eurocode with adequate safety margins. Timber frame manufacturer's engineering package includes bracing calculations for two-storey configuration."
+    },
+    "3": {
+      "standard1Structure": "pass",
+      "standard2Fire": "pass",
+      "standard3Environment": "pass",
+      "standard4Safety": "pass",
+      "standard5Noise": "pass",
+      "standard6Energy": "pass",
+      "standard7Sustainability": "pass",
+      "overallDecision": "approve",
+      "reviewNotes": "Two-storey timber-frame dwelling reviewed against all 7 standards. Structure: raft foundation and timber-frame engineering adequate for ground conditions and loading. Fire: full LD2 detection, first-floor escape windows with 4.5m drop height within limits, 30-min fire resistance between floors. Environment: full radon barrier with gas-membrane and ventilated sub-floor. Safety: first-floor guarding at 1100mm, glazing to BS EN 12600. Noise: N/A detached. Energy: GSHP + solar PV + wood-fibre insulation achieves SAP 82 (Standard 6 Silver). Sustainability: GSHP satisfies Gold LZC target. All standards met."
+    },
+    "4": {
+      "warrantReference": "26/00287/BW",
+      "grantDate": "2026-09-15",
+      "expiryDate": "2029-09-15",
+      "approvedPlansReference": "DWG-CV-001 through DWG-CV-020",
+      "stagedInspections": ["Foundation (raft pour)", "Structure & Weathertight", "Final Completion"],
+      "conditions": [
+        "Notify Building Standards 48 hours before each inspection stage",
+        "Raft foundation to be inspected before concrete pour — reinforcement check required",
+        "Do not commence internal lining until structure inspection complete",
+        "Submit electrical installation certificate and EPC before final inspection",
+        "Radon barrier installation to be photographed and submitted with foundation notification"
+      ]
+    },
+    "5": {
+      "inspectionDate": "2026-12-03",
+      "foundationDepthMeasured": 450,
+      "concreteSpecVerified": true,
+      "reinforcementAsDrawing": true,
+      "dampProofMembraneInstalled": true,
+      "drainageRunsVerified": true,
+      "outcome": "pass",
+      "defectsNoted": "No defects. Raft foundation formation prepared on blinded hardcore. Anti-heave void formers in place. Reinforcement mesh and edge beam cages as per approved drawings. Radon gas membrane correctly installed with taped and sealed joints — photographic evidence received. Under-slab drainage and radon sump installed. C35 concrete pour approved."
+    },
+    "6": {
+      "inspectionDate": "2027-04-22",
+      "structuralFrameComplete": true,
+      "roofComplete": true,
+      "windowsDoorsInstalled": true,
+      "insulationAsSpec": true,
+      "airTightnessResult": 4.2,
+      "outcome": "pass",
+      "inspectorNotes": "Two-storey timber frame erected correctly with diagonal bracing. Standing-seam zinc roof complete and watertight. Triple-glazed windows and insulated external doors installed. 140mm wood-fibre insulation between studs plus 60mm external wood-fibre — continuous insulation verified. Air tightness test achieved 4.2 m\u00b3/h/m\u00b2 @ 50Pa — compliant with 5.0 target. MVHR unit installed in utility room with ducting to all habitable rooms. Slight condensation risk noted at first-floor window reveals — installer to verify thermal bridge detail before internal lining."
+    },
+    "7": {
+      "inspectionDate": "2027-08-18",
+      "allServicesConnected": true,
+      "fireSafetyVerified": true,
+      "electricalCertificateRef": "NICEIC-2027-HLD-009834",
+      "plumbingSignOff": true,
+      "epcRating": "B",
+      "finalSapScore": 84,
+      "habitable": true,
+      "completionRef": "CC-26/00287/BW"
+    }
+  }
+}
