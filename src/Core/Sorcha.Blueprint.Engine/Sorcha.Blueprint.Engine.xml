@@ -468,6 +468,12 @@
             Evaluate a JSON Logic expression against data.
             </summary>
         </member>
+        <member name="F:Sorcha.Blueprint.Engine.Implementation.JsonLogicEvaluator.MaxCalculationsPerExecution">
+            <summary>
+            Maximum number of calculations allowed per action execution (SEC-AUDIT 3.5).
+            Prevents DoS via blueprints with excessive calculation chains.
+            </summary>
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Implementation.JsonLogicEvaluator.ApplyCalculationsAsync(System.Collections.Generic.Dictionary{System.String,System.Object},System.Collections.Generic.IEnumerable{Sorcha.Blueprint.Engine.Models.Calculation},System.Threading.CancellationToken)">
             <summary>
             Apply multiple calculations to data.

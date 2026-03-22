@@ -103,25 +103,35 @@ else
         if (result?.Canceled != false) return;
 
         _isProcessing = true;
-        var success = await ValidatorService.SuspendValidatorAsync(
-            item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Suspended by admin");
-        _isProcessing = false;
-
-        Snackbar.Add(success ? "Validator suspended" : "Failed to suspend — may be the last active validator",
-            success ? Severity.Warning : Severity.Error);
-        if (success) await LoadValidatorsAsync();
+        try
+        {
+            var success = await ValidatorService.SuspendValidatorAsync(
+                item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Suspended by admin");
+            Snackbar.Add(success ? "Validator suspended" : "Failed to suspend — may be the last active validator",
+                success ? Severity.Warning : Severity.Error);
+            if (success) await LoadValidatorsAsync();
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
     }
 
     private async Task ReactivateAsync(PendingValidatorViewModel item)
     {
         _isProcessing = true;
-        var success = await ValidatorService.ReactivateValidatorAsync(
-            item.RegisterId, item.ValidatorId, "admin");
-        _isProcessing = false;
-
-        Snackbar.Add(success ? "Validator reactivated" : "Failed to reactivate — validator may not be suspended",
-            success ? Severity.Success : Severity.Error);
-        if (success) await LoadValidatorsAsync();
+        try
+        {
+            var success = await ValidatorService.ReactivateValidatorAsync(
+                item.RegisterId, item.ValidatorId, "admin");
+            Snackbar.Add(success ? "Validator reactivated" : "Failed to reactivate — validator may not be suspended",
+                success ? Severity.Success : Severity.Error);
+            if (success) await LoadValidatorsAsync();
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
     }
 
     private async Task RevokeAsync(PendingValidatorViewModel item)
@@ -136,12 +146,17 @@ else
         if (result?.Canceled != false) return;
 
         _isProcessing = true;
-        var success = await ValidatorService.RevokeValidatorAsync(
-            item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Revoked by admin");
-        _isProcessing = false;
-
-        Snackbar.Add(success ? "Validator permanently revoked" : "Failed to revoke",
-            success ? Severity.Error : Severity.Error);
-        if (success) await LoadValidatorsAsync();
+        try
+        {
+            var success = await ValidatorService.RevokeValidatorAsync(
+                item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Revoked by admin");
+            Snackbar.Add(success ? "Validator permanently revoked" : "Failed to revoke",
+                success ? Severity.Warning : Severity.Error);
+            if (success) await LoadValidatorsAsync();
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
     }
 }
