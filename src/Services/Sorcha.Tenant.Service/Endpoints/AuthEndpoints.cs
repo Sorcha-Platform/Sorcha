@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using System.Text.Json;
 
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -632,7 +633,7 @@ public static class AuthEndpoints
             return TypedResults.Ok(new PasskeyAssertionOptionsResponse
             {
                 TransactionId = result.TransactionId,
-                Options = result.Options
+                Options = JsonDocument.Parse(result.Options.ToJson()).RootElement
             });
         }
         catch (Exception ex)
