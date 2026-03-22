@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.ServiceClients.Peer;
@@ -29,6 +30,7 @@ public class ConsensusEngineTests
     private readonly Mock<ITransactionValidator> _mockTransactionValidator;
     private readonly Mock<IValidationEngine> _mockValidationEngine;
     private readonly Mock<ILogger<ConsensusEngine>> _mockLogger;
+    private readonly Mock<IHostEnvironment> _mockHostEnvironment;
     private readonly ConsensusConfiguration _consensusConfig;
     private readonly ValidatorConfiguration _validatorConfig;
     private readonly ConsensusEngine _engine;
@@ -41,6 +43,8 @@ public class ConsensusEngineTests
         _mockTransactionValidator = new Mock<ITransactionValidator>();
         _mockValidationEngine = new Mock<IValidationEngine>();
         _mockLogger = new Mock<ILogger<ConsensusEngine>>();
+        _mockHostEnvironment = new Mock<IHostEnvironment>();
+        _mockHostEnvironment.Setup(h => h.EnvironmentName).Returns(Environments.Development);
 
         _consensusConfig = new ConsensusConfiguration
         {
@@ -63,6 +67,7 @@ public class ConsensusEngineTests
             _mockValidationEngine.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
+            _mockHostEnvironment.Object,
             _mockLogger.Object);
     }
 
@@ -80,6 +85,7 @@ public class ConsensusEngineTests
             _mockValidationEngine.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
+            _mockHostEnvironment.Object,
             _mockLogger.Object));
 
         exception.ParamName.Should().Be("peerClient");
@@ -97,6 +103,7 @@ public class ConsensusEngineTests
             _mockValidationEngine.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
+            _mockHostEnvironment.Object,
             _mockLogger.Object));
 
         exception.ParamName.Should().Be("walletClient");
@@ -249,6 +256,7 @@ public class ConsensusEngineTests
             _mockValidationEngine.Object,
             Options.Create(config),
             Options.Create(_validatorConfig),
+            _mockHostEnvironment.Object,
             _mockLogger.Object);
 
         var docket = CreateTestDocket("register-1", 5);

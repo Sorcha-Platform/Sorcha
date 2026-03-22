@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Engine.Models;
@@ -25,6 +27,7 @@ public class ActionProcessor : IActionProcessor
     private readonly IRoutingEngine _routingEngine;
     private readonly ICredentialVerifier? _credentialVerifier;
     private readonly ICredentialIssuer? _credentialIssuer;
+    private readonly ILogger<ActionProcessor> _logger;
 
     public ActionProcessor(
         ISchemaValidator schemaValidator,
@@ -32,7 +35,8 @@ public class ActionProcessor : IActionProcessor
         IDisclosureProcessor disclosureProcessor,
         IRoutingEngine routingEngine,
         ICredentialVerifier? credentialVerifier = null,
-        ICredentialIssuer? credentialIssuer = null)
+        ICredentialIssuer? credentialIssuer = null,
+        ILogger<ActionProcessor>? logger = null)
     {
         _schemaValidator = schemaValidator ?? throw new ArgumentNullException(nameof(schemaValidator));
         _jsonLogicEvaluator = jsonLogicEvaluator ?? throw new ArgumentNullException(nameof(jsonLogicEvaluator));
@@ -40,6 +44,7 @@ public class ActionProcessor : IActionProcessor
         _routingEngine = routingEngine ?? throw new ArgumentNullException(nameof(routingEngine));
         _credentialVerifier = credentialVerifier;
         _credentialIssuer = credentialIssuer;
+        _logger = logger ?? NullLogger<ActionProcessor>.Instance;
     }
 
     /// <summary>
@@ -177,10 +182,8 @@ public class ActionProcessor : IActionProcessor
         }
         catch (Exception ex)
         {
-            // WARNING: All exceptions are caught here and converted to error messages in the result.
-            // This includes unexpected failures (e.g., NullReferenceException, ObjectDisposedException)
-            // that may indicate bugs rather than business logic errors. If an ILogger is added to this
-            // class in the future, log at Error level with the full exception (ex) here.
+            _logger.LogError(ex, "Action processing failed for action {ActionId} in blueprint {BlueprintId}",
+                context.Action?.Id, context.Blueprint?.Id);
             result.Success = false;
             result.Errors.Add($"Action processing error: {ex.Message}");
         }

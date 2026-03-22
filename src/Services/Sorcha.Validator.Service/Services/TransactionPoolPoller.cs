@@ -108,6 +108,17 @@ public class TransactionPoolPoller : ITransactionPoolPoller
                 var dataKey = GetDataKey(registerId, transaction.TransactionId);
                 var expiryKey = GetExpiryKey(registerId);
 
+                // Payload size guard — reject oversized transactions before touching Redis
+                var json = JsonSerializer.Serialize(transaction, _jsonOptions);
+                var payloadBytes = System.Text.Encoding.UTF8.GetByteCount(json);
+                if (payloadBytes > _config.MaxTransactionPayloadBytes)
+                {
+                    _logger.LogWarning(
+                        "Transaction {TransactionId} rejected: payload size {Size} bytes exceeds limit {Limit} bytes",
+                        transaction.TransactionId, payloadBytes, _config.MaxTransactionPayloadBytes);
+                    return false;
+                }
+
                 // Check if transaction already exists
                 if (await _database.KeyExistsAsync(dataKey))
                 {
@@ -116,9 +127,6 @@ public class TransactionPoolPoller : ITransactionPoolPoller
                         transaction.TransactionId, registerId);
                     return false;
                 }
-
-                // Serialize transaction
-                var json = JsonSerializer.Serialize(transaction, _jsonOptions);
 
                 // Calculate expiry timestamp
                 var expiresAt = transaction.ExpiresAt ?? DateTimeOffset.UtcNow.Add(_config.TransactionTtl);

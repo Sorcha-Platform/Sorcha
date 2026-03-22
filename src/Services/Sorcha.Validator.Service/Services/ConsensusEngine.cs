@@ -4,6 +4,7 @@
 using System.Buffers.Text;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Sorcha.Validator.Grpc.V1;
 using Sorcha.ServiceClients.Wallet;
@@ -29,6 +30,7 @@ public class ConsensusEngine : IConsensusEngine
     private readonly ConsensusConfiguration _consensusConfig;
     private readonly ValidatorConfiguration _validatorConfig;
     private readonly ILogger<ConsensusEngine> _logger;
+    private readonly bool _isDevelopment;
 
     public ConsensusEngine(
         IPeerServiceClient peerClient,
@@ -38,6 +40,7 @@ public class ConsensusEngine : IConsensusEngine
         IValidationEngine validationEngine,
         IOptions<ConsensusConfiguration> consensusConfig,
         IOptions<ValidatorConfiguration> validatorConfig,
+        IHostEnvironment hostEnvironment,
         ILogger<ConsensusEngine> logger)
     {
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
@@ -48,6 +51,15 @@ public class ConsensusEngine : IConsensusEngine
         _consensusConfig = consensusConfig?.Value ?? throw new ArgumentNullException(nameof(consensusConfig));
         _validatorConfig = validatorConfig?.Value ?? throw new ArgumentNullException(nameof(validatorConfig));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _isDevelopment = hostEnvironment?.EnvironmentName == Environments.Development;
+
+        if (_consensusConfig.SingleValidatorAutoApprove && !_isDevelopment)
+        {
+            _logger.LogWarning(
+                "SingleValidatorAutoApprove is enabled but environment is {Environment} — " +
+                "this setting will be IGNORED outside Development. Multi-validator consensus is required",
+                hostEnvironment?.EnvironmentName);
+        }
     }
 
     /// <inheritdoc/>
@@ -77,11 +89,11 @@ public class ConsensusEngine : IConsensusEngine
 
             if (validators.Count == 0)
             {
-                if (_consensusConfig.SingleValidatorAutoApprove)
+                if (_consensusConfig.SingleValidatorAutoApprove && _isDevelopment)
                 {
                     stopwatch.Stop();
                     _logger.LogDebug(
-                        "No peer validators found for register {RegisterId} — auto-approving in single-validator mode",
+                        "No peer validators found for register {RegisterId} — auto-approving in single-validator mode (Development only)",
                         docket.RegisterId);
 
                     return new ConsensusResult

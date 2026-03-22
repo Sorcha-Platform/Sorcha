@@ -31,6 +31,8 @@ public class ConsensusConfiguration
     /// <summary>
     /// When true, auto-approve dockets if no other validators are found in the peer network.
     /// Enables single-node operation without requiring a peer network for consensus.
+    /// WARNING: Must only be used in Development environments. Production deployments
+    /// require multi-validator consensus — this flag is ignored unless ASPNETCORE_ENVIRONMENT=Development.
     /// </summary>
     public bool SingleValidatorAutoApprove { get; set; } = true;
 }

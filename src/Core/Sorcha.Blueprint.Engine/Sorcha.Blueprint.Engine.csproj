@@ -24,6 +24,7 @@
     <PackageReference Include="JsonPath.Net" />
     <PackageReference Include="JsonE.Net" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
 </Project>

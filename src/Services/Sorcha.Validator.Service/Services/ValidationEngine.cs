@@ -702,7 +702,11 @@ public class ValidationEngine : IValidationEngine
                 // children — each workflow instance forks from its blueprint publish TX by design.
                 if (previousTx != null)
                 {
-                    var isControlTx = previousTx.MetaData?.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control;
+                    // Control transactions (genesis, blueprint-publish) may have multiple children by design.
+                    // When MetaData is null (e.g. legacy or genesis transactions), treat as control to avoid
+                    // false fork detection — non-control transactions always have MetaData populated.
+                    var isControlTx = previousTx.MetaData == null
+                        || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control;
                     if (!isControlTx)
                     {
                         var existingSuccessors = await _registerClient.GetTransactionsByPrevTxIdAsync(
