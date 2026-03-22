@@ -3,6 +3,7 @@
 
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Explorer;
@@ -62,7 +63,14 @@ public class ODataQueryService : IODataQueryService
         for (var i = 0; i < model.Filters.Count; i++)
         {
             var filter = model.Filters[i];
-            if (i > 0)
+
+            if (!IsValidFieldName(filter.Field))
+            {
+                _logger.LogWarning("Rejected invalid OData field name: {FieldName}", filter.Field);
+                continue;
+            }
+
+            if (i > 0 && sb.Length > 0)
             {
                 sb.Append($" {filter.LogicalOperator} ");
             }
@@ -86,7 +94,7 @@ public class ODataQueryService : IODataQueryService
         if (!string.IsNullOrEmpty(filter))
             parts.Add($"$filter={Uri.EscapeDataString(filter)}");
 
-        if (!string.IsNullOrEmpty(query.OrderBy))
+        if (!string.IsNullOrEmpty(query.OrderBy) && IsValidFieldName(query.OrderBy))
             parts.Add($"$orderby={Uri.EscapeDataString(query.OrderBy)} {query.OrderDirection}");
 
         parts.Add($"$top={query.Top}");
@@ -95,6 +103,14 @@ public class ODataQueryService : IODataQueryService
 
         return $"{baseUrl}?{string.Join("&", parts)}";
     }
+
+    private static readonly Regex SafeFieldNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_.]*$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Validates that an OData field name contains only safe characters to prevent injection.
+    /// </summary>
+    internal static bool IsValidFieldName(string fieldName) =>
+        !string.IsNullOrWhiteSpace(fieldName) && SafeFieldNamePattern.IsMatch(fieldName);
 
     private static string EscapeODataValue(string value) =>
         value.Replace("'", "''");

@@ -57,4 +57,10 @@ public class TransactionPoolPollerConfiguration
     /// Whether the poller is enabled
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Maximum transaction payload size in bytes. Transactions exceeding this limit
+    /// are rejected at submission time. Default: 1 MB.
+    /// </summary>
+    public long MaxTransactionPayloadBytes { get; set; } = 1_048_576;
 }

@@ -330,8 +330,14 @@ public class MongoRegisterRepository : IRegisterRepository
     {
         var docketIndexes = new List<CreateIndexModel<Docket>>
         {
-            // Note: Id maps to _id which is already unique by default in MongoDB
-            // No need to create a separate unique index on it
+            // Compound index on (RegisterId, Id) for efficient per-register docket queries (SEC-AUDIT 4.3).
+            // Docket.Id maps to MongoDB _id (docket height). The _id is globally unique, but this
+            // compound index enables fast per-register lookups and provides defense-in-depth against
+            // duplicate docket numbers if _id generation strategy changes.
+            new(Builders<Docket>.IndexKeys
+                    .Ascending(d => d.RegisterId)
+                    .Ascending(d => d.Id),
+                new CreateIndexOptions { Unique = true }),
 
             // Index for hash lookups
             new(Builders<Docket>.IndexKeys.Ascending(d => d.Hash)),

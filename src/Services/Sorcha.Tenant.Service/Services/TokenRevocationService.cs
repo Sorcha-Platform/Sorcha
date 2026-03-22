@@ -40,6 +40,13 @@ public class TokenRevocationConfiguration
     /// Redis key prefix for failed auth attempts.
     /// </summary>
     public string FailedAttemptsPrefix { get; set; } = "auth:failed:";
+
+    /// <summary>
+    /// When true, treat tokens as revoked if Redis is unavailable (fail-closed).
+    /// When false, allow tokens through if Redis is unavailable (fail-open).
+    /// Default: true (fail-closed) for production safety.
+    /// </summary>
+    public bool FailClosedOnRedisUnavailable { get; set; } = true;
 }
 
 /// <summary>
@@ -100,9 +107,13 @@ public class TokenRevocationService : ITokenRevocationService
         }
         catch (RedisConnectionException ex)
         {
-            _logger.LogWarning(ex, "Redis unavailable for revocation check, allowing token {Jti}", jti);
-            // Fail open - if Redis is down, allow the token
-            // This is a tradeoff: availability over strict security
+            if (_config.FailClosedOnRedisUnavailable)
+            {
+                _logger.LogWarning(ex, "Redis unavailable for revocation check — REJECTING token {Jti} (fail-closed mode)", jti);
+                return true; // Treat as revoked — deny access when revocation state is unknown
+            }
+
+            _logger.LogWarning(ex, "Redis unavailable for revocation check — allowing token {Jti} (fail-open mode)", jti);
             return false;
         }
     }
@@ -245,7 +256,13 @@ public class TokenRevocationService : ITokenRevocationService
         }
         catch (RedisConnectionException ex)
         {
-            _logger.LogWarning(ex, "Redis unavailable for rate limit check, allowing request");
+            if (_config.FailClosedOnRedisUnavailable)
+            {
+                _logger.LogWarning(ex, "Redis unavailable for rate limit check — BLOCKING request (fail-closed mode)");
+                return true; // Block when rate limit state is unknown
+            }
+
+            _logger.LogWarning(ex, "Redis unavailable for rate limit check — allowing request (fail-open mode)");
             return false;
         }
     }

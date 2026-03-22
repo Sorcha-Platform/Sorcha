@@ -57,6 +57,11 @@ public class ActionExecutionService : IActionExecutionService
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
+    /// <summary>
+    /// Maximum actions per workflow instance (SEC-AUDIT 3.8). Prevents routing cycles from infinite loops.
+    /// </summary>
+    private const int MaxExecutionDepth = 1000;
+
     public ActionExecutionService(
         IActionResolverService actionResolver,
         IStateReconstructionService stateReconstruction,
@@ -121,6 +126,17 @@ public class ActionExecutionService : IActionExecutionService
             throw new InvalidOperationException($"Instance {instanceId} not found");
         }
 
+        // 1a. Cycle/depth guard — prevent infinite loops in cyclic blueprints (SEC-AUDIT 3.8)
+        if (instance.CompletedActionCount >= MaxExecutionDepth)
+        {
+            _logger.LogWarning(
+                "Instance {InstanceId} exceeded maximum execution depth ({MaxDepth}). Possible routing cycle in blueprint {BlueprintId}",
+                instanceId, MaxExecutionDepth, instance.BlueprintId);
+            throw new InvalidOperationException(
+                $"Workflow instance has exceeded the maximum execution depth of {MaxExecutionDepth}. " +
+                "This may indicate a routing cycle in the blueprint definition.");
+        }
+
         // 1b. Replay protection — idempotency check
         // Include LastTransactionId in the key so cyclic workflows (where the same action
         // is executed multiple times) generate unique keys per cycle.
@@ -157,6 +173,32 @@ public class ActionExecutionService : IActionExecutionService
 
         // 4b. Validate wallet ownership (SEC-006)
         await ValidateWalletOwnershipAsync(request.SenderWallet, caller, cancellationToken);
+
+        // 4c. Validate sender matches action's designated participant role (SEC-AUDIT 3.1)
+        // When a participant has a hardcoded wallet address in the blueprint, enforce strict matching.
+        // When no wallet is hardcoded, log a warning — the Validator's blueprint conformance (VAL_BP_002)
+        // provides the authoritative check at the chain level.
+        if (!string.IsNullOrWhiteSpace(actionDef.Sender))
+        {
+            var senderParticipant = blueprint.Participants?.FirstOrDefault(p =>
+                string.Equals(p.Id, actionDef.Sender, StringComparison.OrdinalIgnoreCase));
+
+            if (senderParticipant != null && !string.IsNullOrWhiteSpace(senderParticipant.WalletAddress))
+            {
+                var isAuthorizedSender = string.Equals(
+                    senderParticipant.WalletAddress, request.SenderWallet, StringComparison.OrdinalIgnoreCase);
+
+                if (!isAuthorizedSender)
+                {
+                    _logger.LogWarning(
+                        "Sender wallet {Wallet} does not match designated participant wallet {Expected} for action {ActionId} in instance {InstanceId}",
+                        request.SenderWallet, senderParticipant.WalletAddress, actionId, instanceId);
+                    throw new InvalidOperationException(
+                        $"Wallet {request.SenderWallet} is not authorized to execute action {actionId}. " +
+                        $"This action requires participant '{actionDef.Sender}' with wallet '{senderParticipant.WalletAddress}'.");
+                }
+            }
+        }
 
         // 4c. Verify credential presentations against action requirements
         if (actionDef.CredentialRequirements?.Any() == true && _credentialVerifier != null)
@@ -500,7 +542,22 @@ public class ActionExecutionService : IActionExecutionService
 
         // 14. Persist accumulated data on instance for subsequent actions' routing/calculations
         //     (fallback when Register-based state reconstruction is unavailable)
-        foreach (var kvp in mergedData)
+        //     Only store fields from the action's schema or explicit calculations (SEC-AUDIT 3.6)
+        var allowedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (request.PayloadData != null)
+        {
+            foreach (var key in request.PayloadData.Keys)
+                allowedFields.Add(key);
+        }
+        if (actionDef.Calculations != null)
+        {
+            foreach (var calc in actionDef.Calculations)
+            {
+                allowedFields.Add(calc.Key);
+            }
+        }
+
+        foreach (var kvp in mergedData.Where(kvp => allowedFields.Contains(kvp.Key)))
         {
             instance.AccumulatedData[kvp.Key] = kvp.Value;
         }

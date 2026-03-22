@@ -57,4 +57,11 @@ public class BlueprintCacheConfiguration
     /// Whether the cache is enabled
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Redis pub/sub channel name for cache invalidation events.
+    /// When a blueprint is updated, a message is published on this channel
+    /// so all validator instances can flush their local caches.
+    /// </summary>
+    public string InvalidationChannel { get; set; } = "sorcha:validator:blueprint:invalidation";
 }

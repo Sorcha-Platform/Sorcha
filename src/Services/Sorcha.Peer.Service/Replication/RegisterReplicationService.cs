@@ -155,11 +155,33 @@ public class RegisterReplicationService
 
                             await foreach (var txEntry in txStream.ResponseStream.ReadAllAsync(replicationToken))
                             {
+                                var txData = txEntry.TransactionData.ToByteArray();
+
+                                // SEC-AUDIT 4.12: Verify checksum locally before trusting peer data
+                                if (string.IsNullOrWhiteSpace(txEntry.Checksum))
+                                {
+                                    _logger.LogWarning(
+                                        "Transaction {TransactionId} from peer has no checksum — accepting without integrity verification",
+                                        txEntry.TransactionId);
+                                }
+                                else if (!string.IsNullOrWhiteSpace(txEntry.Checksum))
+                                {
+                                    var localChecksum = Convert.ToHexString(
+                                        System.Security.Cryptography.SHA256.HashData(txData)).ToLowerInvariant();
+                                    if (!string.Equals(localChecksum, txEntry.Checksum, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _logger.LogWarning(
+                                            "Checksum mismatch for transaction {TransactionId} from peer — expected {Expected}, computed {Computed}. Skipping corrupted data.",
+                                            txEntry.TransactionId, txEntry.Checksum, localChecksum);
+                                        continue;
+                                    }
+                                }
+
                                 cacheEntry.AddOrUpdateTransaction(new CachedTransaction
                                 {
                                     TransactionId = txEntry.TransactionId,
                                     RegisterId = registerId,
-                                    Data = txEntry.TransactionData.ToByteArray(),
+                                    Data = txData,
                                     Checksum = txEntry.Checksum,
                                     CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(txEntry.CreatedAt)
                                 });
