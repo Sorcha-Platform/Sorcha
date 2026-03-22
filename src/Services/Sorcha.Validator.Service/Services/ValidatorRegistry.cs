@@ -6,12 +6,14 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using Polly;
 using Polly.CircuitBreaker;
 using StackExchange.Redis;
 using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
+using Sorcha.Validator.Service.Models;
 using Sorcha.Validator.Service.Services.Interfaces;
 
 namespace Sorcha.Validator.Service.Services;
@@ -31,6 +33,12 @@ public class ValidatorRegistry : IValidatorRegistry
     private readonly ResiliencePipeline _pipeline;
     private readonly JsonSerializerOptions _jsonOptions;
 
+    // MongoDB durable storage (write-through from Redis)
+    private readonly IMongoCollection<ValidatorDocument> _validatorsCollection;
+    private readonly IMongoCollection<ValidatorAuditEntry> _auditCollection;
+    private volatile bool _mongoIndexesCreated;
+    private readonly SemaphoreSlim _indexCreationLock = new(1, 1);
+
     // L1 local cache
     private readonly ConcurrentDictionary<string, LocalCacheEntry> _localCache = new();
 
@@ -42,6 +50,7 @@ public class ValidatorRegistry : IValidatorRegistry
 
     public ValidatorRegistry(
         IConnectionMultiplexer redis,
+        IMongoClient mongoClient,
         IRegisterServiceClient registerClient,
         IGenesisConfigService genesisConfig,
         IOptions<ValidatorRegistryConfiguration> config,
@@ -62,6 +71,11 @@ public class ValidatorRegistry : IValidatorRegistry
         };
 
         _pipeline = BuildResiliencePipeline();
+
+        // MongoDB durable storage
+        var mongoDatabase = mongoClient.GetDatabase(_config.MongoDatabase);
+        _validatorsCollection = mongoDatabase.GetCollection<ValidatorDocument>(_config.ValidatorsCollection);
+        _auditCollection = mongoDatabase.GetCollection<ValidatorAuditEntry>(_config.AuditCollection);
     }
 
     private ResiliencePipeline BuildResiliencePipeline()
@@ -279,6 +293,7 @@ public class ValidatorRegistry : IValidatorRegistry
             var orderIndex = order.Count;
 
             // Create validator info
+            var now = DateTimeOffset.UtcNow;
             var validator = new ValidatorInfo
             {
                 ValidatorId = registration.ValidatorId,
@@ -287,12 +302,14 @@ public class ValidatorRegistry : IValidatorRegistry
                 Status = validatorConfig.IsPublicRegistration
                     ? Interfaces.ValidatorStatus.Active
                     : Interfaces.ValidatorStatus.Pending,
-                RegisteredAt = DateTimeOffset.UtcNow,
+                RegisteredAt = now,
+                LastStateChangeAt = now,
                 OrderIndex = orderIndex,
                 Metadata = registration.Metadata
             };
 
-            // Store in Redis
+            // Write-through: MongoDB first (durable), then Redis (cache)
+            await PersistToMongoAsync(registerId, validator, ct);
             await StoreValidatorAsync(registerId, validator, ct);
 
             // Update order list
@@ -308,9 +325,6 @@ public class ValidatorRegistry : IValidatorRegistry
                 "Validator {ValidatorId} registered for register {RegisterId} (order: {Order})",
                 registration.ValidatorId, registerId, orderIndex);
 
-            // Registration is stored in Redis (source of truth for active validators).
-            // On-chain audit of validator registrations is deferred until the
-            // ControlDocketProcessor can create properly signed Control transactions.
             return ValidatorRegistrationResult.Succeeded(GenerateTransactionId(), orderIndex);
         }
         catch (Exception ex)
@@ -512,7 +526,7 @@ public class ValidatorRegistry : IValidatorRegistry
             // Update validator to removed status with rejection metadata
             var rejectedValidator = validator with
             {
-                Status = Interfaces.ValidatorStatus.Removed,
+                Status = Interfaces.ValidatorStatus.Revoked,
                 Metadata = validator.Metadata == null
                     ? new Dictionary<string, string>
                     {
@@ -856,6 +870,158 @@ public class ValidatorRegistry : IValidatorRegistry
         var input = Encoding.UTF8.GetBytes($"{Guid.NewGuid()}{DateTimeOffset.UtcNow.Ticks}");
         var hash = SHA256.HashData(input);
         return Convert.ToHexStringLower(hash);
+    }
+
+    // ===========================
+    // MongoDB Durable Persistence
+    // ===========================
+
+    /// <summary>
+    /// Ensures MongoDB indexes are created (idempotent, called once per startup).
+    /// </summary>
+    private async Task EnsureMongoIndexesAsync()
+    {
+        if (_mongoIndexesCreated) return;
+
+        await _indexCreationLock.WaitAsync();
+        try
+        {
+            if (_mongoIndexesCreated) return; // Double-check after acquiring lock
+            var validatorIndexes = new List<CreateIndexModel<ValidatorDocument>>
+            {
+                new(Builders<ValidatorDocument>.IndexKeys
+                        .Ascending(d => d.RegisterId)
+                        .Ascending(d => d.Status)),
+                new(Builders<ValidatorDocument>.IndexKeys
+                        .Ascending(d => d.RegisterId)
+                        .Ascending(d => d.ValidatorId),
+                    new CreateIndexOptions { Unique = true })
+            };
+            await _validatorsCollection.Indexes.CreateManyAsync(validatorIndexes);
+
+            var auditIndexes = new List<CreateIndexModel<ValidatorAuditEntry>>
+            {
+                new(Builders<ValidatorAuditEntry>.IndexKeys
+                        .Ascending(a => a.RegisterId)
+                        .Ascending(a => a.ValidatorId)
+                        .Descending(a => a.Timestamp)),
+                new(Builders<ValidatorAuditEntry>.IndexKeys
+                        .Descending(a => a.Timestamp))
+            };
+            await _auditCollection.Indexes.CreateManyAsync(auditIndexes);
+
+            _mongoIndexesCreated = true;
+            _logger.LogInformation("MongoDB indexes created for validator registry");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create MongoDB indexes — will retry on next operation");
+        }
+        finally
+        {
+            _indexCreationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Persists a validator to MongoDB (write-through from Redis).
+    /// </summary>
+    private async Task PersistToMongoAsync(string registerId, ValidatorInfo validator, CancellationToken ct = default)
+    {
+        await EnsureMongoIndexesAsync();
+
+        try
+        {
+            var doc = ValidatorDocument.FromValidatorInfo(registerId, validator);
+            var filter = Builders<ValidatorDocument>.Filter.And(
+                Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
+                Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validator.ValidatorId));
+
+            await _validatorsCollection.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to persist validator {ValidatorId} to MongoDB for register {RegisterId}",
+                validator.ValidatorId, registerId);
+        }
+    }
+
+    /// <summary>
+    /// Writes an audit entry to MongoDB.
+    /// </summary>
+    private async Task WriteAuditEntryAsync(
+        string registerId,
+        string validatorId,
+        Interfaces.ValidatorStatus previousStatus,
+        Interfaces.ValidatorStatus newStatus,
+        string performedBy,
+        string? reason = null)
+    {
+        await EnsureMongoIndexesAsync();
+
+        try
+        {
+            var entry = new ValidatorAuditEntry
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                RegisterId = registerId,
+                ValidatorId = validatorId,
+                PreviousStatus = previousStatus,
+                NewStatus = newStatus,
+                PerformedBy = performedBy,
+                Reason = reason,
+                Timestamp = DateTimeOffset.UtcNow
+            };
+
+            await _auditCollection.InsertOneAsync(entry);
+
+            _logger.LogInformation(
+                "Audit: Validator {ValidatorId} on register {RegisterId}: {PreviousStatus} → {NewStatus} by {PerformedBy}",
+                validatorId, registerId, previousStatus, newStatus, performedBy);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write audit entry for validator {ValidatorId}", validatorId);
+        }
+    }
+
+    /// <summary>
+    /// Hydrates Redis cache from MongoDB on startup.
+    /// Call during service initialization to ensure durable state survives Redis restarts.
+    /// </summary>
+    public async Task HydrateFromMongoAsync(CancellationToken ct = default)
+    {
+        await EnsureMongoIndexesAsync();
+
+        try
+        {
+            var cursor = await _validatorsCollection.FindAsync(
+                Builders<ValidatorDocument>.Filter.Empty,
+                cancellationToken: ct);
+
+            var validators = await cursor.ToListAsync(ct);
+            var byRegister = validators.GroupBy(v => v.RegisterId);
+
+            foreach (var group in byRegister)
+            {
+                var registerId = group.Key;
+                foreach (var doc in group)
+                {
+                    var validatorInfo = doc.ToValidatorInfo();
+                    await StoreValidatorAsync(registerId, validatorInfo, ct);
+                }
+
+                _logger.LogInformation(
+                    "Hydrated {Count} validators from MongoDB for register {RegisterId}",
+                    group.Count(), registerId);
+            }
+
+            _logger.LogInformation("MongoDB hydration complete: {Total} validators loaded", validators.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to hydrate validator registry from MongoDB");
+        }
     }
 
     private class LocalCacheEntry

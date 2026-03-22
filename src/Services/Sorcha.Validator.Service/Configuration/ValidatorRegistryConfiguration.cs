@@ -59,4 +59,25 @@ public class ValidatorRegistryConfiguration
     /// Must be >= 10.
     /// </summary>
     public int DefaultOperationalTtlSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// MongoDB database name for durable validator registry storage.
+    /// Validators are persisted to MongoDB (write-through) with Redis as cache.
+    /// </summary>
+    public string MongoDatabase { get; set; } = "sorcha-validators";
+
+    /// <summary>
+    /// MongoDB collection name for validator registrations.
+    /// </summary>
+    public string ValidatorsCollection { get; set; } = "validators";
+
+    /// <summary>
+    /// MongoDB collection name for validator audit trail.
+    /// </summary>
+    public string AuditCollection { get; set; } = "validator_audit";
+
+    /// <summary>
+    /// MongoDB collection name for wallet sequence numbers (replay protection).
+    /// </summary>
+    public string WalletSequencesCollection { get; set; } = "wallet_sequences";
 }

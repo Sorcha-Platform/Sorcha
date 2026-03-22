@@ -547,7 +547,7 @@ public class ValidatorRegistryApprovalTests
         storedJson.Should().NotBeNullOrEmpty();
         var storedValidator = JsonSerializer.Deserialize<ValidatorInfo>(storedJson!, _jsonOptions);
         storedValidator.Should().NotBeNull();
-        storedValidator!.Status.Should().Be(ValidatorStatus.Removed);
+        storedValidator!.Status.Should().Be(ValidatorStatus.Revoked);
         storedValidator.Metadata.Should().ContainKey("rejectedBy");
         storedValidator.Metadata.Should().ContainKey("rejectionReason");
     }

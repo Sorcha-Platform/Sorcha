@@ -85,6 +85,14 @@ public class Transaction
     /// </summary>
     public int RetryCount { get; set; }
 
+    // Replay Protection
+    /// <summary>
+    /// Per-sender monotonic sequence number for replay protection (SEC-AUDIT 4.2).
+    /// Must equal sender's last sequence number + 1 on the target register.
+    /// Genesis/control transactions use 0 and bypass validation.
+    /// </summary>
+    public ulong SequenceNumber { get; init; }
+
     // Chain Linkage
     /// <summary>
     /// Previous transaction ID for chain linkage. Null for genesis/independent transactions.
