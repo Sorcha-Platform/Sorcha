@@ -135,6 +135,70 @@ public interface IValidatorRegistry
         CancellationToken ct = default);
 
     /// <summary>
+    /// Suspend an active validator. Prevents participation in consensus until reactivated.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Validator to suspend</param>
+    /// <param name="suspendedBy">Administrator wallet address</param>
+    /// <param name="reason">Reason for suspension</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if suspended successfully</returns>
+    Task<bool> SuspendValidatorAsync(
+        string registerId,
+        string validatorId,
+        string suspendedBy,
+        string reason,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Reactivate a suspended validator. Only valid from Suspended state.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Validator to reactivate</param>
+    /// <param name="reactivatedBy">Administrator wallet address</param>
+    /// <param name="notes">Optional notes</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if reactivated successfully</returns>
+    Task<bool> ReactivateValidatorAsync(
+        string registerId,
+        string validatorId,
+        string reactivatedBy,
+        string? notes = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Permanently revoke a validator. Terminal state — cannot be re-activated.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Validator to revoke</param>
+    /// <param name="revokedBy">Administrator wallet address</param>
+    /// <param name="reason">Reason for revocation</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if revoked successfully</returns>
+    Task<bool> RevokeValidatorAsync(
+        string registerId,
+        string validatorId,
+        string revokedBy,
+        string reason,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Get audit trail for validators on a register.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="validatorId">Optional: filter to specific validator</param>
+    /// <param name="limit">Maximum entries to return</param>
+    /// <param name="offset">Pagination offset</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Audit entries and total count</returns>
+    Task<(IReadOnlyList<Models.ValidatorAuditEntry> Entries, long Total)> GetAuditTrailAsync(
+        string registerId,
+        string? validatorId = null,
+        int limit = 50,
+        int offset = 0,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Event raised when validator list changes
     /// </summary>
     event EventHandler<ValidatorListChangedEventArgs>? ValidatorListChanged;

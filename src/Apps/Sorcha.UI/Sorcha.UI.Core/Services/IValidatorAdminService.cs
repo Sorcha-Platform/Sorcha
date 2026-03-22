@@ -27,6 +27,11 @@ public interface IValidatorAdminService
     Task<bool> RejectValidatorAsync(string registerId, string validatorId, string? reason = null, CancellationToken ct = default);
     Task<List<ApprovedValidatorInfo>> RefreshApprovedValidatorsAsync(string registerId, CancellationToken ct = default);
 
+    // Lifecycle management (SEC-AUDIT 4.5)
+    Task<bool> SuspendValidatorAsync(string registerId, string validatorId, string suspendedBy, string reason, CancellationToken ct = default);
+    Task<bool> ReactivateValidatorAsync(string registerId, string validatorId, string reactivatedBy, string? notes = null, CancellationToken ct = default);
+    Task<bool> RevokeValidatorAsync(string registerId, string validatorId, string revokedBy, string reason, CancellationToken ct = default);
+
     // Metrics
     Task<AggregatedMetricsViewModel> GetAggregatedMetricsAsync(CancellationToken ct = default);
     Task<ValidationSummaryViewModel> GetValidationMetricsAsync(CancellationToken ct = default);

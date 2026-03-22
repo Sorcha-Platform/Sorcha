@@ -573,6 +573,225 @@ public class ValidatorRegistry : IValidatorRegistry
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<bool> SuspendValidatorAsync(
+        string registerId,
+        string validatorId,
+        string suspendedBy,
+        string reason,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var validator = await GetValidatorAsync(registerId, validatorId, ct);
+            if (validator == null)
+            {
+                _logger.LogWarning("Cannot suspend: validator {ValidatorId} not found on register {RegisterId}", validatorId, registerId);
+                return false;
+            }
+
+            if (validator.Status != Interfaces.ValidatorStatus.Active)
+            {
+                _logger.LogWarning("Cannot suspend: validator {ValidatorId} is {Status}, not Active", validatorId, validator.Status);
+                return false;
+            }
+
+            // Last-active-validator guard
+            var activeCount = await GetActiveCountAsync(registerId, ct);
+            if (activeCount <= 1)
+            {
+                _logger.LogWarning("Cannot suspend: validator {ValidatorId} is the last active validator on register {RegisterId}", validatorId, registerId);
+                return false;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var suspended = validator with
+            {
+                Status = Interfaces.ValidatorStatus.Suspended,
+                SuspendedAt = now,
+                SuspendedBy = suspendedBy,
+                LastStateChangeAt = now
+            };
+
+            await PersistToMongoAsync(registerId, suspended, ct);
+            await StoreValidatorAsync(registerId, suspended, ct);
+            _localCache.TryRemove(registerId, out _);
+
+            await WriteAuditEntryAsync(registerId, validatorId,
+                Interfaces.ValidatorStatus.Active, Interfaces.ValidatorStatus.Suspended, suspendedBy, reason);
+
+            var newCount = await GetActiveCountAsync(registerId, ct);
+            RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorSuspended, validatorId, newCount);
+
+            _logger.LogInformation("Validator {ValidatorId} suspended on register {RegisterId} by {SuspendedBy}", validatorId, registerId, suspendedBy);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to suspend validator {ValidatorId} on register {RegisterId}", validatorId, registerId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> ReactivateValidatorAsync(
+        string registerId,
+        string validatorId,
+        string reactivatedBy,
+        string? notes = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var validator = await GetValidatorAsync(registerId, validatorId, ct);
+            if (validator == null || validator.Status != Interfaces.ValidatorStatus.Suspended)
+            {
+                _logger.LogWarning("Cannot reactivate: validator {ValidatorId} is not in Suspended state", validatorId);
+                return false;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var reactivated = validator with
+            {
+                Status = Interfaces.ValidatorStatus.Active,
+                LastStateChangeAt = now
+            };
+
+            await PersistToMongoAsync(registerId, reactivated, ct);
+            await StoreValidatorAsync(registerId, reactivated, ct);
+            _localCache.TryRemove(registerId, out _);
+
+            await WriteAuditEntryAsync(registerId, validatorId,
+                Interfaces.ValidatorStatus.Suspended, Interfaces.ValidatorStatus.Active, reactivatedBy, notes);
+
+            var newCount = await GetActiveCountAsync(registerId, ct);
+            RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorReactivated, validatorId, newCount);
+
+            _logger.LogInformation("Validator {ValidatorId} reactivated on register {RegisterId} by {ReactivatedBy}", validatorId, registerId, reactivatedBy);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reactivate validator {ValidatorId} on register {RegisterId}", validatorId, registerId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> RevokeValidatorAsync(
+        string registerId,
+        string validatorId,
+        string revokedBy,
+        string reason,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(validatorId);
+
+        try
+        {
+            var validator = await GetValidatorAsync(registerId, validatorId, ct);
+            if (validator == null)
+            {
+                _logger.LogWarning("Cannot revoke: validator {ValidatorId} not found on register {RegisterId}", validatorId, registerId);
+                return false;
+            }
+
+            if (validator.Status == Interfaces.ValidatorStatus.Revoked)
+            {
+                _logger.LogWarning("Cannot revoke: validator {ValidatorId} is already revoked", validatorId);
+                return false;
+            }
+
+            // Last-active-validator guard (only if currently active)
+            if (validator.Status == Interfaces.ValidatorStatus.Active)
+            {
+                var activeCount = await GetActiveCountAsync(registerId, ct);
+                if (activeCount <= 1)
+                {
+                    _logger.LogWarning("Cannot revoke: validator {ValidatorId} is the last active validator on register {RegisterId}", validatorId, registerId);
+                    return false;
+                }
+            }
+
+            var previousStatus = validator.Status;
+            var now = DateTimeOffset.UtcNow;
+            var revoked = validator with
+            {
+                Status = Interfaces.ValidatorStatus.Revoked,
+                RevokedAt = now,
+                RevokedBy = revokedBy,
+                LastStateChangeAt = now
+            };
+
+            await PersistToMongoAsync(registerId, revoked, ct);
+            await StoreValidatorAsync(registerId, revoked, ct);
+            _localCache.TryRemove(registerId, out _);
+
+            // Remove from order list
+            var order = await GetValidatorOrderAsync(registerId, ct);
+            var newOrder = order.Where(v => v != validatorId).ToList();
+            await UpdateOrderAsync(registerId, newOrder, ct);
+
+            await WriteAuditEntryAsync(registerId, validatorId,
+                previousStatus, Interfaces.ValidatorStatus.Revoked, revokedBy, reason);
+
+            var newCount = await GetActiveCountAsync(registerId, ct);
+            RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorRemoved, validatorId, newCount);
+
+            _logger.LogInformation("Validator {ValidatorId} permanently revoked on register {RegisterId} by {RevokedBy}", validatorId, registerId, revokedBy);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to revoke validator {ValidatorId} on register {RegisterId}", validatorId, registerId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<(IReadOnlyList<Models.ValidatorAuditEntry> Entries, long Total)> GetAuditTrailAsync(
+        string registerId,
+        string? validatorId = null,
+        int limit = 50,
+        int offset = 0,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        await EnsureMongoIndexesAsync();
+
+        try
+        {
+            var filterBuilder = Builders<Models.ValidatorAuditEntry>.Filter;
+            var filter = filterBuilder.Eq(a => a.RegisterId, registerId);
+
+            if (!string.IsNullOrWhiteSpace(validatorId))
+            {
+                filter &= filterBuilder.Eq(a => a.ValidatorId, validatorId);
+            }
+
+            var total = await _auditCollection.CountDocumentsAsync(filter, cancellationToken: ct);
+            var entries = await _auditCollection
+                .Find(filter)
+                .SortByDescending(a => a.Timestamp)
+                .Skip(offset)
+                .Limit(limit)
+                .ToListAsync(ct);
+
+            return (entries, total);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get audit trail for register {RegisterId}", registerId);
+            return ([], 0);
+        }
+    }
 
     /// <inheritdoc/>
     public async Task<int> EnforceRegistrationModeTransitionAsync(

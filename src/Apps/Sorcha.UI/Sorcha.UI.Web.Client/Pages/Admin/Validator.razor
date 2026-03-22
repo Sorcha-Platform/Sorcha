@@ -6,6 +6,7 @@
 @attribute [Authorize(Roles = "Administrator")]
 @using Microsoft.AspNetCore.Authorization
 @using Sorcha.UI.Core.Components.Admin.Validator
+@using Microsoft.AspNetCore.Authorization
 
 <PageTitle>Validator - Sorcha Platform</PageTitle>
 
@@ -20,6 +21,10 @@
     </MudText>
 
     <ValidatorPanel />
+
+    <MudDivider Class="my-6" />
+
+    <ValidatorRegistryPanel />
 </MudContainer>
 
 @code {

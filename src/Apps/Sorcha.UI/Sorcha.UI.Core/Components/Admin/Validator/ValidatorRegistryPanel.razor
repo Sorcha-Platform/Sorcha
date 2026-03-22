@@ -1,0 +1,147 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Models.Admin
+@inject IValidatorAdminService ValidatorService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h6" Class="mb-2">
+    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="mr-1" />
+    Validator Registry
+</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Manage validator lifecycle — suspend, reactivate, or revoke validators
+</MudText>
+
+@if (_isLoading)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" />
+}
+else if (_validators.Count == 0)
+{
+    <EmptyState Icon="@Icons.Material.Filled.Shield"
+                Title="No validators registered"
+                Description="No validators have been registered on any register yet" />
+}
+else
+{
+    <MudTable Items="_validators" Dense="true" Hover="true" Striped="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Validator ID</MudTh>
+            <MudTh>Register</MudTh>
+            <MudTh>Endpoint</MudTh>
+            <MudTh>Requested</MudTh>
+            <MudTh Style="width: 200px;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><TruncatedId Value="@context.ValidatorId" /></MudTd>
+            <MudTd><TruncatedId Value="@context.RegisterId" /></MudTd>
+            <MudTd>@context.Endpoint</MudTd>
+            <MudTd>@context.RequestedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.PauseCircle"
+                               Color="Color.Warning" Size="Size.Small"
+                               Title="Suspend"
+                               OnClick="() => SuspendAsync(context)"
+                               Disabled="_isProcessing" />
+                <MudIconButton Icon="@Icons.Material.Filled.PlayCircle"
+                               Color="Color.Success" Size="Size.Small"
+                               Title="Reactivate"
+                               OnClick="() => ReactivateAsync(context)"
+                               Disabled="_isProcessing" />
+                <MudIconButton Icon="@Icons.Material.Filled.Block"
+                               Color="Color.Error" Size="Size.Small"
+                               Title="Revoke (permanent)"
+                               OnClick="() => RevokeAsync(context)"
+                               Disabled="_isProcessing" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<PendingValidatorViewModel> _validators = [];
+    private bool _isLoading = true;
+    private bool _isProcessing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadValidatorsAsync();
+    }
+
+    private async Task LoadValidatorsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var queue = await ValidatorService.GetConsentQueueAsync();
+            _validators = queue.Registers
+                .SelectMany(r => r.PendingValidators)
+                .ToList();
+        }
+        catch
+        {
+            _validators = [];
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SuspendAsync(PendingValidatorViewModel item)
+    {
+        var parameters = new DialogParameters<RejectValidatorDialog>
+        {
+            { x => x.ValidatorCount, 1 },
+            { x => x.RegisterName, item.RegisterId }
+        };
+        var dialog = await DialogService.ShowAsync<RejectValidatorDialog>("Suspend Validator", parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled != false) return;
+
+        _isProcessing = true;
+        var success = await ValidatorService.SuspendValidatorAsync(
+            item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Suspended by admin");
+        _isProcessing = false;
+
+        Snackbar.Add(success ? "Validator suspended" : "Failed to suspend — may be the last active validator",
+            success ? Severity.Warning : Severity.Error);
+        if (success) await LoadValidatorsAsync();
+    }
+
+    private async Task ReactivateAsync(PendingValidatorViewModel item)
+    {
+        _isProcessing = true;
+        var success = await ValidatorService.ReactivateValidatorAsync(
+            item.RegisterId, item.ValidatorId, "admin");
+        _isProcessing = false;
+
+        Snackbar.Add(success ? "Validator reactivated" : "Failed to reactivate — validator may not be suspended",
+            success ? Severity.Success : Severity.Error);
+        if (success) await LoadValidatorsAsync();
+    }
+
+    private async Task RevokeAsync(PendingValidatorViewModel item)
+    {
+        var parameters = new DialogParameters<RejectValidatorDialog>
+        {
+            { x => x.ValidatorCount, 1 },
+            { x => x.RegisterName, item.RegisterId }
+        };
+        var dialog = await DialogService.ShowAsync<RejectValidatorDialog>("Revoke Validator (PERMANENT)", parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled != false) return;
+
+        _isProcessing = true;
+        var success = await ValidatorService.RevokeValidatorAsync(
+            item.RegisterId, item.ValidatorId, "admin", result.Data as string ?? "Revoked by admin");
+        _isProcessing = false;
+
+        Snackbar.Add(success ? "Validator permanently revoked" : "Failed to revoke",
+            success ? Severity.Error : Severity.Error);
+        if (success) await LoadValidatorsAsync();
+    }
+}

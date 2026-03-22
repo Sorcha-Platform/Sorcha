@@ -102,6 +102,39 @@ public class ValidatorAdminService : IValidatorAdminService
         catch (Exception ex) { _logger.LogError(ex, "Error rejecting validator {ValidatorId}", validatorId); return false; }
     }
 
+    public async Task<bool> SuspendValidatorAsync(string registerId, string validatorId, string suspendedBy, string reason, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = JsonContent.Create(new { suspendedBy, reason });
+            var response = await _httpClient.PostAsync($"/api/validators/{registerId}/{validatorId}/suspend", content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error suspending validator {ValidatorId}", validatorId); return false; }
+    }
+
+    public async Task<bool> ReactivateValidatorAsync(string registerId, string validatorId, string reactivatedBy, string? notes = null, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = JsonContent.Create(new { reactivatedBy, notes });
+            var response = await _httpClient.PostAsync($"/api/validators/{registerId}/{validatorId}/reactivate", content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error reactivating validator {ValidatorId}", validatorId); return false; }
+    }
+
+    public async Task<bool> RevokeValidatorAsync(string registerId, string validatorId, string revokedBy, string reason, CancellationToken ct = default)
+    {
+        try
+        {
+            var content = JsonContent.Create(new { revokedBy, reason });
+            var response = await _httpClient.PostAsync($"/api/validators/{registerId}/{validatorId}/revoke", content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Error revoking validator {ValidatorId}", validatorId); return false; }
+    }
+
     public async Task<List<ApprovedValidatorInfo>> RefreshApprovedValidatorsAsync(string registerId, CancellationToken ct = default)
     {
         try
