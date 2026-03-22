@@ -57,6 +57,11 @@ public class ActionExecutionService : IActionExecutionService
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
+    /// <summary>
+    /// Maximum actions per workflow instance (SEC-AUDIT 3.8). Prevents routing cycles from infinite loops.
+    /// </summary>
+    private const int MaxExecutionDepth = 1000;
+
     public ActionExecutionService(
         IActionResolverService actionResolver,
         IStateReconstructionService stateReconstruction,
@@ -122,14 +127,13 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 1a. Cycle/depth guard — prevent infinite loops in cyclic blueprints (SEC-AUDIT 3.8)
-        const int maxExecutionDepth = 1000;
-        if (instance.CompletedActionCount >= maxExecutionDepth)
+        if (instance.CompletedActionCount >= MaxExecutionDepth)
         {
             _logger.LogWarning(
                 "Instance {InstanceId} exceeded maximum execution depth ({MaxDepth}). Possible routing cycle in blueprint {BlueprintId}",
-                instanceId, maxExecutionDepth, instance.BlueprintId);
+                instanceId, MaxExecutionDepth, instance.BlueprintId);
             throw new InvalidOperationException(
-                $"Workflow instance has exceeded the maximum execution depth of {maxExecutionDepth}. " +
+                $"Workflow instance has exceeded the maximum execution depth of {MaxExecutionDepth}. " +
                 "This may indicate a routing cycle in the blueprint definition.");
         }
 

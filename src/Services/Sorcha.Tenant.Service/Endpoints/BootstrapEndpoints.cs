@@ -65,6 +65,7 @@ public static class BootstrapEndpoints
     private static async Task<Results<Created<BootstrapResponse>, ValidationProblem, Conflict<ProblemDetails>, ProblemHttpResult>> BootstrapPlatform(
         [FromBody] BootstrapRequest request,
         HttpContext httpContext,
+        IConfiguration configuration,
         IOrganizationService organizationService,
         IServiceAuthService serviceAuthService,
         ITokenService tokenService,
@@ -72,8 +73,8 @@ public static class BootstrapEndpoints
         TenantDbContext dbContext,
         ILogger<Program> logger)
     {
-        // Bootstrap secret guard: if BOOTSTRAP_SECRET env var is set, require matching X-Bootstrap-Secret header
-        var bootstrapSecret = Environment.GetEnvironmentVariable("BOOTSTRAP_SECRET");
+        // Bootstrap secret guard: if BOOTSTRAP_SECRET is configured, require matching X-Bootstrap-Secret header
+        var bootstrapSecret = configuration["BOOTSTRAP_SECRET"];
         if (!string.IsNullOrEmpty(bootstrapSecret))
         {
             var providedSecret = httpContext.Request.Headers["X-Bootstrap-Secret"].FirstOrDefault();

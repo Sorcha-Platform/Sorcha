@@ -108,10 +108,12 @@ public class ActionsHub : Hub
 
             if (string.IsNullOrWhiteSpace(orgId))
             {
+                // Warn but allow — service tokens without org_id are allowed for backward compatibility
+                // but should be updated to include org_id for proper audit scoping
                 _logger.LogWarning(
-                    "Service token without org_id claim attempted wallet subscription. ConnectionId: {ConnectionId}",
-                    Context.ConnectionId);
-                throw new HubException("Service tokens must include an org_id claim for wallet subscriptions");
+                    "Service token without org_id claim subscribed to wallet {Wallet}. ConnectionId: {ConnectionId}. " +
+                    "Service tokens should include org_id for audit scoping.",
+                    walletAddress, Context.ConnectionId);
             }
         }
         else

@@ -158,7 +158,13 @@ public class RegisterReplicationService
                                 var txData = txEntry.TransactionData.ToByteArray();
 
                                 // SEC-AUDIT 4.12: Verify checksum locally before trusting peer data
-                                if (!string.IsNullOrWhiteSpace(txEntry.Checksum))
+                                if (string.IsNullOrWhiteSpace(txEntry.Checksum))
+                                {
+                                    _logger.LogWarning(
+                                        "Transaction {TransactionId} from peer has no checksum — accepting without integrity verification",
+                                        txEntry.TransactionId);
+                                }
+                                else if (!string.IsNullOrWhiteSpace(txEntry.Checksum))
                                 {
                                     var localChecksum = Convert.ToHexString(
                                         System.Security.Cryptography.SHA256.HashData(txData)).ToLowerInvariant();

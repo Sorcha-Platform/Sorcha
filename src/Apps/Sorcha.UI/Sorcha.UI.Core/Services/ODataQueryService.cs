@@ -104,7 +104,7 @@ public class ODataQueryService : IODataQueryService
         return $"{baseUrl}?{string.Join("&", parts)}";
     }
 
-    private static readonly Regex SafeFieldNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_./]*$", RegexOptions.Compiled);
+    private static readonly Regex SafeFieldNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_.]*$", RegexOptions.Compiled);
 
     /// <summary>
     /// Validates that an OData field name contains only safe characters to prevent injection.
