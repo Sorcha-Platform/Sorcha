@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using System.Text.Json;
 
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -131,7 +132,7 @@ public static class PasskeyEndpoints
             return TypedResults.Ok(new PasskeyRegistrationOptionsResponse
             {
                 TransactionId = result.TransactionId,
-                Options = result.Options
+                Options = JsonDocument.Parse(result.Options.ToJson()).RootElement
             });
         }
         catch (Exception ex)

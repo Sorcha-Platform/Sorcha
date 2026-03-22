@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Fido2NetLib;
@@ -32,9 +33,11 @@ public record PasskeyRegistrationOptionsResponse
 
     /// <summary>
     /// FIDO2 credential creation options to pass to the browser WebAuthn API.
+    /// Serialized as JsonElement to preserve Fido2NetLib's custom JSON converters
+    /// (e.g., "public-key" instead of "PublicKey" for credential type).
     /// </summary>
     [JsonPropertyName("options")]
-    public required object Options { get; init; }
+    public required JsonElement Options { get; init; }
 }
 
 /// <summary>
@@ -182,7 +185,8 @@ public record PasskeyAssertionOptionsResponse
 
     /// <summary>
     /// FIDO2 assertion options to pass to the browser WebAuthn API.
+    /// Serialized as JsonElement to preserve Fido2NetLib's custom JSON converters.
     /// </summary>
     [JsonPropertyName("options")]
-    public required object Options { get; init; }
+    public required JsonElement Options { get; init; }
 }

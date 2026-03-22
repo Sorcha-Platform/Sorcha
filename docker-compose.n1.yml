@@ -39,6 +39,9 @@ services:
     image: sorchadev/tenant-service:latest
     environment:
       <<: *jwt-env
+      Fido2__ServerDomain: n1.sorcha.dev
+      Fido2__ServerName: Sorcha
+      Fido2__Origins__0: https://n1.sorcha.dev
 
   peer-service:
     image: sorchadev/peer-service:latest

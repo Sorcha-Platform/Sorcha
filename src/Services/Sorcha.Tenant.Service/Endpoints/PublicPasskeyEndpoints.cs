@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+
 using Microsoft.EntityFrameworkCore;
 
 using Sorcha.Tenant.Service.Data;
@@ -138,7 +140,7 @@ public static class PublicPasskeyEndpoints
             return TypedResults.Ok(new PasskeyRegistrationOptionsResponse
             {
                 TransactionId = result.TransactionId,
-                Options = result.Options
+                Options = JsonDocument.Parse(result.Options.ToJson()).RootElement
             });
         }
         catch (Exception ex)
@@ -302,7 +304,7 @@ public static class PublicPasskeyEndpoints
             return TypedResults.Ok(new PasskeyAssertionOptionsResponse
             {
                 TransactionId = result.TransactionId,
-                Options = result.Options
+                Options = JsonDocument.Parse(result.Options.ToJson()).RootElement
             });
         }
         catch (Exception ex)
