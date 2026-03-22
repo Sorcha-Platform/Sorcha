@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Fido2NetLib.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Sorcha.Tenant.Service.Endpoints;
@@ -23,9 +24,15 @@ builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization
 // Add controllers and minimal API support
 builder.Services.AddEndpointsApiExplorer();
 
-// Configure JSON serialization to use string enum values
+// Configure JSON serialization: Fido2 converters first (for WebAuthn spec-compliant
+// enum values like "public-key"), then generic string enum converter as fallback.
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    foreach (var converter in FidoModelSerializerContext.Default.Options.Converters)
+    {
+        options.SerializerOptions.Converters.Add(converter);
+    }
+
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
