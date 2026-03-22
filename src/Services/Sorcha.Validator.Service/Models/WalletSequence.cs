@@ -16,9 +16,11 @@ public record WalletSequence
     /// <summary>Sender wallet address</summary>
     public required string WalletAddress { get; init; }
 
-    /// <summary>Last accepted sequence number for this wallet on this register</summary>
+    /// <summary>Last accepted sequence number for this wallet on this register.
+    /// Mutable: updated via MongoDB atomic findOneAndUpdate on each accepted transaction.</summary>
     public ulong LastSequenceNumber { get; set; }
 
-    /// <summary>When the sequence was last updated</summary>
+    /// <summary>When the sequence was last updated.
+    /// Mutable: updated alongside LastSequenceNumber.</summary>
     public DateTimeOffset LastUpdatedAt { get; set; }
 }

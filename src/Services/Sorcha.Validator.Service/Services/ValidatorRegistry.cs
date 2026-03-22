@@ -6,8 +6,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using Polly;
 using Polly.CircuitBreaker;
@@ -38,7 +36,8 @@ public class ValidatorRegistry : IValidatorRegistry
     // MongoDB durable storage (write-through from Redis)
     private readonly IMongoCollection<ValidatorDocument> _validatorsCollection;
     private readonly IMongoCollection<ValidatorAuditEntry> _auditCollection;
-    private bool _mongoIndexesCreated;
+    private volatile bool _mongoIndexesCreated;
+    private readonly SemaphoreSlim _indexCreationLock = new(1, 1);
 
     // L1 local cache
     private readonly ConcurrentDictionary<string, LocalCacheEntry> _localCache = new();
@@ -294,6 +293,7 @@ public class ValidatorRegistry : IValidatorRegistry
             var orderIndex = order.Count;
 
             // Create validator info
+            var now = DateTimeOffset.UtcNow;
             var validator = new ValidatorInfo
             {
                 ValidatorId = registration.ValidatorId,
@@ -302,23 +302,20 @@ public class ValidatorRegistry : IValidatorRegistry
                 Status = validatorConfig.IsPublicRegistration
                     ? Interfaces.ValidatorStatus.Active
                     : Interfaces.ValidatorStatus.Pending,
-                RegisteredAt = DateTimeOffset.UtcNow,
+                RegisteredAt = now,
+                LastStateChangeAt = now,
                 OrderIndex = orderIndex,
                 Metadata = registration.Metadata
             };
 
-            // Store in Redis + MongoDB (write-through)
+            // Write-through: MongoDB first (durable), then Redis (cache)
+            await PersistToMongoAsync(registerId, validator, ct);
             await StoreValidatorAsync(registerId, validator, ct);
-            await PersistToMongoAsync(registerId, validator);
 
             // Update order list
             var newOrder = order.ToList();
             newOrder.Add(registration.ValidatorId);
             await UpdateOrderAsync(registerId, newOrder, ct);
-
-            // Audit log
-            await WriteAuditEntryAsync(registerId, registration.ValidatorId,
-                Interfaces.ValidatorStatus.Pending, validator.Status, "system", "Initial registration");
 
             // Raise event
             RaiseValidatorListChanged(registerId, ValidatorListChangeType.ValidatorAdded,
@@ -886,8 +883,10 @@ public class ValidatorRegistry : IValidatorRegistry
     {
         if (_mongoIndexesCreated) return;
 
+        await _indexCreationLock.WaitAsync();
         try
         {
+            if (_mongoIndexesCreated) return; // Double-check after acquiring lock
             var validatorIndexes = new List<CreateIndexModel<ValidatorDocument>>
             {
                 new(Builders<ValidatorDocument>.IndexKeys
@@ -918,12 +917,16 @@ public class ValidatorRegistry : IValidatorRegistry
         {
             _logger.LogWarning(ex, "Failed to create MongoDB indexes — will retry on next operation");
         }
+        finally
+        {
+            _indexCreationLock.Release();
+        }
     }
 
     /// <summary>
     /// Persists a validator to MongoDB (write-through from Redis).
     /// </summary>
-    private async Task PersistToMongoAsync(string registerId, ValidatorInfo validator)
+    private async Task PersistToMongoAsync(string registerId, ValidatorInfo validator, CancellationToken ct = default)
     {
         await EnsureMongoIndexesAsync();
 
@@ -934,7 +937,7 @@ public class ValidatorRegistry : IValidatorRegistry
                 Builders<ValidatorDocument>.Filter.Eq(d => d.RegisterId, registerId),
                 Builders<ValidatorDocument>.Filter.Eq(d => d.ValidatorId, validator.ValidatorId));
 
-            await _validatorsCollection.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true });
+            await _validatorsCollection.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true }, ct);
         }
         catch (Exception ex)
         {
@@ -946,7 +949,7 @@ public class ValidatorRegistry : IValidatorRegistry
     /// <summary>
     /// Writes an audit entry to MongoDB.
     /// </summary>
-    internal async Task WriteAuditEntryAsync(
+    private async Task WriteAuditEntryAsync(
         string registerId,
         string validatorId,
         Interfaces.ValidatorStatus previousStatus,
@@ -1026,73 +1029,4 @@ public class ValidatorRegistry : IValidatorRegistry
         public required List<ValidatorInfo> Validators { get; init; }
         public required DateTimeOffset ExpiresAt { get; init; }
     }
-}
-
-/// <summary>
-/// MongoDB document for durable validator storage.
-/// </summary>
-internal class ValidatorDocument
-{
-    [BsonId]
-    public string Id { get; set; } = string.Empty;
-
-    public string RegisterId { get; set; } = string.Empty;
-    public string ValidatorId { get; set; } = string.Empty;
-    public string PublicKey { get; set; } = string.Empty;
-    public string? Algorithm { get; set; }
-    public string GrpcEndpoint { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public DateTimeOffset RegisteredAt { get; set; }
-    public int? OrderIndex { get; set; }
-    public string? RegistrationTxId { get; set; }
-    public DateTimeOffset? ApprovedAt { get; set; }
-    public string? ApprovedBy { get; set; }
-    public DateTimeOffset? SuspendedAt { get; set; }
-    public string? SuspendedBy { get; set; }
-    public DateTimeOffset? RevokedAt { get; set; }
-    public string? RevokedBy { get; set; }
-    public DateTimeOffset LastStateChangeAt { get; set; }
-    public Dictionary<string, string>? Metadata { get; set; }
-
-    public static ValidatorDocument FromValidatorInfo(string registerId, ValidatorInfo info) => new()
-    {
-        Id = $"{registerId}:{info.ValidatorId}",
-        RegisterId = registerId,
-        ValidatorId = info.ValidatorId,
-        PublicKey = info.PublicKey,
-        Algorithm = info.Algorithm,
-        GrpcEndpoint = info.GrpcEndpoint,
-        Status = info.Status.ToString(),
-        RegisteredAt = info.RegisteredAt,
-        OrderIndex = info.OrderIndex,
-        RegistrationTxId = info.RegistrationTxId,
-        ApprovedAt = info.ApprovedAt,
-        ApprovedBy = info.ApprovedBy,
-        SuspendedAt = info.SuspendedAt,
-        SuspendedBy = info.SuspendedBy,
-        RevokedAt = info.RevokedAt,
-        RevokedBy = info.RevokedBy,
-        LastStateChangeAt = info.LastStateChangeAt,
-        Metadata = info.Metadata
-    };
-
-    public ValidatorInfo ToValidatorInfo() => new()
-    {
-        ValidatorId = ValidatorId,
-        PublicKey = PublicKey,
-        Algorithm = Algorithm,
-        GrpcEndpoint = GrpcEndpoint,
-        Status = Enum.Parse<Interfaces.ValidatorStatus>(Status, ignoreCase: true),
-        RegisteredAt = RegisteredAt,
-        OrderIndex = OrderIndex,
-        RegistrationTxId = RegistrationTxId,
-        ApprovedAt = ApprovedAt,
-        ApprovedBy = ApprovedBy,
-        SuspendedAt = SuspendedAt,
-        SuspendedBy = SuspendedBy,
-        RevokedAt = RevokedAt,
-        RevokedBy = RevokedBy,
-        LastStateChangeAt = LastStateChangeAt,
-        Metadata = Metadata
-    };
 }
