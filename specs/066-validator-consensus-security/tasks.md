@@ -54,21 +54,21 @@
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Add `SuspendValidatorAsync`, `ReactivateValidatorAsync`, `RevokeValidatorAsync` to `IValidatorRegistry` interface in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IValidatorRegistry.cs`
-- [ ] T015 [US1] Add `GetAuditTrailAsync` to `IValidatorRegistry` interface in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IValidatorRegistry.cs`
-- [ ] T016 [US1] Implement `SuspendValidatorAsync` with last-active-validator guard and audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
-- [ ] T017 [US1] Implement `ReactivateValidatorAsync` (Suspended→Active only) with audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
-- [ ] T018 [US1] Implement `RevokeValidatorAsync` (terminal, last-active guard) with audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
-- [ ] T019 [US1] Implement `GetAuditTrailAsync` with pagination in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
-- [ ] T020 [US1] Add suspend endpoint `POST /{registerId}/{validatorId}/suspend` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
-- [ ] T021 [P] [US1] Add reactivate endpoint `POST /{registerId}/{validatorId}/reactivate` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
-- [ ] T022 [P] [US1] Add revoke endpoint `POST /{registerId}/{validatorId}/revoke` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
-- [ ] T023 [US1] Add audit trail endpoint `GET /{registerId}/audit` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
-- [ ] T024 [US1] Add YARP route for new validator endpoints in `src/Services/Sorcha.ApiGateway/appsettings.json`
-- [ ] T025 [US1] Create `ValidatorAdminService` HTTP client in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ValidatorAdminService.cs`
-- [ ] T026 [US1] Create `ValidatorManagement.razor` page — list all validators with status, actions (approve/suspend/revoke), confirmation dialogs in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/ValidatorManagement.razor`
-- [ ] T027 [US1] Create `ValidatorDetail.razor` page — full detail + audit history in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Admin/ValidatorDetail.razor`
-- [ ] T028 [US1] Add validator management nav item to admin sidebar in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Layout/AdminNavMenu.razor`
+- [x] T014 [US1] Add `SuspendValidatorAsync`, `ReactivateValidatorAsync`, `RevokeValidatorAsync` to `IValidatorRegistry` interface in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IValidatorRegistry.cs`
+- [x] T015 [US1] Add `GetAuditTrailAsync` to `IValidatorRegistry` interface in `src/Services/Sorcha.Validator.Service/Services/Interfaces/IValidatorRegistry.cs`
+- [x] T016 [US1] Implement `SuspendValidatorAsync` with last-active-validator guard and audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
+- [x] T017 [US1] Implement `ReactivateValidatorAsync` (Suspended→Active only) with audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
+- [x] T018 [US1] Implement `RevokeValidatorAsync` (terminal, last-active guard) with audit logging in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
+- [x] T019 [US1] Implement `GetAuditTrailAsync` with pagination in `src/Services/Sorcha.Validator.Service/Services/ValidatorRegistry.cs`
+- [x] T020 [US1] Add suspend endpoint `POST /{registerId}/{validatorId}/suspend` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
+- [x] T021 [P] [US1] Add reactivate endpoint `POST /{registerId}/{validatorId}/reactivate` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
+- [x] T022 [P] [US1] Add revoke endpoint `POST /{registerId}/{validatorId}/revoke` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
+- [x] T023 [US1] Add audit trail endpoint `GET /{registerId}/audit` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
+- [x] T024 [US1] YARP routes already cover `/api/validators/*` — no changes needed
+- [x] T025 [US1] Extended existing `ValidatorAdminService` with suspend/reactivate/revoke methods in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ValidatorAdminService.cs`
+- [x] T026 [US1] Created `ValidatorRegistryPanel.razor` integrated into existing Validator admin page in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/Validator/ValidatorRegistryPanel.razor`
+- [x] T027 [US1] Merged into T026 — detail view not needed as separate page (registry panel shows all info inline)
+- [x] T028 [US1] Nav already exists — Validator page at `/admin/validator` includes the new registry panel
 
 **Checkpoint**: Full validator lifecycle manageable via API and Admin UI. Audit trail visible. Data survives restarts.
 

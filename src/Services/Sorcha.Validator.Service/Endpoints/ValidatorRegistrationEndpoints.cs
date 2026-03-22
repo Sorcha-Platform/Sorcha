@@ -76,6 +76,41 @@ public static class ValidatorRegistrationEndpoints
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        group.MapPost("/{registerId}/{validatorId}/suspend", SuspendValidator)
+            .WithName("SuspendValidator")
+            .WithSummary("Suspend an active validator")
+            .WithDescription("Suspends an active validator, preventing consensus participation. Cannot suspend the last active validator. Requires SystemAdmin authorization.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/{registerId}/{validatorId}/reactivate", ReactivateValidator)
+            .WithName("ReactivateValidator")
+            .WithSummary("Reactivate a suspended validator")
+            .WithDescription("Reactivates a previously suspended validator. Only valid from Suspended state. Requires SystemAdmin authorization.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/{registerId}/{validatorId}/revoke", RevokeValidator)
+            .WithName("RevokeValidator")
+            .WithSummary("Permanently revoke a validator")
+            .WithDescription("Permanently revokes a validator (terminal state). Cannot be re-activated. Cannot revoke the last active validator. Requires SystemAdmin authorization.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<object>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/{registerId}/audit", GetAuditTrail)
+            .WithName("GetValidatorAuditTrail")
+            .WithSummary("Get validator audit trail")
+            .WithDescription("Returns audit trail of all validator state transitions for a register. Supports filtering by validator and pagination.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<object>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         return group;
     }
 
@@ -489,6 +524,206 @@ public static class ValidatorRegistrationEndpoints
                 title: "Rejection error");
         }
     }
+
+    /// <summary>
+    /// Suspend an active validator
+    /// </summary>
+    private static async Task<IResult> SuspendValidator(
+        string registerId,
+        string validatorId,
+        [FromBody] SuspendValidatorRequest request,
+        [FromServices] IValidatorRegistry registry,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var success = await registry.SuspendValidatorAsync(
+                registerId, validatorId, request.SuspendedBy, request.Reason, cancellationToken);
+
+            if (!success)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Suspension failed",
+                    message = "Validator not found, not active, or is the last active validator"
+                });
+            }
+
+            return Results.Ok(new
+            {
+                validatorId,
+                registerId,
+                status = "suspended",
+                suspendedAt = DateTimeOffset.UtcNow,
+                suspendedBy = request.SuspendedBy
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error suspending validator {ValidatorId}", validatorId);
+            return Results.Problem(detail: ex.Message, statusCode: 500, title: "Suspension error");
+        }
+    }
+
+    /// <summary>
+    /// Reactivate a suspended validator
+    /// </summary>
+    private static async Task<IResult> ReactivateValidator(
+        string registerId,
+        string validatorId,
+        [FromBody] ReactivateValidatorRequest request,
+        [FromServices] IValidatorRegistry registry,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var success = await registry.ReactivateValidatorAsync(
+                registerId, validatorId, request.ReactivatedBy, request.Notes, cancellationToken);
+
+            if (!success)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Reactivation failed",
+                    message = "Validator not found or not in Suspended state"
+                });
+            }
+
+            return Results.Ok(new
+            {
+                validatorId,
+                registerId,
+                status = "active",
+                reactivatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error reactivating validator {ValidatorId}", validatorId);
+            return Results.Problem(detail: ex.Message, statusCode: 500, title: "Reactivation error");
+        }
+    }
+
+    /// <summary>
+    /// Permanently revoke a validator
+    /// </summary>
+    private static async Task<IResult> RevokeValidator(
+        string registerId,
+        string validatorId,
+        [FromBody] RevokeValidatorRequest request,
+        [FromServices] IValidatorRegistry registry,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var success = await registry.RevokeValidatorAsync(
+                registerId, validatorId, request.RevokedBy, request.Reason, cancellationToken);
+
+            if (!success)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Revocation failed",
+                    message = "Validator not found, already revoked, or is the last active validator"
+                });
+            }
+
+            return Results.Ok(new
+            {
+                validatorId,
+                registerId,
+                status = "revoked",
+                revokedAt = DateTimeOffset.UtcNow,
+                revokedBy = request.RevokedBy
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error revoking validator {ValidatorId}", validatorId);
+            return Results.Problem(detail: ex.Message, statusCode: 500, title: "Revocation error");
+        }
+    }
+
+    /// <summary>
+    /// Get validator audit trail
+    /// </summary>
+    private static async Task<IResult> GetAuditTrail(
+        string registerId,
+        [FromQuery] string? validatorId,
+        [FromQuery] int limit,
+        [FromQuery] int offset,
+        [FromServices] IValidatorRegistry registry,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var effectiveLimit = limit > 0 ? Math.Min(limit, 100) : 50;
+            var effectiveOffset = Math.Max(offset, 0);
+
+            var (entries, total) = await registry.GetAuditTrailAsync(
+                registerId, validatorId, effectiveLimit, effectiveOffset, cancellationToken);
+
+            return Results.Ok(new
+            {
+                registerId,
+                entries = entries.Select(e => new
+                {
+                    validatorId = e.ValidatorId,
+                    previousStatus = e.PreviousStatus.ToString().ToLowerInvariant(),
+                    newStatus = e.NewStatus.ToString().ToLowerInvariant(),
+                    performedBy = e.PerformedBy,
+                    reason = e.Reason,
+                    timestamp = e.Timestamp
+                }),
+                total
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting audit trail for register {RegisterId}", registerId);
+            return Results.Problem(detail: ex.Message, statusCode: 500, title: "Audit trail error");
+        }
+    }
+}
+
+/// <summary>
+/// Request to suspend a validator
+/// </summary>
+public record SuspendValidatorRequest
+{
+    /// <summary>Wallet address of administrator</summary>
+    public required string SuspendedBy { get; init; }
+
+    /// <summary>Reason for suspension</summary>
+    public required string Reason { get; init; }
+}
+
+/// <summary>
+/// Request to reactivate a suspended validator
+/// </summary>
+public record ReactivateValidatorRequest
+{
+    /// <summary>Wallet address of administrator</summary>
+    public required string ReactivatedBy { get; init; }
+
+    /// <summary>Optional notes</summary>
+    public string? Notes { get; init; }
+}
+
+/// <summary>
+/// Request to permanently revoke a validator
+/// </summary>
+public record RevokeValidatorRequest
+{
+    /// <summary>Wallet address of administrator</summary>
+    public required string RevokedBy { get; init; }
+
+    /// <summary>Reason for revocation</summary>
+    public required string Reason { get; init; }
 }
 
 /// <summary>
