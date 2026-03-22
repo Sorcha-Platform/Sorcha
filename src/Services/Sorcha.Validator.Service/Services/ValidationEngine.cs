@@ -353,11 +353,38 @@ public class ValidationEngine : IValidationEngine
 
         try
         {
-            // Skip schema validation for genesis/control transactions
+            // Genesis/control transactions skip schema validation but MUST have valid signatures (SEC-AUDIT 4.10)
             if (IsGenesisOrControlTransaction(transaction))
             {
-                _logger.LogDebug("Skipping schema validation for genesis/control transaction {TransactionId}",
+                _logger.LogDebug("Validating signatures for genesis/control transaction {TransactionId}",
                     transaction.TransactionId);
+
+                if (transaction.Signatures == null || transaction.Signatures.Count == 0)
+                {
+                    return ValidationEngineResult.Failure(
+                        transaction.TransactionId,
+                        transaction.RegisterId,
+                        sw.Elapsed,
+                        [CreateError("VAL_GENESIS_001",
+                            "Genesis/control transactions must have at least one signature",
+                            ValidationErrorCategory.Cryptographic, "Signatures")]);
+                }
+
+                // Verify at least one signature has a valid public key (not empty)
+                var hasValidSig = transaction.Signatures.Any(s =>
+                    s.PublicKey != null && s.PublicKey.Length > 0 && !string.IsNullOrWhiteSpace(s.Algorithm));
+
+                if (!hasValidSig)
+                {
+                    return ValidationEngineResult.Failure(
+                        transaction.TransactionId,
+                        transaction.RegisterId,
+                        sw.Elapsed,
+                        [CreateError("VAL_GENESIS_002",
+                            "Genesis/control transaction signatures must include a valid public key and algorithm",
+                            ValidationErrorCategory.Cryptographic, "Signatures")]);
+                }
+
                 return ValidationEngineResult.Success(
                     transaction.TransactionId,
                     transaction.RegisterId,
@@ -956,9 +983,14 @@ public class ValidationEngine : IValidationEngine
                         }
                         else
                         {
-                            _logger.LogDebug(
-                                "Participant {ParticipantId} has no wallet and no register record, skipping sender authorization for action {ActionId}",
-                                action.Sender, actionIdInt);
+                            // SEC-AUDIT 4.8: Fail hard when participant cannot be resolved
+                            // rather than silently skipping sender authorization
+                            _logger.LogWarning(
+                                "Participant {ParticipantId} has no wallet and no published record on register {RegisterId} — rejecting transaction for action {ActionId}",
+                                action.Sender, transaction.RegisterId, actionIdInt);
+                            errors.Add(CreateError("VAL_BP_002",
+                                $"Cannot verify sender authorization: participant '{action.Sender}' has no wallet address and no published record on register '{transaction.RegisterId}'",
+                                ValidationErrorCategory.Permission, "Signatures"));
                         }
                     }
                 }

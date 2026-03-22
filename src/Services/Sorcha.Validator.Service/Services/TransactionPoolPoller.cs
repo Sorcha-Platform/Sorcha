@@ -82,13 +82,26 @@ public class TransactionPoolPoller : ITransactionPoolPoller
 
 
     private string GetQueueKey(string registerId) =>
-        $"{_config.KeyPrefix}{registerId}:queue";
+        $"{_config.KeyPrefix}{registerId}:priority_queue";
 
     private string GetDataKey(string registerId, string transactionId) =>
         $"{_config.KeyPrefix}{registerId}:data:{transactionId}";
 
     private string GetExpiryKey(string registerId) =>
         $"{_config.KeyPrefix}{registerId}:expiry";
+
+    /// <summary>
+    /// Compute sorted set score for priority ordering.
+    /// Lower score = polled first. Higher priority transactions get lower scores.
+    /// Score = (MaxPriority - priority) * 10_000_000_000 + createdAtUnixSeconds
+    /// </summary>
+    private static double ComputePriorityScore(TransactionPriority priority)
+    {
+        const int maxPriority = 3; // Critical = 3
+        var priorityBucket = (maxPriority - (int)priority) * 10_000_000_000L;
+        var timeComponent = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return priorityBucket + timeComponent;
+    }
 
 
     /// <inheritdoc/>
@@ -148,8 +161,9 @@ public class TransactionPoolPoller : ITransactionPoolPoller
                 // Store transaction data
                 _ = redisTransaction.StringSetAsync(dataKey, json, ttl);
 
-                // Add to queue (LPUSH for FIFO - poll from right with RPOP)
-                _ = redisTransaction.ListLeftPushAsync(queueKey, transaction.TransactionId);
+                // Add to priority queue (sorted set — lower score = polled first)
+                var priorityScore = ComputePriorityScore(transaction.Priority);
+                _ = redisTransaction.SortedSetAddAsync(queueKey, transaction.TransactionId, priorityScore);
 
                 // Add to expiry tracking sorted set
                 _ = redisTransaction.SortedSetAddAsync(expiryKey, transaction.TransactionId, expiryScore);
@@ -200,8 +214,9 @@ public class TransactionPoolPoller : ITransactionPoolPoller
 
                 for (var i = 0; i < maxCount; i++)
                 {
-                    // Pop transaction ID from queue
-                    var transactionId = await _database.ListRightPopAsync(queueKey);
+                    // Pop lowest-score (highest-priority) transaction from sorted set
+                    var entries = await _database.SortedSetPopAsync(queueKey, Order.Ascending);
+                    var transactionId = entries?.Element ?? RedisValue.Null;
 
                     if (transactionId.IsNullOrEmpty)
                         break;
@@ -302,7 +317,7 @@ public class TransactionPoolPoller : ITransactionPoolPoller
             return await _pipeline.ExecuteAsync(async token =>
             {
                 var queueKey = GetQueueKey(registerId);
-                return await _database.ListLengthAsync(queueKey);
+                return await _database.SortedSetLengthAsync(queueKey);
             }, ct);
         }
         catch (Exception ex)
@@ -415,10 +430,14 @@ public class TransactionPoolPoller : ITransactionPoolPoller
                 var dataKey = GetDataKey(registerId, transactionId);
                 var expiryKey = GetExpiryKey(registerId);
 
-                // Remove from all structures
-                var removed = await _database.ListRemoveAsync(queueKey, transactionId) > 0;
-                removed |= await _database.KeyDeleteAsync(dataKey);
-                await _database.SortedSetRemoveAsync(expiryKey, transactionId);
+                // Remove from all structures atomically via Redis transaction (SEC-AUDIT 4.9)
+                var redisTransaction = _database.CreateTransaction();
+                var queueRemoveTask = redisTransaction.SortedSetRemoveAsync(queueKey, transactionId);
+                var dataRemoveTask = redisTransaction.KeyDeleteAsync(dataKey);
+                var expiryRemoveTask = redisTransaction.SortedSetRemoveAsync(expiryKey, transactionId);
+                await redisTransaction.ExecuteAsync();
+
+                var removed = await queueRemoveTask || await dataRemoveTask;
 
                 if (removed)
                 {
@@ -465,10 +484,12 @@ public class TransactionPoolPoller : ITransactionPoolPoller
                     var transactionId = txId.ToString();
                     var dataKey = GetDataKey(registerId, transactionId);
 
-                    // Remove from all structures
-                    await _database.ListRemoveAsync(queueKey, transactionId);
-                    await _database.KeyDeleteAsync(dataKey);
-                    await _database.SortedSetRemoveAsync(expiryKey, transactionId);
+                    // Remove from all structures atomically (SEC-AUDIT 4.9)
+                    var cleanupTx = _database.CreateTransaction();
+                    _ = cleanupTx.SortedSetRemoveAsync(queueKey, transactionId);
+                    _ = cleanupTx.KeyDeleteAsync(dataKey);
+                    _ = cleanupTx.SortedSetRemoveAsync(expiryKey, transactionId);
+                    await cleanupTx.ExecuteAsync();
 
                     expiredCount++;
                 }

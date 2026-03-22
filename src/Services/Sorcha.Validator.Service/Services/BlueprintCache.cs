@@ -57,6 +57,56 @@ public class BlueprintCache : IBlueprintCache
         };
 
         _pipeline = BuildResiliencePipeline();
+
+        // Subscribe to invalidation channel for cross-instance L1 cache busting
+        SubscribeToInvalidationChannel();
+    }
+
+    /// <summary>
+    /// Subscribe to Redis pub/sub for cache invalidation events from other validator instances.
+    /// </summary>
+    private void SubscribeToInvalidationChannel()
+    {
+        try
+        {
+            var subscriber = _redis.GetSubscriber();
+            var channel = RedisChannel.Literal(_config.InvalidationChannel);
+            subscriber.Subscribe(channel, HandleInvalidationMessage);
+
+            _logger.LogInformation("Subscribed to blueprint cache invalidation channel: {Channel}", _config.InvalidationChannel);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to subscribe to invalidation channel — L1 cache will rely on TTL expiry only");
+        }
+    }
+
+    private void HandleInvalidationMessage(RedisChannel channel, RedisValue message)
+    {
+        var blueprintId = message.ToString();
+        if (!string.IsNullOrWhiteSpace(blueprintId))
+        {
+            _localCache.TryRemove(blueprintId, out LocalCacheEntry? _);
+            _logger.LogDebug("L1 cache invalidated for blueprint {BlueprintId} via pub/sub", blueprintId);
+        }
+    }
+
+    /// <summary>
+    /// Publish an invalidation event so other validator instances flush their L1 cache.
+    /// </summary>
+    private async Task PublishInvalidationAsync(string blueprintId)
+    {
+        try
+        {
+            var subscriber = _redis.GetSubscriber();
+            await subscriber.PublishAsync(
+                RedisChannel.Literal(_config.InvalidationChannel),
+                blueprintId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to publish invalidation event for blueprint {BlueprintId}", blueprintId);
+        }
     }
 
     private ResiliencePipeline BuildResiliencePipeline()
@@ -265,6 +315,7 @@ public class BlueprintCache : IBlueprintCache
                 if (removed)
                 {
                     _logger.LogDebug("Removed blueprint {BlueprintId} from cache", blueprintId);
+                    await PublishInvalidationAsync(blueprintId);
                 }
 
                 return removed;
@@ -304,6 +355,7 @@ public class BlueprintCache : IBlueprintCache
                 if (await _database.KeyDeleteAsync(key))
                 {
                     removed++;
+                    await PublishInvalidationAsync(blueprintId);
                 }
             }
 

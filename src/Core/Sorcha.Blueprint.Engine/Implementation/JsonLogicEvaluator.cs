@@ -81,6 +81,12 @@ public class JsonLogicEvaluator : IJsonLogicEvaluator
     }
 
     /// <summary>
+    /// Maximum number of calculations allowed per action execution (SEC-AUDIT 3.5).
+    /// Prevents DoS via blueprints with excessive calculation chains.
+    /// </summary>
+    private const int MaxCalculationsPerExecution = 100;
+
+    /// <summary>
     /// Apply multiple calculations to data.
     /// </summary>
     public async Task<Dictionary<string, object>> ApplyCalculationsAsync(
@@ -94,10 +100,18 @@ public class JsonLogicEvaluator : IJsonLogicEvaluator
         // Create a copy of the data to avoid modifying the original
         var result = new Dictionary<string, object>(data);
 
-        // Apply calculations in order
+        // Apply calculations in order with iteration guard (SEC-AUDIT 3.5)
+        var iterationCount = 0;
         foreach (var calculation in calculations)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (++iterationCount > MaxCalculationsPerExecution)
+            {
+                throw new InvalidOperationException(
+                    $"Calculation limit exceeded: maximum {MaxCalculationsPerExecution} calculations per execution. " +
+                    "This may indicate a malicious or misconfigured blueprint.");
+            }
 
             try
             {
@@ -107,7 +121,7 @@ public class JsonLogicEvaluator : IJsonLogicEvaluator
                 // Add or update the output field
                 result[calculation.OutputField] = value;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
                 throw new InvalidOperationException(
                     $"Error applying calculation for field '{calculation.OutputField}': {ex.Message}",

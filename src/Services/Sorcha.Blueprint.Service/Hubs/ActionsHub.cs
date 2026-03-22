@@ -95,11 +95,26 @@ public class ActionsHub : Hub
             throw new HubException("Wallet address cannot be empty");
         }
 
-        // Service tokens can subscribe to any wallet (for internal notifications)
+        // Service tokens can subscribe to any wallet but require org_id claim for scoping (SEC-AUDIT 3.4)
         var isServiceToken = Context.User?.Claims
             .Any(c => c.Type == "token_type" && c.Value == "service") == true;
 
-        if (!isServiceToken)
+        if (isServiceToken)
+        {
+            var orgId = Context.User?.Claims.FirstOrDefault(c => c.Type == "org_id")?.Value;
+            _logger.LogInformation(
+                "Service token subscription to wallet {Wallet}. ConnectionId: {ConnectionId}, OrgId: {OrgId}",
+                walletAddress, Context.ConnectionId, orgId ?? "none");
+
+            if (string.IsNullOrWhiteSpace(orgId))
+            {
+                _logger.LogWarning(
+                    "Service token without org_id claim attempted wallet subscription. ConnectionId: {ConnectionId}",
+                    Context.ConnectionId);
+                throw new HubException("Service tokens must include an org_id claim for wallet subscriptions");
+            }
+        }
+        else
         {
             await ValidateWalletOwnershipAsync(walletAddress);
         }
