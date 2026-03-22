@@ -166,6 +166,30 @@ public record ValidatorInfo
     /// <summary>Transaction ID of the registration</summary>
     public string? RegistrationTxId { get; init; }
 
+    /// <summary>Signing algorithm for public key (ED25519, NISTP256, RSA4096)</summary>
+    public string? Algorithm { get; init; }
+
+    /// <summary>When approved by administrator</summary>
+    public DateTimeOffset? ApprovedAt { get; init; }
+
+    /// <summary>Administrator who approved (wallet address)</summary>
+    public string? ApprovedBy { get; init; }
+
+    /// <summary>When suspended by administrator</summary>
+    public DateTimeOffset? SuspendedAt { get; init; }
+
+    /// <summary>Administrator who suspended (wallet address)</summary>
+    public string? SuspendedBy { get; init; }
+
+    /// <summary>When permanently revoked</summary>
+    public DateTimeOffset? RevokedAt { get; init; }
+
+    /// <summary>Administrator who revoked (wallet address)</summary>
+    public string? RevokedBy { get; init; }
+
+    /// <summary>Timestamp of most recent state transition</summary>
+    public DateTimeOffset LastStateChangeAt { get; init; }
+
     /// <summary>Optional metadata</summary>
     public Dictionary<string, string>? Metadata { get; init; }
 }
@@ -235,8 +259,8 @@ public enum ValidatorStatus
     /// <summary>Temporarily suspended</summary>
     Suspended,
 
-    /// <summary>Permanently removed</summary>
-    Removed
+    /// <summary>Permanently revoked (terminal — cannot be re-activated)</summary>
+    Revoked
 }
 
 /// <summary>
