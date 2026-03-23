@@ -5,8 +5,13 @@
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Authentication
+@using Sorcha.UI.Core.Services.Configuration
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferences
+@inject IAuthenticationService AuthService
+@inject IConfigurationService ConfigService
+@inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -260,6 +265,20 @@
             Array.Clear(response.MnemonicWords, 0, response.MnemonicWords.Length);
         }
         response = null;
+
+        // Refresh the JWT so the new wallet_address claim is included.
+        // The Tenant Service looks up linked wallets during token generation,
+        // so after wallet creation + link, the refreshed token will carry wallet_address.
+        try
+        {
+            var profileName = await ConfigService.GetActiveProfileNameAsync();
+            await AuthService.RefreshTokenAsync(profileName);
+            AuthStateProvider.NotifyAuthenticationStateChanged();
+        }
+        catch
+        {
+            // Non-critical: token will be refreshed on next background cycle
+        }
 
         // Always set default wallet on first wallet creation (wizard or first-login)
         if ((_isWizard || _isFirstLogin) && walletAddress != null)

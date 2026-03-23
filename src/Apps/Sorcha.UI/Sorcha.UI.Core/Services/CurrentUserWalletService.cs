@@ -21,7 +21,7 @@ public interface ICurrentUserWalletService
 /// Retrieves the current user's wallet address from the authentication state.
 /// Caches the result for the lifetime of the scoped instance (wallet doesn't change during session).
 /// </summary>
-public class CurrentUserWalletService : ICurrentUserWalletService
+public class CurrentUserWalletService : ICurrentUserWalletService, IDisposable
 {
     private readonly AuthenticationStateProvider _authStateProvider;
     private string? _cachedWalletAddress;
@@ -33,6 +33,20 @@ public class CurrentUserWalletService : ICurrentUserWalletService
     public CurrentUserWalletService(AuthenticationStateProvider authStateProvider)
     {
         _authStateProvider = authStateProvider;
+        _authStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    private void OnAuthStateChanged(Task<AuthenticationState> task)
+    {
+        // Invalidate cached wallet address so next call reads from the fresh JWT
+        _hasCached = false;
+        _cachedWalletAddress = null;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _authStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
     }
 
     /// <inheritdoc />

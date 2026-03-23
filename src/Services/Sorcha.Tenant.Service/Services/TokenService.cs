@@ -24,6 +24,7 @@ public class TokenService : ITokenService
     private readonly ITokenRevocationService _revocationService;
     private readonly IIdentityRepository _identityRepository;
     private readonly IOrganizationRepository _organizationRepository;
+    private readonly IParticipantRepository _participantRepository;
     private readonly ILogger<TokenService> _logger;
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly SigningCredentials? _signingCredentials;
@@ -34,12 +35,14 @@ public class TokenService : ITokenService
         ITokenRevocationService revocationService,
         IIdentityRepository identityRepository,
         IOrganizationRepository organizationRepository,
+        IParticipantRepository participantRepository,
         ILogger<TokenService> logger)
     {
         _config = options?.Value ?? new JwtConfiguration();
         _revocationService = revocationService ?? throw new ArgumentNullException(nameof(revocationService));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
+        _participantRepository = participantRepository ?? throw new ArgumentNullException(nameof(participantRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tokenHandler = new JwtSecurityTokenHandler();
         _tokenHandler.MapInboundClaims = false;
@@ -100,6 +103,9 @@ public class TokenService : ITokenService
         {
             claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
         }
+
+        // Add wallet_address claim from user's first active linked wallet
+        await AddWalletAddressClaimAsync(claims, user.Id, organization.Id, cancellationToken);
 
         var accessTokenExpiry = DateTimeOffset.UtcNow.AddMinutes(_config.AccessTokenLifetimeMinutes);
         var refreshTokenExpiry = DateTimeOffset.UtcNow.AddHours(_config.RefreshTokenLifetimeHours);
@@ -277,6 +283,13 @@ public class TokenService : ITokenService
             foreach (var role in user.Roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
+            }
+
+            // Add wallet_address claim from user's first active linked wallet
+            var orgIdForWallet = organization?.Id ?? (Guid.TryParse(orgId, out var parsedOrgId) ? parsedOrgId : (Guid?)null);
+            if (orgIdForWallet.HasValue)
+            {
+                await AddWalletAddressClaimAsync(claims, userGuid, orgIdForWallet.Value, cancellationToken);
             }
 
             var accessToken = GenerateToken(claims, accessTokenExpiry);
@@ -461,6 +474,33 @@ public class TokenService : ITokenService
         }
 
         return GenerateToken(claims, expiry);
+    }
+
+    /// <summary>
+    /// Looks up the user's first active linked wallet address and adds it as a JWT claim.
+    /// Fails silently if the user has no participant record or no linked wallets.
+    /// </summary>
+    private async Task AddWalletAddressClaimAsync(
+        List<Claim> claims, Guid userId, Guid organizationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var participant = await _participantRepository.GetByUserAndOrgAsync(userId, organizationId, cancellationToken);
+            if (participant is null)
+                return;
+
+            var walletLinks = await _participantRepository.GetWalletLinksAsync(participant.Id, includeRevoked: false, cancellationToken);
+            var firstActive = walletLinks.FirstOrDefault();
+            if (firstActive is not null)
+            {
+                claims.Add(new Claim("wallet_address", firstActive.WalletAddress));
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-critical: wallet_address is optional — don't fail token generation
+            _logger.LogWarning(ex, "Failed to resolve wallet_address for user {UserId} in org {OrgId}", userId, organizationId);
+        }
     }
 }
 
