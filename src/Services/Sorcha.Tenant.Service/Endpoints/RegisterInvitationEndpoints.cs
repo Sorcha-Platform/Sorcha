@@ -72,7 +72,8 @@ public static class RegisterInvitationEndpoints
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var userId = GetUserId(user);
+        if (!TryGetUserId(user, out var userId))
+            return Results.Unauthorized();
 
         try
         {
@@ -102,7 +103,8 @@ public static class RegisterInvitationEndpoints
         ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var userId = GetUserId(user);
+        if (!TryGetUserId(user, out var userId))
+            return Results.Unauthorized();
 
         try
         {
@@ -161,9 +163,9 @@ public static class RegisterInvitationEndpoints
         }
     }
 
-    private static Guid GetUserId(ClaimsPrincipal user)
+    private static bool TryGetUserId(ClaimsPrincipal user, out Guid userId)
     {
         var sub = user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out var userId) ? userId : Guid.Empty;
+        return Guid.TryParse(sub, out userId);
     }
 }

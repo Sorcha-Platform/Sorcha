@@ -19,7 +19,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
 **Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications)
-**Remaining:** 65 tasks across 7 themes
+**Remaining:** 68 tasks across 7 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -97,6 +97,9 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-012 | Invitation expiration background job — mark expired invitations | P2 | 4h | 📋 | Scheduled task to update Pending → Expired where expires_at < now |
 | GAP-013 | Invitation org name resolution in list responses | P2 | 2h | 📋 | ListAsync currently returns null for target/source org names |
 | GAP-014 | Register invitation integration tests (Tenant → Wallet → Register) | P2 | 8h | 📋 | End-to-end crypto verification against real Wallet Service |
+| GAP-015 | Invitation ListAsync N+1 query — pre-load orgs or denormalize source DID | P2 | 2h | 📋 | GetSourceOrgDid fires synchronous query per record |
+| GAP-016 | Invitation GetSourceOrgDid fallback format — use consistent DID or null | P3 | 1h | 📋 | Currently returns `org:{guid}` which is not a valid DID |
+| GAP-017 | Invitation ListAsync direction parameter validation | P3 | 1h | 📋 | Unrecognised values silently default to "all" |
 
 ---
 
@@ -191,12 +194,12 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 |-------|----------|-------|--------|-------|
 | 1. Security Hardening | P0 | 7 | 80-100h | Release blocker |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
-| 3. Deferred Feature Gaps | P1-P2 | 13 | 54-74h | Close MVD gaps |
+| 3. Deferred Feature Gaps | P1-P2 | 16 | 58-78h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
-| **Total** | | **61** (6 ✅, 55 remaining) | **554-794h** | |
+| **Total** | | **64** (6 ✅, 58 remaining) | **558-798h** | |
 
 ### Completed Features (not in themes above)
 

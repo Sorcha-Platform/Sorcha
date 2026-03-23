@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
@@ -86,7 +87,7 @@ public partial class RegisterInvitationService : IRegisterInvitationService
                 && r.Status == RegisterInvitationStatus.Pending, ct);
 
         if (pendingCount >= MaxPendingPerOrg)
-            throw new InvalidOperationException($"Maximum pending invitations ({MaxPendingPerOrg}) reached.");
+            throw new InvalidOperationException($"Rate limit exceeded. Maximum pending invitations ({MaxPendingPerOrg}) reached.");
 
         // Rate limiting: check hourly count
         var oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
@@ -96,6 +97,16 @@ public partial class RegisterInvitationService : IRegisterInvitationService
 
         if (hourlyCount >= MaxPerHour)
             throw new InvalidOperationException($"Rate limit exceeded. Maximum {MaxPerHour} invitations per hour.");
+
+        // Check for duplicate pending invitation to the same register+target
+        var duplicatePending = await _dbContext.Set<RegisterInvitationRecord>()
+            .AnyAsync(r => r.SourceOrgId == sourceOrgId
+                && r.RegisterId == request.RegisterId
+                && r.TargetOrgDid == request.TargetOrgDid
+                && r.Status == RegisterInvitationStatus.Pending, ct);
+
+        if (duplicatePending)
+            throw new InvalidOperationException("A pending invitation already exists for this register and target organization.");
 
         // Resolve target org wallet address from DID
         var targetWalletAddress = targetDid.Locator;
@@ -160,7 +171,7 @@ public partial class RegisterInvitationService : IRegisterInvitationService
         };
 
         var envelopeJson = JsonSerializer.Serialize(envelope);
-        var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(envelopeJson));
+        var token = Base64UrlEncoder.Encode(Encoding.UTF8.GetBytes(envelopeJson));
 
         // Record the invitation
         var record = new RegisterInvitationRecord
@@ -207,11 +218,11 @@ public partial class RegisterInvitationService : IRegisterInvitationService
         InvitationTokenEnvelope envelope;
         try
         {
-            var envelopeJson = Encoding.UTF8.GetString(Convert.FromBase64String(request.InvitationToken));
+            var envelopeJson = Encoding.UTF8.GetString(Base64UrlEncoder.DecodeBytes(request.InvitationToken));
             envelope = JsonSerializer.Deserialize<InvitationTokenEnvelope>(envelopeJson)
                 ?? throw new FormatException("Empty envelope.");
         }
-        catch (Exception ex) when (ex is FormatException or JsonException)
+        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentException)
         {
             throw new ArgumentException("Invalid invitation token format.", ex);
         }
@@ -323,7 +334,14 @@ public partial class RegisterInvitationService : IRegisterInvitationService
             invitationRecord.AcceptedAt = DateTimeOffset.UtcNow;
         }
 
-        await _dbContext.SaveChangesAsync(ct);
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_InvNonce_Nonce") == true)
+        {
+            throw new InvalidOperationException("Invitation has already been accepted (nonce reuse detected).");
+        }
 
         _logger.LogInformation(
             "Invitation {InvitationId} accepted by org {TargetOrgId} for register {RegisterId}",
