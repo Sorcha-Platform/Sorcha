@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.4
-**Last Updated:** 2026-03-16
+**Version:** 7.5
+**Last Updated:** 2026-03-23
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -19,7 +19,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
 **Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications)
-**Remaining:** 62 tasks across 6 themes
+**Remaining:** 65 tasks across 7 themes
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -94,6 +94,9 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-009 | Client-side SignalR integration (BP-5.8) | P2 | 8h | 📋 | Blazor WASM SignalR client wiring |
 | GAP-010 | RecoverKeySetAsync implementation (CRYPT-1) | P2 | 6h | 📋 | Currently stubbed — returns "not yet implemented" |
 | GAP-011 | AI Blueprint Builder Enhancement (063) | P2 | 40h | 🚧 | Schema library (26 schemas), 5 new AI tools, VC/DPP support, consultative prompt, chat UI fixes |
+| GAP-012 | Invitation expiration background job — mark expired invitations | P2 | 4h | 📋 | Scheduled task to update Pending → Expired where expires_at < now |
+| GAP-013 | Invitation org name resolution in list responses | P2 | 2h | 📋 | ListAsync currently returns null for target/source org names |
+| GAP-014 | Register invitation integration tests (Tenant → Wallet → Register) | P2 | 8h | 📋 | End-to-end crypto verification against real Wallet Service |
 
 ---
 
@@ -188,12 +191,12 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 |-------|----------|-------|--------|-------|
 | 1. Security Hardening | P0 | 7 | 80-100h | Release blocker |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
-| 3. Deferred Feature Gaps | P1-P2 | 10 | 40-60h | Close MVD gaps |
+| 3. Deferred Feature Gaps | P1-P2 | 13 | 54-74h | Close MVD gaps |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
-| **Total** | | **58** (6 ✅, 52 remaining) | **540-780h** | |
+| **Total** | | **61** (6 ✅, 55 remaining) | **554-794h** | |
 
 ### Completed Features (not in themes above)
 
@@ -202,6 +205,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | Feature 060 | 🚧 | **Wallet Recovery** — RecoveryKeyWrap, RecoveryAuditLog entities, RecoveryPathType enum, IRecoveryKeyService/RecoveryKeyService (AES-256-GCM key gen, asymmetric wrap/unwrap), PasskeyRecoveryService, OrgRecoveryService with delegation revocation, PasskeyServiceClient, OrgRecoveryConfig in Tenant Service with POST/GET endpoints, recovery endpoints (recover/passkey, recover/org, delegations/preserve, recovery-status), automatic recovery key generation on wallet creation, API Gateway routes for /api/organizations. 28 unit tests. |
 | Feature 062 | ✅ | **Pending Action Notifications** — NotificationConfig on Action model, SummaryTemplateRenderer, UrgencyCalculator, EventsHubNotificationBridge enrichment with ActivityEvent persistence, PendingActionToast/PendingActionInbox UI components, GET /api/actions/pending + /count endpoints, PendingActionService HTTP client, TenantNotificationPreferenceProvider (Wallet Service), notification delivery preferences UI, notification history inbox. Unit tests for SummaryTemplateRenderer, UrgencyCalculator, TenantNotificationPreferenceProvider. |
 | Feature 064 | ✅ | **Transaction Explorer UX Overhaul** — DAG visualization with lightweight graph endpoint (GET /api/registers/{registerId}/transactions/graph), TransactionGraphResponse model (nodes with TxId, PrevTxId, SenderWallet, TimeStamp, DocketNumber, BlueprintId, InstanceId, TransactionType), cursor-based pagination (limit/before), totalCount and hasMore support. |
+| Feature 065 | ✅ | **Register Invitations** — Private register invitation system with cryptographic envelope (ED25519 sign + X25519 encrypt via Wallet Service). 4 Minimal API endpoints (create/accept/list/revoke), Organization DID support (`did:sorcha:org:{address}`), nonce replay protection with unique DB index, rate limiting (50 pending/10 per hour), InvitationNonce + RegisterInvitationRecord entities, EF Core migration, API Gateway YARP routes, `SubscriptionType.Invited`. 19 unit tests. |
 
 ### Release Gating
 
@@ -215,6 +219,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.4
-**Last Updated:** 2026-03-16
+**Version:** 7.5
+**Last Updated:** 2026-03-23
 **Document Owner:** Sorcha Architecture Team

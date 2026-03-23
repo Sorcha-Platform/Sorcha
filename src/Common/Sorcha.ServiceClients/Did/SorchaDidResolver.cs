@@ -8,7 +8,8 @@ namespace Sorcha.ServiceClients.Did;
 
 /// <summary>
 /// Resolves Sorcha-native DIDs:
-///   - did:sorcha:w:{walletAddress}     — wallet identity
+///   - did:sorcha:org:{walletAddress}     — organization identity
+///   - did:sorcha:w:{walletAddress}       — wallet identity
 ///   - did:sorcha:r:{registerId}:t:{txId} — register transaction reference
 /// </summary>
 public class SorchaDidResolver : IDidResolver
@@ -16,6 +17,7 @@ public class SorchaDidResolver : IDidResolver
     private const string Method = "sorcha";
     private const string WalletPrefix = "did:sorcha:w:";
     private const string RegisterPrefix = "did:sorcha:r:";
+    private const string OrgPrefix = "did:sorcha:org:";
 
     private readonly IWalletServiceClient _walletClient;
     private readonly ILogger<SorchaDidResolver> _logger;
@@ -36,6 +38,9 @@ public class SorchaDidResolver : IDidResolver
         if (string.IsNullOrWhiteSpace(did))
             return null;
 
+        if (did.StartsWith(OrgPrefix, StringComparison.OrdinalIgnoreCase))
+            return await ResolveOrgDidAsync(did, ct);
+
         if (did.StartsWith(WalletPrefix, StringComparison.OrdinalIgnoreCase))
             return await ResolveWalletDidAsync(did, ct);
 
@@ -44,6 +49,53 @@ public class SorchaDidResolver : IDidResolver
 
         _logger.LogWarning("Unrecognised Sorcha DID format: {Did}", did);
         return null;
+    }
+
+    private async Task<DidDocument?> ResolveOrgDidAsync(string did, CancellationToken ct)
+    {
+        var address = did[OrgPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            _logger.LogWarning("Organization DID has empty address: {Did}", did);
+            return null;
+        }
+
+        WalletInfo? wallet;
+        try
+        {
+            wallet = await _walletClient.GetWalletAsync(address, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve organization DID {Did}", did);
+            return null;
+        }
+
+        if (wallet is null)
+        {
+            _logger.LogWarning("Wallet not found for organization DID {Did}", did);
+            return null;
+        }
+
+        var keyId = $"{did}#key-1";
+        var keyType = MapAlgorithmToKeyType(wallet.Algorithm);
+
+        return new DidDocument
+        {
+            Id = did,
+            VerificationMethod =
+            [
+                new VerificationMethod
+                {
+                    Id = keyId,
+                    Type = keyType,
+                    Controller = did,
+                    PublicKeyMultibase = $"z{wallet.PublicKey}"
+                }
+            ],
+            Authentication = [keyId],
+            AssertionMethod = [keyId]
+        };
     }
 
     private async Task<DidDocument?> ResolveWalletDidAsync(string did, CancellationToken ct)

@@ -117,6 +117,67 @@ public class SorchaDidResolverTests
         doc.Should().BeNull();
     }
 
+    // --- Organization DID Resolution ---
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_ReturnsDidDocument()
+    {
+        _walletClientMock
+            .Setup(w => w.GetWalletAsync("org-addr-456", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WalletInfo
+            {
+                Address = "org-addr-456",
+                Name = "org-acme-signing",
+                PublicKey = "orgPublicKeyBase64",
+                Algorithm = "ED25519",
+                Status = "Active",
+                Owner = "org:acme-id",
+                Tenant = "acme-id"
+            });
+
+        var doc = await _resolver.ResolveAsync("did:sorcha:org:org-addr-456");
+
+        doc.Should().NotBeNull();
+        doc!.Id.Should().Be("did:sorcha:org:org-addr-456");
+        doc.VerificationMethod.Should().HaveCount(1);
+        doc.VerificationMethod[0].Type.Should().Be("Ed25519VerificationKey2020");
+        doc.VerificationMethod[0].PublicKeyMultibase.Should().Be("zorgPublicKeyBase64");
+        doc.Authentication.Should().Contain("did:sorcha:org:org-addr-456#key-1");
+        doc.AssertionMethod.Should().Contain("did:sorcha:org:org-addr-456#key-1");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_WalletNotFound_ReturnsNull()
+    {
+        _walletClientMock
+            .Setup(w => w.GetWalletAsync("unknown-org", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WalletInfo?)null);
+
+        var doc = await _resolver.ResolveAsync("did:sorcha:org:unknown-org");
+
+        doc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_EmptyAddress_ReturnsNull()
+    {
+        var doc = await _resolver.ResolveAsync("did:sorcha:org:");
+
+        doc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_OrgDid_ServiceThrows_ReturnsNull()
+    {
+        _walletClientMock
+            .Setup(w => w.GetWalletAsync("fail-org", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var doc = await _resolver.ResolveAsync("did:sorcha:org:fail-org");
+
+        doc.Should().BeNull();
+    }
+
     [Fact]
     public async Task ResolveAsync_P256Algorithm_ReturnsJsonWebKey2020()
     {

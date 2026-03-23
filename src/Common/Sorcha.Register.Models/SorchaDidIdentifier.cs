@@ -19,20 +19,27 @@ public enum SorchaDidType
     /// <summary>
     /// Register-based DID: did:sorcha:r:{registerId}:t:{transactionId}
     /// </summary>
-    Register
+    Register,
+
+    /// <summary>
+    /// Organization-based DID: did:sorcha:org:{walletAddress}
+    /// </summary>
+    Organization
 }
 
 /// <summary>
 /// Value object representing a Sorcha DID identifier.
-/// Supports two formats:
+/// Supports three formats:
 /// - Wallet: did:sorcha:w:{walletAddress}
 /// - Register: did:sorcha:r:{registerId}:t:{transactionId}
+/// - Organization: did:sorcha:org:{walletAddress}
 /// </summary>
 public sealed class SorchaDidIdentifier : IEquatable<SorchaDidIdentifier>
 {
     private const string Prefix = "did:sorcha:";
     private static readonly Regex WalletPattern = new(@"^did:sorcha:w:([A-Za-z1-9]+)$", RegexOptions.Compiled);
     private static readonly Regex RegisterPattern = new(@"^did:sorcha:r:([a-f0-9]{32}):t:([a-f0-9]{64})$", RegexOptions.Compiled);
+    private static readonly Regex OrganizationPattern = new(@"^did:sorcha:org:([A-Za-z1-9]+)$", RegexOptions.Compiled);
 
     /// <summary>
     /// The DID type (Wallet or Register)
@@ -65,6 +72,17 @@ public sealed class SorchaDidIdentifier : IEquatable<SorchaDidIdentifier>
             throw new ArgumentException("Wallet address cannot be empty.", nameof(walletAddress));
 
         return new SorchaDidIdentifier(SorchaDidType.Wallet, walletAddress);
+    }
+
+    /// <summary>
+    /// Creates an organization DID from an organization's wallet address
+    /// </summary>
+    public static SorchaDidIdentifier FromOrganization(string walletAddress)
+    {
+        if (string.IsNullOrWhiteSpace(walletAddress))
+            throw new ArgumentException("Wallet address cannot be empty.", nameof(walletAddress));
+
+        return new SorchaDidIdentifier(SorchaDidType.Organization, walletAddress);
     }
 
     /// <summary>
@@ -101,6 +119,13 @@ public sealed class SorchaDidIdentifier : IEquatable<SorchaDidIdentifier>
         if (string.IsNullOrWhiteSpace(did) || !did.StartsWith(Prefix, StringComparison.Ordinal))
             return false;
 
+        var orgMatch = OrganizationPattern.Match(did);
+        if (orgMatch.Success)
+        {
+            result = new SorchaDidIdentifier(SorchaDidType.Organization, orgMatch.Groups[1].Value);
+            return true;
+        }
+
         var walletMatch = WalletPattern.Match(did);
         if (walletMatch.Success)
         {
@@ -133,6 +158,7 @@ public sealed class SorchaDidIdentifier : IEquatable<SorchaDidIdentifier>
     {
         SorchaDidType.Wallet => $"did:sorcha:w:{Locator}",
         SorchaDidType.Register => $"did:sorcha:r:{Locator}:t:{TransactionId}",
+        SorchaDidType.Organization => $"did:sorcha:org:{Locator}",
         _ => throw new InvalidOperationException($"Unknown DID type: {Type}")
     };
 
