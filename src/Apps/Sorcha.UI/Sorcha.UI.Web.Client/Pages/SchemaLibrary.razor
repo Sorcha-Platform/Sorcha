@@ -1,6 +1,6 @@
 @page "/schemas"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Administrator,SystemAdmin,Designer")]
 @using Sorcha.UI.Core.Components
 @using Sorcha.UI.Core.Models.SchemaLibrary
 @using Sorcha.UI.Core.Services

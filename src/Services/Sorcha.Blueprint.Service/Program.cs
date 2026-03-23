@@ -688,7 +688,7 @@ var actionsGroup = app.MapGroup("/api/actions")
 // Get available blueprints for a wallet/register combination
 // </summary>
 actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
-    string wallet,
+    string wallet, // TODO: Filter by wallet access permissions
     string register,
     IPublishedBlueprintStore publishedStore) =>
 {

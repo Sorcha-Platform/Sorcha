@@ -3,7 +3,7 @@
 
 @page "/wallet-admin"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
 @using Sorcha.UI.Core.Components.Wallets
 @inject IWalletApiService WalletService
 @inject NavigationManager Navigation
