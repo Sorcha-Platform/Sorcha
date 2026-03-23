@@ -14,7 +14,7 @@ using Sorcha.Tenant.Service.Data;
 namespace Sorcha.Tenant.Service.Migrations
 {
     [DbContext(typeof(TenantDbContext))]
-    [Migration("20260317171639_InitialCreate")]
+    [Migration("20260323220205_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -444,6 +444,9 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("EncryptionPublicKey")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsPlatformOrg")
                         .HasColumnType("boolean");
 
@@ -457,8 +460,14 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("PublicKey")
+                        .HasColumnType("text");
+
                     b.Property<bool>("SelfRegistrationEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("SigningAlgorithm")
+                        .HasColumnType("text");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -468,6 +477,9 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("WalletAddress")
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -507,6 +519,65 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsUnique();
 
                     b.ToTable("OrganizationPermissionConfigurations", "public");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrganizationRegisterSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("InvitationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RegisterId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RegisterName")
+                        .HasMaxLength(38)
+                        .HasColumnType("character varying(38)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("SubscribedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SubscribedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SubscriptionType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("IX_OrgRegSub_OrganizationId");
+
+                    b.HasIndex("RegisterId")
+                        .HasDatabaseName("IX_OrgRegSub_RegisterId");
+
+                    b.HasIndex("OrganizationId", "RegisterId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OrgRegSub_OrgId_RegisterId");
+
+                    b.ToTable("OrganizationRegisterSubscriptions", "public");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.ParticipantAuditEntry", b =>
@@ -1218,6 +1289,17 @@ namespace Sorcha.Tenant.Service.Migrations
                         });
 
                     b.Navigation("Branding");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.OrganizationRegisterSubscription", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.ParticipantAuditEntry", b =>

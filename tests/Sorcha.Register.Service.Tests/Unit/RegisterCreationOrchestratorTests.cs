@@ -329,6 +329,7 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<bool>(),
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(createdRegister);
 
@@ -530,6 +531,7 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<bool>(),
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {

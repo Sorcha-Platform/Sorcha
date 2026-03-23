@@ -315,7 +315,9 @@ registersGroup.MapPut("/{id}", async (
         {
             try
             {
-                await peerClient.AdvertiseRegisterAsync(register.Id, register.Advertise);
+                await peerClient.AdvertiseRegisterAsync(
+                    register.Id, register.Advertise,
+                    name: register.Name, description: register.Description);
             }
             catch (Exception ex)
             {

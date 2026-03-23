@@ -417,7 +417,11 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             {
                 try
                 {
-                    await _peerClient.AdvertiseRegisterAsync(register.Id, isPublic: true);
+                    await _peerClient.AdvertiseRegisterAsync(
+                        register.Id,
+                        isPublic: true,
+                        name: controlRecord.Name,
+                        description: controlRecord.Description);
                 }
                 catch (Exception ex)
                 {
@@ -431,6 +435,12 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // NOTE: Genesis transaction remains in Validator memory pool
         // It will be written to Register Service database after docket creation
         // Validator Service handles the write after successful docket build
+
+        // TODO(T025): After UI register creation, the UI should call
+        // POST /api/organizations/{orgId}/register-subscriptions to create an Owner
+        // subscription via the Tenant Service. This requires the RegisterSubscription
+        // UI HTTP client (T028 in US5). Until then, the UI must manually subscribe
+        // after register creation.
 
         return new FinalizeRegisterCreationResponse
         {

@@ -115,6 +115,10 @@ namespace Sorcha.Tenant.Service.Migrations
                     CustomDomain = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     CustomDomainStatus = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     AuditRetentionMonths = table.Column<int>(type: "integer", nullable: false),
+                    WalletAddress = table.Column<string>(type: "text", nullable: true),
+                    PublicKey = table.Column<string>(type: "text", nullable: true),
+                    EncryptionPublicKey = table.Column<string>(type: "text", nullable: true),
+                    SigningAlgorithm = table.Column<string>(type: "text", nullable: true),
                     Branding = table.Column<string>(type: "jsonb", nullable: true)
                 },
                 constraints: table =>
@@ -370,6 +374,35 @@ namespace Sorcha.Tenant.Service.Migrations
                     table.PrimaryKey("PK_IdentityProviderConfigurations", x => x.Id);
                     table.ForeignKey(
                         name: "FK_IdentityProviderConfigurations_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalSchema: "public",
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OrganizationRegisterSubscriptions",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrganizationId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RegisterId = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    RegisterName = table.Column<string>(type: "character varying(38)", maxLength: 38, nullable: true),
+                    SubscriptionType = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    InvitationId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    SubscribedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    SubscribedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevokedByUserId = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrganizationRegisterSubscriptions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OrganizationRegisterSubscriptions_Organizations_Organizatio~",
                         column: x => x.OrganizationId,
                         principalSchema: "public",
                         principalTable: "Organizations",
@@ -645,6 +678,25 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_OrgRegSub_OrganizationId",
+                schema: "public",
+                table: "OrganizationRegisterSubscriptions",
+                column: "OrganizationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgRegSub_OrgId_RegisterId",
+                schema: "public",
+                table: "OrganizationRegisterSubscriptions",
+                columns: new[] { "OrganizationId", "RegisterId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OrgRegSub_RegisterId",
+                schema: "public",
+                table: "OrganizationRegisterSubscriptions",
+                column: "RegisterId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Organizations_Status",
                 schema: "public",
                 table: "Organizations",
@@ -878,6 +930,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "OrganizationPermissionConfigurations",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "OrganizationRegisterSubscriptions",
                 schema: "public");
 
             migrationBuilder.DropTable(

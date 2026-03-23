@@ -189,6 +189,7 @@ app.MapCustomDomainEndpoints();
 app.MapInternalEndpoints();
 app.MapPushSubscriptionEndpoints();
 app.MapEventEndpoints();
+app.MapRegisterSubscriptionEndpoints();
 app.MapRazorPages();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive

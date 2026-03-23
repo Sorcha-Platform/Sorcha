@@ -249,6 +249,16 @@ public static class ServiceCollectionExtensions
         // Graph Layout Service (stateless — singleton)
         services.AddSingleton<IGraphLayoutService, GraphLayoutService>();
 
+        // Register Subscription Service
+        services.AddScoped<IRegisterSubscriptionService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<RegisterSubscriptionService>>();
+            return new RegisterSubscriptionService(httpClient, logger);
+        });
+
         // Register Services
         services.AddRegisterServices(baseAddress);
 

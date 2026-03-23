@@ -53,6 +53,16 @@ public class ResetResponse
 public class AdvertiseRegisterRequest
 {
     public bool IsPublic { get; set; }
+
+    /// <summary>
+    /// Human-readable register name to include in advertisements.
+    /// </summary>
+    public string? Name { get; set; }
+
+    /// <summary>
+    /// Register description to include in advertisements.
+    /// </summary>
+    public string? Description { get; set; }
 }
 
 /// <summary>

@@ -49,10 +49,14 @@ public interface IPeerServiceClient
     /// </summary>
     /// <param name="registerId">Register ID</param>
     /// <param name="isPublic">True to advertise, false to remove advertisement</param>
+    /// <param name="name">Human-readable register name to include in advertisements</param>
+    /// <param name="description">Register description to include in advertisements</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task AdvertiseRegisterAsync(
         string registerId,
         bool isPublic,
+        string? name = null,
+        string? description = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

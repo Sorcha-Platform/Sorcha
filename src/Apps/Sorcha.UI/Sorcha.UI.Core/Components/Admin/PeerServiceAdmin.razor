@@ -254,71 +254,7 @@
                         }
                     </MudTabPanel>
 
-                    <!-- Tab 3: Available Registers -->
-                    <MudTabPanel Text="Available Registers" Icon="@Icons.Material.Filled.CloudQueue">
-                        @if (availableRegisters?.Any() == true)
-                        {
-                            <MudTable Items="@availableRegisters" Hover="true" Breakpoint="Breakpoint.Sm" Class="available-registers-table">
-                                <HeaderContent>
-                                    <MudTh>Register</MudTh>
-                                    <MudTh Style="width: 200px;">Network</MudTh>
-                                    <MudTh Style="width: 120px; text-align: right;">Actions</MudTh>
-                                </HeaderContent>
-                                <RowTemplate>
-                                    <MudTd DataLabel="Register">
-                                        <div>
-                                            <MudText Typo="Typo.subtitle1" Class="mb-0">
-                                                @(string.IsNullOrEmpty(context.Name) ? "Unnamed Register" : context.Name)
-                                            </MudText>
-                                            @if (!string.IsNullOrEmpty(context.Description))
-                                            {
-                                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-0">
-                                                    @context.Description
-                                                </MudText>
-                                            }
-                                            <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="font-family: monospace;">
-                                                @TruncateId(context.RegisterId)
-                                            </MudText>
-                                        </div>
-                                    </MudTd>
-                                    <MudTd DataLabel="Network">
-                                        <div class="d-flex flex-column gap-1">
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-1" Style="vertical-align: middle;" />
-                                                @context.PeerCount peers · @context.FullReplicaPeerCount replicas
-                                            </MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Class="mr-1" Style="vertical-align: middle;" />
-                                                v@(context.LatestVersion) · docket @context.LatestDocketVersion
-                                            </MudText>
-                                        </div>
-                                    </MudTd>
-                                    <MudTd DataLabel="Actions" Style="text-align: right;">
-                                        @if (IsAlreadySubscribed(context.RegisterId))
-                                        {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Success">Subscribed</MudChip>
-                                        }
-                                        else
-                                        {
-                                            <MudButton Variant="Variant.Outlined" Size="Size.Small"
-                                                       Color="Color.Primary"
-                                                       OnClick="@(() => ShowSubscribeDialog(context.RegisterId))">
-                                                Subscribe
-                                            </MudButton>
-                                        }
-                                    </MudTd>
-                                </RowTemplate>
-                            </MudTable>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                No registers available in the network
-                            </MudText>
-                        }
-                    </MudTabPanel>
-
-                    <!-- Tab 4: Peer Quality -->
+                    <!-- Tab 3: Peer Quality -->
                     <MudTabPanel Text="Peer Quality" Icon="@Icons.Material.Filled.Speed">
                         <!-- Quality Distribution Cards -->
                         <MudGrid Class="mb-3">
@@ -421,29 +357,6 @@
     }
 </MudGrid>
 
-<!-- Subscribe Dialog -->
-<MudDialog @bind-Visible="showSubscribeDialog">
-    <TitleContent>
-        <MudText Typo="Typo.h6">Subscribe to Register</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudText Typo="Typo.body2" Class="mb-3">
-            Register: <strong>@subscribeRegisterId</strong>
-        </MudText>
-        <MudSelect T="string" @bind-Value="subscribeMode" Label="Replication Mode" Variant="Variant.Outlined">
-            <MudSelectItem Value="@("forward-only")">Forward Only (new transactions from now)</MudSelectItem>
-            <MudSelectItem Value="@("full-replica")">Full Replica (complete docket chain pull)</MudSelectItem>
-        </MudSelect>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="@(() => showSubscribeDialog = false)">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled"
-                   OnClick="SubscribeToRegister" Disabled="@(string.IsNullOrEmpty(subscribeMode))">
-            Subscribe
-        </MudButton>
-    </DialogActions>
-</MudDialog>
-
 <!-- Unsubscribe Dialog -->
 <MudDialog @bind-Visible="showUnsubscribeDialog">
     <TitleContent>
@@ -492,18 +405,12 @@
     private List<EnhancedPeerInfo> enhancedPeers = new();
     private List<PeerQualityInfo> qualityScores = new();
     private List<RegisterSubscriptionInfo> subscriptions = new();
-    private List<AvailableRegisterInfo> availableRegisters = new();
     private DateTime lastUpdateTime = DateTime.Now;
     private Timer? refreshTimer;
 
     // Status feedback
     private string statusMessage = string.Empty;
     private Color statusMessageColor = Color.Default;
-
-    // Subscribe dialog
-    private bool showSubscribeDialog;
-    private string subscribeRegisterId = string.Empty;
-    private string subscribeMode = "forward-only";
 
     // Unsubscribe dialog
     private bool showUnsubscribeDialog;
@@ -550,8 +457,7 @@
             await Task.WhenAll(
                 LoadEnhancedPeers(),
                 LoadQualityScores(),
-                LoadSubscriptions(),
-                LoadAvailableRegisters()
+                LoadSubscriptions()
             );
         }
     }
@@ -656,56 +562,7 @@
         }
     }
 
-    private async Task LoadAvailableRegisters()
-    {
-        try
-        {
-            var result = await Http.GetFromJsonAsync<List<AvailableRegisterInfo>>($"{ApiConfiguration.PeerServiceUrl}/registers/available");
-            if (result != null)
-            {
-                availableRegisters = result;
-            }
-        }
-        catch
-        {
-            availableRegisters = new();
-        }
-    }
-
     // --- Dialog Handlers ---
-
-    private void ShowSubscribeDialog(string registerId)
-    {
-        subscribeRegisterId = registerId;
-        subscribeMode = "forward-only";
-        showSubscribeDialog = true;
-    }
-
-    private async Task SubscribeToRegister()
-    {
-        showSubscribeDialog = false;
-        try
-        {
-            var response = await Http.PostAsJsonAsync(
-                $"{ApiConfiguration.PeerServiceUrl}/registers/{subscribeRegisterId}/subscribe",
-                new { Mode = subscribeMode });
-
-            if (response.IsSuccessStatusCode)
-            {
-                SetStatus($"Subscribed to {TruncateId(subscribeRegisterId)} ({subscribeMode})", Color.Success);
-                await Task.WhenAll(LoadSubscriptions(), LoadAvailableRegisters());
-                StateHasChanged();
-            }
-            else
-            {
-                SetStatus($"Failed to subscribe: {response.StatusCode}", Color.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Error: {ex.Message}", Color.Error);
-        }
-    }
 
     private void ShowUnsubscribeDialog(string registerId)
     {
@@ -727,7 +584,7 @@
             {
                 var cacheNote = purgeCacheOnUnsubscribe ? " (cache purged)" : " (cache retained)";
                 SetStatus($"Unsubscribed from {TruncateId(unsubscribeRegisterId)}{cacheNote}", Color.Success);
-                await Task.WhenAll(LoadSubscriptions(), LoadAvailableRegisters());
+                await LoadSubscriptions();
                 StateHasChanged();
             }
             else
@@ -827,9 +684,6 @@
         statusMessage = message;
         statusMessageColor = color;
     }
-
-    private bool IsAlreadySubscribed(string registerId) =>
-        subscriptions?.Any(s => s.RegisterId == registerId) ?? false;
 
     private string TruncateId(string id) =>
         id.Length > 16 ? $"{id[..8]}...{id[^4..]}" : id;

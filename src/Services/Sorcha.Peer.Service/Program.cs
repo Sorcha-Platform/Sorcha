@@ -500,7 +500,15 @@ app.MapPost("/api/registers/bulk-advertise", async (
         var existing = advertisementService.GetAdvertisement(item.RegisterId);
         if (existing != null)
         {
-            advertisementService.UpdateRegisterVersion(item.RegisterId, item.LatestVersion, item.LatestDocketVersion);
+            // Re-advertise to update name/description along with versions (idempotency check inside)
+            advertisementService.AdvertiseRegister(
+                item.RegisterId,
+                existing.SyncState,
+                latestVersion: item.LatestVersion,
+                latestDocketVersion: item.LatestDocketVersion,
+                isPublic: item.IsPublic,
+                name: item.Name,
+                description: item.Description);
             updated++;
         }
         else
@@ -563,7 +571,12 @@ app.MapPost("/api/registers/{registerId}/advertise", (
 {
     if (request.IsPublic)
     {
-        advertisementService.AdvertiseRegister(registerId, RegisterSyncState.Active, isPublic: true);
+        advertisementService.AdvertiseRegister(
+            registerId,
+            RegisterSyncState.Active,
+            isPublic: true,
+            name: request.Name,
+            description: request.Description);
     }
     else
     {

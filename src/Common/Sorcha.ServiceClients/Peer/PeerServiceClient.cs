@@ -380,6 +380,8 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
     public async Task AdvertiseRegisterAsync(
         string registerId,
         bool isPublic,
+        string? name = null,
+        string? description = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -396,7 +398,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
 
             var response = await _httpClient.PostAsJsonAsync(
                 $"api/registers/{registerId}/advertise",
-                new { isPublic },
+                new { isPublic, name, description },
                 cancellationToken);
 
             if (response.IsSuccessStatusCode)
