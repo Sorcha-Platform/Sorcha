@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-using Fido2NetLib.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Sorcha.Tenant.Service.Endpoints;
@@ -24,16 +24,13 @@ builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization
 // Add controllers and minimal API support
 builder.Services.AddEndpointsApiExplorer();
 
-// Configure JSON serialization: Fido2 converters first (for WebAuthn spec-compliant
-// enum values like "public-key"), then generic string enum converter as fallback.
+// Configure JSON serialization with kebab-case enum handling for WebAuthn spec compliance.
+// WebAuthn uses "public-key" (kebab-case) for PublicKeyCredentialType, which KebabCaseLower
+// handles for both serialization and deserialization.
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    foreach (var converter in FidoModelSerializerContext.Default.Options.Converters)
-    {
-        options.SerializerOptions.Converters.Add(converter);
-    }
-
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower));
 });
 
 // Add CORS - production restriction handled at API Gateway (YARP)
