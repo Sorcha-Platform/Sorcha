@@ -212,10 +212,96 @@ public class SorchaDidIdentifierTests
         did1.GetHashCode().Should().Be(did2.GetHashCode());
     }
 
+    // --- Organization DID Parsing ---
+
+    [Fact]
+    public void Parse_ValidOrgDid_ReturnsOrganizationType()
+    {
+        var did = SorchaDidIdentifier.Parse("did:sorcha:org:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+
+        did.Type.Should().Be(SorchaDidType.Organization);
+        did.Locator.Should().Be("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+        did.TransactionId.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryParse_ValidOrgDid_ReturnsTrue()
+    {
+        var success = SorchaDidIdentifier.TryParse("did:sorcha:org:3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", out var result);
+
+        success.Should().BeTrue();
+        result.Should().NotBeNull();
+        result!.Type.Should().Be(SorchaDidType.Organization);
+    }
+
+    [Fact]
+    public void TryParse_EmptyOrgAddress_ReturnsFalse()
+    {
+        SorchaDidIdentifier.TryParse("did:sorcha:org:", out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("did:sorcha:org:address with spaces")]
+    [InlineData("did:sorcha:org:addr+ess")]
+    [InlineData("did:sorcha:org:0address")]  // Base58 doesn't include 0
+    public void TryParse_InvalidOrgAddress_ReturnsFalse(string did)
+    {
+        SorchaDidIdentifier.TryParse(did, out _).Should().BeFalse();
+    }
+
+    // --- Organization Factory ---
+
+    [Fact]
+    public void FromOrganization_ValidAddress_CreatesOrgDid()
+    {
+        var did = SorchaDidIdentifier.FromOrganization("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+
+        did.Type.Should().Be(SorchaDidType.Organization);
+        did.Locator.Should().Be("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+        did.ToString().Should().Be("did:sorcha:org:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
+    }
+
+    [Fact]
+    public void FromOrganization_EmptyAddress_ThrowsArgumentException()
+    {
+        var act = () => SorchaDidIdentifier.FromOrganization("");
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void ToString_OrgDid_RoundTrips()
+    {
+        var original = "did:sorcha:org:1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+        var did = SorchaDidIdentifier.Parse(original);
+        did.ToString().Should().Be(original);
+    }
+
+    // --- Org vs Wallet Equality ---
+
+    [Fact]
+    public void Equals_OrgVsWalletDid_SameAddress_ReturnsFalse()
+    {
+        var org = SorchaDidIdentifier.FromOrganization("abc123");
+        var wallet = SorchaDidIdentifier.FromWallet("abc123");
+
+        org.Should().NotBe(wallet);
+    }
+
+    [Fact]
+    public void Equals_SameOrgDid_ReturnsTrue()
+    {
+        var did1 = SorchaDidIdentifier.Parse("did:sorcha:org:abc123");
+        var did2 = SorchaDidIdentifier.Parse("did:sorcha:org:abc123");
+
+        did1.Should().Be(did2);
+        (did1 == did2).Should().BeTrue();
+    }
+
     // --- IsValid ---
 
     [Theory]
     [InlineData("did:sorcha:w:abc123", true)]
+    [InlineData("did:sorcha:org:abc123", true)]
     [InlineData("did:sorcha:r:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4:t:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", true)]
     [InlineData("not-a-did", false)]
     [InlineData(null, false)]

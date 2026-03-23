@@ -81,6 +81,24 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "InvitationNonces",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Nonce = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    InvitationId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SourceOrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TargetOrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RegisterId = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    ConsumedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvitationNonces", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "OrganizationPermissionConfigurations",
                 schema: "public",
                 columns: table => new
@@ -411,6 +429,38 @@ namespace Sorcha.Tenant.Service.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "RegisterInvitationRecords",
+                schema: "public",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    InvitationId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    SourceOrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TargetOrgDid = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    TargetWalletAddress = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    RegisterId = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    RegisterName = table.Column<string>(type: "character varying(38)", maxLength: 38, nullable: true),
+                    Nonce = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    Status = table.Column<string>(type: "character varying(16)", maxLength: 16, nullable: false),
+                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CreatedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    AcceptedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RegisterInvitationRecords", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_RegisterInvitationRecords_Organizations_SourceOrgId",
+                        column: x => x.SourceOrgId,
+                        principalSchema: "public",
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "LinkedWalletAddresses",
                 schema: "public",
                 columns: table => new
@@ -657,6 +707,13 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_InvNonce_Nonce",
+                schema: "public",
+                table: "InvitationNonces",
+                column: "Nonce",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_WalletLink_Address",
                 schema: "public",
                 table: "LinkedWalletAddresses",
@@ -840,6 +897,31 @@ namespace Sorcha.Tenant.Service.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_RegInvRec_InvitationId",
+                schema: "public",
+                table: "RegisterInvitationRecords",
+                column: "InvitationId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RegInvRec_SourceOrgId",
+                schema: "public",
+                table: "RegisterInvitationRecords",
+                column: "SourceOrgId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RegInvRec_SourceOrgId_Status",
+                schema: "public",
+                table: "RegisterInvitationRecords",
+                columns: new[] { "SourceOrgId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_RegInvRec_TargetOrgDid",
+                schema: "public",
+                table: "RegisterInvitationRecords",
+                column: "TargetOrgDid");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ServicePrincipals_ClientId",
                 schema: "public",
                 table: "ServicePrincipals",
@@ -925,6 +1007,10 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
+                name: "InvitationNonces",
+                schema: "public");
+
+            migrationBuilder.DropTable(
                 name: "LinkedWalletAddresses",
                 schema: "public");
 
@@ -969,6 +1055,10 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
+                name: "RegisterInvitationRecords",
+                schema: "public");
+
+            migrationBuilder.DropTable(
                 name: "ServicePrincipals",
                 schema: "public");
 
@@ -993,11 +1083,11 @@ namespace Sorcha.Tenant.Service.Migrations
                 schema: "public");
 
             migrationBuilder.DropTable(
-                name: "Organizations",
+                name: "PlatformUsers",
                 schema: "public");
 
             migrationBuilder.DropTable(
-                name: "PlatformUsers",
+                name: "Organizations",
                 schema: "public");
 
             migrationBuilder.DropTable(

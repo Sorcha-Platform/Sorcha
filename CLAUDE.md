@@ -71,7 +71,7 @@ dotnet restore && dotnet build && dotnet test
 | Blueprint | 100% | 5000 / 7000 | Workflow management, SignalR |
 | Register | 100% | 5290 / 7290 | Distributed ledger, OData |
 | Wallet | 95% | internal / 7001 | Crypto operations, HD wallets |
-| Tenant | 97% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity |
+| Tenant | 98% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
 | Validator | 95% | internal / 7004 | Consensus, chain integrity |
 | Peer | 70% | 5002 / 7002 | P2P network, gRPC |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
@@ -132,6 +132,34 @@ The Participant Identity Registry bridges Tenant Service users with Blueprint wo
 var participant = await participantClient.GetByIdAsync(orgId, participantId);
 var canSign = await participantClient.ValidateSigningCapabilityAsync(orgId, participantId);
 ```
+
+---
+
+## Register Invitation API
+
+Private register invitation system using cryptographic envelopes (ED25519 sign + X25519 encrypt via Wallet Service). Register owners invite organizations by DID; target orgs accept by decrypting and verifying the token.
+
+### Endpoints (via API Gateway /api/*)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/organizations/{orgId}/register-invitations` | Create signed+encrypted invitation (admin) |
+| POST | `/organizations/{orgId}/register-invitations/accept` | Accept invitation token (admin) |
+| GET | `/organizations/{orgId}/register-invitations` | List invitations (filter: sent/received/all) |
+| DELETE | `/organizations/{orgId}/register-invitations/{invitationId}` | Revoke pending invitation (admin) |
+
+### Key Models
+
+- **RegisterInvitationRecord**: SourceOrgId + TargetOrgDid + RegisterId + Nonce + Status (Pending/Accepted/Revoked/Expired) + ExpiresAt
+- **InvitationNonce**: Replay protection via unique DB index on consumed nonces
+- **InvitationTokenEnvelope**: Version + ED25519 Signature + X25519 EncryptedPayload + SenderDID
+- **InvitationPayload**: RegisterId + SourceOrgDid + TargetOrgDid + Nonce + ExpiresAt + Names
+- **SorchaDidIdentifier.Organization**: `did:sorcha:org:{walletAddress}` — new DID type for org identity
+
+### Crypto Flow
+
+1. **Create**: Serialize payload → encrypt to target wallet (X25519) → sign encrypted blob (ED25519) → base64 envelope token
+2. **Accept**: Decode token → verify sender signature → decrypt with target wallet → validate nonce/expiry/target → create `SubscriptionType.Invited` subscription
 
 ---
 

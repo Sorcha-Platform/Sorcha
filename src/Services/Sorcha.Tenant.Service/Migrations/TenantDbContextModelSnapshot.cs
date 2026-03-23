@@ -267,6 +267,45 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("IdentityProviderConfigurations", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.InvitationNonce", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Nonce")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RegisterId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("SourceOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TargetOrgId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Nonce")
+                        .IsUnique()
+                        .HasDatabaseName("IX_InvNonce_Nonce");
+
+                    b.ToTable("InvitationNonces", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.LinkedWalletAddress", b =>
                 {
                     b.Property<Guid>("Id")
@@ -965,6 +1004,82 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("PushSubscriptions", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.RegisterInvitationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvitationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Nonce")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RegisterId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RegisterName")
+                        .HasMaxLength(38)
+                        .HasColumnType("character varying(38)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SourceOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TargetOrgDid")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TargetWalletAddress")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_RegInvRec_InvitationId");
+
+                    b.HasIndex("SourceOrgId")
+                        .HasDatabaseName("IX_RegInvRec_SourceOrgId");
+
+                    b.HasIndex("TargetOrgDid")
+                        .HasDatabaseName("IX_RegInvRec_TargetOrgDid");
+
+                    b.HasIndex("SourceOrgId", "Status")
+                        .HasDatabaseName("IX_RegInvRec_SourceOrgId_Status");
+
+                    b.ToTable("RegisterInvitationRecords", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.ServicePrincipal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1349,6 +1464,17 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Navigation("Organization");
 
                     b.Navigation("PlatformUser");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.RegisterInvitationRecord", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.Organization", "SourceOrganization")
+                        .WithMany()
+                        .HasForeignKey("SourceOrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SourceOrganization");
                 });
 
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.WalletLinkChallenge", b =>

@@ -36,6 +36,8 @@ public class TenantDbContext : DbContext
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
     public DbSet<OrgRecoveryConfig> OrgRecoveryConfigs => Set<OrgRecoveryConfig>();
     public DbSet<OrganizationRegisterSubscription> OrganizationRegisterSubscriptions => Set<OrganizationRegisterSubscription>();
+    public DbSet<RegisterInvitationRecord> RegisterInvitationRecords => Set<RegisterInvitationRecord>();
+    public DbSet<InvitationNonce> InvitationNonces => Set<InvitationNonce>();
 
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
@@ -93,6 +95,9 @@ public class TenantDbContext : DbContext
 
         // Configure OrganizationRegisterSubscription entity (public schema)
         ConfigureOrganizationRegisterSubscription(modelBuilder);
+
+        // Configure RegisterInvitationRecord and InvitationNonce entities (public schema)
+        ConfigureRegisterInvitations(modelBuilder);
 
         // Configure UserIdentity entity (per-org schema)
         ConfigureUserIdentity(modelBuilder);
@@ -1078,6 +1083,93 @@ public class TenantDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.OrganizationId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private void ConfigureRegisterInvitations(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.IsInMemory();
+
+        modelBuilder.Entity<RegisterInvitationRecord>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("RegisterInvitationRecords");
+            else
+                entity.ToTable("RegisterInvitationRecords", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.InvitationId)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.TargetOrgDid)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            entity.Property(e => e.TargetWalletAddress)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.RegisterId)
+                .IsRequired()
+                .HasMaxLength(32);
+
+            entity.Property(e => e.RegisterName)
+                .HasMaxLength(38);
+
+            entity.Property(e => e.Nonce)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.HasIndex(e => e.InvitationId)
+                .IsUnique()
+                .HasDatabaseName("IX_RegInvRec_InvitationId");
+
+            entity.HasIndex(e => e.SourceOrgId)
+                .HasDatabaseName("IX_RegInvRec_SourceOrgId");
+
+            entity.HasIndex(e => e.TargetOrgDid)
+                .HasDatabaseName("IX_RegInvRec_TargetOrgDid");
+
+            entity.HasIndex(e => new { e.SourceOrgId, e.Status })
+                .HasDatabaseName("IX_RegInvRec_SourceOrgId_Status");
+
+            entity.HasOne(e => e.SourceOrganization)
+                .WithMany()
+                .HasForeignKey(e => e.SourceOrgId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvitationNonce>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("InvitationNonces");
+            else
+                entity.ToTable("InvitationNonces", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Nonce)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.InvitationId)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(e => e.RegisterId)
+                .IsRequired()
+                .HasMaxLength(32);
+
+            entity.HasIndex(e => e.Nonce)
+                .IsUnique()
+                .HasDatabaseName("IX_InvNonce_Nonce");
         });
     }
 }

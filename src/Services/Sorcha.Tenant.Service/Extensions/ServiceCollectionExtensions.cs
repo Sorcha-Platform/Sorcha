@@ -141,6 +141,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITotpService, TotpService>();
         services.AddScoped<IPasskeyService, PasskeyService>();
         services.AddScoped<IRegisterSubscriptionService, RegisterSubscriptionService>();
+        services.AddScoped<IRegisterInvitationService, RegisterInvitationService>();
         services.AddScoped<ISocialLoginService, SocialLoginService>();
         services.AddScoped<ILoginService, LoginService>();
         services.AddScoped<IRegistrationService, RegistrationService>();
