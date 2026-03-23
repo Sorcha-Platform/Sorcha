@@ -1,0 +1,69 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@using Microsoft.JSInterop
+
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+@*
+    Redirects to the server-rendered login page when the user is not authenticated.
+    Uses OnAfterRenderAsync instead of inline render code so the redirect happens
+    after a full render cycle — this gives any pending auth state changes (e.g.
+    fragment token consumption by CustomAuthenticationStateProvider) time to
+    propagate before we decide to navigate away.
+*@
+
+<div class="loading-container">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Checking authentication...</div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            // Safety check: if a fragment token is still pending (auth provider hasn't consumed it yet),
+            // wait briefly to give it a chance. This handles edge cases where OnAfterRenderAsync fires
+            // before the auth provider's JS interop calls complete.
+            var hasPending = await JSRuntime.InvokeAsync<string?>(
+                "localStorage.getItem", "sorcha:fragment-pending");
+
+            if (!string.IsNullOrEmpty(hasPending))
+            {
+                // Fragment token exists — the auth provider should be processing it.
+                // Wait and let the auth state update cascade; if it does, this component
+                // will be unmounted (replaced by the authorized content) before we redirect.
+                await Task.Delay(1000);
+
+                // Re-check: if the fragment was consumed during the delay, the auth state
+                // changed event should have caused CascadingAuthenticationState to re-render,
+                // unmounting this component. If we're still here, something went wrong.
+                hasPending = await JSRuntime.InvokeAsync<string?>(
+                    "localStorage.getItem", "sorcha:fragment-pending");
+
+                if (!string.IsNullOrEmpty(hasPending))
+                {
+                    // Still pending after 1s — likely a stuck state. Clear it and redirect.
+                    await JSRuntime.InvokeVoidAsync("sorcha.fragmentHandoff.clearTokenStaging");
+                }
+                else
+                {
+                    // Fragment was consumed but auth state didn't cascade to unmount us.
+                    // This shouldn't happen, but just in case — check one more time.
+                    return;
+                }
+            }
+        }
+        catch
+        {
+            // JS interop failure — fall through to redirect
+        }
+
+        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
+        NavigationManager.NavigateTo($"/auth/login?returnUrl={returnUrl}", forceLoad: true);
+    }
+}
