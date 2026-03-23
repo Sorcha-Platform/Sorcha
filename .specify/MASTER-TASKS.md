@@ -164,6 +164,24 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
+## Theme 7: Public User Experience & Role Model — P1
+
+> **Priority:** P1 (Pre-release)
+> **Estimated Effort:** 40-60h
+> **Goal:** Correct public user experience, role model clarity, register scoping
+> **Related:** Exploratory testing session 2026-03-23, PRs #111, Issues #112, #113
+
+| # | Task | Priority | Effort | Status | Notes |
+|---|------|----------|--------|--------|-------|
+| UX-001 | Register subscription scoping — org-based register access + UI consolidation | P1 | 24h | 📋 | #113 — New Submission shows only subscribed registers; merge Available Registers into Registers page |
+| UX-002 | Rename UserRole.Member → UserRole.Consumer across codebase | P1 | 8h | 📋 | #112 — Enum, DB migration, JWT claims, docs, permission presets |
+| UX-003 | Blueprint register filter + role-based nav/page auth | P1 | 8h | ✅ | #111 — Fixed register filter, nav gating, dashboard scoping, page-level [Authorize(Roles)] |
+| UX-004 | Auditor role access review — determine read-only access scope | P2 | 4h | 📋 | Auditors currently have no nav items for Registers/Participants; decide if read-only access needed |
+| UX-005 | Dashboard org-scoped stats for multi-tenant deployments | P2 | 8h | 📋 | Currently global counts; need per-org stats for Consumer/Auditor users |
+| UX-006 | Public block explorer — unauthenticated register/transaction browsing | P2 | 16h | 📋 | Future feature — shares layout with authenticated app |
+
+---
+
 ## Summary
 
 | Theme | Priority | Tasks | Effort | Focus |
@@ -174,7 +192,8 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
-| **Total** | | **52** (5 ✅, 47 remaining) | **500-720h** | |
+| 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
+| **Total** | | **58** (6 ✅, 52 remaining) | **540-780h** | |
 
 ### Completed Features (not in themes above)
 

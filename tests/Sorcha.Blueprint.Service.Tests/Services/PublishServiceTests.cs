@@ -98,36 +98,21 @@ public class PublishServiceTests
 
     #endregion
 
-    #region PublishAsync — Without RegisterId (Legacy Behavior)
+    #region PublishAsync — RegisterId Required
 
     [Fact]
-    public async Task PublishAsync_NoRegisterId_PublishesLocally()
+    public async Task PublishAsync_WithRegisterId_PublishesLocallyAndSetsRegister()
     {
         var blueprint = CreateValidBlueprint();
         _mockBlueprintStore.Setup(s => s.GetAsync("bp-1")).ReturnsAsync(blueprint);
         var service = CreateService();
 
-        var result = await service.PublishAsync("bp-1");
+        var result = await service.PublishAsync("bp-1", "test-register");
 
         result.IsSuccess.Should().BeTrue();
         result.PublishedBlueprint.Should().NotBeNull();
-        _mockPublishedStore.Verify(s => s.AddAsync(It.IsAny<PublishedBlueprint>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task PublishAsync_NullRegisterId_DoesNotCallRegisterClient()
-    {
-        var blueprint = CreateValidBlueprint();
-        _mockBlueprintStore.Setup(s => s.GetAsync("bp-1")).ReturnsAsync(blueprint);
-        var service = CreateService(_mockRegisterClient.Object);
-
-        var result = await service.PublishAsync("bp-1", null);
-
-        result.IsSuccess.Should().BeTrue();
-        _mockRegisterClient.Verify(
-            c => c.PublishBlueprintToRegisterAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), default),
-            Times.Never);
+        result.PublishedBlueprint!.RegisterId.Should().Be("test-register");
+        _mockPublishedStore.Verify(s => s.AddAsync(It.Is<PublishedBlueprint>(p => p.RegisterId == "test-register")), Times.Once);
     }
 
     #endregion
