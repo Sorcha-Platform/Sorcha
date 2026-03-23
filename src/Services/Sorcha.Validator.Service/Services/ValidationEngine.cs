@@ -181,7 +181,13 @@ public class ValidationEngine : IValidationEngine
                     {
                         // Derive sender wallet from first signature
                         var senderWallet = transaction.Signatures.FirstOrDefault()?.SignedBy;
-                        if (!string.IsNullOrWhiteSpace(senderWallet))
+                        if (string.IsNullOrWhiteSpace(senderWallet))
+                        {
+                            errors.Add(CreateError("VAL_REPLAY_004",
+                                "Cannot validate sequence — no signer wallet found on transaction signatures",
+                                ValidationErrorCategory.Structure, "SequenceNumber"));
+                        }
+                        else
                         {
                             var seqValid = await _walletSequenceRepository.ValidateAndIncrementAsync(
                                 transaction.RegisterId, senderWallet, transaction.SequenceNumber, ct);

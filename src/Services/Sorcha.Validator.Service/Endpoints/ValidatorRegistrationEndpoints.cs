@@ -679,7 +679,7 @@ public static class ValidatorRegistrationEndpoints
         {
             logger.LogError(ex, "Error getting sequence number for wallet {WalletAddress} on register {RegisterId}",
                 walletAddress, registerId);
-            return Results.Problem(detail: ex.Message, statusCode: 500, title: "Sequence query error");
+            return Results.Problem(detail: "An error occurred retrieving the sequence number.", statusCode: 500, title: "Sequence query error");
         }
     }
 

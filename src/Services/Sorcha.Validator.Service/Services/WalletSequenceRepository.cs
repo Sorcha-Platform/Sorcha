@@ -89,6 +89,8 @@ public class WalletSequenceRepository : IWalletSequenceRepository
     /// <inheritdoc/>
     public async Task<bool> ValidateAndIncrementAsync(string registerId, string walletAddress, ulong expectedSequence, CancellationToken ct = default)
     {
+        if (expectedSequence == 0) return false; // Guard against ulong underflow
+
         await EnsureIndexesAsync();
 
         var expectedPrevious = expectedSequence - 1;

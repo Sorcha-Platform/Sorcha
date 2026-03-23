@@ -7,9 +7,14 @@ using System.Text;
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
-/// Builds canonical content for vote signing and verification (SEC-AUDIT 4.1).
+/// Builds canonical content for vote signing (SEC-AUDIT 4.1).
 /// The canonical format ensures all validators sign the same deterministic content
 /// for a given vote, preventing signature reuse across different contexts.
+///
+/// NOTE: This helper is used for OUTGOING vote signing (T034 — when this validator casts a vote).
+/// Incoming vote verification currently uses raw docketHash as the signed payload,
+/// which is the existing protocol. When T034 is implemented, both sides will use
+/// BuildVoteSigningContent for the canonical format.
 /// </summary>
 public static class VoteSigningHelper
 {
