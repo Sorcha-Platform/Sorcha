@@ -34,6 +34,7 @@ public class ValidationEngine : IValidationEngine
     private readonly IWalletUtilities _walletUtilities;
     private readonly IRegisterServiceClient _registerClient;
     private readonly IRightsEnforcementService _rightsEnforcementService;
+    private readonly IWalletSequenceRepository? _walletSequenceRepository;
     private readonly ILogger<ValidationEngine> _logger;
 
     // Statistics
@@ -54,11 +55,13 @@ public class ValidationEngine : IValidationEngine
         IRegisterServiceClient registerClient,
         IRightsEnforcementService rightsEnforcementService,
         ILogger<ValidationEngine> logger,
-        IBlueprintFetcher? blueprintFetcher = null)
+        IBlueprintFetcher? blueprintFetcher = null,
+        IWalletSequenceRepository? walletSequenceRepository = null)
     {
         _config = config?.Value ?? throw new ArgumentNullException(nameof(config));
         _blueprintCache = blueprintCache ?? throw new ArgumentNullException(nameof(blueprintCache));
         _blueprintFetcher = blueprintFetcher;
+        _walletSequenceRepository = walletSequenceRepository;
         _hashProvider = hashProvider ?? throw new ArgumentNullException(nameof(hashProvider));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _walletUtilities = walletUtilities ?? throw new ArgumentNullException(nameof(walletUtilities));
@@ -160,6 +163,55 @@ public class ValidationEngine : IValidationEngine
                 if (!chainResult.IsValid)
                 {
                     errors.AddRange(chainResult.Errors);
+                }
+            }
+
+            // 5b. Validate sequence number for replay protection (SEC-AUDIT 4.2)
+            if (_walletSequenceRepository != null && !IsGenesisOrControlTransaction(transaction))
+            {
+                try
+                {
+                    if (transaction.SequenceNumber == 0)
+                    {
+                        errors.Add(CreateError("VAL_REPLAY_001",
+                            "Non-genesis transactions must have a sequence number > 0",
+                            ValidationErrorCategory.Structure, "SequenceNumber"));
+                    }
+                    else
+                    {
+                        // Derive sender wallet from first signature
+                        var senderWallet = transaction.Signatures.FirstOrDefault()?.SignedBy;
+                        if (string.IsNullOrWhiteSpace(senderWallet))
+                        {
+                            errors.Add(CreateError("VAL_REPLAY_004",
+                                "Cannot validate sequence — no signer wallet found on transaction signatures",
+                                ValidationErrorCategory.Structure, "SequenceNumber"));
+                        }
+                        else
+                        {
+                            var seqValid = await _walletSequenceRepository.ValidateAndIncrementAsync(
+                                transaction.RegisterId, senderWallet, transaction.SequenceNumber, ct);
+
+                            if (!seqValid)
+                            {
+                                var currentSeq = await _walletSequenceRepository.GetSequenceNumberAsync(
+                                    transaction.RegisterId, senderWallet, ct);
+                                errors.Add(CreateError("VAL_REPLAY_002",
+                                    $"Sequence number {transaction.SequenceNumber} is invalid for wallet '{senderWallet}' on register '{transaction.RegisterId}'. " +
+                                    $"Expected {currentSeq + 1}. Possible replay or out-of-order submission.",
+                                    ValidationErrorCategory.Chain, "SequenceNumber"));
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Fail-closed: reject transaction when sequence store is unavailable (SEC-AUDIT 4.2)
+                    _logger.LogError(ex, "Sequence validation failed (store unavailable) for transaction {TransactionId} — rejecting (fail-closed)",
+                        transaction.TransactionId);
+                    errors.Add(CreateError("VAL_REPLAY_003",
+                        "Sequence validation unavailable — transaction rejected for safety",
+                        ValidationErrorCategory.Chain, "SequenceNumber"));
                 }
             }
 

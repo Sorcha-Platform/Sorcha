@@ -32,6 +32,9 @@ public static class ValidatorRegistryExtensions
         // State is maintained in Redis, not in-memory, so scoped lifetime is appropriate
         services.AddScoped<IValidatorRegistry, ValidatorRegistry>();
 
+        // Wallet sequence repository for replay protection (SEC-AUDIT 4.2)
+        services.AddSingleton<IWalletSequenceRepository, WalletSequenceRepository>();
+
         return services;
     }
 }

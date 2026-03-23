@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Mvc;
+using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
 
 namespace Sorcha.Validator.Service.Endpoints;
@@ -102,6 +103,12 @@ public static class ValidatorRegistrationEndpoints
             .Produces<object>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/{registerId}/sequence/{walletAddress}", GetSequenceNumber)
+            .WithName("GetSequenceNumber")
+            .WithSummary("Get wallet sequence number")
+            .WithDescription("Returns the current and next sequence number for a wallet on a register. Used by clients to determine the correct sequence number for their next transaction.")
+            .Produces<object>(StatusCodes.Status200OK);
 
         group.MapGet("/{registerId}/audit", GetAuditTrail)
             .WithName("GetValidatorAuditTrail")
@@ -644,6 +651,35 @@ public static class ValidatorRegistrationEndpoints
         {
             logger.LogError(ex, "Error revoking validator {ValidatorId}", validatorId);
             return Results.Problem(detail: ex.Message, statusCode: 500, title: "Revocation error");
+        }
+    }
+
+    /// <summary>
+    /// Get wallet sequence number for replay protection
+    /// </summary>
+    private static async Task<IResult> GetSequenceNumber(
+        string registerId,
+        string walletAddress,
+        [FromServices] IWalletSequenceRepository sequenceRepo,
+        [FromServices] ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var lastSeq = await sequenceRepo.GetSequenceNumberAsync(registerId, walletAddress, cancellationToken);
+            return Results.Ok(new
+            {
+                registerId,
+                walletAddress,
+                lastSequenceNumber = lastSeq,
+                nextSequenceNumber = lastSeq + 1
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting sequence number for wallet {WalletAddress} on register {RegisterId}",
+                walletAddress, registerId);
+            return Results.Problem(detail: "An error occurred retrieving the sequence number.", statusCode: 500, title: "Sequence query error");
         }
     }
 

@@ -27,6 +27,7 @@ public class ConsensusEngine : IConsensusEngine
     private readonly IRegisterServiceClient _registerClient;
     private readonly Sorcha.Validator.Core.Validators.ITransactionValidator _transactionValidator;
     private readonly IValidationEngine _validationEngine;
+    private readonly IValidatorRegistry _validatorRegistry;
     private readonly ConsensusConfiguration _consensusConfig;
     private readonly ValidatorConfiguration _validatorConfig;
     private readonly ILogger<ConsensusEngine> _logger;
@@ -38,6 +39,7 @@ public class ConsensusEngine : IConsensusEngine
         IRegisterServiceClient registerClient,
         Sorcha.Validator.Core.Validators.ITransactionValidator transactionValidator,
         IValidationEngine validationEngine,
+        IValidatorRegistry validatorRegistry,
         IOptions<ConsensusConfiguration> consensusConfig,
         IOptions<ValidatorConfiguration> validatorConfig,
         IHostEnvironment hostEnvironment,
@@ -48,6 +50,7 @@ public class ConsensusEngine : IConsensusEngine
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
         _validationEngine = validationEngine ?? throw new ArgumentNullException(nameof(validationEngine));
+        _validatorRegistry = validatorRegistry ?? throw new ArgumentNullException(nameof(validatorRegistry));
         _consensusConfig = consensusConfig?.Value ?? throw new ArgumentNullException(nameof(consensusConfig));
         _validatorConfig = validatorConfig?.Value ?? throw new ArgumentNullException(nameof(validatorConfig));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -458,7 +461,7 @@ public class ConsensusEngine : IConsensusEngine
             if (seenValidators.Contains(vote.ValidatorId))
             {
                 _logger.LogWarning(
-                    "Detected double-vote from validator {ValidatorId} on docket {DocketNumber}",
+                    "SECURITY: Detected double-vote from validator {ValidatorId} on docket {DocketNumber}",
                     vote.ValidatorId, docket.DocketNumber);
 
                 await _peerClient.ReportValidatorBehaviorAsync(
@@ -470,7 +473,46 @@ public class ConsensusEngine : IConsensusEngine
                 continue;
             }
 
-            // Verify vote signature
+            // SEC-AUDIT 4.1: Verify voter is a registered, Active validator
+            var registeredValidator = await _validatorRegistry.GetValidatorAsync(
+                docket.RegisterId, vote.ValidatorId, cancellationToken);
+
+            if (registeredValidator == null)
+            {
+                _logger.LogWarning(
+                    "SECURITY: Vote rejected from unregistered validator {ValidatorId} on docket {DocketNumber}",
+                    vote.ValidatorId, docket.DocketNumber);
+                continue;
+            }
+
+            if (registeredValidator.Status != Interfaces.ValidatorStatus.Active)
+            {
+                _logger.LogWarning(
+                    "SECURITY: Vote rejected from non-Active validator {ValidatorId} (status: {Status}) on docket {DocketNumber}",
+                    vote.ValidatorId, registeredValidator.Status, docket.DocketNumber);
+                continue;
+            }
+
+            // SEC-AUDIT 4.1: Verify vote's public key matches the registered validator's public key
+            var votePublicKeyHex = Convert.ToHexStringLower(vote.ValidatorSignature.PublicKey);
+            if (!string.Equals(votePublicKeyHex, registeredValidator.PublicKey, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(Convert.ToBase64String(vote.ValidatorSignature.PublicKey), registeredValidator.PublicKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "SECURITY: Vote rejected — public key mismatch for validator {ValidatorId} on docket {DocketNumber}. " +
+                    "Vote key does not match registered key. Possible impersonation attempt.",
+                    vote.ValidatorId, docket.DocketNumber);
+
+                await _peerClient.ReportValidatorBehaviorAsync(
+                    vote.ValidatorId,
+                    "KeyMismatch",
+                    $"Vote public key does not match registered key on docket {docket.DocketNumber}",
+                    cancellationToken);
+
+                continue;
+            }
+
+            // Verify vote cryptographic signature
             var signatureValid = await _walletClient.VerifySignatureAsync(
                 Base64Url.EncodeToString(vote.ValidatorSignature.PublicKey),
                 vote.DocketHash,
@@ -481,8 +523,8 @@ public class ConsensusEngine : IConsensusEngine
             if (!signatureValid)
             {
                 _logger.LogWarning(
-                    "Invalid signature on vote from validator {ValidatorId}",
-                    vote.ValidatorId);
+                    "SECURITY: Invalid cryptographic signature on vote from validator {ValidatorId} on docket {DocketNumber}",
+                    vote.ValidatorId, docket.DocketNumber);
                 continue;
             }
 
