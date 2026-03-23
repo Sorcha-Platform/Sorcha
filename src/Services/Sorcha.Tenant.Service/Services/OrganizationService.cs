@@ -3,6 +3,7 @@
 
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Endpoints;
@@ -19,6 +20,7 @@ public partial class OrganizationService : IOrganizationService
     private readonly IOrganizationRepository _organizationRepository;
     private readonly IIdentityRepository _identityRepository;
     private readonly TenantDbContext _dbContext;
+    private readonly IWalletServiceClient _walletClient;
     private readonly ILogger<OrganizationService> _logger;
 
     // Reserved subdomains that cannot be used
@@ -35,11 +37,13 @@ public partial class OrganizationService : IOrganizationService
         IOrganizationRepository organizationRepository,
         IIdentityRepository identityRepository,
         TenantDbContext dbContext,
+        IWalletServiceClient walletClient,
         ILogger<OrganizationService> logger)
     {
         _organizationRepository = organizationRepository ?? throw new ArgumentNullException(nameof(organizationRepository));
         _identityRepository = identityRepository ?? throw new ArgumentNullException(nameof(identityRepository));
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -79,6 +83,34 @@ public partial class OrganizationService : IOrganizationService
         _logger.LogInformation(
             "Created organization {OrganizationId} ({Subdomain}) by user {CreatorUserId}",
             created.Id, created.Subdomain, creatorUserId);
+
+        // Provision organization wallet for signing operations
+        try
+        {
+            var walletName = $"org-{created.Subdomain}-signing";
+            var walletInfo = await _walletClient.CreateWalletAsync(
+                walletName,
+                "ED25519",
+                created.Id.ToString(),
+                created.Id.ToString(),
+                cancellationToken);
+
+            created.WalletAddress = walletInfo.Address;
+            created.PublicKey = walletInfo.PublicKey;
+            created.SigningAlgorithm = walletInfo.Algorithm;
+            await _organizationRepository.UpdateAsync(created, cancellationToken);
+
+            _logger.LogInformation(
+                "Organization wallet provisioned: {OrganizationId} -> {WalletAddress}",
+                created.Id, walletInfo.Address);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to provision wallet for organization {OrganizationId}. " +
+                "Wallet will be provisioned by the reconciliation service.",
+                created.Id);
+        }
 
         return OrganizationResponse.FromEntity(created);
     }

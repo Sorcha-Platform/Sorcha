@@ -3,6 +3,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -60,6 +61,17 @@ public static class BootstrapEndpoints
     }
 
     /// <summary>
+    /// Well-known System Register ID (SHA-256("sorcha-system-register")[0:32]).
+    /// Duplicated from Sorcha.Register.Models.Constants.SystemRegisterConstants to avoid cross-domain dependency.
+    /// </summary>
+    private const string SystemRegisterId = "aebf26362e079087571ac0932d4db973";
+
+    /// <summary>
+    /// Well-known display name for the System Register.
+    /// </summary>
+    private const string SystemRegisterName = "Sorcha System Register";
+
+    /// <summary>
     /// Bootstraps a fresh Sorcha installation with initial organization and admin user.
     /// </summary>
     private static async Task<Results<Created<BootstrapResponse>, ValidationProblem, Conflict<ProblemDetails>, ProblemHttpResult>> BootstrapPlatform(
@@ -71,6 +83,8 @@ public static class BootstrapEndpoints
         ITokenService tokenService,
         Data.Repositories.IIdentityRepository identityRepository,
         TenantDbContext dbContext,
+        IWalletServiceClient walletClient,
+        IRegisterSubscriptionService subscriptionService,
         ILogger<Program> logger)
     {
         // Bootstrap secret guard: if BOOTSTRAP_SECRET is configured, require matching X-Bootstrap-Secret header
@@ -134,6 +148,37 @@ public static class BootstrapEndpoints
             var bootstrapUserId = Guid.Empty; // System user for bootstrap
             var organization = await organizationService.CreateOrganizationAsync(createOrgRequest, bootstrapUserId);
             logger.LogInformation("Organization created: {OrgId}", organization.Id);
+
+            // Step 1b: Provision organization wallet for signing operations
+            try
+            {
+                var walletName = $"org-{request.OrganizationSubdomain.ToLowerInvariant()}-signing";
+                var walletInfo = await walletClient.CreateWalletAsync(
+                    walletName,
+                    "ED25519",
+                    organization.Id.ToString(),
+                    organization.Id.ToString());
+
+                var orgEntity = await dbContext.Organizations.FindAsync(organization.Id);
+                if (orgEntity != null)
+                {
+                    orgEntity.WalletAddress = walletInfo.Address;
+                    orgEntity.PublicKey = walletInfo.PublicKey;
+                    orgEntity.SigningAlgorithm = walletInfo.Algorithm;
+                    await dbContext.SaveChangesAsync();
+                }
+
+                logger.LogInformation(
+                    "Organization wallet provisioned: {OrgId} -> {WalletAddress}",
+                    organization.Id, walletInfo.Address);
+            }
+            catch (Exception walletEx)
+            {
+                logger.LogWarning(walletEx,
+                    "Failed to provision wallet for organization {OrgId} during bootstrap. " +
+                    "Wallet will be provisioned by the reconciliation service.",
+                    organization.Id);
+            }
 
             // Step 2: Create admin PlatformUser + UserIdentity
             logger.LogInformation("Creating administrator: {Email}", request.AdminEmail);
@@ -271,6 +316,24 @@ public static class BootstrapEndpoints
                     Detail = "Platform has already been bootstrapped by a concurrent request.",
                     Status = StatusCodes.Status409Conflict
                 });
+            }
+
+            // Step 5: Auto-subscribe organization to the System Register (Owner subscription)
+            try
+            {
+                await subscriptionService.CreateOwnerSubscriptionAsync(
+                    organization.Id, SystemRegisterId, SystemRegisterName, bootstrapUserId, CancellationToken.None);
+
+                logger.LogInformation(
+                    "Auto-subscribed organization {OrgId} to System Register {RegisterId}",
+                    organization.Id, SystemRegisterId);
+            }
+            catch (Exception subEx)
+            {
+                logger.LogWarning(subEx,
+                    "Failed to auto-subscribe organization {OrgId} to System Register during bootstrap. " +
+                    "Subscription can be created manually.",
+                    organization.Id);
             }
 
             logger.LogInformation("Bootstrap completed successfully for organization: {OrgId}", organization.Id);

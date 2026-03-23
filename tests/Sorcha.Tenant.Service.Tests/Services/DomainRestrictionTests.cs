@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -53,6 +54,7 @@ public class DomainRestrictionTests : IDisposable
             _orgRepoMock.Object,
             _identityRepoMock.Object,
             _dbContext,
+            new Mock<IWalletServiceClient>().Object,
             _loggerMock.Object);
     }
 

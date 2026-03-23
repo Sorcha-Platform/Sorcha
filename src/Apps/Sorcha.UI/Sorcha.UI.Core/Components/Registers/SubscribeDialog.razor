@@ -1,0 +1,177 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.AddLink" />
+            <MudText Typo="Typo.h6">Subscribe to Register</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="60px" />
+        }
+        else if (_errorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                @_errorMessage
+                <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="LoadAvailableRegistersAsync" Class="ml-2">
+                    Retry
+                </MudButton>
+            </MudAlert>
+        }
+        else if (_availableRegisters.Count == 0)
+        {
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="pa-4 text-center">
+                No public registers are currently available in the peer network.
+            </MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Select a public register from the peer network to subscribe your organisation.
+            </MudText>
+            <MudList T="AvailableRegisterDto" Dense="true">
+                @foreach (var register in _availableRegisters)
+                {
+                    var isAlreadySubscribed = SubscribedRegisterIds.Contains(register.RegisterId);
+                    <MudListItem T="AvailableRegisterDto">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudStack Spacing="0" Style="flex: 1; min-width: 0;">
+                                <MudText Typo="Typo.subtitle2">
+                                    @(string.IsNullOrEmpty(register.Name) ? "Unnamed Register" : register.Name)
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(register.Description))
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-truncate">
+                                        @register.Description
+                                    </MudText>
+                                }
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="font-family: monospace;">
+                                        @TruncateId(register.RegisterId)
+                                    </MudText>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info">
+                                        @register.PeerCount peer(s)
+                                    </MudChip>
+                                </MudStack>
+                            </MudStack>
+                            @if (isAlreadySubscribed)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                                    Subscribed
+                                </MudChip>
+                            }
+                            else if (_subscribingRegisterId == register.RegisterId)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            }
+                            else
+                            {
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="@(() => SubscribeToRegisterAsync(register.RegisterId))">
+                                    Subscribe
+                                </MudButton>
+                            }
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>
+    /// The subscription service to call backend APIs.
+    /// </summary>
+    [Parameter]
+    public IRegisterSubscriptionService SubscriptionService { get; set; } = default!;
+
+    /// <summary>
+    /// The current user's organisation ID for subscribing.
+    /// </summary>
+    [Parameter]
+    public Guid OrganizationId { get; set; }
+
+    /// <summary>
+    /// Register IDs the user is already subscribed to (to show "Subscribed" badge).
+    /// </summary>
+    [Parameter]
+    public HashSet<string> SubscribedRegisterIds { get; set; } = [];
+
+    /// <summary>
+    /// Callback when a subscription is created so the parent can refresh.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnSubscribed { get; set; }
+
+    private List<AvailableRegisterDto> _availableRegisters = [];
+    private bool _loading = true;
+    private string? _errorMessage;
+    private string? _subscribingRegisterId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAvailableRegistersAsync();
+    }
+
+    private async Task LoadAvailableRegistersAsync()
+    {
+        try
+        {
+            _loading = true;
+            _errorMessage = null;
+            _availableRegisters = await SubscriptionService.GetAvailableRegistersAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to load available registers: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SubscribeToRegisterAsync(string registerId)
+    {
+        _subscribingRegisterId = registerId;
+        StateHasChanged();
+
+        try
+        {
+            var result = await SubscriptionService.SubscribeAsync(OrganizationId, registerId);
+            if (result is not null)
+            {
+                SubscribedRegisterIds.Add(registerId);
+                await OnSubscribed.InvokeAsync();
+            }
+        }
+        finally
+        {
+            _subscribingRegisterId = null;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => MudDialog.Close(DialogResult.Cancel());
+
+    private static string TruncateId(string id) =>
+        id.Length > 16 ? $"{id[..8]}...{id[^4..]}" : id;
+}

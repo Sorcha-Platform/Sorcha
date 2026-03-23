@@ -1,0 +1,166 @@
+openapi: 3.0.3
+info:
+  title: Register Invitations API (Phase 2)
+  version: 1.0.0
+  description: Private register invitation endpoints (Tenant Service)
+
+paths:
+  /api/organizations/{orgId}/register-invitations:
+    post:
+      operationId: CreateRegisterInvitation
+      summary: Create invitation to a private register
+      tags: [Register Invitations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInvitationRequest' }
+      responses:
+        '201':
+          description: Invitation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationResponse' }
+        '400': { description: Org not owner of register, or target org not found }
+        '403': { description: Not authorized }
+        '429': { description: Rate limit exceeded }
+
+    get:
+      operationId: ListRegisterInvitations
+      summary: List sent and received invitations
+      tags: [Register Invitations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: direction
+          in: query
+          schema: { type: string, enum: [sent, received, all], default: all }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InvitationSummary' }
+
+  /api/organizations/{orgId}/register-invitations/accept:
+    post:
+      operationId: AcceptRegisterInvitation
+      summary: Accept an invitation token
+      tags: [Register Invitations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
+      responses:
+        '200':
+          description: Invitation accepted, subscription created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcceptInvitationResponse' }
+        '400': { description: Invalid token, expired, wrong target, or nonce reused }
+        '409': { description: Already subscribed to this register }
+
+  /api/organizations/{orgId}/register-invitations/{invitationId}:
+    delete:
+      operationId: RevokeRegisterInvitation
+      summary: Revoke a sent invitation
+      tags: [Register Invitations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: invitationId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Invitation revoked }
+        '404': { description: Invitation not found }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateInvitationRequest:
+      type: object
+      required: [register_id, target_org_did]
+      properties:
+        register_id:
+          type: string
+          pattern: '^[a-f0-9]{32}$'
+        target_org_did:
+          type: string
+          pattern: '^did:sorcha:org:.+$'
+          description: 'Target org DID, e.g. did:sorcha:org:<walletAddress>'
+        expires_in_days:
+          type: integer
+          default: 7
+          minimum: 1
+          maximum: 90
+
+    InvitationResponse:
+      type: object
+      properties:
+        invitation_id: { type: string }
+        invitation_token: { type: string, description: Encrypted+signed token for out-of-band delivery }
+        register_id: { type: string }
+        target_org_did: { type: string }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    InvitationSummary:
+      type: object
+      properties:
+        invitation_id: { type: string }
+        register_id: { type: string }
+        register_name: { type: string, nullable: true }
+        source_org_did: { type: string }
+        source_org_name: { type: string, nullable: true }
+        target_org_did: { type: string }
+        target_org_name: { type: string, nullable: true }
+        direction: { type: string, enum: [sent, received] }
+        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    AcceptInvitationRequest:
+      type: object
+      required: [invitation_token]
+      properties:
+        invitation_token:
+          type: string
+          description: The encrypted+signed invitation token received out-of-band
+
+    AcceptInvitationResponse:
+      type: object
+      properties:
+        subscription_id: { type: string, format: uuid }
+        register_id: { type: string }
+        register_name: { type: string, nullable: true }
+        source_org_did: { type: string }
+        source_org_name: { type: string, nullable: true }
+        subscription_status: { type: string, enum: [Pending, Active] }
+        accepted_at: { type: string, format: date-time }

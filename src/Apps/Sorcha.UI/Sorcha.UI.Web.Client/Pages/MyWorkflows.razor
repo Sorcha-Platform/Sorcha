@@ -16,6 +16,7 @@
 @inject IBlueprintApiService BlueprintApiService
 @inject IWalletApiService WalletService
 @inject IRegisterService RegisterService
+@inject IRegisterSubscriptionService SubscriptionService
 @inject IWalletPreferenceService WalletPreferenceService
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -171,9 +172,17 @@
             // Get smart default wallet for discovery
             var walletAddress = await WalletPreferenceService.GetSmartDefaultAsync(_wallets) ?? _wallets[0].Address;
 
-            // Fetch online registers
-            var registers = await RegisterService.GetRegistersAsync();
-            var onlineRegisters = registers.Where(r => r.IsOnline).ToList();
+            // Fetch only subscribed registers (scoped by subscription)
+            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
+            var subscribedRegisterIds = subscriptions
+                .Select(s => s.RegisterId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToHashSet();
+
+            var allRegisters = await RegisterService.GetRegistersAsync();
+            var onlineRegisters = allRegisters
+                .Where(r => r.IsOnline && subscribedRegisterIds.Contains(r.Id))
+                .ToList();
 
             // For each register, fetch available blueprints
             foreach (var register in onlineRegisters)

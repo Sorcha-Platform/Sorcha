@@ -7,6 +7,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Tenant.Service.Data;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Tests.Infrastructure;
 
@@ -261,5 +262,42 @@ public class BootstrapApiTests : IClassFixture<TenantServiceWebApplicationFactor
         loginResult!.AccessToken.Should().NotBeNullOrEmpty();
         loginResult.RefreshToken.Should().NotBeNullOrEmpty();
         loginResult.TokenType.Should().Be("Bearer");
+    }
+
+    [Fact]
+    public async Task Bootstrap_AutoSubscribesOrganizationToSystemRegister()
+    {
+        // Arrange
+        var request = new BootstrapRequest
+        {
+            OrganizationName = "Subscription Test Org",
+            OrganizationSubdomain = $"sub-test-{Guid.NewGuid():N}",
+            AdminEmail = $"admin-sub-{Guid.NewGuid():N}@example.com",
+            AdminName = "Subscription Admin",
+            AdminPassword = "SecureP@ss123!",
+            CreateServicePrincipal = false
+        };
+
+        // Act - Bootstrap the platform
+        var response = await _client.PostAsJsonAsync("/api/tenants/bootstrap", request);
+
+        // Assert - Bootstrap succeeded
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var result = await response.Content.ReadFromJsonAsync<BootstrapResponse>();
+        result.Should().NotBeNull();
+
+        // Verify the owner subscription was created in the database
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
+
+        var subscription = await dbContext.OrganizationRegisterSubscriptions
+            .FirstOrDefaultAsync(s =>
+                s.OrganizationId == result!.OrganizationId &&
+                s.RegisterId == "aebf26362e079087571ac0932d4db973"); // SystemRegisterId
+
+        subscription.Should().NotBeNull("bootstrap should auto-subscribe to System Register");
+        subscription!.SubscriptionType.Should().Be(SubscriptionType.Owner);
+        subscription.Status.Should().Be(SubscriptionStatus.Active);
+        subscription.RegisterName.Should().Be("Sorcha System Register");
     }
 }

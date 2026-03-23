@@ -1,0 +1,150 @@
+openapi: 3.0.3
+info:
+  title: Register Subscriptions API
+  version: 1.0.0
+  description: Org-level register subscription management endpoints (Tenant Service)
+
+paths:
+  /api/organizations/{orgId}/register-subscriptions:
+    get:
+      operationId: ListRegisterSubscriptions
+      summary: List org's subscribed registers
+      tags: [Register Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 25, maximum: 100 }
+      responses:
+        '200':
+          description: Paginated list of subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RegisterSubscriptionResponse' }
+                  totalCount: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+        '403': { description: Not authorized for this org }
+
+    post:
+      operationId: SubscribeToRegister
+      summary: Subscribe org to a public register
+      tags: [Register Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscribeRequest' }
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterSubscriptionResponse' }
+        '400': { description: Register not found or not public }
+        '409': { description: Already subscribed }
+
+  /api/organizations/{orgId}/register-subscriptions/{registerId}:
+    get:
+      operationId: GetRegisterSubscription
+      summary: Get single subscription status
+      tags: [Register Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-f0-9]{32}$' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterSubscriptionResponse' }
+        '404': { description: Subscription not found }
+
+    delete:
+      operationId: UnsubscribeFromRegister
+      summary: Unsubscribe from a register
+      tags: [Register Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-f0-9]{32}$' }
+      responses:
+        '204': { description: Unsubscribed }
+        '400': { description: Cannot unsubscribe Owner type }
+        '404': { description: Subscription not found }
+
+  /api/me/subscribed-registers:
+    get:
+      operationId: GetMySubscribedRegisters
+      summary: Get subscriptions for user's active org
+      tags: [Register Subscriptions]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RegisterSubscriptionResponse' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SubscribeRequest:
+      type: object
+      required: [register_id]
+      properties:
+        register_id:
+          type: string
+          pattern: '^[a-f0-9]{32}$'
+          description: ID of the register to subscribe to
+
+    RegisterSubscriptionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        register_id: { type: string }
+        register_name: { type: string, nullable: true }
+        subscription_type: { type: string, enum: [Owner, Public, Invited] }
+        status: { type: string, enum: [Pending, Active, Suspended, Revoked] }
+        invitation_id: { type: string, nullable: true }
+        subscribed_at: { type: string, format: date-time }
+        subscribed_by_user_id: { type: string, format: uuid }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        revoked_by_user_id: { type: string, format: uuid, nullable: true }

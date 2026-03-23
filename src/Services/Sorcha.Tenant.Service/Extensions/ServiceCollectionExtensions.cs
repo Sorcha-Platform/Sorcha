@@ -140,6 +140,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceAuthService, ServiceAuthService>();
         services.AddScoped<ITotpService, TotpService>();
         services.AddScoped<IPasskeyService, PasskeyService>();
+        services.AddScoped<IRegisterSubscriptionService, RegisterSubscriptionService>();
         services.AddScoped<ISocialLoginService, SocialLoginService>();
         services.AddScoped<ILoginService, LoginService>();
         services.AddScoped<IRegistrationService, RegistrationService>();
@@ -173,6 +174,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICustomDomainService, CustomDomainService>();
         services.AddSingleton<IDnsResolver, DnsResolver>();
         services.AddHostedService<CustomDomainVerificationService>();
+
+        // Background reconciliation for org wallet provisioning
+        services.AddHostedService<OrgWalletReconciliationService>();
 
         return services;
     }

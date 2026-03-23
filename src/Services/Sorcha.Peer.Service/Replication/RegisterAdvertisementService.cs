@@ -134,6 +134,8 @@ public class RegisterAdvertisementService
             var updated = new LocalRegisterAdvertisement
             {
                 RegisterId = existing.RegisterId,
+                Name = existing.Name,
+                Description = existing.Description,
                 SyncState = existing.SyncState,
                 LatestVersion = latestVersion,
                 LatestDocketVersion = latestDocketVersion,
@@ -241,6 +243,8 @@ public class RegisterAdvertisementService
             .Select(a => new PeerRegisterInfo
             {
                 RegisterId = a.RegisterId,
+                Name = a.Name,
+                Description = a.Description,
                 SyncState = a.SyncState,
                 LatestVersion = a.LatestVersion,
                 IsPublic = a.IsPublic

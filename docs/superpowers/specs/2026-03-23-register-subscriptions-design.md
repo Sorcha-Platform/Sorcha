@@ -192,35 +192,11 @@ After creation, Tenant Service stores:
 Invitation payload encryption uses X25519 key agreement (ECDH):
 1. Source org's ED25519 signing key converted to X25519 private key
 2. Target org's `EncryptionPublicKey` (X25519, stored on Organisation) used as recipient
-3. Shared secret derived via X25519 ECDH
-4. Payload encrypted with AES-256-GCM using HKDF-derived key from shared secret
+3. Shared secret derived via X25519 ECDH, key expanded via HKDF
+4. Payload encrypted with AES-256-GCM (constitution §II alignment)
 5. `Sorcha.Cryptography` extended with `ED25519ToX25519` conversion if not already present
 
-**Algorithm choice:** AES-256-GCM selected for constitution alignment (§II mandates AES-256-GCM). HKDF key derivation ensures the ECDH shared secret is properly expanded to a 256-bit encryption key.
-
-**Invitation token wire format:** Base64url-encoded JSON envelope:
-```json
-{
-  "v": 1,
-  "sig": "<base64url ED25519 signature over encrypted_payload>",
-  "enc": "<base64url AES-256-GCM ciphertext>",
-  "nonce": "<base64url 12-byte GCM nonce>",
-  "sender": "did:sorcha:org:<sourceWalletAddress>",
-  "epk": "<base64url ephemeral X25519 public key for ECDH>"
-}
-```
-The `enc` field, when decrypted, yields the invitation payload:
-```json
-{
-  "register_id": "<32-char hex>",
-  "source_org_did": "did:sorcha:org:<address>",
-  "target_org_did": "did:sorcha:org:<address>",
-  "invitation_id": "<uuid>",
-  "expires_at": "<ISO 8601>",
-  "nonce": "<uuid v4>",
-  "register_genesis_hash": "<64-char hex SHA-256>"
-}
-```
+**Token wire format:** Base64url JSON envelope: `{ v, sig, enc, nonce, sender, epk }`
 
 ### Lifecycle
 

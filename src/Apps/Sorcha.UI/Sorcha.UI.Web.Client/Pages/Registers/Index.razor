@@ -12,9 +12,11 @@
 @implements IAsyncDisposable
 
 @inject IRegisterService RegisterService
+@inject IRegisterSubscriptionService SubscriptionService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDialogService DialogService
+@inject ISnackbar Snackbar
 @inject RegisterHubConnection HubConnection
 
 @* Filter state for client-side filtering *@
@@ -26,7 +28,7 @@
         <MudStack Spacing="0">
             <MudText Typo="Typo.h4">Registers</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                View and manage distributed ledger registers
+                View and manage your subscribed registers
             </MudText>
         </MudStack>
         <MudStack Row="true" Spacing="2">
@@ -44,6 +46,13 @@
             </MudButton>
             @if (_isAdmin)
             {
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.AddLink"
+                           OnClick="OpenSubscribeDialog"
+                           data-testid="subscribe-register-button">
+                    Subscribe to Register
+                </MudButton>
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Add"
@@ -88,25 +97,33 @@
                      Color="Color.Secondary"
                      Size="Size.Large"
                      Class="mb-4" />
-            <MudText Typo="Typo.h6" Color="Color.Secondary">No Registers Found</MudText>
+            <MudText Typo="Typo.h6" Color="Color.Secondary">No Subscribed Registers</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
                 @if (_isAdmin)
                 {
-                    <text>Create your first register to get started.</text>
+                    <text>Create a register or subscribe to a public register to get started.</text>
                 }
                 else
                 {
-                    <text>No registers are available for your organization.</text>
+                    <text>No registers are available for your organization. Ask an administrator to subscribe.</text>
                 }
             </MudText>
             @if (_isAdmin)
             {
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Add"
-                           OnClick="OpenCreateRegisterDialog">
-                    Create Register
-                </MudButton>
+                <MudStack Row="true" Justify="Justify.Center" Spacing="2">
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.AddLink"
+                               OnClick="OpenSubscribeDialog">
+                        Subscribe to Register
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenCreateRegisterDialog">
+                        Create Register
+                    </MudButton>
+                </MudStack>
             }
         </MudPaper>
     }
@@ -137,8 +154,71 @@
             <MudGrid Spacing="3">
                 @foreach (var register in filteredRegisters)
                 {
+                    var subscriptionType = _subscriptionTypes.GetValueOrDefault(register.Id, "");
+
                     <MudItem xs="12">
-                        <RegisterCard Register="@register" OnClick="NavigateToRegister" />
+                        <MudPaper Elevation="2"
+                                  Class="pa-4 register-card"
+                                  Style="cursor: pointer"
+                                  @onclick="@(() => NavigateToRegister(register))"
+                                  data-testid="register-card"
+                                  data-register-id="@register.Id">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudStack Spacing="0" Style="flex: 1; min-width: 0;">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudText Typo="Typo.subtitle1" data-testid="register-name">
+                                            <strong>@register.Name</strong>
+                                        </MudText>
+                                        @if (!string.IsNullOrEmpty(subscriptionType))
+                                        {
+                                            <MudChip T="string"
+                                                     Size="Size.Small"
+                                                     Variant="Variant.Outlined"
+                                                     Color="@GetSubscriptionTypeColor(subscriptionType)"
+                                                     data-testid="subscription-type-badge">
+                                                @subscriptionType
+                                            </MudChip>
+                                        }
+                                    </MudStack>
+                                    @if (!string.IsNullOrWhiteSpace(register.Description))
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-truncate" data-testid="register-description">
+                                            @register.Description
+                                        </MudText>
+                                    }
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-family: monospace; font-size: 0.8rem;" data-testid="register-id">
+                                        @register.Id
+                                    </MudText>
+                                </MudStack>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-shrink: 0;">
+                                    @if (register.Advertise)
+                                    {
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Small" Color="Color.Info" />
+                                            <MudText Typo="Typo.caption" Color="Color.Info">Public</MudText>
+                                        </MudStack>
+                                    }
+                                    else
+                                    {
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Secondary" />
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">Private</MudText>
+                                        </MudStack>
+                                    }
+                                    <RegisterStatusBadge Status="@register.Status" />
+                                    @if (_isAdmin && !string.Equals(subscriptionType, "Owner", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.LinkOff"
+                                                       Size="Size.Small"
+                                                       Color="Color.Error"
+                                                       OnClick="@(() => ConfirmUnsubscribe(register))"
+                                                       OnClick:stopPropagation="true"
+                                                       Title="Unsubscribe from register"
+                                                       data-testid="unsubscribe-button" />
+                                    }
+                                </MudStack>
+                            </MudStack>
+                        </MudPaper>
                     </MudItem>
                 }
             </MudGrid>
@@ -148,9 +228,11 @@
 
 @code {
     private List<RegisterViewModel> _registers = [];
+    private Dictionary<string, string> _subscriptionTypes = new();
     private bool _isLoading = true;
     private string? _errorMessage;
     private bool _isAdmin;
+    private Guid _orgId;
     private RegisterFilterState _filterState = new();
 
     protected override async Task OnInitializedAsync()
@@ -213,6 +295,13 @@
             _isAdmin = user.Claims.Any(c =>
                 (c.Type == System.Security.Claims.ClaimTypes.Role || c.Type == "role") &&
                 c.Value == "Administrator");
+
+            var orgClaim = user.Claims
+                .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+            if (orgClaim is not null && Guid.TryParse(orgClaim.Value, out var orgId))
+            {
+                _orgId = orgId;
+            }
         }
     }
 
@@ -223,7 +312,28 @@
             _isLoading = true;
             _errorMessage = null;
 
-            _registers = (await RegisterService.GetRegistersAsync()).ToList();
+            // Load subscriptions first to know which registers to show and their types
+            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
+
+            _subscriptionTypes = subscriptions
+                .Where(s => !string.IsNullOrEmpty(s.RegisterId))
+                .GroupBy(s => s.RegisterId)
+                .ToDictionary(g => g.Key, g => g.First().SubscriptionType);
+
+            var subscribedRegisterIds = subscriptions
+                .Select(s => s.RegisterId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToHashSet();
+
+            // Get full register details for subscribed registers
+            var allRegisters = await RegisterService.GetRegistersAsync();
+
+            _registers = allRegisters
+                .Where(r => subscribedRegisterIds.Contains(r.Id))
+                .ToList();
+
+            // Also include any registers with subscription data but not in the register list
+            // (they may be from different tenants and returned in subscriptions only)
         }
         catch (Exception ex)
         {
@@ -268,11 +378,61 @@
         await DialogService.ShowAsync<CreateRegisterWizard>("Create Register", parameters, options);
     }
 
+    private async Task OpenSubscribeDialog()
+    {
+        var subscribedIds = _subscriptionTypes.Keys.ToHashSet();
+
+        var parameters = new DialogParameters<SubscribeDialog>
+        {
+            { x => x.SubscriptionService, SubscriptionService },
+            { x => x.OrganizationId, _orgId },
+            { x => x.SubscribedRegisterIds, subscribedIds },
+            { x => x.OnSubscribed, EventCallback.Factory.Create(this, OnSubscriptionAdded) }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        await DialogService.ShowAsync<SubscribeDialog>("Subscribe to Register", parameters, options);
+    }
+
+    private async Task OnSubscriptionAdded()
+    {
+        await LoadRegistersAsync();
+        StateHasChanged();
+        Snackbar.Add("Successfully subscribed to register.", Severity.Success);
+    }
+
+    private async Task ConfirmUnsubscribe(RegisterViewModel register)
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Unsubscribe from Register",
+            $"Are you sure you want to unsubscribe from \"{register.Name}\"? You will no longer see this register or its transactions.",
+            yesText: "Unsubscribe",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            var success = await SubscriptionService.UnsubscribeAsync(_orgId, register.Id);
+            if (success)
+            {
+                Snackbar.Add($"Unsubscribed from \"{register.Name}\".", Severity.Success);
+                await LoadRegistersAsync();
+            }
+            else
+            {
+                Snackbar.Add("Failed to unsubscribe. Please try again.", Severity.Error);
+            }
+        }
+    }
+
     private string GetCurrentTenantId()
     {
-        // Get tenant ID from claims or use default
-        // In a real implementation, this would come from the auth context
-        return "default-tenant";
+        return _orgId != Guid.Empty ? _orgId.ToString() : "default-tenant";
     }
 
     private async Task OnRegisterCreated(RegisterViewModel register)
@@ -280,6 +440,14 @@
         // Refresh the register list after creation
         await LoadRegistersAsync();
     }
+
+    private static Color GetSubscriptionTypeColor(string subscriptionType) => subscriptionType switch
+    {
+        "Owner" => Color.Primary,
+        "Public" => Color.Info,
+        "Invited" => Color.Tertiary,
+        _ => Color.Default
+    };
 
     public async ValueTask DisposeAsync()
     {

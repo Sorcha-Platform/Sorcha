@@ -89,6 +89,27 @@ public class Organization
     /// Number of months to retain audit log entries. Default: 12. Range: 1-120.
     /// </summary>
     public int AuditRetentionMonths { get; set; } = 12;
+
+    /// <summary>
+    /// HD wallet address assigned to this organization for signing operations.
+    /// </summary>
+    public string? WalletAddress { get; set; }
+
+    /// <summary>
+    /// ED25519 public signing key for this organization (Base64-encoded).
+    /// </summary>
+    public string? PublicKey { get; set; }
+
+    /// <summary>
+    /// X25519 derived encryption public key for this organization (Base64-encoded).
+    /// Used for field-level encryption in register transactions.
+    /// </summary>
+    public string? EncryptionPublicKey { get; set; }
+
+    /// <summary>
+    /// Signing algorithm used by this organization's wallet. Default: "ED25519".
+    /// </summary>
+    public string? SigningAlgorithm { get; set; } = "ED25519";
 }
 
 /// <summary>

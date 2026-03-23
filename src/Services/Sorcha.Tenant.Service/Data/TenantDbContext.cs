@@ -35,6 +35,7 @@ public class TenantDbContext : DbContext
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
     public DbSet<OrgRecoveryConfig> OrgRecoveryConfigs => Set<OrgRecoveryConfig>();
+    public DbSet<OrganizationRegisterSubscription> OrganizationRegisterSubscriptions => Set<OrganizationRegisterSubscription>();
 
     // Public schema entities for custom domain resolution
     public DbSet<CustomDomainMapping> CustomDomainMappings => Set<CustomDomainMapping>();
@@ -89,6 +90,9 @@ public class TenantDbContext : DbContext
 
         // Configure OrgRecoveryConfig entity (Feature 060)
         ConfigureOrgRecoveryConfig(modelBuilder);
+
+        // Configure OrganizationRegisterSubscription entity (public schema)
+        ConfigureOrganizationRegisterSubscription(modelBuilder);
 
         // Configure UserIdentity entity (per-org schema)
         ConfigureUserIdentity(modelBuilder);
@@ -1024,6 +1028,56 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.OrganizationId)
                 .IsUnique()
                 .HasDatabaseName("IX_OrgRecoveryConfig_OrganizationId");
+        });
+    }
+
+    private void ConfigureOrganizationRegisterSubscription(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.IsInMemory();
+
+        modelBuilder.Entity<OrganizationRegisterSubscription>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("OrganizationRegisterSubscriptions");
+            else
+                entity.ToTable("OrganizationRegisterSubscriptions", "public");
+
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.RegisterId)
+                .IsRequired()
+                .HasMaxLength(32);
+
+            entity.Property(e => e.RegisterName)
+                .HasMaxLength(38);
+
+            entity.Property(e => e.SubscriptionType)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(16);
+
+            entity.Property(e => e.InvitationId)
+                .HasMaxLength(64);
+
+            entity.HasIndex(e => new { e.OrganizationId, e.RegisterId })
+                .IsUnique()
+                .HasDatabaseName("IX_OrgRegSub_OrgId_RegisterId");
+
+            entity.HasIndex(e => e.OrganizationId)
+                .HasDatabaseName("IX_OrgRegSub_OrganizationId");
+
+            entity.HasIndex(e => e.RegisterId)
+                .HasDatabaseName("IX_OrgRegSub_RegisterId");
+
+            entity.HasOne(e => e.Organization)
+                .WithMany()
+                .HasForeignKey(e => e.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
