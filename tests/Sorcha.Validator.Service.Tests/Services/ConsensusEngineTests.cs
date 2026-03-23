@@ -31,6 +31,7 @@ public class ConsensusEngineTests
     private readonly Mock<IValidationEngine> _mockValidationEngine;
     private readonly Mock<ILogger<ConsensusEngine>> _mockLogger;
     private readonly Mock<IHostEnvironment> _mockHostEnvironment;
+    private readonly Mock<IValidatorRegistry> _mockValidatorRegistry;
     private readonly ConsensusConfiguration _consensusConfig;
     private readonly ValidatorConfiguration _validatorConfig;
     private readonly ConsensusEngine _engine;
@@ -45,6 +46,7 @@ public class ConsensusEngineTests
         _mockLogger = new Mock<ILogger<ConsensusEngine>>();
         _mockHostEnvironment = new Mock<IHostEnvironment>();
         _mockHostEnvironment.Setup(h => h.EnvironmentName).Returns(Environments.Development);
+        _mockValidatorRegistry = new Mock<IValidatorRegistry>();
 
         _consensusConfig = new ConsensusConfiguration
         {
@@ -65,6 +67,7 @@ public class ConsensusEngineTests
             _mockRegisterClient.Object,
             _mockTransactionValidator.Object,
             _mockValidationEngine.Object,
+            _mockValidatorRegistry.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
             _mockHostEnvironment.Object,
@@ -83,6 +86,7 @@ public class ConsensusEngineTests
             _mockRegisterClient.Object,
             _mockTransactionValidator.Object,
             _mockValidationEngine.Object,
+            _mockValidatorRegistry.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
             _mockHostEnvironment.Object,
@@ -101,6 +105,7 @@ public class ConsensusEngineTests
             _mockRegisterClient.Object,
             _mockTransactionValidator.Object,
             _mockValidationEngine.Object,
+            _mockValidatorRegistry.Object,
             Options.Create(_consensusConfig),
             Options.Create(_validatorConfig),
             _mockHostEnvironment.Object,
@@ -254,6 +259,7 @@ public class ConsensusEngineTests
             _mockRegisterClient.Object,
             _mockTransactionValidator.Object,
             _mockValidationEngine.Object,
+            _mockValidatorRegistry.Object,
             Options.Create(config),
             Options.Create(_validatorConfig),
             _mockHostEnvironment.Object,

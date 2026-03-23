@@ -90,13 +90,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T032 [US2] Add `Signature`, `SignerPublicKey`, `Algorithm` fields to `ConsensusVote` in `src/Services/Sorcha.Validator.Service/Models/ConsensusVote.cs`
-- [ ] T033 [US2] Implement canonical vote content builder `BuildVoteSigningContent(docketId, docketHash, approved, validatorId)` as static helper in `src/Services/Sorcha.Validator.Service/Services/VoteSigningHelper.cs`
-- [ ] T034 [US2] Implement outgoing vote signing — sign canonical content with local validator key via `IWalletServiceClient.SignDataAsync` in `src/Services/Sorcha.Validator.Service/Services/SignatureCollector.cs`
-- [ ] T035 [US2] Implement incoming vote verification — verify signature against registered public key via `ICryptoModule.VerifySignature` in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
-- [ ] T036 [US2] Add validator status check — reject votes from Pending/Suspended/Revoked validators before signature verification in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
-- [ ] T037 [US2] Add security event logging for rejected votes (invalid signature, wrong key, inactive validator) in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
-- [ ] T038 [US2] Update gRPC vote response proto to include signature fields in `src/Services/Sorcha.Validator.Service/Protos/` (if applicable)
+- [x] T032 [US2] ConsensusVote already has ValidatorSignature with PublicKey/SignatureValue/Algorithm — no additional fields needed
+- [x] T033 [US2] Implement canonical vote content builder `BuildVoteSigningContent` in `src/Services/Sorcha.Validator.Service/Services/VoteSigningHelper.cs`
+- [ ] T034 [US2] Implement outgoing vote signing — deferred (requires gRPC proto changes for vote exchange format)
+- [x] T035 [US2] Implement incoming vote verification — verify public key matches registered validator's key in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
+- [x] T036 [US2] Add validator status check — reject votes from non-Active validators in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
+- [x] T037 [US2] Add SECURITY event logging for rejected votes (unregistered, inactive, key mismatch, bad signature) in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs`
+- [ ] T038 [US2] gRPC proto changes deferred — existing vote format includes signature
 
 **Checkpoint**: All consensus votes are cryptographically verified. Forged and unauthorized votes are rejected and logged.
 
@@ -120,14 +120,14 @@
 
 - [x] T042 [P] [US3] Add `SequenceNumber` (ulong) field to `Transaction` model in `src/Services/Sorcha.Validator.Service/Models/Transaction.cs`
 - [x] T043 [P] [US3] Create `WalletSequence` model in `src/Services/Sorcha.Validator.Service/Models/WalletSequence.cs`
-- [ ] T044 [US3] Create `IWalletSequenceRepository` interface and MongoDB implementation with atomic `findOneAndUpdate` in `src/Services/Sorcha.Validator.Service/Services/WalletSequenceRepository.cs`
-- [ ] T045 [US3] Create MongoDB indexes for `wallet_sequences` collection in `src/Services/Sorcha.Validator.Service/Services/WalletSequenceRepository.cs`
-- [ ] T046 [US3] Add sequence validation stage to `ValidationEngine.ValidateTransactionAsync` — check seq == lastKnown + 1, bypass for genesis/control in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
-- [ ] T047 [US3] Increment sequence number only AFTER successful validation (not on rejection) in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
-- [ ] T048 [US3] Add fail-closed behavior — reject transactions when sequence store unavailable in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
-- [ ] T049 [US3] Add sequence query endpoint `GET /{registerId}/sequence/{walletAddress}` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
-- [ ] T050 [US3] Update `TransactionBuilderService` to fetch and include sequence number when building transactions in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/TransactionBuilderService.cs`
-- [ ] T051 [US3] Add `GetSequenceNumberAsync` to `IValidatorServiceClient` in `src/Common/Sorcha.ServiceClients/Validator/IValidatorServiceClient.cs`
+- [x] T044 [US3] Create `IWalletSequenceRepository` interface and MongoDB implementation with atomic operations in `src/Services/Sorcha.Validator.Service/Services/WalletSequenceRepository.cs`
+- [x] T045 [US3] Create MongoDB indexes for `wallet_sequences` collection in `src/Services/Sorcha.Validator.Service/Services/WalletSequenceRepository.cs`
+- [x] T046 [US3] Add sequence validation stage to `ValidationEngine` — check seq == lastKnown + 1, bypass for genesis/control in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
+- [x] T047 [US3] Increment sequence number only on successful validation (atomic validate-and-increment) in `src/Services/Sorcha.Validator.Service/Services/WalletSequenceRepository.cs`
+- [x] T048 [US3] Add fail-closed behavior — reject transactions when sequence store unavailable in `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`
+- [x] T049 [US3] Add sequence query endpoint `GET /{registerId}/sequence/{walletAddress}` in `src/Services/Sorcha.Validator.Service/Endpoints/ValidatorRegistrationEndpoints.cs`
+- [ ] T050 [US3] Update `TransactionBuilderService` to fetch and include sequence number — deferred to Blueprint Service integration PR
+- [ ] T051 [US3] Add `GetSequenceNumberAsync` to `IValidatorServiceClient` — deferred to Blueprint Service integration PR
 
 **Checkpoint**: Replay attacks are blocked. Clients can query their next sequence number. Genesis/control transactions bypass validation.
 
