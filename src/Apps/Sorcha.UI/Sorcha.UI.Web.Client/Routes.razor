@@ -16,10 +16,7 @@
                     </div>
                 </Authorizing>
                 <NotAuthorized>
-                    @{
-                        var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-                        NavigationManager.NavigateTo($"/auth/login?returnUrl={returnUrl}", forceLoad: true);
-                    }
+                    <Sorcha.UI.Web.Client.Components.RedirectToLogin />
                 </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />

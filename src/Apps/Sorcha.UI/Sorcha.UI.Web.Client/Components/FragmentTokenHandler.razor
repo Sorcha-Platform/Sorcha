@@ -1,21 +1,18 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
-@using System.IdentityModel.Tokens.Jwt
-@using Microsoft.AspNetCore.Components.Authorization
-@using Sorcha.UI.Core.Models.Authentication
-@using Sorcha.UI.Core.Services.Authentication
-@using Sorcha.UI.Core.Services.Configuration
 @using Microsoft.JSInterop
 
 @inject IJSRuntime JSRuntime
-@inject ITokenCache TokenCache
-@inject IConfigurationService ConfigurationService
-@inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 
-@code {
-    private static readonly JwtSecurityTokenHandler JwtHandler = new() { MapInboundClaims = false };
+@*
+    Handles return URL navigation after login redirect.
+    Token consumption is handled exclusively by CustomAuthenticationStateProvider
+    to avoid race conditions — this component MUST NOT call getAndClear() or
+    otherwise consume/clear the fragment token.
+*@
 
+@code {
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -23,35 +20,8 @@
 
         try
         {
-            // First, try the legacy path: getAndClear() in case the auth provider hasn't consumed yet
-            var result = await JSRuntime.InvokeAsync<FragmentTokenResult?>("sorcha.fragmentHandoff.getAndClear");
-            if (result?.Token is not null)
-            {
-                // Auth provider hasn't consumed the token yet - process it here
-                var jwt = JwtHandler.ReadJwtToken(result.Token);
-                var expiresIn = (int)(jwt.ValidTo - DateTime.UtcNow).TotalSeconds;
-                if (expiresIn > 0)
-                {
-                    var profileName = await ConfigurationService.GetActiveProfileNameAsync();
-                    var cacheEntry = new TokenCacheEntry
-                    {
-                        AccessToken = result.Token,
-                        RefreshToken = result.Refresh,
-                        ExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn),
-                        ProfileName = profileName,
-                        IssuedAt = DateTime.UtcNow
-                    };
-                    await TokenCache.StoreTokenAsync(profileName, cacheEntry);
-                    AuthStateProvider.NotifyAuthenticationStateChanged();
-                }
-
-                // Navigate to return URL or dashboard
-                var destination = IsValidReturnUrl(result.ReturnUrl) ? result.ReturnUrl! : "dashboard";
-                NavigationManager.NavigateTo(destination, forceLoad: false);
-                return;
-            }
-
-            // Token was already consumed by CustomAuthenticationStateProvider - just handle return URL
+            // Only handle return URL — token is consumed solely by CustomAuthenticationStateProvider.
+            // getReturnUrl() reads from a separate variable that clearTokenStaging() preserves.
             var returnUrl = await JSRuntime.InvokeAsync<string?>("sorcha.fragmentHandoff.getReturnUrl");
             if (IsValidReturnUrl(returnUrl))
             {
@@ -60,7 +30,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Fragment token handoff failed: {ex.Message}");
+            Console.WriteLine($"Fragment return URL handling failed: {ex.Message}");
         }
     }
 
@@ -70,5 +40,4 @@
         // Only allow relative paths; reject protocol-relative ("//evil.com") and absolute URLs
         return url.StartsWith('/') && !url.StartsWith("//");
     }
-
 }
