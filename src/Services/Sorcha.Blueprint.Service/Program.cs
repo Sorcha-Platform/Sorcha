@@ -688,47 +688,36 @@ var actionsGroup = app.MapGroup("/api/actions")
 // Get available blueprints for a wallet/register combination
 // </summary>
 actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
-    string wallet,
+    string wallet, // TODO: Filter by wallet access permissions
     string register,
-    IPublishedBlueprintStore publishedStore,
-    IBlueprintStore blueprintStore) =>
+    IPublishedBlueprintStore publishedStore) =>
 {
-    // Get all published blueprints
-    var blueprints = await blueprintStore.GetAllAsync();
-    var availableBlueprints = new List<Sorcha.Blueprint.Service.Models.Responses.BlueprintInfo>();
-
-    foreach (var blueprint in blueprints)
+    // Get only blueprints published to this specific register
+    var publishedForRegister = await publishedStore.GetByRegisterAsync(register);
+    var availableBlueprints = publishedForRegister.Select(pub =>
     {
-        var versions = await publishedStore.GetVersionsAsync(blueprint.Id);
-        var latestVersion = versions.OrderByDescending(v => v.Version).FirstOrDefault();
-
-        if (latestVersion != null)
-        {
-            // For MVP, all actions are available
-            // In future, apply routing rules to filter actions based on workflow state
-            var availableActions = blueprint.Actions
-                .Select(a => new Sorcha.Blueprint.Service.Models.Responses.ActionInfo
-                {
-                    ActionId = a.Id.ToString(),
-                    Title = a.Title,
-                    Description = a.Description,
-                    IsAvailable = true, // TODO: Apply routing rules
-                    DataSchema = a.DataSchemas?.FirstOrDefault() is { } schema
-                        && schema.RootElement.TryGetProperty("$id", out var schemaId)
-                        ? schemaId.GetString() : null
-                })
-                .ToList();
-
-            availableBlueprints.Add(new Sorcha.Blueprint.Service.Models.Responses.BlueprintInfo
+        var availableActions = pub.Blueprint.Actions
+            .Select(a => new Sorcha.Blueprint.Service.Models.Responses.ActionInfo
             {
-                BlueprintId = blueprint.Id,
-                Title = blueprint.Title,
-                Description = blueprint.Description,
-                Version = latestVersion.Version,
-                AvailableActions = availableActions
-            });
-        }
-    }
+                ActionId = a.Id.ToString(),
+                Title = a.Title,
+                Description = a.Description,
+                IsAvailable = true, // TODO: Apply routing rules
+                DataSchema = a.DataSchemas?.FirstOrDefault() is { } schema
+                    && schema.RootElement.TryGetProperty("$id", out var schemaId)
+                    ? schemaId.GetString() : null
+            })
+            .ToList();
+
+        return new Sorcha.Blueprint.Service.Models.Responses.BlueprintInfo
+        {
+            BlueprintId = pub.BlueprintId,
+            Title = pub.Blueprint.Title,
+            Description = pub.Blueprint.Description,
+            Version = pub.Version,
+            AvailableActions = availableActions
+        };
+    }).ToList();
 
     var response = new Sorcha.Blueprint.Service.Models.Responses.AvailableBlueprintsResponse
     {
@@ -1942,6 +1931,7 @@ public interface IPublishedBlueprintStore
     Task<PublishedBlueprint> AddAsync(PublishedBlueprint published);
     Task<PublishedBlueprint?> GetVersionAsync(string blueprintId, int version);
     Task<IEnumerable<PublishedBlueprint>> GetVersionsAsync(string blueprintId);
+    Task<IEnumerable<PublishedBlueprint>> GetByRegisterAsync(string registerId);
 }
 
 /// <summary>
@@ -2059,6 +2049,17 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
             return Task.FromResult(versions.AsEnumerable());
         }
         return Task.FromResult(Enumerable.Empty<PublishedBlueprint>());
+    }
+
+    public Task<IEnumerable<PublishedBlueprint>> GetByRegisterAsync(string registerId)
+    {
+        var result = _published.Values
+            .SelectMany(versions => versions)
+            .Where(p => string.Equals(p.RegisterId, registerId, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(p => p.BlueprintId)
+            .Select(g => g.OrderByDescending(v => v.Version).First())
+            .ToList();
+        return Task.FromResult<IEnumerable<PublishedBlueprint>>(result);
     }
 }
 
@@ -2223,7 +2224,8 @@ public class PublishService(
         {
             BlueprintId = blueprint.Id,
             Blueprint = blueprint,
-            PublishedAt = DateTimeOffset.UtcNow
+            PublishedAt = DateTimeOffset.UtcNow,
+            RegisterId = registerId
         };
 
         await _publishedStore.AddAsync(published);
@@ -2702,6 +2704,7 @@ public record PublishedBlueprint
     public int Version { get; set; }
     public BlueprintModel Blueprint { get; init; } = null!;
     public DateTimeOffset PublishedAt { get; set; }
+    public string? RegisterId { get; init; }
 }
 
 /// <summary>

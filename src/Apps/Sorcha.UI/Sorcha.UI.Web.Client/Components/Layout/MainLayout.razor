@@ -87,48 +87,56 @@
                     <MudNavLink Href="operations" Icon="@Icons.Material.Filled.Lock">
                         @Loc.T("nav.encryptionOperations")
                     </MudNavLink>
-                    @if (_drawerOpen)
-                    {
-                        <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.designer")</MudText>
-                    }
-                    <MudNavLink Href="blueprints" Icon="@Icons.Material.Filled.Description">
-                        @Loc.T("nav.myBlueprints")
-                    </MudNavLink>
-                    <MudNavLink Href="designer" Icon="@Icons.Material.Filled.Add">
-                        @Loc.T("nav.visualDesigner")
-                    </MudNavLink>
-                    <MudNavLink Href="designer/chat" Icon="@Icons.Material.Filled.SmartToy">
-                        @Loc.T("nav.aiChatDesigner")
-                    </MudNavLink>
-                    <MudNavLink Href="templates" Icon="@Icons.Material.Filled.ContentCopy">
-                        @Loc.T("nav.catalogue")
-                    </MudNavLink>
-                    <MudNavLink Href="schemas" Icon="@Icons.Material.Filled.Schema">
-                        @Loc.T("nav.dataSchemas")
-                    </MudNavLink>
-                    @if (_drawerOpen)
-                    {
-                        <MudDivider Class="my-2" />
-                        <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.administration")</MudText>
-                    }
-                    <MudNavGroup Title="@Loc.T("nav.wallets")" Icon="@Icons.Material.Filled.AccountBalanceWallet" Expanded="false">
-                        <MudNavLink Href="wallet-admin" Icon="@Icons.Material.Filled.List">
-                            @Loc.T("nav.allWallets")
-                        </MudNavLink>
-                        <MudNavLink Href="wallets/create" Icon="@Icons.Material.Filled.AddCircleOutline">
-                            @Loc.T("nav.createWallet")
-                        </MudNavLink>
-                        <MudNavLink Href="wallets/recover" Icon="@Icons.Material.Filled.Restore">
-                            @Loc.T("nav.recoverWallet")
-                        </MudNavLink>
-                    </MudNavGroup>
-                    <MudNavLink Href="registers" Icon="@Icons.Material.Filled.Storage">
-                        @Loc.T("nav.registers")
-                    </MudNavLink>
-                    <MudNavLink Href="participants" Icon="@Icons.Material.Filled.People">
-                        @Loc.T("nav.participants")
-                    </MudNavLink>
+                    <AuthorizeView Roles="Administrator,SystemAdmin,Designer">
+                        <Authorized Context="designerContext">
+                            @if (_drawerOpen)
+                            {
+                                <MudDivider Class="my-2" />
+                                <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.designer")</MudText>
+                            }
+                            <MudNavLink Href="blueprints" Icon="@Icons.Material.Filled.Description">
+                                @Loc.T("nav.myBlueprints")
+                            </MudNavLink>
+                            <MudNavLink Href="designer" Icon="@Icons.Material.Filled.Add">
+                                @Loc.T("nav.visualDesigner")
+                            </MudNavLink>
+                            <MudNavLink Href="designer/chat" Icon="@Icons.Material.Filled.SmartToy">
+                                @Loc.T("nav.aiChatDesigner")
+                            </MudNavLink>
+                            <MudNavLink Href="templates" Icon="@Icons.Material.Filled.ContentCopy">
+                                @Loc.T("nav.catalogue")
+                            </MudNavLink>
+                            <MudNavLink Href="schemas" Icon="@Icons.Material.Filled.Schema">
+                                @Loc.T("nav.dataSchemas")
+                            </MudNavLink>
+                        </Authorized>
+                    </AuthorizeView>
+                    <AuthorizeView Roles="Administrator,SystemAdmin">
+                        <Authorized Context="adminNavContext">
+                            @if (_drawerOpen)
+                            {
+                                <MudDivider Class="my-2" />
+                                <MudText Typo="Typo.overline" Class="px-4 mud-text-secondary">@Loc.T("nav.section.administration")</MudText>
+                            }
+                            <MudNavGroup Title="@Loc.T("nav.wallets")" Icon="@Icons.Material.Filled.AccountBalanceWallet" Expanded="false">
+                                <MudNavLink Href="wallet-admin" Icon="@Icons.Material.Filled.List">
+                                    @Loc.T("nav.allWallets")
+                                </MudNavLink>
+                                <MudNavLink Href="wallets/create" Icon="@Icons.Material.Filled.AddCircleOutline">
+                                    @Loc.T("nav.createWallet")
+                                </MudNavLink>
+                                <MudNavLink Href="wallets/recover" Icon="@Icons.Material.Filled.Restore">
+                                    @Loc.T("nav.recoverWallet")
+                                </MudNavLink>
+                            </MudNavGroup>
+                            <MudNavLink Href="registers" Icon="@Icons.Material.Filled.Storage">
+                                @Loc.T("nav.registers")
+                            </MudNavLink>
+                            <MudNavLink Href="participants" Icon="@Icons.Material.Filled.People">
+                                @Loc.T("nav.participants")
+                            </MudNavLink>
+                        </Authorized>
+                    </AuthorizeView>
                     <AuthorizeView Roles="Administrator,SystemAdmin">
                         <Authorized Context="adminContext">
                             <MudNavGroup Title="Identity" Icon="@Icons.Material.Filled.Security" Expanded="false">

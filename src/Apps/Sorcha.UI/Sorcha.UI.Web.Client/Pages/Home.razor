@@ -41,7 +41,9 @@ else
 {
     <MudText Typo="Typo.h4" Class="mb-4">@Loc.T("dashboard.welcomeBack", _displayName)</MudText>
 
-    @* Stats Cards *@
+    @* Stats Cards — platform-wide stats visible to admins only *@
+    <AuthorizeView Roles="Administrator,SystemAdmin">
+        <Authorized Context="statsContext">
     <MudGrid Class="mb-6">
         <MudItem xs="12" sm="6" md="4" lg="2">
             <MudCard Elevation="2">
@@ -164,6 +166,8 @@ else
             </MudCard>
         </MudItem>
     </MudGrid>
+        </Authorized>
+    </AuthorizeView>
 
     @* Alerts Panel *@
     <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
@@ -176,18 +180,30 @@ else
     @* Quick Actions *@
     <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.quickActions")</MudText>
     <MudStack Row="true" Spacing="2" Class="mb-6">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="designer"
-                   StartIcon="@Icons.Material.Filled.Add">
-            @Loc.T("blueprint.create")
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="my-workflows"
+                   StartIcon="@Icons.Material.Filled.PostAdd">
+            @Loc.T("nav.newSubmission")
         </MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="wallets"
                    StartIcon="@Icons.Material.Filled.AccountBalanceWallet">
             @Loc.T("dashboard.manageWallets")
         </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="registers"
-                   StartIcon="@Icons.Material.Filled.Storage">
-            @Loc.T("dashboard.viewRegisters")
-        </MudButton>
+        <AuthorizeView Roles="Administrator,SystemAdmin,Designer">
+            <Authorized Context="quickActionsContext">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="designer"
+                           StartIcon="@Icons.Material.Filled.Add">
+                    @Loc.T("blueprint.create")
+                </MudButton>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Roles="Administrator,SystemAdmin">
+            <Authorized Context="registersQuickContext">
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="registers"
+                           StartIcon="@Icons.Material.Filled.Storage">
+                    @Loc.T("dashboard.viewRegisters")
+                </MudButton>
+            </Authorized>
+        </AuthorizeView>
     </MudStack>
 
     @* Error State Display *@

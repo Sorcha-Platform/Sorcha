@@ -1,6 +1,6 @@
 @page "/designer"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Administrator,SystemAdmin,Designer")]
 @using Blazor.Diagrams
 @using Blazor.Diagrams.Core.Geometry
 @using Blazor.Diagrams.Core.Models
