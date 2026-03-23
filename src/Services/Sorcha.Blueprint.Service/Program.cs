@@ -2057,8 +2057,9 @@ public class InMemoryPublishedBlueprintStore : IPublishedBlueprintStore
             .SelectMany(versions => versions)
             .Where(p => string.Equals(p.RegisterId, registerId, StringComparison.OrdinalIgnoreCase))
             .GroupBy(p => p.BlueprintId)
-            .Select(g => g.OrderByDescending(v => v.Version).First());
-        return Task.FromResult(result.AsEnumerable());
+            .Select(g => g.OrderByDescending(v => v.Version).First())
+            .ToList();
+        return Task.FromResult<IEnumerable<PublishedBlueprint>>(result);
     }
 }
 
