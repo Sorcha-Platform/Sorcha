@@ -52,7 +52,7 @@
                                              Color="@(blueprint.Status == "published" ? Color.Success : Color.Default)">
                                         @blueprint.Status
                                     </MudChip>
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">v@blueprint.Version</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info">v@(blueprint.Version)</MudChip>
                                 </MudStack>
                             </div>
                             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
