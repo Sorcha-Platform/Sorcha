@@ -51,7 +51,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -78,7 +78,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — cycles now produce warnings, not errors
         result.IsSuccess.Should().BeTrue();
@@ -106,7 +106,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — hasCycles metadata is set on the published blueprint
         result.IsSuccess.Should().BeTrue();
@@ -132,7 +132,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -158,7 +158,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — self-reference is a cycle warning, not an error
         result.IsSuccess.Should().BeTrue();
@@ -194,7 +194,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — cycle detected as warning, publishes successfully
         result.IsSuccess.Should().BeTrue();
@@ -223,7 +223,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -254,7 +254,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — rejection cycles are valid (resubmission pattern)
         result.IsSuccess.Should().BeTrue();
@@ -278,7 +278,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -312,7 +312,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -347,7 +347,7 @@ public class CycleDetectionTests
         _mockBlueprintStore.Setup(x => x.GetAsync(blueprint.Id)).ReturnsAsync(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — hard validation error takes precedence, publish fails
         result.IsSuccess.Should().BeFalse();
@@ -373,7 +373,7 @@ public class CycleDetectionTests
         SetupStore(blueprint);
 
         // Act
-        var result = await _publishService.PublishAsync(blueprint.Id);
+        var result = await _publishService.PublishAsync(blueprint.Id, "test-register");
 
         // Assert — ping-pong publishes with cycle warning
         result.IsSuccess.Should().BeTrue();

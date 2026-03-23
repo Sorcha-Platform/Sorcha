@@ -440,22 +440,26 @@ blueprintGroup.MapPost("/{id}/validate", async (string id, IPublishService servi
 // </summary>
 blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService service, IOutputCacheStore cache, HttpRequest request) =>
 {
-    // Read optional registerId from JSON body
-    string? registerId = null;
+    // Read required registerId from JSON body
+    PublishRequest? body = null;
     if (request.ContentLength > 0)
     {
         try
         {
-            var body = await request.ReadFromJsonAsync<PublishRequest>();
-            registerId = body?.RegisterId;
+            body = await request.ReadFromJsonAsync<PublishRequest>();
         }
         catch
         {
-            // No body or invalid JSON — fall back to legacy behavior
+            return Results.BadRequest(new { error = "Invalid request body. Expected JSON with 'registerId' property." });
         }
     }
 
-    var result = await service.PublishAsync(id, registerId);
+    if (body is null || string.IsNullOrWhiteSpace(body.RegisterId))
+    {
+        return Results.BadRequest(new { error = "registerId is required. Blueprints must be published to a specific register." });
+    }
+
+    var result = await service.PublishAsync(id, body.RegisterId);
 
     if (!result.IsSuccess)
     {
@@ -481,7 +485,7 @@ blueprintGroup.MapPost("/{id}/publish", async (string id, IPublishService servic
 })
 .WithName("PublishBlueprint")
 .WithSummary("Publish blueprint")
-.WithDescription("Validate and publish a blueprint. Optionally publish to a register by providing { registerId } in the request body.")
+.WithDescription("Validate and publish a blueprint to a register. Requires { registerId } in the request body.")
 .RequireAuthorization("CanPublishBlueprints");
 
 // <summary>
@@ -1951,7 +1955,7 @@ public interface IBlueprintService
 /// </summary>
 public interface IPublishService
 {
-    Task<PublishResult> PublishAsync(string blueprintId, string? registerId = null);
+    Task<PublishResult> PublishAsync(string blueprintId, string registerId);
     Task<BlueprintValidationResult> ValidateAsync(string blueprintId);
 }
 
@@ -2197,7 +2201,7 @@ public class PublishService(
             warnings);
     }
 
-    public async Task<PublishResult> PublishAsync(string blueprintId, string? registerId = null)
+    public async Task<PublishResult> PublishAsync(string blueprintId, string registerId)
     {
         var blueprint = await _blueprintStore.GetAsync(blueprintId);
         if (blueprint is null)
@@ -2251,8 +2255,8 @@ public class PublishService(
             }
         }
 
-        // If a register is specified, also publish to the register
-        if (!string.IsNullOrEmpty(registerId) && _registerClient is not null)
+        // Publish to the register
+        if (_registerClient is not null)
         {
             var blueprintJson = System.Text.Json.JsonSerializer.Serialize(blueprint);
             await _registerClient.PublishBlueprintToRegisterAsync(
@@ -2667,7 +2671,7 @@ public class PublishService(
 /// <summary>
 /// Request body for publish with optional register target
 /// </summary>
-public record PublishRequest(string? RegisterId = null);
+public record PublishRequest(string RegisterId);
 
 /// <summary>
 /// Blueprint summary for list views

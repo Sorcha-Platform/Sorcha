@@ -506,8 +506,9 @@ public class ActionApiIntegrationTests : IClassFixture<BlueprintServiceWebApplic
         createResponse.EnsureSuccessStatusCode();
         var created = await createResponse.Content.ReadFromJsonAsync<BlueprintModel>();
 
-        // Publish blueprint
-        var publishResponse = await _client.PostAsync($"/api/blueprints/{created!.Id}/publish", null);
+        // Publish blueprint to a test register
+        var publishContent = JsonContent.Create(new { registerId = "test-register-001" });
+        var publishResponse = await _client.PostAsync($"/api/blueprints/{created!.Id}/publish", publishContent);
         publishResponse.EnsureSuccessStatusCode();
 
         return created;
