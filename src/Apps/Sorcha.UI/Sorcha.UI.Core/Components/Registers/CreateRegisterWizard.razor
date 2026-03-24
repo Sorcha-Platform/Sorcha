@@ -4,12 +4,15 @@
 @using Sorcha.Register.Models.Enums
 @using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Registers
+@using Microsoft.AspNetCore.Components.Authorization
 @using Sorcha.UI.Core.Models.Wallet
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Wallet
 
 @inject IRegisterService RegisterService
+@inject IRegisterSubscriptionService SubscriptionService
 @inject IWalletApiService WalletService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <MudDialog>
     <TitleContent>
@@ -458,6 +461,14 @@
 
     private bool HasValidWallet() => !string.IsNullOrEmpty(_selectedWalletAddress);
 
+    private async Task<Guid> GetOrgIdAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var orgClaim = authState.User.FindFirst("org_id")?.Value
+            ?? authState.User.FindFirst("organization_id")?.Value;
+        return Guid.TryParse(orgClaim, out var orgId) ? orgId : Guid.Empty;
+    }
+
     private string GetSelectedWalletName()
     {
         var wallet = _wallets.FirstOrDefault(w => w.Address == _selectedWalletAddress);
@@ -628,6 +639,14 @@
                     ErrorMessage = "Failed to finalize register creation. Please try again."
                 };
                 return;
+            }
+
+            // Create owner subscription so the register appears in the UI
+            var orgId = await GetOrgIdAsync();
+            if (orgId != Guid.Empty)
+            {
+                await SubscriptionService.CreateOwnerSubscriptionAsync(
+                    orgId, finalizeResponse.RegisterId, _name);
             }
 
             // Success - create view model for callback

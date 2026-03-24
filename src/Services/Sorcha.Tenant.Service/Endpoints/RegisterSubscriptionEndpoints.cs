@@ -138,8 +138,13 @@ public static class RegisterSubscriptionEndpoints
 
         try
         {
-            var subscription = await subscriptionService.SubscribeAsync(
-                orgId, request.RegisterId, null, userId, cancellationToken);
+            var isOwner = string.Equals(request.SubscriptionType, "Owner", StringComparison.OrdinalIgnoreCase);
+
+            var subscription = isOwner
+                ? await subscriptionService.CreateOwnerSubscriptionAsync(
+                    orgId, request.RegisterId, request.RegisterName, userId, cancellationToken)
+                : await subscriptionService.SubscribeAsync(
+                    orgId, request.RegisterId, request.RegisterName, userId, cancellationToken);
 
             return TypedResults.Created(
                 $"/api/organizations/{orgId}/register-subscriptions/{request.RegisterId}",
