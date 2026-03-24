@@ -483,8 +483,10 @@ public class WalletServiceClient : IWalletServiceClient
                 "/api/v1/wallets", requestBody, JsonOptions, cancellationToken);
             response.EnsureSuccessStatusCode();
 
-            return await response.Content.ReadFromJsonAsync<WalletInfo>(cancellationToken)
+            var createResponse = await response.Content.ReadFromJsonAsync<CreateWalletResponse>(JsonOptions, cancellationToken)
                 ?? throw new InvalidOperationException("Create wallet response was null");
+            return createResponse.Wallet
+                ?? throw new InvalidOperationException("Create wallet response had no wallet data");
         }
         catch (Exception ex)
         {
@@ -504,6 +506,12 @@ public class WalletServiceClient : IWalletServiceClient
     // =========================================================================
     // Response DTOs
     // =========================================================================
+
+    private sealed class CreateWalletResponse
+    {
+        [JsonPropertyName("wallet")]
+        public WalletInfo? Wallet { get; set; }
+    }
 
     private sealed class SystemWalletResponse
     {
