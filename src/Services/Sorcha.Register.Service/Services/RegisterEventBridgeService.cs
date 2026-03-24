@@ -35,7 +35,7 @@ public class RegisterEventBridgeService : BackgroundService
             "register:created",
             async e =>
             {
-                _logger.LogDebug("Bridging RegisterCreated for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
+                _logger.LogDebug("Bridging RegisterCreated for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
                     .Group($"register:{e.RegisterId}")
                     .RegisterCreated(e.RegisterId, e.Name);
@@ -46,7 +46,7 @@ public class RegisterEventBridgeService : BackgroundService
             "register:deleted",
             async e =>
             {
-                _logger.LogDebug("Bridging RegisterDeleted for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
+                _logger.LogDebug("Bridging RegisterDeleted for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
                     .Group($"register:{e.RegisterId}")
                     .RegisterDeleted(e.RegisterId);
@@ -57,7 +57,7 @@ public class RegisterEventBridgeService : BackgroundService
             "register:status-changed",
             async e =>
             {
-                _logger.LogDebug("Bridging RegisterStatusChanged for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
+                _logger.LogDebug("Bridging RegisterStatusChanged for {RegisterId} to group register:{GroupRegisterId}", e.RegisterId, e.RegisterId);
                 await _hubContext.Clients
                     .Group($"register:{e.RegisterId}")
                     .RegisterStatusChanged(e.RegisterId, e.NewStatus);
