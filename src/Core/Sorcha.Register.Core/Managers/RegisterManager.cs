@@ -207,19 +207,20 @@ public class RegisterManager
 
     /// <summary>
     /// Deletes a register. System registers cannot be deleted.
-    /// Caller wallet address is checked against control record attestations when provided.
+    /// Caller wallet address is verified against control record attestations.
     /// </summary>
     /// <param name="registerId">Register ID to delete</param>
-    /// <param name="callerWalletAddress">Caller's wallet address from JWT (for attestation matching)</param>
-    /// <param name="controlRecordAttestations">Attestation subjects from the register's control record (optional — if null, attestation check is skipped)</param>
+    /// <param name="callerWalletAddress">Caller's wallet address from JWT (required for attestation matching)</param>
+    /// <param name="controlRecordAttestations">Attestation subjects from the register's control record (required)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     public async Task DeleteRegisterAsync(
         string registerId,
         string? callerWalletAddress,
-        IReadOnlyList<RegisterAttestation>? controlRecordAttestations = null,
+        IReadOnlyList<RegisterAttestation> controlRecordAttestations,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(controlRecordAttestations);
 
         var register = await _repository.GetRegisterAsync(registerId, cancellationToken);
         if (register == null)
@@ -233,28 +234,27 @@ public class RegisterManager
             throw new UnauthorizedAccessException("System registers cannot be deleted");
         }
 
-        // If attestations are provided, verify caller is an Owner or Admin
-        if (controlRecordAttestations is not null && controlRecordAttestations.Count > 0)
-        {
-            if (string.IsNullOrEmpty(callerWalletAddress))
-            {
-                throw new UnauthorizedAccessException("Caller wallet address is required for register deletion authorization");
-            }
-
-            var isAuthorized = controlRecordAttestations.Any(a =>
-                (a.Role == RegisterRole.Owner || a.Role == RegisterRole.Admin)
-                && MatchesWalletAddress(a.Subject, callerWalletAddress));
-
-            if (!isAuthorized)
-            {
-                throw new UnauthorizedAccessException(
-                    $"Caller wallet {callerWalletAddress} is not an Owner or Admin of register {registerId}");
-            }
-        }
-        else if (controlRecordAttestations is not null && controlRecordAttestations.Count == 0)
+        // Guard against corrupted control records with no attestations
+        if (controlRecordAttestations.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Register {registerId} has no attestations in its control record — cannot verify authorization. This may indicate data corruption.");
+        }
+
+        // Verify caller wallet address is present
+        if (string.IsNullOrEmpty(callerWalletAddress))
+        {
+            throw new UnauthorizedAccessException("Caller wallet address is required for register deletion");
+        }
+
+        // Verify caller is an Owner or Admin in the control record
+        var isAuthorized = controlRecordAttestations.Any(a =>
+            (a.Role == RegisterRole.Owner || a.Role == RegisterRole.Admin)
+            && MatchesWalletAddress(a.Subject, callerWalletAddress));
+
+        if (!isAuthorized)
+        {
+            throw new UnauthorizedAccessException("Caller is not authorized to delete this register");
         }
 
         await _repository.DeleteRegisterAsync(registerId, cancellationToken);
@@ -291,8 +291,16 @@ public class RegisterManager
             return string.Equals(extractedAddress, walletAddress, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Also handle did:sorcha:user: prefix
-        const string userDidPrefix = "did:sorcha:";
+        // Handle did:sorcha:w: prefix (wallet-based DIDs used in attestations)
+        const string walletDidPrefix = "did:sorcha:w:";
+        if (attestationSubject.StartsWith(walletDidPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var extractedAddress = attestationSubject[walletDidPrefix.Length..];
+            return string.Equals(extractedAddress, walletAddress, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Handle did:sorcha:user: prefix
+        const string userDidPrefix = "did:sorcha:user:";
         if (attestationSubject.StartsWith(userDidPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var extractedAddress = attestationSubject[userDidPrefix.Length..];

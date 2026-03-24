@@ -348,19 +348,50 @@ registersGroup.MapPut("/{id}", async (
 // </summary>
 registersGroup.MapDelete("/{id}", async (
     RegisterManager manager,
+    IRegisterRepository registerRepository,
     string id,
     HttpContext httpContext) =>
 {
     try
     {
         var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
-        await manager.DeleteRegisterAsync(id, walletAddress, cancellationToken: httpContext.RequestAborted);
+
+        // Load control record attestations from genesis transaction (docket 0)
+        var genesisTxs = await registerRepository.GetTransactionsByDocketAsync(id, 0, httpContext.RequestAborted);
+        var genesisTx = genesisTxs.FirstOrDefault();
+        var attestations = new List<RegisterAttestation>();
+
+        if (genesisTx?.Payloads is { Length: > 0 })
+        {
+            try
+            {
+                var payloadData = genesisTx.Payloads[0].Data;
+                if (!string.IsNullOrWhiteSpace(payloadData))
+                {
+                    var payloadBytes = payloadData.Contains('+') || payloadData.Contains('/') || payloadData.Contains('=')
+                        ? Convert.FromBase64String(payloadData)
+                        : System.Buffers.Text.Base64Url.DecodeFromChars(payloadData);
+                    var controlPayload = System.Text.Json.JsonSerializer.Deserialize<ControlTransactionPayload>(
+                        payloadBytes, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (controlPayload?.Roster?.Attestations != null)
+                    {
+                        attestations = controlPayload.Roster.Attestations;
+                    }
+                }
+            }
+            catch
+            {
+                // Failed to deserialize — attestations list stays empty, caught by manager guard
+            }
+        }
+
+        await manager.DeleteRegisterAsync(id, walletAddress, attestations.AsReadOnly(), httpContext.RequestAborted);
         // SignalR notification handled by RegisterEventBridgeService via RegisterDeletedEvent
         return Results.NoContent();
     }
-    catch (UnauthorizedAccessException ex)
+    catch (UnauthorizedAccessException)
     {
-        return Results.Problem(title: "Forbidden", detail: ex.Message, statusCode: 403);
+        return Results.Problem(title: "Forbidden", detail: "You are not authorized to delete this register.", statusCode: 403);
     }
     catch (KeyNotFoundException)
     {
@@ -372,7 +403,7 @@ registersGroup.MapDelete("/{id}", async (
     }
     catch (InvalidOperationException ex) when (ex.Message.Contains("no attestations") || ex.Message.Contains("data corruption"))
     {
-        return Results.Problem(title: "Data integrity error", detail: ex.Message, statusCode: 500);
+        return Results.Problem(title: "Data integrity error", detail: "Control record is missing or corrupted.", statusCode: 500);
     }
 })
 .WithName("DeleteRegister")
@@ -412,10 +443,26 @@ var registerCreationGroup = app.MapGroup("/api/registers")
 registerCreationGroup.MapPost("/initiate", async (
     IRegisterCreationOrchestrator orchestrator,
     InitiateRegisterCreationRequest request,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
     try
     {
+        // Enforce CanCreateSystemRegisters policy for System purpose
+        if (request.Purpose == Sorcha.Register.Models.Enums.RegisterPurpose.System)
+        {
+            var orgId = httpContext.User.FindFirst("org_id")?.Value;
+            var isSystemAdminOrg = orgId == "00000000-0000-0000-0000-000000000001";
+            var isSystemAdmin = httpContext.User.IsInRole("SystemAdmin");
+            if (!isSystemAdminOrg || !isSystemAdmin)
+            {
+                return Results.Problem(
+                    title: "Forbidden",
+                    detail: "Only system administrators can create system registers.",
+                    statusCode: 403);
+            }
+        }
+
         var response = await orchestrator.InitiateAsync(request, cancellationToken);
         return Results.Ok(response);
     }
