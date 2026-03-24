@@ -40,7 +40,6 @@ public class RegisterCardTests : BunitContext
             Height = height,
             Advertise = advertise,
             IsFullReplica = true,
-            TenantId = "tenant-1",
             CreatedAt = DateTime.UtcNow.AddDays(-7),
             UpdatedAt = DateTime.UtcNow.AddMinutes(-5)
         };

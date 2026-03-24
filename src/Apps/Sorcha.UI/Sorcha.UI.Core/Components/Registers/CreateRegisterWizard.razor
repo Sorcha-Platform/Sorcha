@@ -170,6 +170,14 @@
                     case 2:
                         @* Step 3: Configure options *@
                         <MudStack Spacing="4" data-testid="wizard-step-3">
+                            <MudSelect T="RegisterPurpose" @bind-Value="_purpose" Label="Purpose" Variant="Variant.Outlined" Class="mb-4">
+                                <MudSelectItem Value="RegisterPurpose.General">General</MudSelectItem>
+                                @if (IsSystemAdmin)
+                                {
+                                    <MudSelectItem Value="RegisterPurpose.System">System</MudSelectItem>
+                                }
+                            </MudSelect>
+
                             <MudPaper Elevation="0" Class="pa-3 mud-theme-secondary" Style="border-radius: 8px;">
                                 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                                     <MudStack Spacing="0">
@@ -281,6 +289,16 @@
                                             @(_isFullReplica ? "Full Replica" : "Lightweight")
                                         </MudChip>
                                     </MudStack>
+                                    <MudDivider />
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Purpose</MudText>
+                                        <MudChip T="string"
+                                                 Size="Size.Small"
+                                                 Color="@(_purpose == RegisterPurpose.System ? Color.Warning : Color.Default)"
+                                                 data-testid="review-purpose">
+                                            @_purpose.ToString()
+                                        </MudChip>
+                                    </MudStack>
                                 </MudStack>
                             </MudPaper>
 
@@ -339,16 +357,16 @@
     private IMudDialogInstance? MudDialog { get; set; }
 
     /// <summary>
-    /// Tenant ID for the new register
-    /// </summary>
-    [Parameter]
-    public string TenantId { get; set; } = string.Empty;
-
-    /// <summary>
     /// Current user ID for the owner attestation
     /// </summary>
     [Parameter]
     public string UserId { get; set; } = "user-001";
+
+    /// <summary>
+    /// Whether the current user is a system administrator (enables System purpose option)
+    /// </summary>
+    [Parameter]
+    public bool IsSystemAdmin { get; set; }
 
     /// <summary>
     /// Callback when register is created successfully
@@ -362,6 +380,7 @@
     private string? _selectedWalletAddress;
     private bool _advertise;
     private bool _isFullReplica = true;
+    private RegisterPurpose _purpose = RegisterPurpose.General;
     private RegisterCreationState _state = new();
     private List<WalletViewModel> _wallets = [];
     private RegisterPolicyFields _policyFields = new()
@@ -516,7 +535,7 @@
             {
                 Name = _name,
                 Description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
-                TenantId = TenantId,
+                Purpose = _purpose,
                 Advertise = _advertise,
                 Owners = new List<OwnerInfo>
                 {
@@ -625,7 +644,6 @@
                 Status = status,
                 Advertise = _advertise,
                 IsFullReplica = _isFullReplica,
-                TenantId = TenantId,
                 CreatedAt = finalizeResponse.CreatedAt.UtcDateTime,
                 UpdatedAt = finalizeResponse.CreatedAt.UtcDateTime
             };

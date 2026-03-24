@@ -26,22 +26,6 @@ public class RegisterHub : Hub<IRegisterHubClient>
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"register:{registerId}");
     }
 
-    /// <summary>
-    /// Subscribe to all register events for a tenant
-    /// </summary>
-    public async Task SubscribeToTenant(string tenantId)
-    {
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
-    }
-
-    /// <summary>
-    /// Unsubscribe from tenant events
-    /// </summary>
-    public async Task UnsubscribeFromTenant(string tenantId)
-    {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"tenant:{tenantId}");
-    }
-
     public override async Task OnConnectedAsync()
     {
         await base.OnConnectedAsync();

@@ -3,6 +3,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Models;
 
@@ -25,13 +26,6 @@ public class InitiateRegisterCreationRequest
     [StringLength(500)]
     [JsonPropertyName("description")]
     public string? Description { get; set; }
-
-    /// <summary>
-    /// Owning tenant/organization identifier
-    /// </summary>
-    [Required]
-    [JsonPropertyName("tenantId")]
-    public string TenantId { get; set; } = string.Empty;
 
     /// <summary>
     /// Register owners (at least one required)
@@ -85,6 +79,13 @@ public class InitiateRegisterCreationRequest
     /// </summary>
     [JsonPropertyName("devMode")]
     public bool DevMode { get; set; }
+
+    /// <summary>
+    /// Classification of the register's intended use (defaults to General)
+    /// </summary>
+    [JsonPropertyName("purpose")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public RegisterPurpose Purpose { get; set; } = RegisterPurpose.General;
 }
 
 /// <summary>
@@ -440,6 +441,11 @@ public class PendingRegistration
     /// Whether this register uses DevMode (plaintext payloads with disclosure filtering)
     /// </summary>
     public bool DevMode { get; set; }
+
+    /// <summary>
+    /// Classification of the register's intended use
+    /// </summary>
+    public RegisterPurpose Purpose { get; set; } = RegisterPurpose.General;
 
     /// <summary>
     /// Checks if this pending registration has expired

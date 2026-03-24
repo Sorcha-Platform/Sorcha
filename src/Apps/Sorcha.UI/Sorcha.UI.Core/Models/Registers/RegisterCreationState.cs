@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Register.Models.Enums;
+
 namespace Sorcha.UI.Core.Models.Registers;
 
 /// <summary>
@@ -17,6 +19,11 @@ public record RegisterCreationState
     /// Register name entered by user
     /// </summary>
     public string Name { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The purpose classification for this register
+    /// </summary>
+    public RegisterPurpose Purpose { get; init; } = RegisterPurpose.General;
 
     /// <summary>
     /// Whether to advertise the register publicly

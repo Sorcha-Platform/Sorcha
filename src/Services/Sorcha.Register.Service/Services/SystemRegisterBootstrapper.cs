@@ -166,7 +166,7 @@ public class SystemRegisterBootstrapper : BackgroundService
             RegisterId = SystemRegisterConstants.SystemRegisterId,
             Name = SystemRegisterConstants.SystemRegisterName,
             Description = "Platform-wide system register for blueprint governance and metadata storage",
-            TenantId = "system",
+            Purpose = Sorcha.Register.Models.Enums.RegisterPurpose.System,
             Advertise = true,
             Owners = new List<OwnerInfo>
             {

@@ -61,7 +61,6 @@ public class RedisStreamEventPublisherTests
         {
             RegisterId = "reg-1",
             Name = "Test Register",
-            TenantId = "tenant-1",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -91,7 +90,6 @@ public class RedisStreamEventPublisherTests
         var evt = new RegisterDeletedEvent
         {
             RegisterId = "reg-2",
-            TenantId = "tenant-1",
             DeletedAt = DateTime.UtcNow
         };
 
@@ -156,7 +154,6 @@ public class RedisStreamEventPublisherTests
         {
             RegisterId = "reg-99",
             Name = "My Register",
-            TenantId = "t-1",
             CreatedAt = DateTime.UtcNow
         });
 
@@ -177,8 +174,7 @@ public class RedisStreamEventPublisherTests
         await publisher.PublishAsync("register:created", new RegisterCreatedEvent
         {
             RegisterId = "reg-1",
-            Name = "Test",
-            TenantId = "t-1"
+            Name = "Test"
         });
 
         _dbMock.Verify(d => d.StreamAddAsync(
@@ -211,8 +207,7 @@ public class RedisStreamEventPublisherTests
         var act = () => publisher.PublishAsync("register:created", new RegisterCreatedEvent
         {
             RegisterId = "reg-1",
-            Name = "Test",
-            TenantId = "t-1"
+            Name = "Test"
         });
 
         await act.Should().NotThrowAsync();
@@ -230,8 +225,7 @@ public class RedisStreamEventPublisherTests
             publisher.PublishAsync("register:created", new RegisterCreatedEvent
             {
                 RegisterId = "reg-1",
-                Name = "Test",
-                TenantId = "t-1"
+                Name = "Test"
             }, cts.Token));
     }
 

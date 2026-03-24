@@ -204,7 +204,6 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
             {
                 Id = registerId,
                 Name = $"Test Register {registerId}",
-                TenantId = "test-tenant",
                 CreatedAt = DateTime.UtcNow,
                 Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });

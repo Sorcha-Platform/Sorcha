@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Logging;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Core.Storage;
+using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
+using Sorcha.ServiceClients.Subscription;
 
 namespace Sorcha.Register.Core.Managers;
 
@@ -14,37 +17,42 @@ public class RegisterManager
 {
     private readonly IRegisterRepository _repository;
     private readonly IEventPublisher _eventPublisher;
+    private readonly ISubscriptionServiceClient? _subscriptionClient;
+    private readonly ILogger<RegisterManager>? _logger;
 
     public RegisterManager(
         IRegisterRepository repository,
-        IEventPublisher eventPublisher)
+        IEventPublisher eventPublisher,
+        ISubscriptionServiceClient? subscriptionClient = null,
+        ILogger<RegisterManager>? logger = null)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
+        _subscriptionClient = subscriptionClient;
+        _logger = logger;
     }
 
     /// <summary>
     /// Creates a new register
     /// </summary>
     /// <param name="name">Register name</param>
-    /// <param name="tenantId">Tenant identifier</param>
     /// <param name="advertise">Whether to advertise this register to peers</param>
     /// <param name="isFullReplica">Whether this is a full replica</param>
     /// <param name="registerId">Optional pre-generated register ID (used by two-phase creation flow)</param>
     /// <param name="description">Optional register description</param>
+    /// <param name="purpose">Register purpose classification</param>
     /// <param name="cancellationToken">Cancellation token</param>
     public virtual async Task<Models.Register> CreateRegisterAsync(
         string name,
-        string tenantId,
         bool advertise = false,
         bool isFullReplica = true,
         string? registerId = null,
         string? description = null,
         bool devMode = false,
+        RegisterPurpose purpose = RegisterPurpose.General,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
         if (name.Length > 38 || name.Length < 1)
         {
@@ -60,7 +68,7 @@ public class RegisterManager
             Status = RegisterStatus.Offline,
             Advertise = advertise,
             IsFullReplica = isFullReplica,
-            TenantId = tenantId,
+            Purpose = purpose,
             DevMode = devMode,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -75,7 +83,7 @@ public class RegisterManager
             {
                 RegisterId = createdRegister.Id,
                 Name = createdRegister.Name,
-                TenantId = createdRegister.TenantId,
+                Purpose = createdRegister.Purpose,
                 CreatedAt = createdRegister.CreatedAt
             },
             cancellationToken);
@@ -101,19 +109,6 @@ public class RegisterManager
         CancellationToken cancellationToken = default)
     {
         return await _repository.GetRegistersAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Gets registers for a specific tenant
-    /// </summary>
-    public async Task<IEnumerable<Models.Register>> GetRegistersByTenantAsync(
-        string tenantId,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
-        return await _repository.QueryRegistersAsync(
-            r => r.TenantId == tenantId,
-            cancellationToken);
     }
 
     /// <summary>
@@ -162,7 +157,6 @@ public class RegisterManager
             new RegisterStatusChangedEvent
             {
                 RegisterId = registerId,
-                TenantId = register.TenantId,
                 OldStatus = oldStatus.ToString(),
                 NewStatus = newStatus.ToString(),
                 ChangedAt = updated.UpdatedAt
@@ -173,15 +167,59 @@ public class RegisterManager
     }
 
     /// <summary>
-    /// Deletes a register and all associated data
+    /// Gets registers accessible to an organisation: registers they are subscribed to plus all System registers.
+    /// Implements fail-closed: returns only System registers if subscription resolution fails.
     /// </summary>
+    /// <param name="orgId">Organisation ID from JWT org_id claim</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task<IEnumerable<Models.Register>> GetRegistersForOrgAsync(
+        Guid orgId,
+        CancellationToken cancellationToken = default)
+    {
+        var allRegisters = (await _repository.GetRegistersAsync(cancellationToken)).ToList();
+
+        // Always include System registers
+        var systemRegisters = allRegisters.Where(r => r.Purpose == RegisterPurpose.System).ToList();
+
+        if (_subscriptionClient is null)
+        {
+            _logger?.LogWarning("SubscriptionServiceClient not available — fail-closed, returning only system registers");
+            return systemRegisters;
+        }
+
+        var subscribedIds = await _subscriptionClient.GetActiveRegisterIdsForOrgAsync(orgId, cancellationToken);
+
+        _logger?.LogDebug(
+            "Subscription resolution for org {OrgId}: {SubscribedCount} subscribed registers, {SystemCount} system registers",
+            orgId, subscribedIds.Count, systemRegisters.Count);
+
+        if (subscribedIds.Count == 0)
+        {
+            return systemRegisters;
+        }
+
+        var subscribedIdSet = new HashSet<string>(subscribedIds, StringComparer.OrdinalIgnoreCase);
+        var subscribedRegisters = allRegisters
+            .Where(r => r.Purpose != RegisterPurpose.System && subscribedIdSet.Contains(r.Id));
+
+        return systemRegisters.Concat(subscribedRegisters);
+    }
+
+    /// <summary>
+    /// Deletes a register. System registers cannot be deleted.
+    /// Caller wallet address is checked against control record attestations when provided.
+    /// </summary>
+    /// <param name="registerId">Register ID to delete</param>
+    /// <param name="callerWalletAddress">Caller's wallet address from JWT (for attestation matching)</param>
+    /// <param name="controlRecordAttestations">Attestation subjects from the register's control record (optional — if null, attestation check is skipped)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     public async Task DeleteRegisterAsync(
         string registerId,
-        string tenantId,
+        string? callerWalletAddress,
+        IReadOnlyList<RegisterAttestation>? controlRecordAttestations = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
         var register = await _repository.GetRegisterAsync(registerId, cancellationToken);
         if (register == null)
@@ -189,10 +227,34 @@ public class RegisterManager
             throw new InvalidOperationException($"Register {registerId} not found");
         }
 
-        // Verify tenant ownership
-        if (register.TenantId != tenantId)
+        // System registers cannot be deleted
+        if (register.Purpose == RegisterPurpose.System)
         {
-            throw new UnauthorizedAccessException($"Register {registerId} does not belong to tenant {tenantId}");
+            throw new UnauthorizedAccessException("System registers cannot be deleted");
+        }
+
+        // If attestations are provided, verify caller is an Owner or Admin
+        if (controlRecordAttestations is not null && controlRecordAttestations.Count > 0)
+        {
+            if (string.IsNullOrEmpty(callerWalletAddress))
+            {
+                throw new UnauthorizedAccessException("Caller wallet address is required for register deletion authorization");
+            }
+
+            var isAuthorized = controlRecordAttestations.Any(a =>
+                (a.Role == RegisterRole.Owner || a.Role == RegisterRole.Admin)
+                && MatchesWalletAddress(a.Subject, callerWalletAddress));
+
+            if (!isAuthorized)
+            {
+                throw new UnauthorizedAccessException(
+                    $"Caller wallet {callerWalletAddress} is not an Owner or Admin of register {registerId}");
+            }
+        }
+        else if (controlRecordAttestations is not null && controlRecordAttestations.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Register {registerId} has no attestations in its control record — cannot verify authorization. This may indicate data corruption.");
         }
 
         await _repository.DeleteRegisterAsync(registerId, cancellationToken);
@@ -203,10 +265,41 @@ public class RegisterManager
             new RegisterDeletedEvent
             {
                 RegisterId = registerId,
-                TenantId = tenantId,
                 DeletedAt = DateTime.UtcNow
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Matches a wallet address against an attestation subject DID.
+    /// Attestation subjects use DID format "did:sorcha:org:{walletAddress}" or may be a plain address.
+    /// </summary>
+    private static bool MatchesWalletAddress(string attestationSubject, string walletAddress)
+    {
+        if (string.IsNullOrEmpty(attestationSubject) || string.IsNullOrEmpty(walletAddress))
+            return false;
+
+        // Direct match
+        if (string.Equals(attestationSubject, walletAddress, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Strip DID prefix for comparison
+        const string orgDidPrefix = "did:sorcha:org:";
+        if (attestationSubject.StartsWith(orgDidPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var extractedAddress = attestationSubject[orgDidPrefix.Length..];
+            return string.Equals(extractedAddress, walletAddress, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Also handle did:sorcha:user: prefix
+        const string userDidPrefix = "did:sorcha:";
+        if (attestationSubject.StartsWith(userDidPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var extractedAddress = attestationSubject[userDidPrefix.Length..];
+            return string.Equals(extractedAddress, walletAddress, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     /// <summary>

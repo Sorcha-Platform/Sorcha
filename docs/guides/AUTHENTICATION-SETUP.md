@@ -124,9 +124,10 @@ Social login providers are configured per-organisation via the Identity Provider
   - `RequireService` - Service-to-service operations
 
 ### ✅ Register Service
-- **Authentication**: JWT Bearer validation
+- **Authentication**: JWT Bearer validation (register creation endpoints no longer allow anonymous access)
 - **Authorization Policies**:
-  - `CanManageRegisters` - Create and configure registers
+  - `CanManageRegisters` - Create and configure registers (requires `org_id` claim + Administrator or SystemAdmin role)
+  - `CanCreateSystemRegisters` - Set register purpose to "System" (requires SystemAdmin org `00000000-0000-0000-0000-000000000001` + SystemAdmin role)
   - `CanSubmitTransactions` - Submit transactions
   - `CanReadTransactions` - Query transactions
   - `RequireService` - Service-to-service notifications
@@ -352,10 +353,13 @@ curl https://localhost:7083/api/registers \
 
 | Policy | Description | Required Claims |
 |--------|-------------|-----------------|
-| `CanManageRegisters` | Create registers | `org_id` OR `token_type=service` |
+| `CanManageRegisters` | Create and manage registers | `org_id` + (`role=Administrator` OR `role=SystemAdmin`) |
+| `CanCreateSystemRegisters` | Set register purpose to System | `org_id=00000000-0000-0000-0000-000000000001` + `role=SystemAdmin` |
 | `CanSubmitTransactions` | Submit transactions | Authenticated user |
 | `CanReadTransactions` | Query transactions | Authenticated user |
 | `RequireService` | Notifications | `token_type=service` |
+
+> **Note:** Register creation endpoints (`/api/registers/initiate` and `/api/registers/finalize`) no longer allow anonymous access. The `CanManageRegisters` policy was tightened from requiring only `org_id` presence to requiring `org_id` plus an Administrator or SystemAdmin role.
 
 ### Peer Service
 
@@ -971,6 +975,8 @@ The following table consolidates all authorization policies used across the plat
 | `RequireAdministrator` | `role=Administrator` | User must have the Administrator role |
 | `CanManageWallets` | `org_id` OR `token_type=service` | Create, list, and configure wallets (org members or services) |
 | `CanManageBlueprints` | `org_id` OR `token_type=service` | Create, update, and delete blueprints (org members or services) |
+| `CanManageRegisters` | `org_id` + (`role=Administrator` OR `role=SystemAdmin`) | Create and manage registers (tightened from org_id-only) |
+| `CanCreateSystemRegisters` | `org_id=00000000-0000-0000-0000-000000000001` + `role=SystemAdmin` | Set register purpose to System (SystemAdmin org only) |
 | `RequireDelegatedAuthority` | `token_type=service` AND `delegated_user_id` present | Service acting on behalf of a user; both identities must be present |
 | `CanWriteRegisters` | `registers:write` in `scope` claim | Write access to register ledgers (submit transactions, publish) |
 
@@ -980,7 +986,7 @@ The following table consolidates all authorization policies used across the plat
 |---------|---------------|
 | Blueprint | `CanManageBlueprints`, `CanExecuteBlueprints`, `CanPublishBlueprints`, `RequireService` |
 | Wallet | `CanManageWallets`, `CanUseWallet`, `RequireService`, `RequireDelegatedAuthority` |
-| Register | `CanManageRegisters`, `CanSubmitTransactions`, `CanReadTransactions`, `RequireService`, `CanWriteRegisters` |
+| Register | `CanManageRegisters`, `CanCreateSystemRegisters`, `CanSubmitTransactions`, `CanReadTransactions`, `RequireService`, `CanWriteRegisters` |
 | Validator | `RequireService`, `CanWriteRegisters` |
 | Peer | `RequireAuthenticated`, `CanManagePeers`, `RequireService` |
 

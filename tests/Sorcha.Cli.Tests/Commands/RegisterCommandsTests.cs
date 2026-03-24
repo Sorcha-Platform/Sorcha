@@ -107,12 +107,12 @@ public class RegisterCommandsTests
     }
 
     [Fact]
-    public void RegisterCreateCommand_ShouldHaveRequiredTenantIdOption()
+    public void RegisterCreateCommand_ShouldHaveOptionalPurposeOption()
     {
         var command = new RegisterCreateCommand(_clientFactory, AuthService, ConfigService);
-        var tenantIdOption = command.Options.FirstOrDefault(o => o.Name == "--tenant-id");
-        tenantIdOption.Should().NotBeNull();
-        tenantIdOption!.Required.Should().BeTrue();
+        var purposeOption = command.Options.FirstOrDefault(o => o.Name == "--purpose");
+        purposeOption.Should().NotBeNull();
+        purposeOption!.Required.Should().BeFalse();
     }
 
     [Fact]

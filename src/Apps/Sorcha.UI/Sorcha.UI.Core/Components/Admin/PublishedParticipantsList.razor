@@ -97,7 +97,7 @@
         try
         {
             // First get registers for this tenant/org
-            var registers = await RegisterService.GetRegistersAsync(OrganizationId.ToString());
+            var registers = await RegisterService.GetRegistersAsync();
 
             // Then query published participants on each register
             foreach (var register in registers)

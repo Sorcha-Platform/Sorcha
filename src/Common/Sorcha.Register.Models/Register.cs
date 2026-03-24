@@ -52,10 +52,9 @@ public class Register
     public bool IsFullReplica { get; set; } = true;
 
     /// <summary>
-    /// Tenant identifier for multi-tenant isolation
+    /// Classification of this register's intended use
     /// </summary>
-    [Required]
-    public string TenantId { get; set; } = string.Empty;
+    public RegisterPurpose Purpose { get; set; } = RegisterPurpose.General;
 
     /// <summary>
     /// Register creation timestamp (UTC)

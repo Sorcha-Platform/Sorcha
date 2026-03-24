@@ -43,13 +43,6 @@ public class RegisterControlRecord
     public string? Description { get; set; }
 
     /// <summary>
-    /// Owning tenant/organization identifier
-    /// </summary>
-    [Required]
-    [JsonPropertyName("tenantId")]
-    public string TenantId { get; set; } = string.Empty;
-
-    /// <summary>
     /// ISO 8601 creation timestamp (UTC)
     /// </summary>
     [Required]

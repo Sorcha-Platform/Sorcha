@@ -956,27 +956,76 @@ POST /api/wallets/{id}/decrypt
 
 ### Endpoints
 
-#### 1. Create Register
+#### 1. Initiate Register Creation
 
 ```http
-POST /api/registers
+POST /api/registers/initiate
 ```
+
+**Authorization:** Requires `CanManageRegisters` policy (`org_id` claim + Administrator or SystemAdmin role). Anonymous access is not permitted.
 
 **Request Body:**
 ```json
 {
   "title": "Production Register",
-  "description": "Main production ledger"
+  "description": "Main production ledger",
+  "purpose": "General"
 }
 ```
+
+- `purpose` (optional): `General` (default) or `System`. Setting `System` requires the `CanCreateSystemRegisters` policy (SystemAdmin org + SystemAdmin role).
 
 **Response:** `201 Created`
 ```json
 {
   "id": "register-101",
   "title": "Production Register",
+  "purpose": "General",
   "createdAt": "2025-11-17T13:00:00Z"
 }
+```
+
+#### 1b. Finalize Register Creation
+
+```http
+POST /api/registers/finalize
+```
+
+**Authorization:** Requires authentication. Anonymous access is not permitted.
+
+**Response:** `200 OK`
+
+#### 1c. List Registers
+
+```http
+GET /api/registers
+```
+
+Returns only registers the caller's organization is subscribed to, plus system registers. Scope is derived from the `org_id` JWT claim. The `tenantId` query parameter has been removed.
+
+**Response:** `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "register-101",
+      "title": "Production Register",
+      "purpose": "General",
+      "createdAt": "2025-11-17T13:00:00Z"
+    }
+  ]
+}
+```
+
+#### 1d. Delete Register
+
+```http
+DELETE /api/registers/{id}
+```
+
+Authorization is based on control record attestations: the `wallet_address` JWT claim is matched against Owner/Admin attestations on the register. System registers cannot be deleted. The `tenantId` query parameter has been removed.
+
+**Response:** `204 No Content`
 ```
 
 #### 2. Submit Transaction

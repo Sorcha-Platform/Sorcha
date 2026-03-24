@@ -258,9 +258,9 @@ public class MongoRegisterRepository : IRegisterRepository
         // Register indexes (in registry database)
         var registerIndexes = new List<CreateIndexModel<RegisterEntity>>
         {
-            new(Builders<RegisterEntity>.IndexKeys.Ascending(r => r.TenantId)),
             new(Builders<RegisterEntity>.IndexKeys.Ascending(r => r.Status)),
-            new(Builders<RegisterEntity>.IndexKeys.Ascending(r => r.Name))
+            new(Builders<RegisterEntity>.IndexKeys.Ascending(r => r.Name)),
+            new(Builders<RegisterEntity>.IndexKeys.Ascending(r => r.Purpose))
         };
         await _registers.Indexes.CreateManyAsync(registerIndexes);
 
