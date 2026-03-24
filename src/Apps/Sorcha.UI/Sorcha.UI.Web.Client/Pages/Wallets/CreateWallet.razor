@@ -191,6 +191,12 @@
     [SupplyParameterFromQuery(Name = "wizard")]
     public string? Wizard { get; set; }
 
+    [SupplyParameterFromQuery(Name = "name")]
+    public string? DefaultName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "words")]
+    public int? DefaultWordCount { get; set; }
+
     private bool _isFirstLogin;
     private bool _isWizard;
 
@@ -220,6 +226,12 @@
     {
         _isFirstLogin = string.Equals(FirstLogin, "true", StringComparison.OrdinalIgnoreCase);
         _isWizard = string.Equals(Wizard, "true", StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(DefaultName))
+            request.Name = DefaultName;
+
+        if (DefaultWordCount is 12 or 15 or 18 or 21 or 24)
+            request.WordCount = DefaultWordCount.Value;
     }
 
     private async Task CreateWalletAsync()
