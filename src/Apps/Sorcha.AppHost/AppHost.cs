@@ -15,6 +15,7 @@ var postgres = builder.AddPostgres("postgres")
 
 var tenantDb = postgres.AddDatabase("tenant-db", "sorcha_tenant");
 var walletDb = postgres.AddDatabase("wallet-db", "sorcha_wallet");
+var peerDb = postgres.AddDatabase("PeerDb", "sorcha_peer");
 
 // Add MongoDB for Register Service transaction storage
 var mongodb = builder.AddMongoDB("mongodb")
@@ -55,8 +56,9 @@ var walletService = builder.AddProject<Projects.Sorcha_Wallet_Service>("wallet-s
     .WithEnvironment("ServiceAuth__ClientSecret", "wallet-service-secret")
     .WithEnvironment("ServiceAuth__Scopes", "registers:write");
 
-// Add Peer Service with Redis reference (internal only)
+// Add Peer Service with database and Redis reference (internal only)
 var peerService = builder.AddProject<Projects.Sorcha_Peer_Service>("peer-service")
+    .WithReference(peerDb)
     .WithReference(redis)
     .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey)
     .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110")
