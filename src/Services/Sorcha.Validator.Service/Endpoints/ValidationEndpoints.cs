@@ -70,9 +70,11 @@ public static class ValidationEndpoints
                     PublicKey = Base64Url.DecodeFromChars(s.PublicKey),
                     SignatureValue = Base64Url.DecodeFromChars(s.SignatureValue),
                     Algorithm = s.Algorithm,
+                    SignedBy = s.SignedBy,
                     SignedAt = request.CreatedAt
                 }).ToList(),
                 PayloadHash = request.PayloadHash,
+                SequenceNumber = (ulong)request.SequenceNumber,
                 PreviousTransactionId = request.PreviousTransactionId,
                 Priority = request.Priority,
                 Metadata = request.Metadata ?? new Dictionary<string, string>()
@@ -200,6 +202,12 @@ public record ValidateTransactionRequest
     public string? PreviousTransactionId { get; init; }
     public TransactionPriority Priority { get; init; } = TransactionPriority.Normal;
     public Dictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>
+    /// Per-sender monotonic sequence number for replay protection (SEC-AUDIT 4.2).
+    /// Must equal sender's last sequence number + 1 on the target register.
+    /// </summary>
+    public long SequenceNumber { get; init; }
 }
 
 /// <summary>
@@ -210,5 +218,6 @@ public record SignatureRequest
     public required string PublicKey { get; init; }
     public required string SignatureValue { get; init; }
     public required string Algorithm { get; init; }
+    public string? SignedBy { get; init; }
 }
 

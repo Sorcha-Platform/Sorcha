@@ -19,6 +19,18 @@ public interface IValidatorServiceClient
     Task<TransactionSubmissionResult> SubmitTransactionAsync(
         TransactionSubmission request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the next sequence number for a wallet on a register (replay protection).
+    /// </summary>
+    /// <param name="registerId">Target register ID</param>
+    /// <param name="walletAddress">Sender wallet address</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The next valid sequence number to use for a transaction</returns>
+    Task<long> GetNextSequenceNumberAsync(
+        string registerId,
+        string walletAddress,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -36,6 +48,12 @@ public record TransactionSubmission
     public required DateTimeOffset CreatedAt { get; init; }
     public string? PreviousTransactionId { get; init; }
     public Dictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>
+    /// Per-sender monotonic sequence number for replay protection (SEC-AUDIT 4.2).
+    /// Must equal sender's last sequence number + 1 on the target register.
+    /// </summary>
+    public long SequenceNumber { get; init; }
 }
 
 /// <summary>
@@ -46,6 +64,7 @@ public record SignatureInfo
     public required string PublicKey { get; init; }
     public required string SignatureValue { get; init; }
     public required string Algorithm { get; init; }
+    public string? SignedBy { get; init; }
 }
 
 /// <summary>

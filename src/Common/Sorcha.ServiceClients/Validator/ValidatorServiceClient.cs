@@ -157,6 +157,52 @@ public class ValidatorServiceClient : IValidatorServiceClient
         }
     }
 
+    /// <summary>
+    /// Gets the next sequence number for a wallet on a register (replay protection)
+    /// </summary>
+    public async Task<long> GetNextSequenceNumberAsync(
+        string registerId,
+        string walletAddress,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Fetching next sequence number for wallet {WalletAddress} on register {RegisterId}",
+                walletAddress, registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"/api/validators/{Uri.EscapeDataString(registerId)}/sequence/{Uri.EscapeDataString(walletAddress)}",
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, cancellationToken);
+                var nextSeq = result.GetProperty("nextSequenceNumber").GetInt64();
+
+                _logger.LogDebug(
+                    "Next sequence number for wallet {WalletAddress} on register {RegisterId}: {SequenceNumber}",
+                    walletAddress, registerId, nextSeq);
+
+                return nextSeq;
+            }
+
+            _logger.LogWarning(
+                "Failed to get sequence number for wallet {WalletAddress} on register {RegisterId} (status: {StatusCode}). Defaulting to 1.",
+                walletAddress, registerId, response.StatusCode);
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Error fetching sequence number for wallet {WalletAddress} on register {RegisterId}. Defaulting to 1.",
+                walletAddress, registerId);
+            return 1;
+        }
+    }
+
     private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Validator Service", cancellationToken);
