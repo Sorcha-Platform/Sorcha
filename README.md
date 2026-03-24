@@ -1,5 +1,10 @@
 # Sorcha
 
+[![Docker CI](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/docker-ci.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/docker-ci.yml)
+[![CodeQL](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/codeql.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/codeql.yml)
+[![Playwright Tests](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A distributed ledger platform for secure, multi-participant data flow orchestration.
 
 Sorcha lets organizations define structured workflows — called **blueprints** — where multiple parties exchange, validate, and record data with cryptographic guarantees. Every transaction is signed, every change is immutable, and every participant sees only what they're authorized to access.
@@ -134,23 +139,38 @@ See the [CLI documentation](src/Apps/Sorcha.Cli/README.md) for the full command 
 
 ## Architecture Overview
 
-```
-                    ┌─────────────────┐
-                    │   API Gateway   │
-                    │    (YARP)       │
-                    └────────┬────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-   ┌─────▼─────┐     ┌──────▼──────┐    ┌───────▼───────┐
-   │ Blueprint  │     │  Register   │    │    Tenant     │
-   │  Service   │     │  Service    │    │   Service     │
-   └─────┬──────┘     └──────┬──────┘    └───────────────┘
-         │                   │
-   ┌─────▼──────┐    ┌──────▼──────┐    ┌───────────────┐
-   │   Wallet   │    │  Validator  │    │     Peer      │
-   │  Service   │    │  Service    │    │   Service     │
-   └────────────┘    └─────────────┘    └───────────────┘
+```mermaid
+graph TD
+    UI["Sorcha UI<br/><small>Blazor WASM</small>"]
+    GW["API Gateway<br/><small>YARP Reverse Proxy</small>"]
+
+    BP["Blueprint Service<br/><small>Workflows + SignalR</small>"]
+    REG["Register Service<br/><small>Distributed Ledger</small>"]
+    TEN["Tenant Service<br/><small>Auth + Identity</small>"]
+    WAL["Wallet Service<br/><small>Crypto + Signing</small>"]
+    VAL["Validator Service<br/><small>Consensus + Dockets</small>"]
+    PEER["Peer Service<br/><small>gRPC Replication</small>"]
+
+    PG1[(PostgreSQL)]
+    PG2[(PostgreSQL)]
+    MONGO[(MongoDB)]
+    REDIS[(Redis)]
+
+    UI --> GW
+    GW --> BP
+    GW --> REG
+    GW --> TEN
+
+    BP --> WAL
+    REG --> VAL
+    VAL --> PEER
+
+    BP --- PG1
+    TEN --- PG2
+    WAL --- PG2
+    REG --- MONGO
+    VAL --- REDIS
+    BP -. SignalR .-> UI
 ```
 
 | Service | Purpose |
