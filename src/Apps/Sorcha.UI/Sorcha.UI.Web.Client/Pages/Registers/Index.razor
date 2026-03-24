@@ -250,7 +250,6 @@
         try
         {
             await HubConnection.StartAsync();
-            await HubConnection.SubscribeToTenantAsync(GetCurrentTenantId());
         }
         catch
         {
@@ -429,11 +428,6 @@
         }
     }
 
-    private string GetCurrentTenantId()
-    {
-        return _orgId != Guid.Empty ? _orgId.ToString() : "default-tenant";
-    }
-
     private async Task OnRegisterCreated(RegisterViewModel register)
     {
         // Refresh the register list after creation
@@ -448,18 +442,11 @@
         _ => Color.Default
     };
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         HubConnection.OnRegisterCreated -= OnRegisterCreatedViaSignalR;
         HubConnection.OnRegisterStatusChanged -= OnRegisterStatusChangedViaSignalR;
 
-        try
-        {
-            await HubConnection.UnsubscribeFromTenantAsync(GetCurrentTenantId());
-        }
-        catch
-        {
-            // Ignore errors during cleanup
-        }
+        return ValueTask.CompletedTask;
     }
 }

@@ -1493,6 +1493,44 @@ var instancesGroup = app.MapGroup("/api/instances")
     .RequireAuthorization("CanExecuteBlueprints");
 
 // <summary>
+// List workflow instances for the authenticated user's wallet
+// </summary>
+instancesGroup.MapGet("/", async (
+    HttpContext httpContext,
+    Sorcha.Blueprint.Service.Storage.IInstanceStore instanceStore,
+    Sorcha.Blueprint.Service.Models.InstanceState? status = null,
+    int page = 1,
+    int pageSize = 20) =>
+{
+    var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
+    if (string.IsNullOrEmpty(walletAddress))
+    {
+        return Results.Ok(new { items = Array.Empty<object>(), totalCount = 0, pageNumber = page, pageSize });
+    }
+
+    var skip = (page - 1) * pageSize;
+    var items = (await instanceStore.GetByParticipantWalletAsync(
+        walletAddress, status, skip, pageSize)).ToList();
+
+    // Get total count by querying without pagination
+    var allItems = await instanceStore.GetByParticipantWalletAsync(
+        walletAddress, status, 0, int.MaxValue);
+    var totalCount = allItems.Count();
+
+    return Results.Ok(new
+    {
+        items,
+        totalCount,
+        pageNumber = page,
+        pageSize
+    });
+})
+.WithName("ListInstances")
+.WithSummary("List workflow instances for the authenticated user")
+.WithDescription("Returns paginated workflow instances where the authenticated user's wallet is a participant. "
+    + "Supports optional status filtering (Active, Completed, Rejected, TimedOut, Cancelled).");
+
+// <summary>
 // Create a new workflow instance
 // </summary>
 instancesGroup.MapPost("/", async (

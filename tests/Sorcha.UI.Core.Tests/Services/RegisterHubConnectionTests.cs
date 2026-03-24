@@ -210,26 +210,6 @@ public class RegisterHubConnectionTests
     }
 
     [Fact]
-    public async Task RegisterHubConnection_SubscribeToTenant_LogsWarning_WhenNotConnected()
-    {
-        // Arrange
-        var hubConnection = new RegisterHubConnection("http://localhost:5000", _mockLogger.Object);
-
-        // Act
-        await hubConnection.SubscribeToTenantAsync("test-tenant");
-
-        // Assert - Should log warning about not being connected
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("not connected")),
-                It.IsAny<Exception?>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
-
-    [Fact]
     public async Task RegisterHubConnection_StopAsync_DoesNotThrow_WhenNotStarted()
     {
         // Arrange
@@ -257,16 +237,6 @@ public class RegisterHubConnectionTests
 
         // Act & Assert - Should not throw, just return silently
         await hubConnection.UnsubscribeFromRegisterAsync("test-register");
-    }
-
-    [Fact]
-    public async Task RegisterHubConnection_UnsubscribeFromTenant_DoesNotThrow_WhenNotConnected()
-    {
-        // Arrange
-        var hubConnection = new RegisterHubConnection("http://localhost:5000", _mockLogger.Object);
-
-        // Act & Assert - Should not throw, just return silently
-        await hubConnection.UnsubscribeFromTenantAsync("test-tenant");
     }
 
     [Fact]
