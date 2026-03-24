@@ -52,8 +52,9 @@ EXPOSE 8081
 # Copy published application
 COPY --from=publish /app/publish .
 
-# Copy blueprint templates for seeding on startup
+# Copy blueprint templates and schemas for seeding on startup
 COPY blueprints/templates/ ./blueprints/templates/
+COPY blueprints/schemas/ ./blueprints/schemas/
 
 # Set environment variables
 ENV ASPNETCORE_URLS=http://+:8080
