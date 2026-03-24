@@ -127,7 +127,7 @@
     {
         if (_form == null) return;
 
-        await _form.Validate();
+        await _form.ValidateAsync();
         if (!_formIsValid) return;
 
         _submitting = true;
