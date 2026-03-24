@@ -333,6 +333,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_HTTP_PORTS: "8080"
       ConnectionStrings__Redis: redis:6379
+      ConnectionStrings__PeerDb: Host=postgres;Database=sorcha_peer;Username=sorcha;Password=sorcha_dev_password
       MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb:27017
       MongoDB__DatabaseName: sorcha_system_register
       ServiceAuth__ClientId: service-peer

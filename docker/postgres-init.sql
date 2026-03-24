@@ -13,9 +13,14 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sorcha_wallet')\gexec
 SELECT 'CREATE DATABASE sorcha_tenant'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sorcha_tenant')\gexec
 
+-- Create sorcha_peer database
+SELECT 'CREATE DATABASE sorcha_peer'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'sorcha_peer')\gexec
+
 -- Grant all privileges to the sorcha user
 GRANT ALL PRIVILEGES ON DATABASE sorcha_wallet TO sorcha;
 GRANT ALL PRIVILEGES ON DATABASE sorcha_tenant TO sorcha;
+GRANT ALL PRIVILEGES ON DATABASE sorcha_peer TO sorcha;
 
 -- Log completion
-\echo 'Database initialization completed: sorcha_wallet and sorcha_tenant created'
+\echo 'Database initialization completed: sorcha_wallet, sorcha_tenant, and sorcha_peer created'
