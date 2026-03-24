@@ -95,9 +95,9 @@
 
 ### UI for User Story 1
 
-- [ ] T046 [US1] Create `CredentialGatePanel` Blazor component — displays credential requirements on a gated action, shows matched/unmet status per requirement (FR-009b) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialGatePanel.razor`
-- [ ] T047 [US1] Create `CredentialSelectorModal` Blazor component — shows auto-matched credentials from wallet for participant to confirm/select, supports multi-requirement selection (FR-009a) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialSelectorModal.razor`
-- [ ] T048 [US1] Wire credential UI into action execution page — call wallet `POST /match` endpoint on load, show CredentialGatePanel if requirements exist, open CredentialSelectorModal before action submission, include selected credential presentations in action execution request in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/` (action execution page)
+- [x] T046 [US1] Create `CredentialGatePanel` Blazor component — displays credential requirements on a gated action, shows matched/unmet status per requirement (FR-009b) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialGatePanel.razor`
+- [x] T047 [US1] Create `CredentialSelectorModal` Blazor component — shows auto-matched credentials from wallet for participant to confirm/select, supports multi-requirement selection (FR-009a) in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Credentials/CredentialSelectorModal.razor`
+- [x] T048 [US1] Wire credential UI into action execution page — call wallet `POST /match` endpoint on load, show CredentialGatePanel if requirements exist, open CredentialSelectorModal before action submission, include selected credential presentations in action execution request in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/` (action execution page)
 
 ### Tests for User Story 1
 

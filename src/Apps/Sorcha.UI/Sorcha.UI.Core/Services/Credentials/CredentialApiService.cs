@@ -424,6 +424,37 @@ public class CredentialApiService : ICredentialApiService
         public DateTimeOffset? ExpiresAt { get; set; }
     }
 
+    /// <inheritdoc/>
+    public async Task<List<CredentialMatchResult>> MatchCredentialsAsync(
+        string walletAddress,
+        List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug("Matching credentials for wallet {WalletAddress} against {Count} requirements",
+                walletAddress, requirements.Count);
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/match",
+                requirements, JsonOptions, ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var results = await response.Content.ReadFromJsonAsync<List<CredentialMatchResult>>(JsonOptions, ct);
+                return results ?? [];
+            }
+
+            _logger.LogWarning("Credential match failed: {StatusCode}", response.StatusCode);
+            return [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error matching credentials for wallet {WalletAddress}", walletAddress);
+            return [];
+        }
+    }
+
     private class PresentationSubmitResponse
     {
         public string? Status { get; set; }
