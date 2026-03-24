@@ -122,7 +122,7 @@ public class EfCoreBlueprintStore : IBlueprintStore
         entity.Description = blueprint.Description;
         entity.Content = JsonSerializer.Serialize(blueprint, SerializerOptions);
         entity.OrganizationId = blueprint.OrganizationId;
-        entity.OwnerId = blueprint.OrganizationId ?? entity.OwnerId;
+        // OwnerId is immutable after creation — never overwrite on update
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
         await context.SaveChangesAsync();

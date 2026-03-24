@@ -35,9 +35,9 @@ public class InstanceEntity
     public string RegisterId { get; set; } = default!;
 
     /// <summary>
-    /// Current execution state, mapped to InstanceState enum.
+    /// Current execution state.
     /// </summary>
-    public int State { get; set; } = 0;
+    public Sorcha.Blueprint.Service.Models.InstanceState State { get; set; } = Sorcha.Blueprint.Service.Models.InstanceState.Active;
 
     /// <summary>
     /// Current action identifiers stored as JSONB.

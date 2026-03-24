@@ -100,20 +100,21 @@ public class EfCoreInstanceStore : IInstanceStore
         }
 
         // Optimistic concurrency check (manual, supplementing EF Core's concurrency token)
-        if (entity.Version != instance.Version)
+        var expectedVersion = instance.Version;
+        if (entity.Version != expectedVersion)
         {
-            throw new ConcurrencyException(instance.Id, instance.Version, entity.Version);
+            throw new ConcurrencyException(instance.Id, expectedVersion, entity.Version);
         }
 
         // Increment version and update timestamp
-        instance.Version++;
+        instance.Version = expectedVersion + 1;
         instance.UpdatedAt = DateTimeOffset.UtcNow;
 
         // Map updated model back to entity
         entity.BlueprintId = instance.BlueprintId;
         entity.BlueprintVersion = instance.BlueprintVersion;
         entity.RegisterId = instance.RegisterId;
-        entity.State = (int)instance.State;
+        entity.State = instance.State;
         entity.CurrentActionIds = SerializeJson(instance.CurrentActionIds);
         entity.ParticipantWallets = SerializeJson(instance.ParticipantWallets);
         entity.FirstTransactionId = instance.FirstTransactionId;
@@ -133,7 +134,7 @@ public class EfCoreInstanceStore : IInstanceStore
         catch (DbUpdateConcurrencyException ex)
         {
             _logger.LogWarning(ex, "Concurrency conflict updating instance {InstanceId}", instance.Id);
-            throw new ConcurrencyException(instance.Id, instance.Version - 1, entity.Version);
+            throw new ConcurrencyException(instance.Id, expectedVersion, entity.Version);
         }
 
         _logger.LogInformation("Updated instance {InstanceId} to version {Version}",
@@ -157,8 +158,8 @@ public class EfCoreInstanceStore : IInstanceStore
 
         if (state.HasValue)
         {
-            var stateInt = (int)state.Value;
-            query = query.Where(i => i.State == stateInt);
+            var stateFilter = state.Value;
+            query = query.Where(i => i.State == stateFilter);
         }
 
         var entities = await query
@@ -185,8 +186,8 @@ public class EfCoreInstanceStore : IInstanceStore
 
         if (state.HasValue)
         {
-            var stateInt = (int)state.Value;
-            query = query.Where(i => i.State == stateInt);
+            var stateFilter = state.Value;
+            query = query.Where(i => i.State == stateFilter);
         }
 
         var entities = await query
@@ -214,8 +215,8 @@ public class EfCoreInstanceStore : IInstanceStore
 
         if (state.HasValue)
         {
-            var stateInt = (int)state.Value;
-            query = query.Where(i => i.State == stateInt);
+            var stateFilter = state.Value;
+            query = query.Where(i => i.State == stateFilter);
         }
 
         var entities = await query
@@ -241,7 +242,7 @@ public class EfCoreInstanceStore : IInstanceStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var activeState = (int)InstanceState.Active;
+        var activeState = InstanceState.Active;
 
         var entities = await context.Instances.AsNoTracking()
             .Where(i => i.State == activeState)
@@ -286,7 +287,7 @@ public class EfCoreInstanceStore : IInstanceStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var activeState = (int)InstanceState.Active;
+        var activeState = InstanceState.Active;
 
         var entities = await context.Instances.AsNoTracking()
             .Where(i => i.State == activeState)
@@ -335,8 +336,7 @@ public class EfCoreInstanceStore : IInstanceStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var stateInt = (int)state;
-        return await context.Instances.CountAsync(i => i.State == stateInt, cancellationToken);
+        return await context.Instances.CountAsync(i => i.State == state, cancellationToken);
     }
 
     private static InstanceEntity ToEntity(Instance instance)
@@ -347,7 +347,7 @@ public class EfCoreInstanceStore : IInstanceStore
             BlueprintId = instance.BlueprintId,
             BlueprintVersion = instance.BlueprintVersion,
             RegisterId = instance.RegisterId,
-            State = (int)instance.State,
+            State = instance.State,
             CurrentActionIds = SerializeJson(instance.CurrentActionIds),
             ParticipantWallets = SerializeJson(instance.ParticipantWallets),
             FirstTransactionId = instance.FirstTransactionId,
@@ -380,7 +380,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 BlueprintVersion = entity.BlueprintVersion,
                 RegisterId = entity.RegisterId,
                 TenantId = tenantId,
-                State = (InstanceState)entity.State,
+                State = entity.State,
                 CurrentActionIds = DeserializeJson<List<int>>(entity.CurrentActionIds) ?? [],
                 ParticipantWallets = DeserializeJson<Dictionary<string, string>>(entity.ParticipantWallets)
                                      ?? new Dictionary<string, string>(),
