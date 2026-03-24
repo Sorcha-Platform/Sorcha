@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Core.Events;
 
@@ -12,7 +13,7 @@ public class RegisterCreatedEvent
 {
     public required string RegisterId { get; set; }
     public required string Name { get; set; }
-    public required string TenantId { get; set; }
+    public RegisterPurpose Purpose { get; set; } = RegisterPurpose.General;
     public DateTime CreatedAt { get; set; }
 }
 
@@ -22,7 +23,6 @@ public class RegisterCreatedEvent
 public class RegisterDeletedEvent
 {
     public required string RegisterId { get; set; }
-    public required string TenantId { get; set; }
     public DateTime DeletedAt { get; set; }
 }
 
@@ -58,7 +58,6 @@ public class DocketConfirmedEvent
 public class RegisterStatusChangedEvent
 {
     public required string RegisterId { get; set; }
-    public required string TenantId { get; set; }
     public required string OldStatus { get; set; }
     public required string NewStatus { get; set; }
     public DateTime ChangedAt { get; set; }

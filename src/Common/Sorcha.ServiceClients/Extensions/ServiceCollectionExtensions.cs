@@ -12,6 +12,7 @@ using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Did;
 using Sorcha.ServiceClients.Events;
+using Sorcha.ServiceClients.Subscription;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.Register.Service.Grpc;
 using Sorcha.Wallet.Service.Grpc;
@@ -98,6 +99,9 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<EventServiceClient>();
         services.AddScoped<IEventServiceClient, EventServiceClient>();
+
+        services.AddHttpClient<SubscriptionServiceClient>();
+        services.AddScoped<ISubscriptionServiceClient, SubscriptionServiceClient>();
 
         // Feature 060: Passkey public key retrieval for recovery key wrapping
         services.AddHttpClient<Passkey.PasskeyServiceClient>();

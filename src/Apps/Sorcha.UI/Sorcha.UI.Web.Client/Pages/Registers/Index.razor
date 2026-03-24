@@ -364,7 +364,6 @@
     {
         var parameters = new DialogParameters<CreateRegisterWizard>
         {
-            { x => x.TenantId, GetCurrentTenantId() },
             { x => x.OnRegisterCreated, EventCallback.Factory.Create<RegisterViewModel>(this, OnRegisterCreated) }
         };
 

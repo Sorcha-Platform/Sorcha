@@ -25,7 +25,6 @@ public class InMemoryEventSubscriberTests
         {
             RegisterId = "reg-1",
             Name = "Test",
-            TenantId = "t-1",
             CreatedAt = DateTime.UtcNow
         });
 
@@ -50,8 +49,7 @@ public class InMemoryEventSubscriberTests
         await publisher.PublishAsync("register:created", new RegisterCreatedEvent
         {
             RegisterId = "reg-1",
-            Name = "Test",
-            TenantId = "t-1"
+            Name = "Test"
         });
 
         callCount.Should().Be(2);
@@ -71,7 +69,6 @@ public class InMemoryEventSubscriberTests
         await publisher.PublishAsync("register:deleted", new RegisterDeletedEvent
         {
             RegisterId = "reg-1",
-            TenantId = "t-1",
             DeletedAt = DateTime.UtcNow
         });
 
@@ -87,8 +84,7 @@ public class InMemoryEventSubscriberTests
         var act = () => publisher.PublishAsync("register:created", new RegisterCreatedEvent
         {
             RegisterId = "reg-1",
-            Name = "Test",
-            TenantId = "t-1"
+            Name = "Test"
         });
 
         await act.Should().NotThrowAsync();
@@ -102,8 +98,7 @@ public class InMemoryEventSubscriberTests
         await publisher.PublishAsync("register:created", new RegisterCreatedEvent
         {
             RegisterId = "reg-1",
-            Name = "Test",
-            TenantId = "t-1"
+            Name = "Test"
         });
 
         publisher.GetPublishedEvents().Should().HaveCount(1);

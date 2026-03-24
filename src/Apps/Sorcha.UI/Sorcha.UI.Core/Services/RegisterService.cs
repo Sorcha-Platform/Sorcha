@@ -33,16 +33,11 @@ public class RegisterService : IRegisterService
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<RegisterViewModel>> GetRegistersAsync(
-        string? tenantId = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var url = "/api/registers";
-            if (!string.IsNullOrEmpty(tenantId))
-            {
-                url += $"?tenantId={Uri.EscapeDataString(tenantId)}";
-            }
 
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
@@ -261,7 +256,6 @@ public class RegisterService : IRegisterService
             Status = register.Status,
             Advertise = register.Advertise,
             IsFullReplica = register.IsFullReplica,
-            TenantId = register.TenantId,
             CreatedAt = register.CreatedAt,
             UpdatedAt = register.UpdatedAt
         };

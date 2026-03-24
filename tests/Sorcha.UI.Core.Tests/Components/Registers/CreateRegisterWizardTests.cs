@@ -520,7 +520,7 @@ public class CreateRegisterWizardTests
         {
             Id = "test-id",
             Name = "Test Register",
-            TenantId = "tenant-1",
+
             Advertise = true
         };
 
@@ -534,7 +534,7 @@ public class CreateRegisterWizardTests
         {
             Id = "test-id",
             Name = "Test Register",
-            TenantId = "tenant-1",
+
             Advertise = false
         };
 
@@ -547,8 +547,7 @@ public class CreateRegisterWizardTests
         var vm = new RegisterViewModel
         {
             Id = "test-id",
-            Name = "Test Register",
-            TenantId = "tenant-1"
+            Name = "Test Register"
         };
 
         vm.Advertise.Should().BeFalse();
@@ -564,7 +563,7 @@ public class CreateRegisterWizardTests
         var request = new CreateRegisterRequest
         {
             Name = "Public Register",
-            TenantId = "tenant-1",
+
             Advertise = true,
             Owners = [new OwnerInfo { UserId = "user-1", WalletId = "wallet-1" }]
         };
@@ -578,7 +577,7 @@ public class CreateRegisterWizardTests
         var request = new CreateRegisterRequest
         {
             Name = "Private Register",
-            TenantId = "tenant-1",
+
             Advertise = false,
             Owners = [new OwnerInfo { UserId = "user-1", WalletId = "wallet-1" }]
         };
@@ -592,7 +591,7 @@ public class CreateRegisterWizardTests
         var request = new CreateRegisterRequest
         {
             Name = "Default Register",
-            TenantId = "tenant-1",
+
             Owners = [new OwnerInfo { UserId = "user-1", WalletId = "wallet-1" }]
         };
 
@@ -605,7 +604,7 @@ public class CreateRegisterWizardTests
         var request = new CreateRegisterRequest
         {
             Name = "Public Register",
-            TenantId = "tenant-1",
+
             Advertise = true,
             Owners = [new OwnerInfo { UserId = "user-1", WalletId = "wallet-1" }]
         };

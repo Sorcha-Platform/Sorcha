@@ -90,13 +90,13 @@ public class RegisterListCommand : Command
                 Console.WriteLine();
 
                 // Display as table with new fields
-                Console.WriteLine($"{"ID",-34} {"Name",-25} {"Height",8} {"Status",-10} {"TenantId",-34} {"Advertise",-9} {"Created"}");
-                Console.WriteLine(new string('-', 145));
+                Console.WriteLine($"{"ID",-34} {"Name",-25} {"Height",8} {"Status",-10} {"Purpose",-10} {"Advertise",-9} {"Created"}");
+                Console.WriteLine(new string('-', 120));
 
                 foreach (var register in registers)
                 {
                     var advertise = register.Advertise ? "Yes" : "No";
-                    Console.WriteLine($"{register.Id,-34} {register.Name,-25} {register.Height,8} {register.Status,-10} {register.TenantId,-34} {advertise,-9} {register.CreatedAt:yyyy-MM-dd}");
+                    Console.WriteLine($"{register.Id,-34} {register.Name,-25} {register.Height,8} {register.Status,-10} {register.Purpose,-10} {advertise,-9} {register.CreatedAt:yyyy-MM-dd}");
                 }
 
                 return ExitCodes.Success;
@@ -189,8 +189,8 @@ public class RegisterGetCommand : Command
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {register.Id}");
                 Console.WriteLine($"  Name:            {register.Name}");
-                Console.WriteLine($"  TenantId:        {register.TenantId}");
                 Console.WriteLine($"  Status:          {register.Status}");
+                Console.WriteLine($"  Purpose:         {register.Purpose}");
                 Console.WriteLine($"  Height:          {register.Height}");
                 Console.WriteLine($"  Advertise:       {(register.Advertise ? "Yes" : "No")}");
                 Console.WriteLine($"  IsFullReplica:   {(register.IsFullReplica ? "Yes" : "No")}");
@@ -244,9 +244,9 @@ public class RegisterGetCommand : Command
 public class RegisterCreateCommand : Command
 {
     private readonly Option<string> _nameOption;
-    private readonly Option<string> _tenantIdOption;
     private readonly Option<string> _ownerWalletOption;
     private readonly Option<string?> _descriptionOption;
+    private readonly Option<string> _purposeOption;
 
     public RegisterCreateCommand(
         HttpClientFactory clientFactory,
@@ -257,12 +257,6 @@ public class RegisterCreateCommand : Command
         _nameOption = new Option<string>("--name", "-n")
         {
             Description = "Register name",
-            Required = true
-        };
-
-        _tenantIdOption = new Option<string>("--tenant-id", "-t")
-        {
-            Description = "Tenant ID",
             Required = true
         };
 
@@ -277,17 +271,23 @@ public class RegisterCreateCommand : Command
             Description = "Register description"
         };
 
+        _purposeOption = new Option<string>("--purpose")
+        {
+            Description = "Register purpose (General or System)",
+            DefaultValueFactory = _ => "General"
+        };
+
         Options.Add(_nameOption);
-        Options.Add(_tenantIdOption);
         Options.Add(_ownerWalletOption);
         Options.Add(_descriptionOption);
+        Options.Add(_purposeOption);
 
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             var name = parseResult.GetValue(_nameOption)!;
-            var tenantId = parseResult.GetValue(_tenantIdOption)!;
             var ownerWallet = parseResult.GetValue(_ownerWalletOption)!;
             var description = parseResult.GetValue(_descriptionOption);
+            var purpose = parseResult.GetValue(_purposeOption)!;
 
             try
             {
@@ -321,8 +321,8 @@ public class RegisterCreateCommand : Command
                 var initiateRequest = new InitiateRegisterCreationRequest
                 {
                     Name = name,
-                    TenantId = tenantId,
                     Description = description,
+                    Purpose = Enum.TryParse<RegisterPurpose>(purpose, true, out var p) ? p : RegisterPurpose.General,
                     Owners = new List<OwnerInfo>
                     {
                         new OwnerInfo
@@ -479,7 +479,7 @@ public class RegisterCreateCommand : Command
             }
             catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
             {
-                ConsoleHelper.WriteError($"A register with name '{name}' already exists in tenant '{tenantId}'.");
+                ConsoleHelper.WriteError($"A register with name '{name}' already exists.");
                 return ExitCodes.ValidationError;
             }
             catch (ApiException ex)
@@ -704,7 +704,6 @@ public class RegisterUpdateCommand : Command
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {register.Id}");
                 Console.WriteLine($"  Name:            {register.Name}");
-                Console.WriteLine($"  TenantId:        {register.TenantId}");
                 Console.WriteLine($"  Status:          {register.Status}");
                 Console.WriteLine($"  Advertise:       {(register.Advertise ? "Yes" : "No")}");
                 Console.WriteLine($"  Updated:         {register.UpdatedAt:yyyy-MM-dd HH:mm:ss}");

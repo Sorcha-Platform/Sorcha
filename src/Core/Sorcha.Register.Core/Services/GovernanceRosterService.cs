@@ -255,7 +255,6 @@ public class GovernanceRosterService : IGovernanceRosterService
             RegisterId = currentRoster.RegisterId,
             Name = currentRoster.Name,
             Description = currentRoster.Description,
-            TenantId = currentRoster.TenantId,
             CreatedAt = currentRoster.CreatedAt,
             Attestations = updatedAttestations,
             Metadata = currentRoster.Metadata

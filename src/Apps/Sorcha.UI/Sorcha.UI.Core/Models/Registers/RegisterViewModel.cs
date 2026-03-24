@@ -47,11 +47,6 @@ public record RegisterViewModel
     public bool IsFullReplica { get; init; }
 
     /// <summary>
-    /// Tenant identifier for multi-tenant isolation
-    /// </summary>
-    public required string TenantId { get; init; }
-
-    /// <summary>
     /// Register creation timestamp (UTC)
     /// </summary>
     public DateTime CreatedAt { get; init; }

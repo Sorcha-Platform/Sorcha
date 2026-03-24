@@ -17,11 +17,11 @@ This service acts as the central data store for:
 - **Docket (block) management** with SHA256 hash verification
 - **Advanced querying** via OData V4 and LINQ
 - **Real-time notifications** for ledger state changes
-- **Multi-tenant isolation** for enterprise deployments
+- **Subscription-scoped access control** for enterprise deployments
 
 ### Key Features
 
-- **Register Management**: Full CRUD operations for distributed ledger instances with tenant isolation
+- **Register Management**: Full CRUD operations for distributed ledger instances with subscription-scoped access control
 - **Transaction Storage**: Immutable transaction persistence with blockchain-style chain integrity (prevTxId links)
 - **Docket Management**: Seal transactions into blocks (dockets) with SHA256 hashing and chain validation
 - **OData V4 Queries**: Advanced query capabilities with $filter, $select, $orderby, $top, $skip, $count
@@ -53,7 +53,7 @@ Register Service
 │   ├── RegisterManager (register lifecycle)
 │   ├── TransactionManager (transaction storage)
 │   ├── QueryManager (advanced queries)
-│   └── TenantResolver (multi-tenant isolation)
+│   └── SubscriptionResolver (subscription-scoped access)
 ├── Storage Abstraction
 │   ├── IRegisterRepository (interface)
 │   ├── InMemoryRegisterRepository (testing)
@@ -229,11 +229,11 @@ REGISTER__EVENTPROVIDER="AspireMessaging"
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/registers/` | Get all registers (filtered by tenant) |
+| GET | `/api/registers/` | Get all registers (subscription-scoped + system registers) |
 | GET | `/api/registers/{id}` | Get register by ID |
-| POST | `/api/registers/` | Create new register |
+| POST | `/api/registers/` | Create new register (requires `CanManageRegisters`) |
 | PUT | `/api/registers/{id}` | Update register metadata |
-| DELETE | `/api/registers/{id}` | Delete register and all associated data |
+| DELETE | `/api/registers/{id}` | Delete register (attestation-based auth; system registers cannot be deleted) |
 | GET | `/api/registers/stats/count` | Get total register count |
 
 ### Transaction Management
@@ -300,7 +300,7 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 | GET | `/api/registers/{registerId}/validators/approved` | List on-chain approved validators |
 | GET | `/api/registers/{registerId}/validators/operational` | List operationally active validators (Redis TTL) |
 
-> **Register Creation** now accepts an optional `policy` field in the creation request. If omitted, default policy values are applied at genesis.
+> **Register Creation** now accepts an optional `policy` field and an optional `purpose` field (`General` or `System`) in the creation request. If `policy` is omitted, default policy values are applied at genesis. If `purpose` is omitted, it defaults to `General`. Creating a `System` register requires the `CanCreateSystemRegisters` policy.
 
 ### System Register (Feature 048, upgraded in Feature 057)
 
@@ -314,6 +314,15 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 
 > The **System Register** is a real register backed by the standard ledger infrastructure. It is automatically bootstrapped on first startup (no environment variable needed). Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`), replacing the previous standalone MongoDB collection (`sorcha_system_register_blueprints`).
 
+### RegisterPurpose
+
+Registers are classified by a `RegisterPurpose` enum:
+
+| Value | Description |
+|-------|-------------|
+| `General` | Default purpose. Standard registers created by organisations for workflow data. |
+| `System` | Platform-internal registers used for system operations (e.g., the well-known system register). Creating a system register requires the `CanCreateSystemRegisters` policy (SystemAdmin only). System registers cannot be deleted. |
+
 ### SignalR Hub
 
 | Hub | Endpoint | Events |
@@ -323,8 +332,8 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 **SignalR Methods:**
 - `SubscribeToRegister(registerId)` - Subscribe to register-specific events
 - `UnsubscribeFromRegister(registerId)` - Unsubscribe from register
-- `SubscribeToTenant(tenantId)` - Subscribe to all tenant registers
-- `UnsubscribeFromTenant(tenantId)` - Unsubscribe from tenant
+
+Notifications use **register-scoped groups** (`register:{registerId}`). Clients join a group per register they are interested in. The previous tenant-scoped groups (`SubscribeToTenant`/`UnsubscribeFromTenant`) have been removed.
 
 For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7085/scalar`.
 
@@ -487,13 +496,15 @@ public class Register
     public string Name { get; set; }            // Human-readable name (1-38 chars)
     public uint Height { get; set; }            // Current block height
     public RegisterStatus Status { get; set; }  // Offline, Online, Checking, Recovery
+    public RegisterPurpose Purpose { get; set; } // General (default) or System
     public bool Advertise { get; set; }         // Network visibility
     public bool IsFullReplica { get; set; }     // Full history or partial
-    public string TenantId { get; set; }        // Multi-tenant isolation
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
 ```
+
+> **Note:** The `TenantId` property has been removed from the Register entity. Organisational access is now controlled through subscription records managed by the Tenant Service. Users see only registers their organisation is subscribed to, plus any system registers.
 
 ### TransactionModel
 
@@ -571,15 +582,17 @@ public class PayloadModel
 - **Chain Integrity**: SHA256 hashing prevents tampering with transaction and docket chains
 - **Signature Verification**: All transactions must be cryptographically signed
 
-### Authentication (Production)
+### Authentication
 
-- **Current**: Development mode (no authentication required)
-- **Production**: JWT bearer token authentication required (issued by Tenant Service)
+- JWT bearer token authentication required for all endpoints (issued by Tenant Service)
+- Anonymous access to register creation has been removed
 
 ### Authorization
 
-- **Multi-Tenant Isolation**: Register operations filtered by tenant ID
-- **Register Access Control**: Only authorized tenants can access register data
+- **Register Creation**: Requires `CanManageRegisters` policy (admin role + `org_id` claim)
+- **System Register Creation**: Requires `CanCreateSystemRegisters` policy (SystemAdmin only)
+- **Register Queries**: Subscription-scoped — users see only registers their organisation is subscribed to, plus system registers (visible to all authenticated users)
+- **Register Deletion**: Uses attestation-based authorization — the requesting user's `wallet_address` claim is matched against the register's control record. System registers cannot be deleted.
 - **Transaction Verification**: Validate sender wallet ownership via signatures
 
 ### Secrets Management
@@ -887,6 +900,6 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 ---
 
-**Last Updated**: 2026-03-03
+**Last Updated**: 2026-03-24
 **Maintained By**: Sorcha Contributors
 **Status**: ✅ Production Ready (100% Complete)

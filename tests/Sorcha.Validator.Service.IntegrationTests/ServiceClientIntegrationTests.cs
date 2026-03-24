@@ -422,7 +422,6 @@ public class ServiceClientIntegrationTests
                 {
                     Id = registerId,
                     Name = "Test Register",
-                    TenantId = "test-tenant",
                     CreatedAt = DateTime.UtcNow,
                     Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
                 };

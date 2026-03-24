@@ -380,7 +380,6 @@ public abstract class RegisterRepositoryContractTests
         Name = $"Test Register {id}",
         Height = 0,
         Status = RegisterStatus.Online,
-        TenantId = "test-tenant",
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };

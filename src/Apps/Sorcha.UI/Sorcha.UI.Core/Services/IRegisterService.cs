@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json.Serialization;
+using Sorcha.Register.Models.Enums;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 
@@ -13,13 +14,11 @@ namespace Sorcha.UI.Core.Services;
 public interface IRegisterService
 {
     /// <summary>
-    /// Gets all registers, optionally filtered by tenant.
+    /// Gets all accessible registers for the current user's organisation.
     /// </summary>
-    /// <param name="tenantId">Optional tenant ID filter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of registers.</returns>
     Task<IReadOnlyList<RegisterViewModel>> GetRegistersAsync(
-        string? tenantId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -80,12 +79,6 @@ public record CreateRegisterRequest
     public required string Name { get; init; }
 
     /// <summary>
-    /// Tenant identifier (organization ID)
-    /// </summary>
-    [JsonPropertyName("tenantId")]
-    public required string TenantId { get; init; }
-
-    /// <summary>
     /// Purpose and scope of the register
     /// </summary>
     [JsonPropertyName("description")]
@@ -96,6 +89,12 @@ public record CreateRegisterRequest
     /// </summary>
     [JsonPropertyName("owners")]
     public required List<OwnerInfo> Owners { get; init; }
+
+    /// <summary>
+    /// Purpose classification for the register
+    /// </summary>
+    [JsonPropertyName("purpose")]
+    public RegisterPurpose Purpose { get; init; } = RegisterPurpose.General;
 
     /// <summary>
     /// Whether to advertise this register to the peer network (public visibility)

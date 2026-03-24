@@ -102,7 +102,6 @@ public class GovernanceModelsTests
             {
                 RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations = [new RegisterAttestation
                 {
@@ -131,7 +130,6 @@ public class GovernanceModelsTests
             {
                 RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
                 Name = "Test Register",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations =
                 [
@@ -191,7 +189,6 @@ public class GovernanceModelsTests
         {
             RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations =
             [
@@ -217,7 +214,6 @@ public class GovernanceModelsTests
         {
             RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations =
             [

@@ -934,7 +934,6 @@ public class RegisterServiceClient : IRegisterServiceClient
             var request = new CreateRegisterRequest
             {
                 Name = name,
-                TenantId = tenant,
                 Advertise = true,
                 IsFullReplica = true
             };
@@ -1327,7 +1326,6 @@ public class RegisterServiceClient : IRegisterServiceClient
     private record CreateRegisterRequest
     {
         public required string Name { get; init; }
-        public required string TenantId { get; init; }
         public bool Advertise { get; init; } = false;
         public bool IsFullReplica { get; init; } = true;
     }

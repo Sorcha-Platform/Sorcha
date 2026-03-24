@@ -23,13 +23,28 @@ public static class AuthenticationExtensions
 
         services.AddAuthorization(options =>
         {
-            // Register management (create, configure)
+            // Register management (create, configure) — requires org admin or service token
             options.AddPolicy("CanManageRegisters", policy =>
                 policy.RequireAssertion(context =>
                 {
-                    var hasOrgId = context.User.Claims.Any(c => c.Type == TokenClaimConstants.OrgId && !string.IsNullOrEmpty(c.Value));
+                    // Service tokens can always manage registers
                     var isService = context.User.Claims.Any(c => c.Type == TokenClaimConstants.TokenType && c.Value == TokenClaimConstants.TokenTypeService);
-                    return hasOrgId || isService;
+                    if (isService) return true;
+
+                    // User tokens require org_id claim + Administrator or SystemAdmin role
+                    var hasOrgId = context.User.Claims.Any(c => c.Type == TokenClaimConstants.OrgId && !string.IsNullOrEmpty(c.Value));
+                    var isAdmin = context.User.IsInRole("Administrator") || context.User.IsInRole("SystemAdmin");
+                    return hasOrgId && isAdmin;
+                }));
+
+            // System register creation — requires SystemAdmin org + SystemAdmin role
+            options.AddPolicy("CanCreateSystemRegisters", policy =>
+                policy.RequireAssertion(context =>
+                {
+                    var orgId = context.User.FindFirst(TokenClaimConstants.OrgId)?.Value;
+                    var isSystemAdminOrg = orgId == "00000000-0000-0000-0000-000000000001";
+                    var isSystemAdmin = context.User.IsInRole("SystemAdmin");
+                    return isSystemAdminOrg && isSystemAdmin;
                 }));
 
             // Transaction submission (write operations)

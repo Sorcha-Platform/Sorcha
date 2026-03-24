@@ -101,23 +101,24 @@ public class MongoRegisterRepositoryIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task QueryRegistersAsync_FiltersByTenant()
+    public async Task QueryRegistersAsync_FiltersByStatus()
     {
         // Arrange
-        var reg1 = CreateTestRegister("reg-t1-1", "tenant-1");
-        var reg2 = CreateTestRegister("reg-t1-2", "tenant-1");
-        var reg3 = CreateTestRegister("reg-t2-1", "tenant-2");
+        var reg1 = CreateTestRegister("reg-t1-1");
+        var reg2 = CreateTestRegister("reg-t1-2");
+        var reg3 = CreateTestRegister("reg-t2-1");
+        reg3.Status = RegisterStatus.Online;
 
         await _sut.InsertRegisterAsync(reg1);
         await _sut.InsertRegisterAsync(reg2);
         await _sut.InsertRegisterAsync(reg3);
 
         // Act
-        var result = await _sut.QueryRegistersAsync(r => r.TenantId == "tenant-1");
+        var result = await _sut.QueryRegistersAsync(r => r.Status == RegisterStatus.Offline);
 
         // Assert
         result.Should().HaveCount(2);
-        result.Should().OnlyContain(r => r.TenantId == "tenant-1");
+        result.Should().OnlyContain(r => r.Status == RegisterStatus.Offline);
     }
 
     [Fact]
@@ -508,7 +509,7 @@ public class MongoRegisterRepositoryIntegrationTests : IAsyncLifetime
     // Helper Methods
     // ===========================
 
-    private static RegisterEntity CreateTestRegister(string id, string tenantId = "test-tenant")
+    private static RegisterEntity CreateTestRegister(string id)
     {
         return new RegisterEntity
         {
@@ -516,7 +517,6 @@ public class MongoRegisterRepositoryIntegrationTests : IAsyncLifetime
             Name = $"Test Register {id}",
             Height = 0,
             Status = RegisterStatus.Offline,
-            TenantId = tenantId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

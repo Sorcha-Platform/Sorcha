@@ -307,7 +307,6 @@ public class RegisterPolicyTests
         {
             RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations = []
         };
@@ -324,7 +323,6 @@ public class RegisterPolicyTests
         {
             RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations = [],
             RegisterPolicy = RegisterPolicy.CreateDefault()

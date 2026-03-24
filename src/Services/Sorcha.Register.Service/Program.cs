@@ -252,17 +252,22 @@ var registersGroup = app.MapGroup("/api/registers")
 // </summary>
 registersGroup.MapGet("/", async (
     RegisterManager manager,
-    string? tenantId = null) =>
+    HttpContext httpContext) =>
 {
-    var registers = tenantId != null
-        ? await manager.GetRegistersByTenantAsync(tenantId)
-        : await manager.GetAllRegistersAsync();
+    var orgIdClaim = httpContext.User.FindFirst("org_id")?.Value;
+    if (string.IsNullOrEmpty(orgIdClaim) || !Guid.TryParse(orgIdClaim, out var orgId))
+    {
+        // No org context — return only system registers
+        var allRegisters = await manager.GetAllRegistersAsync();
+        return Results.Ok(allRegisters.Where(r => r.Purpose == Sorcha.Register.Models.Enums.RegisterPurpose.System));
+    }
 
+    var registers = await manager.GetRegistersForOrgAsync(orgId);
     return Results.Ok(registers);
 })
 .WithName("GetAllRegisters")
-.WithSummary("Get all registers")
-.WithDescription("Retrieves all registers, optionally filtered by tenant.")
+.WithSummary("Get accessible registers")
+.WithDescription("Returns registers the caller's organisation is subscribed to, plus all system registers.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status401Unauthorized);
 
@@ -344,17 +349,18 @@ registersGroup.MapPut("/{id}", async (
 registersGroup.MapDelete("/{id}", async (
     RegisterManager manager,
     string id,
-    string tenantId) =>
+    HttpContext httpContext) =>
 {
     try
     {
-        await manager.DeleteRegisterAsync(id, tenantId);
+        var walletAddress = httpContext.User.FindFirst("wallet_address")?.Value;
+        await manager.DeleteRegisterAsync(id, walletAddress, cancellationToken: httpContext.RequestAborted);
         // SignalR notification handled by RegisterEventBridgeService via RegisterDeletedEvent
         return Results.NoContent();
     }
-    catch (UnauthorizedAccessException)
+    catch (UnauthorizedAccessException ex)
     {
-        return Results.Forbid();
+        return Results.Problem(title: "Forbidden", detail: ex.Message, statusCode: 403);
     }
     catch (KeyNotFoundException)
     {
@@ -364,10 +370,14 @@ registersGroup.MapDelete("/{id}", async (
     {
         return Results.NotFound();
     }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("no attestations") || ex.Message.Contains("data corruption"))
+    {
+        return Results.Problem(title: "Data integrity error", detail: ex.Message, statusCode: 500);
+    }
 })
 .WithName("DeleteRegister")
 .WithSummary("Delete register")
-.WithDescription("Deletes a register and all associated data.")
+.WithDescription("Deletes a register. Authorization is based on control record attestations. System registers cannot be deleted.")
 .Produces(StatusCodes.Status204NoContent)
 .Produces(StatusCodes.Status403Forbidden)
 .Produces(StatusCodes.Status404NotFound)
@@ -391,10 +401,10 @@ registersGroup.MapGet("/stats/count", async (RegisterManager manager) =>
 // Register Creation with Genesis Transactions (FR-REG-001A)
 // ===========================
 // Separate endpoint group for register creation workflow (initiate/finalize)
-// These endpoints allow anonymous access for walkthrough/testing purposes
+// Requires authenticated user with org admin role (CanManageRegisters policy)
 var registerCreationGroup = app.MapGroup("/api/registers")
     .WithTags("Register Creation")
-    .AllowAnonymous();
+    .RequireAuthorization("CanManageRegisters");
 
 // <summary>
 // Initiate register creation (Phase 1): Generate unsigned control record

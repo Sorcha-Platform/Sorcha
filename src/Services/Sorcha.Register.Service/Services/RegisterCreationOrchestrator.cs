@@ -84,9 +84,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         }
 
         _logger.LogInformation(
-            "Initiating register creation for name '{Name}' in tenant '{TenantId}' with {OwnerCount} owner(s)",
+            "Initiating register creation for name '{Name}' with {OwnerCount} owner(s)",
             request.Name,
-            request.TenantId,
             request.Owners.Count);
 
         // Use pre-determined register ID if provided, otherwise generate a new one
@@ -194,7 +193,6 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                 RegisterId = registerId,
                 Name = request.Name,
                 Description = request.Description,
-                TenantId = request.TenantId,
                 CreatedAt = createdAt,
                 Metadata = request.Metadata,
                 RegisterPolicy = request.Policy ?? RegisterPolicy.CreateDefault(),
@@ -206,7 +204,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             Nonce = nonce,
             AttestationHashes = attestationHashes,
             Advertise = request.Advertise,
-            DevMode = request.DevMode
+            DevMode = request.DevMode,
+            Purpose = request.Purpose
         };
 
         _pendingStore.Add(registerId, pending);
@@ -275,7 +274,6 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             RegisterId = pending.ControlRecord.RegisterId,
             Name = pending.ControlRecord.Name,
             Description = pending.ControlRecord.Description,
-            TenantId = pending.ControlRecord.TenantId,
             CreatedAt = pending.ControlRecord.CreatedAt,
             Metadata = pending.ControlRecord.Metadata,
             CryptoPolicy = CryptoPolicy.CreateDefault(),
@@ -368,7 +366,6 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             {
                 ["Type"] = "Genesis",
                 ["RegisterName"] = controlRecord.Name,
-                ["TenantId"] = controlRecord.TenantId,
                 ["SystemWalletAddress"] = signResult.WalletAddress
             }
         };
@@ -393,13 +390,13 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // Use the register ID from the pending registration (established during initiation)
         var register = await _registerManager.CreateRegisterAsync(
             controlRecord.Name,
-            controlRecord.TenantId,
             advertise: pending.Advertise,
             isFullReplica: true,
             registerId: pending.RegisterId,
             description: controlRecord.Description,
             devMode: pending.DevMode,
-            cancellationToken);
+            purpose: pending.Purpose,
+            cancellationToken: cancellationToken);
 
         _logger.LogInformation("Created register {RegisterId} in database after genesis success", register.Id);
 
