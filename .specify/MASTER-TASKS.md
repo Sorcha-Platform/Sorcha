@@ -100,6 +100,7 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-015 | Invitation ListAsync N+1 query — pre-load orgs or denormalize source DID | P2 | 2h | 📋 | GetSourceOrgDid fires synchronous query per record |
 | GAP-016 | Invitation GetSourceOrgDid fallback format — use consistent DID or null | P3 | 1h | 📋 | Currently returns `org:{guid}` which is not a valid DID |
 | GAP-017 | Invitation ListAsync direction parameter validation | P3 | 1h | 📋 | Unrecognised values silently default to "all" |
+| GAP-018 | Auto-register participant and auto-link wallet during wallet creation | P1 | 12h | 📋 | Wallet creation wizard does not create a Participant Identity record or link the wallet. ActionsHub rejects SubscribeToWallet because no participant/linked-wallet exists. Needs: auto self-register participant, auto wallet-link (skip challenge/verify for own wallet), refresh JWT with wallet_address claim. |
 
 ---
 

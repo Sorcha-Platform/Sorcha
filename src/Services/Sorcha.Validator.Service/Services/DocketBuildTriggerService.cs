@@ -172,7 +172,12 @@ public class DocketBuildTriggerService : BackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var poolPoller = scope.ServiceProvider.GetRequiredService<ITransactionPoolPoller>();
-        var validationEngine = scope.ServiceProvider.GetRequiredService<ValidationEngineService>();
+        var validationEngine = scope.ServiceProvider.GetService<ValidationEngineService>();
+        if (validationEngine is null)
+        {
+            _logger.LogDebug("ValidationEngineService not resolvable from scope — stranded transactions will be picked up by normal polling");
+            return;
+        }
 
         var totalPending = 0;
         foreach (var registerId in activeRegisters)
