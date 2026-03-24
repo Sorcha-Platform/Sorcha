@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
@@ -43,17 +44,29 @@ builder.AddRedisDistributedCache("redis");
 // Add OpenAPI services
 builder.Services.AddOpenApi();
 
-// Add in-memory storage (later: replace with EF Core + PostgreSQL)
-builder.Services.AddSingleton<IBlueprintStore, InMemoryBlueprintStore>();
+// Add storage — EF Core + PostgreSQL when configured, InMemory fallback otherwise
+var blueprintDbConn = builder.Configuration.GetConnectionString("BlueprintDb");
+if (!string.IsNullOrEmpty(blueprintDbConn))
+{
+    builder.Services.AddDbContextFactory<Sorcha.Blueprint.Service.Data.BlueprintDbContext>(options =>
+        options.UseNpgsql(blueprintDbConn));
+    builder.Services.AddSingleton<IBlueprintStore, Sorcha.Blueprint.Service.Storage.EfCoreBlueprintStore>();
+    builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>,
+        Sorcha.Blueprint.Service.Storage.EfCoreTemplateStore>();
+    Serilog.Log.Logger.Information("Blueprint Service using PostgreSQL for durable storage");
+}
+else
+{
+    builder.Services.AddSingleton<IBlueprintStore, InMemoryBlueprintStore>();
+    builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>>(
+        new Sorcha.Storage.InMemory.InMemoryDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>(t => t.Id));
+    Serilog.Log.Logger.Warning("Blueprint Service using in-memory storage — data will be lost on restart");
+}
 builder.Services.AddSingleton<IPublishedBlueprintStore, InMemoryPublishedBlueprintStore>();
 
 // Add Blueprint services
 builder.Services.AddScoped<IBlueprintService, BlueprintService>();
 builder.Services.AddScoped<IPublishService, PublishService>();
-
-// Add Template services
-builder.Services.AddSingleton<Sorcha.Storage.Abstractions.IDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>>(
-    new Sorcha.Storage.InMemory.InMemoryDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>(t => t.Id));
 builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Interfaces.IJsonEEvaluator, Sorcha.Blueprint.Engine.Implementation.JsonEEvaluator>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Templates.IBlueprintTemplateService, Sorcha.Blueprint.Service.Templates.BlueprintTemplateService>();
 
@@ -106,11 +119,17 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransac
 // Add consolidated service clients (Sprint 6)
 builder.Services.AddServiceClients(builder.Configuration);
 
-// Add Action storage (Sprint 4)
-builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IActionStore, Sorcha.Blueprint.Service.Storage.InMemoryActionStore>();
-
-// Add Instance storage (Sprint 6 - Orchestration)
-builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IInstanceStore, Sorcha.Blueprint.Service.Storage.InMemoryInstanceStore>();
+// Add Action storage — EF Core when configured, InMemory fallback
+if (!string.IsNullOrEmpty(blueprintDbConn))
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IActionStore, Sorcha.Blueprint.Service.Storage.EfCoreActionStore>();
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IInstanceStore, Sorcha.Blueprint.Service.Storage.EfCoreInstanceStore>();
+}
+else
+{
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IActionStore, Sorcha.Blueprint.Service.Storage.InMemoryActionStore>();
+    builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.IInstanceStore, Sorcha.Blueprint.Service.Storage.InMemoryInstanceStore>();
+}
 
 // Add Orchestration services (Sprint 6)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateReconstructionService,
@@ -250,6 +269,24 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 var logger = app.Logger;
+
+// Apply database migrations on startup (if PostgreSQL is configured)
+if (!string.IsNullOrEmpty(blueprintDbConn))
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<Sorcha.Blueprint.Service.Data.BlueprintDbContext>>();
+        using var dbContext = await dbContextFactory.CreateDbContextAsync();
+        logger.LogInformation("Applying Blueprint database migrations...");
+        await dbContext.Database.MigrateAsync();
+        logger.LogInformation("Blueprint database migrations applied successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to apply Blueprint database migrations — service will continue but durable storage may not work");
+    }
+}
 
 // Configure the HTTP request pipeline
 app.MapDefaultEndpoints();
