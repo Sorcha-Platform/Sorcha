@@ -231,7 +231,6 @@ public class WalletRegisterIntegrationTests
         {
             Id = registerId,
             Name = "Test Register",
-            TenantId = "tenant123",
             Status = Register.Models.Enums.RegisterStatus.Online
         };
 

@@ -201,7 +201,6 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
             {
                 Id = regId,
                 Name = "Test Register",
-                TenantId = "test-tenant",
                 Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
@@ -395,7 +394,6 @@ public class BlueprintServiceWebApplicationFactory : WebApplicationFactory<Progr
                 {
                     Id = "test-register",
                     Name = "Test Register",
-                    TenantId = "test-tenant",
                     Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
                 };
                 return CreateJsonResponse(response);

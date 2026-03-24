@@ -60,6 +60,11 @@ public class DocketBuildTriggerService : BackgroundService
         // is never applied (isGenesisBuild stays true for existing registers).
         await ReconcileGenesisStateAsync(stoppingToken);
 
+        // Drain any transactions stranded in the unverified pool during downtime.
+        // This ensures pending work is processed immediately after crash/restart
+        // rather than waiting for the next submission to trigger polling.
+        await ReconcileUnverifiedPoolAsync(stoppingToken);
+
         // Use time threshold as the check interval (or minimum of 1 second)
         var checkInterval = _config.TimeThreshold > TimeSpan.FromSeconds(1)
             ? _config.TimeThreshold
@@ -148,6 +153,64 @@ public class DocketBuildTriggerService : BackgroundService
                     "Failed to reconcile genesis state for register {RegisterId}, will detect on first build cycle",
                     registerId);
             }
+        }
+    }
+
+    /// <summary>
+    /// Drains any transactions stranded in the unverified pool during downtime.
+    /// For each monitored register, checks the pool count and triggers validation if pending.
+    /// </summary>
+    private async Task ReconcileUnverifiedPoolAsync(CancellationToken cancellationToken)
+    {
+        var activeRegisters = _registry.GetAll().ToList();
+        if (activeRegisters.Count == 0)
+            return;
+
+        _logger.LogInformation(
+            "Checking unverified pool for {Count} monitored registers after startup",
+            activeRegisters.Count);
+
+        using var scope = _scopeFactory.CreateScope();
+        var poolPoller = scope.ServiceProvider.GetRequiredService<ITransactionPoolPoller>();
+        var validationEngine = scope.ServiceProvider.GetService<ValidationEngineService>();
+
+        var totalPending = 0;
+        foreach (var registerId in activeRegisters)
+        {
+            try
+            {
+                var pendingCount = await poolPoller.GetUnverifiedCountAsync(registerId, cancellationToken);
+                if (pendingCount > 0)
+                {
+                    _logger.LogInformation(
+                        "Found {PendingCount} stranded transactions in unverified pool for register {RegisterId} — triggering validation",
+                        pendingCount, registerId);
+                    totalPending += (int)pendingCount;
+
+                    // Trigger immediate validation by processing the register
+                    if (validationEngine != null)
+                    {
+                        await validationEngine.ProcessRegisterAsync(registerId, cancellationToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to reconcile unverified pool for register {RegisterId} — will be picked up by normal polling",
+                    registerId);
+            }
+        }
+
+        if (totalPending > 0)
+        {
+            _logger.LogInformation(
+                "Startup reconciliation complete: processed {TotalPending} stranded transactions across {RegisterCount} registers",
+                totalPending, activeRegisters.Count);
+        }
+        else
+        {
+            _logger.LogDebug("Startup reconciliation complete: no stranded transactions found");
         }
     }
 
