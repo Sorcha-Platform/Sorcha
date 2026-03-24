@@ -75,4 +75,13 @@ public interface ICredentialApiService
     /// </summary>
     Task<CredentialOperationResult> RefreshCredentialAsync(
         string credentialId, string issuerWallet, string? newExpiryDuration = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Matches wallet credentials against action requirements.
+    /// Returns match results indicating which requirements are satisfied.
+    /// </summary>
+    Task<List<CredentialMatchResult>> MatchCredentialsAsync(
+        string walletAddress,
+        List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,
+        CancellationToken ct = default);
 }

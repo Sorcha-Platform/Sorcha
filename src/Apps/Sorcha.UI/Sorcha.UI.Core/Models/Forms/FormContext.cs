@@ -52,6 +52,13 @@ public class FormContext
     public List<CredentialPresentationInfo> CredentialPresentations { get; } = [];
 
     /// <summary>
+    /// Whether all credential gate requirements have been satisfied.
+    /// Set by CredentialGatePanel when user selects credentials for all requirements.
+    /// True when there are no credential requirements or all are met.
+    /// </summary>
+    public bool CredentialGateSatisfied { get; set; } = true;
+
+    /// <summary>
     /// Uploaded file attachments
     /// </summary>
     public List<FileAttachmentInfo> FileAttachments { get; } = [];

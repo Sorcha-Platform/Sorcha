@@ -123,6 +123,7 @@
 
         // Credential requirements
         _credentialRequirements = Action.CredentialRequirements?.ToList() ?? [];
+        _formContext.CredentialGateSatisfied = !_credentialRequirements.Any();
 
         // Calculations
         _hasCalculations = Action.Calculations?.Count > 0;
@@ -212,6 +213,14 @@
 
         if (_formContext.HasErrors)
         {
+            StateHasChanged();
+            return;
+        }
+
+        // Block submission if credential requirements are not satisfied
+        if (!_formContext.CredentialGateSatisfied && _credentialRequirements.Any())
+        {
+            _formContext.SetErrors("credentials", ["All credential requirements must be satisfied before submitting."]);
             StateHasChanged();
             return;
         }
