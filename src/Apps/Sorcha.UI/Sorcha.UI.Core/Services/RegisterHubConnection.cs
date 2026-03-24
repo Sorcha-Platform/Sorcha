@@ -17,7 +17,6 @@ public class RegisterHubConnection : IAsyncDisposable
     private HubConnection? _hubConnection;
     private ConnectionState _connectionState = new();
     private readonly HashSet<string> _subscribedRegisters = [];
-    private string? _subscribedTenant;
     private CancellationTokenSource? _retryCts;
     private bool _disposed;
 
@@ -223,7 +222,7 @@ public class RegisterHubConnection : IAsyncDisposable
 
     /// <summary>
     /// Tears down the current connection and establishes a fresh one,
-    /// re-subscribing to all previously active registers and tenant.
+    /// re-subscribing to all previously active registers.
     /// </summary>
     public async Task ReconnectAsync(CancellationToken cancellationToken = default)
     {
@@ -282,51 +281,6 @@ public class RegisterHubConnection : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Subscribes to tenant-wide events.
-    /// </summary>
-    public async Task SubscribeToTenantAsync(string tenantId, CancellationToken cancellationToken = default)
-    {
-        if (_hubConnection?.State != HubConnectionState.Connected)
-        {
-            _logger.LogWarning("Cannot subscribe to tenant {TenantId}: not connected", tenantId);
-            return;
-        }
-
-        try
-        {
-            await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId, cancellationToken);
-            _subscribedTenant = tenantId;
-            _logger.LogDebug("Subscribed to tenant {TenantId}", tenantId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to subscribe to tenant {TenantId}", tenantId);
-        }
-    }
-
-    /// <summary>
-    /// Unsubscribes from tenant-wide events.
-    /// </summary>
-    public async Task UnsubscribeFromTenantAsync(string tenantId, CancellationToken cancellationToken = default)
-    {
-        if (_hubConnection?.State != HubConnectionState.Connected)
-        {
-            return;
-        }
-
-        try
-        {
-            await _hubConnection.InvokeAsync("UnsubscribeFromTenant", tenantId, cancellationToken);
-            _subscribedTenant = null;
-            _logger.LogDebug("Unsubscribed from tenant {TenantId}", tenantId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to unsubscribe from tenant {TenantId}", tenantId);
-        }
-    }
-
     private async Task ResubscribeAsync()
     {
         // Re-subscribe to all previously subscribed registers
@@ -340,20 +294,6 @@ public class RegisterHubConnection : IAsyncDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to re-subscribe to register {RegisterId}", registerId);
-            }
-        }
-
-        // Re-subscribe to tenant if applicable
-        if (!string.IsNullOrEmpty(_subscribedTenant))
-        {
-            try
-            {
-                await _hubConnection!.InvokeAsync("SubscribeToTenant", _subscribedTenant);
-                _logger.LogDebug("Re-subscribed to tenant {TenantId}", _subscribedTenant);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to re-subscribe to tenant {TenantId}", _subscribedTenant);
             }
         }
     }
