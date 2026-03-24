@@ -519,8 +519,10 @@ public class ActionExecutionService : IActionExecutionService
         transaction.SenderWallet = request.SenderWallet;
         transaction.Signature = signResult.Signature;
 
-        // 12. Submit to Validator Service (mempool → docket → Register)
-        var submission = transaction.ToTransactionSubmission(signResult);
+        // 12. Fetch next sequence number for replay protection (SEC-AUDIT 4.2) and submit
+        var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
+            instance.RegisterId, request.SenderWallet, cancellationToken);
+        var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
         var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
 
         if (!validatorResult.Success)

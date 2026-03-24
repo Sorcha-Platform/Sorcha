@@ -246,6 +246,11 @@ public class ParticipantPublishingService : IParticipantPublishingService
 
         // Build and submit
         var payload = JsonSerializer.Deserialize<JsonElement>(payloadBytes);
+
+        // Fetch next sequence number for replay protection (SEC-AUDIT 4.2)
+        var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
+            registerId, signerWalletAddress, cancellationToken);
+
         var submission = new TransactionSubmission
         {
             TransactionId = txId,
@@ -254,13 +259,15 @@ public class ParticipantPublishingService : IParticipantPublishingService
             ActionId = null,
             Payload = payload,
             PayloadHash = payloadHash,
+            SequenceNumber = nextSeqNum,
             Signatures =
             [
                 new SignatureInfo
                 {
                     PublicKey = Base64Url.EncodeToString(signResult.PublicKey),
                     SignatureValue = Base64Url.EncodeToString(signResult.Signature),
-                    Algorithm = signResult.Algorithm
+                    Algorithm = signResult.Algorithm,
+                    SignedBy = signerWalletAddress
                 }
             ],
             CreatedAt = DateTimeOffset.UtcNow,
@@ -273,8 +280,8 @@ public class ParticipantPublishingService : IParticipantPublishingService
             }
         };
 
-        _logger.LogDebug("Submitting participant TX {TxId} to validator (v{Version})",
-            txId, record.Version);
+        _logger.LogDebug("Submitting participant TX {TxId} to validator (v{Version}, seq={SeqNum})",
+            txId, record.Version, nextSeqNum);
 
         var result = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
 

@@ -198,7 +198,9 @@ public sealed class EncryptionBackgroundService : BackgroundService
             transaction.SenderWallet = workItem.SenderWallet;
             transaction.Signature = signResult.Signature;
 
-            var submission = transaction.ToTransactionSubmission(signResult);
+            var nextSeqNum = await validatorClient.GetNextSequenceNumberAsync(
+                workItem.RegisterId, workItem.SenderWallet, ct);
+            var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
             var validatorResult = await validatorClient.SubmitTransactionAsync(submission, ct);
 
             if (!validatorResult.Success)

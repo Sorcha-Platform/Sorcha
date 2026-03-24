@@ -345,8 +345,9 @@ public class BuiltTransaction
     /// Maps BuiltTransaction fields to the Validator's expected format per data-model.md.
     /// </summary>
     /// <param name="signResult">The wallet sign result containing signature and public key bytes</param>
+    /// <param name="sequenceNumber">Per-sender monotonic sequence number for replay protection (SEC-AUDIT 4.2)</param>
     /// <returns>An TransactionSubmission ready for Validator Service submission</returns>
-    public TransactionSubmission ToTransactionSubmission(Sorcha.ServiceClients.Wallet.WalletSignResult signResult)
+    public TransactionSubmission ToTransactionSubmission(Sorcha.ServiceClients.Wallet.WalletSignResult signResult, long sequenceNumber = 0)
     {
         var payloadElement = JsonSerializer.Deserialize<JsonElement>(TransactionData);
 
@@ -364,11 +365,13 @@ public class BuiltTransaction
                 {
                     PublicKey = Base64Url.EncodeToString(signResult.PublicKey),
                     SignatureValue = Base64Url.EncodeToString(signResult.Signature),
-                    Algorithm = signResult.Algorithm
+                    Algorithm = signResult.Algorithm,
+                    SignedBy = SenderWallet
                 }
             ],
             CreatedAt = DateTimeOffset.UtcNow,
             PreviousTransactionId = Metadata.GetValueOrDefault("previousTxId")?.ToString(),
+            SequenceNumber = sequenceNumber,
             Metadata = new Dictionary<string, string>
             {
                 ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
