@@ -172,7 +172,7 @@ public class DocketBuildTriggerService : BackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var poolPoller = scope.ServiceProvider.GetRequiredService<ITransactionPoolPoller>();
-        var validationEngine = scope.ServiceProvider.GetService<ValidationEngineService>();
+        var validationEngine = scope.ServiceProvider.GetRequiredService<ValidationEngineService>();
 
         var totalPending = 0;
         foreach (var registerId in activeRegisters)
@@ -188,10 +188,7 @@ public class DocketBuildTriggerService : BackgroundService
                     totalPending += (int)pendingCount;
 
                     // Trigger immediate validation by processing the register
-                    if (validationEngine != null)
-                    {
-                        await validationEngine.ProcessRegisterAsync(registerId, cancellationToken);
-                    }
+                    await validationEngine.ProcessRegisterAsync(registerId, cancellationToken);
                 }
             }
             catch (Exception ex)

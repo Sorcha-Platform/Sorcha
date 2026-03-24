@@ -62,6 +62,8 @@ else
         new Sorcha.Storage.InMemory.InMemoryDocumentStore<Sorcha.Blueprint.Models.BlueprintTemplate, string>(t => t.Id));
     Serilog.Log.Logger.Warning("Blueprint Service using in-memory storage — data will be lost on restart");
 }
+// Published blueprints: InMemory for now — register is the source of truth,
+// so published data is reconstructable. Redis cache (068 US3) deferred to follow-up.
 builder.Services.AddSingleton<IPublishedBlueprintStore, InMemoryPublishedBlueprintStore>();
 
 // Add Blueprint services
