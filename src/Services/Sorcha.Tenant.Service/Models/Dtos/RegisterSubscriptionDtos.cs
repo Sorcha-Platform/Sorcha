@@ -15,6 +15,19 @@ public record SubscribeRequest
     /// </summary>
     [JsonPropertyName("register_id")]
     public required string RegisterId { get; init; }
+
+    /// <summary>
+    /// Optional human-readable register name (cached on the subscription).
+    /// </summary>
+    [JsonPropertyName("register_name")]
+    public string? RegisterName { get; init; }
+
+    /// <summary>
+    /// Subscription type: "Owner" or "Public" (default). Owner subscriptions are
+    /// immediately Active; Public subscriptions start as Pending.
+    /// </summary>
+    [JsonPropertyName("subscription_type")]
+    public string? SubscriptionType { get; init; }
 }
 
 /// <summary>

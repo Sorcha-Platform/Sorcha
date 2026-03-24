@@ -433,11 +433,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // It will be written to Register Service database after docket creation
         // Validator Service handles the write after successful docket build
 
-        // TODO(T025): After UI register creation, the UI should call
-        // POST /api/organizations/{orgId}/register-subscriptions to create an Owner
-        // subscription via the Tenant Service. This requires the RegisterSubscription
-        // UI HTTP client (T028 in US5). Until then, the UI must manually subscribe
-        // after register creation.
+        // Owner subscription is created by the UI's CreateRegisterWizard after finalization
+        // via POST /api/organizations/{orgId}/register-subscriptions with subscription_type=Owner.
 
         return new FinalizeRegisterCreationResponse
         {

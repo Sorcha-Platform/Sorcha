@@ -73,6 +73,37 @@ public class RegisterSubscriptionService : IRegisterSubscriptionService
     }
 
     /// <inheritdoc />
+    public async Task<RegisterSubscriptionDto?> CreateOwnerSubscriptionAsync(
+        Guid orgId, string registerId, string? registerName, CancellationToken ct = default)
+    {
+        try
+        {
+            var payload = new { register_id = registerId, register_name = registerName, subscription_type = "Owner" };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/organizations/{Uri.EscapeDataString(orgId.ToString())}/register-subscriptions",
+                payload,
+                JsonDefaults.Api,
+                ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "Failed to create owner subscription for register {RegisterId}: {StatusCode} - {Error}",
+                    registerId, response.StatusCode, error);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterSubscriptionDto>(JsonDefaults.Api, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating owner subscription for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<bool> UnsubscribeAsync(Guid orgId, string registerId, CancellationToken ct = default)
     {
         try
