@@ -39,8 +39,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_AllChecksPassWithWarnings_IsAmber()
     {
-        var vm = AllPassNoWarnings();
-        vm.Warnings = [new VerificationWarning("WARN001", "Minor issue")];
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = true,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [new VerificationWarning("WARN001", "Minor issue")],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Amber);
     }
@@ -48,8 +55,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_SignatureInvalid_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -57,8 +71,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_IssuerNotTrusted_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.IssuerTrusted = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = true,
+            IssuerTrusted = false,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -66,8 +87,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_Revoked_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.NotRevoked = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = true,
+            IssuerTrusted = true,
+            NotRevoked = false,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -75,8 +103,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_Expired_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.NotExpired = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = true,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = false,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -84,8 +119,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_RequiredClaimsMissing_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.RequiredClaimsPresent = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = true,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = false,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -93,9 +135,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void EscalationLevel_MultipleFailures_IsRed()
     {
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
-        vm.IssuerTrusted = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = false,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -104,9 +152,15 @@ public class VerificationResultViewModelTests
     public void EscalationLevel_FailureWithWarnings_IsRed()
     {
         // Failure takes precedence over warnings → still Red
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
-        vm.Warnings = [new VerificationWarning("WARN001", "Minor issue")];
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [new VerificationWarning("WARN001", "Minor issue")],
+        };
 
         vm.EscalationLevel.Should().Be(TrustEscalation.Red);
     }
@@ -128,8 +182,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void PassedCheckCount_OneFailure_Is4()
     {
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = true,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.PassedCheckCount.Should().Be(4);
     }
@@ -137,9 +198,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void PassedCheckCount_TwoFailures_Is3()
     {
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
-        vm.NotExpired = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = true,
+            NotRevoked = true,
+            NotExpired = false,
+            RequiredClaimsPresent = true,
+            Warnings = [],
+        };
 
         vm.PassedCheckCount.Should().Be(3);
     }
@@ -147,12 +214,15 @@ public class VerificationResultViewModelTests
     [Fact]
     public void PassedCheckCount_AllFail_Is0()
     {
-        var vm = AllPassNoWarnings();
-        vm.SignatureValid = false;
-        vm.IssuerTrusted = false;
-        vm.NotRevoked = false;
-        vm.NotExpired = false;
-        vm.RequiredClaimsPresent = false;
+        var vm = new VerificationResultViewModel
+        {
+            SignatureValid = false,
+            IssuerTrusted = false,
+            NotRevoked = false,
+            NotExpired = false,
+            RequiredClaimsPresent = false,
+            Warnings = [],
+        };
 
         vm.PassedCheckCount.Should().Be(0);
     }

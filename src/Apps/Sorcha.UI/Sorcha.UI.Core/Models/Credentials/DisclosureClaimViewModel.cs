@@ -44,7 +44,12 @@ public class DisclosureClaimViewModel
     /// </summary>
     /// <param name="allClaims">All claims present in the credential.</param>
     /// <param name="requiredClaims">Claims the verifier mandates.</param>
-    /// <param name="disclosable">Claims the credential marks as selectively disclosable.</param>
+    /// <param name="disclosable">
+    /// Claims the credential marks as selectively disclosable.
+    /// Retained for signature compatibility — the disclosable set describes credential capabilities,
+    /// not verifier request intent. Categorisation is driven by requiredClaims and optionalClaims
+    /// from the verifier's request.
+    /// </param>
     /// <param name="optionalClaims">Claims the verifier requests but permits withholding.</param>
     /// <returns>Ordered list of <see cref="DisclosureClaimViewModel"/>.</returns>
     public static List<DisclosureClaimViewModel> CategoriseClaims(

@@ -33,38 +33,38 @@ public class VerificationResultViewModel
     // ── Five core verification checks ────────────────────────────────────────
 
     /// <summary>Whether the credential's cryptographic signature is valid.</summary>
-    public required bool SignatureValid { get; set; }
+    public required bool SignatureValid { get; init; }
 
     /// <summary>Whether the issuer DID is trusted by this organisation.</summary>
-    public required bool IssuerTrusted { get; set; }
+    public required bool IssuerTrusted { get; init; }
 
     /// <summary>Whether the credential has not been revoked.</summary>
-    public required bool NotRevoked { get; set; }
+    public required bool NotRevoked { get; init; }
 
     /// <summary>Whether the credential has not expired.</summary>
-    public required bool NotExpired { get; set; }
+    public required bool NotExpired { get; init; }
 
     /// <summary>Whether all required claims are present in the presentation.</summary>
-    public required bool RequiredClaimsPresent { get; set; }
+    public required bool RequiredClaimsPresent { get; init; }
 
     // ── Warnings ─────────────────────────────────────────────────────────────
 
     /// <summary>Non-critical issues found during verification.</summary>
-    public required List<VerificationWarning> Warnings { get; set; }
+    public required List<VerificationWarning> Warnings { get; init; }
 
     // ── Display properties ────────────────────────────────────────────────────
 
     /// <summary>Display name of the credential issuer.</summary>
-    public string? IssuerName { get; set; }
+    public string? IssuerName { get; init; }
 
     /// <summary>Human-readable credential type label.</summary>
-    public string? CredentialType { get; set; }
+    public string? CredentialType { get; init; }
 
     /// <summary>When the credential expires, if applicable.</summary>
-    public DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; init; }
 
     /// <summary>Claims that were disclosed in this presentation.</summary>
-    public Dictionary<string, object>? DisclosedClaims { get; set; }
+    public Dictionary<string, object>? DisclosedClaims { get; init; }
 
     /// <summary>Number of required claims specified by the verifier.</summary>
     public int RequiredClaimCount { get; init; }
