@@ -24,7 +24,7 @@ public class OrganizationContextTests
             OrganizationName = "Acme Corporation",
             UserId = userId,
             UserEmail = "admin@acme.com",
-            Roles = ["Administrator", "Member"],
+            Roles = ["Administrator", "Consumer"],
             IsServicePrincipal = false,
             IsPlatformUser = false,
             ServiceName = null
@@ -35,7 +35,7 @@ public class OrganizationContextTests
         context.OrganizationName.Should().Be("Acme Corporation");
         context.UserId.Should().Be(userId);
         context.UserEmail.Should().Be("admin@acme.com");
-        context.Roles.Should().BeEquivalentTo(["Administrator", "Member"]);
+        context.Roles.Should().BeEquivalentTo(["Administrator", "Consumer"]);
         context.IsServicePrincipal.Should().BeFalse();
         context.IsPlatformUser.Should().BeFalse();
         context.ServiceName.Should().BeNull();

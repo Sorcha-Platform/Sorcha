@@ -289,7 +289,7 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
     public HttpClient CreateMemberClient()
     {
         var client = CreateClient();
-        client.DefaultRequestHeaders.Add("X-Test-Role", "Member");
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Consumer");
         client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.MemberUserId.ToString());
         client.DefaultRequestHeaders.Add("X-Test-Organization-Id", TestDataSeeder.TestOrganizationId.ToString());
         return client;

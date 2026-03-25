@@ -953,9 +953,9 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
         // passwords and can get tokens), then add them to the council org via admin API.
         var staffUsers = new[]
         {
-            (Email: IdDeptEmail, DisplayName: "ID Department", TokenKey: "id-dept", Roles: new[] { "Member" }),
-            (Email: ServiceDeptEmail, DisplayName: "Service Department", TokenKey: "service-dept", Roles: new[] { "Member" }),
-            (Email: ReturnDeptEmail, DisplayName: "Fulfilment Department", TokenKey: "return-dept", Roles: new[] { "Member" }),
+            (Email: IdDeptEmail, DisplayName: "ID Department", TokenKey: "id-dept", Roles: new[] { "Consumer" }),
+            (Email: ServiceDeptEmail, DisplayName: "Service Department", TokenKey: "service-dept", Roles: new[] { "Consumer" }),
+            (Email: ReturnDeptEmail, DisplayName: "Fulfilment Department", TokenKey: "return-dept", Roles: new[] { "Consumer" }),
         };
 
         // Phase 1: Register as PlatformUsers via public org

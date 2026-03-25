@@ -108,7 +108,7 @@ public class AuthenticationTests
     {
         var principal = CreatePrincipal(
             new Claim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeUser),
-            new Claim(ClaimTypes.Role, "Member"));
+            new Claim(ClaimTypes.Role, "Consumer"));
         var result = await _authorizationService.AuthorizeAsync(principal, "CanValidateChains");
         result.Succeeded.Should().BeFalse();
     }
@@ -176,7 +176,7 @@ public class AuthenticationTests
     public async Task RequireAdministrator_WithMemberRole_Fails()
     {
         var principal = CreatePrincipal(
-            new Claim(ClaimTypes.Role, "Member"));
+            new Claim(ClaimTypes.Role, "Consumer"));
         var result = await _authorizationService.AuthorizeAsync(principal, "RequireAdministrator");
         result.Succeeded.Should().BeFalse();
     }

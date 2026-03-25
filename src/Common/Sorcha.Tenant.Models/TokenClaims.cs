@@ -106,7 +106,7 @@ public class TokenClaims
     public required string TokenType { get; init; }
 
     /// <summary>
-    /// User roles within organization (e.g., "Administrator", "Auditor", "Member").
+    /// User roles within organization (e.g., "Administrator", "Auditor", "Consumer").
     /// Empty array for public identities.
     /// Custom claim: "roles".
     /// </summary>
@@ -182,7 +182,7 @@ public class TokenClaims
     {
         public const string Administrator = "Administrator";
         public const string Auditor = "Auditor";
-        public const string Member = "Member";
+        public const string Consumer = "Consumer";
     }
 
 }
