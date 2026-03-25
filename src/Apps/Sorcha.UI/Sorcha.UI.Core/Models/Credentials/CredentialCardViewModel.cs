@@ -23,6 +23,18 @@ public class CredentialCardViewModel
     public CredentialDisplayViewModel DisplayConfig { get; set; } = new();
     public List<string> AvailableActions { get; set; } = new();
 
+    /// <summary>Claim names that may be selectively disclosed during presentation.</summary>
+    public List<string> DisclosableClaims { get; set; } = [];
+
+    /// <summary>Whether the credential is awaiting acceptance by the holder.</summary>
+    public bool IsPending { get; set; }
+
+    /// <summary>Name of the blueprint that produced this credential, if applicable.</summary>
+    public string? OriginatingBlueprintName { get; set; }
+
+    /// <summary>Display name of the issuing organisation.</summary>
+    public string? IssuerOrgName { get; set; }
+
     /// <summary>
     /// Whether the credential expires within 30 days.
     /// </summary>
