@@ -13,4 +13,6 @@ public record OrganizationDashboardViewModel
     public int PublishedParticipantCount { get; init; }
     public int ActiveUserCount { get; init; }
     public int ActiveParticipantCount { get; init; }
+    public int InvitedUserCount { get; init; }
+    public int UnverifiedUserCount { get; init; }
 }

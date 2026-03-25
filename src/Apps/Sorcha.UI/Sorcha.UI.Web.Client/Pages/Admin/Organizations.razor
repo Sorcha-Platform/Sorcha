@@ -2,8 +2,9 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @page "/admin/organizations"
+@page "/admin/organizations/{OrgId:guid}"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
-@attribute [Authorize(Roles = "Administrator,OrganizationAdmin")]
+@attribute [Authorize(Roles = "Administrator,OrganizationAdmin,SystemAdmin")]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -12,52 +13,71 @@
 
 @inject IOrganizationAdminService OrganizationService
 
-<PageTitle>Organizations - Sorcha Platform</PageTitle>
+<PageTitle>Organisations - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
     <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2 px-0" />
-    <MudText Typo="Typo.h4" Class="mb-2">
-        <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
-        Organizations
-    </MudText>
-    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
-        Manage platform organizations, users, and configuration
-    </MudText>
 
-    @if (_selectedOrganization != null)
+    @if (_isSystemAdmin)
     {
-        <OrganizationDashboard Organization="_selectedOrganization"
-                               IsSystemAdmin="_isSystemAdmin"
-                               CurrentUserId="_currentUserId"
-                               OnBack="OnBackToOrganizations" />
-    }
-    else if (_isSystemAdmin)
-    {
-        <OrganizationList OnOrganizationSelected="OnOrganizationSelected" />
+        <MudText Typo="Typo.h4" Class="mb-2" data-testid="page-title">
+            <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+            Organisations
+        </MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+            Manage platform organisations, users, and configuration
+        </MudText>
+
+        <OrgSelectorPanel SelectedOrg="_selectedOrganization"
+                          OnOrganizationSelected="OnOrganizationSelected"
+                          IsExpanded="@(_selectedOrganization == null)" />
+
+        @if (_selectedOrganization != null)
+        {
+            <OrganizationDashboard Organization="_selectedOrganization"
+                                   IsSystemAdmin="true"
+                                   CurrentUserId="_currentUserId"
+                                   OnBack="OnBackToOrganizations" />
+        }
     }
     else
     {
-        @* Org admin without system admin — loading their org *@
+        @* Org Admin: Direct org dashboard *@
         @if (_loadingOrgAdmin)
         {
             <MudProgressCircular Indeterminate="true" />
-            <MudText Class="mt-2">Loading your organization...</MudText>
+            <MudText Class="mt-2">Loading your organisation...</MudText>
         }
         else if (_orgAdminError != null)
         {
-            <MudAlert Severity="Severity.Error">@_orgAdminError</MudAlert>
+            <MudAlert Severity="Severity.Error" data-testid="org-error">@_orgAdminError</MudAlert>
+        }
+        else if (_selectedOrganization != null)
+        {
+            <MudText Typo="Typo.h4" Class="mb-4" data-testid="page-title">
+                <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+                @_selectedOrganization.Name
+            </MudText>
+
+            <OrganizationDashboard Organization="_selectedOrganization"
+                                   IsSystemAdmin="false"
+                                   CurrentUserId="_currentUserId"
+                                   OnBack="@(() => {})" />
         }
     }
 </MudContainer>
 
 @code {
+    [Parameter]
+    public Guid? OrgId { get; set; }
+
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationState { get; set; }
 
     private readonly List<BreadcrumbItem> _breadcrumbs =
     [
         new("Admin", href: "/app/admin/health"),
-        new("Organizations", href: null, disabled: true)
+        new("Organisations", href: null, disabled: true)
     ];
 
     private OrganizationDto? _selectedOrganization;
@@ -82,12 +102,40 @@
             {
                 _currentUserId = userId;
             }
+        }
+    }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        // Deep-link: if OrgId is set, load that org
+        if (OrgId.HasValue)
+        {
+            await LoadOrganizationByIdAsync(OrgId.Value);
+        }
+        else if (!_isSystemAdmin && _selectedOrganization == null)
+        {
             // Org admin without system admin: auto-load their organization
-            if (!_isSystemAdmin)
+            if (AuthenticationState != null)
             {
+                var authState = await AuthenticationState;
                 await LoadOrgAdminOrganizationAsync(authState);
             }
+        }
+    }
+
+    private async Task LoadOrganizationByIdAsync(Guid orgId)
+    {
+        try
+        {
+            _selectedOrganization = await OrganizationService.GetOrganizationAsync(orgId);
+            if (_selectedOrganization == null)
+            {
+                _orgAdminError = "Organisation not found.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _orgAdminError = $"Failed to load organisation: {ex.Message}";
         }
     }
 
@@ -104,17 +152,17 @@
                 _selectedOrganization = await OrganizationService.GetOrganizationAsync(orgId);
                 if (_selectedOrganization == null)
                 {
-                    _orgAdminError = "Your organization could not be found.";
+                    _orgAdminError = "Your organisation could not be found.";
                 }
             }
             else
             {
-                _orgAdminError = "No organization claim found in your token. Please contact your administrator.";
+                _orgAdminError = "No organisation claim found in your token. Please contact your administrator.";
             }
         }
         catch (Exception ex)
         {
-            _orgAdminError = $"Failed to load organization: {ex.Message}";
+            _orgAdminError = $"Failed to load organisation: {ex.Message}";
         }
         finally
         {
@@ -131,4 +179,11 @@
     {
         _selectedOrganization = null;
     }
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "Active" => Color.Success,
+        "Suspended" => Color.Warning,
+        _ => Color.Default
+    };
 }

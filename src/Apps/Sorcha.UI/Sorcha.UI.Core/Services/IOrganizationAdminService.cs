@@ -82,15 +82,23 @@ public interface IOrganizationAdminService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists users in an organization.
+    /// Lists users in an organization with optional filtering.
     /// </summary>
-    /// <param name="organizationId">Organization ID.</param>
-    /// <param name="includeInactive">Include inactive users.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of users.</returns>
     Task<UserListResult> GetOrganizationUsersAsync(
         Guid organizationId,
         bool includeInactive = false,
+        bool? emailVerified = null,
+        string? provisionedVia = null,
+        bool includePendingInvitations = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Administratively marks a user's email as verified.
+    /// </summary>
+    /// <returns>True if verified, false if already verified.</returns>
+    Task<bool> VerifyEmailAsync(
+        Guid organizationId,
+        Guid userId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -221,6 +229,23 @@ public record UserDto
     public string Status { get; init; } = "Active";
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; init; }
+    public bool EmailVerified { get; init; }
+    public DateTimeOffset? EmailVerifiedAt { get; init; }
+    public string ProvisionedVia { get; init; } = string.Empty;
+    public Guid? InvitedByUserId { get; init; }
+    public bool ProfileCompleted { get; init; }
+    public string? InvitationStatus { get; init; }
+
+    /// <summary>
+    /// Derived composite status for UI display.
+    /// </summary>
+    public string CompositeStatus => Status switch
+    {
+        "Active" when !EmailVerified => "Unverified",
+        "Active" => "Active",
+        "Suspended" => "Suspended",
+        _ => Status
+    };
 }
 
 /// <summary>
@@ -247,8 +272,26 @@ public record UpdateUserDto
 /// <summary>
 /// User list result.
 /// </summary>
+/// <summary>
+/// Pending invitation DTO for users who have not yet accepted.
+/// </summary>
+public record PendingInvitationDto
+{
+    public string Email { get; init; } = string.Empty;
+    public string AssignedRole { get; init; } = string.Empty;
+    public string InvitationStatus { get; init; } = string.Empty;
+    public Guid InvitedByUserId { get; init; }
+    public DateTimeOffset ExpiresAt { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>
+/// User list result with optional pending invitations.
+/// </summary>
 public record UserListResult
 {
     public IReadOnlyList<UserDto> Users { get; init; } = [];
     public int TotalCount { get; init; }
+    public IReadOnlyList<PendingInvitationDto> PendingInvitations { get; init; } = [];
+    public int PendingInvitationCount { get; init; }
 }

@@ -1,0 +1,179 @@
+# API Contract Changes: Unified Organisation Management
+# Branch: 069-unified-org-management
+# These are CHANGES to existing endpoints, not a full OpenAPI spec
+
+# =============================================================================
+# MODIFIED: Enhanced user list with filtering
+# =============================================================================
+GET /api/organizations/{orgId}/users:
+  summary: List organisation users with enhanced filtering
+  parameters:
+    - name: orgId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: includeInactive
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: Include suspended/deleted users
+    # NEW PARAMETERS:
+    - name: emailVerified
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Filter by email verification status. Null = no filter.
+    - name: provisionedVia
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey]
+      description: Filter by provisioning method
+    - name: includePendingInvitations
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: Include pending OrgInvitation records (users not yet accepted)
+  responses:
+    200:
+      description: Enhanced user list with optional pending invitations
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              users:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResponse'
+              totalCount:
+                type: integer
+              pendingInvitations:
+                type: array
+                description: Only populated when includePendingInvitations=true
+                items:
+                  $ref: '#/components/schemas/PendingInvitationResponse'
+              pendingInvitationCount:
+                type: integer
+
+# =============================================================================
+# NEW: Admin email verification override
+# =============================================================================
+POST /api/organizations/{orgId}/users/{userId}/verify-email:
+  summary: Admin override to mark user email as verified
+  description: >
+    Allows an organisation administrator to mark a user's email as verified
+    without requiring the email verification loop. Sets PlatformUser.EmailVerified=true,
+    PlatformUser.EmailVerifiedAt=now, clears verification token. Records audit event.
+  parameters:
+    - name: orgId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  security:
+    - bearerAuth: []
+  x-authorization: RequireAdministrator
+  responses:
+    204:
+      description: Email verification override successful
+    400:
+      description: User email already verified
+    403:
+      description: Insufficient permissions or user not in organisation
+    404:
+      description: User not found
+
+# =============================================================================
+# COMPONENT SCHEMAS (new/enhanced)
+# =============================================================================
+components:
+  schemas:
+    UserResponse:
+      description: Enhanced user response with verification and invitation status
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        displayName:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [SystemAdmin, Administrator, Designer, Auditor, Member]
+        status:
+          type: string
+          enum: [Active, Suspended, Deleted]
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        # NEW FIELDS:
+        emailVerified:
+          type: boolean
+          description: Whether user has verified their email (from PlatformUser)
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        provisionedVia:
+          type: string
+          enum: [Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey]
+        invitedByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        profileCompleted:
+          type: boolean
+        invitationStatus:
+          type: string
+          enum: [Pending, Accepted, Expired, Revoked]
+          nullable: true
+          description: Status of the OrgInvitation for this user, if any
+
+    PendingInvitationResponse:
+      description: An invitation that has not yet been accepted (no UserIdentity exists)
+      type: object
+      properties:
+        email:
+          type: string
+        assignedRole:
+          type: string
+          enum: [Administrator, Designer, Auditor, Member]
+        invitationStatus:
+          type: string
+          enum: [Pending, Expired]
+        invitedByUserId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time

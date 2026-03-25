@@ -182,6 +182,17 @@ public static class OrganizationEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden);
 
+        group.MapPost("/{organizationId:guid}/users/{userId:guid}/verify-email", AdminVerifyEmail)
+            .WithName("AdminVerifyEmail")
+            .WithSummary("Admin override to mark user email as verified")
+            .WithDescription("Allows an organisation administrator to mark a user's email as verified without requiring the email verification loop. Sets EmailVerified=true, clears verification token, records audit event.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         group.MapPut("/{organizationId:guid}/users/{userId:guid}/role", ChangeUserRole)
             .WithName("ChangeUserRole")
             .WithSummary("Change a user's role")
@@ -389,6 +400,37 @@ public static class OrganizationEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok();
+    }
+
+    private static async Task<Results<NoContent, BadRequest<ProblemDetails>, NotFound>> AdminVerifyEmail(
+        Guid organizationId,
+        Guid userId,
+        IOrganizationService organizationService,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var adminUserId = GetUserId(user);
+            var wasVerified = await organizationService.AdminVerifyEmailAsync(
+                organizationId, userId, adminUserId, cancellationToken);
+
+            if (!wasVerified)
+            {
+                return TypedResults.BadRequest(new ProblemDetails
+                {
+                    Title = "Already Verified",
+                    Detail = "User's email is already verified.",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+
+            return TypedResults.NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return TypedResults.NotFound();
+        }
     }
 
     private static async Task<Results<Ok, ValidationProblem, NotFound>> ChangeUserRole(
@@ -622,10 +664,14 @@ public static class OrganizationEndpoints
         Guid organizationId,
         IOrganizationService organizationService,
         bool includeInactive = false,
+        bool? emailVerified = null,
+        string? provisionedVia = null,
+        bool includePendingInvitations = false,
         CancellationToken cancellationToken = default)
     {
         var response = await organizationService.GetOrganizationUsersAsync(
-            organizationId, includeInactive, cancellationToken);
+            organizationId, includeInactive, emailVerified, provisionedVia,
+            includePendingInvitations, cancellationToken);
         return TypedResults.Ok(response);
     }
 

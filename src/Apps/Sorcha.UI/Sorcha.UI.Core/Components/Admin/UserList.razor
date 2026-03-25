@@ -9,12 +9,9 @@
 <MudStack Spacing="4">
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
-                           OnClick="@(() => OnBackToOrganizations.InvokeAsync())"
-                           aria-label="Back" />
             <MudText Typo="Typo.h6">
                 <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-2" />
-                Users - @Organization?.Name
+                Users
             </MudText>
         </MudStack>
         @if (!IsReadOnly)
@@ -28,13 +25,27 @@
         }
     </MudStack>
 
+    @* Status filter chips *@
+    <MudChipSet T="string" SelectedValue="_selectedStatusFilter"
+                SelectedValueChanged="OnStatusFilterChanged"
+                data-testid="user-status-filter">
+        <MudChip T="string" Value="@("All")" Variant="Variant.Outlined"
+                 data-testid="user-status-chip-All">All</MudChip>
+        <MudChip T="string" Value="@("Active")" Color="Color.Success" Variant="Variant.Outlined"
+                 data-testid="user-status-chip-Active">Active</MudChip>
+        <MudChip T="string" Value="@("Invited")" Color="Color.Info" Variant="Variant.Outlined"
+                 data-testid="user-status-chip-Invited">Invited</MudChip>
+        <MudChip T="string" Value="@("Unverified")" Color="Color.Warning" Variant="Variant.Outlined"
+                 data-testid="user-status-chip-Unverified">Unverified</MudChip>
+    </MudChipSet>
+
     @if (_error != null)
     {
         <MudAlert Severity="Severity.Error">@_error</MudAlert>
     }
 
     <MudDataGrid T="UserDto"
-                 Items="_users"
+                 Items="_filteredUsers"
                  Loading="_isLoading"
                  Dense="true"
                  Hover="true"
@@ -58,15 +69,27 @@
             </TemplateColumn>
             <TemplateColumn Title="Status">
                 <CellTemplate>
-                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
-                        @context.Item.Status
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@GetCompositeStatusColor(context.Item.CompositeStatus)"
+                             data-testid="@($"user-status-{context.Item.Id}")">
+                        @context.Item.CompositeStatus
                     </MudChip>
                 </CellTemplate>
             </TemplateColumn>
             <PropertyColumn Property="x => x.LastLoginAt" Title="Last Login" Format="yyyy-MM-dd HH:mm" />
-            <TemplateColumn Title="Actions" CellStyle="width: 120px">
+            <TemplateColumn Title="Actions" CellStyle="width: 180px">
                 <CellTemplate>
                     <MudStack Row="true" Spacing="1">
+                        @if (context.Item.CompositeStatus == "Unverified" && !IsReadOnly)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text"
+                                       Color="Color.Warning"
+                                       StartIcon="@Icons.Material.Filled.MarkEmailRead"
+                                       OnClick="() => VerifyEmailAsync(context.Item)"
+                                       data-testid="@($"verify-email-btn-{context.Item.Id}")">
+                                Verify
+                            </MudButton>
+                        }
                         <MudIconButton Icon="@Icons.Material.Filled.Edit"
                                        Size="Size.Small"
                                        OnClick="() => OpenEditUserDialogAsync(context.Item)"
@@ -83,7 +106,7 @@
             </TemplateColumn>
         </Columns>
         <NoRecordsContent>
-            <MudText>No users found in this organization.</MudText>
+            <MudText>No users found matching the selected filter.</MudText>
         </NoRecordsContent>
         <LoadingContent>
             <MudProgressCircular Indeterminate="true" />
@@ -115,9 +138,11 @@
     public EventCallback OnBackToOrganizations { get; set; }
 
     private List<UserDto> _users = [];
+    private IReadOnlyList<UserDto> _filteredUsers = [];
     private bool _isLoading = true;
     private bool _includeInactive;
     private string? _error;
+    private string _selectedStatusFilter = "All";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -129,10 +154,7 @@
 
     private async Task LoadUsersAsync()
     {
-        if (Organization == null)
-        {
-            return;
-        }
+        if (Organization == null) return;
 
         _isLoading = true;
         _error = null;
@@ -140,8 +162,9 @@
         try
         {
             var result = await OrganizationService.GetOrganizationUsersAsync(
-                Organization.Id, _includeInactive);
+                Organization.Id, _includeInactive, includePendingInvitations: true);
             _users = result.Users.ToList();
+            ApplyStatusFilter();
         }
         catch (Exception ex)
         {
@@ -153,12 +176,49 @@
         }
     }
 
+    private void OnStatusFilterChanged(string value)
+    {
+        _selectedStatusFilter = value ?? "All";
+        ApplyStatusFilter();
+    }
+
+    private void ApplyStatusFilter()
+    {
+        _filteredUsers = _selectedStatusFilter switch
+        {
+            "Active" => _users.Where(u => u.CompositeStatus == "Active").ToList(),
+            "Invited" => _users.Where(u => u.InvitationStatus == "Pending" || u.ProvisionedVia == "Invitation").ToList(),
+            "Unverified" => _users.Where(u => u.CompositeStatus == "Unverified").ToList(),
+            _ => _users
+        };
+    }
+
+    private async Task VerifyEmailAsync(UserDto user)
+    {
+        if (Organization == null) return;
+
+        try
+        {
+            var verified = await OrganizationService.VerifyEmailAsync(Organization.Id, user.Id);
+            if (verified)
+            {
+                Snackbar.Add($"Email verified for '{user.DisplayName}'.", Severity.Success);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                Snackbar.Add("Email is already verified.", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to verify email: {ex.Message}", Severity.Error);
+        }
+    }
+
     private async Task OpenAddUserDialogAsync()
     {
-        if (Organization == null)
-        {
-            return;
-        }
+        if (Organization == null) return;
 
         var parameters = new DialogParameters<UserForm>
         {
@@ -166,19 +226,14 @@
             { x => x.OrganizationId, Organization.Id }
         };
 
-        var options = new DialogOptions
-        {
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true,
-            CloseOnEscapeKey = true
-        };
-
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
         var dialog = await DialogService.ShowAsync<UserForm>("Add User", parameters, options);
         var result = await dialog.Result;
 
         if (result is { Canceled: false, Data: UserDto newUser })
         {
             _users.Insert(0, newUser);
+            ApplyStatusFilter();
             Snackbar.Add($"User '{newUser.DisplayName}' added successfully.", Severity.Success);
             StateHasChanged();
         }
@@ -186,10 +241,7 @@
 
     private async Task OpenEditUserDialogAsync(UserDto user)
     {
-        if (Organization == null)
-        {
-            return;
-        }
+        if (Organization == null) return;
 
         var parameters = new DialogParameters<UserForm>
         {
@@ -198,23 +250,15 @@
             { x => x.User, user }
         };
 
-        var options = new DialogOptions
-        {
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true,
-            CloseOnEscapeKey = true
-        };
-
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
         var dialog = await DialogService.ShowAsync<UserForm>("Edit User", parameters, options);
         var result = await dialog.Result;
 
         if (result is { Canceled: false, Data: UserDto updatedUser })
         {
             var index = _users.FindIndex(u => u.Id == updatedUser.Id);
-            if (index >= 0)
-            {
-                _users[index] = updatedUser;
-            }
+            if (index >= 0) _users[index] = updatedUser;
+            ApplyStatusFilter();
             Snackbar.Add($"User '{updatedUser.DisplayName}' updated successfully.", Severity.Success);
             StateHasChanged();
         }
@@ -222,38 +266,24 @@
 
     private async Task ConfirmRemoveUserAsync(UserDto user)
     {
-        if (Organization == null)
-        {
-            return;
-        }
-
-        if (IsCurrentUser(user))
-        {
-            Snackbar.Add("You cannot remove yourself from the organization.", Severity.Error);
-            return;
-        }
+        if (Organization == null || IsCurrentUser(user)) return;
 
         var result = await DialogService.ShowMessageBoxAsync(
             "Confirm Removal",
-            $"Are you sure you want to remove '{user.DisplayName}' from this organization? They will lose access to all organization resources.",
-            yesText: "Remove",
-            cancelText: "Cancel");
+            $"Are you sure you want to remove '{user.DisplayName}' from this organization?",
+            yesText: "Remove", cancelText: "Cancel");
 
         if (result == true)
         {
             try
             {
-                var success = await OrganizationService.RemoveUserFromOrganizationAsync(
-                    Organization.Id, user.Id);
-
+                var success = await OrganizationService.RemoveUserFromOrganizationAsync(Organization.Id, user.Id);
                 if (success)
                 {
                     var index = _users.FindIndex(u => u.Id == user.Id);
-                    if (index >= 0)
-                    {
-                        _users[index] = user with { Status = "Removed" };
-                    }
-                    Snackbar.Add($"User '{user.DisplayName}' removed from organization.", Severity.Warning);
+                    if (index >= 0) _users[index] = user with { Status = "Removed" };
+                    ApplyStatusFilter();
+                    Snackbar.Add($"User '{user.DisplayName}' removed.", Severity.Warning);
                     StateHasChanged();
                 }
             }
@@ -264,10 +294,7 @@
         }
     }
 
-    private bool IsCurrentUser(UserDto user)
-    {
-        return CurrentUserId.HasValue && user.Id == CurrentUserId.Value;
-    }
+    private bool IsCurrentUser(UserDto user) => CurrentUserId.HasValue && user.Id == CurrentUserId.Value;
 
     private static Color GetRoleColor(string role) => role switch
     {
@@ -277,10 +304,12 @@
         _ => Color.Default
     };
 
-    private static Color GetStatusColor(string status) => status switch
+    private static Color GetCompositeStatusColor(string status) => status switch
     {
         "Active" => Color.Success,
-        "Suspended" => Color.Warning,
+        "Unverified" => Color.Warning,
+        "Invited" => Color.Info,
+        "Suspended" => Color.Error,
         "Removed" => Color.Error,
         _ => Color.Default
     };

@@ -53,6 +53,20 @@ public interface IIdentityRepository
     /// </summary>
     Task<int> GetTotalActiveUserCountAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets users for an organisation with optional filters applied.
+    /// Filters by account status and provisioning method at the UserIdentity level.
+    /// </summary>
+    /// <param name="organizationId">Organisation to query.</param>
+    /// <param name="includeInactive">Include suspended/deleted users.</param>
+    /// <param name="provisionedVia">Filter by provisioning method (null = no filter).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<List<UserIdentity>> GetUsersWithFiltersAsync(
+        Guid organizationId,
+        bool includeInactive = false,
+        string? provisionedVia = null,
+        CancellationToken cancellationToken = default);
+
     // ServicePrincipal operations (service-to-service auth, public schema)
 
     /// <summary>

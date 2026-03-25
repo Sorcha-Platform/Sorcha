@@ -120,6 +120,8 @@ public static class TestConstants
         public const string AdminHealth = $"{AppBase}/admin/health";
         public const string AdminPeers = $"{AppBase}/admin/peers";
         public const string AdminOrganizations = $"{AppBase}/admin/organizations";
+        public const string AdminOrganizationDetail = $"{AppBase}/admin/organizations/{{0}}";
+        public const string AdminUserDetail = $"{AppBase}/admin/organizations/{{0}}/users/{{1}}";
         public const string AdminValidator = $"{AppBase}/admin/validator";
         public const string AdminPrincipals = $"{AppBase}/admin/principals";
         public const string Settings = $"{AppBase}/settings";
