@@ -97,7 +97,8 @@ $planningBlueprint = Publish-SorchaBlueprint `
     -TemplatePath (Join-Path $scriptDir "planning-permission-template.json") `
     -WalletMap $wallets `
     -Headers $admin.Headers `
-    -IdPrefix "self-build-planning"
+    -IdPrefix "self-build-planning" `
+    -RegisterId $register.RegisterId
 Write-WtSuccess "  Planning Blueprint: $($planningBlueprint.BlueprintId)"
 
 Write-WtInfo "  Publishing Building Warrant blueprint..."
@@ -106,7 +107,8 @@ $warrantBlueprint = Publish-SorchaBlueprint `
     -TemplatePath (Join-Path $scriptDir "building-warrant-template.json") `
     -WalletMap $wallets `
     -Headers $admin.Headers `
-    -IdPrefix "self-build-warrant"
+    -IdPrefix "self-build-warrant" `
+    -RegisterId $register.RegisterId
 Write-WtSuccess "  Warrant Blueprint: $($warrantBlueprint.BlueprintId)"
 
 # Save state

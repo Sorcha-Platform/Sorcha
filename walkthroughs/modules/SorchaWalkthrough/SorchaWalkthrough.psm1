@@ -895,7 +895,8 @@ function Publish-SorchaBlueprint {
         [Parameter(Mandatory)][string]$TemplatePath,
         [Parameter(Mandatory)][hashtable]$WalletMap,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [string]$IdPrefix = "wt"
+        [string]$IdPrefix = "wt",
+        [string]$RegisterId
     )
 
     # Load template
@@ -935,8 +936,11 @@ function Publish-SorchaBlueprint {
     # Publish blueprint
     Write-WtInfo "Publishing blueprint..."
 
+    $publishBody = if ($RegisterId) { @{ registerId = $RegisterId } | ConvertTo-Json } else { $null }
+
     $publishRaw = Invoke-SorchaApi -Method POST `
         -Uri "$BlueprintUrl/blueprints/$blueprintId/publish" `
+        -Body $publishBody `
         -Headers $Headers `
         -RawResponse
 
@@ -1040,5 +1044,209 @@ function Invoke-SorchaAction {
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
         return $response
+    }
+}
+
+# ============================================================================
+# New-SorchaOrganization — Create org via Platform Admin API
+# ============================================================================
+
+function New-SorchaOrganization {
+    <#
+    .SYNOPSIS
+        Create a private organization via the platform admin API.
+    .DESCRIPTION
+        Uses POST /api/platform/organizations (requires SystemAdmin role).
+        If the admin email matches an existing PlatformUser, they are added
+        directly; otherwise a pending invitation is created.
+    .RETURNS
+        Hashtable with OrganizationId, AdminDirectlyAdded.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Subdomain,
+        [Parameter(Mandatory)][string]$AdminEmail,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$Description = ""
+    )
+
+    $body = @{
+        name        = $Name
+        subdomain   = $Subdomain
+        adminEmail  = $AdminEmail
+        description = $Description
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/platform/organizations" `
+            -Body $body `
+            -Headers $Headers
+
+        if ($response.success) {
+            Write-WtSuccess "Organization '$Name' created: $($response.organizationId)"
+            return @{
+                OrganizationId    = $response.organizationId
+                AdminDirectlyAdded = $response.adminDirectlyAdded
+            }
+        } else {
+            throw "Organization creation failed: $($response.error)"
+        }
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409) {
+            Write-WtWarn "Organization '$Name' already exists — fetching"
+            # List orgs to find existing
+            $orgs = Invoke-SorchaApi -Method GET `
+                -Uri "$TenantUrl/platform/organizations" `
+                -Headers $Headers
+            $existing = $orgs.items | Where-Object { $_.subdomain -eq $Subdomain } | Select-Object -First 1
+            if ($existing) {
+                Write-WtSuccess "Found existing org: $($existing.id)"
+                return @{
+                    OrganizationId    = "$($existing.id)"
+                    AdminDirectlyAdded = $true
+                }
+            }
+            throw "Organization '$Name' returned 409 but could not be found"
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Connect-SorchaUser — Login as a specific user and get JWT
+# ============================================================================
+
+function Connect-SorchaUser {
+    <#
+    .SYNOPSIS
+        Login as a specific user via password grant and return JWT + metadata.
+    .DESCRIPTION
+        Uses POST /api/service-auth/token with grant_type=password.
+        Works for any user (not just seed admin). Extracts org_id, sub,
+        and wallet_address from the JWT claims.
+    .RETURNS
+        Hashtable with Token, UserId, OrganizationId, WalletAddress, Headers.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password
+    )
+
+    $encodedPassword = [Uri]::EscapeDataString($Password)
+    $loginBody = "grant_type=password&username=$Email&password=$encodedPassword&client_id=sorcha-cli"
+
+    $loginResponse = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/service-auth/token" `
+        -Body $loginBody `
+        -ContentType "application/x-www-form-urlencoded"
+
+    $token = $loginResponse.access_token
+    $jwt = Decode-SorchaJwt -Token $token
+
+    Write-WtSuccess "Logged in as $Email (org: $($jwt.org_id))"
+
+    return @{
+        Token          = $token
+        UserId         = $jwt.sub
+        OrganizationId = $jwt.org_id
+        WalletAddress  = $jwt.wallet_address
+        Headers        = @{ Authorization = "Bearer $token" }
+    }
+}
+
+# ============================================================================
+# New-SorchaRegisterSubscription — Subscribe an org to a register
+# ============================================================================
+
+function New-SorchaRegisterSubscription {
+    <#
+    .SYNOPSIS
+        Subscribe an organization to a register.
+    .DESCRIPTION
+        Uses POST /api/organizations/{orgId}/register-subscriptions.
+        Subscription type "Owner" is immediately Active;
+        "Public" starts as Pending.
+    .RETURNS
+        Subscription response or $null if already subscribed (409).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$RegisterId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$RegisterName = "",
+        [string]$SubscriptionType = "Owner"
+    )
+
+    $body = @{
+        register_id       = $RegisterId
+        register_name     = $RegisterName
+        subscription_type = $SubscriptionType
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/organizations/$OrganizationId/register-subscriptions" `
+            -Body $body `
+            -Headers $Headers
+
+        Write-WtSuccess "Org $OrganizationId subscribed to register $RegisterId ($SubscriptionType)"
+        return $response
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409) {
+            Write-WtWarn "Org already subscribed to register $RegisterId — continuing"
+            return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Switch-SorchaOrganization — Switch user's active org and get new JWT
+# ============================================================================
+
+function Switch-SorchaOrganization {
+    <#
+    .SYNOPSIS
+        Switch a user's active organization and get a new JWT scoped to that org.
+    .DESCRIPTION
+        Uses POST /api/auth/switch-org. The user must be a member of the target org.
+    .RETURNS
+        Hashtable with Token, UserId, OrganizationId, Headers.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    $body = @{ organizationId = $OrganizationId }
+
+    $response = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/auth/switch-org" `
+        -Body $body `
+        -Headers $Headers
+
+    $token = $response.access_token
+    if (-not $token) { $token = $response.token }
+    $jwt = Decode-SorchaJwt -Token $token
+
+    Write-WtSuccess "Switched to org $($jwt.org_id)"
+
+    return @{
+        Token          = $token
+        UserId         = $jwt.sub
+        OrganizationId = $jwt.org_id
+        WalletAddress  = $jwt.wallet_address
+        Headers        = @{ Authorization = "Bearer $token" }
     }
 }

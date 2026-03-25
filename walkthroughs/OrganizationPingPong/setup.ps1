@@ -95,7 +95,8 @@ $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "templates/ping-pong-template.json") `
     -WalletMap @{ "ping" = $actualAlpha; "pong" = $actualBeta } `
-    -Headers $admin.Headers -IdPrefix "org-pingpong"
+    -Headers $admin.Headers -IdPrefix "org-pingpong" `
+    -RegisterId $register.RegisterId
 
 # Save state
 $state = @{

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# ConstructionPermit — Run
+# ConstructionPermit — Run (Multi-Org)
 # Execute 3 scenarios: A (low-risk), B (high-risk), C (rejection).
+# Each action is executed using the per-user token for that participant.
 
 param(
     [ValidateSet('A', 'B', 'C', 'all')]
@@ -16,23 +17,46 @@ $ErrorActionPreference = "Stop"
 $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-Write-WtBanner "ConstructionPermit — Run"
+Write-WtBanner "ConstructionPermit — Run (Multi-Org)"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
 if (-not (Test-Path $stateFile)) { Write-WtFail "No state.json. Run setup.ps1 first."; exit 1 }
 $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
 
-# Convert wallet PSObject to hashtable
+# Convert PSObject maps to hashtables
 $wallets = @{}
 foreach ($prop in $state.wallets.PSObject.Properties) { $wallets[$prop.Name] = $prop.Value }
 
-# Action-to-sender mapping for construction permit
+$roles = @{}
+foreach ($prop in $state.roles.PSObject.Properties) {
+    $r = $prop.Value
+    $roles[$prop.Name] = @{
+        organizationId = $r.organizationId
+        walletAddress  = $r.walletAddress
+        orgKey         = $r.orgKey
+    }
+}
+
+$orgs = @{}
+foreach ($prop in $state.organizations.PSObject.Properties) { $orgs[$prop.Name] = $prop.Value }
+
+# Login as system admin (used for switch-org to get per-org tokens)
+Write-WtStep "Authenticating"
+$sysAdmin = Connect-SorchaAdmin `
+    -TenantUrl $state.tenantUrl `
+    -AdminEmail $state.adminEmail `
+    -AdminPassword $state.adminPassword
+
+# Cache org-scoped tokens (switch once per org, reuse within scenario)
+$orgTokenCache = @{}
+
+# Action-to-sender mapping (matches blueprint action IDs to participant roles)
 $actionSenderMap = @{
     1 = "contractor"
     2 = "structural-engineer"
-    3 = "environmental-assessor"
-    4 = "planning-officer"
+    3 = "planning-officer"
+    4 = "environmental-assessor"
     5 = "building-control"
     6 = "planning-officer"
 }
@@ -58,14 +82,21 @@ foreach ($sid in $scenariosToRun) {
 
     Write-WtStep "Scenario $sid`: $($scenarioData.name)"
 
-    # Create instance
+    # Get contractor's org-scoped token for instance creation
+    $contractorOrgId = $roles["contractor"].organizationId
+    if (-not $orgTokenCache[$contractorOrgId]) {
+        $session = Switch-SorchaOrganization -TenantUrl $state.tenantUrl -OrganizationId $contractorOrgId -Headers $sysAdmin.Headers
+        $orgTokenCache[$contractorOrgId] = $session.Token
+    }
+    $contractorToken = $orgTokenCache[$contractorOrgId]
+
     $instanceBody = @{
         blueprintId = $state.blueprintId; registerId = $state.registerId
-        tenantId = $state.organizationId
+        tenantId = $contractorOrgId
         metadata = @{ source = "walkthrough"; scenario = $sid; scenarioName = $scenarioData.name }
     }
     $ir = Invoke-SorchaApi -Method POST -Uri "$($state.blueprintUrl)/instances/" -Body $instanceBody `
-        -Headers @{ Authorization = "Bearer $($state.adminToken)" } -ShowJson:$ShowJson
+        -Headers @{ Authorization = "Bearer $contractorToken" } -ShowJson:$ShowJson
     $instanceId = $ir.id
     Write-WtSuccess "Instance: $instanceId"
 
@@ -76,6 +107,15 @@ foreach ($sid in $scenariosToRun) {
         $actionIdStr = "$actionId"
         $sender = $actionSenderMap[[int]$actionId]
         $senderWallet = $wallets[$sender]
+        $senderOrgId = $roles[$sender].organizationId
+
+        # Get org-scoped token (cached per org)
+        if (-not $orgTokenCache[$senderOrgId]) {
+            $session = Switch-SorchaOrganization -TenantUrl $state.tenantUrl -OrganizationId $senderOrgId -Headers $sysAdmin.Headers
+            $orgTokenCache[$senderOrgId] = $session.Token
+        }
+        $senderToken = $orgTokenCache[$senderOrgId]
+
         $actionData = $scenarioData.actions."$actionId"
 
         # Convert PSObject to hashtable
@@ -95,14 +135,14 @@ foreach ($sid in $scenariosToRun) {
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $state.blueprintId `
                     -SenderWallet $senderWallet -RegisterId $state.registerId `
-                    -Token $state.adminToken `
+                    -Token $senderToken `
                     -Reject -RejectionReason $scenarioData.rejectionReason
             } else {
                 $response = Invoke-SorchaAction `
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $state.blueprintId `
                     -SenderWallet $senderWallet -RegisterId $state.registerId `
-                    -Token $state.adminToken -PayloadData $payloadData
+                    -Token $senderToken -PayloadData $payloadData
 
                 if ($response.calculatedValues) {
                     foreach ($calc in $response.calculatedValues.PSObject.Properties) {
@@ -111,8 +151,14 @@ foreach ($sid in $scenariosToRun) {
                 }
             }
             $actionsOk++
+            Write-WtInfo "  ($sender via per-user token)"
         } catch {
             Write-WtFail "Action $actionIdStr ($sender) failed: $($_.Exception.Message)"
+            # Try to get more detail
+            try {
+                $errBody = Get-SorchaErrorBody -Exception $_.Exception
+                if ($errBody) { Write-WtWarn "  Detail: $errBody" }
+            } catch {}
             $allPassed = $false
         }
     }
