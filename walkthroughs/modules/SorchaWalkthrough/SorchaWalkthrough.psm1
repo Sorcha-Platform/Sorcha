@@ -501,6 +501,98 @@ function Get-OrCreateUser {
 }
 
 # ============================================================================
+# Register-SorchaPublicUser — Self-register a user on the public org
+# ============================================================================
+
+function Register-SorchaPublicUser {
+    <#
+    .SYNOPSIS
+        Register a user on the public org via POST /auth/register.
+        Creates both PlatformUser and UserIdentity in the public org.
+    .RETURNS
+        User ID string, or $null if user already exists.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$DisplayName,
+        [string]$OrgSubdomain = "public"
+    )
+
+    $body = @{
+        orgSubdomain = $OrgSubdomain
+        email        = $Email
+        password     = $Password
+        displayName  = $DisplayName
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/auth/register" `
+            -Body $body
+
+        if ($response.success) {
+            Write-WtSuccess "Registered '$DisplayName' ($Email) -> userId: $($response.userId)"
+            return $response.userId
+        } else {
+            Write-WtWarn "Registration returned: $($response.message)"
+            return $null
+        }
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409 -or $statusCode -eq 400) {
+            Write-WtWarn "User '$Email' may already exist — continuing"
+            return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Confirm-SorchaUserEmail — Admin verify email (bypasses SMTP loop)
+# ============================================================================
+
+function Confirm-SorchaUserEmail {
+    <#
+    .SYNOPSIS
+        Administratively mark a user's email as verified (no SMTP required).
+    .DESCRIPTION
+        Calls POST /organizations/{orgId}/users/{userId}/verify-email.
+        Returns $true if verified, $false if already verified.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$UserId,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    try {
+        Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/organizations/$OrganizationId/users/$UserId/verify-email" `
+            -Headers $Headers
+        Write-WtSuccess "Email verified for user $UserId"
+        return $true
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 400) {
+            Write-WtInfo "Email already verified for user $UserId"
+            return $false
+        }
+        if ($statusCode -eq 404) {
+            Write-WtWarn "User $UserId not found — skipping verify"
+            return $false
+        }
+        throw
+    }
+}
+
+# ============================================================================
 # T011: New-SorchaWallet — Create ED25519 Wallet
 # ============================================================================
 

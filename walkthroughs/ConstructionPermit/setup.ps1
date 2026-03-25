@@ -6,11 +6,20 @@
 # Creates 4 organisations, 5 users, wallets, participants, register subscriptions,
 # and publishes the construction permit blueprint.
 #
+# Realistic flow:
+#   1. System admin logs in
+#   2. Register all users on the public org (creates PlatformUser records)
+#   3. System admin verifies all user emails (bypasses SMTP)
+#   4. System admin creates 4 private orgs with verified org-admin emails
+#   5. Add all users to their target orgs with correct roles
+#   6. Per-user setup: wallets, participants, wallet-links
+#   7-9. Register creation, subscriptions, participant publishing, blueprint
+#
 # Organizations:
-#   1. Meridian Construction     — contractor
-#   2. Apex Structural Engineers — structural-engineer
-#   3. Riverside Borough Council — planning-officer + building-control (2 users)
-#   4. Green Valley Environmental — environmental-assessor
+#   1. Meridian Construction     — contractor (admin)
+#   2. Apex Structural Engineers — structural-engineer (admin)
+#   3. Riverside Borough Council — planning-officer (admin) + building-control
+#   4. Green Valley Environmental — environmental-assessor (admin)
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire')]
@@ -28,6 +37,36 @@ Write-WtBanner "ConstructionPermit — Multi-Org Setup"
 $secrets = Get-SorchaSecrets -WalkthroughName "construction-permit"
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
+# Well-known public org ID (created by DatabaseInitializer)
+$publicOrgId = "00000000-0000-0000-0000-000000000002"
+
+# ============================================================================
+# Definitions
+# ============================================================================
+
+$orgDefs = @(
+    @{ name = "Meridian Construction";      subdomain = "meridian";    desc = "General contractor";        adminRole = "contractor" }
+    @{ name = "Apex Structural Engineers";  subdomain = "apex";        desc = "Structural assessment";     adminRole = "structural-engineer" }
+    @{ name = "Riverside Borough Council";  subdomain = "riverside";   desc = "Local planning authority";  adminRole = "planning-officer" }
+    @{ name = "Green Valley Environmental"; subdomain = "greenvalley"; desc = "Environmental assessment";  adminRole = "environmental-assessor" }
+)
+
+$userDefs = @(
+    @{ role = "contractor";              org = "meridian";    email = $secrets.contractorEmail;       password = $secrets.contractorPassword;       name = $secrets.contractorName;        isOrgAdmin = $true }
+    @{ role = "structural-engineer";     org = "apex";        email = $secrets.engineerEmail;         password = $secrets.engineerPassword;         name = $secrets.engineerName;          isOrgAdmin = $true }
+    @{ role = "planning-officer";        org = "riverside";   email = $secrets.planningEmail;         password = $secrets.planningPassword;         name = $secrets.planningName;          isOrgAdmin = $true }
+    @{ role = "environmental-assessor";  org = "greenvalley"; email = $secrets.environmentalEmail;    password = $secrets.environmentalPassword;    name = $secrets.environmentalName;     isOrgAdmin = $true }
+    @{ role = "building-control";        org = "riverside";   email = $secrets.inspectorEmail;        password = $secrets.inspectorPassword;        name = $secrets.inspectorName;         isOrgAdmin = $false }
+)
+
+$orgUserMap = @{
+    "contractor"             = "meridian"
+    "structural-engineer"    = "apex"
+    "planning-officer"       = "riverside"
+    "environmental-assessor" = "greenvalley"
+    "building-control"       = "riverside"
+}
+
 # ============================================================================
 # Step 1: Login as System Admin
 # ============================================================================
@@ -38,84 +77,91 @@ $sysAdmin = Connect-SorchaAdmin `
     -AdminPassword $secrets.meridianAdminPassword
 
 # ============================================================================
-# Step 2: Pre-create Platform Users (so org creation can add them directly)
+# Step 2: Enable Public Org (required for user self-registration)
 # ============================================================================
-Write-WtStep "Step 2: Pre-create Platform Users"
+Write-WtStep "Step 2: Enable Public Org for User Registration"
 
-# User definitions: role -> org, email, password, displayName
-$userDefs = @(
-    @{ role = "contractor";              org = "meridian";    email = $secrets.contractorEmail;       password = $secrets.contractorPassword;       name = $secrets.contractorName }
-    @{ role = "structural-engineer";     org = "apex";        email = $secrets.engineerEmail;         password = $secrets.engineerPassword;         name = $secrets.engineerName }
-    @{ role = "planning-officer";        org = "riverside";   email = $secrets.planningEmail;         password = $secrets.planningPassword;         name = $secrets.planningName }
-    @{ role = "environmental-assessor";  org = "greenvalley"; email = $secrets.environmentalEmail;    password = $secrets.environmentalPassword;    name = $secrets.environmentalName }
-    @{ role = "building-control";        org = "riverside";   email = $secrets.inspectorEmail;        password = $secrets.inspectorPassword;        name = $secrets.inspectorName }
-)
+# The public org may be disabled after fresh database init.
+# Enable it so users can self-register (creating PlatformUser records).
+Invoke-SorchaApi -Method PUT `
+    -Uri "$($env.TenantUrl)/platform/settings/public-org" `
+    -Body @{ enabled = $true } `
+    -Headers $sysAdmin.Headers
+Write-WtInfo "  Public org enabled for self-registration"
 
-# Create users in system admin org first — this creates PlatformUser records.
-# When we create private orgs below, the existing PlatformUsers are found by email
-# and added directly (no email invitation needed).
+# ============================================================================
+# Step 3: Register All Users on Public Org (creates PlatformUser records)
+# ============================================================================
+Write-WtStep "Step 3: Register Users (public org — creates PlatformUser with password)"
+
 foreach ($u in $userDefs) {
-    Get-OrCreateUser `
+    Register-SorchaPublicUser `
         -TenantUrl $env.TenantUrl `
-        -OrganizationId $sysAdmin.OrganizationId `
         -Email $u.email `
-        -DisplayName $u.name `
-        -Headers $sysAdmin.Headers `
-        -Roles @("Member")
-    Write-WtInfo "  $($u.role) -> $($u.email) (PlatformUser created)"
+        -Password $u.password `
+        -DisplayName $u.name | Out-Null
+    Write-WtInfo "  $($u.role) -> $($u.email)"
 }
 
 # ============================================================================
-# Step 3: Create 4 Organizations
+# Step 4: Admin Verify All User Emails (bypasses SMTP verification loop)
 # ============================================================================
-Write-WtStep "Step 3: Create Organizations (4)"
+Write-WtStep "Step 4: Verify User Emails (admin override — no SMTP needed)"
 
-# Use the system admin email for org creation — this avoids SMTP invitations
-# since the system admin PlatformUser already exists and is added directly.
-$orgDefs = @(
-    @{ name = "Meridian Construction";      subdomain = "meridian";    desc = "General contractor" }
-    @{ name = "Apex Structural Engineers";  subdomain = "apex";        desc = "Structural assessment" }
-    @{ name = "Riverside Borough Council";  subdomain = "riverside";   desc = "Local planning authority" }
-    @{ name = "Green Valley Environmental"; subdomain = "greenvalley"; desc = "Environmental assessment" }
-)
+# Look up users in the public org by listing all, then match by email to get IDs
+$publicUsers = Invoke-SorchaApi -Method GET `
+    -Uri "$($env.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
 
+foreach ($u in $userDefs) {
+    $publicUser = $publicUsers.users | Where-Object { $_.email -eq $u.email } | Select-Object -First 1
+    if ($publicUser) {
+        Confirm-SorchaUserEmail `
+            -TenantUrl $env.TenantUrl `
+            -OrganizationId $publicOrgId `
+            -UserId $publicUser.id `
+            -Headers $sysAdmin.Headers
+    } else {
+        Write-WtWarn "  User $($u.email) not found in public org"
+    }
+}
+
+# ============================================================================
+# Step 4: Create 4 Private Organizations (with verified org admin emails)
+# ============================================================================
+Write-WtStep "Step 5: Create Organizations (4)"
+
+# Each org is created with its designated admin email.
+# OrgProvisioning finds the existing verified PlatformUser and adds them
+# directly as org admin — no SMTP invitation needed.
 $orgs = @{}
 
 foreach ($def in $orgDefs) {
+    $adminUser = $userDefs | Where-Object { $_.role -eq $def.adminRole } | Select-Object -First 1
     $result = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
         -Name $def.name `
         -Subdomain $def.subdomain `
-        -AdminEmail $secrets.meridianAdminEmail `
+        -AdminEmail $adminUser.email `
         -Headers $sysAdmin.Headers `
         -Description $def.desc
     $orgs[$def.subdomain] = $result.OrganizationId
+    Write-WtInfo "  $($def.subdomain): $($result.OrganizationId) (admin: $($adminUser.email), direct: $($result.AdminDirectlyAdded))"
 }
 
-Write-WtInfo "  meridian:    $($orgs.meridian)"
-Write-WtInfo "  apex:        $($orgs.apex)"
-Write-WtInfo "  riverside:   $($orgs.riverside)"
-Write-WtInfo "  greenvalley: $($orgs.greenvalley)"
-
 # ============================================================================
-# Step 4: Add extra users to their orgs
+# Step 5: Add Team Members to Their Orgs
 # ============================================================================
-Write-WtStep "Step 4: Add Users to Organizations"
+Write-WtStep "Step 6: Add Users to Organizations"
 
-# Building control inspector is a second user in Riverside (planning officer was added as admin)
-# We need to add them explicitly.
-$orgUserMap = @{
-    "contractor"             = "meridian"
-    "structural-engineer"    = "apex"
-    "planning-officer"       = "riverside"
-    "environmental-assessor" = "greenvalley"
-    "building-control"       = "riverside"
-}
-
+# Team members (non-admin) need to be added to their target orgs.
+# Org admins were already added during org creation (Step 4).
 foreach ($u in $userDefs) {
     $orgKey = $orgUserMap[$u.role]
     $orgId = $orgs[$orgKey]
-    $roles = if ($u.role -eq "contractor" -or $u.role -eq "planning-officer") { @("Administrator", "Member") } else { @("Member") }
+    $roles = if ($u.isOrgAdmin) { @("Administrator", "Member") } else { @("Member") }
+
+    # For org admins, this may return 409 (already added during org creation) — that's fine
     Get-OrCreateUser `
         -TenantUrl $env.TenantUrl `
         -OrganizationId $orgId `
@@ -123,23 +169,36 @@ foreach ($u in $userDefs) {
         -DisplayName $u.name `
         -Headers $sysAdmin.Headers `
         -Roles $roles
-    Write-WtInfo "  $($u.role) ($($u.email)) -> $orgKey"
+    Write-WtInfo "  $($u.role) ($($u.email)) -> $orgKey$(if ($u.isOrgAdmin) { ' [Admin]' })"
+}
+
+# Also add the system admin to each org so it can switch-org for register/blueprint operations
+foreach ($def in $orgDefs) {
+    $orgId = $orgs[$def.subdomain]
+    Get-OrCreateUser `
+        -TenantUrl $env.TenantUrl `
+        -OrganizationId $orgId `
+        -Email $secrets.meridianAdminEmail `
+        -DisplayName "System Administrator" `
+        -Headers $sysAdmin.Headers `
+        -Roles @("Administrator", "Member")
+    Write-WtInfo "  system-admin -> $($def.subdomain) [Admin]"
 }
 
 # ============================================================================
-# Step 5: Switch to Each Org and Create Wallets + Participants
+# Step 6: Per-Role Setup (switch-org, wallet, participant, wallet-link)
 # ============================================================================
-Write-WtStep "Step 5: Per-Role Setup (switch-org, wallet, participant, wallet-link)"
+Write-WtStep "Step 7: Per-Role Setup (login, wallet, participant, wallet-link)"
 
-$users = @{}  # role -> session info
-$wallets = @{}  # role -> wallet address
+$users = @{}   # role -> session info
+$wallets = @{} # role -> wallet address
 
 foreach ($u in $userDefs) {
     $orgKey = $orgUserMap[$u.role]
     $orgId = $orgs[$orgKey]
     Write-WtInfo "--- $($u.role) ($($u.name)) in $orgKey ---"
 
-    # Switch admin to this org context
+    # Switch system admin to this org context (system admin was added to all orgs in Step 6)
     $orgSession = Switch-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
         -OrganizationId $orgId `
@@ -179,11 +238,10 @@ foreach ($u in $userDefs) {
 }
 
 # ============================================================================
-# Step 6: Create Register (owned by Meridian contractor)
+# Step 7: Create Register (owned by Meridian contractor)
 # ============================================================================
-Write-WtStep "Step 6: Create Register"
+Write-WtStep "Step 8: Create Register"
 
-# Switch to Meridian org for register creation
 $meridianSession = Switch-SorchaOrganization `
     -TenantUrl $env.TenantUrl `
     -OrganizationId $orgs.meridian `
@@ -201,11 +259,10 @@ $register = New-SorchaRegister `
     -Metadata @{ createdBy = "ConstructionPermit/setup.ps1"; multiOrg = "true" }
 
 # ============================================================================
-# Step 7: Subscribe All Organizations to the Register
+# Step 8: Subscribe All Organizations to the Register
 # ============================================================================
-Write-WtStep "Step 7: Subscribe Organizations to Register"
+Write-WtStep "Step 9: Subscribe Organizations to Register"
 
-# Owner org (Meridian) gets Owner subscription
 New-SorchaRegisterSubscription `
     -TenantUrl $env.TenantUrl `
     -OrganizationId $orgs.meridian `
@@ -214,10 +271,7 @@ New-SorchaRegisterSubscription `
     -SubscriptionType "Owner" `
     -Headers $meridianSession.Headers
 
-# Other orgs get Public subscriptions (switch to each org context)
-$otherOrgs = @("apex", "riverside", "greenvalley")
-
-foreach ($orgKey in $otherOrgs) {
+foreach ($orgKey in @("apex", "riverside", "greenvalley")) {
     $orgSession = Switch-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
         -OrganizationId $orgs[$orgKey] `
@@ -233,9 +287,9 @@ foreach ($orgKey in $otherOrgs) {
 }
 
 # ============================================================================
-# Step 8: Publish Participant Records to Register
+# Step 9: Publish Participant Records to Register
 # ============================================================================
-Write-WtStep "Step 8: Publish Participant Records to Register"
+Write-WtStep "Step 10: Publish Participant Records to Register"
 
 $orgNameMap = @{
     "contractor"             = "Meridian Construction"
@@ -247,7 +301,6 @@ $orgNameMap = @{
 
 foreach ($u in $userDefs) {
     $roleUser = $users[$u.role]
-    # Switch to the participant's org for publishing
     $pubSession = Switch-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
         -OrganizationId $roleUser.OrganizationId `
@@ -265,9 +318,9 @@ foreach ($u in $userDefs) {
 }
 
 # ============================================================================
-# Step 9: Publish Blueprint
+# Step 10: Publish Blueprint
 # ============================================================================
-Write-WtStep "Step 9: Publish Blueprint"
+Write-WtStep "Step 11: Publish Blueprint"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
