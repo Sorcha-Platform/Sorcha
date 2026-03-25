@@ -33,6 +33,16 @@ public class IdentityRepository : IIdentityRepository
             .FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<UserIdentity?> GetUserByPlatformUserAndOrgAsync(
+        Guid platformUserId, Guid organizationId, CancellationToken cancellationToken = default)
+    {
+        return await _context.UserIdentities
+            .FirstOrDefaultAsync(u => u.PlatformUserId == platformUserId
+                && u.OrganizationId == organizationId
+                && u.Status == IdentityStatus.Active, cancellationToken);
+    }
+
     public async Task<List<UserIdentity>> GetActiveUsersAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
         return await _context.UserIdentities

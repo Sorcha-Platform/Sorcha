@@ -354,6 +354,8 @@ foreach ($role in $users.Keys) {
         walletAddress  = $u.WalletAddress
         participantId  = $u.ParticipantId
         orgKey         = $u.OrgKey
+        email          = $u.Email
+        password       = $u.Password
     }
 }
 

@@ -47,10 +47,28 @@ public class RegisterSubscriptionServiceTests : IDisposable
         result.RegisterId.Should().Be(ValidRegisterId);
         result.RegisterName.Should().Be("Test Register");
         result.SubscriptionType.Should().Be("Public");
-        result.Status.Should().Be("Pending");
+        result.Status.Should().Be("Active");
         result.SubscribedByUserId.Should().Be(_testUserId);
         result.RevokedAt.Should().BeNull();
         result.RevokedByUserId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SubscribeAsync_PublicSubscription_ImmediatelyActive_AppearsInOrgQuery()
+    {
+        // Arrange — subscribe to a public register
+        await _service.SubscribeAsync(
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+
+        // Act — query subscribed registers (this filters by Active status)
+        var subscribed = await _service.GetSubscribedRegistersForOrgAsync(
+            _testOrgId, CancellationToken.None);
+
+        // Assert — Public subscription should be immediately visible (Active, not Pending)
+        subscribed.Should().HaveCount(1);
+        subscribed[0].RegisterId.Should().Be(ValidRegisterId);
+        subscribed[0].Status.Should().Be("Active");
+        subscribed[0].SubscriptionType.Should().Be("Public");
     }
 
     [Fact]
@@ -204,9 +222,9 @@ public class RegisterSubscriptionServiceTests : IDisposable
     #region GetSubscribedRegistersForOrgAsync Tests
 
     [Fact]
-    public async Task GetSubscribedRegistersForOrgAsync_ReturnsOnlyActive()
+    public async Task GetSubscribedRegistersForOrgAsync_ReturnsAllActive()
     {
-        // Arrange — create an owner (Active) and a public (Pending) subscription
+        // Arrange — create an Owner and a Public subscription (both should be Active)
         var ownerId = "abcdef0123456789abcdef0123456780";
         var publicId = "abcdef0123456789abcdef0123456781";
 
@@ -220,10 +238,10 @@ public class RegisterSubscriptionServiceTests : IDisposable
         var result = await _service.GetSubscribedRegistersForOrgAsync(
             _testOrgId, CancellationToken.None);
 
-        // Assert — only the Owner (Active) subscription should be returned
-        result.Should().HaveCount(1);
-        result[0].RegisterId.Should().Be(ownerId);
-        result[0].Status.Should().Be("Active");
+        // Assert — both Owner and Public subscriptions are immediately Active
+        result.Should().HaveCount(2);
+        result.Should().Contain(r => r.RegisterId == ownerId && r.Status == "Active");
+        result.Should().Contain(r => r.RegisterId == publicId && r.Status == "Active");
     }
 
     [Fact]

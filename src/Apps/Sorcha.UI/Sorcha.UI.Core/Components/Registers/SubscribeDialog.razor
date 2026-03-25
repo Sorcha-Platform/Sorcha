@@ -2,6 +2,9 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@using Microsoft.Extensions.Logging
+@inject ISnackbar Snackbar
+@inject ILogger<SubscribeDialog> Logger
 
 <MudDialog>
     <TitleContent>
@@ -161,7 +164,17 @@
             {
                 SubscribedRegisterIds.Add(registerId);
                 await OnSubscribed.InvokeAsync();
+                Snackbar.Add("Successfully subscribed to register", Severity.Success);
             }
+            else
+            {
+                Snackbar.Add("Failed to subscribe to register", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Subscribe to register {RegisterId} failed", registerId);
+            Snackbar.Add("Subscription failed. Please try again.", Severity.Error);
         }
         finally
         {
