@@ -8,6 +8,7 @@
 
 @inject IBlueprintApiService BlueprintApi
 @inject IRegisterService RegisterService
+@inject IRegisterSubscriptionService SubscriptionService
 
 <MudDialog>
     <TitleContent>
@@ -456,7 +457,10 @@
 
         try
         {
-            _registers = (await RegisterService.GetRegistersAsync()).ToList();
+            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
+            var subscribedIds = subscriptions.Select(s => s.RegisterId).Where(id => !string.IsNullOrEmpty(id)).ToHashSet();
+            var allRegisters = await RegisterService.GetRegistersAsync();
+            _registers = allRegisters.Where(r => subscribedIds.Contains(r.Id)).ToList();
         }
         catch
         {
