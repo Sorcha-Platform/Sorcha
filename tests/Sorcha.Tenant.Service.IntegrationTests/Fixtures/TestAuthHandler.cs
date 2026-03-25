@@ -106,7 +106,7 @@ public class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions
         }
         else
         {
-            claims.Add(new Claim(ClaimTypes.Role, "Member"));
+            claims.Add(new Claim(ClaimTypes.Role, "Consumer"));
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

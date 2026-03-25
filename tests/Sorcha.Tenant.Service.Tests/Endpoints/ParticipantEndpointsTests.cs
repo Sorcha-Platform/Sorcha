@@ -478,7 +478,7 @@ public class ParticipantEndpointsTests : IClassFixture<TenantServiceWebApplicati
         var orgId = TestDataSeeder.TestOrganizationId;
         var customName = "Custom Display Name";
         var auditorClient = _factory.CreateClient();
-        auditorClient.DefaultRequestHeaders.Add("X-Test-Role", "Member");
+        auditorClient.DefaultRequestHeaders.Add("X-Test-Role", "Consumer");
         auditorClient.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.AuditorUserId.ToString());
         auditorClient.DefaultRequestHeaders.Add("X-Test-Organization-Id", orgId.ToString());
 

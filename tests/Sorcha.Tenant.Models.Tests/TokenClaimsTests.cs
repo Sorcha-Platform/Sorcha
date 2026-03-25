@@ -145,7 +145,7 @@ public class TokenClaimsTests
     {
         TokenClaims.RoleNames.Administrator.Should().Be("Administrator");
         TokenClaims.RoleNames.Auditor.Should().Be("Auditor");
-        TokenClaims.RoleNames.Member.Should().Be("Member");
+        TokenClaims.RoleNames.Consumer.Should().Be("Consumer");
     }
 
     [Fact]

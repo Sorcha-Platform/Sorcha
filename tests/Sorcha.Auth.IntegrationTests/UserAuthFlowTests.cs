@@ -96,7 +96,7 @@ public class UserAuthFlowTests : IAsyncLifetime
             userId: "user-123",
             email: "test@sorcha.io",
             orgId: "org-456",
-            role: "Member");
+            role: "Consumer");
 
         // Assert: decode and verify claims
         var handler = new JwtSecurityTokenHandler();
@@ -122,7 +122,7 @@ public class UserAuthFlowTests : IAsyncLifetime
     [Fact]
     public async Task ValidUserToken_AccessesProtectedEndpoint()
     {
-        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Member");
+        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Consumer");
         var response = await SendRequest("/api/test/protected", token);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -133,7 +133,7 @@ public class UserAuthFlowTests : IAsyncLifetime
     [Fact]
     public async Task UserWithOrgId_AccessesOrgProtectedEndpoint()
     {
-        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Member");
+        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Consumer");
         var response = await SendRequest("/api/test/org-protected", token);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -144,7 +144,7 @@ public class UserAuthFlowTests : IAsyncLifetime
     [Fact]
     public async Task UserWithoutOrgId_RejectedFromOrgProtectedEndpoint()
     {
-        var token = GenerateUserToken("user-123", "test@sorcha.io", orgId: null, role: "Member");
+        var token = GenerateUserToken("user-123", "test@sorcha.io", orgId: null, role: "Consumer");
         var response = await SendRequest("/api/test/org-protected", token);
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -155,7 +155,7 @@ public class UserAuthFlowTests : IAsyncLifetime
     [Fact]
     public async Task ExpiredUserToken_ReturnsUnauthorized()
     {
-        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Member",
+        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Consumer",
             notBefore: DateTime.UtcNow.AddMinutes(-10),
             expires: DateTime.UtcNow.AddSeconds(-60));
 
@@ -245,7 +245,7 @@ public class UserAuthFlowTests : IAsyncLifetime
     [Fact]
     public async Task UserTokenWithWrongKey_ReturnsUnauthorized()
     {
-        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Member",
+        var token = GenerateUserToken("user-123", "test@sorcha.io", "org-456", "Consumer",
             signingKey: "completely-different-signing-key-that-is-at-least-32-characters-long");
 
         var response = await SendRequest("/api/test/protected", token);
@@ -359,7 +359,7 @@ public class UserAuthFlowTests : IAsyncLifetime
                 new Claim(ClaimTypes.NameIdentifier, "user-123"),
                 new Claim(ClaimTypes.Email, "test@sorcha.io"),
                 new Claim(TokenClaimConstants.OrgId, "org-456"),
-                new Claim(ClaimTypes.Role, "Member")
+                new Claim(ClaimTypes.Role, "Consumer")
             };
 
             var accessToken = new JwtSecurityToken(

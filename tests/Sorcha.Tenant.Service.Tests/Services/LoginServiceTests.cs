@@ -109,7 +109,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUserId,
             OrganizationId = orgId,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         };
         _dbContext.PlatformUserOrgMemberships.Add(membership);
@@ -178,7 +178,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUser.Id,
             OrganizationId = org.Id,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         });
         _tokenService.Setup(t => t.GenerateUserTokenAsync(
@@ -237,7 +237,7 @@ public class LoginServiceTests : IDisposable
         var memberships = new[]
         {
             new PlatformUserOrgMembership { PlatformUserId = platformUserId, OrganizationId = org1.Id, Role = "Admin", JoinedAt = DateTimeOffset.UtcNow },
-            new PlatformUserOrgMembership { PlatformUserId = platformUserId, OrganizationId = org2.Id, Role = "Member", JoinedAt = DateTimeOffset.UtcNow }
+            new PlatformUserOrgMembership { PlatformUserId = platformUserId, OrganizationId = org2.Id, Role = "Consumer", JoinedAt = DateTimeOffset.UtcNow }
         };
 
         SetupNoRateLimit();
@@ -361,7 +361,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUser.Id,
             OrganizationId = org.Id,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         });
 
@@ -446,7 +446,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUser.Id,
             OrganizationId = org.Id,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         });
 
@@ -504,7 +504,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUserId,
             OrganizationId = orgId,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         });
 
@@ -550,7 +550,7 @@ public class LoginServiceTests : IDisposable
         {
             PlatformUserId = platformUserId,
             OrganizationId = orgId,
-            Role = "Member",
+            Role = "Consumer",
             JoinedAt = DateTimeOffset.UtcNow
         };
 
@@ -633,7 +633,7 @@ public class LoginServiceTests : IDisposable
                 {
                     PlatformUserId = platformUser.Id,
                     OrganizationId = org.Id,
-                    Role = "Member",
+                    Role = "Consumer",
                     JoinedAt = DateTimeOffset.UtcNow
                 }
             });
@@ -687,7 +687,7 @@ public class LoginServiceTests : IDisposable
                 {
                     PlatformUserId = platformUser.Id,
                     OrganizationId = org.Id,
-                    Role = "Member",
+                    Role = "Consumer",
                     JoinedAt = DateTimeOffset.UtcNow
                 }
             });
