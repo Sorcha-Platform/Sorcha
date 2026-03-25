@@ -235,9 +235,11 @@ public partial class OrganizationService : IOrganizationService
             throw new ArgumentException($"Organization {organizationId} not found", nameof(organizationId));
         }
 
-        // Check if user already exists
-        var existingUser = await _identityRepository.GetUserByEmailAsync(request.Email, cancellationToken);
-        if (existingUser != null && existingUser.OrganizationId == organizationId)
+        // Check if user already exists in the target org (scoped check)
+        var existingUser = await _dbContext.UserIdentities
+            .FirstOrDefaultAsync(u => u.OrganizationId == organizationId
+                && u.Email.ToLower() == request.Email.ToLower(), cancellationToken);
+        if (existingUser != null)
         {
             throw new InvalidOperationException($"User with email {request.Email} already exists in this organization");
         }
