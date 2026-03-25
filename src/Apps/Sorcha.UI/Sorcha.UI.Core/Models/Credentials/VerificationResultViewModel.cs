@@ -55,16 +55,22 @@ public class VerificationResultViewModel
     // ── Display properties ────────────────────────────────────────────────────
 
     /// <summary>Display name of the credential issuer.</summary>
-    public required string IssuerName { get; set; }
+    public string? IssuerName { get; set; }
 
     /// <summary>Human-readable credential type label.</summary>
-    public required string CredentialType { get; set; }
+    public string? CredentialType { get; set; }
 
     /// <summary>When the credential expires, if applicable.</summary>
-    public required DateTimeOffset? ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
 
     /// <summary>Claims that were disclosed in this presentation.</summary>
-    public required Dictionary<string, object> DisclosedClaims { get; set; }
+    public Dictionary<string, object>? DisclosedClaims { get; set; }
+
+    /// <summary>Number of required claims specified by the verifier.</summary>
+    public int RequiredClaimCount { get; init; }
+
+    /// <summary>Number of required claims actually present in the presentation.</summary>
+    public int PresentClaimCount { get; init; }
 
     // ── Computed properties ───────────────────────────────────────────────────
 

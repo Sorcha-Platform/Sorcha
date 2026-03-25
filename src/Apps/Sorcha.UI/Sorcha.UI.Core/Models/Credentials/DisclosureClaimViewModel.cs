@@ -49,12 +49,12 @@ public class DisclosureClaimViewModel
     /// <returns>Ordered list of <see cref="DisclosureClaimViewModel"/>.</returns>
     public static List<DisclosureClaimViewModel> CategoriseClaims(
         Dictionary<string, object> allClaims,
-        string[] requiredClaims,
-        string[] disclosable,
-        string[] optionalClaims)
+        IEnumerable<string> requiredClaims,
+        IEnumerable<string>? disclosable = null,
+        IEnumerable<string>? optionalClaims = null)
     {
         var requiredSet = new HashSet<string>(requiredClaims, StringComparer.OrdinalIgnoreCase);
-        var optionalSet = new HashSet<string>(optionalClaims, StringComparer.OrdinalIgnoreCase);
+        var optionalSet = new HashSet<string>(optionalClaims ?? [], StringComparer.OrdinalIgnoreCase);
 
         var result = new List<DisclosureClaimViewModel>(allClaims.Count);
 

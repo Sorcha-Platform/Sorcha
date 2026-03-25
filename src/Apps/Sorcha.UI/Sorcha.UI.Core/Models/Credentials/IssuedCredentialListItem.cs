@@ -21,7 +21,7 @@ public class IssuedCredentialListItem
     public required string IssuedToDid { get; init; }
 
     /// <summary>Name of the blueprint that produced this credential.</summary>
-    public required string BlueprintName { get; init; }
+    public string? BlueprintName { get; init; }
 
     /// <summary>When the credential was issued.</summary>
     public required DateTimeOffset IssuedAt { get; init; }
