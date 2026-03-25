@@ -423,6 +423,77 @@ function Connect-SorchaAdmin {
 }
 
 # ============================================================================
+# Connect-SorchaUser — Two-step login (login + select-org) for any user
+# ============================================================================
+
+function Connect-SorchaUser {
+    <#
+    .SYNOPSIS
+        Login as any user and select a specific organisation.
+    .DESCRIPTION
+        Uses the two-step auth flow:
+        1. POST /auth/login → platform_login_token + org list
+        2. POST /auth/select-org → org-scoped JWT
+        Handles both single-org (direct token) and multi-org (org selection) cases.
+    .RETURNS
+        Hashtable with Token, OrganizationId, UserId, Headers.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$OrganizationId
+    )
+
+    # Step 1: Login
+    $loginBody = @{
+        email    = $Email
+        password = $Password
+    }
+
+    $loginResponse = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/auth/login" `
+        -Body $loginBody
+
+    # Single-org user: token returned directly
+    if ($loginResponse.access_token) {
+        $token = $loginResponse.access_token
+        $jwt = Decode-SorchaJwt -Token $token
+        Write-WtSuccess "Logged in as $Email (single-org: $($jwt.org_id))"
+        return @{
+            Token          = $token
+            OrganizationId = $jwt.org_id
+            UserId         = $jwt.sub
+            Headers        = @{ Authorization = "Bearer $token" }
+        }
+    }
+
+    # Multi-org user: select the target org
+    if ($loginResponse.requires_org_selection -and $loginResponse.platform_login_token) {
+        $selectBody = @{
+            platform_login_token = $loginResponse.platform_login_token
+            organization_id      = $OrganizationId
+        }
+
+        $selectResponse = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/auth/select-org" `
+            -Body $selectBody
+
+        $token = $selectResponse.access_token
+        $jwt = Decode-SorchaJwt -Token $token
+        Write-WtSuccess "Logged in as $Email -> org $($jwt.org_id)"
+        return @{
+            Token          = $token
+            OrganizationId = $jwt.org_id
+            UserId         = $jwt.sub
+            Headers        = @{ Authorization = "Bearer $token" }
+        }
+    }
+
+    throw "Unexpected login response for $Email — no token or org selection flow returned."
+}
+
+# ============================================================================
 # T009: Get-OrCreateOrganization — Idempotent Org Creation
 # ============================================================================
 
@@ -475,7 +546,7 @@ function Get-OrCreateUser {
     $userBody = @{
         email              = $Email
         displayName        = $DisplayName
-        externalIdpUserId  = "$($DisplayName.ToLower().Replace(' ', '-'))-" + [guid]::NewGuid().ToString().Substring(0, 8)
+        externalIdpSubject = "$($DisplayName.ToLower().Replace(' ', '-'))-" + [guid]::NewGuid().ToString().Substring(0, 8)
         roles              = $Roles
     }
 
@@ -495,6 +566,98 @@ function Get-OrCreateUser {
             Write-WtWarn "User '$DisplayName' already exists — continuing"
             # Cannot reliably get the existing user ID here; caller may need to list users
             return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Register-SorchaPublicUser — Self-register a user on the public org
+# ============================================================================
+
+function Register-SorchaPublicUser {
+    <#
+    .SYNOPSIS
+        Register a user on the public org via POST /auth/register.
+        Creates both PlatformUser and UserIdentity in the public org.
+    .RETURNS
+        User ID string, or $null if user already exists.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$DisplayName,
+        [string]$OrgSubdomain = "public"
+    )
+
+    $body = @{
+        orgSubdomain = $OrgSubdomain
+        email        = $Email
+        password     = $Password
+        displayName  = $DisplayName
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/auth/register" `
+            -Body $body
+
+        if ($response.success) {
+            Write-WtSuccess "Registered '$DisplayName' ($Email) -> userId: $($response.userId)"
+            return $response.userId
+        } else {
+            Write-WtWarn "Registration returned: $($response.message)"
+            return $null
+        }
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409 -or $statusCode -eq 400) {
+            Write-WtWarn "User '$Email' may already exist — continuing"
+            return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Confirm-SorchaUserEmail — Admin verify email (bypasses SMTP loop)
+# ============================================================================
+
+function Confirm-SorchaUserEmail {
+    <#
+    .SYNOPSIS
+        Administratively mark a user's email as verified (no SMTP required).
+    .DESCRIPTION
+        Calls POST /organizations/{orgId}/users/{userId}/verify-email.
+        Returns $true if verified, $false if already verified.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$UserId,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    try {
+        Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/organizations/$OrganizationId/users/$UserId/verify-email" `
+            -Headers $Headers
+        Write-WtSuccess "Email verified for user $UserId"
+        return $true
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 400) {
+            Write-WtInfo "Email already verified for user $UserId"
+            return $false
+        }
+        if ($statusCode -eq 404) {
+            Write-WtWarn "User $UserId not found — skipping verify"
+            return $false
         }
         throw
     }
@@ -895,7 +1058,8 @@ function Publish-SorchaBlueprint {
         [Parameter(Mandatory)][string]$TemplatePath,
         [Parameter(Mandatory)][hashtable]$WalletMap,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [string]$IdPrefix = "wt"
+        [string]$IdPrefix = "wt",
+        [string]$RegisterId
     )
 
     # Load template
@@ -935,8 +1099,11 @@ function Publish-SorchaBlueprint {
     # Publish blueprint
     Write-WtInfo "Publishing blueprint..."
 
+    $publishBody = if ($RegisterId) { @{ registerId = $RegisterId } | ConvertTo-Json } else { $null }
+
     $publishRaw = Invoke-SorchaApi -Method POST `
         -Uri "$BlueprintUrl/blueprints/$blueprintId/publish" `
+        -Body $publishBody `
         -Headers $Headers `
         -RawResponse
 
@@ -1040,5 +1207,172 @@ function Invoke-SorchaAction {
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
         return $response
+    }
+}
+
+# ============================================================================
+# New-SorchaOrganization — Create org via Platform Admin API
+# ============================================================================
+
+function New-SorchaOrganization {
+    <#
+    .SYNOPSIS
+        Create a private organization via the platform admin API.
+    .DESCRIPTION
+        Uses POST /api/platform/organizations (requires SystemAdmin role).
+        If the admin email matches an existing PlatformUser, they are added
+        directly; otherwise a pending invitation is created.
+    .RETURNS
+        Hashtable with OrganizationId, AdminDirectlyAdded.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Subdomain,
+        [Parameter(Mandatory)][string]$AdminEmail,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$Description = ""
+    )
+
+    $body = @{
+        name        = $Name
+        subdomain   = $Subdomain
+        adminEmail  = $AdminEmail
+        description = $Description
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/platform/organizations" `
+            -Body $body `
+            -Headers $Headers
+
+        if ($response.success) {
+            Write-WtSuccess "Organization '$Name' created: $($response.organizationId)"
+            return @{
+                OrganizationId    = $response.organizationId
+                AdminDirectlyAdded = $response.adminDirectlyAdded
+            }
+        } else {
+            throw "Organization creation failed: $($response.error)"
+        }
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409) {
+            Write-WtWarn "Organization '$Name' already exists — fetching"
+            # List orgs to find existing
+            $orgs = Invoke-SorchaApi -Method GET `
+                -Uri "$TenantUrl/platform/organizations" `
+                -Headers $Headers
+            $existing = $orgs.items | Where-Object { $_.subdomain -eq $Subdomain } | Select-Object -First 1
+            if ($existing) {
+                Write-WtSuccess "Found existing org: $($existing.id)"
+                return @{
+                    OrganizationId    = "$($existing.id)"
+                    AdminDirectlyAdded = $true
+                }
+            }
+            throw "Organization '$Name' returned 409 but could not be found"
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Connect-SorchaUser — Login as a specific user and get JWT
+# ============================================================================
+
+# (Connect-SorchaUser defined earlier in this file — two-step login + select-org flow)
+
+# ============================================================================
+# New-SorchaRegisterSubscription — Subscribe an org to a register
+# ============================================================================
+
+function New-SorchaRegisterSubscription {
+    <#
+    .SYNOPSIS
+        Subscribe an organization to a register.
+    .DESCRIPTION
+        Uses POST /api/organizations/{orgId}/register-subscriptions.
+        Subscription type "Owner" is immediately Active;
+        "Public" starts as Pending.
+    .RETURNS
+        Subscription response or $null if already subscribed (409).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][string]$RegisterId,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [string]$RegisterName = "",
+        [string]$SubscriptionType = "Owner"
+    )
+
+    $body = @{
+        register_id       = $RegisterId
+        register_name     = $RegisterName
+        subscription_type = $SubscriptionType
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/organizations/$OrganizationId/register-subscriptions" `
+            -Body $body `
+            -Headers $Headers
+
+        Write-WtSuccess "Org $OrganizationId subscribed to register $RegisterId ($SubscriptionType)"
+        return $response
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+
+        if ($statusCode -eq 409) {
+            Write-WtWarn "Org already subscribed to register $RegisterId — continuing"
+            return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Switch-SorchaOrganization — Switch user's active org and get new JWT
+# ============================================================================
+
+function Switch-SorchaOrganization {
+    <#
+    .SYNOPSIS
+        Switch a user's active organization and get a new JWT scoped to that org.
+    .DESCRIPTION
+        Uses POST /api/auth/switch-org. The user must be a member of the target org.
+    .RETURNS
+        Hashtable with Token, UserId, OrganizationId, Headers.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$OrganizationId,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    $body = @{ organizationId = $OrganizationId }
+
+    $response = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/auth/switch-org" `
+        -Body $body `
+        -Headers $Headers
+
+    $token = $response.access_token
+    if (-not $token) { $token = $response.token }
+    $jwt = Decode-SorchaJwt -Token $token
+
+    Write-WtSuccess "Switched to org $($jwt.org_id)"
+
+    return @{
+        Token          = $token
+        UserId         = $jwt.sub
+        OrganizationId = $jwt.org_id
+        WalletAddress  = $jwt.wallet_address
+        Headers        = @{ Authorization = "Bearer $token" }
     }
 }

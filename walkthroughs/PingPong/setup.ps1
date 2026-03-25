@@ -108,7 +108,8 @@ $blueprint = Publish-SorchaBlueprint `
     -TemplatePath $templatePath `
     -WalletMap $walletMap `
     -Headers $admin.Headers `
-    -IdPrefix "pingpong"
+    -IdPrefix "pingpong" `
+    -RegisterId $register.RegisterId
 
 # Save state
 $state = @{

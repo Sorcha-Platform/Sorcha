@@ -102,7 +102,8 @@ $blueprint = Publish-SorchaBlueprint `
     -TemplatePath (Join-Path $scriptDir "medical-equipment-refurb-template.json") `
     -WalletMap $wallets `
     -Headers $admin.Headers `
-    -IdPrefix "medical-equip"
+    -IdPrefix "medical-equip" `
+    -RegisterId $register.RegisterId
 
 # Save state
 $state = @{

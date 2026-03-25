@@ -102,6 +102,22 @@ $secrets = [ordered]@{
     "construction-permit" = @{
         meridianAdminEmail    = $platformEmail
         meridianAdminPassword = $platformPassword
+        # Multi-org user credentials (all use same dev password for walkthrough simplicity)
+        contractorEmail       = "contractor@meridian.local"
+        contractorPassword    = "Dev_Pass_2025!"
+        contractorName        = "Site Manager"
+        engineerEmail         = "engineer@apex.local"
+        engineerPassword      = "Dev_Pass_2025!"
+        engineerName          = "Lead Engineer"
+        planningEmail         = "planning@riverside.local"
+        planningPassword      = "Dev_Pass_2025!"
+        planningName          = "Planning Officer"
+        environmentalEmail    = "environmental@greenvalley.local"
+        environmentalPassword = "Dev_Pass_2025!"
+        environmentalName     = "Environmental Consultant"
+        inspectorEmail        = "inspector@riverside.local"
+        inspectorPassword     = "Dev_Pass_2025!"
+        inspectorName         = "Building Control Inspector"
     }
     "medical-equipment" = @{
         hospitalAdminEmail    = $platformEmail
