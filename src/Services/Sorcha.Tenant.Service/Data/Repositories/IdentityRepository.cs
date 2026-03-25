@@ -102,9 +102,6 @@ public class IdentityRepository : IIdentityRepository
     }
 
 
-
-
-
     public async Task<ServicePrincipal?> GetServicePrincipalByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.ServicePrincipals

@@ -125,6 +125,22 @@
     {
         try
         {
+            // Org admins can only access their own org via deep link
+            if (!_isSystemAdmin)
+            {
+                if (AuthenticationState != null)
+                {
+                    var authState = await AuthenticationState;
+                    var orgIdClaim = authState.User.Claims
+                        .FirstOrDefault(c => c.Type == "org_id" || c.Type == "organization_id");
+                    if (orgIdClaim != null && Guid.TryParse(orgIdClaim.Value, out var userOrgId) && userOrgId != orgId)
+                    {
+                        _orgAdminError = "You do not have access to this organisation.";
+                        return;
+                    }
+                }
+            }
+
             _selectedOrganization = await OrganizationService.GetOrganizationAsync(orgId);
             if (_selectedOrganization == null)
             {
