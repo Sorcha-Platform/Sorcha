@@ -26,7 +26,7 @@ public record AddUserToOrganizationRequest
     /// <summary>
     /// Roles to assign to the user.
     /// </summary>
-    public UserRole[] Roles { get; init; } = [UserRole.Member];
+    public UserRole[] Roles { get; init; } = [UserRole.Consumer];
 }
 
 /// <summary>

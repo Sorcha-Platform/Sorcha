@@ -20,7 +20,7 @@ public record CreateInvitationRequest
     /// Role to assign when the invitation is accepted (Administrator, Designer, Auditor, Member).
     /// </summary>
     [Required]
-    public UserRole Role { get; init; } = UserRole.Member;
+    public UserRole Role { get; init; } = UserRole.Consumer;
 
     /// <summary>
     /// Number of days until the invitation expires (1-30, default 7).

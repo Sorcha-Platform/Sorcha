@@ -50,7 +50,7 @@
         -UserEmail "bob@example.com" `
         -UserDisplayName "Bob Smith" `
         -UserPassword "SecurePass123!" `
-        -UserRoles @("Member", "Designer") `
+        -UserRoles @("Consumer", "Designer") `
         -WalletAlgorithm "NISTP256" `
         -MnemonicWordCount 24 `
         -OrgSubdomain "demo" `
@@ -84,7 +84,7 @@ param(
     [string]$UserPassword,
 
     [Parameter(Mandatory = $false)]
-    [string[]]$UserRoles = @("Member"),
+    [string[]]$UserRoles = @("Consumer"),
 
     [Parameter(Mandatory = $false)]
     [string]$WalletName = "Default Wallet",
@@ -293,7 +293,7 @@ try {
         "User" = 4
         "Consumer" = 5
         "Auditor" = 6
-        "Member" = 7
+        "Consumer" = 7
     }
 
     $numericRoles = @()

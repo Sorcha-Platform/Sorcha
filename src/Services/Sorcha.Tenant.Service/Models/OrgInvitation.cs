@@ -27,7 +27,7 @@ public class OrgInvitation
     /// <summary>
     /// Role assigned to the user upon acceptance.
     /// </summary>
-    public UserRole AssignedRole { get; set; } = UserRole.Member;
+    public UserRole AssignedRole { get; set; } = UserRole.Consumer;
 
     /// <summary>
     /// Cryptographic invitation token (32-byte URL-safe base64). Globally unique.

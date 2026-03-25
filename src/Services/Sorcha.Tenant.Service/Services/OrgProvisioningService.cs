@@ -160,7 +160,7 @@ public class OrgProvisioningService : IOrgProvisioningService
                 PlatformUserId = platformUserId,
                 Email = platformUser.Email,
                 DisplayName = platformUser.DisplayName,
-                Roles = [UserRole.Administrator, UserRole.Designer, UserRole.Member],
+                Roles = [UserRole.Administrator, UserRole.Designer, UserRole.Consumer],
                 Status = IdentityStatus.Active,
                 ProvisionedVia = ProvisioningMethod.Local,
                 CreatedAt = DateTimeOffset.UtcNow
@@ -424,10 +424,10 @@ public class OrgProvisioningService : IOrgProvisioningService
     /// </summary>
     private static UserRole[] BuildRoleSet(UserRole primaryRole) => primaryRole switch
     {
-        UserRole.Administrator => [UserRole.Administrator, UserRole.Designer, UserRole.Member],
-        UserRole.Designer => [UserRole.Designer, UserRole.Member],
-        UserRole.Auditor => [UserRole.Auditor, UserRole.Member],
-        UserRole.Member => [UserRole.Member],
-        _ => [primaryRole, UserRole.Member]
+        UserRole.Administrator => [UserRole.Administrator, UserRole.Designer, UserRole.Consumer],
+        UserRole.Designer => [UserRole.Designer, UserRole.Consumer],
+        UserRole.Auditor => [UserRole.Auditor, UserRole.Consumer],
+        UserRole.Consumer => [UserRole.Consumer],
+        _ => [primaryRole, UserRole.Consumer]
     };
 }

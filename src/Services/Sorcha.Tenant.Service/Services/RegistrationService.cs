@@ -129,7 +129,7 @@ public class RegistrationService : IRegistrationService
             Email = email,
             DisplayName = displayName,
             Status = IdentityStatus.Active,
-            Roles = [UserRole.Member],
+            Roles = [UserRole.Consumer],
             ProvisionedVia = ProvisioningMethod.Local,
             ProfileCompleted = true,
             CreatedAt = DateTimeOffset.UtcNow
@@ -143,7 +143,7 @@ public class RegistrationService : IRegistrationService
             Id = Guid.NewGuid(),
             PlatformUserId = platformUser.Id,
             OrganizationId = org.Id,
-            Role = nameof(UserRole.Member),
+            Role = nameof(UserRole.Consumer),
             JoinedAt = DateTimeOffset.UtcNow
         });
 

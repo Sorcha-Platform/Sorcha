@@ -62,7 +62,7 @@ public class OidcProvisioningServiceTests : IDisposable
         isFirstLogin.Should().BeTrue();
         user.Email.Should().Be("alice@example.com");
         user.DisplayName.Should().Be("Alice Smith");
-        user.Roles.Should().ContainSingle().Which.Should().Be(UserRole.Member);
+        user.Roles.Should().ContainSingle().Which.Should().Be(UserRole.Consumer);
         user.ProvisionedVia.Should().Be(ProvisioningMethod.Oidc);
         user.OrganizationId.Should().Be(_testOrgId);
         user.Status.Should().Be(IdentityStatus.Active);
@@ -79,7 +79,7 @@ public class OidcProvisioningServiceTests : IDisposable
             PlatformUserId = Guid.NewGuid(),
             Email = "bob@example.com",
             DisplayName = "Bob Jones",
-            Roles = [UserRole.Member],
+            Roles = [UserRole.Consumer],
             ProvisionedVia = ProvisioningMethod.Oidc,
             LastLoginAt = DateTimeOffset.UtcNow.AddDays(-7)
         };

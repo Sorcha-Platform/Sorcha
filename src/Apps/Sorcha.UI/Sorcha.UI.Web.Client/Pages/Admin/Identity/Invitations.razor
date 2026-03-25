@@ -33,7 +33,7 @@
             </MudItem>
             <MudItem xs="12" sm="3">
                 <MudSelect T="string" @bind-Value="_newRole" Label="Role">
-                    <MudSelectItem T="string" Value="@("Member")">Member</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Consumer")">Member</MudSelectItem>
                     <MudSelectItem T="string" Value="@("Designer")">Designer</MudSelectItem>
                     <MudSelectItem T="string" Value="@("Auditor")">Auditor</MudSelectItem>
                     <MudSelectItem T="string" Value="@("Administrator")">Administrator</MudSelectItem>
@@ -124,7 +124,7 @@
 
     // New invitation form
     private string _newEmail = "";
-    private string _newRole = "Member";
+    private string _newRole = "Consumer";
     private int _newExpiryDays = 7;
 
     protected override async Task OnInitializedAsync()

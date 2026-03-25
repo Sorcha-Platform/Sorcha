@@ -38,7 +38,7 @@ public class IdentityRepositoryTests : IDisposable
             PlatformUserId = Guid.NewGuid(),
             Email = "alice@example.com",
             DisplayName = "Alice Johnson",
-            Roles = new[] { UserRole.Member },
+            Roles = new[] { UserRole.Consumer },
             Status = IdentityStatus.Active
         };
 
@@ -202,7 +202,7 @@ public class IdentityRepositoryTests : IDisposable
             PlatformUserId = Guid.NewGuid(),
             Email = "original@example.com",
             DisplayName = "Original Name",
-            Roles = new[] { UserRole.Member },
+            Roles = new[] { UserRole.Consumer },
             Status = IdentityStatus.Active
         };
         var created = await _repository.CreateUserAsync(user);
