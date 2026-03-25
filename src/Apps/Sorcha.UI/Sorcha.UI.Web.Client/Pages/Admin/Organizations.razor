@@ -92,9 +92,7 @@
         {
             var authState = await AuthenticationState;
 
-            _isSystemAdmin = authState.User.Claims
-                .Any(c => c.Type == ClaimTypes.Role &&
-                     (c.Value == "Administrator" || c.Value == "SystemAdmin"));
+            _isSystemAdmin = authState.User.IsInRole("SystemAdmin");
 
             var userIdClaim = authState.User.Claims
                 .FirstOrDefault(c => c.Type == "sub" || c.Type == ClaimTypes.NameIdentifier);

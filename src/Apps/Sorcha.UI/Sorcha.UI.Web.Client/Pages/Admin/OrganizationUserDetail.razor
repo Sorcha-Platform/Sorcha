@@ -138,8 +138,7 @@
             if (AuthenticationState != null)
             {
                 var authState = await AuthenticationState;
-                var isSystemAdmin = authState.User.Claims
-                    .Any(c => c.Type == ClaimTypes.Role && c.Value == "SystemAdmin");
+                var isSystemAdmin = authState.User.IsInRole("SystemAdmin");
 
                 if (!isSystemAdmin)
                 {
