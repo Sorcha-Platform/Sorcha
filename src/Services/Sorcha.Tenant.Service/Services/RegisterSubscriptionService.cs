@@ -79,7 +79,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
             RegisterId = registerId,
             RegisterName = registerName,
             SubscriptionType = SubscriptionType.Public,
-            Status = SubscriptionStatus.Pending,
+            Status = SubscriptionStatus.Active,
             SubscribedAt = DateTimeOffset.UtcNow,
             SubscribedByUserId = subscribedByUserId
         };
@@ -88,7 +88,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
         await _dbContext.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Organization {OrgId} subscribed to register {RegisterId} (Public, Pending)",
+            "Organization {OrgId} subscribed to register {RegisterId} (Public, Active)",
             orgId, registerId);
 
         return MapToResponse(subscription);

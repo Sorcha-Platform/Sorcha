@@ -126,6 +126,9 @@ public class DatabaseInitializer
 
         // --- 4. PlatformSettings ---
         await SeedPlatformSettingsAsync(dbContext, cancellationToken);
+
+        // --- 5. System Register Owner Subscription ---
+        await SeedSystemRegisterSubscriptionAsync(dbContext, cancellationToken);
     }
 
     private async Task SeedSystemAdminOrgAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
@@ -317,6 +320,46 @@ public class DatabaseInitializer
         dbContext.PlatformSettings.Add(settings);
         await dbContext.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("PlatformSettings seeded with ID: {Id}", settings.Id);
+    }
+
+    /// <summary>
+    /// Ensures the system admin org has an Owner subscription to the system register.
+    /// The system register is created by Register Service's SystemRegisterBootstrapper,
+    /// but it doesn't create the Tenant-side subscription. This seed ensures the
+    /// system register appears in the admin's register list from first login.
+    /// </summary>
+    private async Task SeedSystemRegisterSubscriptionAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // System register ID: SHA-256("sorcha-system-register") first 32 hex chars
+        const string systemRegisterId = "aebf26362e079087571ac0932d4db973";
+        const string systemRegisterName = "Sorcha System Register";
+
+        var exists = await dbContext.OrganizationRegisterSubscriptions
+            .AnyAsync(s => s.OrganizationId == WellKnownIds.SystemAdminOrgId
+                        && s.RegisterId == systemRegisterId, cancellationToken);
+
+        if (exists)
+        {
+            _logger.LogInformation("System register subscription already exists for system admin org");
+            return;
+        }
+
+        _logger.LogInformation("Creating Owner subscription to system register for system admin org");
+
+        var subscription = new OrganizationRegisterSubscription
+        {
+            OrganizationId = WellKnownIds.SystemAdminOrgId,
+            RegisterId = systemRegisterId,
+            RegisterName = systemRegisterName,
+            SubscriptionType = SubscriptionType.Owner,
+            Status = SubscriptionStatus.Active,
+            SubscribedAt = DateTimeOffset.UtcNow,
+            SubscribedByUserId = WellKnownIds.DefaultAdminUserId
+        };
+
+        dbContext.OrganizationRegisterSubscriptions.Add(subscription);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("System register Owner subscription created for org {OrgId}", WellKnownIds.SystemAdminOrgId);
     }
 
     private async Task SeedServicePrincipalsAsync(TenantDbContext dbContext, CancellationToken cancellationToken)

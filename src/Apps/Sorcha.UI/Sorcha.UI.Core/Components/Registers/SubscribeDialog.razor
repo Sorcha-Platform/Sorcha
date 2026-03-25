@@ -2,6 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Sorcha.UI.Core.Services
+@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
@@ -161,7 +162,16 @@
             {
                 SubscribedRegisterIds.Add(registerId);
                 await OnSubscribed.InvokeAsync();
+                Snackbar.Add("Successfully subscribed to register", Severity.Success);
             }
+            else
+            {
+                Snackbar.Add("Failed to subscribe to register", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Subscription failed: {ex.Message}", Severity.Error);
         }
         finally
         {
