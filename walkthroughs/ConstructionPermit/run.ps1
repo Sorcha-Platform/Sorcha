@@ -35,21 +35,26 @@ foreach ($prop in $state.roles.PSObject.Properties) {
         organizationId = $r.organizationId
         walletAddress  = $r.walletAddress
         orgKey         = $r.orgKey
+        email          = $r.email
+        password       = $r.password
     }
 }
 
 $orgs = @{}
 foreach ($prop in $state.organizations.PSObject.Properties) { $orgs[$prop.Name] = $prop.Value }
 
-# Login as system admin (used for switch-org to get per-org tokens)
-Write-WtStep "Authenticating"
-$sysAdmin = Connect-SorchaAdmin `
-    -TenantUrl $state.tenantUrl `
-    -AdminEmail $state.adminEmail `
-    -AdminPassword $state.adminPassword
+# Login each user and cache their tokens (per-role, not per-org)
+Write-WtStep "Authenticating (per-user login)"
+$roleTokenCache = @{}
 
-# Cache org-scoped tokens (switch once per org, reuse within scenario)
-$orgTokenCache = @{}
+foreach ($role in $roles.Keys) {
+    $r = $roles[$role]
+    $session = Connect-SorchaUser `
+        -TenantUrl $state.tenantUrl `
+        -Email $r.email `
+        -Password $r.password
+    $roleTokenCache[$role] = $session.Token
+}
 
 # Action-to-sender mapping (matches blueprint action IDs to participant roles)
 $actionSenderMap = @{
@@ -82,13 +87,9 @@ foreach ($sid in $scenariosToRun) {
 
     Write-WtStep "Scenario $sid`: $($scenarioData.name)"
 
-    # Get contractor's org-scoped token for instance creation
+    # Use contractor's token for instance creation
+    $contractorToken = $roleTokenCache["contractor"]
     $contractorOrgId = $roles["contractor"].organizationId
-    if (-not $orgTokenCache[$contractorOrgId]) {
-        $session = Switch-SorchaOrganization -TenantUrl $state.tenantUrl -OrganizationId $contractorOrgId -Headers $sysAdmin.Headers
-        $orgTokenCache[$contractorOrgId] = $session.Token
-    }
-    $contractorToken = $orgTokenCache[$contractorOrgId]
 
     $instanceBody = @{
         blueprintId = $state.blueprintId; registerId = $state.registerId
@@ -107,14 +108,7 @@ foreach ($sid in $scenariosToRun) {
         $actionIdStr = "$actionId"
         $sender = $actionSenderMap[[int]$actionId]
         $senderWallet = $wallets[$sender]
-        $senderOrgId = $roles[$sender].organizationId
-
-        # Get org-scoped token (cached per org)
-        if (-not $orgTokenCache[$senderOrgId]) {
-            $session = Switch-SorchaOrganization -TenantUrl $state.tenantUrl -OrganizationId $senderOrgId -Headers $sysAdmin.Headers
-            $orgTokenCache[$senderOrgId] = $session.Token
-        }
-        $senderToken = $orgTokenCache[$senderOrgId]
+        $senderToken = $roleTokenCache[$sender]
 
         $actionData = $scenarioData.actions."$actionId"
 
