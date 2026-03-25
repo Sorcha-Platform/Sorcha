@@ -223,7 +223,7 @@ public record UserListResponse
     public int TotalCount { get; init; }
 
     /// <summary>
-    /// Pending invitations (only populated when includePendingInvitations=true).
+    /// Pending invitations (only populated when includePending=true).
     /// </summary>
     public IReadOnlyList<PendingInvitationResponse> PendingInvitations { get; init; } = [];
 

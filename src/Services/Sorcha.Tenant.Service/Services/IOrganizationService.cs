@@ -95,7 +95,7 @@ public interface IOrganizationService
     /// <param name="includeInactive">Whether to include suspended/deleted users.</param>
     /// <param name="emailVerified">Filter by email verification status (null = no filter).</param>
     /// <param name="provisionedVia">Filter by provisioning method (null = no filter).</param>
-    /// <param name="includePendingInvitations">Include pending OrgInvitation records.</param>
+    /// <param name="includePending">Include pending OrgInvitation records.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>List of users with optional pending invitations.</returns>
     Task<UserListResponse> GetOrganizationUsersAsync(
@@ -103,7 +103,7 @@ public interface IOrganizationService
         bool includeInactive = false,
         bool? emailVerified = null,
         string? provisionedVia = null,
-        bool includePendingInvitations = false,
+        bool includePending = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>

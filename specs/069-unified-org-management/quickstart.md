@@ -17,7 +17,7 @@ docker-compose up -d
 
 1. **Enhance UserResponse DTO** — Add `EmailVerified`, `EmailVerifiedAt`, `ProvisionedVia`, `InvitedByUserId`, `ProfileCompleted`, `InvitationStatus` fields to `UserDtos.cs`
 2. **Update repository queries** — Join UserIdentity → PlatformUser for email verification fields; join to OrgInvitation for invitation status
-3. **Add filter parameters** — `emailVerified`, `provisionedVia`, `includePendingInvitations` to `GetOrganizationUsersAsync()`
+3. **Add filter parameters** — `emailVerified`, `provisionedVia`, `includePending` to `GetOrganizationUsersAsync()`
 4. **Add verify-email endpoint** — `POST /api/organizations/{orgId}/users/{userId}/verify-email`
 5. **Unit tests** — Test filtering logic, verify-email override, authorization checks
 
@@ -42,7 +42,7 @@ dotnet test tests/Sorcha.UI.E2E.Tests --filter "Category=Smoke"
 ### Phase 3: UI Enhancement — Users Tab + Participants Tab
 
 1. **Enhance UserList.razor** — Add status filter chips (Active/Invited/Unverified), admin override buttons (Verify Email, Resend Invitation)
-2. **Update UI service client** — Add `emailVerified`, `provisionedVia`, `includePendingInvitations` params + `VerifyEmailAsync()` method
+2. **Update UI service client** — Add `emailVerified`, `provisionedVia`, `includePending` params + `VerifyEmailAsync()` method
 3. **Enhance ParticipantList.razor** — Add publish status column, inline revoke action
 4. **Delete PublishedParticipantsList.razor** — Functionality absorbed into ParticipantList
 

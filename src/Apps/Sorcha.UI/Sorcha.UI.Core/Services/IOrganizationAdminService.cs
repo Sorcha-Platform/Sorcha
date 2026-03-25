@@ -89,7 +89,7 @@ public interface IOrganizationAdminService
         bool includeInactive = false,
         bool? emailVerified = null,
         string? provisionedVia = null,
-        bool includePendingInvitations = false,
+        bool includePending = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>

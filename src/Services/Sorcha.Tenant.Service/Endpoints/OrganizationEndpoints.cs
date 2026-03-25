@@ -666,12 +666,12 @@ public static class OrganizationEndpoints
         bool includeInactive = false,
         bool? emailVerified = null,
         string? provisionedVia = null,
-        bool includePendingInvitations = false,
+        bool includePending = false,
         CancellationToken cancellationToken = default)
     {
         var response = await organizationService.GetOrganizationUsersAsync(
             organizationId, includeInactive, emailVerified, provisionedVia,
-            includePendingInvitations, cancellationToken);
+            includePending, cancellationToken);
         return TypedResults.Ok(response);
     }
 

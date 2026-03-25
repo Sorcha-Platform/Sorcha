@@ -43,18 +43,18 @@
 
 ### Service Layer
 
-- [x] T008 Update `IOrganizationService` interface in `src/Services/Sorcha.Tenant.Service/Services/IOrganizationService.cs` — update `GetOrganizationUsersAsync` signature to accept `bool? emailVerified`, `string? provisionedVia`, `bool includePendingInvitations`. Add `AdminVerifyEmailAsync(Guid orgId, Guid userId, Guid adminUserId)` method.
+- [x] T008 Update `IOrganizationService` interface in `src/Services/Sorcha.Tenant.Service/Services/IOrganizationService.cs` — update `GetOrganizationUsersAsync` signature to accept `bool? emailVerified`, `string? provisionedVia`, `bool includePending`. Add `AdminVerifyEmailAsync(Guid orgId, Guid userId, Guid adminUserId)` method.
 - [x] T009 Implement enhanced `GetOrganizationUsersAsync` in `src/Services/Sorcha.Tenant.Service/Services/OrganizationService.cs` — call new repository method, populate enhanced UserResponse with PlatformUser join data, optionally fetch pending OrgInvitations.
 - [x] T010 Implement `AdminVerifyEmailAsync` in `src/Services/Sorcha.Tenant.Service/Services/OrganizationService.cs` — validate user exists in org, check not already verified, set PlatformUser.EmailVerified=true and EmailVerifiedAt=UtcNow, clear VerificationToken and VerificationTokenExpiresAt, record `EmailVerifiedByAdmin` audit event. Return 400 if already verified, 404 if user not found.
 
 ### Endpoints
 
-- [x] T011 Update `GET /api/organizations/{orgId}/users` endpoint in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs` — add optional query parameters `emailVerified` (bool?), `provisionedVia` (string?), `includePendingInvitations` (bool). Pass to service layer. Add `.WithDescription()` for new params.
+- [x] T011 Update `GET /api/organizations/{orgId}/users` endpoint in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs` — add optional query parameters `emailVerified` (bool?), `provisionedVia` (string?), `includePending` (bool). Pass to service layer. Add `.WithDescription()` for new params.
 - [x] T012 Add `POST /api/organizations/{orgId}/users/{userId}/verify-email` endpoint in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs` — RequireAdministrator policy, call `AdminVerifyEmailAsync`, return 204/400/403/404. Add `.WithName("AdminVerifyEmail")`, `.WithSummary()`, `.WithDescription()`.
 
 ### Backend Unit Tests
 
-- [x] T013 [P] Write unit tests for enhanced `GetOrganizationUsersAsync` in `tests/Sorcha.Tenant.Service.Tests/Services/OrganizationServiceTests.cs` — test: no filters (backwards compatible), emailVerified=true filter, emailVerified=false filter, provisionedVia filter, includePendingInvitations=true, combined filters.
+- [x] T013 [P] Write unit tests for enhanced `GetOrganizationUsersAsync` in `tests/Sorcha.Tenant.Service.Tests/Services/OrganizationServiceTests.cs` — test: no filters (backwards compatible), emailVerified=true filter, emailVerified=false filter, provisionedVia filter, includePending=true, combined filters.
 - [x] T014 [P] Write unit tests for `AdminVerifyEmailAsync` in `tests/Sorcha.Tenant.Service.Tests/Services/OrganizationServiceTests.cs` — test: success case, already-verified returns 400, user not in org returns 404, audit event recorded, VerificationToken cleared.
 
 **Checkpoint**: Backend API enhanced. Existing callers unaffected (backwards compatible). New filtering and verify-email endpoint ready.
@@ -126,7 +126,7 @@
 
 ### UI Service Client Updates
 
-- [x] T027 Update `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/IOrganizationAdminService.cs` — add `VerifyEmailAsync(Guid orgId, Guid userId)` method. Update `GetOrganizationUsersAsync` signature to accept `bool? emailVerified`, `string? provisionedVia`, `bool includePendingInvitations` parameters. Add `EmailVerified`, `EmailVerifiedAt`, `ProvisionedVia`, `InvitedByUserId`, `ProfileCompleted`, `InvitationStatus` to `UserDto`. Add `PendingInvitationDto` record and `PendingInvitations`/`PendingInvitationCount` to `UserListResult`.
+- [x] T027 Update `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/IOrganizationAdminService.cs` — add `VerifyEmailAsync(Guid orgId, Guid userId)` method. Update `GetOrganizationUsersAsync` signature to accept `bool? emailVerified`, `string? provisionedVia`, `bool includePending` parameters. Add `EmailVerified`, `EmailVerifiedAt`, `ProvisionedVia`, `InvitedByUserId`, `ProfileCompleted`, `InvitationStatus` to `UserDto`. Add `PendingInvitationDto` record and `PendingInvitations`/`PendingInvitationCount` to `UserListResult`.
 - [x] T028 Implement new methods in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/OrganizationAdminService.cs` — `VerifyEmailAsync` calls `POST /api/organizations/{orgId}/users/{userId}/verify-email`. Update `GetOrganizationUsersAsync` to pass new query params. Map enhanced response fields.
 
 ### Invitation Resend Verification

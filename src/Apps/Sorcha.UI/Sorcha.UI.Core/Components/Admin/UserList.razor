@@ -162,7 +162,7 @@
         try
         {
             var result = await OrganizationService.GetOrganizationUsersAsync(
-                Organization.Id, _includeInactive, includePendingInvitations: true);
+                Organization.Id, _includeInactive, includePending: true);
             _users = result.Users.ToList();
             ApplyStatusFilter();
         }

@@ -159,6 +159,7 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.backup.*
 appsettings.Local.json
 .claude/settings.local.json
 

@@ -246,7 +246,7 @@ public class OrganizationServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePendingInvitations: true);
+        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePending: true);
 
         // Assert
         result.Users.Should().BeEmpty();
@@ -275,7 +275,7 @@ public class OrganizationServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePendingInvitations: true);
+        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePending: true);
 
         // Assert — only the invitation for the non-existing user should appear
         result.PendingInvitations.Should().HaveCount(1);
@@ -295,7 +295,7 @@ public class OrganizationServiceTests : IDisposable
         var service = CreateService();
 
         // Act
-        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePendingInvitations: false);
+        var result = await service.GetOrganizationUsersAsync(_testOrgId, includePending: false);
 
         // Assert
         result.PendingInvitations.Should().BeEmpty();
@@ -323,13 +323,13 @@ public class OrganizationServiceTests : IDisposable
 
         var service = CreateService();
 
-        // Act — provisionedVia=Invitation, emailVerified=true, includeInactive=true, includePendingInvitations=true
+        // Act — provisionedVia=Invitation, emailVerified=true, includeInactive=true, includePending=true
         var result = await service.GetOrganizationUsersAsync(
             _testOrgId,
             includeInactive: true,
             emailVerified: true,
             provisionedVia: "Invitation",
-            includePendingInvitations: true);
+            includePending: true);
 
         // Assert — only the verified invited user should appear
         result.Users.Should().HaveCount(1);

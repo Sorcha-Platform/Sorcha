@@ -34,11 +34,11 @@ New query parameters for `GET /api/organizations/{orgId}/users`:
 | includeInactive | bool | false | Existing parameter |
 | **emailVerified** | bool? | null | null = no filter, true/false = filter by PlatformUser.EmailVerified |
 | **provisionedVia** | string? | null | Filter by ProvisioningMethod (Local, Invitation, SocialLogin, etc.) |
-| **includePendingInvitations** | bool | false | Include OrgInvitation records with Status=Pending (pre-UserIdentity) |
+| **includePending** | bool | false | Include OrgInvitation records with Status=Pending (pre-UserIdentity) |
 
 ### PendingInvitationResponse (New)
 
-Returned when `includePendingInvitations=true` for users who have been invited but not yet accepted (no UserIdentity exists).
+Returned when `includePending=true` for users who have been invited but not yet accepted (no UserIdentity exists).
 
 | Field | Type | Source | Notes |
 |-------|------|--------|-------|
@@ -55,7 +55,7 @@ Returned when `includePendingInvitations=true` for users who have been invited b
 |-------|------|------|-------|
 | Users | IReadOnlyList\<UserResponse\> | No | Existing users in org |
 | TotalCount | int | No | Total matching users |
-| **PendingInvitations** | IReadOnlyList\<PendingInvitationResponse\> | **Yes** | Only populated when includePendingInvitations=true |
+| **PendingInvitations** | IReadOnlyList\<PendingInvitationResponse\> | **Yes** | Only populated when includePending=true |
 | **PendingInvitationCount** | int | **Yes** | Count of pending invitations |
 
 ### AuditEventType (New Value)

@@ -35,7 +35,7 @@ GET /api/organizations/{orgId}/users:
         type: string
         enum: [Local, Oidc, Invitation, SocialLogin, AdminCreated, Passkey]
       description: Filter by provisioning method
-    - name: includePendingInvitations
+    - name: includePending
       in: query
       required: false
       schema:
@@ -58,7 +58,7 @@ GET /api/organizations/{orgId}/users:
                 type: integer
               pendingInvitations:
                 type: array
-                description: Only populated when includePendingInvitations=true
+                description: Only populated when includePending=true
                 items:
                   $ref: '#/components/schemas/PendingInvitationResponse'
               pendingInvitationCount:

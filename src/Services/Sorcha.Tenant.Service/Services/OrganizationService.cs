@@ -268,7 +268,7 @@ public partial class OrganizationService : IOrganizationService
         bool includeInactive = false,
         bool? emailVerified = null,
         string? provisionedVia = null,
-        bool includePendingInvitations = false,
+        bool includePending = false,
         CancellationToken cancellationToken = default)
     {
         // Fetch users with basic filters (status, provisioning method)
@@ -308,7 +308,7 @@ public partial class OrganizationService : IOrganizationService
         // Fetch pending invitations if requested
         var pendingInvitations = new List<PendingInvitationResponse>();
         var pendingCount = 0;
-        if (includePendingInvitations)
+        if (includePending)
         {
             var pending = await _dbContext.OrgInvitations
                 .Where(i => i.OrganizationId == organizationId &&

@@ -225,14 +225,14 @@ public class OrganizationAdminService : IOrganizationAdminService
         bool includeInactive = false,
         bool? emailVerified = null,
         string? provisionedVia = null,
-        bool includePendingInvitations = false,
+        bool includePending = false,
         CancellationToken cancellationToken = default)
     {
         var queryParams = new List<string>();
         if (includeInactive) queryParams.Add("includeInactive=true");
         if (emailVerified.HasValue) queryParams.Add($"emailVerified={emailVerified.Value.ToString().ToLower()}");
         if (!string.IsNullOrEmpty(provisionedVia)) queryParams.Add($"provisionedVia={Uri.EscapeDataString(provisionedVia)}");
-        if (includePendingInvitations) queryParams.Add("includePendingInvitations=true");
+        if (includePending) queryParams.Add("includePending=true");
 
         var query = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
         var url = $"{BaseUrl}/{organizationId}/users{query}";

@@ -367,7 +367,7 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 - `includeInactive` (bool) — Include suspended/deleted users
 - `emailVerified` (bool?) — Filter by email verification status
 - `provisionedVia` (string?) — Filter by provisioning method (Local, Oidc, Invitation, etc.)
-- `includePendingInvitations` (bool) — Include pending OrgInvitation records
+- `includePending` (bool) — Include pending OrgInvitation records
 
 **Enhanced UserResponse** now includes: `EmailVerified`, `EmailVerifiedAt`, `ProvisionedVia`, `InvitedByUserId`, `ProfileCompleted`, `InvitationStatus`.
 
