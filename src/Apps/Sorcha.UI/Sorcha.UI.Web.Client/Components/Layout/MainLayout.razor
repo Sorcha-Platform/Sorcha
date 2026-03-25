@@ -137,6 +137,14 @@
                             </MudNavLink>
                         </Authorized>
                     </AuthorizeView>
+                    <AuthorizeView Roles="Administrator,OrganizationAdmin,SystemAdmin">
+                        <Authorized Context="orgAdminContext">
+                            <MudNavLink Href="admin/organizations" Icon="@Icons.Material.Filled.Business"
+                                        data-testid="nav-organisations">
+                                Organisations
+                            </MudNavLink>
+                        </Authorized>
+                    </AuthorizeView>
                     <AuthorizeView Roles="Administrator,SystemAdmin">
                         <Authorized Context="adminContext">
                             <MudNavGroup Title="Identity" Icon="@Icons.Material.Filled.Security" Expanded="false">
@@ -168,9 +176,6 @@
                                         <MudNavLink Href="admin/settings/platform" Icon="@Icons.Material.Filled.Tune">
                                             Platform Settings
                                         </MudNavLink>
-                                        <MudNavLink Href="admin/platform-organizations" Icon="@Icons.Material.Filled.CorporateFare">
-                                            Platform Organisations
-                                        </MudNavLink>
                                     </Authorized>
                                 </AuthorizeView>
                                 <MudNavLink Href="admin/health" Icon="@Icons.Material.Filled.HealthAndSafety">
@@ -178,9 +183,6 @@
                                 </MudNavLink>
                                 <MudNavLink Href="admin/peers" Icon="@Icons.Material.Filled.Hub">
                                     @Loc.T("nav.peerNetwork")
-                                </MudNavLink>
-                                <MudNavLink Href="admin/organizations" Icon="@Icons.Material.Filled.Business">
-                                    @Loc.T("nav.organizations")
                                 </MudNavLink>
                                 <MudNavLink Href="admin/validator" Icon="@Icons.Material.Filled.VerifiedUser">
                                     @Loc.T("nav.validator")

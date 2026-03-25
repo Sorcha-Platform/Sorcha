@@ -266,17 +266,130 @@ public partial class OrganizationService : IOrganizationService
     public async Task<UserListResponse> GetOrganizationUsersAsync(
         Guid organizationId,
         bool includeInactive = false,
+        bool? emailVerified = null,
+        string? provisionedVia = null,
+        bool includePending = false,
         CancellationToken cancellationToken = default)
     {
-        var users = includeInactive
-            ? await _identityRepository.GetAllUsersAsync(organizationId, cancellationToken)
-            : await _identityRepository.GetActiveUsersAsync(organizationId, cancellationToken);
+        // Fetch users with basic filters (status, provisioning method)
+        var users = await _identityRepository.GetUsersWithFiltersAsync(
+            organizationId, includeInactive, provisionedVia, cancellationToken);
+
+        // Fetch PlatformUser data for email verification status
+        var platformUserIds = users.Select(u => u.PlatformUserId).Distinct().ToList();
+        var platformUsers = await _dbContext.PlatformUsers
+            .Where(p => platformUserIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+        // Fetch latest OrgInvitation per user email for invitation status
+        var userEmails = users.Select(u => u.Email).Distinct().ToList();
+        var invitations = await _dbContext.OrgInvitations
+            .Where(i => i.OrganizationId == organizationId && userEmails.Contains(i.Email))
+            .GroupBy(i => i.Email)
+            .Select(g => g.OrderByDescending(i => i.CreatedAt).First())
+            .ToDictionaryAsync(i => i.Email, cancellationToken);
+
+        // Build enhanced responses
+        var userResponses = users.Select(u =>
+        {
+            platformUsers.TryGetValue(u.PlatformUserId, out var platformUser);
+            invitations.TryGetValue(u.Email, out var invitation);
+            return UserResponse.FromEntity(u, platformUser, invitation);
+        }).ToList();
+
+        // Apply email verification filter (post-join, since it comes from PlatformUser)
+        if (emailVerified.HasValue)
+        {
+            userResponses = userResponses
+                .Where(u => u.EmailVerified == emailVerified.Value)
+                .ToList();
+        }
+
+        // Fetch pending invitations if requested
+        var pendingInvitations = new List<PendingInvitationResponse>();
+        var pendingCount = 0;
+        if (includePending)
+        {
+            var pending = await _dbContext.OrgInvitations
+                .Where(i => i.OrganizationId == organizationId &&
+                            (i.Status == InvitationStatus.Pending || i.Status == InvitationStatus.Expired))
+                .OrderByDescending(i => i.CreatedAt)
+                .ToListAsync(cancellationToken);
+
+            // Exclude invitations for users who already have a UserIdentity
+            var existingEmails = users.Select(u => u.Email).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            pending = pending.Where(i => !existingEmails.Contains(i.Email)).ToList();
+
+            pendingInvitations = pending.Select(PendingInvitationResponse.FromEntity).ToList();
+            pendingCount = pendingInvitations.Count;
+        }
 
         return new UserListResponse
         {
-            Users = users.Select(UserResponse.FromEntity).ToList(),
-            TotalCount = users.Count
+            Users = userResponses,
+            TotalCount = userResponses.Count,
+            PendingInvitations = pendingInvitations,
+            PendingInvitationCount = pendingCount
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> AdminVerifyEmailAsync(
+        Guid organizationId,
+        Guid userId,
+        Guid adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        // Verify user exists in this organisation
+        var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+        if (user == null || user.OrganizationId != organizationId)
+        {
+            throw new KeyNotFoundException($"User {userId} not found in organization {organizationId}.");
+        }
+
+        // Get PlatformUser to update email verification
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Id == user.PlatformUserId, cancellationToken);
+
+        if (platformUser == null)
+        {
+            throw new KeyNotFoundException($"Platform user not found for user {userId}.");
+        }
+
+        if (platformUser.EmailVerified)
+        {
+            return false; // Already verified
+        }
+
+        // Set email as verified
+        platformUser.EmailVerified = true;
+        platformUser.EmailVerifiedAt = DateTimeOffset.UtcNow;
+        platformUser.VerificationToken = null;
+        platformUser.VerificationTokenExpiresAt = null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Record audit event
+        _dbContext.AuditLogEntries.Add(new AuditLogEntry
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            EventType = AuditEventType.EmailVerifiedByAdmin,
+            IdentityId = adminUserId,
+            OrganizationId = organizationId,
+            Success = true,
+            Details = new Dictionary<string, object>
+            {
+                ["targetUserId"] = userId.ToString(),
+                ["targetEmail"] = user.Email
+            }
+        });
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Admin {AdminUserId} verified email for user {UserId} in org {OrganizationId}",
+            adminUserId, userId, organizationId);
+
+        return true;
     }
 
     /// <inheritdoc />

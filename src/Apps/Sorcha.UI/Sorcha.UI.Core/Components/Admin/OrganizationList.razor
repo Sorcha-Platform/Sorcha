@@ -7,18 +7,21 @@
 @inject ISnackbar Snackbar
 
 <MudStack Spacing="4">
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-        <MudText Typo="Typo.h6">
-            <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
-            Organizations
-        </MudText>
-        <MudButton Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenCreateDialogAsync">
-            Create Organization
-        </MudButton>
-    </MudStack>
+    @if (!CompactMode)
+    {
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+                Organizations
+            </MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateDialogAsync">
+                Create Organization
+            </MudButton>
+        </MudStack>
+    }
 
     @if (_error != null)
     {
@@ -31,16 +34,24 @@
                  Dense="true"
                  Hover="true"
                  Striped="true"
+                 RowClick="@(CompactMode ? new EventCallback<DataGridRowClickEventArgs<OrganizationDto>>(this, OnRowClick) : default)"
+                 RowStyle="@(CompactMode ? "cursor: pointer" : "")"
                  Class="organization-list"
                  data-testid="organization-list">
         <Columns>
-            <TemplateColumn Title="ID" CellStyle="width: 160px">
-                <CellTemplate>
-                    <TruncatedId Value="@context.Item.Id.ToString()" />
-                </CellTemplate>
-            </TemplateColumn>
+            @if (!CompactMode)
+            {
+                <TemplateColumn Title="ID" CellStyle="width: 160px">
+                    <CellTemplate>
+                        <TruncatedId Value="@context.Item.Id.ToString()" />
+                    </CellTemplate>
+                </TemplateColumn>
+            }
             <PropertyColumn Property="x => x.Name" Title="Name" />
-            <PropertyColumn Property="x => x.Subdomain" Title="Subdomain" />
+            @if (!CompactMode)
+            {
+                <PropertyColumn Property="x => x.Subdomain" Title="Subdomain" />
+            }
             <TemplateColumn Title="Status">
                 <CellTemplate>
                     <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
@@ -48,27 +59,30 @@
                     </MudChip>
                 </CellTemplate>
             </TemplateColumn>
-            <PropertyColumn Property="x => x.CreatedAt" Title="Created" Format="yyyy-MM-dd" />
-            <TemplateColumn Title="Actions" CellStyle="width: 150px">
-                <CellTemplate>
-                    <MudStack Row="true" Spacing="1">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                       Size="Size.Small"
-                                       OnClick="() => OpenEditDialogAsync(context.Item)"
-                                       aria-label="Edit" />
-                        <MudIconButton Icon="@Icons.Material.Filled.People"
-                                       Size="Size.Small"
-                                       OnClick="() => NavigateToUsers(context.Item)"
-                                       aria-label="Manage Users" />
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                       Size="Size.Small"
-                                       Color="Color.Error"
-                                       OnClick="() => ConfirmDeactivateAsync(context.Item)"
-                                       Disabled="@(context.Item.Status == "Deleted")"
-                                       aria-label="Deactivate" />
-                    </MudStack>
-                </CellTemplate>
-            </TemplateColumn>
+            @if (!CompactMode)
+            {
+                <PropertyColumn Property="x => x.CreatedAt" Title="Created" Format="yyyy-MM-dd" />
+                <TemplateColumn Title="Actions" CellStyle="width: 150px">
+                    <CellTemplate>
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           Size="Size.Small"
+                                           OnClick="() => OpenEditDialogAsync(context.Item)"
+                                           aria-label="Edit" />
+                            <MudIconButton Icon="@Icons.Material.Filled.People"
+                                           Size="Size.Small"
+                                           OnClick="() => NavigateToUsers(context.Item)"
+                                           aria-label="Manage Users" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="() => ConfirmDeactivateAsync(context.Item)"
+                                           Disabled="@(context.Item.Status == "Deleted")"
+                                           aria-label="Deactivate" />
+                        </MudStack>
+                    </CellTemplate>
+                </TemplateColumn>
+            }
         </Columns>
         <NoRecordsContent>
             <MudText>No organizations found.</MudText>
@@ -92,6 +106,12 @@
 @code {
     [Parameter]
     public EventCallback<OrganizationDto> OnOrganizationSelected { get; set; }
+
+    /// <summary>
+    /// When true, shows a compact view with fewer columns and single-click row selection.
+    /// </summary>
+    [Parameter]
+    public bool CompactMode { get; set; }
 
     private List<OrganizationDto> _organizations = [];
     private bool _isLoading = true;
@@ -212,6 +232,14 @@
     private void NavigateToUsers(OrganizationDto organization)
     {
         OnOrganizationSelected.InvokeAsync(organization);
+    }
+
+    private void OnRowClick(DataGridRowClickEventArgs<OrganizationDto> args)
+    {
+        if (CompactMode)
+        {
+            OnOrganizationSelected.InvokeAsync(args.Item);
+        }
     }
 
     private static Color GetStatusColor(string status) => status switch

@@ -77,6 +77,30 @@ public class IdentityRepository : IIdentityRepository
             .CountAsync(u => u.Status == IdentityStatus.Active, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<List<UserIdentity>> GetUsersWithFiltersAsync(
+        Guid organizationId,
+        bool includeInactive = false,
+        string? provisionedVia = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.UserIdentities
+            .Where(u => u.OrganizationId == organizationId);
+
+        if (!includeInactive)
+        {
+            query = query.Where(u => u.Status == IdentityStatus.Active);
+        }
+
+        if (!string.IsNullOrEmpty(provisionedVia) &&
+            Enum.TryParse<ProvisioningMethod>(provisionedVia, ignoreCase: true, out var method))
+        {
+            query = query.Where(u => u.ProvisionedVia == method);
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
 
 
 

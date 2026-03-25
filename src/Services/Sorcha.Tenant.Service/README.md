@@ -361,6 +361,15 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/organizations/{orgId}/users/{userId}/suspend` | POST | Suspend a user account (admin) |
 | `/api/organizations/{orgId}/users/{userId}/reactivate` | POST | Reactivate a suspended account (admin) |
 | `/api/organizations/{orgId}/users/{userId}/role` | PUT | Change a user's role (admin) |
+| `/api/organizations/{orgId}/users/{userId}/verify-email` | POST | Admin override to mark email as verified (admin) |
+
+**User List Query Parameters** (GET `/api/organizations/{orgId}/users`):
+- `includeInactive` (bool) — Include suspended/deleted users
+- `emailVerified` (bool?) — Filter by email verification status
+- `provisionedVia` (string?) — Filter by provisioning method (Local, Oidc, Invitation, etc.)
+- `includePending` (bool) — Include pending OrgInvitation records
+
+**Enhanced UserResponse** now includes: `EmailVerified`, `EmailVerifiedAt`, `ProvisionedVia`, `InvitedByUserId`, `ProfileCompleted`, `InvitationStatus`.
 
 ### IDP Configuration API (`/api/organizations/{orgId}/idp`)
 

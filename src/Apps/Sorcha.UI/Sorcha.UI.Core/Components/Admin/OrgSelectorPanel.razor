@@ -1,0 +1,95 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Services
+@inject IOrganizationAdminService OrganizationService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudExpansionPanels data-testid="org-selector-panel">
+    <MudExpansionPanel @bind-IsExpanded="_isExpanded"
+                       data-testid="org-selector-toggle">
+        <TitleContent>
+            @if (!_isExpanded && SelectedOrg != null)
+            {
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center"
+                          data-testid="org-selector-collapsed">
+                    <MudText Typo="Typo.subtitle1">
+                        Managing: <strong>@SelectedOrg.Name</strong>
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(SelectedOrg.Status == "Active" ? Color.Success : Color.Warning)">
+                        @SelectedOrg.Status
+                    </MudChip>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center"
+                          Justify="Justify.SpaceBetween" Style="width: 100%">
+                    <MudText Typo="Typo.subtitle1">Select Organisation</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenCreateDialogAsync"
+                               data-testid="create-org-btn">
+                        Create Organisation
+                    </MudButton>
+                </MudStack>
+            }
+        </TitleContent>
+        <ChildContent>
+            <OrganizationList CompactMode="true"
+                              OnOrganizationSelected="HandleOrganizationSelected" />
+        </ChildContent>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter]
+    public OrganizationDto? SelectedOrg { get; set; }
+
+    [Parameter]
+    public EventCallback<OrganizationDto> OnOrganizationSelected { get; set; }
+
+    [Parameter]
+    public bool IsExpanded { get; set; } = true;
+
+    private bool _isExpanded = true;
+
+    protected override void OnParametersSet()
+    {
+        _isExpanded = IsExpanded;
+    }
+
+    private async Task HandleOrganizationSelected(OrganizationDto org)
+    {
+        _isExpanded = false;
+        await OnOrganizationSelected.InvokeAsync(org);
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters<OrganizationForm>
+        {
+            { x => x.IsEdit, false }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<OrganizationForm>("Create Organisation", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: OrganizationDto newOrg })
+        {
+            Snackbar.Add($"Organisation '{newOrg.Name}' created successfully.", Severity.Success);
+            await OnOrganizationSelected.InvokeAsync(newOrg);
+            _isExpanded = false;
+        }
+    }
+}

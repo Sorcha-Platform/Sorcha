@@ -223,11 +223,19 @@ public class OrganizationAdminService : IOrganizationAdminService
     public async Task<UserListResult> GetOrganizationUsersAsync(
         Guid organizationId,
         bool includeInactive = false,
+        bool? emailVerified = null,
+        string? provisionedVia = null,
+        bool includePending = false,
         CancellationToken cancellationToken = default)
     {
-        var url = includeInactive
-            ? $"{BaseUrl}/{organizationId}/users?includeInactive=true"
-            : $"{BaseUrl}/{organizationId}/users";
+        var queryParams = new List<string>();
+        if (includeInactive) queryParams.Add("includeInactive=true");
+        if (emailVerified.HasValue) queryParams.Add($"emailVerified={emailVerified.Value.ToString().ToLower()}");
+        if (!string.IsNullOrEmpty(provisionedVia)) queryParams.Add($"provisionedVia={Uri.EscapeDataString(provisionedVia)}");
+        if (includePending) queryParams.Add("includePending=true");
+
+        var query = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
+        var url = $"{BaseUrl}/{organizationId}/users{query}";
 
         try
         {
@@ -240,6 +248,36 @@ public class OrganizationAdminService : IOrganizationAdminService
         {
             _logger.LogError(ex, "Failed to list users for organization {OrganizationId}",
                 organizationId);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> VerifyEmailAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.PostAsync(
+                $"{BaseUrl}/{organizationId}/users/{userId}/verify-email",
+                null, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                return false; // Already verified
+            }
+
+            response.EnsureSuccessStatusCode();
+            _logger.LogInformation("Admin verified email for user {UserId} in org {OrganizationId}",
+                userId, organizationId);
+            return true;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Failed to verify email for user {UserId} in org {OrganizationId}",
+                userId, organizationId);
             throw;
         }
     }

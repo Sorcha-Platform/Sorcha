@@ -89,15 +89,35 @@ public interface IOrganizationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets users in an organization.
+    /// Gets users in an organization with optional filtering by verification and invitation status.
     /// </summary>
     /// <param name="organizationId">Organization ID.</param>
     /// <param name="includeInactive">Whether to include suspended/deleted users.</param>
+    /// <param name="emailVerified">Filter by email verification status (null = no filter).</param>
+    /// <param name="provisionedVia">Filter by provisioning method (null = no filter).</param>
+    /// <param name="includePending">Include pending OrgInvitation records.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of users.</returns>
+    /// <returns>List of users with optional pending invitations.</returns>
     Task<UserListResponse> GetOrganizationUsersAsync(
         Guid organizationId,
         bool includeInactive = false,
+        bool? emailVerified = null,
+        string? provisionedVia = null,
+        bool includePending = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Administratively marks a user's email as verified without requiring the email verification loop.
+    /// </summary>
+    /// <param name="organizationId">Organization the user belongs to.</param>
+    /// <param name="userId">User ID to verify.</param>
+    /// <param name="adminUserId">ID of the admin performing the override.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if verified, false if already verified. Throws if user not found.</returns>
+    Task<bool> AdminVerifyEmailAsync(
+        Guid organizationId,
+        Guid userId,
+        Guid adminUserId,
         CancellationToken cancellationToken = default);
 
     /// <summary>
