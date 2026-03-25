@@ -423,6 +423,77 @@ function Connect-SorchaAdmin {
 }
 
 # ============================================================================
+# Connect-SorchaUser — Two-step login (login + select-org) for any user
+# ============================================================================
+
+function Connect-SorchaUser {
+    <#
+    .SYNOPSIS
+        Login as any user and select a specific organisation.
+    .DESCRIPTION
+        Uses the two-step auth flow:
+        1. POST /auth/login → platform_login_token + org list
+        2. POST /auth/select-org → org-scoped JWT
+        Handles both single-org (direct token) and multi-org (org selection) cases.
+    .RETURNS
+        Hashtable with Token, OrganizationId, UserId, Headers.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$OrganizationId
+    )
+
+    # Step 1: Login
+    $loginBody = @{
+        email    = $Email
+        password = $Password
+    }
+
+    $loginResponse = Invoke-SorchaApi -Method POST `
+        -Uri "$TenantUrl/auth/login" `
+        -Body $loginBody
+
+    # Single-org user: token returned directly
+    if ($loginResponse.access_token) {
+        $token = $loginResponse.access_token
+        $jwt = Decode-SorchaJwt -Token $token
+        Write-WtSuccess "Logged in as $Email (single-org: $($jwt.org_id))"
+        return @{
+            Token          = $token
+            OrganizationId = $jwt.org_id
+            UserId         = $jwt.sub
+            Headers        = @{ Authorization = "Bearer $token" }
+        }
+    }
+
+    # Multi-org user: select the target org
+    if ($loginResponse.requires_org_selection -and $loginResponse.platform_login_token) {
+        $selectBody = @{
+            platform_login_token = $loginResponse.platform_login_token
+            organization_id      = $OrganizationId
+        }
+
+        $selectResponse = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/auth/select-org" `
+            -Body $selectBody
+
+        $token = $selectResponse.access_token
+        $jwt = Decode-SorchaJwt -Token $token
+        Write-WtSuccess "Logged in as $Email -> org $($jwt.org_id)"
+        return @{
+            Token          = $token
+            OrganizationId = $jwt.org_id
+            UserId         = $jwt.sub
+            Headers        = @{ Authorization = "Bearer $token" }
+        }
+    }
+
+    throw "Unexpected login response for $Email — no token or org selection flow returned."
+}
+
+# ============================================================================
 # T009: Get-OrCreateOrganization — Idempotent Org Creation
 # ============================================================================
 
@@ -1213,44 +1284,7 @@ function New-SorchaOrganization {
 # Connect-SorchaUser — Login as a specific user and get JWT
 # ============================================================================
 
-function Connect-SorchaUser {
-    <#
-    .SYNOPSIS
-        Login as a specific user via password grant and return JWT + metadata.
-    .DESCRIPTION
-        Uses POST /api/service-auth/token with grant_type=password.
-        Works for any user (not just seed admin). Extracts org_id, sub,
-        and wallet_address from the JWT claims.
-    .RETURNS
-        Hashtable with Token, UserId, OrganizationId, WalletAddress, Headers.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$TenantUrl,
-        [Parameter(Mandatory)][string]$Email,
-        [Parameter(Mandatory)][string]$Password
-    )
-
-    $encodedPassword = [Uri]::EscapeDataString($Password)
-    $loginBody = "grant_type=password&username=$Email&password=$encodedPassword&client_id=sorcha-cli"
-
-    $loginResponse = Invoke-SorchaApi -Method POST `
-        -Uri "$TenantUrl/service-auth/token" `
-        -Body $loginBody `
-        -ContentType "application/x-www-form-urlencoded"
-
-    $token = $loginResponse.access_token
-    $jwt = Decode-SorchaJwt -Token $token
-
-    Write-WtSuccess "Logged in as $Email (org: $($jwt.org_id))"
-
-    return @{
-        Token          = $token
-        UserId         = $jwt.sub
-        OrganizationId = $jwt.org_id
-        WalletAddress  = $jwt.wallet_address
-        Headers        = @{ Authorization = "Bearer $token" }
-    }
-}
+# (Connect-SorchaUser defined earlier in this file — two-step login + select-org flow)
 
 # ============================================================================
 # New-SorchaRegisterSubscription — Subscribe an org to a register

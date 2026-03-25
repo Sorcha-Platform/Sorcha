@@ -172,37 +172,33 @@ foreach ($u in $userDefs) {
     Write-WtInfo "  $($u.role) ($($u.email)) -> $orgKey$(if ($u.isOrgAdmin) { ' [Admin]' })"
 }
 
-# Also add the system admin to each org so it can switch-org for register/blueprint operations
-foreach ($def in $orgDefs) {
-    $orgId = $orgs[$def.subdomain]
-    Get-OrCreateUser `
-        -TenantUrl $env.TenantUrl `
-        -OrganizationId $orgId `
-        -Email $secrets.meridianAdminEmail `
-        -DisplayName "System Administrator" `
-        -Headers $sysAdmin.Headers `
-        -Roles @("Administrator", "Member")
-    Write-WtInfo "  system-admin -> $($def.subdomain) [Admin]"
-}
-
 # ============================================================================
-# Step 6: Per-Role Setup (switch-org, wallet, participant, wallet-link)
+# Step 7: Per-Role Setup (each user logs in to their org)
 # ============================================================================
 Write-WtStep "Step 7: Per-Role Setup (login, wallet, participant, wallet-link)"
 
 $users = @{}   # role -> session info
 $wallets = @{} # role -> wallet address
+$sessionCache = @{} # cache per-user org-scoped tokens
 
 foreach ($u in $userDefs) {
     $orgKey = $orgUserMap[$u.role]
     $orgId = $orgs[$orgKey]
     Write-WtInfo "--- $($u.role) ($($u.name)) in $orgKey ---"
 
-    # Switch system admin to this org context (system admin was added to all orgs in Step 6)
-    $orgSession = Switch-SorchaOrganization `
-        -TenantUrl $env.TenantUrl `
-        -OrganizationId $orgId `
-        -Headers $sysAdmin.Headers
+    # Login as this user and select their target org (two-step auth flow)
+    $cacheKey = "$($u.email)|$orgId"
+    if ($sessionCache.ContainsKey($cacheKey)) {
+        $orgSession = $sessionCache[$cacheKey]
+        Write-WtInfo "  (cached session)"
+    } else {
+        $orgSession = Connect-SorchaUser `
+            -TenantUrl $env.TenantUrl `
+            -Email $u.email `
+            -Password $u.password `
+            -OrganizationId $orgId
+        $sessionCache[$cacheKey] = $orgSession
+    }
 
     # Create wallet (wallets are global, not org-scoped)
     $wallet = New-SorchaWallet `
@@ -242,10 +238,8 @@ foreach ($u in $userDefs) {
 # ============================================================================
 Write-WtStep "Step 8: Create Register"
 
-$meridianSession = Switch-SorchaOrganization `
-    -TenantUrl $env.TenantUrl `
-    -OrganizationId $orgs.meridian `
-    -Headers $sysAdmin.Headers
+# Reuse contractor's cached session for meridian org
+$meridianSession = $sessionCache["$($secrets.contractorEmail)|$($orgs.meridian)"]
 
 $register = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl `
@@ -271,11 +265,10 @@ New-SorchaRegisterSubscription `
     -SubscriptionType "Owner" `
     -Headers $meridianSession.Headers
 
+$orgAdminMap = @{ "apex" = $secrets.engineerEmail; "riverside" = $secrets.planningEmail; "greenvalley" = $secrets.environmentalEmail }
+
 foreach ($orgKey in @("apex", "riverside", "greenvalley")) {
-    $orgSession = Switch-SorchaOrganization `
-        -TenantUrl $env.TenantUrl `
-        -OrganizationId $orgs[$orgKey] `
-        -Headers $sysAdmin.Headers
+    $orgSession = $sessionCache["$($orgAdminMap[$orgKey])|$($orgs[$orgKey])"]
 
     New-SorchaRegisterSubscription `
         -TenantUrl $env.TenantUrl `
@@ -301,10 +294,8 @@ $orgNameMap = @{
 
 foreach ($u in $userDefs) {
     $roleUser = $users[$u.role]
-    $pubSession = Switch-SorchaOrganization `
-        -TenantUrl $env.TenantUrl `
-        -OrganizationId $roleUser.OrganizationId `
-        -Headers $sysAdmin.Headers
+    $cacheKey = "$($u.email)|$($roleUser.OrganizationId)"
+    $pubSession = $sessionCache[$cacheKey]
 
     Publish-SorchaParticipant `
         -TenantUrl $env.TenantUrl `
