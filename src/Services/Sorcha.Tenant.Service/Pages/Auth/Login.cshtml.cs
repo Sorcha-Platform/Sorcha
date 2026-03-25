@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Sorcha.Tenant.Service.Data.Repositories;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -235,11 +236,28 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        // For multi-org users, find the UserIdentity in the selected org
-        var targetUser = targetOrgId != user.OrganizationId
-            ? await _identityRepository.GetUserByPlatformUserAndOrgAsync(user.PlatformUserId, targetOrgId, ct)
-              ?? user
-            : user;
+        // For multi-org users, find the UserIdentity in the selected org.
+        // Do NOT fall back to the original user — that would create a mismatch
+        // between the org claims and the user identity (security issue).
+        UserIdentity targetUser;
+        if (targetOrgId != user.OrganizationId)
+        {
+            var orgUser = await _identityRepository.GetUserByPlatformUserAndOrgAsync(
+                user.PlatformUserId, targetOrgId, ct);
+            if (orgUser is null)
+            {
+                _logger.LogWarning(
+                    "2FA org mismatch: user {UserId} is not a member of org {OrgId}",
+                    user.PlatformUserId, targetOrgId);
+                ErrorMessage = "You are not a member of the selected organization.";
+                return Page();
+            }
+            targetUser = orgUser;
+        }
+        else
+        {
+            targetUser = user;
+        }
 
         var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, ct);
         targetUser.LastLoginAt = DateTimeOffset.UtcNow;

@@ -363,6 +363,63 @@ public class LoginModelTests
     }
 
     [Fact]
+    public async Task Handle2FaAsync_WithTamperedOrgId_RejectsNonMember()
+    {
+        // Arrange — user submits 2FA with a SelectedOrgId they don't belong to
+        var userId = Guid.NewGuid();
+        var orgAId = Guid.NewGuid();
+        var tamperedOrgId = Guid.NewGuid();
+        var platformUserId = Guid.NewGuid();
+
+        var userInOrgA = new UserIdentity
+        {
+            Id = userId,
+            Email = "admin@test.com",
+            DisplayName = "Admin",
+            OrganizationId = orgAId,
+            PlatformUserId = platformUserId,
+            Status = IdentityStatus.Active
+        };
+        var tamperedOrg = new Organization
+        {
+            Id = tamperedOrgId,
+            Name = "Victim Org",
+            Subdomain = "victim",
+            Status = OrganizationStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _totpService.Setup(s => s.ValidateLoginTokenAsync("login-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userId);
+        _totpService.Setup(s => s.ValidateCodeAsync(userId, "123456", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _identityRepo.Setup(r => r.GetUserByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userInOrgA);
+        _orgRepo.Setup(r => r.GetByIdAsync(tamperedOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tamperedOrg);
+        // User is NOT a member of the tampered org
+        _identityRepo.Setup(r => r.GetUserByPlatformUserAndOrgAsync(
+                platformUserId, tamperedOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserIdentity?)null);
+
+        var model = CreateModel();
+        model.LoginToken = "login-token";
+        model.TotpCode = "123456";
+        model.SelectedOrgId = tamperedOrgId;
+
+        // Act
+        var result = await model.OnPostAsync(CancellationToken.None);
+
+        // Assert — rejects with error, does NOT issue a token
+        result.Should().BeOfType<PageResult>();
+        model.ErrorMessage.Should().Be("You are not a member of the selected organization.");
+        _tokenService.Verify(t => t.GenerateUserTokenAsync(
+            It.IsAny<UserIdentity>(), It.IsAny<Organization>(),
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never, "Must NOT issue a JWT for an org the user doesn't belong to");
+    }
+
+    [Fact]
     public async Task Handle2FaAsync_WithoutSelectedOrgId_UsesUserDefaultOrg()
     {
         // Arrange — single-org user, no SelectedOrgId set (normal 2FA flow)

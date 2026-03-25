@@ -328,9 +328,20 @@ public class DatabaseInitializer
     /// but it doesn't create the Tenant-side subscription. This seed ensures the
     /// system register appears in the admin's register list from first login.
     /// </summary>
+    /// <remarks>
+    /// On fresh first-boot, Tenant Service may start before Register Service has created
+    /// the system register. This is safe because the subscription is just a reference by
+    /// register ID — it doesn't require the register to exist in MongoDB yet. When the
+    /// Register Service finishes bootstrapping, the subscription will resolve correctly.
+    ///
+    /// These constants mirror SystemRegisterConstants in Sorcha.Register.Models.
+    /// Tenant Service does not reference that assembly to avoid a circular dependency.
+    /// If the system register ID changes, update both locations.
+    /// </remarks>
     private async Task SeedSystemRegisterSubscriptionAsync(TenantDbContext dbContext, CancellationToken cancellationToken)
     {
         // System register ID: SHA-256("sorcha-system-register") first 32 hex chars
+        // Mirrors: Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterId
         const string systemRegisterId = "aebf26362e079087571ac0932d4db973";
         const string systemRegisterName = "Sorcha System Register";
 
