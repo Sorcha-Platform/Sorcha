@@ -37,10 +37,10 @@ public class UserIdentity
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>
-    /// User roles within organization (Administrator, Auditor, Member, etc.).
+    /// User roles within organization (Administrator, Auditor, Consumer, etc.).
     /// Organization creator automatically gets Administrator role.
     /// </summary>
-    public UserRole[] Roles { get; set; } = [UserRole.Member];
+    public UserRole[] Roles { get; set; } = [UserRole.Consumer];
 
     /// <summary>
     /// User account status (Active, Suspended, Deleted).
@@ -76,7 +76,7 @@ public class UserIdentity
 
 /// <summary>
 /// User roles within an organization.
-/// Consolidated from 8 to 5 roles — Developer, User, Consumer mapped to Member.
+/// Consolidated from 8 to 5 roles — Developer, User mapped to Consumer.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum UserRole
@@ -102,9 +102,9 @@ public enum UserRole
     Auditor = 3,
 
     /// <summary>
-    /// Standard member with permissions defined by organization policy.
+    /// Standard consumer with permissions to participate in workflows and view assigned data.
     /// </summary>
-    Member = 4
+    Consumer = 4
 }
 
 /// <summary>

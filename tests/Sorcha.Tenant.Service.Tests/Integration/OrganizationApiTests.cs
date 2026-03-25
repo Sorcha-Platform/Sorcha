@@ -238,7 +238,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
             Email = "newuser@test-org.sorcha.io",
             DisplayName = "New User",
             ExternalIdpSubject = "external-123",
-            Roles = new[] { UserRole.Member }
+            Roles = new[] { UserRole.Consumer }
         };
 
         // Act
@@ -279,7 +279,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
                 Email = "toremove@test-org.sorcha.io",
                 DisplayName = "To Remove",
                 ExternalIdpSubject = "external-456",
-                Roles = new[] { UserRole.Member }
+                Roles = new[] { UserRole.Consumer }
             });
         var addedUser = await addResponse.Content.ReadFromJsonAsync<UserResponse>();
 

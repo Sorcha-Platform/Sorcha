@@ -190,7 +190,7 @@ foreach ($u in $teamMemberDefs) {
         -Email $u.email `
         -DisplayName $u.name `
         -Headers $sysAdmin.Headers `
-        -Roles @("Administrator", "Member")
+        -Roles @("Administrator", "Consumer")
     Write-WtInfo "  $($u.role) ($($u.email)) -> $($u.org) [Admin]"
 }
 

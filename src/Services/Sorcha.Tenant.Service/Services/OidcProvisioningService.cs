@@ -63,7 +63,7 @@ public class OidcProvisioningService : IOidcProvisioningService
             // TODO: ExternalIdpSubject removed — external subject tracking moves to PlatformSocialLogin
             Email = email ?? string.Empty,
             DisplayName = displayName ?? string.Empty,
-            Roles = [UserRole.Member],
+            Roles = [UserRole.Consumer],
             ProvisionedVia = ProvisioningMethod.Oidc,
             Status = IdentityStatus.Active,
             ProfileCompleted = !string.IsNullOrEmpty(email) && !string.IsNullOrEmpty(displayName),

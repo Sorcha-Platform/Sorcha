@@ -86,7 +86,7 @@
                             <MudText>Designer</MudText>
                         </MudStack>
                     </MudSelectItem>
-                    <MudSelectItem Value="@("Member")">
+                    <MudSelectItem Value="@("Consumer")">
                         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                             <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
                             <MudText>Member</MudText>
@@ -137,7 +137,7 @@
     private string _email = string.Empty;
     private string _displayName = string.Empty;
     private string _externalIdpUserId = string.Empty;
-    private string _selectedRole = "Member";
+    private string _selectedRole = "Consumer";
 
     protected override void OnParametersSet()
     {
@@ -145,7 +145,7 @@
         {
             _email = User.Email;
             _displayName = User.DisplayName;
-            _selectedRole = User.Roles.FirstOrDefault() ?? "Member";
+            _selectedRole = User.Roles.FirstOrDefault() ?? "Consumer";
         }
     }
 
@@ -153,7 +153,7 @@
     {
         "Administrator" => "Full access to manage organization settings, users, and all resources.",
         "Designer" => "Can create and manage blueprints, schemas, and workflows.",
-        "Member" => "Basic access to view and participate in assigned workflows.",
+        "Consumer" => "Basic access to view and participate in assigned workflows.",
         _ => "Select a role for this user."
     };
 

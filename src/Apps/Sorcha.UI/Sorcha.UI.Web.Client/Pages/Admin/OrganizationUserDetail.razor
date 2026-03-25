@@ -72,7 +72,7 @@
                             <MudSelectItem Value="@("Administrator")">Administrator</MudSelectItem>
                             <MudSelectItem Value="@("Designer")">Designer</MudSelectItem>
                             <MudSelectItem Value="@("Auditor")">Auditor</MudSelectItem>
-                            <MudSelectItem Value="@("Member")">Member</MudSelectItem>
+                            <MudSelectItem Value="@("Consumer")">Member</MudSelectItem>
                         </MudSelect>
                     </MudItem>
                     <MudItem xs="12">
@@ -120,7 +120,7 @@
     private bool _loading = true;
     private string? _error;
     private string _editDisplayName = string.Empty;
-    private string _editRole = "Member";
+    private string _editRole = "Consumer";
 
     private List<BreadcrumbItem> _breadcrumbs = [
         new("Admin", href: "/app/admin/health"),
@@ -167,7 +167,7 @@
             }
 
             _editDisplayName = _user.DisplayName;
-            _editRole = _user.Roles.FirstOrDefault() ?? "Member";
+            _editRole = _user.Roles.FirstOrDefault() ?? "Consumer";
 
             _breadcrumbs =
             [
@@ -204,7 +204,7 @@
             {
                 _user = updated;
                 _editDisplayName = updated.DisplayName;
-                _editRole = updated.Roles.FirstOrDefault() ?? "Member";
+                _editRole = updated.Roles.FirstOrDefault() ?? "Consumer";
                 Snackbar.Add("User updated successfully.", Severity.Success);
             }
         }

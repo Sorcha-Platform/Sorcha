@@ -203,7 +203,7 @@ public static class PublicPasskeyEndpoints
                     PlatformUserId = platformUser.Id,
                     Email = platformUser.Email,
                     DisplayName = platformUser.DisplayName,
-                    Roles = [UserRole.Member],
+                    Roles = [UserRole.Consumer],
                     Status = IdentityStatus.Active,
                     ProvisionedVia = ProvisioningMethod.Passkey,
                     ProfileCompleted = !string.IsNullOrWhiteSpace(platformUser.Email)
@@ -223,7 +223,7 @@ public static class PublicPasskeyEndpoints
             if (!memberships.Any(m => m.OrganizationId == publicOrgId))
             {
                 await platformUserService.AddOrgMembershipAsync(
-                    platformUser.Id, publicOrgId, UserRole.Member.ToString(), ct);
+                    platformUser.Id, publicOrgId, UserRole.Consumer.ToString(), ct);
             }
 
             // Update last login

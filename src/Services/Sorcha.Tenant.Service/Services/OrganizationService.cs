@@ -274,7 +274,7 @@ public partial class OrganizationService : IOrganizationService
                     PlatformUserId = platformUser.Id,
                     OrganizationId = organizationId,
                     Role = request.Roles.Any(r => r == UserRole.Administrator)
-                        ? UserRole.Administrator.ToString() : UserRole.Member.ToString(),
+                        ? UserRole.Administrator.ToString() : UserRole.Consumer.ToString(),
                     JoinedAt = DateTimeOffset.UtcNow
                 });
                 await _dbContext.SaveChangesAsync(cancellationToken);

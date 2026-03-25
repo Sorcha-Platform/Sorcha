@@ -48,7 +48,7 @@
                         <MudSelectItem T="string" Value="@("Administrator")">Administrator</MudSelectItem>
                         <MudSelectItem T="string" Value="@("Designer")">Designer</MudSelectItem>
                         <MudSelectItem T="string" Value="@("Auditor")">Auditor</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("Member")">Member</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Consumer")">Member</MudSelectItem>
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="4">
@@ -196,8 +196,8 @@
     private async Task ChangeRoleAsync(UserDto user)
     {
         // Simple role change — cycle to next role for simplicity
-        var roles = new[] { "Member", "Designer", "Auditor", "Administrator" };
-        var currentRole = user.Roles.FirstOrDefault() ?? "Member";
+        var roles = new[] { "Consumer", "Designer", "Auditor", "Administrator" };
+        var currentRole = user.Roles.FirstOrDefault() ?? "Consumer";
         var currentIdx = Array.IndexOf(roles, currentRole);
         var nextRole = roles[(currentIdx + 1) % roles.Length];
 

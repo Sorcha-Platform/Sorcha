@@ -112,7 +112,7 @@ public static class TestDataSeeder
                 PlatformUserId = Guid.NewGuid(),
                 Email = TestMemberEmail,
                 DisplayName = TestMemberName,
-                Roles = [UserRole.Member],
+                Roles = [UserRole.Consumer],
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow,
                 LastLoginAt = DateTimeOffset.UtcNow
@@ -167,7 +167,7 @@ public static class TestDataSeeder
                 PlatformUserId = Guid.NewGuid(),
                 Email = TestLocalMemberEmail,
                 DisplayName = "Local Member",
-                Roles = [UserRole.Member],
+                Roles = [UserRole.Consumer],
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow,
                 LastLoginAt = null
@@ -185,7 +185,7 @@ public static class TestDataSeeder
                 PlatformUserId = Guid.NewGuid(),
                 Email = TestInactiveEmail,
                 DisplayName = "Inactive User",
-                Roles = [UserRole.Member],
+                Roles = [UserRole.Consumer],
                 Status = IdentityStatus.Suspended, // Suspended status
                 CreatedAt = DateTimeOffset.UtcNow,
                 LastLoginAt = null

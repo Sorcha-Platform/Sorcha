@@ -45,16 +45,16 @@ public class DashboardServiceTests : IDisposable
             CreateUser(UserRole.Administrator),
             CreateUser(UserRole.Administrator),
             CreateUser(UserRole.Designer),
-            CreateUser(UserRole.Member),
-            CreateUser(UserRole.Member),
-            CreateUser(UserRole.Member));
+            CreateUser(UserRole.Consumer),
+            CreateUser(UserRole.Consumer),
+            CreateUser(UserRole.Consumer));
         await _dbContext.SaveChangesAsync();
 
         var result = await _service.GetDashboardAsync(_orgId);
 
         result.UsersByRole.Should().ContainKey("Administrator").WhoseValue.Should().Be(2);
         result.UsersByRole.Should().ContainKey("Designer").WhoseValue.Should().Be(1);
-        result.UsersByRole.Should().ContainKey("Member").WhoseValue.Should().Be(3);
+        result.UsersByRole.Should().ContainKey("Consumer").WhoseValue.Should().Be(3);
     }
 
     [Fact]
@@ -62,10 +62,10 @@ public class DashboardServiceTests : IDisposable
     {
         var users = new[]
         {
-            CreateUser(UserRole.Member, lastLogin: DateTimeOffset.UtcNow.AddHours(-1)),
-            CreateUser(UserRole.Member, lastLogin: DateTimeOffset.UtcNow.AddMinutes(-5)),
-            CreateUser(UserRole.Member, lastLogin: DateTimeOffset.UtcNow.AddDays(-2)),
-            CreateUser(UserRole.Member) // No login
+            CreateUser(UserRole.Consumer, lastLogin: DateTimeOffset.UtcNow.AddHours(-1)),
+            CreateUser(UserRole.Consumer, lastLogin: DateTimeOffset.UtcNow.AddMinutes(-5)),
+            CreateUser(UserRole.Consumer, lastLogin: DateTimeOffset.UtcNow.AddDays(-2)),
+            CreateUser(UserRole.Consumer) // No login
         };
         _dbContext.UserIdentities.AddRange(users);
         await _dbContext.SaveChangesAsync();
@@ -82,7 +82,7 @@ public class DashboardServiceTests : IDisposable
         for (int i = 0; i < 15; i++)
         {
             _dbContext.UserIdentities.Add(
-                CreateUser(UserRole.Member, lastLogin: DateTimeOffset.UtcNow.AddMinutes(-i)));
+                CreateUser(UserRole.Consumer, lastLogin: DateTimeOffset.UtcNow.AddMinutes(-i)));
         }
         await _dbContext.SaveChangesAsync();
 
@@ -176,14 +176,14 @@ public class DashboardServiceTests : IDisposable
     private void SeedUsers(int active = 0, int suspended = 0)
     {
         for (int i = 0; i < active; i++)
-            _dbContext.UserIdentities.Add(CreateUser(UserRole.Member));
+            _dbContext.UserIdentities.Add(CreateUser(UserRole.Consumer));
         for (int i = 0; i < suspended; i++)
-            _dbContext.UserIdentities.Add(CreateUser(UserRole.Member, status: IdentityStatus.Suspended));
+            _dbContext.UserIdentities.Add(CreateUser(UserRole.Consumer, status: IdentityStatus.Suspended));
         _dbContext.SaveChanges();
     }
 
     private UserIdentity CreateUser(
-        UserRole role = UserRole.Member,
+        UserRole role = UserRole.Consumer,
         IdentityStatus status = IdentityStatus.Active,
         DateTimeOffset? lastLogin = null,
         ProvisioningMethod provisionedVia = ProvisioningMethod.Local)

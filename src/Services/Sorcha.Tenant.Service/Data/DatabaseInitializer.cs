@@ -259,7 +259,7 @@ public class DatabaseInitializer
                     UserRole.SystemAdmin,
                     UserRole.Designer,
                     UserRole.Auditor,
-                    UserRole.Member
+                    UserRole.Consumer
                 ],
                 Status = IdentityStatus.Active,
                 CreatedAt = DateTimeOffset.UtcNow

@@ -46,7 +46,7 @@ public record InvitationDto
     public string Email { get; init; } = string.Empty;
 
     /// <summary>Role assigned upon acceptance.</summary>
-    public string AssignedRole { get; init; } = "Member";
+    public string AssignedRole { get; init; } = "Consumer";
 
     /// <summary>Current invitation status (Pending, Accepted, Expired, Revoked).</summary>
     public string Status { get; init; } = "Pending";
@@ -76,7 +76,7 @@ public record CreateInvitationRequest
     public required string Email { get; init; }
 
     /// <summary>Role to assign when the invitation is accepted.</summary>
-    public string Role { get; init; } = "Member";
+    public string Role { get; init; } = "Consumer";
 
     /// <summary>Number of days until the invitation expires (1-30).</summary>
     public int ExpiryDays { get; init; } = 7;

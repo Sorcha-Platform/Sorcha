@@ -468,7 +468,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
             Email = "user@example.com",
             DisplayName = "Test User",
             ExternalIdpSubject = "external-user-123",
-            Roles = [Models.UserRole.Member]
+            Roles = [Models.UserRole.Consumer]
         };
 
         // Act
@@ -596,7 +596,7 @@ public class OrganizationApiTests : IClassFixture<TenantServiceWebApplicationFac
             Email = "updateme@example.com",
             DisplayName = "Original Name",
             ExternalIdpSubject = $"ext-{Guid.NewGuid()}",
-            Roles = [Models.UserRole.Member]
+            Roles = [Models.UserRole.Consumer]
         });
         var user = await addUserResponse.Content.ReadFromJsonAsync<UserResponse>();
 

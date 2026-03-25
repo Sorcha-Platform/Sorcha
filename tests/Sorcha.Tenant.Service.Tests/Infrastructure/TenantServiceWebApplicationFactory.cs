@@ -200,7 +200,7 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
                         Email = claims.Email ?? "member@test-org.sorcha.io",
                         DisplayName = claims.DisplayName ?? "Member User",
                         Status = IdentityStatus.Active,
-                        Roles = [UserRole.Member],
+                        Roles = [UserRole.Consumer],
                         OrganizationId = orgId,
                         ProfileCompleted = true,
                         CreatedAt = DateTimeOffset.UtcNow

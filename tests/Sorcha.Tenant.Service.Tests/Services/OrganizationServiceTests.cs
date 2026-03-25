@@ -93,7 +93,7 @@ public class OrganizationServiceTests : IDisposable
             PlatformUserId = platformUserId,
             Email = email,
             DisplayName = email.Split('@')[0],
-            Roles = [UserRole.Member],
+            Roles = [UserRole.Consumer],
             Status = status,
             ProvisionedVia = provisionedVia,
             CreatedAt = DateTimeOffset.UtcNow
@@ -109,7 +109,7 @@ public class OrganizationServiceTests : IDisposable
             Id = Guid.NewGuid(),
             OrganizationId = orgId,
             Email = email,
-            AssignedRole = UserRole.Member,
+            AssignedRole = UserRole.Consumer,
             Token = Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
             Status = status,

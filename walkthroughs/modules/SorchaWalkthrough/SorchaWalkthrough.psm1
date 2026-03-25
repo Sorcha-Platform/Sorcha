@@ -540,7 +540,7 @@ function Get-OrCreateUser {
         [Parameter(Mandatory)][string]$Email,
         [Parameter(Mandatory)][string]$DisplayName,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [string[]]$Roles = @("Member")
+        [string[]]$Roles = @("Consumer")
     )
 
     $userBody = @{

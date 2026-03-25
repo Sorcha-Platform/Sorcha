@@ -119,7 +119,7 @@ public static class TestDataSeeder
             DisplayName = "Member User",
             PlatformUserId = MemberPlatformUserId,
             Status = IdentityStatus.Active,
-            Roles = new[] { UserRole.Member },
+            Roles = new[] { UserRole.Consumer },
             OrganizationId = TestOrganizationId,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -152,7 +152,7 @@ public static class TestDataSeeder
             {
                 PlatformUserId = MemberPlatformUserId,
                 OrganizationId = TestOrganizationId,
-                Role = UserRole.Member.ToString(),
+                Role = UserRole.Consumer.ToString(),
                 JoinedAt = DateTimeOffset.UtcNow
             },
             new PlatformUserOrgMembership
