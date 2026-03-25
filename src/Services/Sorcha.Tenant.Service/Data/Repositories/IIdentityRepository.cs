@@ -67,6 +67,14 @@ public interface IIdentityRepository
         string? provisionedVia = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets an active user identity by platform user ID and organization ID.
+    /// Used when a multi-org user completes 2FA after org selection to resolve
+    /// the correct org-scoped identity.
+    /// </summary>
+    Task<UserIdentity?> GetUserByPlatformUserAndOrgAsync(
+        Guid platformUserId, Guid organizationId, CancellationToken cancellationToken = default);
+
     // ServicePrincipal operations (service-to-service auth, public schema)
 
     /// <summary>

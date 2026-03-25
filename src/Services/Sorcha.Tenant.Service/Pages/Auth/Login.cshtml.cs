@@ -189,6 +189,8 @@ public class LoginModel : PageModel
             ShowTwoFactor = true;
             LoginToken = result.LoginToken;
             AvailableMethods = result.AvailableMethods;
+            // Preserve SelectedOrgId through the 2FA step so Handle2FaAsync
+            // can issue the JWT for the correct org
             return Page();
         }
 
@@ -220,16 +222,28 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var organization = await _organizationRepository.GetByIdAsync(user.OrganizationId, ct);
+        // Use the selected org from the org selection step if available;
+        // otherwise fall back to the user's identity org (single-org login).
+        var targetOrgId = SelectedOrgId.HasValue && SelectedOrgId != Guid.Empty
+            ? SelectedOrgId.Value
+            : user.OrganizationId;
+
+        var organization = await _organizationRepository.GetByIdAsync(targetOrgId, ct);
         if (organization is null)
         {
             ErrorMessage = "Organization not found.";
             return Page();
         }
 
-        var tokens = await _tokenService.GenerateUserTokenAsync(user, organization, user.PlatformUserId, ct);
-        user.LastLoginAt = DateTimeOffset.UtcNow;
-        await _identityRepository.UpdateUserAsync(user, ct);
+        // For multi-org users, find the UserIdentity in the selected org
+        var targetUser = targetOrgId != user.OrganizationId
+            ? await _identityRepository.GetUserByPlatformUserAndOrgAsync(user.PlatformUserId, targetOrgId, ct)
+              ?? user
+            : user;
+
+        var tokens = await _tokenService.GenerateUserTokenAsync(targetUser, organization, targetUser.PlatformUserId, ct);
+        targetUser.LastLoginAt = DateTimeOffset.UtcNow;
+        await _identityRepository.UpdateUserAsync(targetUser, ct);
 
         return RedirectToApp(tokens);
     }

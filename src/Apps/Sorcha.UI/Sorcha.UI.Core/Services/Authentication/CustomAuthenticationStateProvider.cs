@@ -49,11 +49,16 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         try
         {
             var activeProfileName = await _configurationService.GetActiveProfileNameAsync();
-            var entry = await _tokenCache.GetTokenAsync(activeProfileName);
+
+            // Always check for a pending fragment token first — it represents a fresh
+            // login/org-switch and must take precedence over any cached token. Without
+            // this, re-login with a different org would be ignored because the old
+            // (still-valid) token would be returned from cache.
+            var entry = await TryConsumeFragmentTokenAsync(activeProfileName);
 
             if (entry == null || entry.IsExpired)
             {
-                entry = await TryConsumeFragmentTokenAsync(activeProfileName);
+                entry = await _tokenCache.GetTokenAsync(activeProfileName);
             }
 
             if (entry == null || entry.IsExpired)
