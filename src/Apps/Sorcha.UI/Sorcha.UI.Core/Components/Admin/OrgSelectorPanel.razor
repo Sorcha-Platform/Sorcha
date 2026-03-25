@@ -57,9 +57,15 @@
 
     private bool _isExpanded = true;
 
+    private bool _initializedExpanded;
+
     protected override void OnParametersSet()
     {
-        _isExpanded = IsExpanded;
+        if (!_initializedExpanded)
+        {
+            _isExpanded = IsExpanded;
+            _initializedExpanded = true;
+        }
     }
 
     private async Task HandleOrganizationSelected(OrganizationDto org)

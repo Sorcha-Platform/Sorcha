@@ -242,12 +242,16 @@ public partial class OrganizationService : IOrganizationService
             throw new InvalidOperationException($"User with email {request.Email} already exists in this organization");
         }
 
+        // Look up existing PlatformUser by email to link identities
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(p => p.Email.ToLower() == request.Email.ToLower(), cancellationToken);
+
         var user = new UserIdentity
         {
             OrganizationId = organizationId,
+            PlatformUserId = platformUser?.Id ?? Guid.Empty,
             Email = request.Email,
             DisplayName = request.DisplayName,
-            // TODO: ExternalIdpSubject removed from UserIdentity — external subject tracking moves to PlatformSocialLogin
             Roles = request.Roles,
             Status = IdentityStatus.Active,
             CreatedAt = DateTimeOffset.UtcNow
@@ -255,11 +259,31 @@ public partial class OrganizationService : IOrganizationService
 
         var created = await _identityRepository.CreateUserAsync(user, cancellationToken);
 
-        _logger.LogInformation(
-            "Added user {UserId} ({Email}) to organization {OrganizationId}",
-            created.Id, created.Email, organizationId);
+        // Create PlatformUserOrgMembership so the user can switch-org to this org
+        if (platformUser != null)
+        {
+            var existingMembership = await _dbContext.PlatformUserOrgMemberships
+                .FirstOrDefaultAsync(m => m.PlatformUserId == platformUser.Id && m.OrganizationId == organizationId, cancellationToken);
 
-        return UserResponse.FromEntity(created);
+            if (existingMembership == null)
+            {
+                _dbContext.PlatformUserOrgMemberships.Add(new PlatformUserOrgMembership
+                {
+                    PlatformUserId = platformUser.Id,
+                    OrganizationId = organizationId,
+                    Role = request.Roles.Any(r => r == UserRole.Administrator)
+                        ? UserRole.Administrator.ToString() : UserRole.Member.ToString(),
+                    JoinedAt = DateTimeOffset.UtcNow
+                });
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        _logger.LogInformation(
+            "Added user {UserId} ({Email}) to organization {OrganizationId} (PlatformUser: {HasPlatformUser})",
+            created.Id, created.Email, organizationId, platformUser != null);
+
+        return UserResponse.FromEntity(created, platformUser);
     }
 
     /// <inheritdoc />
@@ -361,15 +385,12 @@ public partial class OrganizationService : IOrganizationService
             return false; // Already verified
         }
 
-        // Set email as verified
+        // Set email as verified + record audit event in a single save
         platformUser.EmailVerified = true;
         platformUser.EmailVerifiedAt = DateTimeOffset.UtcNow;
         platformUser.VerificationToken = null;
         platformUser.VerificationTokenExpiresAt = null;
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        // Record audit event
         _dbContext.AuditLogEntries.Add(new AuditLogEntry
         {
             Timestamp = DateTimeOffset.UtcNow,
@@ -383,6 +404,7 @@ public partial class OrganizationService : IOrganizationService
                 ["targetEmail"] = user.Email
             }
         });
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
