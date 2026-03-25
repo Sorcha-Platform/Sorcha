@@ -187,7 +187,7 @@
         _filteredUsers = _selectedStatusFilter switch
         {
             "Active" => _users.Where(u => u.CompositeStatus == "Active").ToList(),
-            "Invited" => _users.Where(u => u.InvitationStatus == "Pending" || u.ProvisionedVia == "Invitation").ToList(),
+            "Invited" => _users.Where(u => u.CompositeStatus == "Invited").ToList(),
             "Unverified" => _users.Where(u => u.CompositeStatus == "Unverified").ToList(),
             _ => _users
         };

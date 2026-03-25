@@ -239,13 +239,20 @@ public record UserDto
     /// <summary>
     /// Derived composite status for UI display.
     /// </summary>
-    public string CompositeStatus => Status switch
+    public string CompositeStatus
     {
-        "Active" when !EmailVerified => "Unverified",
-        "Active" => "Active",
-        "Suspended" => "Suspended",
-        _ => Status
-    };
+        get
+        {
+            if (InvitationStatus == "Pending") return "Invited";
+            return Status switch
+            {
+                "Active" when !EmailVerified => "Unverified",
+                "Active" => "Active",
+                "Suspended" => "Suspended",
+                _ => Status
+            };
+        }
+    }
 }
 
 /// <summary>
