@@ -1,0 +1,88 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.UI.Core.Models.Admin
+
+<MudExpansionPanels data-testid="stats-panel">
+    <MudExpansionPanel @bind-IsExpanded="_isExpanded"
+                       data-testid="stats-panel-toggle">
+        <TitleContent>
+            @if (_isExpanded)
+            {
+                <MudText Typo="Typo.subtitle1">Overview</MudText>
+            }
+            else
+            {
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center"
+                          data-testid="stats-panel-summary">
+                    <MudText Typo="Typo.body2">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" Class="mr-1" />
+                        @Stats.UserCount Users
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Small" Class="mr-1" />
+                        @Stats.ParticipantCount Participants
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <MudIcon Icon="@Icons.Material.Filled.PublishedWithChanges" Size="Size.Small" Class="mr-1" />
+                        @Stats.PublishedParticipantCount Published
+                    </MudText>
+                </MudStack>
+            }
+        </TitleContent>
+        <ChildContent>
+            <MudGrid Spacing="3" Class="mt-1">
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Users</MudText>
+                        <MudText Typo="Typo.h5" data-testid="stat-user-count">@Stats.UserCount</MudText>
+                        <MudText Typo="Typo.caption">@Stats.ActiveUserCount active</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Participants</MudText>
+                        <MudText Typo="Typo.h5" data-testid="stat-participant-count">@Stats.ParticipantCount</MudText>
+                        <MudText Typo="Typo.caption">@Stats.ActiveParticipantCount active</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Published</MudText>
+                        <MudText Typo="Typo.h5" data-testid="stat-published-count">@Stats.PublishedParticipantCount</MudText>
+                        <MudText Typo="Typo.caption">on registers</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Invited</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Info" data-testid="stat-invited-count">@Stats.InvitedUserCount</MudText>
+                        <MudText Typo="Typo.caption">pending</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Unverified</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning" data-testid="stat-unverified-count">@Stats.UnverifiedUserCount</MudText>
+                        <MudText Typo="Typo.caption">email pending</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </ChildContent>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter]
+    public OrganizationDashboardViewModel Stats { get; set; } = new();
+
+    [Parameter]
+    public bool IsExpanded { get; set; } = true;
+
+    private bool _isExpanded = true;
+
+    protected override void OnParametersSet()
+    {
+        _isExpanded = IsExpanded;
+    }
+}

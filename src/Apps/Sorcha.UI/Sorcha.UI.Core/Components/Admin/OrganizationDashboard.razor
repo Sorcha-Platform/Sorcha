@@ -35,82 +35,20 @@
         </MudText>
     }
 
-    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
-        <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Dashboard">
-            <MudGrid Spacing="3" Class="mt-2">
-                <MudItem xs="12" sm="6" md="3">
-                    <MudPaper Class="pa-4" Elevation="1">
-                        <MudStack Spacing="1">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Users</MudText>
-                            <MudText Typo="Typo.h4">@_stats.UserCount</MudText>
-                            <MudText Typo="Typo.caption">@_stats.ActiveUserCount active</MudText>
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudPaper Class="pa-4" Elevation="1">
-                        <MudStack Spacing="1">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">Participants</MudText>
-                            <MudText Typo="Typo.h4">@_stats.ParticipantCount</MudText>
-                            <MudText Typo="Typo.caption">@_stats.ActiveParticipantCount active</MudText>
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudPaper Class="pa-4" Elevation="1">
-                        <MudStack Spacing="1">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">Published</MudText>
-                            <MudText Typo="Typo.h4">@_stats.PublishedParticipantCount</MudText>
-                            <MudText Typo="Typo.caption">on registers</MudText>
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudPaper Class="pa-4" Elevation="1">
-                        <MudStack Spacing="1">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
-                            <MudText Typo="Typo.h4" Color="@GetStatusColor(Organization.Status)">@Organization.Status</MudText>
-                            <MudText Typo="Typo.caption">since @Organization.CreatedAt.ToString("MMM yyyy")</MudText>
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
-            </MudGrid>
+    <CollapsibleStatsPanel Stats="_stats" IsExpanded="true" />
 
-            @if (Organization.Branding != null)
-            {
-                <MudPaper Class="pa-4 mt-4" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-2">Branding</MudText>
-                    <MudGrid Spacing="2">
-                        @if (!string.IsNullOrEmpty(Organization.Branding.CompanyTagline))
-                        {
-                            <MudItem xs="12">
-                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Tagline</MudText>
-                                <MudText>@Organization.Branding.CompanyTagline</MudText>
-                            </MudItem>
-                        }
-                        @if (!string.IsNullOrEmpty(Organization.Branding.PrimaryColor))
-                        {
-                            <MudItem xs="6" md="3">
-                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Primary Color</MudText>
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                    <div style="width:20px;height:20px;border-radius:4px;background:@Organization.Branding.PrimaryColor"></div>
-                                    <MudText>@Organization.Branding.PrimaryColor</MudText>
-                                </MudStack>
-                            </MudItem>
-                        }
-                    </MudGrid>
-                </MudPaper>
-            }
-        </MudTabPanel>
-
-        <MudTabPanel Text="Users" Icon="@Icons.Material.Filled.People">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4"
+             data-testid="org-dashboard-tabs">
+        <MudTabPanel Text="Users" Icon="@Icons.Material.Filled.People"
+                     data-testid="users-tab">
             <UserList Organization="Organization"
                       IsReadOnly="!IsSystemAdmin"
                       CurrentUserId="CurrentUserId"
                       OnBackToOrganizations="@(() => {})" />
         </MudTabPanel>
 
-        <MudTabPanel Text="Participants" Icon="@Icons.Material.Filled.Badge">
+        <MudTabPanel Text="Participants" Icon="@Icons.Material.Filled.Badge"
+                     data-testid="participants-tab">
             <Sorcha.UI.Core.Components.Participants.ParticipantList @ref="_participantList"
                              OrganizationId="Organization.Id"
                              ShowCreateButton="IsSystemAdmin"
@@ -119,11 +57,8 @@
                              OnPublishClick="ShowPublishDialog" />
         </MudTabPanel>
 
-        <MudTabPanel Text="Published" Icon="@Icons.Material.Filled.PublishedWithChanges">
-            <PublishedParticipantsList OrganizationId="Organization.Id" />
-        </MudTabPanel>
-
-        <MudTabPanel Text="Configuration" Icon="@Icons.Material.Filled.Settings">
+        <MudTabPanel Text="Settings" Icon="@Icons.Material.Filled.Settings"
+                     data-testid="settings-tab">
             <OrganizationConfiguration Organization="Organization"
                                        IsReadOnly="!IsSystemAdmin" />
         </MudTabPanel>

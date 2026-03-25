@@ -226,5 +226,10 @@ public enum AuditEventType
     /// <summary>
     /// User completed their profile after OIDC login (provided missing email/name).
     /// </summary>
-    ProfileCompleted
+    ProfileCompleted,
+
+    /// <summary>
+    /// User's email was marked as verified by an administrator (admin override).
+    /// </summary>
+    EmailVerifiedByAdmin
 }

@@ -12,7 +12,10 @@
       "Skill(*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
-      "mcp__plugin_greptile_greptile__*"
+      "mcp__plugin_greptile_greptile__*",
+      "mcp__MCP_DOCKER__mcp-find",
+      "mcp__MCP_DOCKER__mcp-add",
+      "mcp__MCP_DOCKER__mcp-exec"
     ],
     "deny": [],
     "ask": []

@@ -24,6 +24,7 @@
         <MudTh>Display Name</MudTh>
         <MudTh>Email</MudTh>
         <MudTh>Status</MudTh>
+        <MudTh>Published</MudTh>
         <MudTh>Wallet</MudTh>
         <MudTh>Created</MudTh>
         <MudTh>Actions</MudTh>
@@ -35,6 +36,19 @@
             <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">
                 @context.Status
             </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Published">
+            <MudChip T="string" Size="Size.Small"
+                     Color="@GetPublishStatusColor(context.PublishStatus)"
+                     data-testid="@($"participant-publish-status-{context.Id}")">
+                @(context.PublishStatus ?? "None")
+            </MudChip>
+            @if (!string.IsNullOrEmpty(context.PublishedRegisterName))
+            {
+                <MudTooltip Text="@($"{context.PublishedRegisterName} v{context.PublishedVersion}")">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Default" />
+                </MudTooltip>
+            }
         </MudTd>
         <MudTd DataLabel="Wallet">
             @if (context.HasLinkedWallet)
@@ -55,11 +69,19 @@
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                OnClick="@(() => OnEditClick.InvokeAsync(context))" title="Edit" />
             }
-            @if (context.HasLinkedWallet && OnPublishClick.HasDelegate)
+            @if (context.HasLinkedWallet && OnPublishClick.HasDelegate && context.PublishStatus != "Published")
             {
                 <MudIconButton Icon="@Icons.Material.Filled.Publish" Size="Size.Small"
                                Color="Color.Primary"
                                OnClick="@(() => OnPublishClick.InvokeAsync(context))" title="Publish to Register" />
+            }
+            @if (context.PublishStatus == "Published" && OnRevokeClick.HasDelegate)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.RemoveCircle" Size="Size.Small"
+                               Color="Color.Error"
+                               OnClick="@(() => OnRevokeClick.InvokeAsync(context))"
+                               title="Revoke Published Record"
+                               data-testid="@($"revoke-btn-{context.Id}")" />
             }
         </MudTd>
     </RowTemplate>
@@ -84,6 +106,7 @@
     [Parameter] public EventCallback<ParticipantListItemViewModel> OnViewClick { get; set; }
     [Parameter] public EventCallback<ParticipantListItemViewModel> OnEditClick { get; set; }
     [Parameter] public EventCallback<ParticipantListItemViewModel> OnPublishClick { get; set; }
+    [Parameter] public EventCallback<ParticipantListItemViewModel> OnRevokeClick { get; set; }
 
     private MudTable<ParticipantListItemViewModel>? _table;
     private List<ParticipantListItemViewModel> _participants = new();
@@ -134,6 +157,13 @@
             _ => Color.Default
         };
     }
+
+    private static Color GetPublishStatusColor(string? status) => status switch
+    {
+        "Published" => Color.Success,
+        "Revoked" => Color.Error,
+        _ => Color.Default
+    };
 
     public async Task RefreshAsync()
     {

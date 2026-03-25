@@ -16,6 +16,26 @@ public class ParticipantListItemViewModel
     public string Status { get; set; } = string.Empty;
     public bool HasLinkedWallet { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Publish status on register (None, Published, Revoked).
+    /// </summary>
+    public string? PublishStatus { get; set; }
+
+    /// <summary>
+    /// Name of the register this participant is published to.
+    /// </summary>
+    public string? PublishedRegisterName { get; set; }
+
+    /// <summary>
+    /// When the participant was published.
+    /// </summary>
+    public DateTimeOffset? PublishedAt { get; set; }
+
+    /// <summary>
+    /// Version number on the register.
+    /// </summary>
+    public int? PublishedVersion { get; set; }
 }
 
 /// <summary>
