@@ -101,6 +101,8 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-016 | Invitation GetSourceOrgDid fallback format — use consistent DID or null | P3 | 1h | 📋 | Currently returns `org:{guid}` which is not a valid DID |
 | GAP-017 | Invitation ListAsync direction parameter validation | P3 | 1h | 📋 | Unrecognised values silently default to "all" |
 | GAP-018 | Auto-register participant and auto-link wallet during wallet creation | P1 | 12h | 📋 | Wallet creation wizard does not create a Participant Identity record or link the wallet. ActionsHub rejects SubscribeToWallet because no participant/linked-wallet exists. Needs: auto self-register participant, auto wallet-link (skip challenge/verify for own wallet), refresh JWT with wallet_address claim. |
+| GAP-019 | Tenant org user admin — PlatformUser provisioning with admin overrides | P1 | 16h | 📋 | SystemAdmin endpoint to create PlatformUser with password in a private org, bypassing SMTP email verification. Current gap: `AddUserToOrganization` only creates UserIdentity (no PlatformUser, no password hash, no login capability). Blocks multi-org walkthroughs and dev tooling. Scope: `POST /api/platform/users` (create PlatformUser + UserIdentity + OrgMembership, optional password, skip email verification flag), `PUT /api/platform/users/{id}/password` (admin password reset), admin override for email verification status. |
+| GAP-020 | Multi-org ConstructionPermit walkthrough — complete run.ps1 | P2 | 8h | 🚧 | Setup passes (4 orgs, 5 users, register, subscriptions, blueprint). Run blocked on GAP-019 (per-org users can't login without PlatformUser). Branch: `feature/multi-org-construction-permit`. Also needs: rejection scenario fix, New Submission page visibility test. |
 
 ---
 
