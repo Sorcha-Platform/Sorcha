@@ -90,11 +90,16 @@ Invoke-SorchaApi -Method PUT `
 Write-WtInfo "  Public org enabled for self-registration"
 
 # ============================================================================
-# Step 3: Register All Users on Public Org (creates PlatformUser records)
+# Step 3: Register Org Admins on Public Org (creates PlatformUser with password)
 # ============================================================================
-Write-WtStep "Step 3: Register Users (public org — creates PlatformUser with password)"
+Write-WtStep "Step 3: Register Org Admins (public org — creates PlatformUser)"
 
-foreach ($u in $userDefs) {
+# Only org admins need PlatformUser records before org creation.
+# Team members (building-control) will be added directly by their org admin later.
+$orgAdminDefs = $userDefs | Where-Object { $_.isOrgAdmin }
+$teamMemberDefs = $userDefs | Where-Object { -not $_.isOrgAdmin }
+
+foreach ($u in $orgAdminDefs) {
     Register-SorchaPublicUser `
         -TenantUrl $env.TenantUrl `
         -Email $u.email `
@@ -104,16 +109,15 @@ foreach ($u in $userDefs) {
 }
 
 # ============================================================================
-# Step 4: Admin Verify All User Emails (bypasses SMTP verification loop)
+# Step 4: Admin Verify Org Admin Emails (bypasses SMTP verification loop)
 # ============================================================================
-Write-WtStep "Step 4: Verify User Emails (admin override — no SMTP needed)"
+Write-WtStep "Step 4: Verify Org Admin Emails (admin override — no SMTP needed)"
 
-# Look up users in the public org by listing all, then match by email to get IDs
 $publicUsers = Invoke-SorchaApi -Method GET `
     -Uri "$($env.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
     -Headers $sysAdmin.Headers
 
-foreach ($u in $userDefs) {
+foreach ($u in $orgAdminDefs) {
     $publicUser = $publicUsers.users | Where-Object { $_.email -eq $u.email } | Select-Object -First 1
     if ($publicUser) {
         Confirm-SorchaUserEmail `
@@ -150,26 +154,44 @@ foreach ($def in $orgDefs) {
 }
 
 # ============================================================================
-# Step 5: Add Team Members to Their Orgs
+# Step 6: Add Team Members to Their Orgs
 # ============================================================================
-Write-WtStep "Step 6: Add Users to Organizations"
+Write-WtStep "Step 6: Add Team Members to Organizations"
 
-# Team members (non-admin) need to be added to their target orgs.
-# Org admins were already added during org creation (Step 4).
-foreach ($u in $userDefs) {
-    $orgKey = $orgUserMap[$u.role]
-    $orgId = $orgs[$orgKey]
-    $roles = if ($u.isOrgAdmin) { @("Administrator", "Member") } else { @("Member") }
+# Team members need PlatformUser records first (register on public org),
+# then get added to their target org by the system admin.
+# This is realistic: the org admin would invite them, we shortcut via admin API.
+foreach ($u in $teamMemberDefs) {
+    # Create PlatformUser via public org registration
+    Register-SorchaPublicUser `
+        -TenantUrl $env.TenantUrl `
+        -Email $u.email `
+        -Password $u.password `
+        -DisplayName $u.name | Out-Null
 
-    # For org admins, this may return 409 (already added during org creation) — that's fine
+    # Verify their email
+    $refreshedUsers = Invoke-SorchaApi -Method GET `
+        -Uri "$($env.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+        -Headers $sysAdmin.Headers
+    $pubUser = $refreshedUsers.users | Where-Object { $_.email -eq $u.email } | Select-Object -First 1
+    if ($pubUser) {
+        Confirm-SorchaUserEmail `
+            -TenantUrl $env.TenantUrl `
+            -OrganizationId $publicOrgId `
+            -UserId $pubUser.id `
+            -Headers $sysAdmin.Headers
+    }
+
+    # Add to their target org
+    $orgId = $orgs[$u.org]
     Get-OrCreateUser `
         -TenantUrl $env.TenantUrl `
         -OrganizationId $orgId `
         -Email $u.email `
         -DisplayName $u.name `
         -Headers $sysAdmin.Headers `
-        -Roles $roles
-    Write-WtInfo "  $($u.role) ($($u.email)) -> $orgKey$(if ($u.isOrgAdmin) { ' [Admin]' })"
+        -Roles @("Administrator", "Member")
+    Write-WtInfo "  $($u.role) ($($u.email)) -> $($u.org) [Admin]"
 }
 
 # ============================================================================

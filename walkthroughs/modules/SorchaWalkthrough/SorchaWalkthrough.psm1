@@ -546,7 +546,7 @@ function Get-OrCreateUser {
     $userBody = @{
         email              = $Email
         displayName        = $DisplayName
-        externalIdpUserId  = "$($DisplayName.ToLower().Replace(' ', '-'))-" + [guid]::NewGuid().ToString().Substring(0, 8)
+        externalIdpSubject = "$($DisplayName.ToLower().Replace(' ', '-'))-" + [guid]::NewGuid().ToString().Substring(0, 8)
         roles              = $Roles
     }
 
