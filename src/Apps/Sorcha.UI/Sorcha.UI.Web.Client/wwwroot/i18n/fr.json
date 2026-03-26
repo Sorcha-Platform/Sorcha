@@ -31,6 +31,7 @@
   "nav.recoverWallet": "Récupérer un portefeuille",
   "nav.registers": "Registres",
   "nav.participants": "Participants",
+  "nav.issuedCredentials": "Identifiants émis",
   "nav.organizations": "Organisations",
   "nav.systemHealth": "Santé du système",
   "nav.peerNetwork": "Réseau pair-à-pair",

@@ -31,6 +31,7 @@
   "nav.recoverWallet": "Recover Wallet",
   "nav.registers": "Registers",
   "nav.participants": "Participants",
+  "nav.issuedCredentials": "Issued Credentials",
   "nav.organizations": "Organisations",
   "nav.systemHealth": "System Health",
   "nav.peerNetwork": "Peer Network",
