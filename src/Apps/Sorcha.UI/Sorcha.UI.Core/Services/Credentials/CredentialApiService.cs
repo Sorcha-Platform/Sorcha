@@ -460,7 +460,7 @@ public class CredentialApiService : ICredentialApiService
         {
             var response = await _httpClient.PatchAsJsonAsync(
                 $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
-                new { Status = "Declined" }, ct);
+                new { Status = CredentialStatus.Declined }, ct);
 
             return response.IsSuccessStatusCode;
         }

@@ -14,6 +14,7 @@ public static class CredentialStatus
     public const string Revoked = "Revoked";
     public const string Expired = "Expired";
     public const string Consumed = "Consumed";
+    public const string Declined = "Declined";
 
     /// <summary>
     /// All valid credential status values, for iteration in filters and UI chips.
