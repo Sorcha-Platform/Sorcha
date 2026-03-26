@@ -614,9 +614,11 @@ function Register-SorchaPublicUser {
         $statusCode = $null
         try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
 
-        if ($statusCode -eq 409 -or $statusCode -eq 400) {
-            Write-WtWarn "User '$Email' may already exist — continuing"
-            return $null
+        if ($statusCode -eq 409 -or $statusCode -eq 400 -or $statusCode -eq 503) {
+            # 409/400: user already exists. 503: public org registration disabled or
+            # maxOrgsPerUser limit reached (user already registered in a private org).
+            Write-WtInfo "User '$Email' already registered (status $statusCode) — continuing"
+            return [Guid]::Empty.ToString()
         }
         throw
     }

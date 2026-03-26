@@ -63,40 +63,63 @@ public class WorkflowService : IWorkflowService
     {
         try
         {
-            var response = await _httpClient.GetAsync("/api/instances?status=active", cancellationToken);
+            // Use the dedicated wallet-scoped pending actions endpoint.
+            // The server reads the wallet_address JWT claim to find actions
+            // assigned to this user across all active instances.
+            var response = await _httpClient.GetAsync("/api/actions/pending", cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                _logger.LogWarning("Pending actions endpoint returned {StatusCode}", response.StatusCode);
                 return [];
             }
 
-            var instances = await response.Content.ReadFromJsonAsync<PaginatedList<WorkflowInstanceViewModel>>(cancellationToken: cancellationToken);
-            if (instances?.Items is null || instances.Items.Count == 0) return [];
+            var result = await response.Content.ReadFromJsonAsync<PendingActionsResponse>(cancellationToken: cancellationToken);
+            if (result?.Items is null || result.Items.Count == 0) return [];
 
-            var actions = new List<PendingActionViewModel>();
-            foreach (var instance in instances.Items.Where(i => i.Status == "active"))
+            return result.Items.Select(s => new PendingActionViewModel
             {
-                try
-                {
-                    var nextActions = await _httpClient.GetFromJsonAsync<List<PendingActionViewModel>>(
-                        $"/api/instances/{instance.InstanceId}/next-actions", cancellationToken);
-                    if (nextActions != null)
-                    {
-                        actions.AddRange(nextActions);
-                    }
-                }
-                catch
-                {
-                    // Continue with other instances if one fails
-                }
-            }
-
-            return actions;
+                ActionId = s.ActionId.ToString(),
+                InstanceId = s.InstanceId,
+                BlueprintId = s.BlueprintId,
+                RegisterId = s.RegisterId,
+                BlueprintName = s.BlueprintTitle ?? s.BlueprintId,
+                ActionName = s.ActionTitle ?? $"Action {s.ActionId}",
+                Description = s.Summary ?? string.Empty,
+                Priority = s.Urgency ?? "normal",
+                AssignedAt = s.ReceivedAt,
+                DueAt = s.Deadline
+            }).ToList();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching pending actions");
             return [];
         }
+    }
+
+    /// <summary>
+    /// Response shape from GET /api/actions/pending
+    /// </summary>
+    private record PendingActionsResponse
+    {
+        public List<PendingActionSummaryDto> Items { get; init; } = [];
+        public int TotalCount { get; init; }
+        public int Page { get; init; }
+        public int PageSize { get; init; }
+    }
+
+    private record PendingActionSummaryDto
+    {
+        public string InstanceId { get; init; } = string.Empty;
+        public int ActionId { get; init; }
+        public string? ActionTitle { get; init; }
+        public string BlueprintId { get; init; } = string.Empty;
+        public string? BlueprintTitle { get; init; }
+        public string? Summary { get; init; }
+        public string? Urgency { get; init; }
+        public DateTimeOffset? Deadline { get; init; }
+        public string RegisterId { get; init; } = string.Empty;
+        public DateTimeOffset ReceivedAt { get; init; }
     }
 
     public async Task<WorkflowInstanceViewModel?> CreateInstanceAsync(string blueprintId, string registerId, CancellationToken cancellationToken = default)

@@ -622,6 +622,7 @@ transactionsGroup.MapPost("/", async (
             {
                 TransactionId = stored.TxId,
                 RegisterId = registerId,
+                ToWallets = stored.RecipientsWallets?.ToList() ?? [],
                 SenderWallet = stored.SenderWallet,
                 PreviousTransactionId = stored.PrevTxId,
                 MetaData = stored.MetaData,
@@ -1002,6 +1003,9 @@ docketsGroup.MapGet("/latest", async (
 // </summary>
 docketsGroup.MapPost("/", async (
     IRegisterRepository repository,
+    Sorcha.Register.Core.Events.IEventPublisher eventPublisher,
+    Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter transactionRouter,
+    ILogger<Program> logger,
     string registerId,
     WriteDocketRequest request) =>
 {
@@ -1080,7 +1084,97 @@ docketsGroup.MapPost("/", async (
     }
 
     // Update register height (height = number of dockets written, i.e., DocketNumber + 1)
+    var oldHeight = register.Height;
     await repository.UpdateRegisterHeightAsync(registerId, (uint)(request.DocketNumber + 1));
+
+    // Publish events and route notifications for confirmed transactions.
+    // This connects the docket write path (Validator → Register) to the
+    // full notification pipeline: Redis stream → RegisterEventBridge → SignalR,
+    // bloom filter → Wallet Service gRPC → user notification delivery.
+    if (request.Transactions is not null)
+    {
+        foreach (var tx in request.Transactions)
+        {
+            try
+            {
+                // Publish TransactionConfirmedEvent to Redis stream
+                await eventPublisher.PublishAsync(
+                    "transaction:confirmed",
+                    new Sorcha.Register.Core.Events.TransactionConfirmedEvent
+                    {
+                        TransactionId = tx.TxId,
+                        RegisterId = registerId,
+                        ToWallets = tx.RecipientsWallets?.ToList() ?? [],
+                        SenderWallet = tx.SenderWallet,
+                        PreviousTransactionId = tx.PrevTxId,
+                        MetaData = tx.MetaData,
+                        ConfirmedAt = DateTime.UtcNow
+                    });
+
+                // Route action transactions to local wallet owners via bloom filter
+                if (tx.MetaData?.TransactionType == TransactionType.Action)
+                {
+                    var recipients = tx.RecipientsWallets?.ToList() ?? [];
+                    if (recipients.Count > 0)
+                    {
+                        var matchCount = await transactionRouter.RouteTransactionAsync(
+                            registerId,
+                            tx.TxId,
+                            TransactionType.Action,
+                            recipients,
+                            tx.SenderWallet,
+                            tx.MetaData,
+                            request.DocketNumber,
+                            isRecovery: false);
+
+                        if (matchCount > 0)
+                        {
+                            logger.LogInformation(
+                                "Docket {DocketNumber} tx {TxId}: routed to {MatchCount} local wallet(s)",
+                                request.DocketNumber, tx.TxId, matchCount);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Best-effort: don't fail the docket write if notification delivery fails.
+                // The transaction is already stored — notifications can be recovered.
+                logger.LogWarning(ex,
+                    "Failed to publish event/route notification for tx {TxId} in docket {DocketNumber}",
+                    tx.TxId, request.DocketNumber);
+            }
+        }
+
+        // Publish docket confirmed event
+        try
+        {
+            await eventPublisher.PublishAsync(
+                "docket:confirmed",
+                new Sorcha.Register.Core.Events.DocketConfirmedEvent
+                {
+                    RegisterId = registerId,
+                    DocketId = (ulong)request.DocketNumber,
+                    TransactionIds = request.TransactionIds,
+                    Hash = request.DocketHash,
+                    TimeStamp = DateTime.UtcNow
+                });
+
+            await eventPublisher.PublishAsync(
+                "register:height-updated",
+                new Sorcha.Register.Core.Events.RegisterHeightUpdatedEvent
+                {
+                    RegisterId = registerId,
+                    OldHeight = oldHeight,
+                    NewHeight = (uint)(request.DocketNumber + 1),
+                    UpdatedAt = DateTime.UtcNow
+                });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to publish docket/height events for docket {DocketNumber}", request.DocketNumber);
+        }
+    }
 
     return Results.Created($"/api/registers/{registerId}/dockets/{inserted.Id}", inserted);
 })

@@ -24,7 +24,8 @@
 param(
     [ValidateSet('gateway', 'direct', 'aspire')]
     [string]$Profile = 'gateway',
-    [switch]$SkipHealthCheck
+    [switch]$SkipHealthCheck,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +37,61 @@ Write-WtBanner "ConstructionPermit — Multi-Org Setup"
 
 $secrets = Get-SorchaSecrets -WalkthroughName "construction-permit"
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
+
+# ============================================================================
+# Pre-flight: if state.json exists, validate that resources are still live.
+# Skip full setup if everything is healthy — only re-run with -Force.
+# ============================================================================
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$stateFile = Join-Path $scriptDir "state.json"
+
+if ((Test-Path $stateFile) -and -not $Force) {
+    Write-WtStep "Validating existing state.json"
+    $existingState = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
+
+    $stateValid = $true
+    try {
+        # Check user can still login
+        $testLogin = Invoke-SorchaApi -Method POST `
+            -Uri "$($existingState.tenantUrl)/auth/login" `
+            -Body @{ email = $existingState.roles.contractor.email; password = $existingState.roles.contractor.password }
+
+        if (-not $testLogin.requires_org_selection -and -not $testLogin.access_token) {
+            $stateValid = $false
+        }
+
+        # Check blueprint exists
+        if ($stateValid -and $existingState.blueprintId) {
+            $contractorSelect = Invoke-SorchaApi -Method POST `
+                -Uri "$($existingState.tenantUrl)/auth/select-org" `
+                -Body @{ platform_login_token = $testLogin.platform_login_token; organization_id = $existingState.roles.contractor.organizationId }
+            $bpHeaders = @{ Authorization = "Bearer $($contractorSelect.access_token)" }
+
+            try {
+                $bp = Invoke-SorchaApi -Method GET `
+                    -Uri "$($existingState.blueprintUrl)/blueprints/$($existingState.blueprintId)" `
+                    -Headers $bpHeaders
+                if ($bp.id -or $bp.blueprintId) {
+                    Write-WtSuccess "Blueprint $($existingState.blueprintId) exists"
+                } else { $stateValid = $false }
+            } catch {
+                Write-WtWarn "Blueprint $($existingState.blueprintId) not found"
+                $stateValid = $false
+            }
+        }
+    } catch {
+        Write-WtWarn "State validation failed: $($_.Exception.Message)"
+        $stateValid = $false
+    }
+
+    if ($stateValid) {
+        Write-WtSuccess "Existing state is valid — skipping setup (use -Force to recreate)"
+        Write-WtInfo "Run: pwsh walkthroughs/ConstructionPermit/run.ps1"
+        exit 0
+    }
+
+    Write-WtWarn "State invalid — running full setup"
+}
 
 # Well-known public org ID (created by DatabaseInitializer)
 $publicOrgId = "00000000-0000-0000-0000-000000000002"
