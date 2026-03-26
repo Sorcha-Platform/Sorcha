@@ -227,3 +227,6 @@ walkthroughs/PerformanceBenchmark/results/*.json
 walkthroughs/PerformanceBenchmark/results/*.md
 walkthroughs/PerformanceBenchmark/results/*.csv
 tests/Sorcha.Performance.Tests/performance-reports/
+
+# Generated API specs (export with: npm run postman:export)
+docs/api/*.json

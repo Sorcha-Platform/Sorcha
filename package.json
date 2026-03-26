@@ -12,7 +12,9 @@
     "docs:prebuild": "node scripts/copy-service-readmes.js",
     "docs:dev": "npm run docs:prebuild && vitepress dev docs",
     "docs:build": "npm run docs:prebuild && vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "postman:export": "bash scripts/export-openapi-spec.sh",
+    "postman:generate": "node scripts/generate-postman-collection.js"
   },
   "repository": {
     "type": "git",
