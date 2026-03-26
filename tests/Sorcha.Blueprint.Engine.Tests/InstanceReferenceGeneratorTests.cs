@@ -51,17 +51,6 @@ public class InstanceReferenceGeneratorTests
     }
 
     [Fact]
-    public void Generate_UppercaseTransform_UppercasesValue()
-    {
-        var template = CreateTemplate("TX", ("/city", ReferenceTransform.Uppercase, 5));
-        var data = new Dictionary<string, object> { ["city"] = "riverside" };
-
-        var result = InstanceReferenceGenerator.Generate(template, data, TestInstanceId, TestBlueprintTitle);
-
-        result.Should().StartWith("TX-RIVER-");
-    }
-
-    [Fact]
     public void Generate_MultipleComponents_JoinsWithHyphens()
     {
         var template = CreateTemplate("CP",

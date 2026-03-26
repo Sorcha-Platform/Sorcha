@@ -86,7 +86,7 @@ When a user describes a product lifecycle workflow across multiple participants,
 
 ## Instance Reference Configuration
 
-When building blueprints with user-facing data entry in the first action, suggest an `instanceReference` configuration. This generates human-readable identifiers for workflow instances (e.g., "CP-RIV-14W-a7k3") that appear on pending action cards and make it easy to identify applications.
+When building blueprints with user-facing data entry in the first action, suggest an `instanceReference` configuration. This generates human-readable identifiers for workflow instances (e.g., "CP-RIV-14-A7K3") that appear on pending action cards and make it easy to identify applications.
 
 **When to suggest**: Any blueprint where Action 1 collects identifying data (project name, applicant name, address, reference number).
 
@@ -103,7 +103,7 @@ When building blueprints with user-facing data entry in the first action, sugges
 
 - **prefix**: 1-5 uppercase letters identifying the workflow type (e.g., "CP" for Construction Permit, "PA" for Planning Application)
 - **components**: 1-5 field references from the starting action's schema
-- **transforms**: `FirstWord` (first word of value), `Truncate` (first N characters), `Uppercase` (uppercase + truncate)
+- **transforms**: `FirstWord` (first word of value), `Truncate` (first N characters). All output is uppercased.
 - A uniqueness hash is auto-appended by the system
 - Referenced field values become **public metadata** — choose non-sensitive identifying fields
 

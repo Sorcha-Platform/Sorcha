@@ -11,7 +11,7 @@ namespace Sorcha.Blueprint.Engine.Implementation;
 /// <summary>
 /// Generates human-readable compound references for workflow instances.
 /// References are derived from blueprint-defined templates and first-action payload data.
-/// Format: {PREFIX}-{COMP1}-{COMP2}-{HASH} (e.g., "CP-RIV-14W-A7K3").
+/// Format: {PREFIX}-{COMP1}-{COMP2}-{HASH} (e.g., "CP-RIV-14-A7K3").
 /// </summary>
 public static partial class InstanceReferenceGenerator
 {
@@ -72,7 +72,6 @@ public static partial class InstanceReferenceGenerator
         {
             ReferenceTransform.FirstWord => ExtractFirstWord(cleaned, maxChars),
             ReferenceTransform.Truncate => Truncate(cleaned, maxChars),
-            ReferenceTransform.Uppercase => Truncate(cleaned, maxChars),
             _ => Truncate(cleaned, maxChars)
         };
 

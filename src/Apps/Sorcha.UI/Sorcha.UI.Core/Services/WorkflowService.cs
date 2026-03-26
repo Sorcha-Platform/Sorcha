@@ -15,6 +15,8 @@ public class WorkflowService : IWorkflowService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<WorkflowService> _logger;
+    // Scoped to the WASM session lifetime (singleton in Blazor WASM). Acceptable for typical
+    // use because blueprints rarely change during a single user session.
     private readonly Dictionary<string, Sorcha.Blueprint.Models.Blueprint> _blueprintCache = new();
 
     public WorkflowService(HttpClient httpClient, ILogger<WorkflowService> logger)

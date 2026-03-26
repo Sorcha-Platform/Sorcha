@@ -433,7 +433,7 @@
             <summary>
             Generates human-readable compound references for workflow instances.
             References are derived from blueprint-defined templates and first-action payload data.
-            Format: {PREFIX}-{COMP1}-{COMP2}-{HASH} (e.g., "CP-RIV-14W-A7K3").
+            Format: {PREFIX}-{COMP1}-{COMP2}-{HASH} (e.g., "CP-RIV-14-A7K3").
             </summary>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(Sorcha.Blueprint.Models.InstanceReferenceTemplate,System.Collections.Generic.Dictionary{System.String,System.Object},System.String,System.String)">

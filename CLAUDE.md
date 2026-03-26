@@ -352,7 +352,7 @@ public class WalletService
 ```
 
 ### 6. Instance Reference Configuration
-Blueprints should define an `instanceReference` to generate human-readable identifiers for workflow instances (e.g., "CP-RIV-14W-a7k3"). The reference is auto-generated from first-action payload fields and stored as public metadata on the instance.
+Blueprints should define an `instanceReference` to generate human-readable identifiers for workflow instances (e.g., "CP-RIV-14-A7K3"). The reference is auto-generated from first-action payload fields and stored as public metadata on the instance.
 ```json
 "instanceReference": {
   "prefix": "CP",
@@ -364,7 +364,7 @@ Blueprints should define an `instanceReference` to generate human-readable ident
 ```
 - **prefix**: 1-5 uppercase alpha chars identifying the workflow type
 - **components**: 1-5 field extractions from the starting action's schema
-- **transforms**: `FirstWord` (split on space, take first), `Truncate` (take first N chars), `Uppercase` (uppercase + truncate)
+- **transforms**: `FirstWord` (split on space, take first), `Truncate` (take first N chars). All output is uppercased.
 - A 4-char uniqueness hash is auto-appended
 - The reference is **public metadata** — field values referenced here will be visible in plaintext
 

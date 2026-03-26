@@ -22,7 +22,7 @@ public class EfCoreInstanceStore : IInstanceStore
 {
     private readonly IDbContextFactory<BlueprintDbContext> _contextFactory;
     private readonly ILogger<EfCoreInstanceStore> _logger;
-    private readonly IActionResolverService? _actionResolver;
+    private readonly IActionResolverService _actionResolver;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -35,11 +35,11 @@ public class EfCoreInstanceStore : IInstanceStore
     /// </summary>
     /// <param name="contextFactory">Factory for creating scoped database contexts.</param>
     /// <param name="logger">Logger instance.</param>
-    /// <param name="actionResolver">Optional action resolver for enriching pending action data.</param>
+    /// <param name="actionResolver">Action resolver for enriching pending action data.</param>
     public EfCoreInstanceStore(
         IDbContextFactory<BlueprintDbContext> contextFactory,
         ILogger<EfCoreInstanceStore> logger,
-        IActionResolverService? actionResolver = null)
+        IActionResolverService actionResolver)
     {
         _contextFactory = contextFactory;
         _logger = logger;
@@ -265,15 +265,12 @@ public class EfCoreInstanceStore : IInstanceStore
             .ToList();
 
         // Pre-fetch blueprints for all unique blueprint IDs
-        if (_actionResolver != null)
+        var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
+        foreach (var bpId in blueprintIds)
         {
-            var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
-            foreach (var bpId in blueprintIds)
+            if (!blueprintCache.ContainsKey(bpId))
             {
-                if (!blueprintCache.ContainsKey(bpId))
-                {
-                    blueprintCache[bpId] = await _actionResolver.GetBlueprintAsync(bpId, cancellationToken);
-                }
+                blueprintCache[bpId] = await _actionResolver.GetBlueprintAsync(bpId, cancellationToken);
             }
         }
 
@@ -285,7 +282,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 return instance.CurrentActionIds.Select(actionId =>
                 {
                     var actionTitle = $"Action {actionId}";
-                    if (blueprint != null && _actionResolver != null)
+                    if (blueprint != null)
                     {
                         var actionDef = _actionResolver.GetActionDefinition(blueprint, actionId.ToString());
                         if (actionDef != null && !string.IsNullOrEmpty(actionDef.Title))

@@ -9,7 +9,7 @@ namespace Sorcha.Blueprint.Models;
 /// <summary>
 /// Defines how to generate a human-readable compound reference for workflow instances.
 /// The reference is auto-generated from first-action payload fields and stored as
-/// public metadata on the instance (e.g., "CP-RIV-14W-a7k3").
+/// public metadata on the instance (e.g., "CP-RIV-14-A7K3").
 /// </summary>
 public class InstanceReferenceTemplate
 {
@@ -45,7 +45,7 @@ public class ReferenceComponent
     /// Must reference a field from the starting action's schema.
     /// </summary>
     [DataAnnotations.Required(ErrorMessage = "Field path is required.")]
-    [DataAnnotations.RegularExpression(@"^/.*$", ErrorMessage = "Field must be a JSON Pointer starting with '/'.")]
+    [DataAnnotations.RegularExpression(@"^/[^/]+$", ErrorMessage = "Field must be a single-level JSON Pointer (e.g., '/projectName'). Nested paths are not supported.")]
     [JsonPropertyName("field")]
     public string Field { get; set; } = string.Empty;
 
@@ -66,7 +66,8 @@ public class ReferenceComponent
 
 /// <summary>
 /// Available transforms for instance reference components.
-/// JSON values: "first-word", "truncate", "uppercase" (kebab-case).
+/// JSON values: "first-word", "truncate" (kebab-case).
+/// All output is uppercased regardless of transform.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ReferenceTransform>))]
 public enum ReferenceTransform
@@ -75,8 +76,5 @@ public enum ReferenceTransform
     FirstWord,
 
     /// <summary>Truncate the full value to <see cref="ReferenceComponent.Chars"/> characters.</summary>
-    Truncate,
-
-    /// <summary>Uppercase the full value, truncate to <see cref="ReferenceComponent.Chars"/> characters.</summary>
-    Uppercase
+    Truncate
 }

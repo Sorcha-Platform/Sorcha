@@ -266,13 +266,15 @@
                     var actionDef = blueprint.Actions.FirstOrDefault(a => a.Id.ToString() == action.ActionId);
                     if (actionDef?.DataSchemas?.Any() == true)
                     {
+                        // Convention: actions have a single merged schema document
                         var schemaJson = actionDef.DataSchemas.First().RootElement.GetRawText();
                         action = action with { DataSchema = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(schemaJson) };
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogWarning(ex, "Failed to load schema for action {ActionId} on blueprint {BlueprintId}", action.ActionId, action.BlueprintId);
                 Snackbar.Add("Failed to load action form — please try again.", Severity.Error);
                 return;
             }

@@ -139,7 +139,6 @@ public class InstanceReferenceTemplateTests
 
     [Theory]
     [InlineData("/projectName")]
-    [InlineData("/address/city")]
     [InlineData("/a")]
     public void ReferenceComponent_ValidField_PassesValidation(string field)
     {
@@ -155,6 +154,7 @@ public class InstanceReferenceTemplateTests
     [Theory]
     [InlineData("")]
     [InlineData("projectName")]
+    [InlineData("/address/city")]
     public void ReferenceComponent_InvalidField_FailsValidation(string field)
     {
         var component = new ReferenceComponent
@@ -169,10 +169,9 @@ public class InstanceReferenceTemplateTests
     [Fact]
     public void ReferenceTransform_AllValues_Defined()
     {
-        Enum.GetValues<ReferenceTransform>().Should().HaveCount(3);
+        Enum.GetValues<ReferenceTransform>().Should().HaveCount(2);
         Enum.GetValues<ReferenceTransform>().Should().Contain(ReferenceTransform.FirstWord);
         Enum.GetValues<ReferenceTransform>().Should().Contain(ReferenceTransform.Truncate);
-        Enum.GetValues<ReferenceTransform>().Should().Contain(ReferenceTransform.Uppercase);
     }
 
     [Fact]

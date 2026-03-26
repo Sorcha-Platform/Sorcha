@@ -39,7 +39,7 @@ All segments are uppercase. Separator is hyphen.
 
 | Blueprint Config | Action 1 Data | Generated Reference |
 |-----------------|---------------|-------------------|
-| prefix: "CP", projectName first-word 3, siteAddress first-word 3 | projectName: "Riverside Heights", siteAddress: "14 Waterfront Lane" | CP-RIV-14W-a7k3 |
+| prefix: "CP", projectName first-word 3, siteAddress first-word 3 | projectName: "Riverside Heights", siteAddress: "14 Waterfront Lane" | CP-RIV-14-a7k3 |
 | prefix: "CP", projectName first-word 3, siteAddress first-word 3 | projectName: "Central Business Tower", siteAddress: "100 High Street" | CP-CEN-100-b2m9 |
 | prefix: "PA", applicantName truncate 4 | applicantName: "Smith" | PA-SMIT-c4x1 |
 
@@ -56,9 +56,8 @@ Example: Blueprint title "Planning Application" → `PL-a7k3`
 | Transform | Input | Chars | Output |
 |-----------|-------|-------|--------|
 | first-word | "Riverside Heights" | 3 | "RIV" |
-| first-word | "14 Waterfront Lane" | 3 | "14W" |
+| first-word | "14 Waterfront Lane" | 3 | "14" |
 | truncate | "Smith" | 4 | "SMIT" |
-| uppercase | "riverside" | 10 | "RIVERSIDE" |
 
 ### Edge Cases
 
@@ -74,6 +73,6 @@ Example: Blueprint title "Planning Application" → `PL-a7k3`
 - `prefix`: Required, 1-5 uppercase alpha characters, regex `^[A-Z]{1,5}$`
 - `components`: Required, 1-5 items
 - `components[].field`: Required, valid JSON Pointer starting with "/"
-- `components[].transform`: Required, one of: "first-word", "truncate", "uppercase"
+- `components[].transform`: Required, one of: "first-word", "truncate"
 - `components[].chars`: Required, integer 2-10, default 3
 - Generated reference max length: 30 characters (prefix + components + hash + separators)
