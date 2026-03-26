@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Sorcha.Blueprint.Service.Data;
 using Sorcha.Blueprint.Service.Data.Entities;
 using Sorcha.Blueprint.Service.Models;
@@ -22,7 +23,7 @@ public class EfCoreInstanceStore : IInstanceStore
 {
     private readonly IDbContextFactory<BlueprintDbContext> _contextFactory;
     private readonly ILogger<EfCoreInstanceStore> _logger;
-    private readonly IActionResolverService _actionResolver;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -35,15 +36,15 @@ public class EfCoreInstanceStore : IInstanceStore
     /// </summary>
     /// <param name="contextFactory">Factory for creating scoped database contexts.</param>
     /// <param name="logger">Logger instance.</param>
-    /// <param name="actionResolver">Action resolver for enriching pending action data.</param>
+    /// <param name="scopeFactory">Service scope factory for resolving scoped services (e.g., IActionResolverService) from this singleton.</param>
     public EfCoreInstanceStore(
         IDbContextFactory<BlueprintDbContext> contextFactory,
         ILogger<EfCoreInstanceStore> logger,
-        IActionResolverService actionResolver)
+        IServiceScopeFactory scopeFactory)
     {
         _contextFactory = contextFactory;
         _logger = logger;
-        _actionResolver = actionResolver;
+        _scopeFactory = scopeFactory;
     }
 
     /// <inheritdoc/>
@@ -254,8 +255,10 @@ public class EfCoreInstanceStore : IInstanceStore
             .OrderByDescending(i => i.UpdatedAt)
             .ToListAsync(cancellationToken);
 
-        // Build blueprint cache for action title lookup
+        // Build blueprint cache for action title lookup.
+        // IActionResolverService is scoped; resolve via scope factory since this store is singleton.
         var blueprintCache = new Dictionary<string, Sorcha.Blueprint.Models.Blueprint?>();
+        IActionResolverService? actionResolver = null;
 
         var matchingInstances = entities
             .Where(e => ContainsWalletAddress(e.ParticipantWallets, walletAddress))
@@ -265,12 +268,17 @@ public class EfCoreInstanceStore : IInstanceStore
             .ToList();
 
         // Pre-fetch blueprints for all unique blueprint IDs
-        var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
-        foreach (var bpId in blueprintIds)
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        actionResolver = scope.ServiceProvider.GetService<IActionResolverService>();
+        if (actionResolver != null)
         {
-            if (!blueprintCache.ContainsKey(bpId))
+            var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
+            foreach (var bpId in blueprintIds)
             {
-                blueprintCache[bpId] = await _actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+                if (!blueprintCache.ContainsKey(bpId))
+                {
+                    blueprintCache[bpId] = await actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+                }
             }
         }
 
@@ -282,9 +290,9 @@ public class EfCoreInstanceStore : IInstanceStore
                 return instance.CurrentActionIds.Select(actionId =>
                 {
                     var actionTitle = $"Action {actionId}";
-                    if (blueprint != null)
+                    if (blueprint != null && actionResolver != null)
                     {
-                        var actionDef = _actionResolver.GetActionDefinition(blueprint, actionId.ToString());
+                        var actionDef = actionResolver.GetActionDefinition(blueprint, actionId.ToString());
                         if (actionDef != null && !string.IsNullOrEmpty(actionDef.Title))
                         {
                             actionTitle = actionDef.Title;
