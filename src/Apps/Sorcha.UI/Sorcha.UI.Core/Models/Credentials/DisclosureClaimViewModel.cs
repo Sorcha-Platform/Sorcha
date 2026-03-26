@@ -103,4 +103,24 @@ public class DisclosureClaimViewModel
             })
             .ToList();
     }
+
+    /// <summary>
+    /// Returns the claim names that will be disclosed (Required + Optional where IsSharing is true).
+    /// </summary>
+    public static List<string> GetDisclosedClaimNames(List<DisclosureClaimViewModel> claims) =>
+        claims
+            .Where(c => c.Category == DisclosureCategory.Required || (c.Category == DisclosureCategory.Optional && c.IsSharing))
+            .Select(c => c.ClaimName)
+            .ToList();
+
+    /// <summary>
+    /// Returns a summary string like "Sharing 3 of 4 claims".
+    /// </summary>
+    public static string GetSharingSummary(List<DisclosureClaimViewModel> claims)
+    {
+        var disclosed = claims.Count(c => c.Category == DisclosureCategory.Required ||
+            (c.Category == DisclosureCategory.Optional && c.IsSharing));
+        var total = claims.Count(c => c.Category != DisclosureCategory.NotRequested);
+        return $"Sharing {disclosed} of {total} claims";
+    }
 }
