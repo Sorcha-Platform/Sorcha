@@ -23,77 +23,81 @@ The validator's job is to **validate**, not to **sign**. Signing is always the c
 
 ## Target Architecture
 
-```
+<!-- Original ASCII preserved for reference
 Caller (Register Service / Blueprint Service / UI)
-    │
-    │  1. Build transaction (TxId, RegisterId, BlueprintId, ActionId, Payload)
-    │  2. Compute PayloadHash (SHA-256)
-    │  3. Sign with appropriate wallet (user wallet or system wallet)
-    │  4. Submit to generic endpoint
-    │
+    │  1. Build transaction  2. Compute PayloadHash (SHA-256)
+    │  3. Sign with wallet   4. Submit to generic endpoint
     ▼
-Validator Service — Single Endpoint
-    POST /api/v1/transactions/validate
-    │
-    │  Request: ValidateTransactionRequest
-    │    - TransactionId, RegisterId, BlueprintId, ActionId
-    │    - Payload (JsonElement), PayloadHash (hex)
-    │    - Signatures[] (base64 PublicKey, SignatureValue, Algorithm)
-    │    - CreatedAt, ExpiresAt?, PreviousTransactionId?
-    │    - Priority, Metadata
-    │
+Validator Service — POST /api/v1/transactions/validate
     ▼
-Unverified Pool (Redis-backed ITransactionPoolPoller)
-    │  Key: {prefix}{registerId}:queue / {prefix}{registerId}:data:{txId}
-    │  TTL: configurable expiry
-    │
+Unverified Pool (Redis-backed)
     ▼
-ValidationEngineService (BackgroundService)
-    │  Polls monitored registers periodically
-    │  Creates scoped IValidationEngine per batch
-    │
+ValidationEngineService (BackgroundService) — polls monitored registers
     ▼
-Validation Pipeline (6 stages — type-agnostic):
-    1. Structure validation (TransactionId, RegisterId, Payload)
-    2. Payload hash verification (SHA-256)
-    3. Schema validation (if enabled)
-    4. Signature verification (if enabled)
-    4b. Blueprint conformance (if enabled)
-    4c. Governance rights for Control TXs (if enabled, detected by metadata)
-    5. Chain validation (PrevTxId continuity, fork detection)
-    6. Timing validation (expiry, clock skew)
-    │
+Validation Pipeline (6 stages): Structure → Hash → Schema → Signature →
+    Blueprint conformance → Governance → Chain → Timing
     ▼
-Verified Transaction Queue (IVerifiedTransactionQueue)
-    │  Priority-ordered (High=10, Normal=0, Low=-10)
-    │
+Verified Transaction Queue (priority-ordered)
     ▼
-DocketBuildTriggerService (BackgroundService)
-    │  Hybrid triggers: time threshold OR size threshold
-    │  Monitors all registers in IRegisterMonitoringRegistry
-    │
+DocketBuildTriggerService — time or size threshold
     ▼
-DocketBuilder.BuildDocketAsync()
-    │  1. Dequeue from verified queue
-    │  2. Check NeedsGenesisDocket (height == 0)
-    │  3. Get previous docket hash
-    │  4. Compute Merkle root from transaction hashes
-    │  5. Compute docket hash (SHA-256)
-    │  6. Sign docket with system wallet
-    │
+DocketBuilder — dequeue, merkle root, hash, sign
     ▼
 Consensus (if multi-validator)
-    │  ConsensusEngine.AchieveConsensusAsync()
-    │
     ▼
-WriteDocketAndTransactionsAsync()
-    │  POST /api/registers/{registerId}/dockets
-    │  Includes transaction models in docket payload
-    │
-    ▼
-Register Service persists to MongoDB
-    │  Docket + Transactions sealed in ledger
-    │  Register height updated
+WriteDocketAndTransactionsAsync → Register Service → MongoDB
+-->
+
+```mermaid
+flowchart TD
+    Caller["Caller<br/>(Register Service / Blueprint Service / UI)"]
+    Submit["1. Build transaction<br/>2. Compute PayloadHash (SHA-256)<br/>3. Sign with wallet<br/>4. Submit to endpoint"]
+    Validator["Validator Service<br/>POST /api/v1/transactions/validate"]
+    UnverifiedPool[("Unverified Pool<br/>(Redis-backed)")]
+    EngineService["ValidationEngineService<br/>(BackgroundService)"]
+
+    subgraph ValidationPipeline["Validation Pipeline (6 stages)"]
+        V1["1. Structure validation<br/>(TxId, RegisterId, Payload)"]
+        V2["2. Payload hash verification<br/>(SHA-256)"]
+        V3["3. Schema validation"]
+        V4["4. Signature verification"]
+        V4b["4b. Blueprint conformance"]
+        V4c["4c. Governance rights<br/>(Control TXs)"]
+        V5["5. Chain validation<br/>(PrevTxId, fork detection)"]
+        V6["6. Timing validation<br/>(expiry, clock skew)"]
+    end
+
+    Reject{{"Rejected"}}
+    VerifiedQueue[("Verified Transaction Queue<br/>(priority-ordered)")]
+    DocketTrigger["DocketBuildTriggerService<br/>(time OR size threshold)"]
+    DocketBuilder["DocketBuilder.BuildDocketAsync<br/>1. Dequeue verified TXs<br/>2. Check genesis docket<br/>3. Get previous docket hash<br/>4. Compute Merkle root<br/>5. Compute docket hash (SHA-256)<br/>6. Sign with system wallet"]
+    Consensus{"Multi-validator<br/>consensus needed?"}
+    ConsensusEngine["ConsensusEngine<br/>.AchieveConsensusAsync()"]
+    WriteDocket["WriteDocketAndTransactionsAsync<br/>POST /registers/{registerId}/dockets"]
+    MongoDB[("MongoDB<br/>Docket + Transactions sealed<br/>Register height updated")]
+
+    Caller --> Submit --> Validator --> UnverifiedPool
+    UnverifiedPool --> EngineService --> V1
+    V1 --> V2 --> V3 --> V4 --> V4b --> V4c --> V5 --> V6
+
+    V1 -. "invalid" .-> Reject
+    V2 -. "mismatch" .-> Reject
+    V4 -. "bad signature" .-> Reject
+    V5 -. "fork detected" .-> Reject
+    V6 -. "expired" .-> Reject
+
+    V6 --> VerifiedQueue
+    VerifiedQueue --> DocketTrigger --> DocketBuilder
+    DocketBuilder --> Consensus
+    Consensus -->|Yes| ConsensusEngine --> WriteDocket
+    Consensus -->|No| WriteDocket
+    WriteDocket --> MongoDB
+
+    style ValidationPipeline fill:#e8f5e9,stroke:#388e3c
+    style Reject fill:#ffcdd2,stroke:#c62828
+    style UnverifiedPool fill:#fff3e0,stroke:#f57c00
+    style VerifiedQueue fill:#e1f5fe,stroke:#0288d1
+    style MongoDB fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ---
