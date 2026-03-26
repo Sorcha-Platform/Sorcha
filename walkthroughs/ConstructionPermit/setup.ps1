@@ -249,6 +249,8 @@ foreach ($u in $userDefs) {
         PublicKey       = $participant.PublicKey
         ParticipantId  = $participant.ParticipantId
         OrgKey         = $orgKey
+        Email          = $u.email
+        Password       = $u.password
     }
 
     Write-WtInfo "  wallet: $($wallet.Address)"

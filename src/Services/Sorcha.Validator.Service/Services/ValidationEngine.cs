@@ -501,6 +501,23 @@ public class ValidationEngine : IValidationEngine
                     sw.Elapsed);
             }
 
+            // Skip schema validation for encrypted transactions — the Blueprint Service
+            // validates payloads against schemas before encryption, so the validator cannot
+            // (and does not need to) repeat schema checks on encrypted ciphertext.
+            if (transaction.Payload.ValueKind == JsonValueKind.Object &&
+                transaction.Payload.TryGetProperty("contentEncoding", out var encodingProp) &&
+                encodingProp.ValueKind == JsonValueKind.String &&
+                encodingProp.GetString() == "encrypted")
+            {
+                _logger.LogDebug(
+                    "Transaction {TransactionId} has encrypted payload, skipping schema validation (pre-validated by Blueprint Service)",
+                    transaction.TransactionId);
+                return ValidationEngineResult.Success(
+                    transaction.TransactionId,
+                    transaction.RegisterId,
+                    sw.Elapsed);
+            }
+
             // Extract user payload data from transaction envelope.
             // Transaction payload structure: { type, blueprintId, actionId, ..., payloads: { walletAddr: { userData } } }
             // Schema validation applies to the user data, not the full envelope.

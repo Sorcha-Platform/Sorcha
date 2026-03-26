@@ -1,7 +1,0 @@
-{
-  "organizationName": "Debug Org",
-  "organizationSubdomain": "debug-jwt-test",
-  "adminEmail": "debug@test.local",
-  "adminName": "Debug User",
-  "adminPassword": "TestPass123!"
-}

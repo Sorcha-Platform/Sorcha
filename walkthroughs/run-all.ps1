@@ -36,20 +36,17 @@ if (-not (Test-Path $secretsFile)) {
 # Define walkthrough execution order
 $walkthroughs = @(
     # Foundation
-    @{ Name = "BlueprintStorageBasic"; Category = "Foundation"; HasSetupRun = $true }
     @{ Name = "AdminIntegration"; Category = "Foundation"; HasSetupRun = $false; Script = "test-admin-integration.ps1" }
     @{ Name = "McpServerBasics"; Category = "Foundation"; HasSetupRun = $false; Script = "test-mcp-server.ps1" }
 
     # Single-Org
-    @{ Name = "PingPong"; Category = "Single-Org"; HasSetupRun = $true }
     @{ Name = "RegisterCreationFlow"; Category = "Single-Org"; HasSetupRun = $true }
     @{ Name = "WalletVerification"; Category = "Single-Org"; HasSetupRun = $true }
     @{ Name = "RegisterMongoDB"; Category = "Single-Org"; HasSetupRun = $false; Script = "test-mongodb-integration.ps1" }
 
     # Multi-Org
-    @{ Name = "OrganizationPingPong"; Category = "Multi-Org"; HasSetupRun = $true }
     @{ Name = "ConstructionPermit"; Category = "Multi-Org"; HasSetupRun = $true }
-    @{ Name = "MedicalEquipmentRefurb"; Category = "Multi-Org"; HasSetupRun = $true }
+    @{ Name = "SelfBuildHouse"; Category = "Multi-Org"; HasSetupRun = $true }
 )
 
 if (-not $SkipAdvanced) {

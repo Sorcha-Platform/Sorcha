@@ -1,7 +1,0 @@
-This walkthrough is design-only (planning phase).
-It documents the design for production encryption providers
-(Azure Key Vault, DPAPI, Linux Secret Service) for the Wallet Service.
-It has not been updated to use the shared SorchaWalkthrough module.
-
-The implementation of encryption providers lives in:
-- src/Common/Sorcha.Wallet.Core/Encryption/Providers/

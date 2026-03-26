@@ -1,8 +1,0 @@
-This walkthrough is design-only (planning phase).
-It has not been updated to use the shared SorchaWalkthrough module.
-The scripts and documentation here represent an early design study
-for user and wallet creation flows.
-
-For working wallet creation examples, see:
-- walkthroughs/WalletVerification/ (wallet creation + signing)
-- walkthroughs/PingPong/ (wallet creation as part of participant setup)
