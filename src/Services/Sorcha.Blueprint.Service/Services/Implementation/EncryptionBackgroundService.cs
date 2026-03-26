@@ -3,10 +3,13 @@
 
 using System.Diagnostics;
 using System.Threading.Channels;
+using Microsoft.Extensions.Options;
 using Sorcha.Blueprint.Service.Models;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Blueprint.Service.Storage;
 using Sorcha.ServiceClients.Events;
 using Sorcha.ServiceClients.Events.Models;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.TransactionHandler.Encryption;
@@ -212,8 +215,11 @@ public sealed class EncryptionBackgroundService : BackgroundService
                 return;
             }
 
-            // Complete
+            // Wait for transaction confirmation on the ledger, then advance the instance
             var txHash = transaction.TxId;
+            await WaitForConfirmationAndAdvanceInstanceAsync(scope, workItem, txHash, ct);
+
+            // Complete
             var op = await _operationStore.GetByIdAsync(operationId);
             if (op != null)
             {
@@ -311,6 +317,92 @@ public sealed class EncryptionBackgroundService : BackgroundService
         await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
 
         _logger.LogWarning("Encryption operation {OperationId} failed: {Error}", operationId, error);
+    }
+
+    /// <summary>
+    /// Poll the Register Service until the transaction is confirmed in a docket,
+    /// then advance the workflow instance to the next action(s).
+    /// </summary>
+    private async Task WaitForConfirmationAndAdvanceInstanceAsync(
+        AsyncServiceScope scope, EncryptionWorkItem workItem, string txId, CancellationToken ct)
+    {
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+        var instanceStore = scope.ServiceProvider.GetRequiredService<IInstanceStore>();
+        var confirmationOptions = scope.ServiceProvider.GetRequiredService<IOptions<TransactionConfirmationOptions>>().Value;
+
+        // Poll for confirmation
+        var deadline = DateTimeOffset.UtcNow + confirmationOptions.Timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var confirmedTx = await registerClient.GetTransactionAsync(workItem.RegisterId, txId, ct);
+            if (confirmedTx != null)
+            {
+                _logger.LogInformation(
+                    "Encrypted transaction {TxId} confirmed in docket {DocketNumber} for register {RegisterId}",
+                    txId, confirmedTx.DocketNumber, workItem.RegisterId);
+                break;
+            }
+
+            if (DateTimeOffset.UtcNow + confirmationOptions.PollInterval >= deadline)
+            {
+                _logger.LogWarning(
+                    "Encrypted transaction {TxId} not confirmed within {Timeout}s for register {RegisterId}. Instance will not advance.",
+                    txId, confirmationOptions.Timeout.TotalSeconds, workItem.RegisterId);
+                return;
+            }
+
+            await Task.Delay(confirmationOptions.PollInterval, ct);
+        }
+
+        // Update accumulated data on instance
+        var instance = await instanceStore.GetAsync(workItem.InstanceId, ct);
+        if (instance == null)
+        {
+            _logger.LogError("Instance {InstanceId} not found for post-confirmation advancement", workItem.InstanceId);
+            return;
+        }
+
+        foreach (var kvp in workItem.MergedData.Where(kvp => workItem.AllowedAccumulatedFields.Contains(kvp.Key)))
+        {
+            instance.AccumulatedData[kvp.Key] = kvp.Value;
+        }
+
+        // Advance instance state (same logic as ActionExecutionService.ApplyInstanceStateChanges)
+        instance.CurrentActionIds.Remove(workItem.ActionId);
+        foreach (var nextAction in workItem.RoutingResult.NextActions)
+        {
+            if (!instance.CurrentActionIds.Contains(nextAction.ActionId))
+            {
+                instance.CurrentActionIds.Add(nextAction.ActionId);
+            }
+
+            if (!string.IsNullOrEmpty(nextAction.BranchId) &&
+                !instance.ActiveBranches.Any(b => b.Id == nextAction.BranchId))
+            {
+                instance.ActiveBranches.Add(new Branch
+                {
+                    Id = nextAction.BranchId,
+                    CurrentActionId = nextAction.ActionId,
+                    State = BranchState.Active
+                });
+            }
+        }
+
+        instance.LastTransactionId = txId;
+        instance.CompletedActionCount++;
+        instance.FirstTransactionId ??= txId;
+
+        if (instance.CurrentActionIds.Count == 0)
+        {
+            instance.State = InstanceState.Completed;
+            instance.CompletedAt = DateTimeOffset.UtcNow;
+        }
+
+        await instanceStore.UpdateAsync(instance, ct);
+        _logger.LogInformation(
+            "Instance {InstanceId} advanced after encrypted action {ActionId}. Next actions: [{NextActions}]",
+            workItem.InstanceId, workItem.ActionId,
+            string.Join(", ", instance.CurrentActionIds));
     }
 
     private async Task StoreActivityEventAsync(

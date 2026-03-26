@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Blueprint.Service.Services.Implementation;
 using Sorcha.TransactionHandler.Encryption.Models;
 
 namespace Sorcha.Blueprint.Service.Models;
@@ -75,6 +76,24 @@ public sealed record EncryptionWorkItem
     /// Delegation token for downstream service calls.
     /// </summary>
     public required string DelegationToken { get; init; }
+
+    /// <summary>
+    /// Pre-computed routing result (next actions). Required for instance advancement
+    /// after the encrypted transaction is confirmed on the ledger.
+    /// </summary>
+    public required RoutingResult RoutingResult { get; init; }
+
+    /// <summary>
+    /// Merged data (accumulated state + current payload + calculations) for persisting
+    /// on the instance as AccumulatedData after confirmation.
+    /// </summary>
+    public required Dictionary<string, object> MergedData { get; init; }
+
+    /// <summary>
+    /// Keys from the original payload and calculations. Only these fields are stored
+    /// in AccumulatedData (not the full merged state).
+    /// </summary>
+    public required HashSet<string> AllowedAccumulatedFields { get; init; }
 
     /// <summary>
     /// Timestamp when the work item was created.

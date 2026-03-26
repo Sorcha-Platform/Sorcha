@@ -52,7 +52,8 @@ foreach ($role in $roles.Keys) {
     $session = Connect-SorchaUser `
         -TenantUrl $state.tenantUrl `
         -Email $r.email `
-        -Password $r.password
+        -Password $r.password `
+        -OrganizationId $r.organizationId
     $roleTokenCache[$role] = $session.Token
 }
 
@@ -104,6 +105,7 @@ foreach ($sid in $scenariosToRun) {
     $actionsOk = 0
     $scenarioStart = Get-Date
 
+    $prevActionId = $null
     foreach ($actionId in $expectedPath) {
         $actionIdStr = "$actionId"
         $sender = $actionSenderMap[[int]$actionId]
@@ -118,6 +120,30 @@ foreach ($sid in $scenariosToRun) {
             foreach ($prop in $actionData.PSObject.Properties) {
                 $payloadData[$prop.Name] = $prop.Value
             }
+        }
+
+        # Wait for this action to become current (transaction pipeline is async)
+        if ($prevActionId) {
+            $maxWait = 30
+            $waited = 0
+            $ready = $false
+            while ($waited -lt $maxWait) {
+                $inst = Invoke-SorchaApi -Method GET `
+                    -Uri "$($state.blueprintUrl)/instances/$instanceId" `
+                    -Headers @{ Authorization = "Bearer $contractorToken" }
+                if ($inst.currentActionIds -contains [int]$actionId) {
+                    $ready = $true
+                    break
+                }
+                Start-Sleep -Seconds 1
+                $waited++
+            }
+            if (-not $ready) {
+                Write-WtFail "Timeout waiting for action $actionIdStr to become current (waited ${maxWait}s)"
+                $allPassed = $false
+                break
+            }
+            Write-WtInfo "  Action $actionIdStr ready (waited ${waited}s)"
         }
 
         $isLastAction = ($actionId -eq $expectedPath[-1])
@@ -145,6 +171,7 @@ foreach ($sid in $scenariosToRun) {
                 }
             }
             $actionsOk++
+            $prevActionId = $actionId
             Write-WtInfo "  ($sender via per-user token)"
         } catch {
             Write-WtFail "Action $actionIdStr ($sender) failed: $($_.Exception.Message)"
@@ -154,6 +181,7 @@ foreach ($sid in $scenariosToRun) {
                 if ($errBody) { Write-WtWarn "  Detail: $errBody" }
             } catch {}
             $allPassed = $false
+            break
         }
     }
 

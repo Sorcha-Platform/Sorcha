@@ -409,6 +409,16 @@ public class ActionExecutionService : IActionExecutionService
                         TotalSteps = 4
                     });
 
+                    // Build the set of fields allowed in AccumulatedData (payload keys + calculation keys)
+                    var asyncAllowedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var key in request.PayloadData.Keys)
+                        asyncAllowedFields.Add(key);
+                    if (actionDef.Calculations != null)
+                    {
+                        foreach (var calc in actionDef.Calculations)
+                            asyncAllowedFields.Add(calc.Key);
+                    }
+
                     var workItem = new EncryptionWorkItem
                     {
                         OperationId = operation.OperationId,
@@ -423,7 +433,10 @@ public class ActionExecutionService : IActionExecutionService
                         PreviousTransactionId = accumulatedState.PreviousTransactionId,
                         UserId = caller?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                             ?? caller?.FindFirst("sub")?.Value,
-                        DelegationToken = delegationToken
+                        DelegationToken = delegationToken,
+                        RoutingResult = routingResult,
+                        MergedData = mergedData,
+                        AllowedAccumulatedFields = asyncAllowedFields
                     };
 
                     // Store idempotency key BEFORE writing to channel to prevent duplicate submissions
@@ -721,7 +734,9 @@ public class ActionExecutionService : IActionExecutionService
         transaction.SenderWallet = request.SenderWallet ?? instance.ParticipantWallets.Values.FirstOrDefault() ?? "";
         transaction.Signature = rejectSignResult.Signature;
 
-        var rejectSubmission = transaction.ToTransactionSubmission(rejectSignResult);
+        var rejectSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
+            instance.RegisterId, transaction.SenderWallet, cancellationToken);
+        var rejectSubmission = transaction.ToTransactionSubmission(rejectSignResult, rejectSeqNum);
         var rejectResult = await _validatorClient.SubmitTransactionAsync(rejectSubmission, cancellationToken);
 
         if (!rejectResult.Success)
