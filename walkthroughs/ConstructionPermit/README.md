@@ -397,5 +397,5 @@ docker-compose up -d
 
 - [Blueprint Builder Skill](../../.claude/skills/blueprint-builder/)
 - [Verifiable Credentials](../../docs/verifiable-credentials.md)
-- [OrganizationPingPong Walkthrough](../OrganizationPingPong/) — simpler 2-participant example
+- [SelfBuildHouse Walkthrough](../SelfBuildHouse/) — 6-org, 2-register advanced variant with cross-register VCs
 - [CLAUDE.md](../../CLAUDE.md) — project conventions

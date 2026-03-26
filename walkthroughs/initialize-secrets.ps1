@@ -57,22 +57,12 @@ $secrets = [ordered]@{
         adminPassword = $platformPassword
         adminName     = $platformName
     }
-    "blueprint-storage" = @{
-        adminEmail    = $platformEmail
-        adminPassword = $platformPassword
-        adminName     = $platformName
-    }
     "admin-integration" = @{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword
         adminName     = $platformName
     }
     "mcp-server" = @{
-        adminEmail    = $platformEmail
-        adminPassword = $platformPassword
-        adminName     = $platformName
-    }
-    "pingpong" = @{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword
         adminName     = $platformName
@@ -91,13 +81,6 @@ $secrets = [ordered]@{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword
         adminName     = $platformName
-    }
-    "org-pingpong" = @{
-        adminEmail    = $platformEmail
-        adminPassword = $platformPassword
-        adminName     = $platformName
-        alphaEmail    = "alpha@org-pingpong.local"
-        betaEmail     = "beta@org-pingpong.local"
     }
     "construction-permit" = @{
         meridianAdminEmail    = $platformEmail
@@ -118,10 +101,6 @@ $secrets = [ordered]@{
         inspectorEmail        = "inspector@riverside.local"
         inspectorPassword     = "Dev_Pass_2025!"
         inspectorName         = "Building Control Inspector"
-    }
-    "medical-equipment" = @{
-        hospitalAdminEmail    = $platformEmail
-        hospitalAdminPassword = $platformPassword
     }
     "dist-register" = @{
         adminEmail    = $platformEmail

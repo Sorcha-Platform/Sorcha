@@ -483,11 +483,16 @@ Interactive demos and test scripts are in `walkthroughs/`:
 
 | Walkthrough | Status | Purpose |
 |-------------|--------|---------|
-| `BlueprintStorageBasic/` | ✅ | Docker startup, bootstrap, JWT auth |
 | `AdminIntegration/` | ✅ | Blazor WASM behind API Gateway |
-| `UserWalletCreation/` | 🚧 | User management, wallet creation |
+| `McpServerBasics/` | ✅ | MCP Server auth and tool verification |
+| `RegisterCreationFlow/` | ✅ | Register lifecycle, CLI, OData |
+| `WalletVerification/` | ✅ | Multi-algorithm crypto (ED25519/P-256/RSA) |
+| `ConstructionPermit/` | ✅ | 4-org, 5-participant, encrypted workflows, routing, rejection, VCs |
+| `SelfBuildHouse/` | ✅ | 6-org, 2-register, cross-register VCs, credential chains |
+| `DistributedRegister/` | ✅ | Cross-machine P2P replication |
+| `PerformanceBenchmark/` | ✅ | TPS, latency, concurrency benchmarks |
 
-See `walkthroughs/README.md` for guidelines on creating new walkthroughs.
+See `walkthroughs/README.md` for full details and the shared module API.
 
 ---
 
