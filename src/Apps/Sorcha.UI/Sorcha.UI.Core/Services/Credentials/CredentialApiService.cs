@@ -425,6 +425,63 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
+    public async Task<List<CredentialCardViewModel>> GetPendingCredentialsAsync(
+        string walletAddress, CancellationToken ct = default)
+    {
+        var all = await GetCredentialsAsync(walletAddress, ct);
+        return all.Where(c => c.IsPending).ToList();
+    }
+
+    /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
+    public async Task<bool> AcceptCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PatchAsJsonAsync(
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
+                new { Status = CredentialStatus.Active }, ct);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to accept credential {CredentialId} for wallet {WalletAddress}",
+                credentialId, walletAddress);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
+    public async Task<bool> DeclineCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PatchAsJsonAsync(
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
+                new { Status = CredentialStatus.Declined }, ct);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to decline credential {CredentialId} for wallet {WalletAddress}",
+                credentialId, walletAddress);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<List<CredentialMatchResult>> MatchCredentialsAsync(
         string walletAddress,
         List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,

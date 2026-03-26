@@ -10,8 +10,10 @@
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Workflows
 @using Sorcha.UI.Core.Components.Admin
+@using Sorcha.UI.Core.Components.Credentials
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Components.Workflows
+@using Sorcha.UI.Core.Models.Credentials
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Services.Wallet
 @inject IWorkflowService WorkflowService
@@ -129,6 +131,16 @@
                         </MudCardHeader>
                         <MudCardContent>
                             <MudText Typo="Typo.body2" Class="mb-2">@action.Description</MudText>
+
+                            @* TODO: When PendingActionViewModel exposes a VerificationResult property
+                               (populated when the action received a credential presentation), render
+                               VerificationTrustView inline here:
+                               @if (action.VerificationResult is not null)
+                               {
+                                   <VerificationTrustView Result="@action.VerificationResult" />
+                               }
+                            *@
+
                             @if (!string.IsNullOrEmpty(action.InstanceId))
                             {
                                 <div class="mb-1">
@@ -290,6 +302,20 @@
                     Snackbar.Add("Action submitted successfully", Severity.Success);
                     _actions.Remove(action);
                     StateHasChanged();
+
+                    // TODO: When the Blueprint Service surfaces credential issuance data in the
+                    // ActionSubmissionResultViewModel (e.g. an IssuedCredential property), show
+                    // the IssuanceSummaryPanel dialog here:
+                    //
+                    // if (submitResult.IssuedCredential is not null)
+                    // {
+                    //     var summaryParams = new DialogParameters<IssuanceSummaryPanel>
+                    //     {
+                    //         { x => x.Summary, MapToIssuanceSummary(submitResult.IssuedCredential, action) }
+                    //     };
+                    //     var summaryOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+                    //     await DialogService.ShowAsync<IssuanceSummaryPanel>("Credential Issued", summaryParams, summaryOptions);
+                    // }
                 }
                 else
                 {

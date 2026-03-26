@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Actions;
 using Sorcha.UI.Core.Models.Admin;
+using Sorcha.UI.Core.Models.Credentials;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
 using Sorcha.UI.Core.Services.Configuration;
@@ -83,6 +84,21 @@ public class ActionsHubConnection : IAsyncDisposable
     /// Event raised when connection state changes.
     /// </summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
+
+    /// <summary>
+    /// Event raised when a credential is received by the current user.
+    /// </summary>
+    public event Action<CredentialNotification>? OnCredentialReceived;
+
+    /// <summary>
+    /// Event raised when the status of a credential changes.
+    /// </summary>
+    public event Action<CredentialNotification>? OnCredentialStatusChanged;
+
+    /// <summary>
+    /// Event raised when the server pushes an updated pending credential count.
+    /// </summary>
+    public event Action<int>? OnPendingCredentialCountUpdated;
 
     /// <summary>
     /// Current connection state.
@@ -365,6 +381,18 @@ public class ActionsHubConnection : IAsyncDisposable
                 await OnEncryptionFailed(update);
             }
         });
+
+        // CredentialReceived - a new credential has been issued to the current user
+        _hubConnection.On<CredentialNotification>("CredentialReceived", notification =>
+            OnCredentialReceived?.Invoke(notification));
+
+        // CredentialStatusChanged - an existing credential's status has changed
+        _hubConnection.On<CredentialNotification>("CredentialStatusChanged", notification =>
+            OnCredentialStatusChanged?.Invoke(notification));
+
+        // PendingCredentialCountUpdated - server-pushed count of pending credentials
+        _hubConnection.On<int>("PendingCredentialCountUpdated", count =>
+            OnPendingCredentialCountUpdated?.Invoke(count));
     }
 
     /// <summary>

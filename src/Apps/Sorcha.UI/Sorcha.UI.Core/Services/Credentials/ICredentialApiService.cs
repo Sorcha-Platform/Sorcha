@@ -84,4 +84,37 @@ public interface ICredentialApiService
         string walletAddress,
         List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets credentials in Pending status for a wallet address.
+    /// </summary>
+    /// <remarks>
+    /// Pending status support requires a Wallet Service endpoint update.
+    /// The PATCH status endpoint currently supports Active/Suspended/Revoked/Consumed.
+    /// Until the backend is updated, this method filters client-side from <see cref="GetCredentialsAsync"/>.
+    /// </remarks>
+    Task<List<CredentialCardViewModel>> GetPendingCredentialsAsync(
+        string walletAddress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Accepts a pending credential, transitioning its status to Active.
+    /// </summary>
+    /// <remarks>
+    /// Pending/Declined status support requires a Wallet Service endpoint update.
+    /// The PATCH status endpoint currently supports Active/Suspended/Revoked/Consumed.
+    /// Until the backend is updated, this method will return false (status 400).
+    /// </remarks>
+    Task<bool> AcceptCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Declines a pending credential, transitioning its status to Declined.
+    /// </summary>
+    /// <remarks>
+    /// Pending/Declined status support requires a Wallet Service endpoint update.
+    /// The PATCH status endpoint currently supports Active/Suspended/Revoked/Consumed.
+    /// Until the backend is updated, this method will return false (status 400).
+    /// </remarks>
+    Task<bool> DeclineCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default);
 }

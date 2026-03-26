@@ -5,6 +5,7 @@
 @using Sorcha.UI.Core.Services.Authentication
 @using Sorcha.UI.Core.Services
 @using Sorcha.UI.Core.Components.Shared
+@using Sorcha.UI.Core.Models.Credentials
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ITokenRefreshService TokenRefreshService
@@ -12,6 +13,8 @@
 @inject IThemeService ThemeService
 @inject IJSRuntime JSRuntime
 @inject EventsHubConnection EventsHub
+@inject ActionsHubConnection ActionsHub
+@inject ISnackbar Snackbar
 @inject ILocalizationService Loc
 @inject IPendingActionService PendingActionService
 
@@ -80,6 +83,10 @@
                     </MudNavLink>
                     <MudNavLink Href="credentials" Icon="@Icons.Material.Filled.Badge">
                         @Loc.T("nav.myCredentials")
+                        @if (_pendingCredentialCount > 0)
+                        {
+                            <MudBadge Content="@_pendingCredentialCount" Color="Color.Warning" Overlap="true" />
+                        }
                     </MudNavLink>
                     <MudNavLink Href="my-transactions" Icon="@Icons.Material.Filled.Receipt">
                         @Loc.T("nav.myTransactions")
@@ -139,6 +146,9 @@
                     </AuthorizeView>
                     <AuthorizeView Roles="Administrator,OrganizationAdmin,SystemAdmin">
                         <Authorized Context="orgAdminContext">
+                            <MudNavLink Href="admin/credentials" Icon="@Icons.Material.Filled.VerifiedUser">
+                                @Loc.T("nav.issuedCredentials")
+                            </MudNavLink>
                             <MudNavLink Href="admin/organizations" Icon="@Icons.Material.Filled.Business"
                                         data-testid="nav-organisations">
                                 Organisations
@@ -257,6 +267,7 @@
     private bool _pendingInboxOpen;
     private int _unreadCount;
     private int _pendingActionCount;
+    private int _pendingCredentialCount;
     private bool _isDarkMode;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -286,6 +297,9 @@
                 // Hub may be unavailable — SignalR will auto-reconnect
             }
 
+            ActionsHub.OnCredentialReceived += OnCredentialReceived;
+            ActionsHub.OnPendingCredentialCountUpdated += OnPendingCredentialCountUpdated;
+
             StateHasChanged();
         }
     }
@@ -296,6 +310,8 @@
         Loc.OnLanguageChanged -= OnLanguageChanged;
         EventsHub.OnUnreadCountUpdated -= OnUnreadCountUpdated;
         EventsHub.OnPendingActionReceived -= OnPendingActionReceived;
+        ActionsHub.OnCredentialReceived -= OnCredentialReceived;
+        ActionsHub.OnPendingCredentialCountUpdated -= OnPendingCredentialCountUpdated;
         await EventsHub.DisconnectAsync();
         await TokenRefreshService.StopAsync();
     }
@@ -368,6 +384,24 @@
     {
         _pendingActionCount++;
         InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCredentialReceived(CredentialNotification notification)
+    {
+        InvokeAsync(() =>
+        {
+            Snackbar.Add($"New credential from {notification.IssuerName}: {notification.CredentialType}", Severity.Info);
+            StateHasChanged();
+        });
+    }
+
+    private void OnPendingCredentialCountUpdated(int count)
+    {
+        InvokeAsync(() =>
+        {
+            _pendingCredentialCount = count;
+            StateHasChanged();
+        });
     }
 
     private async Task RefreshPendingActionCount()
