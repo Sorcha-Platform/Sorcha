@@ -96,6 +96,11 @@ public class PeerNode : IEquatable<PeerNode>
     /// </summary>
     public string? BanReason { get; set; }
 
+    /// <summary>
+    /// When the ban expires (null = permanent ban)
+    /// </summary>
+    public DateTimeOffset? BanExpiresAt { get; set; }
+
     public bool Equals(PeerNode? other)
     {
         return other != null && PeerId == other.PeerId;

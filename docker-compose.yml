@@ -366,6 +366,8 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       aspire-dashboard:
         condition: service_started
     networks:

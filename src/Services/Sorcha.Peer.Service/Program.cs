@@ -165,6 +165,7 @@ builder.Services.AddSingleton<DocketSyncGrpcService>();
 // Register background services
 builder.Services.AddHostedService<PeerService>();
 builder.Services.AddHostedService<PeerHeartbeatBackgroundService>();
+builder.Services.AddHostedService<Sorcha.Peer.Service.Services.PeerDataCleanupService>();
 // RegisterSyncBackgroundService is also resolved by concrete type in REST endpoints,
 // so register as singleton first, then wire up as hosted service.
 builder.Services.AddSingleton<RegisterSyncBackgroundService>();
@@ -174,6 +175,14 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<RegisterSyncBackgr
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
+
+// Apply PeerDbContext migrations on startup (matching Blueprint/Wallet/Tenant pattern)
+if (!string.IsNullOrEmpty(peerDbConnectionString))
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<Sorcha.Peer.Service.Data.PeerDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
 
 // Load persisted advertisements from Redis on startup (FR-002)
 var advertisementService = app.Services.GetRequiredService<RegisterAdvertisementService>();
@@ -711,7 +720,10 @@ app.MapPost("/api/peers/{peerId}/ban", async (string peerId, BanRequest? request
         return Results.Conflict(new { error = $"Peer '{peerId}' is already banned." });
     }
 
-    await peerListManager.BanPeerAsync(peerId, request?.Reason);
+    var duration = request?.DurationMinutes.HasValue == true
+        ? TimeSpan.FromMinutes(request.DurationMinutes.Value)
+        : (TimeSpan?)null;
+    await peerListManager.BanPeerAsync(peerId, request?.Reason, duration);
 
     peer = peerListManager.GetPeer(peerId)!;
     return Results.Ok(new BanResponse
@@ -719,7 +731,8 @@ app.MapPost("/api/peers/{peerId}/ban", async (string peerId, BanRequest? request
         PeerId = peer.PeerId,
         IsBanned = peer.IsBanned,
         BannedAt = peer.BannedAt,
-        BanReason = peer.BanReason
+        BanReason = peer.BanReason,
+        BanExpiresAt = peer.BanExpiresAt
     });
 })
     .WithName("BanPeer")

@@ -52,6 +52,7 @@ public class PeerDbContext : DbContext
             entity.Property(e => e.AverageLatencyMs).HasDefaultValue(0);
             entity.Property(e => e.IsBanned).HasDefaultValue(false);
             entity.Property(e => e.BanReason).HasMaxLength(500);
+            entity.Property(e => e.BanExpiresAt);
 
             entity.HasIndex(e => e.IsSeedNode).HasDatabaseName("IX_Peers_IsSeedNode");
             entity.HasIndex(e => e.IsBanned).HasDatabaseName("IX_Peers_IsBanned");
@@ -128,6 +129,7 @@ public class PeerNodeEntity
     public bool IsBanned { get; set; } = false;
     public DateTimeOffset? BannedAt { get; set; }
     public string? BanReason { get; set; }
+    public DateTimeOffset? BanExpiresAt { get; set; }
 
     public PeerNode ToDomain()
     {
@@ -146,7 +148,8 @@ public class PeerNodeEntity
             AverageLatencyMs = AverageLatencyMs,
             IsBanned = IsBanned,
             BannedAt = BannedAt,
-            BanReason = BanReason
+            BanReason = BanReason,
+            BanExpiresAt = BanExpiresAt
         };
     }
 
@@ -165,7 +168,8 @@ public class PeerNodeEntity
             AverageLatencyMs = peer.AverageLatencyMs,
             IsBanned = peer.IsBanned,
             BannedAt = peer.BannedAt,
-            BanReason = peer.BanReason
+            BanReason = peer.BanReason,
+            BanExpiresAt = peer.BanExpiresAt
         };
     }
 }

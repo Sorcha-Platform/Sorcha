@@ -196,8 +196,9 @@ public class PeerListManager : IDisposable
 
     /// <summary>
     /// Bans a peer, preventing all communication.
+    /// If duration is provided, the ban auto-expires after that time. If null, the ban is permanent.
     /// </summary>
-    public async Task<bool> BanPeerAsync(string peerId, string? reason = null, CancellationToken cancellationToken = default)
+    public async Task<bool> BanPeerAsync(string peerId, string? reason = null, TimeSpan? duration = null, CancellationToken cancellationToken = default)
     {
         if (!_peers.TryGetValue(peerId, out var peer))
             return false;
@@ -213,8 +214,10 @@ public class PeerListManager : IDisposable
         peer.IsBanned = true;
         peer.BannedAt = DateTimeOffset.UtcNow;
         peer.BanReason = reason;
+        peer.BanExpiresAt = duration.HasValue ? DateTimeOffset.UtcNow + duration.Value : null;
 
-        _logger.LogInformation("Banned peer {PeerId}: {Reason}", peerId, reason ?? "(no reason)");
+        _logger.LogInformation("Banned peer {PeerId}: {Reason} (expires: {Expires})",
+            peerId, reason ?? "(no reason)", peer.BanExpiresAt?.ToString("o") ?? "never");
         await PersistPeerAsync(peer, cancellationToken);
         return true;
     }
@@ -253,6 +256,58 @@ public class PeerListManager : IDisposable
         _logger.LogInformation("Reset failure count for peer {PeerId}: {Previous} → 0", peerId, previous);
         await PersistPeerAsync(peer, cancellationToken);
         return previous;
+    }
+
+    /// <summary>
+    /// Evicts non-seed peers that haven't been seen within the given threshold.
+    /// Removes from both in-memory dictionary and database.
+    /// Returns the list of evicted peer IDs.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> EvictStalePeersAsync(TimeSpan staleThreshold, CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow - staleThreshold;
+        var stalePeerIds = _peers.Values
+            .Where(p => !p.IsSeedNode && p.LastSeen < cutoff)
+            .Select(p => p.PeerId)
+            .ToList();
+
+        foreach (var peerId in stalePeerIds)
+        {
+            _peers.TryRemove(peerId, out _);
+            await DeletePeerAsync(peerId, cancellationToken);
+        }
+
+        if (stalePeerIds.Count > 0)
+        {
+            _logger.LogInformation("Evicted {Count} stale peers (threshold: {Threshold})",
+                stalePeerIds.Count, staleThreshold);
+        }
+
+        return stalePeerIds;
+    }
+
+    /// <summary>
+    /// Unbans peers whose ban has expired (BanExpiresAt is in the past).
+    /// Returns the count of peers unbanned.
+    /// </summary>
+    public async Task<int> UnbanExpiredAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var expiredPeers = _peers.Values
+            .Where(p => p.IsBanned && p.BanExpiresAt.HasValue && p.BanExpiresAt.Value < now)
+            .ToList();
+
+        foreach (var peer in expiredPeers)
+        {
+            peer.IsBanned = false;
+            peer.BannedAt = null;
+            peer.BanReason = null;
+            peer.BanExpiresAt = null;
+            await PersistPeerAsync(peer, cancellationToken);
+            _logger.LogInformation("Auto-unbanned peer {PeerId} (ban expired)", peer.PeerId);
+        }
+
+        return expiredPeers.Count;
     }
 
     /// <summary>
