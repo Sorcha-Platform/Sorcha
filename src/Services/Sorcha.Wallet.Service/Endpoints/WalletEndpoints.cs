@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Security.Claims;
 using System.Security.Cryptography;
+
 using Microsoft.AspNetCore.Mvc;
+
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
@@ -49,7 +53,41 @@ public static class WalletEndpoints
             .WithDescription("Creates a new HD wallet with the specified algorithm and returns the mnemonic phrase for backup")
             .Produces<CreateWalletResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "name": "My Primary Wallet",
+                      "algorithm": "ED25519",
+                      "wordCount": 12,
+                      "enableHybrid": false
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "201", """
+                    {
+                      "wallet": {
+                        "address": "sorcha1abc123def456ghi789jkl012mno345",
+                        "name": "My Primary Wallet",
+                        "publicKey": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                        "algorithm": "ED25519",
+                        "status": "Active",
+                        "owner": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                        "tenant": "acme-corp",
+                        "createdAt": "2026-03-15T10:30:00Z",
+                        "updatedAt": "2026-03-15T10:30:00Z",
+                        "metadata": {}
+                      },
+                      "mnemonicWords": [
+                        "abandon", "ability", "able", "about",
+                        "above", "absent", "absorb", "abstract",
+                        "absurd", "abuse", "access", "accident"
+                      ],
+                      "warning": "IMPORTANT: Save your mnemonic phrase securely. It cannot be recovered if lost!"
+                    }
+                    """);
+                return operation;
+            });
 
         // POST /api/v1/wallets/recover - Recover wallet from mnemonic
         walletGroup.MapPost("/recover", RecoverWallet)

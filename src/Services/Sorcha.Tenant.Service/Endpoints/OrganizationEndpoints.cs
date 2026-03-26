@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Security.Claims;
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Data.Repositories;
 using Sorcha.Tenant.Service.Models;
@@ -34,7 +38,34 @@ public static class OrganizationEndpoints
             .Produces<OrganizationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "name": "Acme Corporation",
+                      "subdomain": "acme-corp",
+                      "branding": {
+                        "primaryColor": "#2563EB",
+                        "companyTagline": "Building the future"
+                      }
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "201", """
+                    {
+                      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "name": "Acme Corporation",
+                      "subdomain": "acme-corp",
+                      "status": "Active",
+                      "createdAt": "2026-03-15T10:30:00Z",
+                      "branding": {
+                        "primaryColor": "#2563EB",
+                        "companyTagline": "Building the future"
+                      }
+                    }
+                    """);
+                return operation;
+            });
 
         group.MapGet("/", ListOrganizations)
             .WithName("ListOrganizations")

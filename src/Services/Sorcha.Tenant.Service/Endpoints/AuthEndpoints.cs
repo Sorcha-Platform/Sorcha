@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -39,7 +41,27 @@ public static class AuthEndpoints
             .Produces<TokenResponse>()
             .Produces<TwoFactorLoginResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "email": "admin@acme.corp",
+                      "password": "SecureP@ss123",
+                      "organizationSubdomain": "acme-corp"
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                      "refresh_token": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...",
+                      "token_type": "Bearer",
+                      "expires_in": 3600,
+                      "scope": "openid profile email"
+                    }
+                    """);
+                return operation;
+            });
 
         // Verify 2FA code after login (public endpoint — uses loginToken)
         group.MapPost("/verify-2fa", Verify2Fa)
@@ -73,7 +95,25 @@ public static class AuthEndpoints
             .AllowAnonymous()
             .Produces<TokenResponse>()
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "refreshToken": "dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4..."
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                      "refresh_token": "bmV3IHJlZnJlc2ggdG9rZW4...",
+                      "token_type": "Bearer",
+                      "expires_in": 3600,
+                      "scope": "openid profile email"
+                    }
+                    """);
+                return operation;
+            });
 
         // Token revocation (requires authentication)
         group.MapPost("/token/revoke", RevokeToken)
@@ -125,7 +165,24 @@ public static class AuthEndpoints
             .WithDescription("Returns information about the currently authenticated user from their token claims.")
             .RequireAuthorization()
             .Produces<CurrentUserResponse>()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "email": "admin@acme.corp",
+                      "displayName": "Alice Admin",
+                      "organizationId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                      "organizationName": "Acme Corporation",
+                      "roles": ["Administrator"],
+                      "tokenType": "user",
+                      "scopes": ["openid", "profile", "email"],
+                      "authMethod": "password"
+                    }
+                    """);
+                return operation;
+            });
 
         // Self-registration with email/password (public endpoint)
         group.MapPost("/register", Register)
@@ -137,7 +194,26 @@ public static class AuthEndpoints
             .RequireRateLimiting("platform-auth")
             .Produces<SelfRegistrationResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status403Forbidden);
+            .Produces(StatusCodes.Status403Forbidden)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "orgSubdomain": "public",
+                      "email": "user@example.com",
+                      "password": "MySecureP@ss456",
+                      "displayName": "Jane Doe"
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "201", """
+                    {
+                      "success": true,
+                      "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "message": "Verification email sent to user@example.com"
+                    }
+                    """);
+                return operation;
+            });
 
         // Passkey 2FA: get assertion options (public endpoint — uses loginToken)
         group.MapPost("/verify-passkey/options", VerifyPasskeyOptions)
