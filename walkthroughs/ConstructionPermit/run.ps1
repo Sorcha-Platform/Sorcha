@@ -124,7 +124,7 @@ foreach ($sid in $scenariosToRun) {
 
         # Wait for this action to become current (transaction pipeline is async)
         if ($prevActionId) {
-            $maxWait = 30
+            $maxWait = 60
             $waited = 0
             $ready = $false
             while ($waited -lt $maxWait) {

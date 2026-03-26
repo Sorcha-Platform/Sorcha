@@ -34,6 +34,19 @@ public class DocketBuildTriggerService : BackgroundService
     // Track genesis docket write retry attempts per register (max 3)
     private readonly ConcurrentDictionary<string, int> _genesisRetryCount = new();
 
+    // Track last successful heartbeat per register to avoid hammering the registry
+    // every tick. Re-register only when approaching the operational TTL expiry.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastHeartbeatTimes = new();
+
+    // Heartbeat at 2/3 of the operational TTL (e.g., every 40s for a 60s TTL).
+    // This provides a full 1/3 TTL safety margin for retries if a heartbeat fails,
+    // while eliminating ~93% of redundant registration calls.
+    private const double HeartbeatTtlFraction = 2.0 / 3.0;
+
+    // Default operational TTL (matches ValidatorRegistryConfiguration default).
+    // Used when we haven't resolved the actual TTL yet.
+    private const int DefaultOperationalTtlSeconds = 60;
+
     public DocketBuildTriggerService(
         IServiceScopeFactory scopeFactory,
         IRegisterMonitoringRegistry registry,
@@ -80,17 +93,36 @@ public class DocketBuildTriggerService : BackgroundService
                 _logger.LogTrace("Checking docket build triggers for {RegisterCount} active registers",
                     activeRegisters.Count);
 
-                // Heartbeat: re-register this validator for all monitored registers
+                // Heartbeat: re-register this validator for monitored registers
                 // to refresh the operational TTL on the Redis key.
-                using (var heartbeatScope = _scopeFactory.CreateScope())
+                // Runs fire-and-forget so HTTP calls don't block the docket build loop.
+                // Only fires when approaching TTL expiry (2/3 of TTL elapsed).
+                var heartbeatThreshold = TimeSpan.FromSeconds(DefaultOperationalTtlSeconds * HeartbeatTtlFraction);
+                var registersNeedingHeartbeat = activeRegisters
+                    .Where(r => _genesisWritten.ContainsKey(r) &&
+                                (!_lastHeartbeatTimes.TryGetValue(r, out var lastBeat) ||
+                                 DateTimeOffset.UtcNow - lastBeat >= heartbeatThreshold))
+                    .ToList();
+
+                if (registersNeedingHeartbeat.Count > 0)
                 {
-                    foreach (var registerId in activeRegisters)
+                    // Fire-and-forget: heartbeat must never block docket builds.
+                    // If it fails, _lastHeartbeatTimes is cleared and we retry next tick.
+                    _ = Task.Run(async () =>
                     {
-                        if (_genesisWritten.ContainsKey(registerId))
+                        try
                         {
-                            await AutoRegisterValidatorAsync(heartbeatScope, registerId, stoppingToken);
+                            using var heartbeatScope = _scopeFactory.CreateScope();
+                            foreach (var registerId in registersNeedingHeartbeat)
+                            {
+                                await AutoRegisterValidatorAsync(heartbeatScope, registerId, stoppingToken);
+                            }
                         }
-                    }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            _logger.LogWarning(ex, "Background heartbeat failed — will retry next cycle");
+                        }
+                    }, stoppingToken);
                 }
 
                 // Check each active register
@@ -437,12 +469,23 @@ public class DocketBuildTriggerService : BackgroundService
 
             if (result.Success)
             {
-                _logger.LogInformation(
-                    "Auto-registered validator {ValidatorId} for register {RegisterId} after genesis (order: {OrderIndex})",
+                // Track successful heartbeat so we don't re-register until TTL approaches
+                _lastHeartbeatTimes[registerId] = DateTimeOffset.UtcNow;
+
+                _logger.LogDebug(
+                    "Validator {ValidatorId} heartbeat for register {RegisterId} (order: {OrderIndex})",
                     _validatorConfig.ValidatorId, registerId, result.OrderIndex);
             }
-            else if (result.ErrorMessage?.Contains("already registered", StringComparison.OrdinalIgnoreCase) != true)
+            else if (result.ErrorMessage?.Contains("already registered", StringComparison.OrdinalIgnoreCase) == true)
             {
+                // Still registered — treat as successful heartbeat
+                _lastHeartbeatTimes[registerId] = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                // Registration genuinely failed — clear cache to force immediate retry next tick
+                _lastHeartbeatTimes.TryRemove(registerId, out _);
+
                 _logger.LogWarning(
                     "Auto-registration failed for validator {ValidatorId} on register {RegisterId}: {Error}",
                     _validatorConfig.ValidatorId, registerId, result.ErrorMessage);
@@ -450,9 +493,14 @@ public class DocketBuildTriggerService : BackgroundService
         }
         catch (Exception ex)
         {
+            // Clear cache to force immediate retry — fail-safe: if we can't heartbeat,
+            // the registration will expire at the TTL boundary and the validator will
+            // be excluded from consensus until successfully re-registered.
+            _lastHeartbeatTimes.TryRemove(registerId, out _);
+
             _logger.LogWarning(ex,
                 "Failed to auto-register validator {ValidatorId} for register {RegisterId}. " +
-                "Manual registration via POST /api/validators/register may be required.",
+                "Will retry next tick. If persistent, manual registration via POST /api/validators/register may be required.",
                 _validatorConfig.ValidatorId, registerId);
         }
     }
