@@ -99,7 +99,7 @@
    - Client methods: ActionAvailable, ActionConfirmed, ActionRejected
 
 2. **NotificationService.cs** (117 lines)
-   - IHubContext<ActionsHub> integration
+   - `IHubContext<ActionsHub>` integration
    - NotifyActionAvailableAsync/Confirmed/Rejected
    - Group-based broadcasting
 
