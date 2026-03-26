@@ -138,6 +138,12 @@ The UI presents available blueprints published to subscribed registers. Users cl
 
 ![New Submission](screenshots/run-01-workflows.png)
 
+### Action 1: Contractor Submits Application
+
+The contractor fills in project details (name, address, type, value, floor area, storeys) via a schema-driven form. The data is validated client-side against the blueprint's JSON Schema before submission.
+
+![Contractor Form](screenshots/action-01-contractor-form.png)
+
 ### Encryption Operations
 
 Every action's payload is encrypted per-recipient using X25519 before being written to the ledger. The Encryption Operations view tracks each operation's progress.
@@ -224,3 +230,11 @@ pwsh walkthroughs/ConstructionPermit/setup.ps1 -Force
 ```
 
 Each action execution flows through: **Blueprint Service** (validate + encrypt) → **Validator Service** (validate + docket) → **Register Service** (confirm on ledger) → **Blueprint Service** (advance instance).
+
+---
+
+## Known Issues
+
+| Issue | Impact | Status |
+|---|---|---|
+| **Cross-user SignalR notifications** | When User A submits an action, User B's "Pending Actions" page does not update in real-time. The `EncryptionBackgroundService` notifies the submitter but does not call `NotifyParticipantsAsync` for the next participant. | Tracked — fix: add participant notification after instance advancement in the background service. |
