@@ -84,4 +84,22 @@ public interface ICredentialApiService
         string walletAddress,
         List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets credentials in Pending status for a wallet address.
+    /// </summary>
+    Task<List<CredentialCardViewModel>> GetPendingCredentialsAsync(
+        string walletAddress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Accepts a pending credential, transitioning its status to Active.
+    /// </summary>
+    Task<bool> AcceptCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Declines a pending credential, transitioning its status to Declined.
+    /// </summary>
+    Task<bool> DeclineCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default);
 }

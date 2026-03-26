@@ -240,6 +240,16 @@ public static class ServiceCollectionExtensions
             return new CredentialApiService(httpClient, logger);
         });
 
+        // Issued Credential Service (admin lifecycle management)
+        services.AddScoped<IIssuedCredentialService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<IssuedCredentialService>>();
+            return new IssuedCredentialService(httpClient, logger);
+        });
+
         // QR Presentation Service (no HTTP needed — generates locally)
         services.AddScoped<IQrPresentationService, QrPresentationService>();
 

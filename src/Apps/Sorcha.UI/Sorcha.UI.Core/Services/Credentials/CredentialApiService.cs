@@ -425,6 +425,54 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
+    public async Task<List<CredentialCardViewModel>> GetPendingCredentialsAsync(
+        string walletAddress, CancellationToken ct = default)
+    {
+        var all = await GetCredentialsAsync(walletAddress, ct);
+        return all.Where(c => c.IsPending).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> AcceptCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PatchAsJsonAsync(
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
+                new { Status = CredentialStatus.Active }, ct);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to accept credential {CredentialId} for wallet {WalletAddress}",
+                credentialId, walletAddress);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> DeclineCredentialAsync(
+        string walletAddress, string credentialId, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _httpClient.PatchAsJsonAsync(
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
+                new { Status = "Declined" }, ct);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to decline credential {CredentialId} for wallet {WalletAddress}",
+                credentialId, walletAddress);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<List<CredentialMatchResult>> MatchCredentialsAsync(
         string walletAddress,
         List<Sorcha.Blueprint.Models.Credentials.CredentialRequirement> requirements,
