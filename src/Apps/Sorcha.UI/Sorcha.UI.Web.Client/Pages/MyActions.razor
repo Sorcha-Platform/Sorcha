@@ -122,33 +122,23 @@
                     <MudCard Elevation="2">
                         <MudCardHeader>
                             <CardHeaderContent>
-                                <MudText Typo="Typo.h6">@action.ActionName</MudText>
                                 <MudText Typo="Typo.body2" Color="Color.Secondary">@action.BlueprintName</MudText>
+                                <MudText Typo="Typo.h6">@action.ActionName</MudText>
+                                @if (!string.IsNullOrEmpty(action.InstanceReference))
+                                {
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Style="font-family: monospace;">@action.InstanceReference</MudText>
+                                }
                             </CardHeaderContent>
                             <CardHeaderActions>
                                 <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(action.Priority)">@action.Priority</MudChip>
                             </CardHeaderActions>
                         </MudCardHeader>
                         <MudCardContent>
-                            <MudText Typo="Typo.body2" Class="mb-2">@action.Description</MudText>
-
-                            @* TODO: When PendingActionViewModel exposes a VerificationResult property
-                               (populated when the action received a credential presentation), render
-                               VerificationTrustView inline here:
-                               @if (action.VerificationResult is not null)
-                               {
-                                   <VerificationTrustView Result="@action.VerificationResult" />
-                               }
-                            *@
-
-                            @if (!string.IsNullOrEmpty(action.InstanceId))
+                            @if (!string.IsNullOrEmpty(action.Description))
                             {
-                                <div class="mb-1">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="display: inline;">Instance: </MudText>
-                                    <TruncatedId Value="@action.InstanceId" />
-                                </div>
+                                <MudText Typo="Typo.body2" Class="mb-2">@action.Description</MudText>
                             }
-                            <MudDivider Class="my-2" />
+
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
                                 <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
                                 Assigned: @action.AssignedAt.ToString("MMM dd, yyyy HH:mm")
@@ -264,6 +254,29 @@
         // Resolve wallet for signing
         var wallets = await WalletService.GetWalletsAsync();
         var walletAddress = await WalletPreferenceService.GetSmartDefaultAsync(wallets) ?? string.Empty;
+
+        // Fetch blueprint to get action schema for form rendering
+        if (action.DataSchema is null && !string.IsNullOrEmpty(action.BlueprintId))
+        {
+            try
+            {
+                var blueprint = await WorkflowService.GetBlueprintAsync(action.BlueprintId);
+                if (blueprint != null)
+                {
+                    var actionDef = blueprint.Actions.FirstOrDefault(a => a.Id.ToString() == action.ActionId);
+                    if (actionDef?.DataSchemas?.Any() == true)
+                    {
+                        var schemaJson = actionDef.DataSchemas.First().RootElement.GetRawText();
+                        action = action with { DataSchema = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(schemaJson) };
+                    }
+                }
+            }
+            catch
+            {
+                Snackbar.Add("Failed to load action form — please try again.", Severity.Error);
+                return;
+            }
+        }
 
         var parameters = new DialogParameters
         {

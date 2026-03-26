@@ -351,7 +351,24 @@ public class WalletService
 }
 ```
 
-### 6. License Header (Required)
+### 6. Instance Reference Configuration
+Blueprints should define an `instanceReference` to generate human-readable identifiers for workflow instances (e.g., "CP-RIV-14W-a7k3"). The reference is auto-generated from first-action payload fields and stored as public metadata on the instance.
+```json
+"instanceReference": {
+  "prefix": "CP",
+  "components": [
+    { "field": "/projectName", "transform": "FirstWord", "chars": 3 },
+    { "field": "/siteAddress", "transform": "FirstWord", "chars": 3 }
+  ]
+}
+```
+- **prefix**: 1-5 uppercase alpha chars identifying the workflow type
+- **components**: 1-5 field extractions from the starting action's schema
+- **transforms**: `FirstWord` (split on space, take first), `Truncate` (take first N chars), `Uppercase` (uppercase + truncate)
+- A 4-char uniqueness hash is auto-appended
+- The reference is **public metadata** — field values referenced here will be visible in plaintext
+
+### 7. License Header (Required)
 ```csharp
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors

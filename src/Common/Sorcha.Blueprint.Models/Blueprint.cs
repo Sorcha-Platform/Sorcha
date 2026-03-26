@@ -114,6 +114,15 @@ public class Blueprint : IEquatable<Blueprint>
     public BlueprintInstructions? Instructions { get; set; }
 
     /// <summary>
+    /// Template for generating human-readable instance references (e.g., "CP-RIV-14W-a7k3").
+    /// When defined, the system auto-generates a reference from first-action payload fields
+    /// and stores it as public metadata on each instance.
+    /// </summary>
+    [JsonPropertyName("instanceReference")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public InstanceReferenceTemplate? InstanceReference { get; set; }
+
+    /// <summary>
     /// Metadata for the blueprint
     /// </summary>
     [JsonPropertyName("metadata")]

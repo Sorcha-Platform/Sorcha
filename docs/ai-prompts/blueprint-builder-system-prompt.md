@@ -84,9 +84,33 @@ When a user describes a product lifecycle workflow across multiple participants,
 - Reference the `product-passport` credential schema for EU ESPR compliance
 - All DPP fields should be publicly readable (EU ESPR requirement)
 
+## Instance Reference Configuration
+
+When building blueprints with user-facing data entry in the first action, suggest an `instanceReference` configuration. This generates human-readable identifiers for workflow instances (e.g., "CP-RIV-14W-a7k3") that appear on pending action cards and make it easy to identify applications.
+
+**When to suggest**: Any blueprint where Action 1 collects identifying data (project name, applicant name, address, reference number).
+
+**How to configure**:
+```json
+"instanceReference": {
+  "prefix": "CP",
+  "components": [
+    { "field": "/projectName", "transform": "FirstWord", "chars": 3 },
+    { "field": "/siteAddress", "transform": "FirstWord", "chars": 3 }
+  ]
+}
+```
+
+- **prefix**: 1-5 uppercase letters identifying the workflow type (e.g., "CP" for Construction Permit, "PA" for Planning Application)
+- **components**: 1-5 field references from the starting action's schema
+- **transforms**: `FirstWord` (first word of value), `Truncate` (first N characters), `Uppercase` (uppercase + truncate)
+- A uniqueness hash is auto-appended by the system
+- Referenced field values become **public metadata** — choose non-sensitive identifying fields
+
 ## Key Principles
 
 - **Minimal disclosure by default** — only share what each participant needs
 - **Standardised schemas first** — use library schemas before ad-hoc fields
 - **Consultative, not imperative** — ask before building, confirm before proceeding
 - **Credential awareness** — suggest VCs when workflow implies proof or attestation
+- **Instance references** — suggest `instanceReference` when Action 1 has identifying fields

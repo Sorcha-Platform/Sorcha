@@ -429,6 +429,33 @@
             disclosure definitions.
             </summary>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator">
+            <summary>
+            Generates human-readable compound references for workflow instances.
+            References are derived from blueprint-defined templates and first-action payload data.
+            Format: {PREFIX}-{COMP1}-{COMP2}-{HASH} (e.g., "CP-RIV-14W-A7K3").
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(Sorcha.Blueprint.Models.InstanceReferenceTemplate,System.Collections.Generic.Dictionary{System.String,System.Object},System.String,System.String)">
+            <summary>
+            Generate a human-readable instance reference from the template and accumulated data.
+            </summary>
+            <param name="template">Blueprint-defined reference template, or null for fallback.</param>
+            <param name="accumulatedData">Payload field values from completed actions.</param>
+            <param name="instanceId">Instance ID used for uniqueness hash.</param>
+            <param name="blueprintTitle">Blueprint title used for fallback prefix.</param>
+            <returns>Uppercase hyphen-separated reference string.</returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.AsciiOnlyRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>[^\\x20-\\x7E]</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [^ -~].<br/>
+            </code>
+            </remarks>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Implementation.JsonEEvaluator">
             <summary>
             JSON-e template evaluator implementation using JsonE.Net
@@ -2004,6 +2031,42 @@
             <summary>
             Check if a variable path exists in the schema
             </summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the AsciiOnlyRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.AsciiOnlyRegex_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout">
+            <summary>Default timeout value set in <see cref="T:System.AppContext"/>, or <see cref="F:System.Text.RegularExpressions.Regex.InfiniteMatchTimeout"/> if none was set.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_hasTimeout">
+            <summary>Whether <see cref="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout"/> is non-infinite.</summary>
         </member>
     </members>
 </doc>

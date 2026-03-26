@@ -115,6 +115,7 @@ public class PendingActionSummaryDto
     public string ActionTitle { get; set; } = string.Empty;
     public string BlueprintId { get; set; } = string.Empty;
     public string BlueprintTitle { get; set; } = string.Empty;
+    public string InstanceReference { get; set; } = string.Empty;
     public string SenderAddress { get; set; } = string.Empty;
     public string SenderDisplayName { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
