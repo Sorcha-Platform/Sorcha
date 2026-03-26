@@ -158,6 +158,7 @@
 - [ ] T032 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
 - [ ] T033 Update walkthrough to test instance reference generation end-to-end — run `pwsh walkthroughs/ConstructionPermit/run.ps1 -Scenario A` and verify instance metadata contains generated reference
 - [x] T034 Update `Construction-Permit-Walkthrough.md` Known Issues section — remove the "Execute Action form empty" issue (fixed by US3), add any new known issues discovered during implementation
+- [ ] T035 Fix BlueprintTitle on pending action cards — instance creation stores blueprint ID as BlueprintTitle in metadata instead of the human-readable title. Fix in instance creation path (`POST /api/instances/`) to read `Blueprint.Title` and store it in `Instance.Metadata["BlueprintTitle"]`
 
 ---
 
