@@ -1599,6 +1599,15 @@ instancesGroup.MapPost("/", async (
             startingActions = [blueprint.Actions.First().Id];
         }
 
+        // Pre-populate participant wallets from blueprint definitions so that
+        // pending action queries can match by wallet address before the participant
+        // has executed their first action on this instance.
+        var participantWallets = new Dictionary<string, string>();
+        foreach (var p in blueprint.Participants.Where(p => !string.IsNullOrEmpty(p.WalletAddress)))
+        {
+            participantWallets[p.Id] = p.WalletAddress!;
+        }
+
         // Create instance
         var instance = new Sorcha.Blueprint.Service.Models.Instance
         {
@@ -1607,6 +1616,7 @@ instancesGroup.MapPost("/", async (
             BlueprintVersion = 1, // TODO: Get actual published version
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
+            ParticipantWallets = participantWallets,
             State = Sorcha.Blueprint.Service.Models.InstanceState.Active,
             TenantId = request.TenantId ?? "default",
             Metadata = request.Metadata?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString() ?? "")
