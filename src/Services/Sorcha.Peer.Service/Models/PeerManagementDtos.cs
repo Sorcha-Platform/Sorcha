@@ -27,6 +27,7 @@ public class BanResponse
     public bool IsBanned { get; set; }
     public DateTimeOffset? BannedAt { get; set; }
     public string? BanReason { get; set; }
+    public DateTimeOffset? BanExpiresAt { get; set; }
 }
 
 /// <summary>
@@ -35,6 +36,11 @@ public class BanResponse
 public class BanRequest
 {
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// Optional ban duration in minutes. If null or omitted, the ban is permanent.
+    /// </summary>
+    public int? DurationMinutes { get; set; }
 }
 
 /// <summary>

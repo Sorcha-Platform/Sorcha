@@ -62,6 +62,11 @@ public class PeerServiceConfiguration
     public RegisterSyncConfiguration RegisterSync { get; set; } = new();
 
     /// <summary>
+    /// Periodic data cleanup configuration
+    /// </summary>
+    public DataCleanupConfiguration DataCleanup { get; set; } = new();
+
+    /// <summary>
     /// Whether to enable mutual TLS (mTLS) for peer-to-peer gRPC connections (FR-016).
     /// When enabled, peers must present a valid client certificate to establish connections.
     /// Implementation deferred — this config option is scaffolding only.
