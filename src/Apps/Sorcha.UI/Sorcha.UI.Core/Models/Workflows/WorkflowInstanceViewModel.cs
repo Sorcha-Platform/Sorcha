@@ -34,6 +34,7 @@ public record PendingActionViewModel
     public string RegisterId { get; init; } = string.Empty;
     public string BlueprintName { get; init; } = string.Empty;
     public string ActionName { get; init; } = string.Empty;
+    public string InstanceReference { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
     public string Priority { get; init; } = "normal";
     public DateTimeOffset AssignedAt { get; init; }

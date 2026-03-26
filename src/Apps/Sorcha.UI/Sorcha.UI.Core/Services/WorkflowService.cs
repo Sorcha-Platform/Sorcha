@@ -15,6 +15,9 @@ public class WorkflowService : IWorkflowService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<WorkflowService> _logger;
+    // Scoped to the WASM session lifetime (singleton in Blazor WASM). Acceptable for typical
+    // use because blueprints rarely change during a single user session.
+    private readonly Dictionary<string, Sorcha.Blueprint.Models.Blueprint> _blueprintCache = new();
 
     public WorkflowService(HttpClient httpClient, ILogger<WorkflowService> logger)
     {
@@ -84,6 +87,7 @@ public class WorkflowService : IWorkflowService
                 RegisterId = s.RegisterId,
                 BlueprintName = s.BlueprintTitle ?? s.BlueprintId,
                 ActionName = s.ActionTitle ?? $"Action {s.ActionId}",
+                InstanceReference = s.InstanceReference ?? string.Empty,
                 Description = s.Summary ?? string.Empty,
                 Priority = s.Urgency ?? "normal",
                 AssignedAt = s.ReceivedAt,
@@ -115,6 +119,7 @@ public class WorkflowService : IWorkflowService
         public string? ActionTitle { get; init; }
         public string BlueprintId { get; init; } = string.Empty;
         public string? BlueprintTitle { get; init; }
+        public string? InstanceReference { get; init; }
         public string? Summary { get; init; }
         public string? Urgency { get; init; }
         public DateTimeOffset? Deadline { get; init; }
@@ -142,6 +147,29 @@ public class WorkflowService : IWorkflowService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating instance for blueprint {BlueprintId}", blueprintId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<Sorcha.Blueprint.Models.Blueprint?> GetBlueprintAsync(string blueprintId, CancellationToken cancellationToken = default)
+    {
+        if (_blueprintCache.TryGetValue(blueprintId, out var cached))
+            return cached;
+
+        try
+        {
+            var blueprint = await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>(
+                $"/api/blueprints/{blueprintId}", cancellationToken);
+
+            if (blueprint != null)
+                _blueprintCache[blueprintId] = blueprint;
+
+            return blueprint;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching blueprint {BlueprintId}", blueprintId);
             return null;
         }
     }

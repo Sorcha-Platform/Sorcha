@@ -19,6 +19,13 @@
       "features": "Multi-Org, Conditional Routing, Calculations, Rejection, Verifiable Credential",
       "sector": "Construction & Planning"
     },
+    "instanceReference": {
+      "prefix": "CP",
+      "components": [
+        { "field": "/projectName", "transform": "FirstWord", "chars": 3 },
+        { "field": "/siteAddress", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
     "participants": [
       {
         "id": "contractor",

@@ -367,6 +367,25 @@ public sealed class EncryptionBackgroundService : BackgroundService
             instance.AccumulatedData[kvp.Key] = kvp.Value;
         }
 
+        // Generate instance reference on first action (idempotent)
+        if (!instance.Metadata.ContainsKey("instanceReference"))
+        {
+            var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
+            var blueprint = await actionResolver.GetBlueprintAsync(instance.BlueprintId, ct);
+            if (blueprint != null)
+            {
+                var instanceRef = Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(
+                    blueprint.InstanceReference,
+                    instance.AccumulatedData,
+                    instance.Id,
+                    blueprint.Title);
+                instance.Metadata["instanceReference"] = instanceRef;
+                _logger.LogInformation(
+                    "Generated instance reference {Reference} for instance {InstanceId} (async path)",
+                    instanceRef, instance.Id);
+            }
+        }
+
         // Advance instance state (same logic as ActionExecutionService.ApplyInstanceStateChanges)
         instance.CurrentActionIds.Remove(workItem.ActionId);
         foreach (var nextAction in workItem.RoutingResult.NextActions)

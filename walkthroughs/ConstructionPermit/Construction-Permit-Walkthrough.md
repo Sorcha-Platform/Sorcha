@@ -140,9 +140,33 @@ The UI presents available blueprints published to subscribed registers. Users cl
 
 ### Action 1: Contractor Submits Application
 
-The contractor fills in project details (name, address, type, value, floor area, storeys) via a schema-driven form. The data is validated client-side against the blueprint's JSON Schema before submission.
+The contractor (Site Manager, Meridian Construction) fills in project details — name, address, building type, estimated value, floor area, and storeys — via a schema-driven form. The data is validated client-side against the blueprint's JSON Schema before submission.
 
 ![Contractor Form](screenshots/action-01-contractor-form.png)
+
+### Action 2: Structural Engineer Reviews
+
+After the contractor submits, Action 2 appears in the structural engineer's Pending Actions. The Lead Engineer (Apex Structural Engineers) sees the action card and clicks TAKE ACTION to provide their structural assessment — load rating, foundation type, structural grade, and notes. The system calculates a **risk score** (6.1 for this low-risk residential) that drives conditional routing downstream.
+
+![Engineer Pending Actions](screenshots/action-02-engineer-pending.png)
+
+### Action 3: Planning Officer Reviews
+
+The Planning Officer (Riverside Borough Council) receives Action 3 after the structural assessment. They review the application for zoning compliance. Because the risk score is below 7, the workflow routes directly to Building Control (Action 5), **skipping environmental review**.
+
+![Planning Pending Actions](screenshots/action-03-planning-pending.png)
+
+### Action 5: Building Control Inspection
+
+The Building Control Inspector (also Riverside Borough Council, but a different user) sees Action 5. They verify structural approval, fire compliance, and accessibility. The system calculates a **permit fee** (£2,200 for this residential build).
+
+![Inspector Pending Actions](screenshots/action-05-inspector-pending.png)
+
+### Action 6: Final Approval
+
+The Planning Officer returns for final approval (Action 6). They issue the permit number, set validity dates, and attach conditions. Upon approval, a **Building Permit Verifiable Credential** is issued to the contractor.
+
+![Planning Final Approval](screenshots/action-06-planning-final.png)
 
 ### Encryption Operations
 
@@ -237,4 +261,4 @@ Each action execution flows through: **Blueprint Service** (validate + encrypt) 
 
 | Issue | Impact | Status |
 |---|---|---|
-| **Cross-user SignalR notifications** | When User A submits an action, User B's "Pending Actions" page does not update in real-time. The `EncryptionBackgroundService` notifies the submitter but does not call `NotifyParticipantsAsync` for the next participant. | Tracked — fix: add participant notification after instance advancement in the background service. |
+| **Execute Action form empty** | The "Take Action" dialog on Pending Actions shows an empty form — `WorkflowService.GetPendingActionsAsync()` does not populate `DataSchema` on the `PendingActionViewModel`. The form renderer requires the schema to generate fields. | Open — fix: fetch blueprint action schema when opening the Execute Action dialog. |

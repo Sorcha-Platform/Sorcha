@@ -79,8 +79,15 @@
                             <div class="d-flex align-center gap-2">
                                 <MudIcon Icon="@GetUrgencyIcon(action.Urgency)" Color="@GetUrgencyColor(action.Urgency)" Size="Size.Small" />
                                 <MudText Typo="Typo.body2"><strong>@action.ActionTitle</strong></MudText>
+                                @if (!string.IsNullOrEmpty(action.InstanceReference))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Primary" Style="font-family: monospace;">@action.InstanceReference</MudText>
+                                }
                             </div>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">@action.Summary</MudText>
+                            @if (!string.IsNullOrEmpty(action.Summary))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@action.Summary</MudText>
+                            }
                             <div class="d-flex justify-space-between mt-1">
                                 <MudText Typo="Typo.caption">@action.SenderDisplayName</MudText>
                                 @if (action.Deadline.HasValue)

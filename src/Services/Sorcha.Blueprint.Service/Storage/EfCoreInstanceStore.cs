@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Blueprint.Service.Data;
 using Sorcha.Blueprint.Service.Data.Entities;
 using Sorcha.Blueprint.Service.Models;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Storage;
 
@@ -21,6 +22,7 @@ public class EfCoreInstanceStore : IInstanceStore
 {
     private readonly IDbContextFactory<BlueprintDbContext> _contextFactory;
     private readonly ILogger<EfCoreInstanceStore> _logger;
+    private readonly IActionResolverService _actionResolver;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -33,12 +35,15 @@ public class EfCoreInstanceStore : IInstanceStore
     /// </summary>
     /// <param name="contextFactory">Factory for creating scoped database contexts.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="actionResolver">Action resolver for enriching pending action data.</param>
     public EfCoreInstanceStore(
         IDbContextFactory<BlueprintDbContext> contextFactory,
-        ILogger<EfCoreInstanceStore> logger)
+        ILogger<EfCoreInstanceStore> logger,
+        IActionResolverService actionResolver)
     {
         _contextFactory = contextFactory;
         _logger = logger;
+        _actionResolver = actionResolver;
     }
 
     /// <inheritdoc/>
@@ -249,27 +254,56 @@ public class EfCoreInstanceStore : IInstanceStore
             .OrderByDescending(i => i.UpdatedAt)
             .ToListAsync(cancellationToken);
 
-        var summaries = entities
-            .Where(e => ContainsWalletAddress(e.ParticipantWallets, walletAddress))
-            .SelectMany(e =>
-            {
-                var instance = ToModel(e);
-                if (instance is null)
-                {
-                    return Enumerable.Empty<PendingActionSummary>();
-                }
+        // Build blueprint cache for action title lookup
+        var blueprintCache = new Dictionary<string, Sorcha.Blueprint.Models.Blueprint?>();
 
-                return instance.CurrentActionIds.Select(actionId => new PendingActionSummary
+        var matchingInstances = entities
+            .Where(e => ContainsWalletAddress(e.ParticipantWallets, walletAddress))
+            .Select(ToModel)
+            .Where(i => i is not null)
+            .Cast<Instance>()
+            .ToList();
+
+        // Pre-fetch blueprints for all unique blueprint IDs
+        var blueprintIds = matchingInstances.Select(i => i.BlueprintId).Distinct();
+        foreach (var bpId in blueprintIds)
+        {
+            if (!blueprintCache.ContainsKey(bpId))
+            {
+                blueprintCache[bpId] = await _actionResolver.GetBlueprintAsync(bpId, cancellationToken);
+            }
+        }
+
+        var summaries = matchingInstances
+            .SelectMany(instance =>
+            {
+                blueprintCache.TryGetValue(instance.BlueprintId, out var blueprint);
+
+                return instance.CurrentActionIds.Select(actionId =>
                 {
-                    InstanceId = instance.Id,
-                    ActionId = actionId,
-                    ActionTitle = $"Action {actionId}",
-                    BlueprintId = instance.BlueprintId,
-                    BlueprintTitle = instance.Metadata.GetValueOrDefault("BlueprintTitle", instance.BlueprintId),
-                    RegisterId = instance.RegisterId,
-                    TransactionId = instance.LastTransactionId ?? string.Empty,
-                    NavigationPath = $"/blueprints/{instance.BlueprintId}/instances/{instance.Id}/actions/{actionId}",
-                    ReceivedAt = instance.UpdatedAt
+                    var actionTitle = $"Action {actionId}";
+                    if (blueprint != null)
+                    {
+                        var actionDef = _actionResolver.GetActionDefinition(blueprint, actionId.ToString());
+                        if (actionDef != null && !string.IsNullOrEmpty(actionDef.Title))
+                        {
+                            actionTitle = actionDef.Title;
+                        }
+                    }
+
+                    return new PendingActionSummary
+                    {
+                        InstanceId = instance.Id,
+                        ActionId = actionId,
+                        ActionTitle = actionTitle,
+                        BlueprintId = instance.BlueprintId,
+                        BlueprintTitle = instance.Metadata.GetValueOrDefault("BlueprintTitle", instance.BlueprintId),
+                        InstanceReference = instance.Metadata.GetValueOrDefault("instanceReference", string.Empty),
+                        RegisterId = instance.RegisterId,
+                        TransactionId = instance.LastTransactionId ?? string.Empty,
+                        NavigationPath = $"/blueprints/{instance.BlueprintId}/instances/{instance.Id}/actions/{actionId}",
+                        ReceivedAt = instance.UpdatedAt
+                    };
                 });
             })
             .OrderByDescending(s => s.ReceivedAt)

@@ -577,6 +577,20 @@ public class ActionExecutionService : IActionExecutionService
             instance.AccumulatedData[kvp.Key] = kvp.Value;
         }
 
+        // 14a. Generate instance reference on first action (idempotent)
+        if (!instance.Metadata.ContainsKey("instanceReference"))
+        {
+            var instanceRef = Sorcha.Blueprint.Engine.Implementation.InstanceReferenceGenerator.Generate(
+                blueprint.InstanceReference,
+                instance.AccumulatedData,
+                instance.Id,
+                blueprint.Title);
+            instance.Metadata["instanceReference"] = instanceRef;
+            _logger.LogInformation(
+                "Generated instance reference {Reference} for instance {InstanceId}",
+                instanceRef, instance.Id);
+        }
+
         // 14b. Update instance state
         instance = await UpdateInstanceAfterExecutionAsync(
             instance,

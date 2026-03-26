@@ -24,6 +24,9 @@ public class PendingActionSummary
     /// <summary>Blueprint display name.</summary>
     public string BlueprintTitle { get; init; } = string.Empty;
 
+    /// <summary>Human-readable instance reference (e.g., "CP-RIV-14W-a7k3").</summary>
+    public string InstanceReference { get; init; } = string.Empty;
+
     /// <summary>Wallet address of the previous action submitter.</summary>
     public string SenderAddress { get; init; } = string.Empty;
 

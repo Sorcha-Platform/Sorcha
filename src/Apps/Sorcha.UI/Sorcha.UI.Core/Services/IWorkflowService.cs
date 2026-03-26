@@ -45,4 +45,10 @@ public interface IWorkflowService
     /// Rejects an action with a reason.
     /// </summary>
     Task<bool> RejectActionAsync(string instanceId, string actionId, string reason, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a blueprint definition including action schemas.
+    /// Used to populate the Execute Action form.
+    /// </summary>
+    Task<Sorcha.Blueprint.Models.Blueprint?> GetBlueprintAsync(string blueprintId, CancellationToken cancellationToken = default);
 }
