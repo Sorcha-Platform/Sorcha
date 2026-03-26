@@ -425,6 +425,9 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
     public async Task<List<CredentialCardViewModel>> GetPendingCredentialsAsync(
         string walletAddress, CancellationToken ct = default)
     {
@@ -433,6 +436,9 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
     public async Task<bool> AcceptCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
@@ -453,6 +459,9 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
+    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
+    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
+    // Until backend is updated, these methods will return false (status 400).
     public async Task<bool> DeclineCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
