@@ -11,54 +11,102 @@ Sorcha is a modern .NET 10 platform for defining, designing, and executing multi
 
 ## High-Level Architecture
 
-```
+<!-- Original ASCII preserved for reference
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                            Sorcha Platform                                     │
 ├───────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
 │  ┌────────────────────────┐              ┌──────────────────────────┐         │
-│  │  Blueprint Designer    │              │  Blueprint Engine        │         │
-│  │  (Blazor Server)       │─────────────▶│  (REST API)              │         │
-│  │  + Designer.Client     │   HTTP       │  Minimal APIs            │         │
-│  │  (Blazor WASM)         │              │  (In Development)        │         │
+│  │  Blueprint Designer    │─────────────▶│  Blueprint Engine        │         │
+│  │  (Blazor Server/WASM)  │   HTTP       │  (REST API, Minimal APIs)│         │
 │  └────────────────────────┘              └──────────────────────────┘         │
 │           │                                         │                          │
-│           │              ┌──────────────────────────┼─────────────────┐       │
-│           │              │                          │                  │       │
-│           ▼              ▼                          ▼                  ▼       │
+│           ▼                                         ▼                          │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │                   Common Libraries Layer                                 │ │
-│  ├─────────────────────────────────────────────────────────────────────────┤ │
-│  │  • Blueprint.Models (Data Models)                                       │ │
-│  │  • Blueprint.Fluent (Fluent API Builders)                              │ │
-│  │  • Blueprint.Schemas (Schema Management & Caching)                     │ │
+│  │  Common Libraries: Models, Fluent, Schemas, Cryptography, ServiceClients│ │
 │  └─────────────────────────────────────────────────────────────────────────┘ │
-│                              │                                                 │
-│           ┌──────────────────┼──────────────────┐                            │
 │           │                  │                  │                            │
 │           ▼                  ▼                  ▼                            │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────────┐    │
-│  │  Peer Service  │  │  Hosting Layer │  │  Blueprint Services        │    │
-│  │  (P2P Network) │  │  - AppHost     │  │  - Engine                  │    │
-│  │  - Discovery   │  │  - Service     │  │  - Designer                │    │
-│  │  - Distribution│  │    Defaults    │  └────────────────────────────┘    │
-│  │  - Gossip      │  └────────────────┘                                     │
-│  │  (Planned)     │                                                          │
-│  └────────────────┘                                                          │
+│  Services: Peer, Blueprint, Register, Wallet, Tenant, Validator, Gateway    │
 │           │                                                                   │
-│           └──────────────────────┐                                          │
-│                                  │                                          │
-└──────────────────────────────────┼──────────────────────────────────────────┘
-                                   │
-         ┌─────────────────────────┼─────────────────────────┐
-         │                         │                         │
-         ▼                         ▼                         ▼
-┌─────────────────┐    ┌─────────────────┐    ┌───────────────────────┐
-│  Storage        │    │  External       │    │  Peer Network         │
-│  (Planned:      │    │  Schema Sources │    │  (Other Sorcha Nodes) │
-│   EF Core)      │    │  (SchemaStore)  │    │  - gRPC/REST          │
-└─────────────────┘    └─────────────────┘    │  - Transaction Sync   │
-                                               └───────────────────────┘
+│           ▼                  ▼                         ▼                      │
+│  Storage: PostgreSQL, MongoDB, Redis    Peer Network (gRPC/REST)             │
+└───────────────────────────────────────────────────────────────────────────────┘
+-->
+
+```mermaid
+graph TD
+    subgraph Apps["Apps Layer"]
+        Designer["Blueprint Designer<br/>(Blazor Server + WASM)"]
+        Engine["Blueprint Engine<br/>(REST API, Minimal APIs)"]
+    end
+
+    subgraph Common["Common Libraries"]
+        Models["Blueprint.Models"]
+        Fluent["Blueprint.Fluent"]
+        Schemas["Blueprint.Schemas"]
+        Crypto["Cryptography"]
+        ServiceClients["ServiceClients"]
+        ServiceDefaults["ServiceDefaults"]
+        ValidatorCore["Validator.Core"]
+    end
+
+    subgraph Services["Services Layer"]
+        BlueprintSvc["Blueprint Service"]
+        RegisterSvc["Register Service"]
+        WalletSvc["Wallet Service"]
+        TenantSvc["Tenant Service"]
+        ValidatorSvc["Validator Service"]
+        PeerSvc["Peer Service"]
+        Gateway["API Gateway<br/>(YARP)"]
+    end
+
+    subgraph Storage["Storage Layer"]
+        PostgreSQL[("PostgreSQL")]
+        MongoDB[("MongoDB")]
+        Redis[("Redis")]
+    end
+
+    subgraph External["External"]
+        SchemaStore["Schema Sources<br/>(SchemaStore)"]
+        PeerNetwork["Peer Network<br/>(Other Sorcha Nodes)"]
+    end
+
+    Designer -->|HTTP| Engine
+    Designer --> Models
+    Designer --> Fluent
+    Designer --> Schemas
+    Engine --> Models
+    Engine --> Schemas
+
+    Gateway --> BlueprintSvc
+    Gateway --> RegisterSvc
+    Gateway --> WalletSvc
+    Gateway --> TenantSvc
+
+    BlueprintSvc --> Models
+    BlueprintSvc --> Crypto
+    BlueprintSvc --> ServiceClients
+    RegisterSvc --> Models
+    RegisterSvc --> Crypto
+    ValidatorSvc --> ValidatorCore
+    ValidatorSvc --> Crypto
+    WalletSvc --> Crypto
+    PeerSvc --> ServiceClients
+
+    WalletSvc --> PostgreSQL
+    RegisterSvc --> MongoDB
+    BlueprintSvc --> Redis
+    ValidatorSvc --> Redis
+    TenantSvc --> PostgreSQL
+
+    Schemas --> SchemaStore
+    PeerSvc --> PeerNetwork
+
+    style Apps fill:#e1f5fe,stroke:#0288d1
+    style Common fill:#f3e5f5,stroke:#7b1fa2
+    style Services fill:#e8f5e9,stroke:#388e3c
+    style Storage fill:#fff3e0,stroke:#f57c00
+    style External fill:#fce4ec,stroke:#c62828
 ```
 
 ## Solution Structure
