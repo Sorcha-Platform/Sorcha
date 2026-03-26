@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Scalar.AspNetCore;
 
@@ -55,27 +56,68 @@ public static class OpenApiExtensions
     }
 
     /// <summary>
-    /// Maps the OpenAPI endpoint and Scalar interactive API documentation UI.
-    /// Only enabled in Development environment — production API docs are served
-    /// through the API Gateway's <c>/openapi</c> endpoint with auth control.
+    /// Maps the OpenAPI endpoint and Scalar interactive API documentation UI with optional custom routing and access control.
+    /// Scalar is enabled in Development environment or when <c>OpenApi:ExposeScalar</c>
+    /// configuration is set to <c>true</c>, allowing production deployments to opt-in.
     /// </summary>
     /// <param name="app">The web application.</param>
     /// <param name="title">The title displayed in the Scalar UI.</param>
+    /// <param name="routePattern">Custom Scalar UI route pattern. Defaults to <c>/scalar/{documentName}</c>.</param>
+    /// <param name="openApiRoutePattern">Custom OpenAPI spec route for Scalar to load. When null, uses the default spec endpoint.</param>
+    /// <param name="authorizationPolicy">Optional authorization policy name to apply to the Scalar endpoint.</param>
     /// <param name="theme">The Scalar UI theme. Defaults to <see cref="ScalarTheme.Purple"/>.</param>
     /// <returns>The web application for chaining.</returns>
-    public static WebApplication MapSorchaOpenApiUi(this WebApplication app, string title, ScalarTheme theme = ScalarTheme.Purple)
+    public static WebApplication MapSorchaOpenApiUi(
+        this WebApplication app,
+        string title,
+        string? routePattern = null,
+        string? openApiRoutePattern = null,
+        string? authorizationPolicy = null,
+        ScalarTheme theme = ScalarTheme.Purple)
     {
         app.MapOpenApi();
 
-        if (app.Environment.IsDevelopment())
+        var exposeScalar = app.Configuration.GetValue<bool>("OpenApi:ExposeScalar", false);
+
+        if (app.Environment.IsDevelopment() || exposeScalar)
         {
-            app.MapScalarApiReference(options =>
+            IEndpointConventionBuilder scalarEndpoint;
+
+            if (routePattern is not null)
             {
-                options
-                    .WithTitle(title)
-                    .WithTheme(theme)
-                    .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
-            });
+                scalarEndpoint = app.MapScalarApiReference(routePattern, options =>
+                {
+                    options
+                        .WithTitle(title)
+                        .WithTheme(theme)
+                        .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+
+                    if (openApiRoutePattern is not null)
+                    {
+                        options.WithOpenApiRoutePattern(openApiRoutePattern);
+                    }
+                });
+            }
+            else
+            {
+                scalarEndpoint = app.MapScalarApiReference(options =>
+                {
+                    options
+                        .WithTitle(title)
+                        .WithTheme(theme)
+                        .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+
+                    if (openApiRoutePattern is not null)
+                    {
+                        options.WithOpenApiRoutePattern(openApiRoutePattern);
+                    }
+                });
+            }
+
+            if (authorizationPolicy is not null)
+            {
+                scalarEndpoint.RequireAuthorization(authorizationPolicy);
+            }
         }
 
         return app;

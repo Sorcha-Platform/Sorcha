@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Scalar.AspNetCore;
 using Sorcha.ApiGateway.Models;
 using Sorcha.ApiGateway.Services;
 
@@ -68,8 +67,9 @@ builder.Services.AddAuthorizationBuilder()
             policy.RequireAssertion(_ => true); // Allow anonymous
     });
 
-// Add OpenAPI documentation
-builder.Services.AddOpenApi();
+// Add OpenAPI documentation with standard Sorcha metadata
+builder.AddSorchaOpenApi("Sorcha API Gateway",
+    "Unified entry point for the Sorcha platform providing reverse proxy routing, aggregated health monitoring, and API documentation.");
 
 // Add CORS for frontend - production restriction handled at infrastructure level
 builder.AddSorchaCors();
@@ -540,15 +540,10 @@ app.MapGet("/openapi/aggregated.json", async (OpenApiAggregationService openApiS
 .ExcludeFromDescription();
 
 // Scalar UI at /openapi — access controlled by OpenApi:RequireAuth config
-app.MapScalarApiReference("/openapi", options =>
-{
-    options
-        .WithTitle("Sorcha API Gateway - All Services")
-        .WithTheme(ScalarTheme.Purple)
-        .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient)
-        .WithOpenApiRoutePattern("/openapi/aggregated.json");
-})
-.RequireAuthorization("OpenApiAccess");
+app.MapSorchaOpenApiUi("Sorcha API Gateway - All Services",
+    routePattern: "/openapi",
+    openApiRoutePattern: "/openapi/aggregated.json",
+    authorizationPolicy: "OpenApiAccess");
 
 // URL resolution middleware — resolves org subdomain from path/subdomain/custom domain
 app.UseMiddleware<UrlResolutionMiddleware>();
