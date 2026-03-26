@@ -306,7 +306,7 @@ If you need to move a project:
 - [Architecture Overview](architecture.md)
 - [Testing Guide](../guides/testing/testing.md)
 - [Getting Started](../getting-started/getting-started.md)
-- [Contributing Guidelines](../CONTRIBUTING.md)
+- [Contributing Guidelines](../../CONTRIBUTING.md)
 
 ---
 

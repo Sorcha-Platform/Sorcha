@@ -3,7 +3,7 @@
 **Date:** 2025-11-16
 **Status:** ✅ Completed
 **Phase:** Phase 5 - API Layer
-**Related Specification:** [sorcha-register-service.md](../.specify/specs/sorcha-register-service.md)
+**Related Specification:** [sorcha-register-service.md](../../../.specify/specs/sorcha-register-service.md)
 **Previous Phase:** [Phase 1 & 2 Completion](register-service-phase1-2-completion.md)
 
 ## Executive Summary

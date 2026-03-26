@@ -378,6 +378,6 @@ The platform is feature-complete for MVD but requires the following for producti
 **Owner:** Sorcha Architecture Team
 
 **See Also:**
-- [MASTER-PLAN.md](../.specify/MASTER-PLAN.md) - Implementation phases
-- [MASTER-TASKS.md](../.specify/MASTER-TASKS.md) - Task tracking
+- [MASTER-PLAN.md](../../.specify/MASTER-PLAN.md) - Implementation phases
+- [MASTER-TASKS.md](../../.specify/MASTER-TASKS.md) - Task tracking
 - [architecture.md](architecture.md) - System architecture

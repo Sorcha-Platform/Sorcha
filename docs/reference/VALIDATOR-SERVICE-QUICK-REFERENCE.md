@@ -361,7 +361,6 @@ Check SingularConsensus logs - currently should be empty since it does nothing.
 
 ## Additional Resources
 
-- Full Analysis: `./alpha-validator-service-analysis.md` (1035 lines, alpha reference)
-- Design Recommendations: `./SORCHA-VALIDATOR-DESIGN-RECOMMENDATIONS.md`
+- Full Design: [validator-service-design.md](./validator-service-design.md)
 - GitHub: https://github.com/sorcha-platform/sorcha
 

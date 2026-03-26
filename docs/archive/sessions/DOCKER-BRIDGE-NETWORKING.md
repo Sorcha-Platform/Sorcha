@@ -552,8 +552,8 @@ curl http://localhost/api/health
 - [Docker bridge networking documentation](https://docs.docker.com/network/bridge/)
 - [ASP.NET Core Kestrel HTTPS configuration](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel/endpoints)
 - [YARP Reverse Proxy documentation](https://microsoft.github.io/reverse-proxy/)
-- [Sorcha API Gateway README](../src/Services/Sorcha.ApiGateway/README.md)
-- [Sorcha Peer Service README](../src/Services/Sorcha.Peer.Service/README.md)
+- [Sorcha API Gateway README](../../../src/Services/Sorcha.ApiGateway/README.md)
+- [Sorcha Peer Service README](../../../src/Services/Sorcha.Peer.Service/README.md)
 
 ---
 

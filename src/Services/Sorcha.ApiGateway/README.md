@@ -719,7 +719,7 @@ docker-compose up -d
 - Bridge network (`sorcha-network`) for all services
 - Services communicate via Docker DNS (e.g., `http://wallet-service:8080`)
 - Published ports: 80 (HTTP), 443 (HTTPS)
-- See [docs/DOCKER-BRIDGE-NETWORKING.md](../../../docs/DOCKER-BRIDGE-NETWORKING.md) for complete details
+- See [DOCKER-QUICK-START.md](../../../docs/getting-started/DOCKER-QUICK-START.md) for complete details
 
 ### Docker (Standalone)
 

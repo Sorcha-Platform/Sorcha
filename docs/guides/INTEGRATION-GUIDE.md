@@ -788,7 +788,7 @@ curl http://localhost:5000/api/register/health
 ## Next Steps
 
 1. **Explore the API:** Visit http://localhost:5000/scalar/v1
-2. **Read API Documentation:** See [API-DOCUMENTATION.md](./API-DOCUMENTATION.md)
+2. **Read API Documentation:** See [API-DOCUMENTATION.md](../reference/API-DOCUMENTATION.md)
 3. **Review Examples:** Check `/examples` directory
 4. **Join Community:** GitHub Discussions
 

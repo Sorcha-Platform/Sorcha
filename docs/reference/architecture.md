@@ -445,7 +445,7 @@ Peer-to-peer networking service for decentralized transaction distribution.
 
 **Location:** `src/Services/Sorcha.Peer.Service/`
 
-**Status:** Active Development - See [Peer Service Design](peer-service-design.md) and [Implementation Plan](peer-service-implementation-plan.md)
+**Status:** Active Development
 
 **Purpose:**
 Enable decentralized, peer-to-peer communication and transaction distribution across a network of Sorcha nodes without reliance on centralized infrastructure.
@@ -498,7 +498,7 @@ Peers Repeat Gossip → 90% Network Coverage in < 1 minute
 - Bloom filter for duplicate detection
 - Circuit breaker pattern for resilience
 
-**Implementation Timeline:** 20 weeks (10 sprints) - See [Implementation Plan](peer-service-implementation-plan.md)
+**Implementation Timeline:** 20 weeks (10 sprints)
 
 **Benefits:**
 - Decentralization - No single point of failure
@@ -848,7 +848,6 @@ Build Pipeline:
 
 ## Related Documentation
 
-- [Execution Model](execution-model.md)
-- [Blueprint Schema](blueprint-schema.md)
-- [API Reference](api-reference.md)
-- [Deployment Guide](deployment.md)
+- [Blueprint Format](../guides/blueprints/blueprint-format.md)
+- [API Reference](API-DOCUMENTATION.md)
+- [Deployment Guide](../guides/DEPLOYMENT.md)

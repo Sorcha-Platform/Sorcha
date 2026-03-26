@@ -561,7 +561,7 @@ Enable detailed logging:
 
 ## Resources
 
-- **Specification**: [.specify/specs/sorcha-blueprint-service.md](.specify/specs/)
+- **Specification**: [.specify/specs/](../../../.specify/specs/)
 - **API Reference**: [Scalar UI](https://localhost:7081/scalar)
 - **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
 - **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)

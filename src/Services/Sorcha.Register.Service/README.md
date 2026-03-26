@@ -854,7 +854,7 @@ Recovery runs as a `BackgroundService` and reports status via the `/health/sync`
 
 ## Resources
 
-- **Specification**: [.specify/specs/sorcha-register-service.md](.specify/specs/sorcha-register-service.md)
+- **Specification**: [.specify/specs/sorcha-register-service.md](../../../.specify/specs/sorcha-register-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7085/scalar)
 - **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
 - **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)

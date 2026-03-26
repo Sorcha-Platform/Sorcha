@@ -33,7 +33,7 @@ This release fixes a critical null reference exception in the `sorcha config lis
 
 ### 📚 Documentation
 
-4. **Updated CLI README** ([src/Apps/Sorcha.Cli/README.md](src/Apps/Sorcha.Cli/README.md))
+4. **Updated CLI README** ([src/Apps/Sorcha.Cli/README.md](../../../src/Apps/Sorcha.Cli/README.md))
    - Updated Quick Start section to reflect single default profile
    - Added comprehensive Configuration Commands section
    - Updated example outputs to use "docker" profile
@@ -145,7 +145,7 @@ sorcha config list
 |------|---------------|-------------|
 | [ConfigCommand.cs](src/Apps/Sorcha.Cli/Commands/ConfigCommand.cs) | 1 | Fixed null reference in profile list |
 | [ConfigurationService.cs](src/Apps/Sorcha.Cli/Services/ConfigurationService.cs) | 105 → 28 | Simplified default configuration |
-| [README.md](src/Apps/Sorcha.Cli/README.md) | Multiple | Updated documentation |
+| [README.md](../../../src/Apps/Sorcha.Cli/README.md) | Multiple | Updated documentation |
 
 ### Default Configuration Structure
 

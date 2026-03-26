@@ -961,7 +961,7 @@ Before submitting code, ask:
 - Changes should be reviewed by the architecture team
 
 **References:**
-- [Constitution](.specify/constitution.md)
+- [Constitution](../../.specify/constitution.md)
 - [Architecture](../reference/architecture.md)
-- [Contributing](../CONTRIBUTING.md)
-- [Unified Design Summary](.specify/UNIFIED-DESIGN-SUMMARY.md)
+- [Contributing](../../CONTRIBUTING.md)
+- [Unified Design Summary](../../.specify/UNIFIED-DESIGN-SUMMARY.md)

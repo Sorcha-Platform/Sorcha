@@ -13,8 +13,8 @@
 Define the foundational enums and data models that will be used throughout the Sorcha.Cryptography library. These types form the contract between components and must be well-designed for extensibility and clarity.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec](../specs/Sorcha-cryptography-rewrite.md#functional-requirements)
-- [Project Plan](../plan.md)
+- [Sorcha.Cryptography Rewrite Spec](../specs/sorcha-cryptography-rewrite.md#functional-requirements)
+- [Master Plan](../MASTER-PLAN.md)
 
 **Dependencies:**
 - TASK-001 (Project setup must be complete)

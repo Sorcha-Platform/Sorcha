@@ -745,7 +745,7 @@ docker-compose up -d peer-service
 - Published ports: 50051 (hub), 50052 (peer)
 - TLS disabled for local development (`EnableTls: false`)
 - Configuration: `docker/appsettings.Bridge.json`
-- See [docs/DOCKER-BRIDGE-NETWORKING.md](../../../docs/DOCKER-BRIDGE-NETWORKING.md) for complete details
+- See [DOCKER-QUICK-START.md](../../../docs/getting-started/DOCKER-QUICK-START.md) for complete details
 
 **Verify Connection:**
 ```bash

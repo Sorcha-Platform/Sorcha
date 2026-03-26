@@ -575,10 +575,8 @@ For Docker deployments, ensure:
 
 ## Related Documentation
 
-- [Wallet Service Specification](../.specify/specs/sorcha-wallet-service.md)
-- [Cryptography Library](../src/Common/Sorcha.Cryptography/README.md)
-- [Docker Deployment Guide](./docker-deployment.md)
-- [Security Best Practices](./security-best-practices.md)
+- [Wallet Service Specification](../../.specify/specs/sorcha-wallet-service.md)
+- [Security Requirements](./SECURITY-REQUIREMENTS.md)
 
 ---
 

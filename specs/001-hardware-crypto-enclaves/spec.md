@@ -266,9 +266,9 @@ An end-user accesses the Sorcha Blueprint Designer web interface. For client-sid
 
 ## Related Specifications
 
-- [Sorcha Cryptography Rewrite](.specify/specs/sorcha-cryptography-rewrite.md) - Core cryptographic library architecture
-- [Sorcha Wallet Service](.specify/specs/sorcha-wallet-service.md) - Wallet management service requiring secure key storage
-- [Sorcha Transaction Handler](.specify/specs/sorcha-transaction-handler.md) - Transaction signing using secure keys
+- [Sorcha Cryptography Rewrite](../../.specify/specs/sorcha-cryptography-rewrite.md) - Core cryptographic library architecture
+- [Sorcha Wallet Service](../../.specify/specs/sorcha-wallet-service.md) - Wallet management service requiring secure key storage
+- [Sorcha Transaction Handler](../../.specify/specs/sorcha-transaction-handler.md) - Transaction signing using secure keys
 
 ## References
 

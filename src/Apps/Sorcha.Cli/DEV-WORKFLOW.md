@@ -271,7 +271,7 @@ For production releases, manual semantic versioning is recommended:
 
 ## 🎯 What to Implement Next
 
-Based on the [CLI specification](.specify/specs/sorcha-cli-admin-tool.md), the recommended implementation order is:
+Based on the [CLI specification](../../../.specify/specs/sorcha-cli-admin-tool.md), the recommended implementation order is:
 
 ### **Phase 1: Foundation (COMPLETE) ✅**
 - ✅ Auto-incrementing version
@@ -303,8 +303,8 @@ Based on the [CLI specification](.specify/specs/sorcha-cli-admin-tool.md), the r
 
 ## 📖 Related Documentation
 
-- **[CLI Specification](.specify/specs/sorcha-cli-admin-tool.md)** - Complete feature requirements
-- **[MASTER-TASKS.md](.specify/MASTER-TASKS.md)** - Task tracking
+- **[CLI Specification](../../../.specify/specs/sorcha-cli-admin-tool.md)** - Complete feature requirements
+- **[MASTER-TASKS.md](../../../.specify/MASTER-TASKS.md)** - Task tracking
 - **[README.md](README.md)** - CLI overview and installation
 
 ---
@@ -313,8 +313,8 @@ Based on the [CLI specification](.specify/specs/sorcha-cli-admin-tool.md), the r
 
 **For CLI development questions:**
 - Check this document first
-- Review the [CLI specification](.specify/specs/sorcha-cli-admin-tool.md)
-- Check [MASTER-TASKS.md](.specify/MASTER-TASKS.md) for implementation status
+- Review the [CLI specification](../../../.specify/specs/sorcha-cli-admin-tool.md)
+- Check [MASTER-TASKS.md](../../../.specify/MASTER-TASKS.md) for implementation status
 
 **For bugs or feature requests:**
 - Create a GitHub issue with label `cli-tool`

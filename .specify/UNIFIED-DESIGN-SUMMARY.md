@@ -287,14 +287,14 @@ Notifies participants (SignalR)
 ## Documentation
 
 **Design Documents:**
-- [BLUEPRINT-SERVICE-UNIFIED-DESIGN.md](.specify/BLUEPRINT-SERVICE-UNIFIED-DESIGN.md) - Complete design specification
-- [BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md](.specify/BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md) - Detailed implementation plan (138 tasks)
+- [BLUEPRINT-SERVICE-UNIFIED-DESIGN.md](BLUEPRINT-SERVICE-UNIFIED-DESIGN.md) - Complete design specification
+- BLUEPRINT-SERVICE-IMPLEMENTATION-PLAN.md - Detailed implementation plan (138 tasks, archived)
 
 **Updated Architecture:**
 - [docs/architecture.md](../docs/reference/architecture.md) - Updated architecture documentation
 
 **Action Service Design (SUPERSEDED):**
-- [ACTION-SERVICE-DESIGN.md](.specify/ACTION-SERVICE-DESIGN.md) - Original action service design (for reference)
+- ACTION-SERVICE-DESIGN.md - Original action service design (archived, merged into unified design)
 - **Status:** Merged into unified design, no longer a separate service
 
 ---

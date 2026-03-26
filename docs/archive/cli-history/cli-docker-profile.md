@@ -217,6 +217,6 @@ You can manually edit this file to customize the docker profile URLs if needed.
 
 ### Next Steps
 
-- See [CLI Documentation](./CLI-DOCUMENTATION.md) for all available commands
-- See [Docker Setup](../docker-compose.yml) for service configuration
-- See [API Gateway Configuration](../src/Apps/Sorcha.ApiGateway/) for routing details
+- See [CLI README](../../../src/Apps/Sorcha.Cli/README.md) for all available commands
+- See [Docker Setup](../../../docker-compose.yml) for service configuration
+- See [API Gateway Configuration](../../../src/Services/Sorcha.ApiGateway/) for routing details

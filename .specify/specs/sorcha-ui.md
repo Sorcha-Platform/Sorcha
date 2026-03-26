@@ -56,7 +56,7 @@
 
 ### Why Replace Sorcha.Admin?
 
-**Sorcha.Admin** (Blazor Server) has the following critical issues documented in [KNOWN-ISSUES.md](../../src/Apps/Sorcha.Admin/KNOWN-ISSUES.md):
+**Sorcha.Admin** (Blazor Server) has the following critical issues:
 
 1. **❌ BLOCKING: Authentication State Not Displaying After Login**
    - Blazor Server circuit isolation prevents authentication state from persisting across navigation
@@ -2306,9 +2306,7 @@ Content-Security-Policy:
 ## Appendix B: References
 
 **Internal Documentation:**
-- [Sorcha.Admin README](../../src/Apps/Sorcha.Admin/README.md)
-- [Sorcha.Admin Feature Requirements](../../src/Apps/Sorcha.Admin/FEATURE-REQUIREMENTS.md)
-- [Sorcha.Admin Known Issues](../../src/Apps/Sorcha.Admin/KNOWN-ISSUES.md)
+- Sorcha.Admin (deprecated, replaced by Sorcha.UI)
 - [Sorcha Constitution](../constitution.md)
 - [Sorcha Architecture](../../docs/reference/architecture.md)
 
