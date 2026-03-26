@@ -13,8 +13,8 @@
 This is the foundational task for the Sorcha.Cryptography library rewrite. We need to create a clean, new library project with minimal dependencies and proper project structure.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec](../specs/Sorcha-cryptography-rewrite.md)
-- [Project Plan](../plan.md#project-structure)
+- [Sorcha.Cryptography Rewrite Spec](../specs/sorcha-cryptography-rewrite.md)
+- [Master Plan](../MASTER-PLAN.md)
 
 **Dependencies:**
 - None (first task)

@@ -345,8 +345,8 @@ When the following all pass, we're ready to proceed with terminology update:
 
 - **Issues Document**: [HUB-NODE-CONNECTIVITY-ISSUES.md](HUB-NODE-CONNECTIVITY-ISSUES.md)
 - **Azure Setup**: [AZURE-CUSTOM-DOMAIN-SETUP.md](../../guides/azure/AZURE-CUSTOM-DOMAIN-SETUP.md)
-- **Peer Service README**: [src/Services/Sorcha.Peer.Service/README.md](../src/Services/Sorcha.Peer.Service/README.md)
-- **CLI README**: [src/Apps/Sorcha.Cli/README.md](../src/Apps/Sorcha.Cli/README.md)
+- **Peer Service README**: [src/Services/Sorcha.Peer.Service/README.md](../../../src/Services/Sorcha.Peer.Service/README.md)
+- **CLI README**: [src/Apps/Sorcha.Cli/README.md](../../../src/Apps/Sorcha.Cli/README.md)
 
 ---
 

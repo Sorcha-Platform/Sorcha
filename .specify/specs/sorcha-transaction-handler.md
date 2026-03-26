@@ -4,7 +4,7 @@
 **Date:** 2025-11-13
 **Status:** Proposed
 **Related Constitution:** [constitution.md](../constitution.md)
-**Related Specification:** [Sorcha-cryptography-rewrite.md](Sorcha-cryptography-rewrite.md)
+**Related Specification:** [sorcha-cryptography-rewrite.md](sorcha-cryptography-rewrite.md)
 
 **Related Documentation:**
 - [Blockchain Transaction Format - JSON-LD Specification](../../docs/reference/blockchain-transaction-format.md)
@@ -703,7 +703,7 @@ public class PayloadOptions
 ## References
 
 - [Current Transaction Implementation](../../src/Common/SorchaPlatformCryptography/)
-- [Sorcha.Cryptography Specification](Sorcha-cryptography-rewrite.md)
+- [Sorcha.Cryptography Specification](sorcha-cryptography-rewrite.md)
 - [Bitcoin Transaction Format](https://developer.bitcoin.org/reference/transactions.html)
 
 ---

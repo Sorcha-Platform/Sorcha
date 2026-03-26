@@ -812,9 +812,9 @@ When a wallet is created via `WalletManager.CreateWalletAsync`, a recovery key i
 
 ## Resources
 
-- **Specification**: [.specify/specs/sorcha-wallet-service.md](.specify/specs/sorcha-wallet-service.md)
+- **Specification**: [.specify/specs/sorcha-wallet-service.md](../../../.specify/specs/sorcha-wallet-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7084/scalar)
-- **Development Status**: [docs/wallet-service-status.md](../../docs/wallet-service-status.md)
+- **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
 - **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
 - **BIP39 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 - **BIP44 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)

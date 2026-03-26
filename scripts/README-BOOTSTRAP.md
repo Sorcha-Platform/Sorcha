@@ -530,5 +530,5 @@ See [LICENSE](../LICENSE) for license information.
 **Status:** Beta - Placeholder implementation pending CLI feature completion
 **Related Documents:**
 - [Sorcha CLI README](../src/Apps/Sorcha.Cli/README.md)
-- [CLI Specification](.specify/specs/sorcha-cli-admin-tool.md)
-- [MASTER-TASKS.md](.specify/MASTER-TASKS.md)
+- [CLI Specification](../.specify/specs/sorcha-cli-admin-tool.md)
+- [MASTER-TASKS.md](../.specify/MASTER-TASKS.md)

@@ -342,7 +342,7 @@ Sorcha uses a **single bridge network** with port publishing:
 - **API Gateway**: Centralized HTTP/HTTPS ingress for all backend services
 - **gRPC Direct**: Peer services exposed directly for P2P communication
 
-See [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md) for detailed architecture.
+See the [Network Architecture](#network-architecture) section above for detailed architecture.
 
 ---
 
@@ -389,7 +389,7 @@ See [DEPLOYMENT.md](../guides/DEPLOYMENT.md) for full production deployment guid
 
 - **Main README**: [../README.md](../README.md)
 - **Deployment Guide**: [DEPLOYMENT.md](../guides/DEPLOYMENT.md)
-- **Docker Networking**: [DOCKER-BRIDGE-NETWORKING.md](DOCKER-BRIDGE-NETWORKING.md)
+- **Docker Networking**: See [Network Architecture](#network-architecture) section above
 - **Port Configuration**: [PORT-CONFIGURATION.md](PORT-CONFIGURATION.md)
 - **Architecture**: [architecture.md](../reference/architecture.md)
 

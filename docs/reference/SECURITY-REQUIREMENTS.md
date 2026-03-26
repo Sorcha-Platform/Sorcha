@@ -371,8 +371,7 @@ This document MUST be reviewed:
 
 - [Architecture](architecture.md) - Overall system architecture
 - [Validator Service Design](validator-service-design.md) - Validator service specification
-- [Register Service Specification](../.specify/specs/sorcha-register-service.md) - Register service specification
-- [Learnings](LEARNINGS.md) - Development best practices and lessons learned
+- [Register Service Specification](../../.specify/specs/sorcha-register-service.md) - Register service specification
 
 ---
 

@@ -389,7 +389,7 @@ with proper access to encryption keys and cryptographic operations.
 - [Architecture](../../reference/architecture.md)
 - [Validator Service Design](../../reference/validator-service-design.md)
 - [Testing Guide](../../guides/testing/testing.md)
-- [Security Guidelines](security-guidelines.md) (planned)
+- Security Guidelines (planned)
 
 ---
 

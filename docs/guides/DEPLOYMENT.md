@@ -702,6 +702,6 @@ docker-compose up -d
 
 ## Support
 
-- **Documentation**: [README.md](README.md)
+- **Documentation**: [docs README](../README.md)
 - **Troubleshooting**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - **Issues**: https://github.com/yourusername/sorcha/issues

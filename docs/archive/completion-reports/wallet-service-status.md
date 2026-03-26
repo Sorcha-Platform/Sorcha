@@ -581,7 +581,7 @@ tests/
 **Next Review Date:** 2025-11-23 (after next sprint)
 **Contributors:** Claude AI Agent
 **Related Documents:**
-- [Wallet Service Specification](.specify/specs/sorcha-wallet-service.md)
-- [Project Constitution](.specify/constitution.md)
+- [Wallet Service Specification](../../../.specify/specs/sorcha-wallet-service.md)
+- [Project Constitution](../../../.specify/constitution.md)
 - [Development Status](../../reference/development-status.md)
 - [README](../README.md)

@@ -296,8 +296,8 @@ Successfully connected to hub node n0.sorcha.dev
 
 ## 🔗 Related Documentation
 
-- [Docker macvlan Networking Guide](./DOCKER-MACVLAN-NETWORKING.md) - Complete setup guide
-- [CLI Implementation Success](./CLI-IMPLEMENTATION-SUCCESS.md) - CLI testing results
+- Docker macvlan Networking Guide (deprecated, see bridge networking)
+- CLI Implementation Success (archived)
 - [Peer Network Testing Summary](./PEER-NETWORK-TESTING-SUMMARY.md) - Peer network analysis
 
 ---

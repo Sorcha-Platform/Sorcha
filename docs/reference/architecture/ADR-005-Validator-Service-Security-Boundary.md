@@ -188,9 +188,9 @@ src/
 ## References
 
 - [Validator Service Design](../validator-service-design.md)
-- [Alpha Validator Analysis](../alpha-validator-service-analysis.md)
-- [Unified Design Summary](../../.specify/UNIFIED-DESIGN-SUMMARY.md)
-- [Register Service Phase 1-2 Completion](../register-service-phase1-2-completion.md)
+- [Validator Service Design](../validator-service-design.md)
+- [Unified Design Summary](../../../.specify/UNIFIED-DESIGN-SUMMARY.md)
+- [Register Service Phase 1-2 Completion](../../archive/completion-reports/register-service-phase1-2-completion.md)
 
 ---
 
@@ -203,4 +203,4 @@ This decision surfaced several important learnings:
 3. **Test-first development** helped us discover the boundary violation
 4. **Service decomposition** should follow security requirements, not just functional grouping
 
-See: [Learnings Document](../learnings/2025-11-16-validator-service-refactoring.md)
+See: [Learnings Document](../../archive/learnings/2025-11-16-validator-service-refactoring.md)

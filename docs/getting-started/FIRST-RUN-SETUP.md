@@ -346,9 +346,9 @@ For production deployments, update these values:
 ## Related Documentation
 
 - [Port Configuration](./PORT-CONFIGURATION.md) - Complete port reference
-- [Authentication Setup](./AUTHENTICATION-SETUP.md) - JWT and auth configuration
-- [Architecture Overview](./architecture.md) - System architecture
-- [Development Status](./development-status.md) - Current completion status
+- [Authentication Setup](../guides/AUTHENTICATION-SETUP.md) - JWT and auth configuration
+- [Architecture Overview](../reference/architecture.md) - System architecture
+- [Development Status](../reference/development-status.md) - Current completion status
 
 ---
 

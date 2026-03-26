@@ -651,10 +651,10 @@ Shows "Rejection Reason" field only when status = "rejected"
 ### Learn More
 
 📖 **Comprehensive Documentation:**
-- [Blueprint Architecture](./blueprint-architecture.md) - Deep dive into implementation
-- [JSON Logic Guide](./json-logic-guide.md) - Complete operator reference
-- [JSON-e Templates](./json-e-templates.md) - Dynamic blueprint generation
-- [Blueprint Format](./blueprint-format.md) - Complete specification
+- [Blueprint Architecture](../guides/blueprints/blueprint-architecture.md) - Deep dive into implementation
+- [JSON Logic Guide](../guides/blueprints/json-logic-guide.md) - Complete operator reference
+- [JSON-e Templates](../guides/blueprints/json-e-templates.md) - Dynamic blueprint generation
+- [Blueprint Format](../guides/blueprints/blueprint-format.md) - Complete specification
 
 ### Examples
 
@@ -765,4 +765,4 @@ Shows "Rejection Reason" field only when status = "rejected"
 
 **Happy Blueprint Building! 🎉**
 
-For questions or issues, see the [main documentation](./README.md) or create an issue on GitHub.
+For questions or issues, see the [main documentation](../README.md) or create an issue on GitHub.

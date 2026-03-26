@@ -59,7 +59,7 @@ Create a production-grade distributed ledger platform that combines the benefits
 - Tenant-specific configuration and policies
 - API authentication and authorization
 
-**Current Status:** Boilerplate specification available at [sorcha-tenant-service.md](.specify/specs/sorcha-tenant-service.md)
+**Current Status:** Boilerplate specification available at [sorcha-tenant-service.md](specs/sorcha-tenant-service.md)
 Basic tenant isolation implemented at application level.
 
 **Dependencies:**
@@ -71,7 +71,7 @@ Basic tenant isolation implemented at application level.
 #### 2. Wallet Service
 **Purpose:** Secure wallet management and cryptographic operations
 
-**Specification:** [sorcha-wallet-service.md](.specify/specs/sorcha-wallet-service.md)
+**Specification:** [sorcha-wallet-service.md](specs/sorcha-wallet-service.md)
 
 **Key Features:**
 - HD wallet creation and recovery (BIP32/BIP39/BIP44)
@@ -94,7 +94,7 @@ Basic tenant isolation implemented at application level.
 #### 3. Register Service (To Be Specified)
 **Purpose:** Distributed ledger and block management
 
-**Current Status:** Boilerplate specification available at [sorcha-register-service.md](.specify/specs/sorcha-register-service.md)
+**Current Status:** Boilerplate specification available at [sorcha-register-service.md](specs/sorcha-register-service.md)
 Stub implementation provided for wallet service integration.
 
 **Key Features:**
@@ -468,12 +468,10 @@ The following items are explicitly out of scope for the current specification:
 
 ## References
 
-- [Project Constitution](.specify/constitution.md)
-- [Implementation Plan](.specify/plan.md)
+- [Project Constitution](constitution.md)
+- [Implementation Plan](MASTER-PLAN.md)
 - [Project README](../README.md)
-- [Deployment Documentation](../deploy/bicep/README.md)
 - [Troubleshooting Guide](../docs/guides/TROUBLESHOOTING.md)
-- [Dependency Upgrade Plan](../DEPENDENCY_UPGRADE_PLAN.md)
 
 ---
 

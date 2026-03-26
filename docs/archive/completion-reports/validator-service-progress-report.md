@@ -632,10 +632,10 @@ ConsensusValidator: 0% (not tested yet)
 ## 🔗 Related Documentation
 
 - [Validator Service Compliance Report](validator-service-compliance-report.md)
-- [Validator Service Specification](.specify/specs/sorcha-validator-service.md)
-- [Master Plan](.specify/MASTER-PLAN.md)
-- [Master Tasks](.specify/MASTER-TASKS.md)
-- [Constitution](.specify/constitution.md)
+- [Validator Service Specification](../../../.specify/specs/sorcha-validator-service.md)
+- [Master Plan](../../../.specify/MASTER-PLAN.md)
+- [Master Tasks](../../../.specify/MASTER-TASKS.md)
+- [Constitution](../../../.specify/constitution.md)
 
 ---
 
