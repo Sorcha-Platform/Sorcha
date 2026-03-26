@@ -21,8 +21,10 @@ public static class OpenApiExtensions
     /// <param name="builder">The host application builder.</param>
     /// <param name="title">The API title displayed in the OpenAPI document.</param>
     /// <param name="description">The API description displayed in the OpenAPI document.</param>
+    /// <param name="configureOptions">Optional callback to configure additional OpenAPI options such as operation transformers.</param>
     /// <returns>The builder for chaining.</returns>
-    public static TBuilder AddSorchaOpenApi<TBuilder>(this TBuilder builder, string title, string description)
+    public static TBuilder AddSorchaOpenApi<TBuilder>(this TBuilder builder, string title, string description,
+        Action<Microsoft.AspNetCore.OpenApi.OpenApiOptions>? configureOptions = null)
         where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddOpenApi(options =>
@@ -49,6 +51,9 @@ public static class OpenApiExtensions
 
                 return Task.CompletedTask;
             });
+
+            // Apply any additional configuration (e.g., operation transformers for examples)
+            configureOptions?.Invoke(options);
         });
 
         return builder;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using Sorcha.Blueprint.Service.Storage;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -49,7 +51,29 @@ public static class ActionEndpoints
         .WithName("GetPendingActions")
         .WithSummary("Get pending actions for the authenticated user")
         .WithDescription("Returns all pending actions across blueprint instances for the user's wallet address. "
-            + "Supports pagination. Urgency and blueprint filtering will be added in a future iteration.");
+            + "Supports pagination. Urgency and blueprint filtering will be added in a future iteration.")
+        .WithOpenApi(operation =>
+        {
+            OpenApiExamples.SetResponseExample(operation, "200", """
+                {
+                  "items": [
+                    {
+                      "instanceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "actionId": "review-application",
+                      "blueprintTitle": "Construction Permit Application",
+                      "participantRole": "BuildingInspector",
+                      "status": "Pending",
+                      "createdAt": "2026-03-15T10:30:00Z",
+                      "dueDate": "2026-03-22T10:30:00Z"
+                    }
+                  ],
+                  "totalCount": 1,
+                  "page": 1,
+                  "pageSize": 20
+                }
+                """);
+            return operation;
+        });
 
         group.MapGet("/pending/count", async (
             HttpContext httpContext,

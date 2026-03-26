@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Security.Cryptography;
 using System.Text.Json;
+
 using Microsoft.AspNetCore.Mvc;
+
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Blueprint.Service.Services;
 using Sorcha.ServiceClients.Wallet;
@@ -34,7 +38,27 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status403Forbidden)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "issuerWallet": "sorcha1abc123def456ghi789jkl012mno345",
+                      "reason": "Key compromise detected during security audit"
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "200", """
+                    {
+                      "credentialId": "urn:uuid:3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "revokedBy": "sorcha1abc123def456ghi789jkl012mno345",
+                      "revokedAt": "2026-03-15T10:30:00Z",
+                      "reason": "Key compromise detected during security audit",
+                      "status": "Revoked",
+                      "statusListUpdated": true
+                    }
+                    """);
+                return operation;
+            });
 
         credentialGroup.MapPost("/{credentialId}/suspend", SuspendCredential)
             .WithName("SuspendCredential")

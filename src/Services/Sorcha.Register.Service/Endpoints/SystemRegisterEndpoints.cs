@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Text.Json;
+
 using Sorcha.Blueprint.Models;
 using Sorcha.Register.Service.Services;
 
@@ -121,7 +124,39 @@ public static class SystemRegisterEndpoints
         .Produces<PublishBlueprintResponse>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status500InternalServerError);
+        .Produces(StatusCodes.Status500InternalServerError)
+        .WithOpenApi(operation =>
+        {
+            OpenApiExamples.SetRequestExample(operation, """
+                {
+                  "blueprintId": "construction-permit-v1",
+                  "blueprint": {
+                    "title": "Construction Permit Application",
+                    "participants": [
+                      { "role": "Applicant", "description": "The person applying for a permit" },
+                      { "role": "BuildingInspector", "description": "Reviews and approves the application" }
+                    ],
+                    "actions": [
+                      { "id": "submit-application", "actor": "Applicant", "type": "Submit" },
+                      { "id": "review-application", "actor": "BuildingInspector", "type": "Review" }
+                    ]
+                  },
+                  "metadata": {
+                    "changeType": "structural",
+                    "author": "admin@acme.corp"
+                  }
+                }
+                """);
+            OpenApiExamples.SetResponseExample(operation, "201", """
+                {
+                  "transactionId": "tx:system-register:construction-permit-v1:a1b2c3d4",
+                  "blueprintId": "construction-permit-v1",
+                  "version": 1,
+                  "publishedAt": "2026-03-15T10:30:00Z"
+                }
+                """);
+            return operation;
+        });
 
         group.MapGet("/blueprints", async (
             SystemRegisterService service,
