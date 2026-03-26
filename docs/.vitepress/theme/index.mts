@@ -2,8 +2,12 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 import DefaultTheme from 'vitepress/theme'
-import type { Theme } from 'vitepress'
+import type { EnhanceAppContext } from 'vitepress'
+import { MermaidPlugin } from 'vitepress-plugin-mermaid'
 
 export default {
   extends: DefaultTheme,
-} satisfies Theme
+  enhanceApp({ app }: EnhanceAppContext) {
+    app.use(MermaidPlugin)
+  },
+}
