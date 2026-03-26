@@ -570,6 +570,6 @@ Sorcha.sln
 
 - [ADR-005: Validator Service Security Boundary](../../reference/architecture/ADR-005-Validator-Service-Security-Boundary.md)
 - [Validator Service Design](../../reference/validator-service-design.md)
-- [Register Service Phase 1-2 Completion](../register-service-phase1-2-completion.md)
+- [Register Service Phase 1-2 Completion](../completion-reports/register-service-phase1-2-completion.md)
 - [XUnit Documentation](https://xunit.net/)
 - [FluentAssertions Documentation](https://fluentassertions.com/)

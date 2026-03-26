@@ -36,7 +36,7 @@ The Sorcha Platform provides a comprehensive REST API for building distributed l
 **Base URLs:**
 - **Development (Local):** `http://localhost:5000`
 - **Staging (Azure):** `https://api-gateway.livelydune-b02bab51.uksouth.azurecontainerapps.io`
-- **Production:** `https://api.sorcha.dev` (DNS not yet configured)
+- **Production:** `https://sorcha.dev/api`
 
 **API Gateway:**
 All services are accessed through the API Gateway which provides:

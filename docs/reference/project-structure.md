@@ -147,7 +147,7 @@ All test projects following naming convention `{ProjectName}.Tests`.
 
 ### Allowed Dependencies
 
-```
+<!-- Original ASCII preserved for reference
 Apps/
   ↓ (can depend on)
 Core/ + Common/ + Services/
@@ -162,15 +162,47 @@ Core/ + Common/
 
 Common/
   ↓ (no dependencies on other src/ projects)
+
+Forbidden: Common → Core, Common → Apps, Common → Services, Core → Apps, Core → Services
+-->
+
+```mermaid
+graph TD
+    Apps["Apps/<br/>(AppHost, UI, Designer)"]
+    Services["Services/<br/>(API Gateway, Blueprint, Register,<br/>Wallet, Tenant, Validator, Peer)"]
+    Core["Core/<br/>(Engine, Fluent, Schemas,<br/>Register.Core, Register.Storage)"]
+    Common["Common/<br/>(Models, Cryptography, ServiceClients,<br/>ServiceDefaults, Storage, Validator.Core)"]
+    Tests["Tests/<br/>(30 test projects)"]
+
+    Apps -->|"allowed"| Services
+    Apps -->|"allowed"| Core
+    Apps -->|"allowed"| Common
+    Services -->|"allowed"| Core
+    Services -->|"allowed"| Common
+    Core -->|"allowed"| Common
+
+    Tests -.->|"can depend on everything"| Apps
+    Tests -.->|"can depend on everything"| Services
+    Tests -.->|"can depend on everything"| Core
+    Tests -.->|"can depend on everything"| Common
+
+    Common ~~~|" "| NoUp["No upward dependencies"]
+
+    linkStyle 0,1,2,3,4,5 stroke:#388e3c,stroke-width:2px
+    linkStyle 6,7,8,9 stroke:#1565c0,stroke-width:1px,stroke-dasharray:5
+
+    style Apps fill:#e1f5fe,stroke:#0288d1
+    style Services fill:#e8f5e9,stroke:#388e3c
+    style Core fill:#f3e5f5,stroke:#7b1fa2
+    style Common fill:#fff3e0,stroke:#f57c00
+    style Tests fill:#f5f5f5,stroke:#616161
+    style NoUp fill:#ffcdd2,stroke:#c62828
 ```
 
 ### Forbidden Dependencies
 
-- ❌ Common/ → Core/
-- ❌ Common/ → Apps/
-- ❌ Common/ → Services/
-- ❌ Core/ → Apps/
-- ❌ Core/ → Services/
+- Common/ must NOT depend on Core/, Apps/, or Services/
+- Core/ must NOT depend on Apps/ or Services/
 
 ## Target Frameworks
 
@@ -306,7 +338,7 @@ If you need to move a project:
 - [Architecture Overview](architecture.md)
 - [Testing Guide](../guides/testing/testing.md)
 - [Getting Started](../getting-started/getting-started.md)
-- [Contributing Guidelines](../CONTRIBUTING.md)
+- [Contributing Guidelines](../../CONTRIBUTING.md)
 
 ---
 

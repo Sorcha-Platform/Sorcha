@@ -1,0 +1,23 @@
+# Lychee link checker configuration
+# Only checks internal/local links to avoid external rate limiting
+
+# Exclude external URLs entirely - only check local file links
+exclude_path = [
+  "docs/archive/",
+  "docs/site/",
+  "docs/plans/",
+  "docs/superpowers/"
+]
+
+# Only check local file links, skip all network requests
+scheme = ["file"]
+
+# Skip external URLs
+exclude = [
+  "^https?://",
+  "^mailto:",
+  "^tel:"
+]
+
+# Don't require network access
+no_progress = true

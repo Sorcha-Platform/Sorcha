@@ -571,8 +571,8 @@ After familiarizing yourself with the Validator Service:
 
 ## Resources
 
-- **Sorcha Documentation**: [docs/](../../../docs/)
-- **Constitution**: [.specify/memory/constitution.md](../../../.specify/memory/constitution.md)
+- **Sorcha Documentation**: [docs/](../../docs/)
+- **Constitution**: [.specify/constitution.md](../../.specify/constitution.md)
 - **gRPC Guide**: [https://grpc.io/docs/languages/csharp/](https://grpc.io/docs/languages/csharp/)
 - **.NET Aspire**: [https://learn.microsoft.com/en-us/dotnet/aspire/](https://learn.microsoft.com/en-us/dotnet/aspire/)
 - **Blockchain Basics**: [https://en.wikipedia.org/wiki/Blockchain](https://en.wikipedia.org/wiki/Blockchain)

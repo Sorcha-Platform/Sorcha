@@ -815,7 +815,6 @@ src/Common/Sorcha.Validator.Core/
 
 - **Specification:** [.specify/specs/sorcha-validator-service.md](./../../../.specify/specs/sorcha-validator-service.md)
 - **Design:** [docs/validator-service-design.md](./../../../docs/reference/validator-service-design.md)
-- **Implementation Plan:** [docs/validator-service-implementation-plan.md](./../../../docs/validator-service-implementation-plan.md)
 - **Architecture:** [docs/architecture.md](./../../../docs/reference/architecture.md)
 - **API Documentation:** [https://localhost:7087/scalar/v1](https://localhost:7087/scalar/v1) (when running)
 

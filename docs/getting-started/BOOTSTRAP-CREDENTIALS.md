@@ -325,7 +325,7 @@ Host=host.docker.internal;Port=5432;Database=sorcha_tenant;...
 
 - [Infrastructure Setup Guide](INFRASTRUCTURE-SETUP.md) - PostgreSQL, Redis, MongoDB deployment
 - [Authentication Setup Guide](../guides/AUTHENTICATION-SETUP.md) - JWT configuration and service integration
-- [Tenant Service Specification](.specify/specs/sorcha-tenant-service.md) - Complete API documentation
+- [Tenant Service Specification](../../.specify/specs/sorcha-tenant-service.md) - Complete API documentation
 
 ---
 

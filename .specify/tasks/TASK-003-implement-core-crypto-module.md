@@ -13,7 +13,7 @@
 Implement the core cryptographic module that handles key generation, digital signatures, encryption/decryption, and public key operations. This is the heart of the library and must be implemented with security and correctness as top priorities.
 
 **Related Specifications:**
-- [Sorcha.Cryptography Rewrite Spec - FR-1 through FR-4](../specs/Sorcha-cryptography-rewrite.md#fr-1-key-generation)
+- [Sorcha.Cryptography Rewrite Spec - FR-1 through FR-4](../specs/sorcha-cryptography-rewrite.md#fr-1-key-generation)
 - [Current CryptoModule Implementation](../../src/Common/SorchaPlatformCryptography/CryptoModule.cs)
 
 **Dependencies:**

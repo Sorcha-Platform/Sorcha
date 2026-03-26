@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+#pragma warning disable ASPDEPR002 // WithOpenApi is deprecated; using it for co-located endpoint examples until transformer API stabilizes
+
 using System.Text.Json;
 using System.Xml;
+
 using Microsoft.AspNetCore.Mvc;
+
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.Wallet.Core.Domain.Entities;
@@ -72,7 +76,34 @@ public static class CredentialEndpoints
             .WithDescription("Stores a pre-issued verifiable credential in the specified wallet.")
             .Produces<object>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
-            .Produces(StatusCodes.Status401Unauthorized);
+            .Produces(StatusCodes.Status401Unauthorized)
+            .WithOpenApi(operation =>
+            {
+                OpenApiExamples.SetRequestExample(operation, """
+                    {
+                      "credentialId": "urn:uuid:3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "type": "BuildingInspectorCertificate",
+                      "issuerDid": "did:sorcha:org:sorcha1abc123def456...",
+                      "subjectDid": "did:sorcha:org:sorcha1xyz789ghi012...",
+                      "claimsJson": "{\"name\":\"Jane Doe\",\"licenseNumber\":\"BI-2026-0042\",\"jurisdiction\":\"Dublin City\"}",
+                      "issuedAt": "2026-03-15T10:30:00Z",
+                      "expiresAt": "2027-03-15T10:30:00Z",
+                      "rawToken": "eyJhbGciOiJFZERTQSJ9.eyJpc3MiOiJkaWQ6c29yY2hhOm9yZzo..."
+                    }
+                    """);
+                OpenApiExamples.SetResponseExample(operation, "201", """
+                    {
+                      "id": "urn:uuid:3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                      "type": "BuildingInspectorCertificate",
+                      "issuerDid": "did:sorcha:org:sorcha1abc123def456...",
+                      "subjectDid": "did:sorcha:org:sorcha1xyz789ghi012...",
+                      "issuedAt": "2026-03-15T10:30:00Z",
+                      "expiresAt": "2027-03-15T10:30:00Z",
+                      "status": "Active"
+                    }
+                    """);
+                return operation;
+            });
 
         credentialGroup.MapPatch("/{credentialId}/status", UpdateCredentialStatus)
             .WithName("UpdateCredentialStatus")

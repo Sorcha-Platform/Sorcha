@@ -369,8 +369,8 @@ The Sorcha Peer Service represents a strategic investment in decentralization th
 
 ## Related Documents
 
-- [Detailed Design Document](peer-service-design.md) - Technical architecture and component design
-- [Implementation Plan](peer-service-implementation-plan.md) - Detailed sprint breakdown and deliverables
+- [Detailed Design Document](../implementation-plans/peer-service-design.md) - Technical architecture and component design
+- [Implementation Plan](../implementation-plans/peer-service-implementation-plan.md) - Detailed sprint breakdown and deliverables
 - [Architecture Overview](../../reference/architecture.md) - How Peer Service fits into overall Sorcha architecture
 - [Testing Guide](../../guides/testing/testing.md) - Testing strategy and best practices
 

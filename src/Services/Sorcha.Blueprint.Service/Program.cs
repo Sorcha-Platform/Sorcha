@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
-using Scalar.AspNetCore;
 using System.Buffers.Text;
 using System.Collections.Concurrent;
 using Sorcha.Blueprint.Service.Endpoints;
@@ -41,8 +40,9 @@ builder.AddRedisClient("redis");
 // Add Redis distributed cache for IDistributedCache dependency
 builder.AddRedisDistributedCache("redis");
 
-// Add OpenAPI services
-builder.Services.AddOpenApi();
+// Add OpenAPI services with standard Sorcha metadata
+builder.AddSorchaOpenApi("Sorcha Blueprint Service API",
+    "Blueprint workflow management, action execution, credential lifecycle, schema library, and SignalR real-time notifications.");
 
 // Add storage — EF Core + PostgreSQL when configured, InMemory fallback otherwise
 var blueprintDbConn = builder.Configuration.GetConnectionString("BlueprintDb");
@@ -305,20 +305,8 @@ app.UseHttpsEnforcement();
 // Enable input validation (SEC-003)
 app.UseInputValidation();
 
-// Configure OpenAPI (available in all environments for API consumers)
-app.MapOpenApi();
-
-// Configure Scalar API documentation UI (development only)
-if (app.Environment.IsDevelopment())
-{
-    app.MapScalarApiReference(options =>
-    {
-        options
-            .WithTitle("Blueprint Service")
-            .WithTheme(ScalarTheme.Purple)
-            .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
-    });
-}
+// Configure OpenAPI and Scalar API documentation UI
+app.MapSorchaOpenApiUi("Sorcha Blueprint Service API");
 
 app.UseOutputCache();
 
@@ -1599,6 +1587,15 @@ instancesGroup.MapPost("/", async (
             startingActions = [blueprint.Actions.First().Id];
         }
 
+        // Pre-populate participant wallets from blueprint definitions so that
+        // pending action queries can match by wallet address before the participant
+        // has executed their first action on this instance.
+        var participantWallets = new Dictionary<string, string>();
+        foreach (var p in blueprint.Participants.Where(p => !string.IsNullOrEmpty(p.WalletAddress)))
+        {
+            participantWallets[p.Id] = p.WalletAddress!;
+        }
+
         // Create instance
         var instance = new Sorcha.Blueprint.Service.Models.Instance
         {
@@ -1607,6 +1604,7 @@ instancesGroup.MapPost("/", async (
             BlueprintVersion = 1, // TODO: Get actual published version
             RegisterId = request.RegisterId,
             CurrentActionIds = startingActions,
+            ParticipantWallets = participantWallets,
             State = Sorcha.Blueprint.Service.Models.InstanceState.Active,
             TenantId = request.TenantId ?? "default",
             Metadata = request.Metadata?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString() ?? "")

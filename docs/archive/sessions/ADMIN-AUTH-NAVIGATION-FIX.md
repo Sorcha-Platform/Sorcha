@@ -231,9 +231,9 @@ None currently identified.
 
 - [Admin Authentication Fixes](ADMIN-AUTH-FIXES.md) - Original authentication fixes
 - [JWT Configuration Guide](../../guides/JWT-CONFIGURATION.md)
-- [Sorcha.Admin Tests README](../tests/Sorcha.Admin.Tests/README.md)
-- [AuthenticatedHttpMessageHandler Source](../src/Apps/Sorcha.Admin/Services/Http/AuthenticatedHttpMessageHandler.cs)
-- [BrowserTokenCache Source](../src/Apps/Sorcha.Admin/Services/Authentication/BrowserTokenCache.cs)
+- [Sorcha.Admin Tests README](../../../tests/Sorcha.Admin.Tests/README.md)
+- [AuthenticatedHttpMessageHandler Source](../../../src/Apps/Sorcha.Admin/Services/Http/AuthenticatedHttpMessageHandler.cs)
+- [BrowserTokenCache Source](../../../src/Apps/Sorcha.Admin/Services/Authentication/BrowserTokenCache.cs)
 
 ## Deployment
 

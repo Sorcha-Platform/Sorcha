@@ -364,7 +364,7 @@ https://peer.sorcha.io      - Peer
 
 ## See Also
 
-- [Development Status](./development-status.md) - Current implementation status
-- [Architecture Overview](./architecture.md) - System architecture diagrams
-- [API Documentation](./API-DOCUMENTATION.md) - API endpoint reference
+- [Development Status](../reference/development-status.md) - Current implementation status
+- [Architecture Overview](../reference/architecture.md) - System architecture diagrams
+- [API Documentation](../reference/API-DOCUMENTATION.md) - API endpoint reference
 - [README](../README.md) - Project overview and getting started

@@ -260,7 +260,7 @@ Start social login flow for public user registration/sign-in.
 ```json
 {
   "provider": "Google",
-  "redirectUri": "https://app.sorcha.dev/auth/callback"
+  "redirectUri": "https://n1.sorcha.dev/auth/callback"
 }
 ```
 
@@ -330,7 +330,7 @@ Link a social provider to an existing public user account.
 ```json
 {
   "provider": "GitHub",
-  "redirectUri": "https://app.sorcha.dev/auth/callback"
+  "redirectUri": "https://n1.sorcha.dev/auth/callback"
 }
 ```
 
