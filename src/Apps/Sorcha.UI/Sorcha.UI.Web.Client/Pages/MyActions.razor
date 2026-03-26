@@ -23,6 +23,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject ILogger<MyActions> Logger
+@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 <PageTitle>My Pending Actions - Sorcha Platform</PageTitle>
@@ -48,6 +49,12 @@
                      Variant="Variant.Outlined">
                 @_connectionState.StatusText
             </MudChip>
+            <MudToggleIconButton Toggled="@(_viewMode == "table")"
+                                 ToggledChanged="ToggleViewMode"
+                                 Icon="@Icons.Material.Filled.ViewModule"
+                                 ToggledIcon="@Icons.Material.Filled.ViewList"
+                                 Size="Size.Small"
+                                 Title="@(_viewMode == "cards" ? "Switch to table view" : "Switch to card view")" />
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadActionsAsync">
                 Refresh
@@ -115,52 +122,105 @@
     }
     else
     {
-        <MudGrid>
-            @foreach (var action in _actions)
+        @foreach (var group in _groupedActions)
+        {
+            @if (_groupedActions.Count > 1)
             {
-                <MudItem xs="12" md="6" lg="4">
-                    <MudCard Elevation="2">
-                        <MudCardHeader>
-                            <CardHeaderContent>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">@action.BlueprintName</MudText>
-                                <MudText Typo="Typo.h6">@action.ActionName</MudText>
-                                @if (!string.IsNullOrEmpty(action.InstanceReference))
-                                {
-                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Style="font-family: monospace;">@action.InstanceReference</MudText>
-                                }
-                            </CardHeaderContent>
-                            <CardHeaderActions>
-                                <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(action.Priority)">@action.Priority</MudChip>
-                            </CardHeaderActions>
-                        </MudCardHeader>
-                        <MudCardContent>
-                            @if (!string.IsNullOrEmpty(action.Description))
-                            {
-                                <MudText Typo="Typo.body2" Class="mb-2">@action.Description</MudText>
-                            }
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2 mt-3">
+                    <MudText Typo="Typo.subtitle1"><strong>@group.Key</strong></MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@group.Value.Count</MudChip>
+                </MudStack>
+            }
 
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
-                                Assigned: @action.AssignedAt.ToString("MMM dd, yyyy HH:mm")
-                            </MudText>
-                            @if (action.DueAt.HasValue)
+            @if (_viewMode == "table")
+            {
+                <MudTable Items="@group.Value" Hover="true" Dense="true" Elevation="2" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh>Action</MudTh>
+                        <MudTh>Reference</MudTh>
+                        @if (_groupedActions.Count <= 1)
+                        {
+                            <MudTh>Blueprint</MudTh>
+                        }
+                        <MudTh>Assigned</MudTh>
+                        <MudTh>Priority</MudTh>
+                        <MudTh Style="width: 140px;"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Action">@context.ActionName</MudTd>
+                        <MudTd DataLabel="Reference">
+                            @if (!string.IsNullOrEmpty(context.InstanceReference))
                             {
-                                <MudText Typo="Typo.caption" Color="@(action.DueAt.Value < DateTimeOffset.Now ? Color.Error : Color.Secondary)">
-                                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" />
-                                    Due: @action.DueAt.Value.ToString("MMM dd, yyyy HH:mm")
-                                </MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Primary" Style="font-family: monospace;">@context.InstanceReference</MudText>
                             }
-                        </MudCardContent>
-                        <MudCardActions>
-                            <MudButton Color="Color.Primary" Variant="Variant.Filled" FullWidth="true"
-                                       OnClick="() => TakeAction(action)">
+                        </MudTd>
+                        @if (_groupedActions.Count <= 1)
+                        {
+                            <MudTd DataLabel="Blueprint">@context.BlueprintName</MudTd>
+                        }
+                        <MudTd DataLabel="Assigned">@context.AssignedAt.ToString("MMM dd, yyyy HH:mm")</MudTd>
+                        <MudTd DataLabel="Priority">
+                            <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(context.Priority)">@context.Priority</MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudButton Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small"
+                                       OnClick="() => TakeAction(context)">
                                 Take Action
                             </MudButton>
-                        </MudCardActions>
-                    </MudCard>
-                </MudItem>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
             }
-        </MudGrid>
+            else
+            {
+                <MudGrid Class="mb-4">
+                    @foreach (var action in group.Value)
+                    {
+                        <MudItem xs="12" md="6" lg="4">
+                            <MudCard Elevation="2">
+                                <MudCardHeader>
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">@action.BlueprintName</MudText>
+                                        <MudText Typo="Typo.h6">@action.ActionName</MudText>
+                                        @if (!string.IsNullOrEmpty(action.InstanceReference))
+                                        {
+                                            <MudText Typo="Typo.subtitle2" Color="Color.Primary" Style="font-family: monospace;">@action.InstanceReference</MudText>
+                                        }
+                                    </CardHeaderContent>
+                                    <CardHeaderActions>
+                                        <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(action.Priority)">@action.Priority</MudChip>
+                                    </CardHeaderActions>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    @if (!string.IsNullOrEmpty(action.Description))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mb-2">@action.Description</MudText>
+                                    }
+
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" />
+                                        Assigned: @action.AssignedAt.ToString("MMM dd, yyyy HH:mm")
+                                    </MudText>
+                                    @if (action.DueAt.HasValue)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="@(action.DueAt.Value < DateTimeOffset.Now ? Color.Error : Color.Secondary)">
+                                            <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" />
+                                            Due: @action.DueAt.Value.ToString("MMM dd, yyyy HH:mm")
+                                        </MudText>
+                                    }
+                                </MudCardContent>
+                                <MudCardActions>
+                                    <MudButton Color="Color.Primary" Variant="Variant.Filled" FullWidth="true"
+                                               OnClick="() => TakeAction(action)">
+                                        Take Action
+                                    </MudButton>
+                                </MudCardActions>
+                            </MudCard>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        }
     }
 
     <MudItem xs="12" Class="mt-4">
@@ -185,17 +245,57 @@
 @code {
     private List<PendingActionViewModel> _actions = [];
     private List<ActionAvailableNotification> _recentNotifications = [];
+    private List<KeyValuePair<string, List<PendingActionViewModel>>> _groupedActions = [];
     private ConnectionState _connectionState = new();
     private ActionsHubConnection? _actionsHub = null;
     private bool _loading = true;
     private bool _serviceError;
+    private string _viewMode = "cards";
     private string? _activeEncryptionOperationId;
     private ActionExecuteRequest? _activeEncryptionRequest;
+    private const string ViewModeStorageKey = "sorcha:pendingActions:viewMode";
 
     protected override async Task OnInitializedAsync()
     {
         await LoadActionsAsync();
         await ConnectToActionsHubAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var stored = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", ViewModeStorageKey);
+                if (stored is "cards" or "table")
+                {
+                    _viewMode = stored;
+                    StateHasChanged();
+                }
+            }
+            catch { /* localStorage not available */ }
+        }
+    }
+
+    private async Task ToggleViewMode(bool isTable)
+    {
+        _viewMode = isTable ? "table" : "cards";
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", ViewModeStorageKey, _viewMode);
+        }
+        catch { /* localStorage not available */ }
+    }
+
+    private void RebuildGroups()
+    {
+        _groupedActions = _actions
+            .GroupBy(a => a.BlueprintName)
+            .OrderBy(g => g.Key)
+            .Select(g => new KeyValuePair<string, List<PendingActionViewModel>>(
+                g.Key, g.OrderByDescending(a => a.AssignedAt).ToList()))
+            .ToList();
     }
 
     private async Task ConnectToActionsHubAsync()
@@ -237,6 +337,7 @@
         try
         {
             _actions = await WorkflowService.GetPendingActionsAsync();
+            RebuildGroups();
         }
         catch (Exception ex)
         {
@@ -316,6 +417,7 @@
                 {
                     Snackbar.Add("Action submitted successfully", Severity.Success);
                     _actions.Remove(action);
+                    RebuildGroups();
                     StateHasChanged();
 
                     // TODO: When the Blueprint Service surfaces credential issuance data in the

@@ -127,9 +127,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T026 [US4] Add view toggle button (card/table icons) to the Pending Actions page header in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — MudToggleIconButton or similar, wired to a `_viewMode` state variable ("cards" or "table").
-- [ ] T027 [US4] Implement table row view in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — MudTable with columns: Action Title, Instance Reference, Blueprint Name, Assigned Date, Urgency, TAKE ACTION button. Conditionally render card grid or table based on `_viewMode`.
-- [ ] T028 [US4] Add localStorage persistence for view preference using JS interop in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — read preference on `OnAfterRenderAsync(firstRender)`, write on toggle. Key: `sorcha:pendingActions:viewMode`.
+- [x] T026 [US4] Add view toggle button (card/table icons) to the Pending Actions page header in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — MudToggleIconButton or similar, wired to a `_viewMode` state variable ("cards" or "table").
+- [x] T027 [US4] Implement table row view in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — MudTable with columns: Action Title, Instance Reference, Blueprint Name, Assigned Date, Urgency, TAKE ACTION button. Conditionally render card grid or table based on `_viewMode`.
+- [x] T028 [US4] Add localStorage persistence for view preference using JS interop in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — read preference on `OnAfterRenderAsync(firstRender)`, write on toggle. Key: `sorcha:pendingActions:viewMode`.
 
 **Checkpoint**: Card/table toggle works and persists across login sessions.
 
@@ -143,8 +143,8 @@
 
 ### Implementation for User Story 5
 
-- [ ] T029 [US5] Add client-side grouping logic in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — group `_actions` by `BlueprintName`, produce `Dictionary<string, List<PendingActionViewModel>>` with counts. Sort groups alphabetically, sort actions within groups by `AssignedAt` descending.
-- [ ] T030 [US5] Update card view and table view rendering to iterate by group — show group heading with blueprint title and count badge (e.g., "Construction Permit Approval (3)"). Skip grouping chrome when only one group exists.
+- [x] T029 [US5] Add client-side grouping logic in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyActions.razor` — group `_actions` by `BlueprintName`, produce `Dictionary<string, List<PendingActionViewModel>>` with counts. Sort groups alphabetically, sort actions within groups by `AssignedAt` descending.
+- [x] T030 [US5] Update card view and table view rendering to iterate by group — show group heading with blueprint title and count badge (e.g., "Construction Permit Approval (3)"). Skip grouping chrome when only one group exists.
 
 **Checkpoint**: Pending actions are visually grouped by blueprint type with correct counts and sort order.
 
@@ -154,11 +154,11 @@
 
 **Purpose**: Final validation, cleanup, and consistency checks.
 
-- [ ] T031 Verify PendingActionInbox sidebar and MyActions page show consistent enriched data — same field names, same formatting, same fallback behaviour
-- [ ] T032 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
-- [ ] T033 Update walkthrough to test instance reference generation end-to-end — run `pwsh walkthroughs/ConstructionPermit/run.ps1 -Scenario A` and verify instance metadata contains generated reference
+- [x] T031 Verify PendingActionInbox sidebar and MyActions page show consistent enriched data — same field names, same formatting, same fallback behaviour
+- [x] T032 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
+- [x] T033 Update walkthrough to test instance reference generation end-to-end — run `pwsh walkthroughs/ConstructionPermit/run.ps1 -Scenario A` and verify instance metadata contains generated reference
 - [x] T034 Update `Construction-Permit-Walkthrough.md` Known Issues section — remove the "Execute Action form empty" issue (fixed by US3), add any new known issues discovered during implementation
-- [ ] T035 Fix BlueprintTitle on pending action cards — instance creation stores blueprint ID as BlueprintTitle in metadata instead of the human-readable title. Fix in instance creation path (`POST /api/instances/`) to read `Blueprint.Title` and store it in `Instance.Metadata["BlueprintTitle"]`
+- [x] T035 Fix BlueprintTitle on pending action cards — instance creation stores blueprint ID as BlueprintTitle in metadata instead of the human-readable title. Fix in instance creation path (`POST /api/instances/`) to read `Blueprint.Title` and store it in `Instance.Metadata["BlueprintTitle"]`
 
 ---
 

@@ -1610,6 +1610,11 @@ instancesGroup.MapPost("/", async (
             Metadata = request.Metadata?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value?.ToString() ?? "")
                 ?? new Dictionary<string, string>()
         };
+        // Ensure BlueprintTitle is stored as human-readable title, not the blueprint ID
+        if (!instance.Metadata.ContainsKey("BlueprintTitle"))
+        {
+            instance.Metadata["BlueprintTitle"] = blueprint.Title;
+        }
 
         await instanceStore.CreateAsync(instance);
 
