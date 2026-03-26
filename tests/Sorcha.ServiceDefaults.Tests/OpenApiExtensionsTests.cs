@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 namespace Sorcha.ServiceDefaults.Tests;
@@ -179,6 +180,98 @@ public class OpenApiExtensionsTests : IAsyncLifetime
 
         // Act
         var result = app.MapSorchaOpenApiUi("Test API");
+
+        // Assert
+        result.Should().BeSameAs(app, "the method should return the app for chaining");
+    }
+
+    [Fact]
+    public void MapSorchaOpenApiUi_WithRoutePattern_ReturnsWebApplication_ForChaining()
+    {
+        // Arrange
+        var builder = WebApplication.CreateBuilder();
+        builder.AddSorchaOpenApi("Test API", "A test API");
+        var app = builder.Build();
+
+        // Act
+        var result = app.MapSorchaOpenApiUi("Test API",
+            routePattern: "/docs",
+            openApiRoutePattern: "/openapi/aggregated.json",
+            authorizationPolicy: "TestPolicy");
+
+        // Assert
+        result.Should().BeSameAs(app, "the method should return the app for chaining");
+    }
+
+    [Fact]
+    public void MapSorchaOpenApiUi_WithExposeScalarTrue_ReturnsWebApplication_ForChaining()
+    {
+        // Arrange
+        var builder = WebApplication.CreateBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenApi:ExposeScalar"] = "true"
+        });
+        builder.AddSorchaOpenApi("Test API", "A test API");
+        var app = builder.Build();
+
+        // Act
+        var result = app.MapSorchaOpenApiUi("Test API");
+
+        // Assert
+        result.Should().BeSameAs(app, "the method should return the app for chaining");
+    }
+
+    [Fact]
+    public void MapSorchaOpenApiUi_WithExposeScalarFalse_InProduction_ReturnsWebApplication_ForChaining()
+    {
+        // Arrange — simulate non-Development environment with ExposeScalar=false
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = "Production"
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenApi:ExposeScalar"] = "false"
+        });
+        builder.AddSorchaOpenApi("Test API", "A test API");
+        var app = builder.Build();
+
+        // Act
+        var result = app.MapSorchaOpenApiUi("Test API");
+
+        // Assert
+        result.Should().BeSameAs(app, "the method should return the app for chaining");
+    }
+
+    [Fact]
+    public void MapSorchaOpenApiUi_WithCustomRouteAndOpenApiRoute_ReturnsWebApplication_ForChaining()
+    {
+        // Arrange
+        var builder = WebApplication.CreateBuilder();
+        builder.AddSorchaOpenApi("Gateway API", "API Gateway docs");
+        var app = builder.Build();
+
+        // Act
+        var result = app.MapSorchaOpenApiUi("Gateway API",
+            routePattern: "/openapi",
+            openApiRoutePattern: "/openapi/aggregated.json");
+
+        // Assert
+        result.Should().BeSameAs(app, "the method should return the app for chaining");
+    }
+
+    [Fact]
+    public void MapSorchaOpenApiUi_WithOnlyAuthorizationPolicy_ReturnsWebApplication_ForChaining()
+    {
+        // Arrange
+        var builder = WebApplication.CreateBuilder();
+        builder.AddSorchaOpenApi("Secured API", "API with auth");
+        var app = builder.Build();
+
+        // Act
+        var result = app.MapSorchaOpenApiUi("Secured API",
+            authorizationPolicy: "OpenApiAccess");
 
         // Assert
         result.Should().BeSameAs(app, "the method should return the app for chaining");

@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Http;
 using Polly;
 using Polly.Extensions.Http;
-using Scalar.AspNetCore;
 using System.Buffers.Text;
 using System.Collections.Concurrent;
 using Sorcha.Blueprint.Service.Endpoints;
@@ -41,8 +40,9 @@ builder.AddRedisClient("redis");
 // Add Redis distributed cache for IDistributedCache dependency
 builder.AddRedisDistributedCache("redis");
 
-// Add OpenAPI services
-builder.Services.AddOpenApi();
+// Add OpenAPI services with standard Sorcha metadata
+builder.AddSorchaOpenApi("Sorcha Blueprint Service API",
+    "Blueprint workflow management, action execution, credential lifecycle, schema library, and SignalR real-time notifications.");
 
 // Add storage — EF Core + PostgreSQL when configured, InMemory fallback otherwise
 var blueprintDbConn = builder.Configuration.GetConnectionString("BlueprintDb");
@@ -305,20 +305,8 @@ app.UseHttpsEnforcement();
 // Enable input validation (SEC-003)
 app.UseInputValidation();
 
-// Configure OpenAPI (available in all environments for API consumers)
-app.MapOpenApi();
-
-// Configure Scalar API documentation UI (development only)
-if (app.Environment.IsDevelopment())
-{
-    app.MapScalarApiReference(options =>
-    {
-        options
-            .WithTitle("Blueprint Service")
-            .WithTheme(ScalarTheme.Purple)
-            .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
-    });
-}
+// Configure OpenAPI and Scalar API documentation UI
+app.MapSorchaOpenApiUi("Sorcha Blueprint Service API");
 
 app.UseOutputCache();
 

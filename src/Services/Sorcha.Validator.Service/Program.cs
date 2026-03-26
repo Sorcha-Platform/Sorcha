@@ -205,7 +205,7 @@ app.UseAuthorization();
 app.MapGrpcService<Sorcha.Validator.Service.GrpcServices.ValidatorGrpcService>();
 
 // Configure OpenAPI and Scalar API documentation UI (development only)
-app.MapSorchaOpenApiUi("Sorcha Validator Service API", Scalar.AspNetCore.ScalarTheme.Mars);
+app.MapSorchaOpenApiUi("Sorcha Validator Service API", theme: Scalar.AspNetCore.ScalarTheme.Mars);
 
 // Map API endpoints (protected — requires authentication)
 app.MapGroup("/api/v1/transactions")
