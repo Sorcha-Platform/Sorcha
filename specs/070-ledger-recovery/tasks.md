@@ -19,7 +19,7 @@
 
 **Purpose**: Verify branch, ensure build green.
 
-- [ ] T001 Verify branch `070-ledger-recovery` is checked out and solution builds with `dotnet build --force`
+- [x] T001 Verify branch `070-ledger-recovery` is checked out and solution builds with `dotnet build --force`
 
 ---
 
@@ -29,11 +29,11 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T002 [P] Create `RegisterHealthStatus` enum (Unknown, Online, Offline, Degraded) in `src/Services/Sorcha.Blueprint.Service/Models/RegisterHealthStatus.cs` with XML docs and license header
-- [ ] T003 [P] Create `RegisterRecoveryState` class in `src/Services/Sorcha.Blueprint.Service/Models/RecoveryState.cs` — fields: RegisterId, RegisterName, Status (RegisterHealthStatus), Height, LastCheckedAt, LastSuccessAt, ConsecutiveFailures, RecoveredBlueprintCount, ErrorMessage. Also add `RecoveryState` class with IsComplete, StartedAt, CompletedAt, RegisterStates dictionary.
-- [ ] T004 Create `RecoveryOptions` configuration class in `src/Services/Sorcha.Blueprint.Service/Models/RecoveryOptions.cs` — RefreshIntervalSeconds (default 60), StartupTimeoutSeconds (default 30), MaxRetryAttempts (default 3). Register in DI from appsettings section "Recovery".
-- [ ] T005 Add `GET /api/registers/{registerId}/blueprints/published` endpoint in `src/Services/Sorcha.Register.Service/Endpoints/RegisterEndpoints.cs` (or new file) — query all Control transactions where metadata `transactionType == "BlueprintPublish"`, return list with blueprintId, transactionId, publishedBy, publishedAt, blueprintJson, plus registerHeight and queriedAt. Use existing `IRegisterRepository.QueryTransactionsAsync()`.
-- [ ] T006 [P] Unit tests for the published blueprints endpoint in `tests/Sorcha.Register.Service.Tests/PublishedBlueprintsEndpointTests.cs` — test: returns published blueprints, empty register returns empty list, non-existent register returns 404
+- [x] T002 [P] Create `RegisterHealthStatus` enum (Unknown, Online, Offline, Degraded) in `src/Services/Sorcha.Blueprint.Service/Models/RegisterHealthStatus.cs` with XML docs and license header
+- [x] T003 [P] Create `RegisterRecoveryState` class in `src/Services/Sorcha.Blueprint.Service/Models/RecoveryState.cs` — fields: RegisterId, RegisterName, Status (RegisterHealthStatus), Height, LastCheckedAt, LastSuccessAt, ConsecutiveFailures, RecoveredBlueprintCount, ErrorMessage. Also add `RecoveryState` class with IsComplete, StartedAt, CompletedAt, RegisterStates dictionary.
+- [x] T004 Create `RecoveryOptions` configuration class in `src/Services/Sorcha.Blueprint.Service/Models/RecoveryOptions.cs` — RefreshIntervalSeconds (default 60), StartupTimeoutSeconds (default 30), MaxRetryAttempts (default 3). Register in DI from appsettings section "Recovery".
+- [x] T005 Add `GET /api/registers/{registerId}/blueprints/published` endpoint in `src/Services/Sorcha.Register.Service/Endpoints/RegisterEndpoints.cs` (or new file) — query all Control transactions where metadata `transactionType == "BlueprintPublish"`, return list with blueprintId, transactionId, publishedBy, publishedAt, blueprintJson, plus registerHeight and queriedAt. Use existing `IRegisterRepository.QueryTransactionsAsync()`.
+- [x] T006 [P] Unit tests for the published blueprints endpoint in `tests/Sorcha.Register.Service.Tests/PublishedBlueprintsEndpointTests.cs` — test: returns published blueprints, empty register returns empty list, non-existent register returns 404
 
 **Checkpoint**: Foundation ready — models, configuration, and Register Service endpoint available.
 
@@ -47,15 +47,15 @@
 
 ### Tests for User Story 1 + 2
 
-- [ ] T007 [P] [US1] Unit tests for `BlueprintRecoveryService` in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryServiceTests.cs` — test: recovers blueprints from single register, recovers from multiple registers, handles unreachable register gracefully (marks offline, doesn't throw), idempotent (same transactions produce same state), version ordering (latest version wins), empty register produces no blueprints
-- [ ] T008 [P] [US2] Unit tests for register health status transitions in `tests/Sorcha.Blueprint.Service.Tests/RegisterHealthStatusTests.cs` — test: Unknown → Online on success, Unknown → Offline on failure, Online → Offline on failure, Offline → Online on success (recovers blueprints), consecutive failure counter increments/resets
+- [x] T007 [P] [US1] Unit tests for `BlueprintRecoveryService` in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryServiceTests.cs` — test: recovers blueprints from single register, recovers from multiple registers, handles unreachable register gracefully (marks offline, doesn't throw), idempotent (same transactions produce same state), version ordering (latest version wins), empty register produces no blueprints
+- [x] T008 [P] [US2] Unit tests for register health status transitions in `tests/Sorcha.Blueprint.Service.Tests/RegisterHealthStatusTests.cs` — test: Unknown → Online on success, Unknown → Offline on failure, Online → Offline on failure, Offline → Online on success (recovers blueprints), consecutive failure counter increments/resets
 
 ### Implementation for User Story 1 + 2
 
-- [ ] T009 [US1] Create `BlueprintRecoveryService : BackgroundService` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs` — on `ExecuteAsync`: (1) query Register Service `GET /api/registers` for all registers, (2) for each register call `GET /api/registers/{id}/blueprints/published`, (3) deserialize blueprint JSON and add to `InMemoryPublishedBlueprintStore`, (4) update `RegisterRecoveryState` per register, (5) set `RecoveryState.IsComplete = true`. Inject `IRegisterServiceClient`, `IPublishedBlueprintStore`, `IOptions<RecoveryOptions>`, `ILogger`.
-- [ ] T010 [US1] Add service client method `GetPublishedBlueprintsAsync(string registerId)` to `IRegisterServiceClient` in `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in the concrete client — calls the new endpoint from T005.
-- [ ] T011 [US2] Expose `RecoveryState` as a singleton in DI — register in `Program.cs`. The recovery service writes to it; health check and other consumers read from it.
-- [ ] T012 [US1] Register `BlueprintRecoveryService` as a hosted service in `src/Services/Sorcha.Blueprint.Service/Program.cs` — `builder.Services.AddHostedService<BlueprintRecoveryService>()`. Bind `RecoveryOptions` from configuration.
+- [x] T009 [US1] Create `BlueprintRecoveryService : BackgroundService` in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/BlueprintRecoveryService.cs` — on `ExecuteAsync`: (1) query Register Service `GET /api/registers` for all registers, (2) for each register call `GET /api/registers/{id}/blueprints/published`, (3) deserialize blueprint JSON and add to `InMemoryPublishedBlueprintStore`, (4) update `RegisterRecoveryState` per register, (5) set `RecoveryState.IsComplete = true`. Inject `IRegisterServiceClient`, `IPublishedBlueprintStore`, `IOptions<RecoveryOptions>`, `ILogger`.
+- [x] T010 [US1] Add service client method `GetPublishedBlueprintsAsync(string registerId)` to `IRegisterServiceClient` in `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in the concrete client — calls the new endpoint from T005.
+- [x] T011 [US2] Expose `RecoveryState` as a singleton in DI — register in `Program.cs`. The recovery service writes to it; health check and other consumers read from it.
+- [x] T012 [US1] Register `BlueprintRecoveryService` as a hosted service in `src/Services/Sorcha.Blueprint.Service/Program.cs` — `builder.Services.AddHostedService<BlueprintRecoveryService>()`. Bind `RecoveryOptions` from configuration.
 
 **Checkpoint**: After restart, published blueprints are recovered from the ledger and register status is tracked.
 
@@ -69,11 +69,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T013 [P] [US3] Unit tests for health check gating in `tests/Sorcha.Blueprint.Service.Tests/HealthCheckGatingTests.cs` — test: returns 503 when recovery incomplete, returns 200 after recovery completes, includes register status in response, partial recovery (some offline) still returns 200
+- [x] T013 [P] [US3] Unit tests for health check gating in `tests/Sorcha.Blueprint.Service.Tests/HealthCheckGatingTests.cs` — test: returns 503 when recovery incomplete, returns 200 after recovery completes, includes register status in response, partial recovery (some offline) still returns 200
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] Update health endpoint in `src/Services/Sorcha.Blueprint.Service/Program.cs` (`/api/health`) — inject `RecoveryState` singleton, check `IsComplete`. If false: return 503 with recovery progress (registersTotal, registersRecovered, registersOffline). If true: return 200 with existing metrics plus register summary (total, online, offline, lastRefresh).
+- [x] T014 [US3] Update health endpoint in `src/Services/Sorcha.Blueprint.Service/Program.cs` (`/api/health`) — inject `RecoveryState` singleton, check `IsComplete`. If false: return 503 with recovery progress (registersTotal, registersRecovered, registersOffline). If true: return 200 with existing metrics plus register summary (total, online, offline, lastRefresh).
 
 **Checkpoint**: Health check gates traffic until recovery completes.
 
@@ -87,7 +87,7 @@
 
 ### Implementation for User Story 4
 
-- [ ] T015 [US4] Add retry logic to `BlueprintRecoveryService` — after initial recovery completes, schedule retries for registers with `Status == Offline`. Use configurable delay from `RecoveryOptions`. On successful retry, add recovered blueprints and update status to Online. Cap retries at `MaxRetryAttempts` then log warning and stop retrying (will be picked up by periodic refresh).
+- [x] T015 [US4] Add retry logic to `BlueprintRecoveryService` — after initial recovery completes, schedule retries for registers with `Status == Offline`. Use configurable delay from `RecoveryOptions`. On successful retry, add recovered blueprints and update status to Online. Cap retries at `MaxRetryAttempts` then log warning and stop retrying (will be picked up by periodic refresh).
 
 **Checkpoint**: Service handles partial availability gracefully.
 
@@ -101,8 +101,8 @@
 
 ### Implementation for User Story 5
 
-- [ ] T016 [US5] Add periodic timer to `BlueprintRecoveryService.ExecuteAsync()` — after initial recovery, enter a `while (!stoppingToken.IsCancellationRequested)` loop with `Task.Delay(RefreshInterval)`. Each tick: re-query all registers, update status, add any new published blueprints not already in the store. Log changes (new blueprints discovered, status transitions).
-- [ ] T017 [P] [US5] Unit test for periodic refresh in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryServiceTests.cs` — test: discovers newly published blueprint after refresh, detects register going offline during runtime, configurable refresh interval is respected
+- [x] T016 [US5] Add periodic timer to `BlueprintRecoveryService.ExecuteAsync()` — after initial recovery, enter a `while (!stoppingToken.IsCancellationRequested)` loop with `Task.Delay(RefreshInterval)`. Each tick: re-query all registers, update status, add any new published blueprints not already in the store. Log changes (new blueprints discovered, status transitions).
+- [x] T017 [P] [US5] Unit test for periodic refresh in `tests/Sorcha.Blueprint.Service.Tests/BlueprintRecoveryServiceTests.cs` — test: discovers newly published blueprint after refresh, detects register going offline during runtime, configurable refresh interval is respected
 
 **Checkpoint**: Newly published blueprints are discovered within the refresh interval.
 
@@ -112,10 +112,10 @@
 
 **Purpose**: Final validation, documentation, and cleanup.
 
-- [ ] T018 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
+- [x] T018 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
 - [ ] T019 Integration test: publish a blueprint via walkthrough setup, restart Blueprint Service container (`docker-compose restart blueprint-service`), verify blueprint appears in `GET /api/actions/{wallet}/{register}/blueprints` without re-publishing
 - [ ] T020 Update `walkthroughs/ConstructionPermit/README.md` — note that blueprint state now survives container restarts via ledger recovery
-- [ ] T021 Add structured logging throughout `BlueprintRecoveryService` — log recovery start/complete, per-register success/failure, blueprint counts, refresh ticks, status transitions
+- [x] T021 Add structured logging throughout `BlueprintRecoveryService` — log recovery start/complete, per-register success/failure, blueprint counts, refresh ticks, status transitions
 
 ---
 

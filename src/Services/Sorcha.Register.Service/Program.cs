@@ -1333,6 +1333,60 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
 .ProducesValidationProblem()
 .Produces(StatusCodes.Status401Unauthorized);
 
+// <summary>
+// Get all published blueprints for a register (for recovery/discovery)
+// </summary>
+app.MapGet("/api/registers/{registerId}/blueprints/published", async (
+    string registerId,
+    IRegisterRepository repository) =>
+{
+    var register = await repository.GetRegisterAsync(registerId);
+    if (register == null)
+    {
+        return Results.NotFound(new { error = $"Register '{registerId}' not found" });
+    }
+
+    // Query all transactions then filter in-memory to blueprint-publish control transactions
+    var allTransactions = (await repository.GetTransactionsAsync(registerId)).ToList();
+    var publishTransactions = allTransactions
+        .Where(tx => tx.MetaData != null
+            && tx.MetaData.TrackingData != null
+            && tx.MetaData.TrackingData.TryGetValue("transactionType", out var txType)
+            && txType == "BlueprintPublish")
+        .ToList();
+
+    var blueprints = publishTransactions.Select(tx =>
+    {
+        var blueprintId = tx.MetaData?.BlueprintId ?? "unknown";
+        var publishedBy = tx.MetaData?.TrackingData?.GetValueOrDefault("publishedBy", "system") ?? "system";
+        // The blueprint JSON is in the first payload
+        var blueprintJson = tx.Payloads?.FirstOrDefault()?.Data ?? "{}";
+
+        return new
+        {
+            blueprintId,
+            transactionId = tx.TxId,
+            publishedBy,
+            publishedAt = tx.TimeStamp,
+            blueprintJson
+        };
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        registerId,
+        blueprints,
+        registerHeight = register.Height,
+        queriedAt = DateTimeOffset.UtcNow
+    });
+})
+.WithName("GetPublishedBlueprints")
+.WithSummary("Get published blueprints for a register")
+.WithDescription("Returns all blueprint-publish control transactions for a register. Used by Blueprint Service during startup recovery to rebuild the published blueprint index.")
+.Produces<object>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.RequireAuthorization("CanReadTransactions");
+
 // ===========================
 // Governance API
 // ===========================
