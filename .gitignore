@@ -198,6 +198,18 @@ jwt_public.*
 .aspire/
 /src/Services/Sorcha.Tenant.Service/nul
 
+# VitePress
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+!docs/public/
+docs/services/api-gateway.md
+docs/services/blueprint-service.md
+docs/services/register-service.md
+docs/services/tenant-service.md
+docs/services/wallet-service.md
+docs/services/validator-service.md
+docs/services/peer-service.md
+
 # Playwright
 /test-results/
 /playwright-report/

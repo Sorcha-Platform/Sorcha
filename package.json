@@ -8,7 +8,12 @@
     "example": "examples",
     "test": "tests"
   },
-  "scripts": {},
+  "scripts": {
+    "docs:prebuild": "node scripts/copy-service-readmes.js",
+    "docs:dev": "npm run docs:prebuild && vitepress dev docs",
+    "docs:build": "npm run docs:prebuild && vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sorcha-platform/sorcha.git"
@@ -23,7 +28,10 @@
   "homepage": "https://github.com/sorcha-platform/sorcha#readme",
   "devDependencies": {
     "@playwright/test": "^1.58.1",
-    "@types/node": "^25.2.0"
+    "@types/node": "^25.2.0",
+    "mermaid": "^11.13.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
   },
   "dependencies": {
     "playwright": "^1.58.2"

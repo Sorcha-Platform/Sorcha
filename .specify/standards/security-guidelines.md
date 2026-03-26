@@ -180,7 +180,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowedOrigins", policy =>
     {
         policy.WithOrigins(
-                "https://app.sorcha.dev",
+                "https://n1.sorcha.dev",
                 "https://designer.sorcha.dev")
             .AllowAnyMethod()
             .AllowAnyHeader()
