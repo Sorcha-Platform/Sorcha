@@ -113,8 +113,8 @@
 **Purpose**: Final validation, documentation, and cleanup.
 
 - [x] T018 Run `dotnet build --force` and `dotnet test` across all affected test projects — verify no regressions
-- [ ] T019 Integration test: publish a blueprint via walkthrough setup, restart Blueprint Service container (`docker-compose restart blueprint-service`), verify blueprint appears in `GET /api/actions/{wallet}/{register}/blueprints` without re-publishing
-- [ ] T020 Update `walkthroughs/ConstructionPermit/README.md` — note that blueprint state now survives container restarts via ledger recovery
+- [x] T019 Integration test: publish a blueprint via walkthrough setup, restart Blueprint Service container (`docker-compose restart blueprint-service`), verify blueprint appears in `GET /api/actions/{wallet}/{register}/blueprints` without re-publishing
+- [x] T020 Update `walkthroughs/ConstructionPermit/README.md` — note that blueprint state now survives container restarts via ledger recovery
 - [x] T021 Add structured logging throughout `BlueprintRecoveryService` — log recovery start/complete, per-register success/failure, blueprint counts, refresh ticks, status transitions
 
 ---
