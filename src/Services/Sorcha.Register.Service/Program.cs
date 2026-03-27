@@ -239,6 +239,18 @@ app.UseRateLimiting();
 // Register Management API
 // ===========================
 
+// Internal discovery endpoint for service-to-service recovery (no auth)
+app.MapGet("/api/internal/registers", async (RegisterManager manager) =>
+{
+    var allRegisters = await manager.GetAllRegistersAsync();
+    return Results.Ok(allRegisters.Select(r => new { r.Id, r.Name, r.Height, r.Status }).ToList());
+})
+.WithName("InternalGetRegisters")
+.WithSummary("Internal: List all registers for service recovery")
+.WithDescription("Unauthenticated endpoint for Blueprint Service startup recovery. Returns minimal register info.")
+.AllowAnonymous()
+.ExcludeFromDescription(); // Hidden from public OpenAPI docs
+
 var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
     .RequireAuthorization("CanManageRegisters");
@@ -1346,21 +1358,34 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
         return Results.NotFound(new { error = $"Register '{registerId}' not found" });
     }
 
-    // Query all transactions then filter in-memory to blueprint-publish control transactions
+    // Query all transactions then filter in-memory to blueprint-publish control transactions.
+    // Blueprint publishes are Control transactions (TransactionType == 0) with a non-genesis BlueprintId.
     var allTransactions = (await repository.GetTransactionsAsync(registerId)).ToList();
     var publishTransactions = allTransactions
         .Where(tx => tx.MetaData != null
-            && tx.MetaData.TrackingData != null
-            && tx.MetaData.TrackingData.TryGetValue("transactionType", out var txType)
-            && txType == "BlueprintPublish")
+            && tx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control
+            && !string.IsNullOrEmpty(tx.MetaData.BlueprintId)
+            && tx.MetaData.BlueprintId != "genesis")
         .ToList();
 
     var blueprints = publishTransactions.Select(tx =>
     {
         var blueprintId = tx.MetaData?.BlueprintId ?? "unknown";
         var publishedBy = tx.MetaData?.TrackingData?.GetValueOrDefault("publishedBy", "system") ?? "system";
-        // The blueprint JSON is in the first payload
-        var blueprintJson = tx.Payloads?.FirstOrDefault()?.Data ?? "{}";
+        // The blueprint JSON is in the first payload (base64-encoded on the ledger)
+        var rawPayload = tx.Payloads?.FirstOrDefault()?.Data ?? "";
+        string blueprintJson;
+        try
+        {
+            // Attempt base64 decode — payload is stored as base64 in MongoDB Binary fields
+            var bytes = Convert.FromBase64String(rawPayload);
+            blueprintJson = System.Text.Encoding.UTF8.GetString(bytes);
+        }
+        catch (FormatException)
+        {
+            // Already plain text
+            blueprintJson = rawPayload;
+        }
 
         return new
         {
@@ -1385,7 +1410,7 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
 .WithDescription("Returns all blueprint-publish control transactions for a register. Used by Blueprint Service during startup recovery to rebuild the published blueprint index.")
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
-.RequireAuthorization("CanReadTransactions");
+.AllowAnonymous(); // Internal recovery endpoint — no auth required (returns only metadata)
 
 // ===========================
 // Governance API

@@ -127,7 +127,7 @@ public class BlueprintRecoveryService : BackgroundService
         try
         {
             var client = httpClientFactory.CreateClient("RegisterService");
-            var response = await client.GetAsync("/api/registers", cancellationToken);
+            var response = await client.GetAsync("/api/internal/registers", cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
