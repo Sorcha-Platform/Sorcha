@@ -66,6 +66,17 @@ else
 // so published data is reconstructable. Redis cache (068 US3) deferred to follow-up.
 builder.Services.AddSingleton<IPublishedBlueprintStore, InMemoryPublishedBlueprintStore>();
 
+// Recovery: rebuild published blueprint state from register ledger on startup
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Models.RecoveryState>();
+builder.Services.Configure<Sorcha.Blueprint.Service.Models.RecoveryOptions>(
+    builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.RecoveryOptions.SectionName));
+builder.Services.AddHttpClient("RegisterService", client =>
+{
+    var address = builder.Configuration["ServiceClients:RegisterService:Address"] ?? "http://register-service:5290";
+    client.BaseAddress = new Uri(address);
+});
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.BlueprintRecoveryService>();
+
 // Add Blueprint services
 builder.Services.AddScoped<IBlueprintService, BlueprintService>();
 builder.Services.AddScoped<IPublishService, PublishService>();
@@ -1888,8 +1899,33 @@ instancesGroup.MapGet("/{instanceId}/next-actions", async (
 // Health & Status Endpoints
 // ===========================
 
-app.MapGet("/api/health", async (IBlueprintStore blueprintStore, IPublishedBlueprintStore publishedStore, Sorcha.Blueprint.Service.Services.IStatusListManager statusListManager) =>
+app.MapGet("/api/health", async (IBlueprintStore blueprintStore, IPublishedBlueprintStore publishedStore, Sorcha.Blueprint.Service.Services.IStatusListManager statusListManager, Sorcha.Blueprint.Service.Models.RecoveryState recoveryState) =>
 {
+    // Gate: return 503 while recovering from ledger
+    if (!recoveryState.IsComplete)
+    {
+        var onlineCount = recoveryState.RegisterStates.Values.Count(r => r.Status == Sorcha.Blueprint.Service.Models.RegisterHealthStatus.Online);
+        var offlineCount = recoveryState.RegisterStates.Values.Count(r => r.Status == Sorcha.Blueprint.Service.Models.RegisterHealthStatus.Offline);
+        var pendingCount = recoveryState.RegisterStates.Values.Count(r => r.Status == Sorcha.Blueprint.Service.Models.RegisterHealthStatus.Unknown);
+
+        return Results.Json(new
+        {
+            status = "recovering",
+            service = "blueprint-service",
+            timestamp = DateTimeOffset.UtcNow,
+            version = "1.0.0",
+            uptime = TimeSpan.FromMilliseconds(Environment.TickCount64).ToString(@"dd\.hh\:mm\:ss"),
+            recovery = new
+            {
+                startedAt = recoveryState.StartedAt,
+                registersTotal = recoveryState.RegisterStates.Count,
+                registersRecovered = onlineCount,
+                registersOffline = offlineCount,
+                registersPending = pendingCount
+            }
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
     try
     {
         var blueprints = await blueprintStore.GetAllAsync();
@@ -1916,6 +1952,9 @@ app.MapGet("/api/health", async (IBlueprintStore blueprintStore, IPublishedBluep
             // Status list subsystem unavailable
         }
 
+        var regOnline = recoveryState.RegisterStates.Values.Count(r => r.Status == Sorcha.Blueprint.Service.Models.RegisterHealthStatus.Online);
+        var regOffline = recoveryState.RegisterStates.Values.Count(r => r.Status == Sorcha.Blueprint.Service.Models.RegisterHealthStatus.Offline);
+
         return Results.Ok(new
         {
             status = "healthy",
@@ -1928,6 +1967,13 @@ app.MapGet("/api/health", async (IBlueprintStore blueprintStore, IPublishedBluep
                 totalBlueprints = blueprintCount,
                 publishedVersions = publishedCount,
                 statusListAvailable
+            },
+            registers = new
+            {
+                total = recoveryState.RegisterStates.Count,
+                online = regOnline,
+                offline = regOffline,
+                lastRefresh = recoveryState.CompletedAt
             }
         });
     }

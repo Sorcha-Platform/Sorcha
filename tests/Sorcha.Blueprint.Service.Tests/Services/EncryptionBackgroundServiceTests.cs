@@ -83,7 +83,10 @@ public class EncryptionBackgroundServiceTests
                 ["wallet-recipient-001"] = new Dictionary<string, object> { ["field1"] = "value1" }
             },
             PreviousTransactionId = "prev-tx-hash",
-            DelegationToken = "delegation-token"
+            DelegationToken = "delegation-token",
+            RoutingResult = new RoutingResult(),
+            MergedData = new Dictionary<string, object> { ["field1"] = "value1" },
+            AllowedAccumulatedFields = []
         };
     }
 
