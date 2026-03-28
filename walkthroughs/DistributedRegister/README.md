@@ -13,8 +13,31 @@ Demonstrates the full distributed ledger flow: create a register on one machine,
 
 ## Files in This Walkthrough
 
-- **test-distributed-register.ps1** - Main 14-step walkthrough script
-- **README.md** - This file (setup guide + reference)
+- **setup.ps1** — Bootstrap org and wallet on LOCAL machine
+- **run.ps1** — Create register locally, verify basic replication to remote
+- **sync-test.ps1** — **Full P2P sync integration test** (Feature 071): streaming relay, heartbeat advertisements, subscription sync, docket finalization, live streaming, resilience
+- **README.md** — This file (setup guide + reference)
+
+### sync-test.ps1 — P2P Register Sync Test
+
+Tests the full end-to-end flow introduced in Feature 071:
+
+| Phase | Tests | What's Validated |
+|-------|-------|------------------|
+| 1. Connectivity | PeerRouter reachable, both peers registered, reverse streams active | US1: Streaming Relay |
+| 2. Discovery | Register created, advertised, discovered on remote via heartbeat | US2: Heartbeat Advertisements |
+| 3. Subscription | Remote subscribes, sync completes (FullyReplicated) | US3: Full Register History |
+| 4. Finalization | Transactions queryable on remote, register height matches | US4+US6: Docket Finalization + Signature Verification |
+| 5. Live Streaming | New transaction on local appears on remote within 30s | US5: Live Transaction Streaming |
+| 6. Resilience | Data survives restart, peers reconnect after Router restart | Resilience |
+
+```bash
+# Run all phases
+pwsh walkthroughs/DistributedRegister/sync-test.ps1 -RemoteHost 192.168.51.9
+
+# Start from a specific phase (e.g., skip connectivity checks)
+pwsh walkthroughs/DistributedRegister/sync-test.ps1 -RemoteHost 192.168.51.9 -Phase 3
+```
 
 ---
 
