@@ -19,9 +19,9 @@
 
 **Purpose**: Verify prerequisites and prepare projects for new code.
 
-- [ ] T001 Verify Peer Service PostgreSQL migration is applied — run `dotnet ef database update` against PeerDbContext in `src/Services/Sorcha.Peer.Service/`
-- [ ] T002 [P] Verify PeerRouter test project exists at `tests/Sorcha.PeerRouter.Tests/` — create .csproj with xUnit/FluentAssertions/Moq if missing, add project reference to `src/Apps/Sorcha.PeerRouter/`
-- [ ] T003 [P] Verify `InternalsVisibleTo` is set in `src/Apps/Sorcha.PeerRouter/Sorcha.PeerRouter.csproj` for `Sorcha.PeerRouter.Tests`
+- [x] T001 Verify Peer Service PostgreSQL migration is applied — run `dotnet ef database update` against PeerDbContext in `src/Services/Sorcha.Peer.Service/`
+- [x] T002 [P] Verify PeerRouter test project exists at `tests/Sorcha.PeerRouter.Tests/` — create .csproj with xUnit/FluentAssertions/Moq if missing, add project reference to `src/Apps/Sorcha.PeerRouter/`
+- [x] T003 [P] Verify `InternalsVisibleTo` is set in `src/Apps/Sorcha.PeerRouter/Sorcha.PeerRouter.csproj` for `Sorcha.PeerRouter.Tests`
 
 ---
 
@@ -31,12 +31,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T004 Create `ReverseStreamEntry` model in `src/Apps/Sorcha.PeerRouter/Models/ReverseStreamEntry.cs` — fields: PeerId, ResponseStream (IServerStreamWriter\<PeerMessage\>), ConnectedAt, LastActivityAt, IsActive
-- [ ] T005 [P] Create `ReverseStreamManager` in `src/Apps/Sorcha.PeerRouter/Services/ReverseStreamManager.cs` — ConcurrentDictionary\<string, ReverseStreamEntry\>, methods: RegisterStream, RemoveStream, TryGetStream, GetActiveStreamCount
-- [ ] T006 [P] Create `ValidatorKeyCache` in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs` — ConcurrentDictionary\<string, ValidatorKeyEntry\> keyed by registerId, methods: TryGetKey, CacheKey, ExtractFromGenesisDocket
-- [ ] T007 [P] Create `DocketFinalizationRecord` model in `src/Services/Sorcha.Peer.Service/Models/DocketFinalizationRecord.cs` — fields: RegisterId, DocketNumber, DocketHash, Status (enum), AttemptedAt, FinalizedAt, ErrorMessage
-- [ ] T008 Register new services in `src/Services/Sorcha.Peer.Service/Program.cs` — add DI registrations for DocketFinalizationService, ValidatorKeyCache (singletons)
-- [ ] T009 Register ReverseStreamManager as singleton in `src/Apps/Sorcha.PeerRouter/Program.cs`
+- [x] T004 Create `ReverseStreamEntry` model in `src/Apps/Sorcha.PeerRouter/Models/ReverseStreamEntry.cs` — fields: PeerId, ResponseStream (IServerStreamWriter\<PeerMessage\>), ConnectedAt, LastActivityAt, IsActive
+- [x] T005 [P] Create `ReverseStreamManager` in `src/Apps/Sorcha.PeerRouter/Services/ReverseStreamManager.cs` — ConcurrentDictionary\<string, ReverseStreamEntry\>, methods: RegisterStream, RemoveStream, TryGetStream, GetActiveStreamCount
+- [x] T006 [P] Create `ValidatorKeyCache` in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs` — ConcurrentDictionary\<string, ValidatorKeyEntry\> keyed by registerId, methods: TryGetKey, CacheKey, ExtractFromGenesisDocket
+- [x] T007 [P] Create `DocketFinalizationRecord` model in `src/Services/Sorcha.Peer.Service/Models/DocketFinalizationRecord.cs` — fields: RegisterId, DocketNumber, DocketHash, Status (enum), AttemptedAt, FinalizedAt, ErrorMessage
+- [x] T008 Register new services in `src/Services/Sorcha.Peer.Service/Program.cs` — add DI registrations for DocketFinalizationService, ValidatorKeyCache (singletons)
+- [x] T009 Register ReverseStreamManager as singleton in `src/Apps/Sorcha.PeerRouter/Program.cs`
 
 **Checkpoint**: Foundation ready — models and DI in place for all user stories.
 
@@ -50,16 +50,16 @@
 
 ### Tests for US1
 
-- [ ] T010 [P] [US1] Test ReverseStreamManager register/remove/lookup in `tests/Sorcha.PeerRouter.Tests/Services/ReverseStreamManagerTests.cs`
-- [ ] T011 [P] [US1] Test RouterCommunicationService.Stream — stream establishment, message dispatch, cleanup on disconnect in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterCommunicationServiceStreamTests.cs`
-- [ ] T012 [P] [US1] Test RouterCommunicationService.SendMessage — fallback to reverse stream when recipient has empty address in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterCommunicationServiceRelayTests.cs`
+- [x] T010 [P] [US1] Test ReverseStreamManager register/remove/lookup in `tests/Sorcha.PeerRouter.Tests/Services/ReverseStreamManagerTests.cs`
+- [x] T011 [P] [US1] Test RouterCommunicationService.Stream — stream establishment, message dispatch, cleanup on disconnect in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterCommunicationServiceStreamTests.cs`
+- [x] T012 [P] [US1] Test RouterCommunicationService.SendMessage — fallback to reverse stream when recipient has empty address in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterCommunicationServiceRelayTests.cs`
 
 ### Implementation for US1
 
-- [ ] T013 [US1] Implement `RouterCommunicationService.Stream()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — register peer's response writer in ReverseStreamManager, read loop dispatches incoming messages to recipients via their reverse streams or direct channels
-- [ ] T014 [US1] Modify `RouterCommunicationService.SendMessage()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — when recipient has empty address, check ReverseStreamManager for active stream and push via responseStream.WriteAsync instead of creating direct channel
-- [ ] T015 [US1] Add connection pooling for non-NAT'd recipients in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — ConcurrentDictionary\<string, GrpcChannel\> reusing channels instead of creating per-message
-- [ ] T016 [US1] Add structured logging and event emission for stream lifecycle in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — StreamConnected, StreamDisconnected, RelayForwarded events
+- [x] T013 [US1] Implement `RouterCommunicationService.Stream()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — register peer's response writer in ReverseStreamManager, read loop dispatches incoming messages to recipients via their reverse streams or direct channels
+- [x] T014 [US1] Modify `RouterCommunicationService.SendMessage()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — when recipient has empty address, check ReverseStreamManager for active stream and push via responseStream.WriteAsync instead of creating direct channel
+- [x] T015 [US1] Add connection pooling for non-NAT'd recipients in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — ConcurrentDictionary\<string, GrpcChannel\> reusing channels instead of creating per-message
+- [x] T016 [US1] Add structured logging and event emission for stream lifecycle in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterCommunicationService.cs` — StreamConnected, StreamDisconnected, RelayForwarded events
 
 **Checkpoint**: Router accepts reverse streams and can relay messages between NAT'd peers.
 
@@ -73,14 +73,14 @@
 
 ### Tests for US2
 
-- [ ] T017 [P] [US2] Test RoutingTable.UpdateAdvertisedRegisters in `tests/Sorcha.PeerRouter.Tests/Services/RoutingTableAdvertisementTests.cs`
-- [ ] T018 [P] [US2] Test RouterHeartbeatService processes and relays advertisements in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterHeartbeatAdvertisementTests.cs`
+- [x] T017 [P] [US2] Test RoutingTable.UpdateAdvertisedRegisters in `tests/Sorcha.PeerRouter.Tests/Services/RoutingTableAdvertisementTests.cs`
+- [x] T018 [P] [US2] Test RouterHeartbeatService processes and relays advertisements in `tests/Sorcha.PeerRouter.Tests/GrpcServices/RouterHeartbeatAdvertisementTests.cs`
 
 ### Implementation for US2
 
-- [ ] T019 [US2] Add `UpdateAdvertisedRegisters(peerId, advertisements)` method to `src/Apps/Sorcha.PeerRouter/Services/RoutingTable.cs` — replaces AdvertisedRegisters list for the specified peer entry
-- [ ] T020 [US2] Modify `RouterHeartbeatService.ProcessHeartbeat()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs` — extract `request.AdvertisedRegisters` and call `RoutingTable.UpdateAdvertisedRegisters()`
-- [ ] T021 [US2] Modify `RouterHeartbeatService` response builder in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs` — aggregate other healthy peers' AdvertisedRegisters from RoutingTable and include in PeerHeartbeatResponse (cap at 100 entries)
+- [x] T019 [US2] Add `UpdateAdvertisedRegisters(peerId, advertisements)` method to `src/Apps/Sorcha.PeerRouter/Services/RoutingTable.cs` — replaces AdvertisedRegisters list for the specified peer entry
+- [x] T020 [US2] Modify `RouterHeartbeatService.ProcessHeartbeat()` in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs` — extract `request.AdvertisedRegisters` and call `RoutingTable.UpdateAdvertisedRegisters()`
+- [x] T021 [US2] Modify `RouterHeartbeatService` response builder in `src/Apps/Sorcha.PeerRouter/GrpcServices/RouterHeartbeatService.cs` — aggregate other healthy peers' AdvertisedRegisters from RoutingTable and include in PeerHeartbeatResponse (cap at 100 entries)
 
 **Checkpoint**: Register advertisements flow through the Router — peers discover each other's registers via heartbeats.
 
@@ -94,16 +94,16 @@
 
 ### Tests for US3
 
-- [ ] T022 [P] [US3] Test RelayCommunicationService reverse stream establishment and reconnection in `tests/Sorcha.Peer.Service.Tests/Communication/ReverseStreamLifecycleTests.cs`
-- [ ] T023 [P] [US3] Test relay batch sync routes through reverse stream in `tests/Sorcha.Peer.Service.Tests/Replication/RelayBatchSyncTests.cs`
+- [x] T022 [P] [US3] Test RelayCommunicationService reverse stream establishment and reconnection in `tests/Sorcha.Peer.Service.Tests/Communication/ReverseStreamLifecycleTests.cs`
+- [x] T023 [P] [US3] Test relay batch sync routes through reverse stream in `tests/Sorcha.Peer.Service.Tests/Replication/RelayBatchSyncTests.cs`
 
 ### Implementation for US3
 
-- [ ] T024 [US3] Add `EstablishReverseStreamAsync()` to `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — initiate `client.Stream()` to seed node, start background receive loop dispatching to RelayMessageHandler, keepalive ping every 30s
-- [ ] T025 [US3] Add reconnection with exponential backoff in `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — 2s, 4s, 8s, 16s, max 60s on disconnect
-- [ ] T026 [US3] Modify `SendViaRelayAsync()` in `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — prefer sending via active reverse stream; fall back to unary SendMessage if stream unavailable
-- [ ] T027 [US3] Modify `RegisterSyncBackgroundService.ExecuteAsync()` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — call EstablishReverseStreamAsync on startup before processing subscriptions
-- [ ] T028 [US3] Verify `TryRelayBatchSyncAsync` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` works over reverse stream — the relay is transparent; add logging to confirm relay path used
+- [x] T024 [US3] Add `EstablishReverseStreamAsync()` to `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — initiate `client.Stream()` to seed node, start background receive loop dispatching to RelayMessageHandler, keepalive ping every 30s
+- [x] T025 [US3] Add reconnection with exponential backoff in `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — 2s, 4s, 8s, 16s, max 60s on disconnect
+- [x] T026 [US3] Modify `SendViaRelayAsync()` in `src/Services/Sorcha.Peer.Service/Communication/RelayCommunicationService.cs` — prefer sending via active reverse stream; fall back to unary SendMessage if stream unavailable
+- [x] T027 [US3] Modify `RegisterSyncBackgroundService.ExecuteAsync()` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — call EstablishReverseStreamAsync on startup before processing subscriptions
+- [x] T028 [US3] Verify `TryRelayBatchSyncAsync` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` works over reverse stream — the relay is transparent; add logging to confirm relay path used
 
 **Checkpoint**: Peer Service connects to Router via reverse stream and can pull full register history through the relay.
 
@@ -117,16 +117,16 @@
 
 ### Tests for US4
 
-- [ ] T029 [P] [US4] Test ValidatorKeyCache — extract key from genesis docket, cache hit/miss in `tests/Sorcha.Peer.Service.Tests/Replication/ValidatorKeyCacheTests.cs`
-- [ ] T030 [P] [US4] Test DocketFinalizationService — valid signature finalized, invalid rejected, chain break detected, idempotent writes, Register Service down retry in `tests/Sorcha.Peer.Service.Tests/Replication/DocketFinalizationServiceTests.cs`
+- [x] T029 [P] [US4] Test ValidatorKeyCache — extract key from genesis docket, cache hit/miss in `tests/Sorcha.Peer.Service.Tests/Replication/ValidatorKeyCacheTests.cs`
+- [x] T030 [P] [US4] Test DocketFinalizationService — valid signature finalized, invalid rejected, chain break detected, idempotent writes, Register Service down retry in `tests/Sorcha.Peer.Service.Tests/Replication/DocketFinalizationServiceTests.cs`
 
 ### Implementation for US4
 
-- [ ] T031 [US4] Implement `DocketFinalizationService` in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs` — recompute docket hash via DocketHasher, verify signature via Sorcha.Cryptography, verify chain integrity (PreviousHash), call IRegisterServiceClient.WriteDocketAsync, handle idempotent writes
-- [ ] T032 [US4] Implement genesis key extraction in `ValidatorKeyCache` in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs` — on first docket for a register, extract ProposerSignature.PublicKey + Algorithm from genesis docket (DocketNumber 0)
-- [ ] T033 [US4] Integrate finalization into `RegisterReplicationService.RecoverFromRegisterAsync()` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` — after dockets are cached during PullFullReplicaAsync, call DocketFinalizationService.FinalizeAsync for each docket in order
-- [ ] T034 [US4] Integrate finalization into `RelayMessageHandler` in `src/Services/Sorcha.Peer.Service/Communication/RelayMessageHandler.cs` — on docket notification receipt for subscribed register, call DocketFinalizationService.FinalizeAsync
-- [ ] T035 [US4] Handle cache eviction gracefully in `DocketFinalizationService` — if transaction referenced by docket is missing from cache, re-pull from source peer via relay before finalizing
+- [x] T031 [US4] Implement `DocketFinalizationService` in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs` — recompute docket hash via DocketHasher, verify signature via Sorcha.Cryptography, verify chain integrity (PreviousHash), call IRegisterServiceClient.WriteDocketAsync, handle idempotent writes
+- [x] T032 [US4] Implement genesis key extraction in `ValidatorKeyCache` in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs` — on first docket for a register, extract ProposerSignature.PublicKey + Algorithm from genesis docket (DocketNumber 0)
+- [x] T033 [US4] Integrate finalization into `RegisterReplicationService.RecoverFromRegisterAsync()` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` — after dockets are cached during PullFullReplicaAsync, call DocketFinalizationService.FinalizeAsync for each docket in order
+- [x] T034 [US4] Integrate finalization into `RelayMessageHandler` in `src/Services/Sorcha.Peer.Service/Communication/RelayMessageHandler.cs` — on docket notification receipt for subscribed register, call DocketFinalizationService.FinalizeAsync
+- [x] T035 [US4] Handle cache eviction gracefully in `DocketFinalizationService` — if transaction referenced by docket is missing from cache, re-pull from source peer via relay before finalizing
 
 **Checkpoint**: Replicated dockets are verified and finalized to Register Service storage. Transactions are queryable on the subscribing peer.
 
@@ -140,13 +140,13 @@
 
 ### Tests for US5
 
-- [ ] T036 [P] [US5] Test live docket notification triggers finalization in `tests/Sorcha.Peer.Service.Tests/Replication/LiveFinalizationTests.cs`
+- [x] T036 [P] [US5] Test live docket notification triggers finalization in `tests/Sorcha.Peer.Service.Tests/Replication/LiveFinalizationTests.cs`
 
 ### Implementation for US5
 
-- [ ] T037 [US5] Verify `SubscribeToLiveTransactionsAsync` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` works over reverse stream relay — add integration logging to confirm relay path
-- [ ] T038 [US5] Modify `RelayMessageHandler.HandleTransactionNotificationAsync` in `src/Services/Sorcha.Peer.Service/Communication/RelayMessageHandler.cs` — on TransactionNotification for subscribed register, check for new docket and trigger finalization if present
-- [ ] T039 [US5] Handle stream catch-up after disconnect in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — on reverse stream re-establishment, pull dockets with version > last synced version to catch missed transactions
+- [x] T037 [US5] Verify `SubscribeToLiveTransactionsAsync` in `src/Services/Sorcha.Peer.Service/Replication/RegisterReplicationService.cs` works over reverse stream relay — add integration logging to confirm relay path
+- [x] T038 [US5] Modify `RelayMessageHandler.HandleTransactionNotificationAsync` in `src/Services/Sorcha.Peer.Service/Communication/RelayMessageHandler.cs` — on TransactionNotification for subscribed register, check for new docket and trigger finalization if present
+- [x] T039 [US5] Handle stream catch-up after disconnect in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — on reverse stream re-establishment, pull dockets with version > last synced version to catch missed transactions
 
 **Checkpoint**: Live replication works — new transactions on Peer A appear finalized on Peer B within 15 seconds.
 
@@ -160,13 +160,13 @@
 
 ### Tests for US6
 
-- [ ] T040 [P] [US6] Test multi-algorithm signature verification (ED25519, P-256, RSA-4096) in `tests/Sorcha.Peer.Service.Tests/Replication/SignatureVerificationTests.cs`
+- [x] T040 [P] [US6] Test multi-algorithm signature verification (ED25519, P-256, RSA-4096) in `tests/Sorcha.Peer.Service.Tests/Replication/SignatureVerificationTests.cs`
 
 ### Implementation for US6
 
-- [ ] T041 [US6] Ensure DocketFinalizationService in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs` supports all three algorithms — ED25519, NISTP256, RSA4096 via Sorcha.Cryptography wallet verification
-- [ ] T042 [US6] Add structured alert logging in DocketFinalizationService for rejected dockets — log docket hash, register ID, algorithm, failure reason at Warning level
-- [ ] T043 [US6] Handle unknown validator key — if genesis docket not yet available when a docket arrives, defer finalization and log; resolve key on next sync cycle
+- [x] T041 [US6] Ensure DocketFinalizationService in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs` supports all three algorithms — ED25519, NISTP256, RSA4096 via Sorcha.Cryptography wallet verification
+- [x] T042 [US6] Add structured alert logging in DocketFinalizationService for rejected dockets — log docket hash, register ID, algorithm, failure reason at Warning level
+- [x] T043 [US6] Handle unknown validator key — if genesis docket not yet available when a docket arrives, defer finalization and log; resolve key on next sync cycle
 
 **Checkpoint**: All dockets verified before finalization. Invalid signatures are rejected with alerts.
 
