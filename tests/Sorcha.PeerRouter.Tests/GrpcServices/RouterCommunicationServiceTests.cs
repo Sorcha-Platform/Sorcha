@@ -19,6 +19,7 @@ namespace Sorcha.PeerRouter.Tests.GrpcServices;
 public sealed class RouterCommunicationServiceTests
 {
     private readonly RoutingTable _routingTable;
+    private readonly ReverseStreamManager _reverseStreamManager;
     private readonly EventBuffer _eventBuffer;
     private readonly RouterConfiguration _relayEnabledConfig;
     private readonly RouterConfiguration _relayDisabledConfig;
@@ -29,10 +30,12 @@ public sealed class RouterCommunicationServiceTests
         _relayDisabledConfig = new RouterConfiguration { EnableRelay = false };
         _eventBuffer = new EventBuffer(_relayEnabledConfig);
         _routingTable = new RoutingTable(_eventBuffer, _relayEnabledConfig);
+        _reverseStreamManager = new ReverseStreamManager(
+            NullLogger<ReverseStreamManager>.Instance);
     }
 
     private RouterCommunicationService CreateService(RouterConfiguration config) =>
-        new(_routingTable, _eventBuffer, config,
+        new(_routingTable, _reverseStreamManager, _eventBuffer, config,
             NullLogger<RouterCommunicationService>.Instance);
 
     private static PeerMessage CreateMessage(
@@ -162,19 +165,4 @@ public sealed class RouterCommunicationServiceTests
 
     #endregion
 
-    #region Stream
-
-    [Fact]
-    public async Task Stream_ThrowsUnimplemented()
-    {
-        var service = CreateService(_relayEnabledConfig);
-
-        var act = () => service.Stream(
-            null!, null!, TestServerCallContext.Create());
-
-        var ex = await act.Should().ThrowAsync<RpcException>();
-        ex.Which.StatusCode.Should().Be(StatusCode.Unimplemented);
-    }
-
-    #endregion
 }

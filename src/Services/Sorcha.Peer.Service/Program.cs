@@ -145,6 +145,8 @@ builder.Services.AddSingleton<RelayMessageHandler>();
 
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();
+builder.Services.AddSingleton<ValidatorKeyCache>();
+builder.Services.AddSingleton<DocketFinalizationService>();
 builder.Services.AddSingleton<RegisterReplicationService>();
 builder.Services.AddSingleton<IRedisAdvertisementStore, RedisAdvertisementStore>();
 builder.Services.AddSingleton<RegisterAdvertisementService>();

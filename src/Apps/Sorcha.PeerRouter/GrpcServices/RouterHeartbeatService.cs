@@ -101,6 +101,11 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
             _routingTable.UpdateRegisterVersions(peerId, request.RegisterVersions);
         }
 
+        if (request.AdvertisedRegisters.Count > 0)
+        {
+            _routingTable.UpdateAdvertisedRegisters(peerId, request.AdvertisedRegisters);
+        }
+
         var detail = new Dictionary<string, object?>
         {
             ["sequence"] = request.SequenceNumber
@@ -134,12 +139,30 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
             peerId,
             request.SequenceNumber);
 
-        return new PeerHeartbeatResponse
+        var response = new PeerHeartbeatResponse
         {
             Success = true,
             PeerId = "router",
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             Message = "OK"
         };
+
+        // Aggregate advertised registers from other healthy peers (exclude the sender, cap at 100)
+        var otherPeersAds = _routingTable.GetHealthyPeers(excludePeerId: peerId)
+            .SelectMany(p => p.AdvertisedRegisters)
+            .Take(100)
+            .Select(a => new RegisterAdvertisement
+            {
+                RegisterId = a.RegisterId,
+                SyncState = a.HasFullReplica
+                    ? SyncStateProto.FullyReplicated
+                    : SyncStateProto.Active,
+                LatestVersion = a.LatestVersion,
+                IsPublic = a.IsPublic
+            });
+
+        response.AdvertisedRegisters.AddRange(otherPeersAds);
+
+        return response;
     }
 }

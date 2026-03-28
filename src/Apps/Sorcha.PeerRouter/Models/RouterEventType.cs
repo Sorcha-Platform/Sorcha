@@ -18,5 +18,7 @@ public enum RouterEventType
     Error,
     PeerHeartbeatRejected,
     PeerReplaced,
-    PeerEvicted
+    PeerEvicted,
+    StreamConnected,
+    StreamDisconnected
 }

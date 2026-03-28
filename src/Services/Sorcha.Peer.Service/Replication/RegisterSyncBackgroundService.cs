@@ -71,6 +71,15 @@ public class RegisterSyncBackgroundService : BackgroundService
         using var timer = new PeriodicTimer(
             TimeSpan.FromMinutes(_syncConfig.PeriodicSyncIntervalMinutes));
 
+        // Establish reverse stream to seed node before processing subscriptions
+        Task? reverseStreamTask = null;
+        if (_relayCommunication != null)
+        {
+            reverseStreamTask = Task.Run(
+                () => _relayCommunication.EstablishReverseStreamAsync(stoppingToken),
+                stoppingToken);
+        }
+
         // Start relay poll loop if relay is available
         Task? relayPollTask = null;
         if (_relayCommunication != null && _peerListManager != null && _registerCache != null)
@@ -102,6 +111,12 @@ public class RegisterSyncBackgroundService : BackgroundService
         {
             // Cancel and await all live subscription tasks
             _serviceCts.Cancel();
+
+            if (reverseStreamTask != null)
+            {
+                try { await reverseStreamTask.ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+            }
 
             if (relayPollTask != null)
             {

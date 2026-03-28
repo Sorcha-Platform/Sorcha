@@ -20,6 +20,7 @@ public class RelayMessageHandler
     private readonly RelayCommunicationService _relayCommunication;
     private readonly RegisterCache _registerCache;
     private readonly RegisterSyncBackgroundService _syncBackgroundService;
+    private readonly DocketFinalizationService? _docketFinalizationService;
 
     /// <summary>
     /// Maximum response payload size in bytes (3MB to leave headroom within 4MB/16MB proto limits)
@@ -30,12 +31,14 @@ public class RelayMessageHandler
         ILogger<RelayMessageHandler> logger,
         RelayCommunicationService relayCommunication,
         RegisterCache registerCache,
-        RegisterSyncBackgroundService syncBackgroundService)
+        RegisterSyncBackgroundService syncBackgroundService,
+        DocketFinalizationService? docketFinalizationService = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _syncBackgroundService = syncBackgroundService ?? throw new ArgumentNullException(nameof(syncBackgroundService));
+        _docketFinalizationService = docketFinalizationService;
     }
 
     /// <summary>
@@ -307,6 +310,26 @@ public class RelayMessageHandler
                 _logger.LogDebug(
                     "Notification-triggered sync applied {Count} dockets for register {RegisterId}",
                     syncResponse.Dockets.Count, registerId);
+
+                // Trigger finalization for newly synced dockets
+                if (_docketFinalizationService != null)
+                {
+                    foreach (var docket in syncResponse.Dockets)
+                    {
+                        var cachedDocket = new Replication.CachedDocket
+                        {
+                            RegisterId = registerId,
+                            Version = docket.Version,
+                            Data = docket.Data,
+                            DocketHash = docket.DocketHash,
+                            PreviousHash = docket.PreviousHash,
+                            TransactionIds = docket.TransactionIds,
+                            CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(docket.CreatedAt)
+                        };
+
+                        await _docketFinalizationService.FinalizeAsync(registerId, cachedDocket, cancellationToken);
+                    }
+                }
             }
         }
         finally
