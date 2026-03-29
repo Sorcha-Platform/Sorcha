@@ -147,6 +147,9 @@ builder.Services.AddSingleton<RelayMessageHandler>();
 builder.Services.AddSingleton(sp => new Lazy<RelayMessageHandler>(() => sp.GetRequiredService<RelayMessageHandler>()));
 builder.Services.AddSingleton<RelayCommunicationService>();
 
+// Register service clients (provides IRegisterServiceClient for docket finalization writes)
+Sorcha.ServiceClients.Extensions.ServiceCollectionExtensions.AddServiceClients(builder.Services, builder.Configuration);
+
 // Register cryptography module and hash provider for signature and docket hash verification
 builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
 builder.Services.AddSingleton<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();

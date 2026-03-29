@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
@@ -19,7 +20,7 @@ namespace Sorcha.Peer.Service.Replication;
 public class DocketFinalizationService
 {
     private readonly ILogger<DocketFinalizationService> _logger;
-    private readonly IRegisterServiceClient _registerServiceClient;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ValidatorKeyCache _validatorKeyCache;
     private readonly RegisterCache _registerCache;
     private readonly ICryptoModule _cryptoModule;
@@ -28,14 +29,14 @@ public class DocketFinalizationService
 
     public DocketFinalizationService(
         ILogger<DocketFinalizationService> logger,
-        IRegisterServiceClient registerServiceClient,
+        IServiceScopeFactory scopeFactory,
         ValidatorKeyCache validatorKeyCache,
         RegisterCache registerCache,
         ICryptoModule cryptoModule,
         DocketHasher docketHasher)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _registerServiceClient = registerServiceClient ?? throw new ArgumentNullException(nameof(registerServiceClient));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _validatorKeyCache = validatorKeyCache ?? throw new ArgumentNullException(nameof(validatorKeyCache));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
@@ -148,9 +149,11 @@ public class DocketFinalizationService
                 return record;
             }
 
-            // Step 5: Build DocketModel and persist to Register Service
+            // Step 5: Build DocketModel and persist to Register Service (scoped client)
             var docketModel = BuildDocketModel(registerId, docket);
-            var written = await _registerServiceClient.WriteDocketAsync(docketModel, cancellationToken);
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            var written = await registerClient.WriteDocketAsync(docketModel, cancellationToken);
 
             if (written)
             {
@@ -236,7 +239,9 @@ public class DocketFinalizationService
         // Fall back to reading genesis docket from Register Service
         try
         {
-            var genesis = await _registerServiceClient.ReadDocketAsync(registerId, 0, cancellationToken);
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+            var genesis = await registerClient.ReadDocketAsync(registerId, 0, cancellationToken);
             if (genesis != null)
             {
                 _logger.LogDebug(

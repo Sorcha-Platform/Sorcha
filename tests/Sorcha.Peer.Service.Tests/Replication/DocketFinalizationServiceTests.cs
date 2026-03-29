@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Cryptography.Core;
@@ -41,9 +42,15 @@ public class DocketFinalizationServiceTests
 
         var docketHasher = new DocketHasher(new HashProvider());
 
+        // Build a mock IServiceScopeFactory that returns scoped IRegisterServiceClient
+        var services = new ServiceCollection();
+        services.AddScoped<IRegisterServiceClient>(_ => _registerClientMock.Object);
+        var sp = services.BuildServiceProvider();
+        var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+
         _service = new DocketFinalizationService(
             new Mock<ILogger<DocketFinalizationService>>().Object,
-            _registerClientMock.Object,
+            scopeFactory,
             _validatorKeyCache,
             _registerCache,
             _cryptoModuleMock.Object,
