@@ -1,0 +1,293 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Encryption
+@using Sorcha.UI.Core.Services
+@implements IDisposable
+@inject IEncryptionOperationTracker Tracker
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+@if (_operation != null && _operation.PanelState != PopoverState.Dismissed)
+{
+    @if (_operation.PanelState == PopoverState.Expanded)
+    {
+        <!-- Expanded floating panel -->
+        <div class="crypto-popover crypto-popover-expanded" data-testid="crypto-progress-popover">
+            <!-- Header -->
+            <div class="crypto-popover-header">
+                <div class="crypto-popover-header-left">
+                    @if (!_operation.IsComplete)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" Class="mr-2" Style="width:18px;height:18px;" />
+                    }
+                    else if (_operation.IsSuccess)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" Class="mr-2" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" Color="Color.Error" Class="mr-2" />
+                    }
+                    <MudText Typo="Typo.subtitle2">@GetHeaderText()</MudText>
+                </div>
+                <div class="crypto-popover-header-actions">
+                    @if (Tracker.ActiveCount > 1)
+                    {
+                        <MudBadge Content="@Tracker.ActiveCount" Color="Color.Primary" Overlap="true" Class="mr-1">
+                            <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small"
+                                           OnClick="Tracker.CycleToNextOperation"
+                                           Title="Switch operation" />
+                        </MudBadge>
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Minimize" Size="Size.Small"
+                                   OnClick="Minimise" Title="Minimise" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                   OnClick="Dismiss" Title="Dismiss" />
+                </div>
+            </div>
+
+            <!-- Progress bar -->
+            @if (!_operation.IsComplete)
+            {
+                <div class="crypto-popover-progress">
+                    <MudProgressLinear Color="Color.Primary" Value="@_operation.PercentComplete" Max="100"
+                                       Rounded="true" Size="Size.Small" />
+                    <div class="crypto-popover-progress-text">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Preparing for recipients...</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@GetSecuredCount() of @_operation.Recipients.Count</MudText>
+                    </div>
+                </div>
+            }
+
+            <!-- Recipient list -->
+            <div class="crypto-popover-recipients">
+                @foreach (var recipient in _operation.Recipients)
+                {
+                    <div class="crypto-popover-recipient @GetRecipientCssClass(recipient.Status)">
+                        <div class="crypto-popover-recipient-icon">
+                            @if (recipient.Status == "secured")
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" />
+                            }
+                            else if (recipient.Status == "encrypting")
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" Style="width:16px;height:16px;" />
+                            }
+                            else if (recipient.Status == "failed")
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="color:var(--mud-palette-text-disabled);font-size:8px;" />
+                            }
+                        </div>
+                        <div class="crypto-popover-recipient-info">
+                            <MudText Typo="Typo.body2">@recipient.Name</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@recipient.FieldsSummary</MudText>
+                        </div>
+                        <MudText Typo="Typo.caption" Class="crypto-popover-recipient-status"
+                                 Color="@GetStatusColor(recipient.Status)">
+                            @recipient.Status
+                        </MudText>
+                    </div>
+                }
+            </div>
+
+            <!-- Success state -->
+            @if (_operation.IsSuccess)
+            {
+                <div class="crypto-popover-footer crypto-popover-success">
+                    <MudText Typo="Typo.body2" Color="Color.Success">
+                        Submission secured — @_operation.Recipients.Count recipients can now access their disclosed fields
+                    </MudText>
+                    @if (!string.IsNullOrEmpty(_operation.TransactionHash))
+                    {
+                        <MudLink Typo="Typo.caption" Color="Color.Primary"
+                                 Href="@GetTransactionUrl()" data-testid="view-transaction-link">
+                            View transaction →
+                        </MudLink>
+                    }
+                </div>
+            }
+
+            <!-- Error state (T030 will extend this) -->
+            @if (_operation.Status == OperationDisplayStatus.Failed)
+            {
+                <div class="crypto-popover-footer crypto-popover-error">
+                    <MudText Typo="Typo.body2" Color="Color.Error">
+                        @GetErrorText()
+                    </MudText>
+                </div>
+            }
+
+            <!-- Footer hint (while processing) -->
+            @if (!_operation.IsComplete)
+            {
+                <div class="crypto-popover-footer-hint">
+                    <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+                        You can navigate away — this will keep running
+                    </MudText>
+                </div>
+            }
+        </div>
+    }
+    else if (_operation.PanelState == PopoverState.Minimised)
+    {
+        <!-- Minimised pill -->
+        <div class="crypto-popover crypto-popover-minimised" @onclick="Expand" data-testid="crypto-progress-pill">
+            @if (!_operation.IsComplete)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" Style="width:14px;height:14px;" />
+            }
+            else if (_operation.IsSuccess)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" Color="Color.Error" />
+            }
+            <MudText Typo="Typo.body2" Class="ml-2">
+                @GetPillText()
+            </MudText>
+            <div class="crypto-popover-pill-progress">
+                <MudProgressLinear Color="Color.Primary" Value="@_operation.PercentComplete" Max="100"
+                                   Rounded="true" Size="Size.Small" Style="width:60px;" />
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private EncryptionOperationState? _operation;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        Tracker.OnStateChanged += HandleStateChanged;
+        _operation = Tracker.CurrentOperation;
+    }
+
+    private void HandleStateChanged()
+    {
+        if (_disposed) return;
+
+        var previousOp = _operation;
+        _operation = Tracker.CurrentOperation;
+
+        // If dismissed and operation just completed, show toast
+        if (_operation?.PanelState == PopoverState.Dismissed && _operation.IsComplete
+            && previousOp?.IsComplete != true)
+        {
+            ShowCompletionToast(_operation);
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Minimise()
+    {
+        if (_operation != null) _operation.PanelState = PopoverState.Minimised;
+    }
+
+    private void Expand()
+    {
+        if (_operation != null) _operation.PanelState = PopoverState.Expanded;
+    }
+
+    private void Dismiss()
+    {
+        if (_operation != null) _operation.PanelState = PopoverState.Dismissed;
+    }
+
+    private string GetHeaderText() => _operation?.Status switch
+    {
+        OperationDisplayStatus.Complete => "Submission secured",
+        OperationDisplayStatus.Failed => "Encryption failed",
+        _ => "Securing your submission"
+    };
+
+    private string GetPillText()
+    {
+        if (_operation == null) return "";
+        if (_operation.IsSuccess) return "Secured";
+        if (_operation.Status == OperationDisplayStatus.Failed) return "Failed";
+        var secured = GetSecuredCount();
+        return $"Securing — {secured}/{_operation.Recipients.Count} recipients";
+    }
+
+    private int GetSecuredCount() =>
+        _operation?.Recipients.Count(r => r.Status == "secured") ?? 0;
+
+    private string GetErrorText()
+    {
+        if (_operation == null) return "";
+        if (!string.IsNullOrEmpty(_operation.FailedRecipient))
+            return $"Could not resolve key for {_operation.FailedRecipient} — participant record may be revoked";
+        return _operation.ErrorMessage ?? "Encryption failed";
+    }
+
+    private string GetTransactionUrl()
+    {
+        // Navigate to transaction explorer with the transaction hash
+        return $"/app/transactions/{_operation?.TransactionHash}";
+    }
+
+    private static string GetRecipientCssClass(string status) => status switch
+    {
+        "secured" => "recipient-secured",
+        "encrypting" => "recipient-encrypting",
+        "failed" => "recipient-failed",
+        _ => "recipient-waiting"
+    };
+
+    private static Color GetStatusColor(string status) => status switch
+    {
+        "secured" => Color.Success,
+        "encrypting" => Color.Primary,
+        "failed" => Color.Error,
+        _ => Color.Default
+    };
+
+    private void ShowCompletionToast(EncryptionOperationState op)
+    {
+        if (op.IsSuccess)
+        {
+            Snackbar.Add(
+                $"Submission secured — {op.Recipients.Count} recipients can now access their disclosed fields",
+                Severity.Success,
+                config =>
+                {
+                    config.VisibleStateDuration = 8000;
+                    config.ShowCloseIcon = true;
+                    config.Action = "View";
+                    config.OnClick = _ =>
+                    {
+                        if (!string.IsNullOrEmpty(op.TransactionHash))
+                            Navigation.NavigateTo(GetTransactionUrl());
+                        return Task.CompletedTask;
+                    };
+                });
+        }
+        else
+        {
+            Snackbar.Add(
+                $"Encryption failed — {GetErrorText()}",
+                Severity.Error,
+                config =>
+                {
+                    config.VisibleStateDuration = 10000;
+                    config.ShowCloseIcon = true;
+                });
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Tracker.OnStateChanged -= HandleStateChanged;
+    }
+}

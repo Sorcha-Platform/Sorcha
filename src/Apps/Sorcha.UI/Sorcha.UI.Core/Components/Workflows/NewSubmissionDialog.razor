@@ -11,6 +11,7 @@
 @inject IBlueprintApiService BlueprintApiService
 @inject IWorkflowService WorkflowService
 @inject IWalletPreferenceService WalletPreferenceService
+@inject IEncryptionOperationTracker EncryptionTracker
 @inject ILogger<NewSubmissionDialog> Logger
 
 <MudDialog>
@@ -170,6 +171,12 @@
                 _loadError = $"Instance created ({instance.InstanceId[..Math.Min(8, instance.InstanceId.Length)]}...) but action execution failed. The action will appear in your Pending Actions.";
                 StateHasChanged();
                 return;
+            }
+
+            // Track async encryption operations in the global popover
+            if (result.HasAsyncOperation && !string.IsNullOrEmpty(result.OperationId))
+            {
+                EncryptionTracker.TrackOperation(result.OperationId);
             }
 
             MudDialog?.Close(DialogResult.Ok(result));

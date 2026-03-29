@@ -80,17 +80,17 @@
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Create `EncryptionOperationState` and `RecipientDisplayState` models at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Encryption/EncryptionOperationState.cs` — per data-model.md
-- [ ] T020 [P] [US1] Create `PopoverState` enum (Expanded, Minimised, Dismissed) at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Encryption/PopoverState.cs`
-- [ ] T021 [US1] Create `IEncryptionOperationTracker` interface and `EncryptionOperationTracker` implementation — scoped service subscribing to `ActionsHubConnection` events, tracking active operations, exposing `ActiveOperations` dictionary and change events at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs`
-- [ ] T022 [US1] Register `IEncryptionOperationTracker` as scoped in DI at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
-- [ ] T023 [US1] Create `CryptoProgressPopover.razor` component — floating panel (bottom-right, ~340px) with three states: expanded (recipient list with status), minimised (compact pill), dismissed (hidden). Uses task-oriented language per FR-007 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T024 [US1] Implement disclosed fields summary formatting in `CryptoProgressPopover` — `["/*"]` → "all fields", otherwise strip `/` prefix and join with commas at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T025 [US1] Implement minimise/dismiss transitions — minimise collapses to pill with "Securing — 2/3 recipients" + mini progress bar; dismiss hides panel and triggers `ISnackbar` toast on completion at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T026 [US1] Implement multi-operation support — badge counter when >1 active operation, click cycles through operations per FR-010 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T027 [US1] Add `<CryptoProgressPopover />` to MainLayout alongside existing global components at `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
-- [ ] T028 [US1] Wire `NewSubmissionDialog` to call `IEncryptionOperationTracker.TrackOperation()` on async submission result (HTTP 202) instead of showing inline `EncryptionProgressIndicator` at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/NewSubmissionDialog.razor`
-- [ ] T029 [US1] Implement success state: "Submission secured — N recipients can now access their disclosed fields" with "View transaction →" link navigating to transaction explorer at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T019 [P] [US1] Create `EncryptionOperationState` and `RecipientDisplayState` models at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Encryption/EncryptionOperationState.cs` — per data-model.md
+- [x] T020 [P] [US1] Create `PopoverState` enum (Expanded, Minimised, Dismissed) at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Encryption/PopoverState.cs`
+- [x] T021 [US1] Create `IEncryptionOperationTracker` interface and `EncryptionOperationTracker` implementation — scoped service subscribing to `ActionsHubConnection` events, tracking active operations, exposing `ActiveOperations` dictionary and change events at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs`
+- [x] T022 [US1] Register `IEncryptionOperationTracker` as scoped in DI at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs`
+- [x] T023 [US1] Create `CryptoProgressPopover.razor` component — floating panel (bottom-right, ~340px) with three states: expanded (recipient list with status), minimised (compact pill), dismissed (hidden). Uses task-oriented language per FR-007 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T024 [US1] Implement disclosed fields summary formatting in `CryptoProgressPopover` — `["/*"]` → "all fields", otherwise strip `/` prefix and join with commas at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs`
+- [x] T025 [US1] Implement minimise/dismiss transitions — minimise collapses to pill with "Securing — 2/3 recipients" + mini progress bar; dismiss hides panel and triggers `ISnackbar` toast on completion at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T026 [US1] Implement multi-operation support — badge counter when >1 active operation, click cycles through operations per FR-010 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T027 [US1] Add `<CryptoProgressPopover />` to MainLayout alongside existing global components at `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/MainLayout.razor`
+- [x] T028 [US1] Wire `NewSubmissionDialog` to call `IEncryptionOperationTracker.TrackOperation()` on async submission result (HTTP 202) instead of showing inline `EncryptionProgressIndicator` at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/NewSubmissionDialog.razor`
+- [x] T029 [US1] Implement success state: "Submission secured — N recipients can now access their disclosed fields" with "View transaction →" link navigating to transaction explorer at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
 
 **Checkpoint**: Floating popover shows per-recipient progress. Minimise/dismiss/navigate all work. Success links to transaction explorer.
 

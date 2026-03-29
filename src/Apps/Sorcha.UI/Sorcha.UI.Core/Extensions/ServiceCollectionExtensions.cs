@@ -416,6 +416,9 @@ public static class ServiceCollectionExtensions
             return new ActionsHubConnection(hubBaseUrl, authService, configService, logger);
         });
 
+        // Encryption operation tracker (global state across page navigation)
+        services.AddScoped<IEncryptionOperationTracker, EncryptionOperationTracker>();
+
         return services;
     }
 
