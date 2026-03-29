@@ -22,6 +22,17 @@ public sealed class RouterChannelPool : IDisposable
         _channels.GetOrAdd(address, addr => GrpcChannel.ForAddress(addr));
 
     /// <summary>
+    /// Removes and disposes a single pooled channel so the next call creates a fresh one.
+    /// </summary>
+    public void EvictChannel(string address)
+    {
+        if (_channels.TryRemove(address, out var channel))
+        {
+            channel.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Disposes all pooled gRPC channels.
     /// </summary>
     public void Dispose()

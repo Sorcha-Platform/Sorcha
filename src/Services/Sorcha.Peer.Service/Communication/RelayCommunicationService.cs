@@ -210,7 +210,6 @@ public class RelayCommunicationService
     /// </summary>
     public async Task EstablishReverseStreamAsync(CancellationToken cancellationToken = default)
     {
-
         _reverseStreamBackoffMs = 0;
 
         while (!cancellationToken.IsCancellationRequested)

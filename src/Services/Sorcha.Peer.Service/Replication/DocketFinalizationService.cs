@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sorcha.Cryptography.Enums;
@@ -104,6 +103,17 @@ public class DocketFinalizationService
         {
             // Step 1: Ensure validator key is cached (extract from genesis if needed)
             await EnsureValidatorKeyCachedAsync(registerId, cancellationToken);
+
+            // Fail if validator key could not be resolved (except for genesis dockets)
+            if (!_validatorKeyCache.HasKey(registerId) && docket.Version != 0)
+            {
+                record.Status = FinalizationStatus.Rejected;
+                record.ErrorMessage = "Cannot verify: validator key not available";
+                _logger.LogWarning(
+                    "Docket {DocketNumber} for register {RegisterId} rejected: validator key not available",
+                    docket.Version, registerId);
+                return record;
+            }
 
             // Step 2: Verify chain integrity (PreviousHash linkage)
             if (!VerifyChainIntegrity(registerId, docket))
@@ -411,7 +421,9 @@ public class DocketFinalizationService
             }
 
             // Recompute the docket hash bytes for verification
-            var hashBytes = Encoding.UTF8.GetBytes(docket.DocketHash);
+            // DocketHash is a hex string; the Wallet Service signs Convert.FromHexString(hex) with isPreHashed,
+            // so verification must use the same raw bytes.
+            var hashBytes = Convert.FromHexString(docket.DocketHash);
 
             // Cryptographically verify the signature
             var status = await _cryptoModule.VerifyAsync(

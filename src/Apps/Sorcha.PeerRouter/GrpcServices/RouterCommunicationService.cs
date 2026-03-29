@@ -129,6 +129,10 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
         }
         catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded)
         {
+            // Evict the stale channel so the next attempt creates a fresh one
+            var recipientAddress = $"http://{recipient.Address}:{recipient.Port}";
+            _channelPool.EvictChannel(recipientAddress);
+
             _logger.LogWarning(
                 ex,
                 "Relay failed: could not reach recipient peer {RecipientId} at {Address}:{Port}",
@@ -371,6 +375,10 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
             }
             catch (RpcException ex)
             {
+                // Evict the stale channel so the next attempt creates a fresh one
+                var failedAddress = $"http://{recipient.Address}:{recipient.Port}";
+                _channelPool.EvictChannel(failedAddress);
+
                 _logger.LogWarning(
                     ex,
                     "Failed to relay to {RecipientPeerId} via direct channel at {Address}:{Port}",

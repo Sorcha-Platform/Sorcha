@@ -44,9 +44,17 @@ public sealed class ReverseStreamManager
             (_, existing) =>
             {
                 existing.IsActive = false;
-                // Cancel the old stream's read loop so it stops processing
-                try { existing.StreamCts.Cancel(); }
-                catch (ObjectDisposedException) { }
+                // Cancel and dispose the old stream's CTS so it stops processing
+                try
+                {
+                    existing.StreamCts.Cancel();
+                    existing.StreamCts.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Already disposed — safe to ignore
+                }
+
                 _logger.LogInformation(
                     "Replacing existing reverse stream for peer {PeerId}", peerId);
                 return entry;
@@ -64,6 +72,16 @@ public sealed class ReverseStreamManager
         if (_streams.TryRemove(peerId, out var entry))
         {
             entry.IsActive = false;
+            try
+            {
+                entry.StreamCts.Cancel();
+                entry.StreamCts.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed — safe to ignore
+            }
+
             _logger.LogInformation(
                 "Reverse stream removed for peer {PeerId}", peerId);
         }

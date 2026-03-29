@@ -327,6 +327,10 @@ public class RelayMessageHandler
                             CreatedAt = DateTimeOffset.FromUnixTimeMilliseconds(docket.CreatedAt)
                         };
 
+                        // Ensure the docket is in RegisterCache before finalization so
+                        // chain integrity verification can find it and its predecessors.
+                        cacheEntry.AddOrUpdateDocket(cachedDocket);
+
                         await _docketFinalizationService.FinalizeAsync(registerId, cachedDocket, cancellationToken);
                     }
                 }
