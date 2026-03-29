@@ -19,12 +19,12 @@
 
 **Purpose**: Add new models and interfaces that multiple user stories depend on.
 
-- [ ] T001 [P] Add `RecipientProgress` model and `RecipientProgressStatus` enum to `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs` — fields: WalletAddress, DisplayName, DisclosedFields, GroupId, Status, ErrorMessage
-- [ ] T002 [P] Add `DisplayName` nullable string property to `RecipientInfo` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
-- [ ] T003 [P] Add `RecipientProgress[]` property to `EncryptionResult` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
-- [ ] T004 [P] Add `RecipientEncryptionNotification` record to `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs` — fields: OperationId, RecipientName, RecipientIndex, TotalRecipients, DisclosedFieldsSummary, Status, PipelineStep, ErrorMessage, Timestamp
-- [ ] T005 [P] Add `RecipientOperationStatus` record and `Recipients[]` property to `EncryptionOperation` in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionOperationModels.cs`
-- [ ] T006 Verify solution builds cleanly after model changes: `dotnet build`
+- [x] T001 [P] Add `RecipientProgress` model and `RecipientProgressStatus` enum to `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs` — fields: WalletAddress, DisplayName, DisclosedFields, GroupId, Status, ErrorMessage
+- [x] T002 [P] Add `DisplayName` nullable string property to `RecipientInfo` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
+- [x] T003 [P] Add `RecipientProgress[]` property to `EncryptionResult` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
+- [x] T004 [P] Add `RecipientEncryptionNotification` record to `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs` — fields: OperationId, RecipientName, RecipientIndex, TotalRecipients, DisclosedFieldsSummary, Status, PipelineStep, ErrorMessage, Timestamp
+- [x] T005 [P] Add `RecipientOperationStatus` record and `Recipients[]` property to `EncryptionOperation` in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionOperationModels.cs`
+- [x] T006 Verify solution builds cleanly after model changes: `dotnet build`
 
 **Checkpoint**: All new models compile. No behaviour change yet.
 

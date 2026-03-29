@@ -90,3 +90,37 @@ public sealed record EncryptionFailedNotification
     /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 }
+
+/// <summary>
+/// SignalR notification for per-recipient encryption progress.
+/// Emitted after each recipient's key wrapping completes or fails.
+/// </summary>
+public sealed record RecipientEncryptionNotification
+{
+    /// <summary>Unique operation identifier.</summary>
+    public required string OperationId { get; init; }
+
+    /// <summary>Participant display name or truncated wallet address.</summary>
+    public required string RecipientName { get; init; }
+
+    /// <summary>1-based index of this recipient in the operation.</summary>
+    public required int RecipientIndex { get; init; }
+
+    /// <summary>Total recipients in the operation.</summary>
+    public required int TotalRecipients { get; init; }
+
+    /// <summary>JSON Pointer paths disclosed to this recipient.</summary>
+    public required string[] DisclosedFieldsSummary { get; init; }
+
+    /// <summary>Processing status: waiting, encrypting, secured, failed.</summary>
+    public required string Status { get; init; }
+
+    /// <summary>Pipeline step this event belongs to (2 = encryption).</summary>
+    public required int PipelineStep { get; init; }
+
+    /// <summary>Error detail when status is "failed".</summary>
+    public string? ErrorMessage { get; init; }
+
+    /// <summary>Timestamp of the event.</summary>
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+}
