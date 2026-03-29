@@ -104,9 +104,9 @@
 
 ### Implementation for User Story 5
 
-- [ ] T030 [US5] Implement error state in `CryptoProgressPopover` — show failing recipient (red), error message, "Retry" and "Details" links per FR-009 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T031 [US5] Implement retry action — resubmit original `ActionExecuteRequest` via `IWorkflowService`, start new operation tracking, reset recipient list at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
-- [ ] T032 [US5] Implement error toast when panel is dismissed — show "Encryption failed — Could not resolve key for [recipient]" via `ISnackbar` with Retry action at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EncryptionOperationTracker.cs`
+- [x] T030 [US5] Implement error state in `CryptoProgressPopover` — show failing recipient (red), error message, "Retry" and "Details" links per FR-009 at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T031 [US5] Implement retry action — resubmit original `ActionExecuteRequest` via `IWorkflowService`, start new operation tracking, reset recipient list at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
+- [x] T032 [US5] Implement error toast when panel is dismissed — show "Encryption failed — Could not resolve key for [recipient]" via `ISnackbar` with Retry action at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Encryption/CryptoProgressPopover.razor`
 
 **Checkpoint**: Error states are actionable. Retry works. Error toast appears when dismissed.
 

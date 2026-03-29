@@ -3,6 +3,7 @@
 
 @using MudBlazor
 @using Sorcha.UI.Core.Models.Encryption
+@using Sorcha.UI.Core.Models.Workflows
 @using Sorcha.UI.Core.Services
 @implements IDisposable
 @inject IEncryptionOperationTracker Tracker
@@ -113,13 +114,28 @@
                 </div>
             }
 
-            <!-- Error state (T030 will extend this) -->
+            <!-- Error state with retry -->
             @if (_operation.Status == OperationDisplayStatus.Failed)
             {
                 <div class="crypto-popover-footer crypto-popover-error">
                     <MudText Typo="Typo.body2" Color="Color.Error">
                         @GetErrorText()
                     </MudText>
+                    <div class="crypto-popover-error-actions">
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="RetryAsync" Disabled="_isRetrying">
+                            @if (_isRetrying)
+                            {
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-1" Style="width:14px;height:14px;" />
+                            }
+                            Retry
+                        </MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                   OnClick="@(() => { })">
+                            Details
+                        </MudButton>
+                    </div>
                 </div>
             }
 
@@ -162,8 +178,21 @@
 }
 
 @code {
+    /// <summary>
+    /// Optional workflow service for retry capability.
+    /// </summary>
+    [Parameter]
+    public IWorkflowService? WorkflowService { get; set; }
+
+    /// <summary>
+    /// Optional original request for retry.
+    /// </summary>
+    [Parameter]
+    public ActionExecuteRequest? OriginalRequest { get; set; }
+
     private EncryptionOperationState? _operation;
     private bool _disposed;
+    private bool _isRetrying;
 
     protected override void OnInitialized()
     {
@@ -282,6 +311,32 @@
                     config.VisibleStateDuration = 10000;
                     config.ShowCloseIcon = true;
                 });
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        if (WorkflowService == null || OriginalRequest == null || _operation == null) return;
+
+        _isRetrying = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await WorkflowService.SubmitActionExecuteAsync(OriginalRequest);
+            if (result?.HasAsyncOperation == true && !string.IsNullOrEmpty(result.OperationId))
+            {
+                Tracker.TrackOperation(result.OperationId);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Retry failed — please try again", Severity.Error);
+        }
+        finally
+        {
+            _isRetrying = false;
+            StateHasChanged();
         }
     }
 
