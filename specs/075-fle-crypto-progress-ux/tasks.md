@@ -136,8 +136,8 @@
 
 ### Tests for User Story 4
 
-- [ ] T036 [P] [US4] Unit test for disclosure group encryption — verify identical fields → 1 group, different fields → N groups, atomic failure identifies failing recipient at `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupEncryptionTests.cs`
-- [ ] T037 [P] [US4] Unit test for recipient key resolution — verify instance binding keys, register published keys, revoked participant failure, mixed sources at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionEncryptionTests.cs`
+- [x] T036 [P] [US4] Unit test for disclosure group encryption — verify identical fields → 1 group, different fields → N groups, atomic failure identifies failing recipient at `tests/Sorcha.TransactionHandler.Tests/Encryption/DisclosureGroupEncryptionTests.cs`
+- [x] T037 [P] [US4] Unit test for recipient key resolution — verify instance binding keys, register published keys, revoked participant failure, mixed sources at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionEncryptionTests.cs`
 
 **Checkpoint**: FLE encryption pipeline has >85% test coverage.
 
