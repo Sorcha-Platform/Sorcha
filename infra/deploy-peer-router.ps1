@@ -24,8 +24,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ([string]::IsNullOrEmpty($ResourceGroup)) { $ResourceGroup = 'sorcha-uksouth-rg' }
-if ([string]::IsNullOrEmpty($RegistryName)) { $RegistryName = 'sorchauksouth' }
+if ([string]::IsNullOrEmpty($ResourceGroup)) { $ResourceGroup = 'rg-sorcha' }
+if ([string]::IsNullOrEmpty($RegistryName)) { $RegistryName = 'sorchaacr' }
 
 $AcrServer = "$RegistryName.azurecr.io"
 $FullImageName = "$AcrServer/peer-router:$ImageTag"
