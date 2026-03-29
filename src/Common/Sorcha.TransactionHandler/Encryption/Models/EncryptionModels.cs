@@ -123,6 +123,8 @@ public sealed class RecipientInfo
     /// <summary>
     /// Participant display name for UI progress events.
     /// Falls back to truncated wallet address when null.
+    /// Uses <c>set</c> (not <c>init</c>) because it is populated post-construction
+    /// by ActionExecutionService after key resolution.
     /// </summary>
     public string? DisplayName { get; set; }
 }
@@ -194,6 +196,16 @@ public sealed class EncryptionResult
 }
 
 /// <summary>
+/// String constants for recipient status values used across layers.
+/// </summary>
+public static class RecipientStatusValues
+{
+    public const string Waiting = "waiting";
+    public const string Secured = "secured";
+    public const string Failed = "failed";
+}
+
+/// <summary>
 /// Per-recipient progress tracking during encryption.
 /// </summary>
 public sealed class RecipientProgress
@@ -222,11 +234,8 @@ public sealed class RecipientProgress
 /// </summary>
 public enum RecipientProgressStatus
 {
-    /// <summary>Not yet processed.</summary>
+    /// <summary>Not yet processed (awaiting key wrapping).</summary>
     Waiting,
-
-    /// <summary>Key wrapping in progress.</summary>
-    Encrypting,
 
     /// <summary>Key successfully wrapped.</summary>
     Secured,

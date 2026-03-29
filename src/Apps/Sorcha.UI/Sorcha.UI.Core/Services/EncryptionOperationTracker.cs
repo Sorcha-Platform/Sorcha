@@ -40,6 +40,7 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
     private readonly Dictionary<string, EncryptionOperationState> _operations = new();
     private readonly ActionsHubConnection _actionsHub;
     private readonly ILogger<EncryptionOperationTracker> _logger;
+    private readonly CancellationTokenSource _cts = new();
     private string? _currentOperationId;
     private bool _disposed;
 
@@ -115,20 +116,24 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
     {
         if (!_operations.TryGetValue(update.OperationId, out var op)) return Task.CompletedTask;
 
-        // Find or add the recipient
-        var existing = op.Recipients.FirstOrDefault(r => r.Name == update.RecipientName);
-        if (existing != null)
+        // Key on RecipientIndex (1-based) to avoid display name collisions
+        var targetIndex = update.RecipientIndex - 1;
+        if (targetIndex >= 0 && targetIndex < op.Recipients.Count)
         {
-            existing.Status = update.Status;
+            op.Recipients[targetIndex].Status = update.Status;
         }
         else
         {
-            op.Recipients.Add(new RecipientDisplayState
+            // Ensure list is large enough, padding with waiting entries
+            while (op.Recipients.Count < update.RecipientIndex)
             {
-                Name = update.RecipientName,
-                FieldsSummary = FormatDisclosedFields(update.DisclosedFieldsSummary),
-                Status = update.Status
-            });
+                op.Recipients.Add(new RecipientDisplayState
+                {
+                    Name = update.RecipientName,
+                    FieldsSummary = FormatDisclosedFields(update.DisclosedFieldsSummary),
+                    Status = update.Status
+                });
+            }
         }
 
         // Update progress based on recipient completion
@@ -151,7 +156,7 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         op.TransactionHash = update.TransactionHash;
 
         // Mark all remaining recipients as secured
-        foreach (var r in op.Recipients.Where(r => r.Status is "waiting" or "encrypting"))
+        foreach (var r in op.Recipients.Where(r => r.Status == "waiting"))
         {
             r.Status = "secured";
         }
@@ -181,7 +186,15 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
 
     private async Task CleanupAfterDelayAsync(string operationId)
     {
-        await Task.Delay(TimeSpan.FromMinutes(5));
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5), _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         _operations.Remove(operationId);
         if (_currentOperationId == operationId)
         {
@@ -212,6 +225,8 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         if (_disposed) return;
         _disposed = true;
 
+        _cts.Cancel();
+        _cts.Dispose();
         _actionsHub.OnEncryptionProgress -= HandleProgress;
         _actionsHub.OnEncryptionComplete -= HandleComplete;
         _actionsHub.OnEncryptionFailed -= HandleFailed;

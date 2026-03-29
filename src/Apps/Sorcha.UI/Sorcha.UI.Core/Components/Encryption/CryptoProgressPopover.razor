@@ -72,10 +72,6 @@
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" />
                             }
-                            else if (recipient.Status == "encrypting")
-                            {
-                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" Style="width:16px;height:16px;" />
-                            }
                             else if (recipient.Status == "failed")
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
@@ -130,10 +126,6 @@
                                 <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-1" Style="width:14px;height:14px;" />
                             }
                             Retry
-                        </MudButton>
-                        <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
-                                   OnClick="@(() => { })">
-                            Details
                         </MudButton>
                     </div>
                 </div>
@@ -268,7 +260,6 @@
     private static string GetRecipientCssClass(string status) => status switch
     {
         "secured" => "recipient-secured",
-        "encrypting" => "recipient-encrypting",
         "failed" => "recipient-failed",
         _ => "recipient-waiting"
     };
@@ -276,7 +267,6 @@
     private static Color GetStatusColor(string status) => status switch
     {
         "secured" => Color.Success,
-        "encrypting" => Color.Primary,
         "failed" => Color.Error,
         _ => Color.Default
     };
