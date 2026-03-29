@@ -34,7 +34,7 @@ public sealed class RouterCommunicationServiceRelayTests
 
     private RouterCommunicationService CreateService() =>
         new(_routingTable, _reverseStreamManager, _eventBuffer, _relayEnabledConfig,
-            NullLogger<RouterCommunicationService>.Instance);
+            NullLogger<RouterCommunicationService>.Instance, new RouterChannelPool());
 
     private static PeerMessage CreateMessage(
         string senderId = "sender-1",

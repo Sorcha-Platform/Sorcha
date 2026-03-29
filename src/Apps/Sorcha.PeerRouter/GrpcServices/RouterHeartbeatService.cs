@@ -148,8 +148,9 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
         };
 
         // Aggregate advertised registers from other healthy peers (exclude the sender, cap at 100)
+        // Take a snapshot of AdvertisedRegisters via .ToList() to avoid race with concurrent writers
         var otherPeersAds = _routingTable.GetHealthyPeers(excludePeerId: peerId)
-            .SelectMany(p => p.AdvertisedRegisters)
+            .SelectMany(p => p.AdvertisedRegisters.ToList())
             .Take(100)
             .Select(a => new RegisterAdvertisement
             {

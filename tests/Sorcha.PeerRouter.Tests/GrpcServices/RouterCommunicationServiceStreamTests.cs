@@ -36,7 +36,7 @@ public sealed class RouterCommunicationServiceStreamTests
 
     private RouterCommunicationService CreateService(RouterConfiguration config) =>
         new(_routingTable, _reverseStreamManager, _eventBuffer, config,
-            NullLogger<RouterCommunicationService>.Instance);
+            NullLogger<RouterCommunicationService>.Instance, new RouterChannelPool());
 
     private static PeerMessage CreateMessage(
         string senderId = "sender-1",

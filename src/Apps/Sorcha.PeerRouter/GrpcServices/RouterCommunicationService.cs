@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Collections.Concurrent;
-
 using Grpc.Core;
 using Grpc.Net.Client;
 
@@ -17,27 +15,29 @@ namespace Sorcha.PeerRouter.GrpcServices;
 /// When relay is enabled, forwards messages between peers that cannot reach each other directly.
 /// Supports both direct forwarding and reverse-stream relay for NAT'd peers.
 /// </summary>
-public sealed class RouterCommunicationService : PeerCommunication.PeerCommunicationBase, IDisposable
+public sealed class RouterCommunicationService : PeerCommunication.PeerCommunicationBase
 {
     private readonly RoutingTable _routingTable;
     private readonly ReverseStreamManager _reverseStreamManager;
     private readonly EventBuffer _eventBuffer;
     private readonly RouterConfiguration _config;
     private readonly ILogger<RouterCommunicationService> _logger;
-    private readonly ConcurrentDictionary<string, GrpcChannel> _channelPool = new();
+    private readonly RouterChannelPool _channelPool;
 
     public RouterCommunicationService(
         RoutingTable routingTable,
         ReverseStreamManager reverseStreamManager,
         EventBuffer eventBuffer,
         RouterConfiguration config,
-        ILogger<RouterCommunicationService> logger)
+        ILogger<RouterCommunicationService> logger,
+        RouterChannelPool channelPool)
     {
         _routingTable = routingTable;
         _reverseStreamManager = reverseStreamManager;
         _eventBuffer = eventBuffer;
         _config = config;
         _logger = logger;
+        _channelPool = channelPool;
     }
 
     /// <summary>
@@ -159,6 +159,7 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
         }
 
         string? senderPeerId = null;
+        CancellationTokenSource? linkedCts = null;
 
         try
         {
@@ -177,6 +178,13 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
                     senderPeerId = message.SenderPeerId;
                     _reverseStreamManager.RegisterStream(senderPeerId, responseStream);
 
+                    // Create a linked token that cancels when either the context or the entry's CTS fires
+                    if (_reverseStreamManager.TryGetStream(senderPeerId, out var registeredEntry))
+                    {
+                        linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                            context.CancellationToken, registeredEntry!.StreamCts.Token);
+                    }
+
                     _eventBuffer.Add(RouterEvent.Create(
                         RouterEventType.StreamConnected,
                         senderPeerId,
@@ -190,6 +198,10 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
                     _logger.LogInformation(
                         "Reverse stream established for peer {PeerId}", senderPeerId);
                 }
+
+                // Check if this stream has been superseded by a reconnect
+                if (linkedCts?.Token.IsCancellationRequested == true)
+                    break;
 
                 // Update activity timestamp
                 if (_reverseStreamManager.TryGetStream(senderPeerId, out var entry))
@@ -206,7 +218,7 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
         }
         catch (OperationCanceledException)
         {
-            // Client disconnected normally
+            // Client disconnected normally or stream was superseded
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
         {
@@ -214,6 +226,8 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
         }
         finally
         {
+            linkedCts?.Dispose();
+
             if (senderPeerId is not null)
             {
                 _reverseStreamManager.RemoveStream(senderPeerId);
@@ -232,19 +246,6 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
                     "Reverse stream disconnected for peer {PeerId}", senderPeerId);
             }
         }
-    }
-
-    /// <summary>
-    /// Disposes pooled gRPC channels.
-    /// </summary>
-    public void Dispose()
-    {
-        foreach (var (_, channel) in _channelPool)
-        {
-            channel.Dispose();
-        }
-
-        _channelPool.Clear();
     }
 
     /// <summary>
@@ -383,5 +384,5 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
     /// Gets or creates a pooled gRPC channel for the given address.
     /// </summary>
     private GrpcChannel GetOrCreateChannel(string address) =>
-        _channelPool.GetOrAdd(address, addr => GrpcChannel.ForAddress(addr));
+        _channelPool.GetOrCreateChannel(address);
 }

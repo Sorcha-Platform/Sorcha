@@ -251,6 +251,11 @@ public class RelayCommunicationService
                 // Wait for either to complete (indicates disconnection)
                 await Task.WhenAny(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask);
 
+                // Cancel the CTS first to stop both tasks before cleanup
+                _reverseStreamCts?.Cancel();
+                try { await Task.WhenAll(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask); }
+                catch (OperationCanceledException) { }
+
                 _logger.LogWarning("Reverse stream disconnected, will reconnect after backoff");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -376,12 +381,10 @@ public class RelayCommunicationService
         _reverseStreamCall?.Dispose();
         _reverseStreamCall = null;
 
-        if (_reverseStreamCts != null)
-        {
-            await _reverseStreamCts.CancelAsync();
-            _reverseStreamCts.Dispose();
-            _reverseStreamCts = null;
-        }
+        // CTS is already cancelled in EstablishReverseStreamAsync before cleanup;
+        // just dispose here.
+        _reverseStreamCts?.Dispose();
+        _reverseStreamCts = null;
     }
 
     private PeerMessage CreatePeerMessage(string targetPeerId, MessageType messageType, object payload)

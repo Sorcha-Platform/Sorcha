@@ -18,6 +18,9 @@ public sealed class ReverseStreamEntry
     /// <summary>gRPC stream writer for pushing messages to this peer.</summary>
     public required IServerStreamWriter<PeerMessage> ResponseStream { get; init; }
 
+    /// <summary>Cancellation token source to signal the stream's read loop to stop.</summary>
+    public CancellationTokenSource StreamCts { get; init; } = new();
+
     /// <summary>When the stream was established.</summary>
     public DateTimeOffset ConnectedAt { get; init; } = DateTimeOffset.UtcNow;
 

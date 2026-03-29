@@ -7,6 +7,8 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.Peer.Service.Models;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Register;
@@ -16,6 +18,7 @@ namespace Sorcha.Peer.Service.Tests.Replication;
 public class DocketFinalizationServiceTests
 {
     private readonly Mock<IRegisterServiceClient> _registerClientMock;
+    private readonly Mock<ICryptoModule> _cryptoModuleMock;
     private readonly ValidatorKeyCache _validatorKeyCache;
     private readonly RegisterCache _registerCache;
     private readonly DocketFinalizationService _service;
@@ -23,14 +26,23 @@ public class DocketFinalizationServiceTests
     public DocketFinalizationServiceTests()
     {
         _registerClientMock = new Mock<IRegisterServiceClient>();
+        _cryptoModuleMock = new Mock<ICryptoModule>();
         _validatorKeyCache = new ValidatorKeyCache(new Mock<ILogger<ValidatorKeyCache>>().Object);
         _registerCache = new RegisterCache(new Mock<ILogger<RegisterCache>>().Object);
+
+        // Default: signatures verify successfully
+        _cryptoModuleMock
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
 
         _service = new DocketFinalizationService(
             new Mock<ILogger<DocketFinalizationService>>().Object,
             _registerClientMock.Object,
             _validatorKeyCache,
-            _registerCache);
+            _registerCache,
+            _cryptoModuleMock.Object);
     }
 
     [Fact]

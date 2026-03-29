@@ -28,6 +28,7 @@ builder.Services.AddSingleton(config);
 builder.Services.AddSingleton<RoutingTable>();
 builder.Services.AddSingleton<EventBuffer>();
 builder.Services.AddSingleton<ReverseStreamManager>();
+builder.Services.AddSingleton<RouterChannelPool>();
 builder.Services.AddHostedService<PeerTimeoutService>();
 
 builder.Services.AddGrpc();

@@ -16,6 +16,8 @@ using Sorcha.Peer.Service.Network;
 using Sorcha.Peer.Service.Observability;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Peer.Service.Models;
+using Sorcha.Cryptography.Core;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.Peer.Service.GrpcServices;
@@ -142,6 +144,9 @@ builder.Services.AddSingleton<PeerServiceActivitySource>();
 // Register relay communication services
 builder.Services.AddSingleton<RelayCommunicationService>();
 builder.Services.AddSingleton<RelayMessageHandler>();
+
+// Register cryptography module for signature verification
+builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
 
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();

@@ -6,6 +6,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Peer.Service.Models;
 using Sorcha.ServiceClients.Register;
 
@@ -21,18 +24,21 @@ public class DocketFinalizationService
     private readonly IRegisterServiceClient _registerServiceClient;
     private readonly ValidatorKeyCache _validatorKeyCache;
     private readonly RegisterCache _registerCache;
+    private readonly ICryptoModule _cryptoModule;
     private readonly ConcurrentDictionary<string, DocketFinalizationRecord> _records = new();
 
     public DocketFinalizationService(
         ILogger<DocketFinalizationService> logger,
         IRegisterServiceClient registerServiceClient,
         ValidatorKeyCache validatorKeyCache,
-        RegisterCache registerCache)
+        RegisterCache registerCache,
+        ICryptoModule cryptoModule)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _registerServiceClient = registerServiceClient ?? throw new ArgumentNullException(nameof(registerServiceClient));
         _validatorKeyCache = validatorKeyCache ?? throw new ArgumentNullException(nameof(validatorKeyCache));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
+        _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
     }
 
     /// <summary>
@@ -97,16 +103,13 @@ public class DocketFinalizationService
                 return record;
             }
 
-            // Step 4: Verify proposer signature (TODO: actual crypto verification)
-            // The actual signature verification requires access to the Sorcha.Cryptography
-            // library or IWalletServiceClient. For now, we verify that the docket data
-            // contains a valid signature structure.
-            if (!VerifyProposerSignatureStructure(registerId, docket))
+            // Step 4: Verify proposer signature cryptographically
+            if (!await VerifyProposerSignatureAsync(registerId, docket, cancellationToken))
             {
                 record.Status = FinalizationStatus.Rejected;
-                record.ErrorMessage = "Proposer signature structure invalid";
+                record.ErrorMessage = "Proposer signature verification failed";
                 _logger.LogWarning(
-                    "Docket {DocketNumber} for register {RegisterId} rejected: invalid signature structure",
+                    "Docket {DocketNumber} for register {RegisterId} rejected: signature verification failed",
                     docket.Version, registerId);
                 return record;
             }
@@ -319,7 +322,10 @@ public class DocketFinalizationService
         }
     }
 
-    private bool VerifyProposerSignatureStructure(string registerId, CachedDocket docket)
+    private async Task<bool> VerifyProposerSignatureAsync(
+        string registerId,
+        CachedDocket docket,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -329,7 +335,7 @@ public class DocketFinalizationService
             if (!root.TryGetProperty("ProposerSignature", out var sigElement) &&
                 !root.TryGetProperty("proposerSignature", out sigElement))
             {
-                // No signature in docket data — genesis dockets may not require one
+                // Genesis dockets (version 0) may not have a signature
                 if (docket.Version == 0)
                     return true;
 
@@ -339,35 +345,76 @@ public class DocketFinalizationService
                 return false;
             }
 
-            // Verify signature structure has required fields
-            var hasPublicKey = sigElement.TryGetProperty("PublicKey", out _) ||
-                               sigElement.TryGetProperty("publicKey", out _);
-            var hasSignatureValue = sigElement.TryGetProperty("SignatureValue", out _) ||
-                                    sigElement.TryGetProperty("signatureValue", out _);
-            var hasAlgorithm = sigElement.TryGetProperty("Algorithm", out _) ||
-                               sigElement.TryGetProperty("algorithm", out _);
+            // Extract signature fields
+            byte[]? publicKeyBytes = null;
+            byte[]? signatureBytes = null;
+            string? algorithm = null;
 
-            if (!hasPublicKey || !hasSignatureValue || !hasAlgorithm)
+            if (sigElement.TryGetProperty("PublicKey", out var pkElement) ||
+                sigElement.TryGetProperty("publicKey", out pkElement))
+            {
+                publicKeyBytes = pkElement.GetBytesFromBase64();
+            }
+
+            if (sigElement.TryGetProperty("SignatureValue", out var svElement) ||
+                sigElement.TryGetProperty("signatureValue", out svElement))
+            {
+                signatureBytes = svElement.GetBytesFromBase64();
+            }
+
+            if (sigElement.TryGetProperty("Algorithm", out var algElement) ||
+                sigElement.TryGetProperty("algorithm", out algElement))
+            {
+                algorithm = algElement.GetString();
+            }
+
+            if (publicKeyBytes == null || signatureBytes == null || string.IsNullOrEmpty(algorithm))
             {
                 _logger.LogWarning(
                     "Docket {DocketNumber} for register {RegisterId} has incomplete ProposerSignature " +
                     "(PublicKey: {HasPK}, SignatureValue: {HasSV}, Algorithm: {HasAlg})",
-                    docket.Version, registerId, hasPublicKey, hasSignatureValue, hasAlgorithm);
+                    docket.Version, registerId,
+                    publicKeyBytes != null, signatureBytes != null, algorithm);
                 return false;
             }
 
-            // TODO: Actual cryptographic signature verification
-            // To verify the signature:
-            // 1. Get the cached validator public key from ValidatorKeyCache
-            // 2. Recompute the docket hash (already done in VerifyDocketHash)
-            // 3. Use the appropriate crypto algorithm to verify SignatureValue against the hash
-            // This requires either:
-            //   a) Adding Sorcha.Cryptography as a project reference, or
-            //   b) Using IWalletServiceClient.VerifySignatureAsync() via service call
-            // For now, structural validation is sufficient — Register Service performs
-            // full cryptographic verification on WriteDocketAsync.
+            // Parse the algorithm to get the WalletNetworks byte
+            if (!AlgorithmMapper.TryParseAlgorithm(algorithm, out var network))
+            {
+                _logger.LogWarning(
+                    "Docket {DocketNumber} for register {RegisterId} has unsupported algorithm: {Algorithm}",
+                    docket.Version, registerId, algorithm);
+                return false;
+            }
 
-            return true;
+            // Use the cached validator key if available for public key cross-check
+            if (_validatorKeyCache.TryGetKey(registerId, out var cachedKey) && cachedKey != null)
+            {
+                if (!publicKeyBytes.SequenceEqual(cachedKey.PublicKey))
+                {
+                    _logger.LogWarning(
+                        "Docket {DocketNumber} for register {RegisterId}: proposer public key does not match cached validator key",
+                        docket.Version, registerId);
+                    return false;
+                }
+            }
+
+            // Recompute the docket hash bytes for verification
+            var hashBytes = Encoding.UTF8.GetBytes(docket.DocketHash);
+
+            // Cryptographically verify the signature
+            var status = await _cryptoModule.VerifyAsync(
+                signatureBytes, hashBytes, (byte)network, publicKeyBytes, cancellationToken);
+
+            if (status == CryptoStatus.Success)
+            {
+                return true;
+            }
+
+            _logger.LogWarning(
+                "Docket {DocketNumber} for register {RegisterId}: cryptographic signature verification failed (status: {Status})",
+                docket.Version, registerId, status);
+            return false;
         }
         catch (JsonException ex)
         {
@@ -380,9 +427,10 @@ public class DocketFinalizationService
 
     private DocketModel BuildDocketModel(string registerId, CachedDocket docket)
     {
-        // Extract proposer validator ID from docket data
+        // Extract proposer validator ID and other metadata from docket data
         var proposerValidatorId = "unknown";
         var merkleRoot = string.Empty;
+        string? docketId = null;
 
         try
         {
@@ -392,6 +440,7 @@ public class DocketFinalizationService
             proposerValidatorId = GetStringProperty(root, "ProposerValidatorId", "proposerValidatorId")
                                   ?? "unknown";
             merkleRoot = GetStringProperty(root, "MerkleRoot", "merkleRoot") ?? string.Empty;
+            docketId = GetStringProperty(root, "DocketId", "docketId");
         }
         catch (JsonException)
         {
@@ -400,19 +449,52 @@ public class DocketFinalizationService
                 docket.Version, registerId);
         }
 
+        // Use DocketId from the docket data if available, fall back to the DocketHash (unique and deterministic)
+        docketId ??= docket.DocketHash;
+
+        // Hydrate full TransactionModel objects from the register cache
+        var cacheEntry = _registerCache.Get(registerId);
+        var transactions = docket.TransactionIds.Select(txId =>
+        {
+            var cachedTx = cacheEntry?.GetTransaction(txId);
+            if (cachedTx != null)
+            {
+                // Deserialize the full transaction from cached data
+                try
+                {
+                    var txModel = JsonSerializer.Deserialize<Sorcha.Register.Models.TransactionModel>(cachedTx.Data);
+                    if (txModel != null)
+                    {
+                        txModel.RegisterId = registerId;
+                        txModel.TxId = txId;
+                        return txModel;
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to deserialize cached transaction {TxId} for register {RegisterId}",
+                        txId, registerId);
+                }
+            }
+
+            // Fall back to minimal transaction if not in cache or deserialization failed
+            return new Sorcha.Register.Models.TransactionModel
+            {
+                RegisterId = registerId,
+                TxId = txId
+            };
+        }).ToList();
+
         return new DocketModel
         {
-            DocketId = $"{registerId}-{docket.Version}",
+            DocketId = docketId,
             RegisterId = registerId,
             DocketNumber = docket.Version,
             PreviousHash = docket.PreviousHash,
             DocketHash = docket.DocketHash,
             CreatedAt = docket.CreatedAt,
-            Transactions = docket.TransactionIds.Select(txId => new Sorcha.Register.Models.TransactionModel
-            {
-                RegisterId = registerId,
-                TxId = txId
-            }).ToList(),
+            Transactions = transactions,
             ProposerValidatorId = proposerValidatorId,
             MerkleRoot = merkleRoot
         };

@@ -44,6 +44,9 @@ public sealed class ReverseStreamManager
             (_, existing) =>
             {
                 existing.IsActive = false;
+                // Cancel the old stream's read loop so it stops processing
+                try { existing.StreamCts.Cancel(); }
+                catch (ObjectDisposedException) { }
                 _logger.LogInformation(
                     "Replacing existing reverse stream for peer {PeerId}", peerId);
                 return entry;
