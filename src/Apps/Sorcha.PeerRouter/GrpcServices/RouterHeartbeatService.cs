@@ -161,7 +161,9 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
                     ? SyncStateProto.FullyReplicated
                     : SyncStateProto.Active,
                 LatestVersion = a.LatestVersion,
-                IsPublic = a.IsPublic
+                IsPublic = a.IsPublic,
+                Name = a.Name ?? "",
+                Description = a.Description ?? ""
             });
 
         response.AdvertisedRegisters.AddRange(otherPeersAds);

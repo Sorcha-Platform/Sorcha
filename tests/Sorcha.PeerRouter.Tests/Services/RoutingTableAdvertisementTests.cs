@@ -160,4 +160,31 @@ public sealed class RoutingTableAdvertisementTests
         var entry = _sut.GetPeer("peer-1")!;
         entry.AdvertisedRegisters[0].HasFullReplica.Should().BeFalse();
     }
+
+    [Fact]
+    public void UpdateAdvertisedRegisters_NameAndDescription_SurviveRoundTrip()
+    {
+        _sut.RegisterPeer(CreatePeerInfo("peer-1"));
+
+        var ads = new[]
+        {
+            new RegisterAdvertisement
+            {
+                RegisterId = "reg-named",
+                SyncState = SyncStateProto.FullyReplicated,
+                LatestVersion = 7,
+                IsPublic = true,
+                Name = "Test Register",
+                Description = "Test desc"
+            }
+        };
+
+        var result = _sut.UpdateAdvertisedRegisters("peer-1", ads);
+
+        result.Should().BeTrue();
+        var entry = _sut.GetPeer("peer-1")!;
+        entry.AdvertisedRegisters.Should().ContainSingle();
+        entry.AdvertisedRegisters[0].Name.Should().Be("Test Register");
+        entry.AdvertisedRegisters[0].Description.Should().Be("Test desc");
+    }
 }

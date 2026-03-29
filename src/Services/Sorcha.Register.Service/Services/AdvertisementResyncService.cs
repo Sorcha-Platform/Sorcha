@@ -118,7 +118,7 @@ public class AdvertisementResyncService : BackgroundService
             Name = r.Name,
             Description = r.Description,
             IsPublic = true,
-            LatestVersion = 0, // Register model doesn't track version directly
+            LatestVersion = r.Height,
             LatestDocketVersion = 0
         }).ToList();
 

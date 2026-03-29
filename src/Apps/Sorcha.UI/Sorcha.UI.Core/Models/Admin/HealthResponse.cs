@@ -94,6 +94,8 @@ public class PeerRegisterAdvertisement
     public string SyncState { get; set; } = string.Empty;
     public long LatestVersion { get; set; }
     public bool IsPublic { get; set; }
+    public string? Name { get; set; }
+    public string? Description { get; set; }
 }
 
 /// <summary>

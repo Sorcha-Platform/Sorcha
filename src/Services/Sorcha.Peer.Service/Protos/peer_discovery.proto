@@ -86,6 +86,12 @@ message PeerRegisterAdvertisement {
 
   // Whether this register is publicly available
   bool is_public = 4;
+
+  // Human-readable register name
+  string name = 5;
+
+  // Register description
+  string description = 6;
 }
 
 // Request to register as a peer
