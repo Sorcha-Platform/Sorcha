@@ -17,7 +17,7 @@ Complete field-level encryption implementation by closing test gaps from spec 06
 **Project Type**: Web (microservices + Blazor WASM frontend)
 **Performance Goals**: Per-recipient events within 1 second of key wrapping, 3-recipient encryption under 2 seconds total
 **Constraints**: Existing SignalR infrastructure (no new hubs), MudBlazor component library, scoped DI lifetime convention
-**Scale/Scope**: 3 services modified (Blueprint, Register, TransactionHandler), 1 new UI component, ~5 new/modified test files
+**Scale/Scope**: 3 services modified (Blueprint, Register, TransactionHandler), 1 new UI component, ~12 new/modified test files
 
 ## Constitution Check
 
@@ -111,10 +111,12 @@ tests/Sorcha.UI.E2E.Tests/Docker/
 
 | Phase | Focus | User Stories | Parallel Opportunities |
 |-------|-------|-------------|----------------------|
-| 1: Setup | Models, interfaces, event contracts | US2 foundation | Models in different projects |
-| 2: Backend Events | Per-recipient SignalR + polling | US2 | Notification + Store + Pipeline |
-| 3: Test Gaps | DevMode + FLE unit tests | US3, US4 | 5 independent test files |
-| 4: UI Popover | Floating progress component | US1, US5 | Tracker service + Component |
-| 5: Integration | GAP-005 + wiring | US1, US2 | SignalR test + E2E |
-| 6: Docker E2E | Full flow validation | US6 | Independent of unit tests |
-| 7: Polish | Docs, cleanup, regression | All | Documentation files |
+| 1: Setup | Models, interfaces, event contracts | Foundation | Models in different projects |
+| 2: Foundational | Backend per-recipient SignalR + polling | US2 prereqs | Notification + Store + Pipeline |
+| 3: US2 Tests | Backend event verification | US2 | 3 independent test files |
+| 4: UI Popover | Floating progress component | US1 | Tracker service + Component |
+| 5: Error Feedback | Actionable failure UX | US5 | Extends popover |
+| 6: DevMode Tests | Spec 065 test gaps | US3 | 3 independent test files |
+| 7: FLE Tests | Spec 065 test gaps | US4 | 2 independent test files |
+| 8: Docker E2E | Full flow validation | US6 | Independent of unit tests |
+| 9: Polish | Docs, GAP-005, cleanup, regression | All | Documentation files |

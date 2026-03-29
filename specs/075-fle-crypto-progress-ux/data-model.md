@@ -36,6 +36,7 @@ SignalR event payload for per-recipient progress.
 | TotalRecipients | int | Total recipients in this operation |
 | DisclosedFieldsSummary | string[] | JSON Pointer paths for this recipient |
 | Status | string | "waiting", "encrypting", "secured", "failed" |
+| PipelineStep | int | Pipeline step this event belongs to (always 2 for encryption step) |
 | ErrorMessage | string? | Only when status = "failed" |
 | Timestamp | DateTimeOffset | When this event was emitted |
 

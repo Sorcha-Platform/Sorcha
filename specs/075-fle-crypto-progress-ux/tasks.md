@@ -22,7 +22,7 @@
 - [ ] T001 [P] Add `RecipientProgress` model and `RecipientProgressStatus` enum to `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs` — fields: WalletAddress, DisplayName, DisclosedFields, GroupId, Status, ErrorMessage
 - [ ] T002 [P] Add `DisplayName` nullable string property to `RecipientInfo` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
 - [ ] T003 [P] Add `RecipientProgress[]` property to `EncryptionResult` in `src/Common/Sorcha.TransactionHandler/Encryption/Models/EncryptionModels.cs`
-- [ ] T004 [P] Add `RecipientEncryptionNotification` record to `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs` — fields: OperationId, RecipientName, RecipientIndex, TotalRecipients, DisclosedFieldsSummary, Status, ErrorMessage, Timestamp
+- [ ] T004 [P] Add `RecipientEncryptionNotification` record to `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs` — fields: OperationId, RecipientName, RecipientIndex, TotalRecipients, DisclosedFieldsSummary, Status, PipelineStep, ErrorMessage, Timestamp
 - [ ] T005 [P] Add `RecipientOperationStatus` record and `Recipients[]` property to `EncryptionOperation` in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionOperationModels.cs`
 - [ ] T006 Verify solution builds cleanly after model changes: `dotnet build`
 
@@ -171,6 +171,7 @@
 - [ ] T046 [P] Add XML documentation comments and Scalar OpenAPI annotations (WithSummary, WithDescription) to modified endpoints (DevMode toggle, operations polling) per Constitution Principle III
 - [ ] T047 Run full test suite: `dotnet test` — verify zero regressions across all 30 test projects (SC-007)
 - [ ] T048 Run quickstart.md validation scenarios end-to-end (7 scenarios)
+- [ ] T049 [US1] Playwright E2E test for popover states — verify expanded panel appears on submit, minimise collapses to pill, dismiss hides panel, navigate away preserves panel, success toast appears after dismiss (SC-008) at `tests/Sorcha.UI.E2E.Tests/Docker/CryptoProgressPopoverTests.cs`
 
 ---
 
@@ -294,6 +295,6 @@ With multiple agents after Phase 2:
 - All new endpoints MUST have `.WithSummary()` and `.WithDescription()` (Constitution III)
 - License header required on all new files: `// SPDX-License-Identifier: MIT` + `// Copyright (c) 2026 Sorcha Contributors`
 - Commit after each task or logical group; reference task IDs in commits
-- Total tasks: **48**
-- US1: 12 tasks | US2: 4 tasks | US3: 3 tasks | US4: 2 tasks | US5: 3 tasks | US6: 3 tasks
-- Setup: 6 tasks | Foundational: 7 tasks | Polish: 8 tasks
+- Total tasks: **49**
+- US1: 13 tasks | US2: 4 tasks | US3: 3 tasks | US4: 2 tasks | US5: 3 tasks | US6: 3 tasks
+- Setup: 6 tasks | Foundational: 7 tasks | Polish: 9 tasks

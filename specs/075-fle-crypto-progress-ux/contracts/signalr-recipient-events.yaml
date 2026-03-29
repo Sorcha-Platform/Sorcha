@@ -33,6 +33,10 @@ events:
           type: string
         description: JSON Pointer paths disclosed to this recipient
         example: ["/*"]
+      pipelineStep:
+        type: integer
+        description: Pipeline step this event belongs to (2 = encryption)
+        example: 2
       status:
         type: string
         enum: [waiting, encrypting, secured, failed]
