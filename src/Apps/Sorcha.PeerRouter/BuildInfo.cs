@@ -17,7 +17,7 @@ public static class BuildInfo
         ?.InformationalVersion ?? "unknown";
 
     /// <summary>Short git commit hash extracted from the informational version, or "dev" if unavailable.</summary>
-    public static string CommitHash => Version.Contains('+')
-        ? Version.Split('+')[1]
+    public static string CommitHash { get; } = Version.IndexOf('+') is var idx && idx >= 0
+        ? Version[(idx + 1)..]
         : "dev";
 }
