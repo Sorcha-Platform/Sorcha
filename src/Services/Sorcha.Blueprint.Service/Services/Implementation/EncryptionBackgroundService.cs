@@ -139,6 +139,42 @@ public sealed class EncryptionBackgroundService : BackgroundService
             var encryptionResult = await encryptionPipeline.EncryptDisclosedPayloadsAsync(
                 workItem.DisclosureGroups, ct);
 
+            // T010: Emit per-recipient progress events from pipeline result
+            var totalRecipients = encryptionResult.RecipientProgressEntries.Length;
+            for (var i = 0; i < totalRecipients; i++)
+            {
+                var rp = encryptionResult.RecipientProgressEntries[i];
+                await notificationService.NotifyRecipientProgressAsync(workItem.SenderWallet,
+                    new RecipientEncryptionNotification
+                    {
+                        OperationId = operationId,
+                        RecipientName = rp.DisplayName ?? rp.WalletAddress,
+                        RecipientIndex = i + 1,
+                        TotalRecipients = totalRecipients,
+                        DisclosedFieldsSummary = rp.DisclosedFields,
+                        Status = rp.Status.ToString().ToLowerInvariant(),
+                        PipelineStep = StepEncrypting,
+                        ErrorMessage = rp.ErrorMessage
+                    }, ct);
+            }
+
+            // Update operation store with per-recipient status
+            var recipientStatuses = encryptionResult.RecipientProgressEntries
+                .Select(rp => new RecipientOperationStatus
+                {
+                    Name = rp.DisplayName ?? rp.WalletAddress,
+                    DisclosedFields = rp.DisclosedFields,
+                    Status = rp.Status.ToString().ToLowerInvariant()
+                })
+                .ToList();
+
+            var opForRecipients = await _operationStore.GetByIdAsync(operationId);
+            if (opForRecipients != null)
+            {
+                opForRecipients.Recipients = recipientStatuses;
+                await _operationStore.UpdateAsync(opForRecipients);
+            }
+
             if (!encryptionResult.Success)
             {
                 await HandleFailureAsync(operationId, workItem.SenderWallet,

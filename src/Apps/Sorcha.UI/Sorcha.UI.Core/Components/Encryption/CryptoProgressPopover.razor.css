@@ -1,0 +1,124 @@
+/* Floating popover — anchored bottom-right */
+.crypto-popover {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 1300; /* Above MudBlazor drawers (1200) but below dialogs (1400) */
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Expanded panel */
+.crypto-popover-expanded {
+    width: 340px;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.crypto-popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--mud-palette-background);
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+.crypto-popover-header-left {
+    display: flex;
+    align-items: center;
+}
+
+.crypto-popover-header-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.crypto-popover-progress {
+    padding: 12px 16px 0;
+}
+
+.crypto-popover-progress-text {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.crypto-popover-recipients {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.crypto-popover-recipient {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.crypto-popover-recipient-icon {
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.crypto-popover-recipient-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.crypto-popover-recipient-status {
+    flex-shrink: 0;
+}
+
+.recipient-waiting {
+    opacity: 0.5;
+}
+
+.recipient-failed .crypto-popover-recipient-info :deep(.mud-typography) {
+    color: var(--mud-palette-error) !important;
+}
+
+.crypto-popover-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.crypto-popover-error-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.crypto-popover-footer-hint {
+    padding: 8px 16px;
+    background: var(--mud-palette-background);
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+/* Minimised pill */
+.crypto-popover-minimised {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 24px;
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+}
+
+.crypto-popover-minimised:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.crypto-popover-pill-progress {
+    margin-left: 4px;
+}

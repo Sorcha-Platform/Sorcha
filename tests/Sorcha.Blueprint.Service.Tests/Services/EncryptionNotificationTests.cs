@@ -180,4 +180,96 @@ public class EncryptionNotificationTests
             It.IsAny<object?[]>(),
             It.IsAny<CancellationToken>()), Times.Exactly(4));
     }
+
+    [Fact]
+    public async Task NotifyRecipientProgressAsync_SendsToCorrectWalletGroup()
+    {
+        // Arrange
+        var walletAddress = "wallet-recipient-test-001";
+        var notification = new RecipientEncryptionNotification
+        {
+            OperationId = "op-rp-1",
+            RecipientName = "Alice Johnson",
+            RecipientIndex = 1,
+            TotalRecipients = 3,
+            DisclosedFieldsSummary = ["/name", "/email"],
+            Status = "secured",
+            PipelineStep = 2
+        };
+
+        // Act
+        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
+
+        // Assert — correct group name
+        _hubClients.Verify(c => c.Group("wallet:wallet-recipient-test-001"), Times.Once);
+
+        // Assert — correct event name
+        _clientProxy.Verify(c => c.SendCoreAsync(
+            "RecipientEncryptionProgress",
+            It.Is<object?[]>(args => args.Length == 1 && args[0] != null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task NotifyRecipientProgressAsync_PayloadContainsAllRequiredFields()
+    {
+        // Arrange
+        var walletAddress = "wallet-rp-fields";
+        var notification = new RecipientEncryptionNotification
+        {
+            OperationId = "op-rp-fields",
+            RecipientName = "Bob Smith",
+            RecipientIndex = 2,
+            TotalRecipients = 5,
+            DisclosedFieldsSummary = ["/name", "/amount", "/date"],
+            Status = "secured",
+            PipelineStep = 2,
+            ErrorMessage = null
+        };
+
+        // Act
+        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
+
+        // Assert — verify captured payload contains all required fields
+        var sent = _sentMessages.Single(m => m.Method == "RecipientEncryptionProgress");
+        var payload = sent.Args[0].Should().BeOfType<RecipientEncryptionNotification>().Subject;
+
+        payload.OperationId.Should().Be("op-rp-fields");
+        payload.RecipientName.Should().Be("Bob Smith");
+        payload.RecipientIndex.Should().Be(2);
+        payload.TotalRecipients.Should().Be(5);
+        payload.DisclosedFieldsSummary.Should().BeEquivalentTo(["/name", "/amount", "/date"]);
+        payload.Status.Should().Be("secured");
+        payload.PipelineStep.Should().Be(2);
+        payload.ErrorMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task NotifyRecipientProgressAsync_FailedRecipient_IncludesErrorMessage()
+    {
+        // Arrange
+        var walletAddress = "wallet-rp-fail";
+        var notification = new RecipientEncryptionNotification
+        {
+            OperationId = "op-rp-fail",
+            RecipientName = "Carol Fail",
+            RecipientIndex = 3,
+            TotalRecipients = 3,
+            DisclosedFieldsSummary = ["/ssn"],
+            Status = "failed",
+            PipelineStep = 2,
+            ErrorMessage = "Public key invalid for encryption"
+        };
+
+        // Act
+        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
+
+        // Assert
+        var sent = _sentMessages.Single(m => m.Method == "RecipientEncryptionProgress");
+        var payload = sent.Args[0].Should().BeOfType<RecipientEncryptionNotification>().Subject;
+
+        payload.Status.Should().Be("failed");
+        payload.ErrorMessage.Should().Be("Public key invalid for encryption");
+        payload.RecipientName.Should().Be("Carol Fail");
+    }
 }

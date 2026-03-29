@@ -119,6 +119,14 @@ public sealed class RecipientInfo
     /// How the key was obtained.
     /// </summary>
     public required KeySource Source { get; init; }
+
+    /// <summary>
+    /// Participant display name for UI progress events.
+    /// Falls back to truncated wallet address when null.
+    /// Uses <c>set</c> (not <c>init</c>) because it is populated post-construction
+    /// by ActionExecutionService after key resolution.
+    /// </summary>
+    public string? DisplayName { get; set; }
 }
 
 /// <summary>
@@ -169,6 +177,12 @@ public sealed class EncryptionResult
     public List<string> SkippedRecipients { get; init; } = [];
 
     /// <summary>
+    /// Per-recipient progress metadata for UI notification events.
+    /// Populated during encryption for each recipient processed.
+    /// </summary>
+    public RecipientProgress[] RecipientProgressEntries { get; init; } = [];
+
+    /// <summary>
     /// Creates a successful result.
     /// </summary>
     public static EncryptionResult Succeeded(EncryptedPayloadGroup[] groups, List<string>? skipped = null) =>
@@ -179,4 +193,53 @@ public sealed class EncryptionResult
     /// </summary>
     public static EncryptionResult Failed(string error, string? failedRecipient = null) =>
         new() { Success = false, Error = error, FailedRecipient = failedRecipient };
+}
+
+/// <summary>
+/// String constants for recipient status values used across layers.
+/// </summary>
+public static class RecipientStatusValues
+{
+    public const string Waiting = "waiting";
+    public const string Secured = "secured";
+    public const string Failed = "failed";
+}
+
+/// <summary>
+/// Per-recipient progress tracking during encryption.
+/// </summary>
+public sealed class RecipientProgress
+{
+    /// <summary>Recipient wallet address.</summary>
+    public required string WalletAddress { get; init; }
+
+    /// <summary>Participant display name (null = use truncated wallet).</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>JSON Pointer paths disclosed to this recipient.</summary>
+    public required string[] DisclosedFields { get; init; }
+
+    /// <summary>Disclosure group this recipient belongs to.</summary>
+    public required string GroupId { get; init; }
+
+    /// <summary>Processing status.</summary>
+    public required RecipientProgressStatus Status { get; init; }
+
+    /// <summary>Error detail when Status is Failed.</summary>
+    public string? ErrorMessage { get; init; }
+}
+
+/// <summary>
+/// Processing status for a recipient during encryption.
+/// </summary>
+public enum RecipientProgressStatus
+{
+    /// <summary>Not yet processed (awaiting key wrapping).</summary>
+    Waiting,
+
+    /// <summary>Key successfully wrapped.</summary>
+    Secured,
+
+    /// <summary>Key wrapping failed.</summary>
+    Failed
 }

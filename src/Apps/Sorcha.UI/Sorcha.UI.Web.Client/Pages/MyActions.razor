@@ -62,17 +62,7 @@
         </MudStack>
     </MudStack>
 
-    @* Encryption progress indicator (shown during async operations) *@
-    @if (_activeEncryptionOperationId is not null)
-    {
-        <MudItem xs="12" Class="mb-4">
-            <EncryptionProgressIndicator OperationId="@_activeEncryptionOperationId"
-                                          OriginalRequest="@_activeEncryptionRequest"
-                                          WorkflowService="@WorkflowService"
-                                          OnCompleted="HandleEncryptionCompleted"
-                                          OnFailed="HandleEncryptionFailed" />
-        </MudItem>
-    }
+    @* Encryption progress is now handled by the global CryptoProgressPopover in MainLayout *@
 
     @* Navigation warning banner when encryption is in progress *@
     @if (_activeEncryptionOperationId is not null)

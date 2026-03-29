@@ -58,6 +58,24 @@ public sealed class EncryptionOperation
 
     /// <summary>Operation completion time (UTC).</summary>
     public DateTimeOffset? CompletedAt { get; set; }
+
+    /// <summary>Per-recipient status for progress tracking and polling endpoint.</summary>
+    public List<RecipientOperationStatus> Recipients { get; set; } = [];
+}
+
+/// <summary>
+/// Per-recipient status within an encryption operation.
+/// </summary>
+public sealed class RecipientOperationStatus
+{
+    /// <summary>Participant display name or truncated wallet address.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>JSON Pointer paths disclosed to this recipient.</summary>
+    public required string[] DisclosedFields { get; init; }
+
+    /// <summary>Processing status: waiting, encrypting, secured, failed.</summary>
+    public string Status { get; set; } = "waiting";
 }
 
 /// <summary>

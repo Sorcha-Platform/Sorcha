@@ -41,7 +41,7 @@ Every blueprint follows this structure:
   "version": "1.0.0",
   "participants": [
     { "role": "submitter", "description": "Submits data" },
-    { "role": "reviewer", "description": "Reviews submissions" }
+    { "role": "reviewer", "description": "Reviews submissions", "organisation": "Acme Corp" }
   ],
   "actions": [
     {
@@ -54,6 +54,8 @@ Every blueprint follows this structure:
   ]
 }
 ```
+
+**Note:** `walletAddress` is optional on participants. When omitted, participant identity is resolved at runtime — either bound dynamically (starting actions) or looked up from published participant records on the register (organisational participants). See spec 065 for details.
 
 ## Getting Started
 

@@ -1,0 +1,58 @@
+# SignalR Contract: Per-Recipient Encryption Progress Events
+# Hub: ActionsHub (/actionshub)
+# Group: wallet:{submittingWalletAddress}
+
+events:
+  RecipientEncryptionProgress:
+    description: |
+      Emitted after each recipient's key wrapping completes (or fails).
+      Sent to the submitting wallet's SignalR group.
+      Supplements existing EncryptionProgress step-level events.
+    direction: server-to-client
+    group: "wallet:{submittingWalletAddress}"
+    payload:
+      operationId:
+        type: string
+        description: Unique operation tracking ID
+        example: "op-abc123"
+      recipientName:
+        type: string
+        description: Participant display name or truncated wallet (first8...last4)
+        example: "ID Department"
+      recipientIndex:
+        type: integer
+        description: 1-based index of this recipient
+        example: 2
+      totalRecipients:
+        type: integer
+        description: Total recipients in the operation
+        example: 3
+      disclosedFieldsSummary:
+        type: array
+        items:
+          type: string
+        description: JSON Pointer paths disclosed to this recipient
+        example: ["/*"]
+      pipelineStep:
+        type: integer
+        description: Pipeline step this event belongs to (2 = encryption)
+        example: 2
+      status:
+        type: string
+        enum: [waiting, encrypting, secured, failed]
+        description: Current processing status for this recipient
+        example: "secured"
+      errorMessage:
+        type: string
+        nullable: true
+        description: Error detail when status is "failed"
+        example: null
+      timestamp:
+        type: string
+        format: date-time
+        description: ISO 8601 timestamp of the event
+
+  # Existing events (unchanged):
+  # EncryptionProgress — step-level (Resolving Keys, Encrypting, Building TX, Signing)
+  # EncryptionComplete — operation success with transaction hash
+  # EncryptionFailed — operation failure with error details

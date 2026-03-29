@@ -77,7 +77,7 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-002 | CLI test: T026 schema provider command tests | P2 | 4h | 📋 | |
 | GAP-003 | CLI test: T031 events admin command tests | P2 | 4h | 📋 | |
 | GAP-004 | CLI test: T045 operation status command tests | P2 | 4h | 📋 | |
-| GAP-005 | T051 EncryptionProgress SignalR integration test | P2 | 4h | 📋 | |
+| GAP-005 | T051 EncryptionProgress SignalR integration test | P2 | 4h | ✅ | Completed in Feature 075 — per-recipient events + notification tests |
 | GAP-006 | Remaining 051 deferred items (9 polish/test tasks) | P2 | 16h | 📋 | Review and close or drop |
 
 ### From Content-Type Payload (038, 5 deferred tasks)
@@ -212,6 +212,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | Feature 062 | ✅ | **Pending Action Notifications** — NotificationConfig on Action model, SummaryTemplateRenderer, UrgencyCalculator, EventsHubNotificationBridge enrichment with ActivityEvent persistence, PendingActionToast/PendingActionInbox UI components, GET /api/actions/pending + /count endpoints, PendingActionService HTTP client, TenantNotificationPreferenceProvider (Wallet Service), notification delivery preferences UI, notification history inbox. Unit tests for SummaryTemplateRenderer, UrgencyCalculator, TenantNotificationPreferenceProvider. |
 | Feature 064 | ✅ | **Transaction Explorer UX Overhaul** — DAG visualization with lightweight graph endpoint (GET /api/registers/{registerId}/transactions/graph), TransactionGraphResponse model (nodes with TxId, PrevTxId, SenderWallet, TimeStamp, DocketNumber, BlueprintId, InstanceId, TransactionType), cursor-based pagination (limit/before), totalCount and hasMore support. |
 | Feature 065 | ✅ | **Register Invitations** — Private register invitation system with cryptographic envelope (ED25519 sign + X25519 encrypt via Wallet Service). 4 Minimal API endpoints (create/accept/list/revoke), Organization DID support (`did:sorcha:org:{address}`), nonce replay protection with unique DB index, rate limiting (50 pending/10 per hour), InvitationNonce + RegisterInvitationRecord entities, EF Core migration, API Gateway YARP routes, `SubscriptionType.Invited`. 19 unit tests. |
+| Feature 075 | ✅ | **FLE Completion & Crypto Progress UX** — Per-recipient SignalR events from encryption pipeline (RecipientEncryptionNotification), floating CryptoProgressPopover UI (expanded/minimised/dismissed), EncryptionOperationTracker scoped service, DevMode unit tests (initiation, toggle, plaintext path), FLE disclosure group tests (grouping, key resolution, atomic failure), actionable error feedback with retry, DisplayName resolution from blueprint participants. 35+ new tests. |
 
 ### Release Gating
 

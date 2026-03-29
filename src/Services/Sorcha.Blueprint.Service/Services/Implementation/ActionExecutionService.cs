@@ -366,6 +366,39 @@ public class ActionExecutionService : IActionExecutionService
                 throw new InvalidOperationException(resolveError);
             }
 
+            // T008: Populate DisplayName on RecipientInfo for UI progress events
+            // Build wallet→name reverse lookup from blueprint participants + instance bindings
+            var walletToName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (blueprint.Participants != null)
+            {
+                foreach (var p in blueprint.Participants)
+                {
+                    if (instance.ParticipantWallets.TryGetValue(p.Id, out var boundWallet))
+                    {
+                        walletToName.TryAdd(boundWallet, p.Name ?? p.Id);
+                    }
+                    if (!string.IsNullOrEmpty(p.WalletAddress))
+                    {
+                        walletToName.TryAdd(p.WalletAddress, p.Name ?? p.Id);
+                    }
+                }
+            }
+
+            foreach (var r in recipients)
+            {
+                if (walletToName.TryGetValue(r.WalletAddress, out var name))
+                {
+                    r.DisplayName = name;
+                }
+                else
+                {
+                    // Fallback: truncated wallet address (first 8...last 4)
+                    r.DisplayName = r.WalletAddress.Length > 12
+                        ? $"{r.WalletAddress[..8]}...{r.WalletAddress[^4..]}"
+                        : r.WalletAddress;
+                }
+            }
+
             if (recipients.Length > 0)
             {
                 // US2: DisclosureGroupBuilder groups recipients with identical field sets
