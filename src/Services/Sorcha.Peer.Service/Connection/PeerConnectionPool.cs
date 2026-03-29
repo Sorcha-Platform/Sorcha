@@ -417,6 +417,7 @@ public class PeerConnectionPool : IAsyncDisposable
                     NodeName = _configuration.NodeId ?? Environment.MachineName,
                     Address = _configuration.NetworkAddress.ExternalAddress ?? Environment.MachineName,
                     Port = _configuration.ListenPort,
+                    BuildVersion = BuildInfo.Version,
                     SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }
                 }
             };

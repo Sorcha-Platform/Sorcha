@@ -213,7 +213,8 @@ public class PeerHeartbeatBackgroundService : BackgroundService
         {
             PeerId = _peerListManager.GetLocalPeerStatus()?.PeerId ?? Environment.MachineName,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            SequenceNumber = sequenceNumber
+            SequenceNumber = sequenceNumber,
+            BuildVersion = BuildInfo.Version
         };
 
         // Add per-register versions

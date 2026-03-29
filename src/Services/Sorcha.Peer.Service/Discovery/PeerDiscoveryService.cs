@@ -174,6 +174,7 @@ public class PeerDiscoveryService : IDisposable
                     NodeName = _configuration.NodeId ?? Environment.MachineName,
                     Address = externalAddress,
                     Port = _configuration.ListenPort,
+                    BuildVersion = BuildInfo.Version,
                     SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }
                 }
             };

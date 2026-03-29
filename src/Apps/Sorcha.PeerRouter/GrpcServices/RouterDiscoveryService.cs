@@ -228,7 +228,8 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
             Address = entry.Address,
             Port = entry.Port,
             LastSeen = entry.LastSeen.ToUnixTimeMilliseconds(),
-            Capabilities = entry.Capabilities
+            Capabilities = entry.Capabilities,
+            BuildVersion = entry.BuildVersion ?? ""
         };
 
         peerInfo.AdvertisedRegisters.AddRange(entry.AdvertisedRegisters);

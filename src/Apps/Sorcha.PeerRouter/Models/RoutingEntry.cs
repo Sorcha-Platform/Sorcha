@@ -23,6 +23,11 @@ public sealed class RoutingEntry
     public long HeartbeatCount { get; set; }
 
     /// <summary>
+    /// Build version reported by the peer (e.g. "1.0.0+abc1234").
+    /// </summary>
+    public string? BuildVersion { get; set; }
+
+    /// <summary>
     /// Per-register version numbers from heartbeats.
     /// Key: register_id, Value: latest version.
     /// </summary>

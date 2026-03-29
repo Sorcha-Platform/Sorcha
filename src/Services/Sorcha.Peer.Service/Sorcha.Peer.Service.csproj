@@ -3,6 +3,8 @@
   <PropertyGroup>
     <RootNamespace>Sorcha.Peer.Service</RootNamespace>
     <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <!-- Embed git commit hash in AssemblyInformationalVersion (e.g. 1.0.0+abc1234) -->
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -96,6 +96,12 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
             };
         }
 
+        // Store the peer's build version
+        if (!string.IsNullOrEmpty(request.BuildVersion))
+        {
+            _routingTable.UpdateBuildVersion(peerId, request.BuildVersion);
+        }
+
         if (request.RegisterVersions.Count > 0)
         {
             _routingTable.UpdateRegisterVersions(peerId, request.RegisterVersions);
