@@ -56,13 +56,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Unit test for per-recipient progress population in `EncryptionPipelineService` — verify `RecipientProgress[]` populated with correct wallet, name, fields, status after encryption at `tests/Sorcha.TransactionHandler.Tests/Encryption/RecipientProgressTests.cs`
-- [ ] T015 [P] [US2] Unit test for `NotifyRecipientProgressAsync` — verify event sent to correct wallet group with correct payload at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs` (extend existing file)
-- [ ] T016 [P] [US2] Unit test for per-recipient status in polling endpoint — verify `GET /api/operations/{id}` returns `Recipients[]` with per-recipient state at `tests/Sorcha.Blueprint.Service.Tests/Endpoints/OperationRecipientStatusTests.cs`
+- [x] T014 [P] [US2] Unit test for per-recipient progress population in `EncryptionPipelineService` — verify `RecipientProgress[]` populated with correct wallet, name, fields, status after encryption at `tests/Sorcha.TransactionHandler.Tests/Encryption/RecipientProgressTests.cs`
+- [x] T015 [P] [US2] Unit test for `NotifyRecipientProgressAsync` — verify event sent to correct wallet group with correct payload at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs` (extend existing file)
+- [x] T016 [P] [US2] Unit test for per-recipient status in polling endpoint — verify `GET /api/operations/{id}` returns `Recipients[]` with per-recipient state at `tests/Sorcha.Blueprint.Service.Tests/Endpoints/OperationRecipientStatusTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] Verify end-to-end: submit action via integration test, assert both step-level and recipient-level events emitted in correct order at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceRecipientTests.cs`
+- [x] T017 [US2] Verify end-to-end: submit action via integration test, assert both step-level and recipient-level events emitted in correct order at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionBackgroundServiceRecipientTests.cs`
 
 **Checkpoint**: Per-recipient events verified via tests. Polling endpoint returns recipient status. Existing step events unchanged.
 
