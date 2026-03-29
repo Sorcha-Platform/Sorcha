@@ -244,7 +244,9 @@ public sealed class RoutingTable
             RegisterId = a.RegisterId,
             HasFullReplica = a.SyncState == SyncStateProto.FullyReplicated,
             LatestVersion = a.LatestVersion,
-            IsPublic = a.IsPublic
+            IsPublic = a.IsPublic,
+            Name = a.Name,
+            Description = a.Description
         }).ToList();
 
         return true;

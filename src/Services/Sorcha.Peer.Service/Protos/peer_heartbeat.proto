@@ -125,6 +125,12 @@ message RegisterAdvertisement {
 
   // Whether this register is publicly advertised
   bool is_public = 5;
+
+  // Human-readable register name
+  string name = 6;
+
+  // Register description
+  string description = 7;
 }
 
 // Sync state (mirrors the domain RegisterSyncState)

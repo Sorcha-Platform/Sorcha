@@ -58,6 +58,8 @@ public class PeerHeartbeatGrpcService : PeerHeartbeat.PeerHeartbeatBase
                 .Select(ad => new PeerRegisterInfo
                 {
                     RegisterId = ad.RegisterId,
+                    Name = string.IsNullOrEmpty(ad.Name) ? null : ad.Name,
+                    Description = string.IsNullOrEmpty(ad.Description) ? null : ad.Description,
                     SyncState = ConvertFromProtoSyncState(ad.SyncState),
                     LatestVersion = ad.LatestVersion,
                     IsPublic = ad.IsPublic
@@ -86,7 +88,9 @@ public class PeerHeartbeatGrpcService : PeerHeartbeat.PeerHeartbeatBase
                 SyncState = ConvertToProtoSyncState(ad.SyncState),
                 LatestVersion = ad.LatestVersion,
                 LatestDocketVersion = ad.LatestDocketVersion,
-                IsPublic = ad.IsPublic
+                IsPublic = ad.IsPublic,
+                Name = ad.Name ?? "",
+                Description = ad.Description ?? ""
             });
         }
 

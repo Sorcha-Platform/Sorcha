@@ -226,7 +226,9 @@ public class PeerHeartbeatBackgroundService : BackgroundService
                 SyncState = ConvertToProtoSyncState(ad.SyncState),
                 LatestVersion = ad.LatestVersion,
                 LatestDocketVersion = ad.LatestDocketVersion,
-                IsPublic = ad.IsPublic
+                IsPublic = ad.IsPublic,
+                Name = ad.Name ?? "",
+                Description = ad.Description ?? ""
             });
         }
 
@@ -241,6 +243,8 @@ public class PeerHeartbeatBackgroundService : BackgroundService
     private static PeerRegisterInfo ConvertToRegisterInfo(Protos.RegisterAdvertisement ad) => new()
     {
         RegisterId = ad.RegisterId,
+        Name = string.IsNullOrEmpty(ad.Name) ? null : ad.Name,
+        Description = string.IsNullOrEmpty(ad.Description) ? null : ad.Description,
         SyncState = ConvertFromProtoSyncState(ad.SyncState),
         LatestVersion = ad.LatestVersion,
         IsPublic = ad.IsPublic

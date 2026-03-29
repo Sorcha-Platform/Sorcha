@@ -219,7 +219,9 @@ public class PeerExchangeService : IDisposable
                 RegisterId = reg.RegisterId,
                 HasFullReplica = reg.CanServeFullReplica,
                 LatestVersion = reg.LatestVersion,
-                IsPublic = reg.IsPublic
+                IsPublic = reg.IsPublic,
+                Name = reg.Name ?? "",
+                Description = reg.Description ?? ""
             });
         }
 
@@ -241,6 +243,8 @@ public class PeerExchangeService : IDisposable
                 .Select(r => new PeerRegisterInfo
                 {
                     RegisterId = r.RegisterId,
+                    Name = string.IsNullOrEmpty(r.Name) ? null : r.Name,
+                    Description = string.IsNullOrEmpty(r.Description) ? null : r.Description,
                     SyncState = r.HasFullReplica ? RegisterSyncState.FullyReplicated : RegisterSyncState.Active,
                     LatestVersion = r.LatestVersion,
                     IsPublic = r.IsPublic
