@@ -81,6 +81,11 @@ public class ActionsHubConnection : IAsyncDisposable
     public event Func<EncryptionFailedUpdate, Task>? OnEncryptionFailed;
 
     /// <summary>
+    /// Event raised when per-recipient encryption progress is updated.
+    /// </summary>
+    public event Func<RecipientEncryptionProgressUpdate, Task>? OnRecipientProgress;
+
+    /// <summary>
     /// Event raised when connection state changes.
     /// </summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
@@ -379,6 +384,19 @@ public class ActionsHubConnection : IAsyncDisposable
             if (OnEncryptionFailed != null)
             {
                 await OnEncryptionFailed(update);
+            }
+        });
+
+        // RecipientEncryptionProgress
+        _hubConnection.On<RecipientEncryptionProgressUpdate>("RecipientEncryptionProgress", async update =>
+        {
+            _logger.LogDebug(
+                "Recipient progress: Operation={OperationId}, Recipient={Recipient} ({Index}/{Total}), Status={Status}",
+                update.OperationId, update.RecipientName, update.RecipientIndex, update.TotalRecipients, update.Status);
+
+            if (OnRecipientProgress != null)
+            {
+                await OnRecipientProgress(update);
             }
         });
 

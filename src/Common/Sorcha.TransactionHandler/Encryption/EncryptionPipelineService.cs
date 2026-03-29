@@ -97,12 +97,17 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         activity?.SetTag("encryption.total_recipients", nonEmptyGroups.Sum(g => g.Recipients.Length));
 
         var encryptedGroups = new List<EncryptedPayloadGroup>(nonEmptyGroups.Length);
+        var allRecipientProgress = new List<RecipientProgress>();
 
         foreach (var group in nonEmptyGroups)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var groupResult = await EncryptGroupAsync(group, cancellationToken);
+
+            // Collect per-recipient progress from this group
+            allRecipientProgress.AddRange(groupResult.RecipientProgressEntries);
+
             if (!groupResult.Success)
             {
                 // T026: Atomic failure — if any group fails, the entire operation fails
@@ -111,9 +116,13 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
                 _logger.LogError(
                     "Encryption failed for group {GroupId}: {Error}",
                     group.GroupId, groupResult.Error);
-                return EncryptionResult.Failed(
-                    groupResult.Error!,
-                    groupResult.FailedRecipient);
+                return new EncryptionResult
+                {
+                    Success = false,
+                    Error = groupResult.Error,
+                    FailedRecipient = groupResult.FailedRecipient,
+                    RecipientProgressEntries = allRecipientProgress.ToArray()
+                };
             }
 
             encryptedGroups.Add(groupResult.Groups[0]);
@@ -124,7 +133,12 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             "Successfully encrypted {GroupCount} disclosure groups",
             encryptedGroups.Count);
 
-        return EncryptionResult.Succeeded(encryptedGroups.ToArray());
+        return new EncryptionResult
+        {
+            Success = true,
+            Groups = encryptedGroups.ToArray(),
+            RecipientProgressEntries = allRecipientProgress.ToArray()
+        };
     }
 
     /// <inheritdoc />
@@ -204,8 +218,9 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
         using var ciphertext = symResult.Value!;
         var symmetricKey = ciphertext.Key;
 
-        // Step 4: Wrap symmetric key for each recipient
+        // Step 4: Wrap symmetric key for each recipient, tracking per-recipient progress
         var wrappedKeys = new List<WrappedKey>(group.Recipients.Length);
+        var recipientProgress = new List<RecipientProgress>(group.Recipients.Length);
 
         foreach (var recipient in group.Recipients)
         {
@@ -224,9 +239,23 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
                     "Key wrapping failed for recipient {Wallet} (algorithm {Algorithm}): {Error}",
                     recipient.WalletAddress, recipient.Algorithm, wrapResult.ErrorMessage);
 
-                return EncryptionResult.Failed(
-                    $"Key wrapping failed for recipient {recipient.WalletAddress}: {wrapResult.ErrorMessage}",
-                    recipient.WalletAddress);
+                recipientProgress.Add(new RecipientProgress
+                {
+                    WalletAddress = recipient.WalletAddress,
+                    DisplayName = recipient.DisplayName,
+                    DisclosedFields = group.DisclosedFields,
+                    GroupId = group.GroupId,
+                    Status = RecipientProgressStatus.Failed,
+                    ErrorMessage = wrapResult.ErrorMessage
+                });
+
+                return new EncryptionResult
+                {
+                    Success = false,
+                    Error = $"Key wrapping failed for recipient {recipient.WalletAddress}: {wrapResult.ErrorMessage}",
+                    FailedRecipient = recipient.WalletAddress,
+                    RecipientProgressEntries = recipientProgress.ToArray()
+                };
             }
 
             wrappedKeys.Add(new WrappedKey
@@ -234,6 +263,15 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
                 WalletAddress = recipient.WalletAddress,
                 EncryptedKey = wrapResult.Value!,
                 Algorithm = recipient.Algorithm
+            });
+
+            recipientProgress.Add(new RecipientProgress
+            {
+                WalletAddress = recipient.WalletAddress,
+                DisplayName = recipient.DisplayName,
+                DisclosedFields = group.DisclosedFields,
+                GroupId = group.GroupId,
+                Status = RecipientProgressStatus.Secured
             });
         }
 
@@ -250,7 +288,12 @@ public sealed class EncryptionPipelineService : IEncryptionPipelineService
             WrappedKeys = wrappedKeys.ToArray()
         };
 
-        return EncryptionResult.Succeeded([encryptedGroup]);
+        return new EncryptionResult
+        {
+            Success = true,
+            Groups = [encryptedGroup],
+            RecipientProgressEntries = recipientProgress.ToArray()
+        };
     }
 
     /// <inheritdoc />

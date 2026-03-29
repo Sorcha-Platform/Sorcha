@@ -36,13 +36,13 @@
 
 **CRITICAL**: US1 cannot show per-recipient progress without these events.
 
-- [ ] T007 Populate `RecipientProgress[]` in `EncryptionPipelineService.EncryptGroupAsync()` per-recipient loop — track each recipient's status during key wrapping at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
-- [ ] T008 Populate `DisplayName` on `RecipientInfo` from participant data during `ActionExecutionService.ResolveRecipientKeysAsync()` — use instance bindings participant names, fallback to truncated wallet at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
-- [ ] T009 Add `NotifyRecipientProgressAsync` method to `INotificationService` and implement in `NotificationService` — send `RecipientEncryptionNotification` to `wallet:{address}` group on ActionsHub at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
-- [ ] T010 Emit per-recipient events from `EncryptionBackgroundService` after each disclosure group is processed — iterate `RecipientProgress[]` from result and call `NotifyRecipientProgressAsync` for each at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T011 Update `InMemoryEncryptionOperationStore` to accept per-recipient status updates — add `UpdateRecipientStatus` method that populates `Recipients[]` on `EncryptionOperation` at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/InMemoryEncryptionOperationStore.cs`
-- [ ] T012 Add `RecipientEncryptionProgress` event handler registration on `ActionsHubConnection` — `OnRecipientProgress` event matching existing pattern (OnEncryptionProgress, etc.) at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs`
-- [ ] T013 Add `RecipientEncryptionProgressUpdate` model to UI at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionHubModels.cs` — matching the backend notification contract
+- [x] T007 Populate `RecipientProgress[]` in `EncryptionPipelineService.EncryptGroupAsync()` per-recipient loop — track each recipient's status during key wrapping at `src/Common/Sorcha.TransactionHandler/Encryption/EncryptionPipelineService.cs`
+- [x] T008 Populate `DisplayName` on `RecipientInfo` from participant data during `ActionExecutionService.ResolveRecipientKeysAsync()` — use instance bindings participant names, fallback to truncated wallet at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [x] T009 Add `NotifyRecipientProgressAsync` method to `INotificationService` and implement in `NotificationService` — send `RecipientEncryptionNotification` to `wallet:{address}` group on ActionsHub at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
+- [x] T010 Emit per-recipient events from `EncryptionBackgroundService` after each disclosure group is processed — iterate `RecipientProgress[]` from result and call `NotifyRecipientProgressAsync` for each at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T011 Update `InMemoryEncryptionOperationStore` to accept per-recipient status updates — add `UpdateRecipientStatus` method that populates `Recipients[]` on `EncryptionOperation` at `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs` (integrated into T010)
+- [x] T012 Add `RecipientEncryptionProgress` event handler registration on `ActionsHubConnection` — `OnRecipientProgress` event matching existing pattern (OnEncryptionProgress, etc.) at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs`
+- [x] T013 Add `RecipientEncryptionProgressUpdate` model to UI at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionHubModels.cs` — matching the backend notification contract
 
 **Checkpoint**: Backend emits per-recipient events via SignalR. UI hub connection can receive them. Polling endpoint returns per-recipient status.
 

@@ -98,4 +98,12 @@ public interface INotificationService
     /// <param name="userId">Optional user ID for EventsHub notification</param>
     /// <param name="ct">Cancellation token</param>
     Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionFailedNotification notification, string? userId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a per-recipient encryption progress event to the submitting wallet's SignalR group.
+    /// </summary>
+    /// <param name="walletAddress">The submitting wallet address</param>
+    /// <param name="notification">The per-recipient progress notification</param>
+    /// <param name="ct">Cancellation token</param>
+    Task NotifyRecipientProgressAsync(string walletAddress, RecipientEncryptionNotification notification, CancellationToken ct = default);
 }

@@ -304,6 +304,31 @@ public class NotificationService : INotificationService
             userId, notification.OperationId, isSuccess: false, transactionHash: null, notification.Error, ct);
     }
 
+    /// <inheritdoc />
+    public async Task NotifyRecipientProgressAsync(
+        string walletAddress, RecipientEncryptionNotification notification, CancellationToken ct = default)
+    {
+        try
+        {
+            var groupName = GetWalletGroupName(walletAddress);
+
+            await _hubContext.Clients
+                .Group(groupName)
+                .SendAsync("RecipientEncryptionProgress", notification, ct);
+
+            _logger.LogDebug(
+                "Sent RecipientEncryptionProgress to wallet {Wallet}. Operation: {OperationId}, Recipient: {Recipient} ({Index}/{Total}), Status: {Status}",
+                walletAddress, notification.OperationId, notification.RecipientName,
+                notification.RecipientIndex, notification.TotalRecipients, notification.Status);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send RecipientEncryptionProgress notification to wallet {Wallet}",
+                walletAddress);
+        }
+    }
+
     /// <summary>
     /// Sends an EncryptionOperationCompleted event to the EventsHub for the specified user.
     /// Isolated in its own try/catch so ActionsHub delivery is never affected.

@@ -37,3 +37,19 @@ public record EncryptionFailedUpdate
     public int? Step { get; init; }
     public DateTimeOffset Timestamp { get; init; }
 }
+
+/// <summary>
+/// SignalR push update for per-recipient encryption progress.
+/// </summary>
+public record RecipientEncryptionProgressUpdate
+{
+    public string OperationId { get; init; } = string.Empty;
+    public string RecipientName { get; init; } = string.Empty;
+    public int RecipientIndex { get; init; }
+    public int TotalRecipients { get; init; }
+    public string[] DisclosedFieldsSummary { get; init; } = [];
+    public string Status { get; init; } = string.Empty;
+    public int PipelineStep { get; init; }
+    public string? ErrorMessage { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
+}
