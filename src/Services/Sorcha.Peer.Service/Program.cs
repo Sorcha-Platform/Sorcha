@@ -142,11 +142,15 @@ builder.Services.AddSingleton<PeerServiceMetrics>();
 builder.Services.AddSingleton<PeerServiceActivitySource>();
 
 // Register relay communication services
-builder.Services.AddSingleton<RelayCommunicationService>();
+// Lazy<RelayMessageHandler> breaks the circular dependency between RelayCommunicationService and RelayMessageHandler
 builder.Services.AddSingleton<RelayMessageHandler>();
+builder.Services.AddSingleton(sp => new Lazy<RelayMessageHandler>(() => sp.GetRequiredService<RelayMessageHandler>()));
+builder.Services.AddSingleton<RelayCommunicationService>();
 
-// Register cryptography module for signature verification
+// Register cryptography module and hash provider for signature and docket hash verification
 builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
+builder.Services.AddSingleton<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
+builder.Services.AddSingleton<Sorcha.Cryptography.Utilities.DocketHasher>();
 
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();

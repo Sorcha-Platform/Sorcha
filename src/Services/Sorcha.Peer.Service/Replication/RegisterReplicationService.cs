@@ -21,6 +21,11 @@ namespace Sorcha.Peer.Service.Replication;
 /// </summary>
 public class RegisterReplicationService
 {
+    /// <summary>
+    /// Sentinel value indicating all dockets should be returned from the cache, starting from the beginning.
+    /// </summary>
+    private const long AllDocketVersions = -1;
+
     private readonly ILogger<RegisterReplicationService> _logger;
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerListManager _peerListManager;
@@ -210,7 +215,7 @@ public class RegisterReplicationService
                 // Finalize all cached dockets in order
                 if (_docketFinalizationService != null)
                 {
-                    var allDockets = cacheEntry.GetDocketsFromVersion(-1);
+                    var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
                     foreach (var cachedDocket in allDockets)
                     {
                         await _docketFinalizationService.FinalizeAsync(
@@ -401,7 +406,7 @@ public class RegisterReplicationService
             // Finalize all cached dockets in order
             if (_docketFinalizationService != null)
             {
-                var allDockets = cacheEntry.GetDocketsFromVersion(-1);
+                var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
                 foreach (var cachedDocket in allDockets)
                 {
                     await _docketFinalizationService.FinalizeAsync(

@@ -50,11 +50,15 @@ public class ReverseStreamLifecycleTests : IAsyncDisposable
             new PeerServiceMetrics(),
             new PeerServiceActivitySource());
 
+        var lazyHandler = new Lazy<RelayMessageHandler>(() =>
+            throw new InvalidOperationException("RelayMessageHandler should not be resolved in these tests"));
+
         _service = new RelayCommunicationService(
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            Options.Create(config));
+            Options.Create(config),
+            lazyHandler);
     }
 
     [Fact]
@@ -72,24 +76,6 @@ public class ReverseStreamLifecycleTests : IAsyncDisposable
         // Should not throw — just exits when cancelled
         await _service.Invoking(s => s.EstablishReverseStreamAsync(cts.Token))
             .Should().NotThrowAsync();
-
-        _service.IsReverseStreamActive.Should().BeFalse();
-    }
-
-    [Fact]
-    public void SetRelayMessageHandler_NullThrows()
-    {
-        _service.Invoking(s => s.SetRelayMessageHandler(null!))
-            .Should().Throw<ArgumentNullException>();
-    }
-
-    [Fact]
-    public async Task EstablishReverseStreamAsync_NoHandler_ReturnsImmediately()
-    {
-        // Don't set handler — should return without establishing stream
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
-
-        await _service.EstablishReverseStreamAsync(cts.Token);
 
         _service.IsReverseStreamActive.Should().BeFalse();
     }

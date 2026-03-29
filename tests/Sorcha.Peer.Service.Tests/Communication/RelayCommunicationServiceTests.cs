@@ -57,7 +57,8 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
     }
 
     [Fact]
@@ -67,7 +68,8 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
             null!,
             _connectionPool,
             _peerListManager,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         act.Should().Throw<ArgumentNullException>();
     }
@@ -79,7 +81,8 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             null!,
             _peerListManager,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         act.Should().Throw<ArgumentNullException>();
     }
@@ -91,7 +94,8 @@ public class RelayCommunicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             null!,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         act.Should().Throw<ArgumentNullException>();
     }

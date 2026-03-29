@@ -151,6 +151,8 @@ public sealed class RouterHeartbeatService : PeerHeartbeat.PeerHeartbeatBase
         // Take a snapshot of AdvertisedRegisters via .ToList() to avoid race with concurrent writers
         var otherPeersAds = _routingTable.GetHealthyPeers(excludePeerId: peerId)
             .SelectMany(p => p.AdvertisedRegisters.ToList())
+            .GroupBy(a => a.RegisterId)
+            .Select(g => g.First())
             .Take(100)
             .Select(a => new RegisterAdvertisement
             {

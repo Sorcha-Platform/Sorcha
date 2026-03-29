@@ -55,7 +55,8 @@ public class CommunicationProtocolManagerTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             peerListManager,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         _manager = new CommunicationProtocolManager(
             new Mock<ILogger<CommunicationProtocolManager>>().Object,

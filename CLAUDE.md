@@ -1,4 +1,4 @@
-﻿# Sorcha
+# Sorcha
 
 A distributed ledger platform for secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire.
 

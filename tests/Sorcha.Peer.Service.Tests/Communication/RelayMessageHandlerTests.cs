@@ -61,7 +61,8 @@ public class RelayMessageHandlerTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             peerListManager,
-            Options.Create(config));
+            Options.Create(config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         _registerCache = new RegisterCache(
             new Mock<ILogger<RegisterCache>>().Object);

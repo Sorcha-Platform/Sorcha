@@ -30,7 +30,7 @@ public class RelayCommunicationService
     private Task? _reverseStreamReceiveTask;
     private Task? _reverseStreamKeepaliveTask;
     private int _reverseStreamBackoffMs;
-    private RelayMessageHandler? _relayMessageHandler;
+    private readonly Lazy<RelayMessageHandler> _relayMessageHandler;
 
     /// <summary>
     /// Default timeout for relay request/response correlation (30 seconds)
@@ -59,12 +59,14 @@ public class RelayCommunicationService
         ILogger<RelayCommunicationService> logger,
         PeerConnectionPool connectionPool,
         PeerListManager peerListManager,
-        IOptions<PeerServiceConfiguration> configuration)
+        IOptions<PeerServiceConfiguration> configuration,
+        Lazy<RelayMessageHandler> relayMessageHandler)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
+        _relayMessageHandler = relayMessageHandler ?? throw new ArgumentNullException(nameof(relayMessageHandler));
     }
 
     /// <summary>
@@ -202,26 +204,12 @@ public class RelayCommunicationService
     public int PendingCorrelationCount => _pendingCorrelations.Count;
 
     /// <summary>
-    /// Sets the relay message handler for dispatching messages received on the reverse stream.
-    /// Must be called before EstablishReverseStreamAsync.
-    /// </summary>
-    public void SetRelayMessageHandler(RelayMessageHandler handler)
-    {
-        _relayMessageHandler = handler ?? throw new ArgumentNullException(nameof(handler));
-    }
-
-    /// <summary>
     /// Establishes a bidirectional reverse stream to the seed node.
     /// Incoming messages are dispatched to RelayMessageHandler.
     /// Sends keepalive pings every 30 seconds. Reconnects with exponential backoff on disconnect.
     /// </summary>
     public async Task EstablishReverseStreamAsync(CancellationToken cancellationToken = default)
     {
-        if (_relayMessageHandler == null)
-        {
-            _logger.LogWarning("Cannot establish reverse stream: RelayMessageHandler not set");
-            return;
-        }
 
         _reverseStreamBackoffMs = 0;
 
@@ -290,7 +278,7 @@ public class RelayCommunicationService
             {
                 try
                 {
-                    await _relayMessageHandler!.HandleAsync(message, cancellationToken);
+                    await _relayMessageHandler.Value.HandleAsync(message, cancellationToken);
                 }
                 catch (Exception ex)
                 {

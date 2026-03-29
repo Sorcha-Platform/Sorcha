@@ -68,7 +68,8 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            _config);
+            _config,
+            new Lazy<RelayMessageHandler>(() => null!));
 
         _service = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,

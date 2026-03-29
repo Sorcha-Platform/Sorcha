@@ -347,6 +347,9 @@ public sealed class RouterCommunicationService : PeerCommunication.PeerCommunica
 
                 await client.SendMessageAsync(message);
 
+                // Update routing table health for the successfully reached peer
+                _routingTable.TouchPeer(message.RecipientPeerId);
+
                 _eventBuffer.Add(RouterEvent.Create(
                     RouterEventType.RelayForwarded,
                     senderPeerId,

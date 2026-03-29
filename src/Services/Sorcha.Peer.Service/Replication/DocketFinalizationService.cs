@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -25,6 +24,7 @@ public class DocketFinalizationService
     private readonly ValidatorKeyCache _validatorKeyCache;
     private readonly RegisterCache _registerCache;
     private readonly ICryptoModule _cryptoModule;
+    private readonly DocketHasher _docketHasher;
     private readonly ConcurrentDictionary<string, DocketFinalizationRecord> _records = new();
 
     public DocketFinalizationService(
@@ -32,13 +32,33 @@ public class DocketFinalizationService
         IRegisterServiceClient registerServiceClient,
         ValidatorKeyCache validatorKeyCache,
         RegisterCache registerCache,
-        ICryptoModule cryptoModule)
+        ICryptoModule cryptoModule,
+        DocketHasher docketHasher)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _registerServiceClient = registerServiceClient ?? throw new ArgumentNullException(nameof(registerServiceClient));
         _validatorKeyCache = validatorKeyCache ?? throw new ArgumentNullException(nameof(validatorKeyCache));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
+        _docketHasher = docketHasher ?? throw new ArgumentNullException(nameof(docketHasher));
+    }
+
+    /// <summary>
+    /// Removes finalized records older than the specified retention period.
+    /// Called periodically to prevent unbounded memory growth.
+    /// </summary>
+    public int EvictOldRecords(TimeSpan retention)
+    {
+        var cutoff = DateTimeOffset.UtcNow - retention;
+        var keysToRemove = _records
+            .Where(r => r.Value.Status == FinalizationStatus.Finalized && r.Value.FinalizedAt < cutoff)
+            .Select(r => r.Key)
+            .ToList();
+
+        foreach (var key in keysToRemove)
+            _records.TryRemove(key, out _);
+
+        return keysToRemove.Count;
     }
 
     /// <summary>
@@ -54,6 +74,10 @@ public class DocketFinalizationService
         CachedDocket docket,
         CancellationToken cancellationToken = default)
     {
+        // Evict stale finalized records to prevent unbounded memory growth
+        if (_records.Count > 1000)
+            EvictOldRecords(TimeSpan.FromHours(24));
+
         var recordKey = $"{registerId}:{docket.Version}";
 
         // Check if already finalized (idempotent)
@@ -267,7 +291,6 @@ public class DocketFinalizationService
             using var doc = JsonDocument.Parse(docket.Data);
             var root = doc.RootElement;
 
-            // Extract fields matching DocketHasher.ComputeDocketHash format
             var merkleRoot = GetStringProperty(root, "MerkleRoot", "merkleRoot") ?? string.Empty;
             var timestamp = GetTimestampProperty(root, "CreatedAt", "createdAt");
 
@@ -281,36 +304,24 @@ public class DocketFinalizationService
                 return true;
             }
 
-            // Recompute hash using same algorithm as DocketHasher
-            var hashInput = new
-            {
-                RegisterId = registerId,
-                DocketNumber = docket.Version,
-                PreviousHash = docket.PreviousHash ?? string.Empty,
-                MerkleRoot = merkleRoot,
-                Timestamp = timestamp.Value.ToUnixTimeMilliseconds()
-            };
+            // Use DocketHasher for deterministic hash verification
+            var verified = _docketHasher.VerifyDocketHash(
+                registerId,
+                docket.Version,
+                docket.PreviousHash,
+                merkleRoot,
+                timestamp.Value,
+                docket.DocketHash);
 
-            var json = JsonSerializer.Serialize(hashInput, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = null,
-                WriteIndented = false
-            });
-
-            var bytes = Encoding.UTF8.GetBytes(json);
-            var hashBytes = SHA256.HashData(bytes);
-            var computedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-
-            if (!string.Equals(computedHash, docket.DocketHash, StringComparison.OrdinalIgnoreCase))
+            if (!verified)
             {
                 _logger.LogWarning(
                     "Docket hash mismatch for docket {DocketNumber} in register {RegisterId}: " +
-                    "computed={ComputedHash}, expected={ExpectedHash}",
-                    docket.Version, registerId, computedHash, docket.DocketHash);
-                return false;
+                    "expected={ExpectedHash}",
+                    docket.Version, registerId, docket.DocketHash);
             }
 
-            return true;
+            return verified;
         }
         catch (JsonException ex)
         {

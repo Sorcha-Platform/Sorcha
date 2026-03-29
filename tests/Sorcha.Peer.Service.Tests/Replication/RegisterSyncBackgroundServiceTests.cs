@@ -262,7 +262,8 @@ public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            Options.Create(config));
+            Options.Create(config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,

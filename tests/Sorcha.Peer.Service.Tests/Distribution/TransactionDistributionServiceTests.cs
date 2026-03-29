@@ -56,7 +56,8 @@ public class TransactionDistributionServiceTests : IAsyncDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            Options.Create(_config));
+            Options.Create(_config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         var gossipEngine = new GossipProtocolEngine(
             new Mock<ILogger<GossipProtocolEngine>>().Object,

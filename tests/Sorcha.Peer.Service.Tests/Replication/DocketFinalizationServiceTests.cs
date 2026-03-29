@@ -7,8 +7,10 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Peer.Service.Models;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Register;
@@ -37,12 +39,15 @@ public class DocketFinalizationServiceTests
                 It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(CryptoStatus.Success);
 
+        var docketHasher = new DocketHasher(new HashProvider());
+
         _service = new DocketFinalizationService(
             new Mock<ILogger<DocketFinalizationService>>().Object,
             _registerClientMock.Object,
             _validatorKeyCache,
             _registerCache,
-            _cryptoModuleMock.Object);
+            _cryptoModuleMock.Object,
+            docketHasher);
     }
 
     [Fact]

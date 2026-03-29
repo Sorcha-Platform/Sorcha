@@ -111,7 +111,8 @@ public class PeerServiceTests : IDisposable
             new Mock<ILogger<RelayCommunicationService>>().Object,
             _connectionPool,
             _peerListManager,
-            _config);
+            _config,
+            new Lazy<RelayMessageHandler>(() => null!));
         _distributionService = new TransactionDistributionService(
             new Mock<ILogger<TransactionDistributionService>>().Object,
             _config,
