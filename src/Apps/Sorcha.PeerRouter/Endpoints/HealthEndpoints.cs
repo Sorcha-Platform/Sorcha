@@ -36,6 +36,8 @@ public static class HealthEndpoints
         return Results.Ok(new
         {
             status = "Healthy",
+            version = BuildInfo.Version,
+            commitHash = BuildInfo.CommitHash,
             uptime = Uptime.Elapsed,
             totalPeers = table.TotalCount,
             healthyPeers = table.HealthyCount,

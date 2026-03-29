@@ -56,6 +56,9 @@ message PeerHeartbeatRequest {
 
   // Registers this peer advertises (compact form)
   repeated RegisterAdvertisement advertised_registers = 6;
+
+  // Build version of the sending peer (e.g. "1.0.0+abc1234")
+  string build_version = 7;
 }
 
 // Heartbeat response from receiving peer

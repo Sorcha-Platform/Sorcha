@@ -92,6 +92,8 @@ public sealed class RoutingTable
                 existing.IsHealthy = true;
                 if (!string.IsNullOrEmpty(peerInfo.NodeName))
                     existing.NodeName = peerInfo.NodeName;
+                if (!string.IsNullOrEmpty(peerInfo.BuildVersion))
+                    existing.BuildVersion = peerInfo.BuildVersion;
                 return existing;
             });
 
@@ -231,6 +233,18 @@ public sealed class RoutingTable
     }
 
     /// <summary>
+    /// Updates a peer's build version from heartbeat data.
+    /// </summary>
+    public bool UpdateBuildVersion(string peerId, string buildVersion)
+    {
+        if (!_entries.TryGetValue(peerId, out var entry))
+            return false;
+
+        entry.BuildVersion = buildVersion;
+        return true;
+    }
+
+    /// <summary>
     /// Updates the advertised registers for a peer from heartbeat data.
     /// Converts heartbeat RegisterAdvertisement to PeerRegisterAdvertisement.
     /// </summary>
@@ -269,7 +283,8 @@ public sealed class RoutingTable
         IpAddress = !string.IsNullOrEmpty(peerInfo.Address) ? ExtractIp(peerInfo.Address) : ExtractGrpcPeerIp(sourceAddress),
         Port = peerInfo.Port,
         Capabilities = peerInfo.Capabilities,
-        AdvertisedRegisters = [.. peerInfo.AdvertisedRegisters]
+        AdvertisedRegisters = [.. peerInfo.AdvertisedRegisters],
+        BuildVersion = string.IsNullOrEmpty(peerInfo.BuildVersion) ? null : peerInfo.BuildVersion
     };
 
     /// <summary>
