@@ -120,9 +120,9 @@
 
 ### Tests for User Story 3
 
-- [ ] T033 [P] [US3] Unit test for DevMode register initiation — verify `devMode: true` flows through `InitiateRegisterCreationRequest` → `PendingRegistration` → `Register.DevMode` at `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterInitiateDevModeTests.cs`
-- [ ] T034 [P] [US3] Unit test for DevMode toggle endpoint — verify `PUT /api/registers/{id}/devmode` updates flag, requires CanManageRegisters, returns 404 for unknown register at `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterDevModeToggleTests.cs`
-- [ ] T035 [P] [US3] Unit test for plaintext path selection — verify DevMode register skips encryption pipeline, non-DevMode calls encryption, DevMode read path applies disclosure filtering at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionDevModeTests.cs`
+- [x] T033 [P] [US3] Unit test for DevMode register initiation — verify `devMode: true` flows through `InitiateRegisterCreationRequest` → `PendingRegistration` → `Register.DevMode` at `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterInitiateDevModeTests.cs`
+- [x] T034 [P] [US3] Unit test for DevMode toggle endpoint — verify `PUT /api/registers/{id}/devmode` updates flag, requires CanManageRegisters, returns 404 for unknown register at `tests/Sorcha.Register.Service.Tests/Endpoints/RegisterDevModeToggleTests.cs`
+- [x] T035 [P] [US3] Unit test for plaintext path selection — verify DevMode register skips encryption pipeline, non-DevMode calls encryption, DevMode read path applies disclosure filtering at `tests/Sorcha.Blueprint.Service.Tests/Services/ActionExecutionDevModeTests.cs`
 
 **Checkpoint**: DevMode has >85% test coverage. All 3 test files pass.
 
