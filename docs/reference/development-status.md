@@ -26,7 +26,8 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 - **CLI Register Commands 100% complete**: Two-phase creation, dockets, queries with System.CommandLine 2.0.2
 - **Peer Router & Peer Service Completion (Feature 053) 100% complete**: PeerRouter standalone app, circuit breaking, SQLite removed, PostgreSQL queue migration, Phases 1-8 delivered
 - **Organization Admin & Identity Management (Feature 054) complete**: OIDC discovery-first integration, multi-tenant URL resolution, 5-role model, 7 Blazor admin pages, social login, TOTP 2FA, invitation system, progressive lockout
-- **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — EncryptionProgressIndicator with SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
+- **Encryption Integration (Feature 052) 100% complete**: End-to-end async encryption pipeline wired to UI and CLI — CryptoProgressPopover with per-recipient progress (replacing EncryptionProgressIndicator), SignalR push + polling fallback, retry on failure, cross-page toast notifications via EventsHub, operations history page with pagination, CLI `action execute` with blocking spinner and `--no-wait` mode (63+ new tests)
+- **FLE Completion & Crypto Progress UX (Feature 075) complete**: Per-recipient SignalR events from encryption pipeline, floating popover UI (expanded/minimised/dismissed), DevMode per-register unit tests, FLE disclosure group unit tests, actionable error feedback with retry (35+ new tests)
 - Total actual completion: 100% MVD (all feature gaps closed, auth policies on all API routes)
 
 ---

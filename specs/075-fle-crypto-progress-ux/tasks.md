@@ -163,15 +163,15 @@
 
 **Purpose**: GAP-005, documentation, cleanup, regression validation.
 
-- [ ] T041 [P] Complete GAP-005: EncryptionProgress SignalR integration test — verify progress, complete, and failed events delivered via ActionsHub to correct wallet group, including new per-recipient events at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs`
-- [ ] T042 [P] Mark `EncryptionProgressIndicator.razor` as deprecated with comment — keep file but remove all usages from pages at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor`
-- [ ] T043 [P] Update `docs/reference/development-status.md` — mark FLE and DevMode encryption as complete
-- [ ] T044 [P] Update `blueprints/README.md` — document that walletAddress is optional on participants
-- [ ] T045 [P] Update `.specify/MASTER-TASKS.md` — mark GAP-005 complete, update FLE status
-- [ ] T046 [P] Add XML documentation comments and Scalar OpenAPI annotations (WithSummary, WithDescription) to modified endpoints (DevMode toggle, operations polling) per Constitution Principle III
+- [x] T041 [P] Complete GAP-005: EncryptionProgress SignalR integration test — verify progress, complete, and failed events delivered via ActionsHub to correct wallet group, including new per-recipient events at `tests/Sorcha.Blueprint.Service.Tests/Services/EncryptionNotificationTests.cs` (completed via T015 in Phase 3)
+- [x] T042 [P] Mark `EncryptionProgressIndicator.razor` as deprecated with comment — keep file but remove all usages from pages at `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/EncryptionProgressIndicator.razor`
+- [x] T043 [P] Update `docs/reference/development-status.md` — mark FLE and DevMode encryption as complete
+- [x] T044 [P] Update `blueprints/README.md` — document that walletAddress is optional on participants
+- [x] T045 [P] Update `.specify/MASTER-TASKS.md` — mark GAP-005 complete, update FLE status
+- [x] T046 [P] Add XML documentation comments and Scalar OpenAPI annotations (WithSummary, WithDescription) to modified endpoints (DevMode toggle, operations polling) per Constitution Principle III — already present on all endpoints
 - [ ] T047 Run full test suite: `dotnet test` — verify zero regressions across all 30 test projects (SC-007)
-- [ ] T048 Run quickstart.md validation scenarios end-to-end (7 scenarios)
-- [ ] T049 [US1] Playwright E2E test for popover states — verify expanded panel appears on submit, minimise collapses to pill, dismiss hides panel, navigate away preserves panel, success toast appears after dismiss (SC-008) at `tests/Sorcha.UI.E2E.Tests/Docker/CryptoProgressPopoverTests.cs`
+- [ ] T048 Run quickstart.md validation scenarios end-to-end (7 scenarios) — deferred to Docker E2E session
+- [ ] T049 [US1] Playwright E2E test for popover states — verify expanded panel appears on submit, minimise collapses to pill, dismiss hides panel, navigate away preserves panel, success toast appears after dismiss (SC-008) at `tests/Sorcha.UI.E2E.Tests/Docker/CryptoProgressPopoverTests.cs` — deferred to Docker E2E session
 
 ---
 
