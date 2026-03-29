@@ -45,7 +45,8 @@ public class PeerCommunicationServiceImplTests : IAsyncDisposable
 
         var relayCommunication = new RelayCommunicationService(
             new Mock<ILogger<RelayCommunicationService>>().Object,
-            _connectionPool, peerListManager, Options.Create(config));
+            _connectionPool, peerListManager, Options.Create(config),
+            new Lazy<RelayMessageHandler>(() => null!));
 
         var registerCache = new RegisterCache(new Mock<ILogger<RegisterCache>>().Object);
 

@@ -16,6 +16,8 @@ using Sorcha.Peer.Service.Network;
 using Sorcha.Peer.Service.Observability;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Peer.Service.Models;
+using Sorcha.Cryptography.Core;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.Peer.Service.Replication;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.Peer.Service.GrpcServices;
@@ -140,11 +142,20 @@ builder.Services.AddSingleton<PeerServiceMetrics>();
 builder.Services.AddSingleton<PeerServiceActivitySource>();
 
 // Register relay communication services
-builder.Services.AddSingleton<RelayCommunicationService>();
+// Lazy<RelayMessageHandler> breaks the circular dependency between RelayCommunicationService and RelayMessageHandler
 builder.Services.AddSingleton<RelayMessageHandler>();
+builder.Services.AddSingleton(sp => new Lazy<RelayMessageHandler>(() => sp.GetRequiredService<RelayMessageHandler>()));
+builder.Services.AddSingleton<RelayCommunicationService>();
+
+// Register cryptography module and hash provider for signature and docket hash verification
+builder.Services.AddSingleton<ICryptoModule, CryptoModule>();
+builder.Services.AddSingleton<IHashProvider, Sorcha.Cryptography.Core.HashProvider>();
+builder.Services.AddSingleton<Sorcha.Cryptography.Utilities.DocketHasher>();
 
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();
+builder.Services.AddSingleton<ValidatorKeyCache>();
+builder.Services.AddSingleton<DocketFinalizationService>();
 builder.Services.AddSingleton<RegisterReplicationService>();
 builder.Services.AddSingleton<IRedisAdvertisementStore, RedisAdvertisementStore>();
 builder.Services.AddSingleton<RegisterAdvertisementService>();

@@ -231,6 +231,26 @@ public sealed class RoutingTable
     }
 
     /// <summary>
+    /// Updates the advertised registers for a peer from heartbeat data.
+    /// Converts heartbeat RegisterAdvertisement to PeerRegisterAdvertisement.
+    /// </summary>
+    public bool UpdateAdvertisedRegisters(string peerId, IEnumerable<RegisterAdvertisement> advertisements)
+    {
+        if (!_entries.TryGetValue(peerId, out var entry))
+            return false;
+
+        entry.AdvertisedRegisters = advertisements.Select(a => new PeerRegisterAdvertisement
+        {
+            RegisterId = a.RegisterId,
+            HasFullReplica = a.SyncState == SyncStateProto.FullyReplicated,
+            LatestVersion = a.LatestVersion,
+            IsPublic = a.IsPublic
+        }).ToList();
+
+        return true;
+    }
+
+    /// <summary>
     /// Gets the entry for a specific peer, or null if not found.
     /// </summary>
     public RoutingEntry? GetPeer(string peerId) =>

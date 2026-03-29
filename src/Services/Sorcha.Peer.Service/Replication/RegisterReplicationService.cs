@@ -21,11 +21,17 @@ namespace Sorcha.Peer.Service.Replication;
 /// </summary>
 public class RegisterReplicationService
 {
+    /// <summary>
+    /// Sentinel value indicating all dockets should be returned from the cache, starting from the beginning.
+    /// </summary>
+    private const long AllDocketVersions = -1;
+
     private readonly ILogger<RegisterReplicationService> _logger;
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerListManager _peerListManager;
     private readonly RegisterCache _registerCache;
     private readonly RelayCommunicationService? _relayCommunication;
+    private readonly DocketFinalizationService? _docketFinalizationService;
     private readonly RegisterSyncConfiguration _syncConfig;
 
     public RegisterReplicationService(
@@ -34,13 +40,15 @@ public class RegisterReplicationService
         PeerListManager peerListManager,
         RegisterCache registerCache,
         IOptions<PeerServiceConfiguration>? configuration = null,
-        RelayCommunicationService? relayCommunication = null)
+        RelayCommunicationService? relayCommunication = null,
+        DocketFinalizationService? docketFinalizationService = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _relayCommunication = relayCommunication;
+        _docketFinalizationService = docketFinalizationService;
         _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
     }
 
@@ -203,6 +211,17 @@ public class RegisterReplicationService
                     registerId, totalDockets, totalTransactions, sourcePeer.PeerId);
 
                 _connectionPool.RecordSuccess(sourcePeer.PeerId);
+
+                // Finalize all cached dockets in order
+                if (_docketFinalizationService != null)
+                {
+                    var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
+                    foreach (var cachedDocket in allDockets)
+                    {
+                        await _docketFinalizationService.FinalizeAsync(
+                            registerId, cachedDocket, replicationToken);
+                    }
+                }
 
                 return new FullReplicaSyncResult
                 {
@@ -380,8 +399,20 @@ public class RegisterReplicationService
                 cacheEntry.GetLatestTransactionVersion());
 
             _logger.LogInformation(
-                "Relay batch sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId}",
-                registerId, docketsSynced, transactionsSynced, sourcePeer.PeerId);
+                "Relay batch sync completed for register {RegisterId}: {Dockets} dockets, {Txs} transactions from peer {PeerId} (relay path: {RelayPath})",
+                registerId, docketsSynced, transactionsSynced, sourcePeer.PeerId,
+                _relayCommunication!.IsReverseStreamActive ? "reverse-stream" : "unary-relay");
+
+            // Finalize all cached dockets in order
+            if (_docketFinalizationService != null)
+            {
+                var allDockets = cacheEntry.GetDocketsFromVersion(AllDocketVersions);
+                foreach (var cachedDocket in allDockets)
+                {
+                    await _docketFinalizationService.FinalizeAsync(
+                        registerId, cachedDocket, cancellationToken);
+                }
+            }
 
             return (new FullReplicaSyncResult
             {

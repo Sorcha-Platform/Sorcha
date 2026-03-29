@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Connection;
@@ -24,26 +25,53 @@ public class RelayCommunicationService
     private readonly PeerListManager _peerListManager;
     private readonly PeerServiceConfiguration _configuration;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<PeerMessage>> _pendingCorrelations = new();
+    private AsyncDuplexStreamingCall<PeerMessage, PeerMessage>? _reverseStreamCall;
+    private CancellationTokenSource? _reverseStreamCts;
+    private Task? _reverseStreamReceiveTask;
+    private Task? _reverseStreamKeepaliveTask;
+    private int _reverseStreamBackoffMs;
+    private readonly Lazy<RelayMessageHandler> _relayMessageHandler;
 
     /// <summary>
     /// Default timeout for relay request/response correlation (30 seconds)
     /// </summary>
     public static readonly TimeSpan DefaultCorrelationTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Keepalive interval for reverse stream ping messages.
+    /// </summary>
+    public static readonly TimeSpan KeepaliveInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Maximum backoff delay for reverse stream reconnection.
+    /// </summary>
+    public static readonly TimeSpan MaxReconnectBackoff = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Whether the reverse stream is currently active and connected.
+    /// </summary>
+    public bool IsReverseStreamActive =>
+        _reverseStreamCall != null &&
+        _reverseStreamReceiveTask != null &&
+        !_reverseStreamReceiveTask.IsCompleted;
+
     public RelayCommunicationService(
         ILogger<RelayCommunicationService> logger,
         PeerConnectionPool connectionPool,
         PeerListManager peerListManager,
-        IOptions<PeerServiceConfiguration> configuration)
+        IOptions<PeerServiceConfiguration> configuration,
+        Lazy<RelayMessageHandler> relayMessageHandler)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
+        _relayMessageHandler = relayMessageHandler ?? throw new ArgumentNullException(nameof(relayMessageHandler));
     }
 
     /// <summary>
     /// Sends a message to a peer via seed node relay (fire-and-forget).
+    /// Prefers the active reverse stream if available; falls back to unary SendMessage.
     /// Returns true if the message was successfully forwarded to the seed node.
     /// </summary>
     public async Task<bool> SendViaRelayAsync(
@@ -52,6 +80,29 @@ public class RelayCommunicationService
         object payload,
         CancellationToken cancellationToken = default)
     {
+        var peerMessage = CreatePeerMessage(targetPeerId, messageType, payload);
+
+        // Prefer reverse stream if active
+        if (IsReverseStreamActive && _reverseStreamCall != null)
+        {
+            try
+            {
+                await _reverseStreamCall.RequestStream.WriteAsync(peerMessage, cancellationToken);
+                _logger.LogDebug(
+                    "Relay message {MessageType} sent to {TargetPeerId} via reverse stream",
+                    messageType, targetPeerId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex,
+                    "Reverse stream send failed for {MessageType} to {TargetPeerId}, falling back to unary",
+                    messageType, targetPeerId);
+                // Fall through to unary send
+            }
+        }
+
+        // Fall back to unary SendMessage
         var seedChannel = GetSeedChannel();
         if (seedChannel == null)
         {
@@ -61,13 +112,12 @@ public class RelayCommunicationService
 
         try
         {
-            var peerMessage = CreatePeerMessage(targetPeerId, messageType, payload);
             var client = new PeerCommunication.PeerCommunicationClient(seedChannel);
             var ack = await client.SendMessageAsync(peerMessage, cancellationToken: cancellationToken);
 
             if (ack.Received)
             {
-                _logger.LogDebug("Relay message {MessageType} sent to {TargetPeerId} via seed node",
+                _logger.LogDebug("Relay message {MessageType} sent to {TargetPeerId} via unary relay",
                     messageType, targetPeerId);
             }
 
@@ -152,6 +202,178 @@ public class RelayCommunicationService
     /// Gets the number of pending correlation entries (for diagnostics).
     /// </summary>
     public int PendingCorrelationCount => _pendingCorrelations.Count;
+
+    /// <summary>
+    /// Establishes a bidirectional reverse stream to the seed node.
+    /// Incoming messages are dispatched to RelayMessageHandler.
+    /// Sends keepalive pings every 30 seconds. Reconnects with exponential backoff on disconnect.
+    /// </summary>
+    public async Task EstablishReverseStreamAsync(CancellationToken cancellationToken = default)
+    {
+
+        _reverseStreamBackoffMs = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var seedChannel = GetSeedChannel();
+            if (seedChannel == null)
+            {
+                _logger.LogDebug("No seed channel available for reverse stream, retrying after backoff");
+                await ApplyBackoffAsync(cancellationToken);
+                continue;
+            }
+
+            try
+            {
+                _reverseStreamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var client = new PeerCommunication.PeerCommunicationClient(seedChannel);
+                _reverseStreamCall = client.Stream(cancellationToken: _reverseStreamCts.Token);
+
+                _logger.LogInformation("Reverse stream established to seed node");
+                _reverseStreamBackoffMs = 0; // Reset backoff on successful connection
+
+                // Start receive loop and keepalive in parallel
+                _reverseStreamReceiveTask = RunReceiveLoopAsync(_reverseStreamCts.Token);
+                _reverseStreamKeepaliveTask = RunKeepaliveLoopAsync(_reverseStreamCts.Token);
+
+                // Wait for either to complete (indicates disconnection)
+                await Task.WhenAny(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask);
+
+                // Cancel the CTS first to stop both tasks before cleanup
+                _reverseStreamCts?.Cancel();
+                try { await Task.WhenAll(_reverseStreamReceiveTask, _reverseStreamKeepaliveTask); }
+                catch (OperationCanceledException) { }
+
+                _logger.LogWarning("Reverse stream disconnected, will reconnect after backoff");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled &&
+                                           cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Reverse stream error, will reconnect after backoff");
+            }
+            finally
+            {
+                await CleanupReverseStreamAsync();
+            }
+
+            await ApplyBackoffAsync(cancellationToken);
+        }
+    }
+
+    private async Task RunReceiveLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_reverseStreamCall == null) return;
+
+        try
+        {
+            await foreach (var message in _reverseStreamCall.ResponseStream.ReadAllAsync(cancellationToken))
+            {
+                try
+                {
+                    await _relayMessageHandler.Value.HandleAsync(message, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Error handling reverse stream message {MessageType} from {SenderPeerId}",
+                        message.MessageType, message.SenderPeerId);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("Reverse stream receive loop cancelled");
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
+        {
+            _logger.LogDebug("Reverse stream receive loop cancelled (gRPC)");
+        }
+    }
+
+    private async Task RunKeepaliveLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_reverseStreamCall == null) return;
+
+        var senderId = _configuration.NodeId ?? Environment.MachineName;
+
+        try
+        {
+            using var timer = new PeriodicTimer(KeepaliveInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var ping = new PeerMessage
+                {
+                    SenderPeerId = senderId,
+                    RecipientPeerId = string.Empty,
+                    MessageType = MessageType.Heartbeat,
+                    Payload = Google.Protobuf.ByteString.Empty,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+
+                await _reverseStreamCall.RequestStream.WriteAsync(ping, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("Reverse stream keepalive loop cancelled");
+        }
+    }
+
+    private async Task ApplyBackoffAsync(CancellationToken cancellationToken)
+    {
+        if (_reverseStreamBackoffMs == 0)
+        {
+            _reverseStreamBackoffMs = 2000; // Start at 2s
+        }
+        else
+        {
+            _reverseStreamBackoffMs = Math.Min(
+                _reverseStreamBackoffMs * 2,
+                (int)MaxReconnectBackoff.TotalMilliseconds);
+        }
+
+        _logger.LogDebug("Reverse stream reconnect backoff: {BackoffMs}ms", _reverseStreamBackoffMs);
+
+        try
+        {
+            await Task.Delay(_reverseStreamBackoffMs, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+    }
+
+    private async Task CleanupReverseStreamAsync()
+    {
+        try
+        {
+            if (_reverseStreamCall != null)
+            {
+                await _reverseStreamCall.RequestStream.CompleteAsync();
+            }
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+
+        _reverseStreamCall?.Dispose();
+        _reverseStreamCall = null;
+
+        // CTS is already cancelled in EstablishReverseStreamAsync before cleanup;
+        // just dispose here.
+        _reverseStreamCts?.Dispose();
+        _reverseStreamCts = null;
+    }
 
     private PeerMessage CreatePeerMessage(string targetPeerId, MessageType messageType, object payload)
     {
