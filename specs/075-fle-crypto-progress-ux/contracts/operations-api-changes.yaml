@@ -1,0 +1,70 @@
+# API Contract Changes: Operations Polling Endpoint
+# Existing endpoint enhanced with per-recipient status
+
+endpoints:
+  GET /api/operations/{operationId}:
+    description: |
+      Returns the current state of an encryption operation.
+      Enhanced to include per-recipient status for parity with SignalR events.
+    existing_fields:
+      # All existing fields remain unchanged
+      - operationId
+      - status  # Pending, ResolvingKeys, Encrypting, BuildingTransaction, Submitting, Complete, Failed
+      - blueprintId
+      - actionId
+      - instanceId
+      - submittingWalletAddress
+      - totalRecipients
+      - totalGroups
+      - currentStep
+      - totalSteps
+      - stepName
+      - percentComplete
+      - transactionHash  # nullable
+      - error  # nullable
+      - failedRecipient  # nullable
+      - createdAt
+      - completedAt  # nullable
+
+    new_fields:
+      recipients:
+        type: array
+        nullable: true
+        description: Per-recipient status. Null when operation is Pending.
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+              description: Participant display name or truncated wallet
+              example: "ID Department"
+            disclosedFields:
+              type: array
+              items:
+                type: string
+              description: JSON Pointer paths disclosed to this recipient
+              example: ["/*"]
+            status:
+              type: string
+              enum: [waiting, encrypting, secured, failed]
+              example: "secured"
+
+    example_response:
+      operationId: "op-abc123"
+      status: "Encrypting"
+      currentStep: 2
+      totalSteps: 4
+      stepName: "Encrypting payloads"
+      percentComplete: 45
+      totalRecipients: 3
+      totalGroups: 2
+      recipients:
+        - name: "Citizen"
+          disclosedFields: ["/decision"]
+          status: "secured"
+        - name: "ID Department"
+          disclosedFields: ["/*"]
+          status: "encrypting"
+        - name: "Planning Office"
+          disclosedFields: ["/siteDetails", "/drawings"]
+          status: "waiting"
