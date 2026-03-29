@@ -91,7 +91,9 @@ public sealed class RouterHeartbeatAdvertisementTests
                 RegisterId = "reg-x",
                 SyncState = SyncStateProto.FullyReplicated,
                 LatestVersion = 100,
-                IsPublic = true
+                IsPublic = true,
+                Name = "Shared Register",
+                Description = "A shared register for testing"
             }
         ]);
 
@@ -108,6 +110,8 @@ public sealed class RouterHeartbeatAdvertisementTests
         response.AdvertisedRegisters[0].RegisterId.Should().Be("reg-x");
         response.AdvertisedRegisters[0].LatestVersion.Should().Be(100);
         response.AdvertisedRegisters[0].IsPublic.Should().BeTrue();
+        response.AdvertisedRegisters[0].Name.Should().Be("Shared Register");
+        response.AdvertisedRegisters[0].Description.Should().Be("A shared register for testing");
     }
 
     [Fact]

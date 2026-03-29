@@ -96,8 +96,8 @@ public class AdvertisementResyncServiceTests
     {
         var registers = new List<Register.Models.Register>
         {
-            new() { Id = "reg-1", Advertise = true },
-            new() { Id = "reg-2", Advertise = true }
+            new() { Id = "reg-1", Advertise = true, Name = "Alpha Register", Description = "First register", Height = 15 },
+            new() { Id = "reg-2", Advertise = true, Name = "Beta Register", Description = "Second register", Height = 42 }
         };
 
         _mockRepository.Setup(r => r.QueryRegistersAsync(
@@ -112,6 +112,12 @@ public class AdvertisementResyncServiceTests
         request.Advertisements.Should().HaveCount(2);
         request.Advertisements.Select(a => a.RegisterId).Should().BeEquivalentTo(["reg-1", "reg-2"]);
         request.Advertisements.Should().AllSatisfy(a => a.IsPublic.Should().BeTrue());
+
+        // Verify Name and LatestVersion are populated from register metadata
+        request.Advertisements[0].Name.Should().Be("Alpha Register");
+        request.Advertisements[0].LatestVersion.Should().Be(15);
+        request.Advertisements[1].Name.Should().Be("Beta Register");
+        request.Advertisements[1].LatestVersion.Should().Be(42);
     }
 
     [Fact]
