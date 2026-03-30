@@ -325,6 +325,20 @@ public class RegisterAdvertisementService
     }
 
     /// <summary>
+    /// Gets the peer IDs that advertise a specific register (from remote advertisements).
+    /// Used by RegisterReplicationService to find relay-capable source peers.
+    /// </summary>
+    public IReadOnlyCollection<string> GetPeersAdvertisingRegister(string registerId)
+    {
+        return _peerListManager.GetAllPeers()
+            .Where(p => !p.IsBanned && p.AdvertisedRegisters.Any(r =>
+                string.Equals(r.RegisterId, registerId, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.PeerId)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    /// <summary>
     /// Detects registers where the remote peer has a newer version than us.
     /// Returns register IDs that may need syncing.
     /// </summary>

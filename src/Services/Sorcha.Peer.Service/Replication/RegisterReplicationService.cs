@@ -29,6 +29,7 @@ public class RegisterReplicationService
     private readonly ILogger<RegisterReplicationService> _logger;
     private readonly PeerConnectionPool _connectionPool;
     private readonly PeerListManager _peerListManager;
+    private readonly RegisterAdvertisementService _advertisementService;
     private readonly RegisterCache _registerCache;
     private readonly RelayCommunicationService? _relayCommunication;
     private readonly DocketFinalizationService? _docketFinalizationService;
@@ -38,6 +39,7 @@ public class RegisterReplicationService
         ILogger<RegisterReplicationService> logger,
         PeerConnectionPool connectionPool,
         PeerListManager peerListManager,
+        RegisterAdvertisementService advertisementService,
         RegisterCache registerCache,
         IOptions<PeerServiceConfiguration>? configuration = null,
         RelayCommunicationService? relayCommunication = null,
@@ -46,6 +48,7 @@ public class RegisterReplicationService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionPool = connectionPool ?? throw new ArgumentNullException(nameof(connectionPool));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
+        _advertisementService = advertisementService ?? throw new ArgumentNullException(nameof(advertisementService));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _relayCommunication = relayCommunication;
         _docketFinalizationService = docketFinalizationService;
@@ -69,8 +72,37 @@ public class RegisterReplicationService
         var sourcePeers = _peerListManager.GetFullReplicaPeersForRegister(registerId);
         if (sourcePeers.Count == 0)
         {
-            // Fall back to any peer with the register
+            // Fall back to any peer with the register (from direct connections)
             sourcePeers = _peerListManager.GetPeersForRegister(registerId);
+        }
+
+        // Also include peers discovered via heartbeat advertisements (NAT'd peers
+        // won't be in PeerListManager but their registers are advertised through
+        // the PeerRouter's heartbeat relay)
+        if (_relayCommunication != null)
+        {
+            var advertisedPeerIds = _advertisementService.GetPeersAdvertisingRegister(registerId);
+            foreach (var peerId in advertisedPeerIds)
+            {
+                if (sourcePeers.Any(p => p.PeerId == peerId))
+                    continue; // Already in the list
+
+                // Create a minimal PeerNode for relay-only access (no direct address)
+                var peer = _peerListManager.GetPeer(peerId);
+                if (peer != null && !sourcePeers.Any(p => p.PeerId == peer.PeerId))
+                {
+                    sourcePeers = sourcePeers.Concat([peer]).ToList().AsReadOnly();
+                }
+                else if (peer == null)
+                {
+                    // Peer known only from advertisements — create a relay-only stub
+                    var relayPeer = new PeerNode { PeerId = peerId, Address = string.Empty };
+                    sourcePeers = sourcePeers.Concat([relayPeer]).ToList().AsReadOnly();
+                    _logger.LogDebug(
+                        "Added relay-only source peer {PeerId} for register {RegisterId} from advertisements",
+                        peerId, registerId);
+                }
+            }
         }
 
         if (sourcePeers.Count == 0)
