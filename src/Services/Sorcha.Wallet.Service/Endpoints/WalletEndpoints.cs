@@ -615,11 +615,41 @@ public static class WalletEndpoints
         string address,
         [FromBody] SignTransactionRequest request,
         WalletManager walletManager,
+        HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // SEC-CRITICAL: Verify caller owns the wallet before signing.
+            // Service tokens (token_type=service) bypass this check — they are trusted
+            // internal service-to-service calls (e.g., Blueprint Service signing actions).
+            // User tokens must own the wallet or have delegated access.
+            var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
+            if (!isService)
+            {
+                var currentUser = GetCurrentUser(context);
+                if (currentUser is null)
+                    return Results.Unauthorized();
+
+                var wallet = await walletManager.GetWalletAsync(address, cancellationToken);
+                if (wallet is null)
+                    return Results.NotFound(new ProblemDetails
+                    {
+                        Title = "Wallet Not Found",
+                        Detail = $"Wallet {address} not found",
+                        Status = StatusCodes.Status404NotFound
+                    });
+
+                if (wallet.Owner != currentUser)
+                {
+                    logger.LogWarning(
+                        "SEC-AUDIT: User {User} attempted to sign with wallet {Wallet} owned by {Owner}",
+                        currentUser, address, wallet.Owner);
+                    return Results.Forbid();
+                }
+            }
+
             var transactionData = Convert.FromBase64String(request.TransactionData);
 
             // Hybrid mode: sign with both classical (URL address) and PQC (PqcWalletAddress) wallets
@@ -736,11 +766,38 @@ public static class WalletEndpoints
         string address,
         [FromBody] DecryptPayloadRequest request,
         WalletManager walletManager,
+        HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // SEC-CRITICAL: Verify caller owns the wallet before decrypting.
+            var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
+            if (!isService)
+            {
+                var currentUser = GetCurrentUser(context);
+                if (currentUser is null)
+                    return Results.Unauthorized();
+
+                var wallet = await walletManager.GetWalletAsync(address, cancellationToken);
+                if (wallet is null)
+                    return Results.NotFound(new ProblemDetails
+                    {
+                        Title = "Wallet Not Found",
+                        Detail = $"Wallet {address} not found",
+                        Status = StatusCodes.Status404NotFound
+                    });
+
+                if (wallet.Owner != currentUser)
+                {
+                    logger.LogWarning(
+                        "SEC-AUDIT: User {User} attempted to decrypt with wallet {Wallet} owned by {Owner}",
+                        currentUser, address, wallet.Owner);
+                    return Results.Forbid();
+                }
+            }
+
             var encryptedPayload = Convert.FromBase64String(request.EncryptedPayload);
             var decryptedPayload = await walletManager.DecryptPayloadAsync(
                 address,
@@ -1507,11 +1564,33 @@ public static class WalletEndpoints
         string address,
         [FromBody] DecapsulateRequest request,
         WalletManager walletManager,
+        HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // SEC-CRITICAL: Verify caller owns the wallet before decapsulating.
+            var isService = context.User.Claims.Any(c => c.Type == "token_type" && c.Value == "service");
+            if (!isService)
+            {
+                var currentUser = GetCurrentUser(context);
+                if (currentUser is null)
+                    return Results.Unauthorized();
+
+                var wallet = await walletManager.GetWalletAsync(address, cancellationToken);
+                if (wallet is null)
+                    return Results.NotFound();
+
+                if (wallet.Owner != currentUser)
+                {
+                    logger.LogWarning(
+                        "SEC-AUDIT: User {User} attempted to decapsulate with wallet {Wallet} owned by {Owner}",
+                        currentUser, address, wallet.Owner);
+                    return Results.Forbid();
+                }
+            }
+
             if (string.IsNullOrEmpty(request.Ciphertext))
                 return Results.BadRequest(new ProblemDetails
                 {
