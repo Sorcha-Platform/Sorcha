@@ -179,6 +179,20 @@
                                                 @subscriptionType
                                             </MudChip>
                                         }
+                                        @if (register.IsInSyncLifecycle)
+                                        {
+                                            <MudChip T="string"
+                                                     Size="Size.Small"
+                                                     Variant="Variant.Filled"
+                                                     Color="@(register.SyncState == "Error" ? Color.Error : Color.Warning)"
+                                                     data-testid="sync-state-badge">
+                                                @if (register.SyncState != "Error")
+                                                {
+                                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" Style="width:14px;height:14px;" />
+                                                }
+                                                @register.SyncStateText
+                                            </MudChip>
+                                        }
                                     </MudStack>
                                     @if (!string.IsNullOrWhiteSpace(register.Description))
                                     {
@@ -239,6 +253,7 @@
     {
         HubConnection.OnRegisterCreated += OnRegisterCreatedViaSignalR;
         HubConnection.OnRegisterStatusChanged += OnRegisterStatusChangedViaSignalR;
+        HubConnection.OnRegisterSyncStateChanged += OnRegisterSyncStateChangedViaSignalR;
 
         await CheckAdminRole();
         await LoadRegistersAsync();
@@ -281,6 +296,30 @@
             }
             StateHasChanged();
             return Task.CompletedTask;
+        });
+    }
+
+    private async Task OnRegisterSyncStateChangedViaSignalR(string registerId, string syncState)
+    {
+        await InvokeAsync(async () =>
+        {
+            var effectiveSyncState = string.IsNullOrEmpty(syncState) ? null : syncState;
+
+            // If sync completed or cleared, reload full register data
+            if (effectiveSyncState is null or "Synced")
+            {
+                await LoadRegistersAsync();
+            }
+            else
+            {
+                var match = _registers.FirstOrDefault(r => r.Id == registerId);
+                if (match is not null)
+                {
+                    var index = _registers.IndexOf(match);
+                    _registers[index] = match with { SyncState = effectiveSyncState };
+                }
+            }
+            StateHasChanged();
         });
     }
 
@@ -446,6 +485,7 @@
     {
         HubConnection.OnRegisterCreated -= OnRegisterCreatedViaSignalR;
         HubConnection.OnRegisterStatusChanged -= OnRegisterStatusChangedViaSignalR;
+        HubConnection.OnRegisterSyncStateChanged -= OnRegisterSyncStateChangedViaSignalR;
 
         return ValueTask.CompletedTask;
     }

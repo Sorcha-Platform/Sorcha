@@ -257,7 +257,8 @@ public class RegisterService : IRegisterService
             Advertise = register.Advertise,
             IsFullReplica = register.IsFullReplica,
             CreatedAt = register.CreatedAt,
-            UpdatedAt = register.UpdatedAt
+            UpdatedAt = register.UpdatedAt,
+            SyncState = register.SyncState
         };
     }
 }

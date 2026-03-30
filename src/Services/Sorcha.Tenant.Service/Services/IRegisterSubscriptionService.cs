@@ -42,7 +42,7 @@ public interface IRegisterSubscriptionService
     /// <returns>The created subscription response.</returns>
     /// <exception cref="ArgumentException">Thrown when registerId is invalid.</exception>
     /// <exception cref="InvalidOperationException">Thrown when a subscription already exists (409 Conflict).</exception>
-    Task<RegisterSubscriptionResponse> SubscribeAsync(Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, CancellationToken ct);
+    Task<RegisterSubscriptionResponse> SubscribeAsync(Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, string? description = null, CancellationToken ct = default);
 
     /// <summary>
     /// Unsubscribes an organization from a register.

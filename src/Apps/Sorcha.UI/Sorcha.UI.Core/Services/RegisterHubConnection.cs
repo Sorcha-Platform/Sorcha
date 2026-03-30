@@ -51,6 +51,11 @@ public class RegisterHubConnection : IAsyncDisposable
     public event Func<string, string, Task>? OnRegisterStatusChanged;
 
     /// <summary>
+    /// Event raised when register sync state changes.
+    /// </summary>
+    public event Func<string, string, Task>? OnRegisterSyncStateChanged;
+
+    /// <summary>
     /// Event raised when connection state changes.
     /// </summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
@@ -150,6 +155,15 @@ public class RegisterHubConnection : IAsyncDisposable
                 if (OnRegisterStatusChanged != null)
                 {
                     await OnRegisterStatusChanged(registerId, status);
+                }
+            });
+
+            _hubConnection.On<string, string>("RegisterSyncStateChanged", async (registerId, syncState) =>
+            {
+                _logger.LogDebug("Register sync state changed: {RegisterId} -> {SyncState}", registerId, syncState);
+                if (OnRegisterSyncStateChanged != null)
+                {
+                    await OnRegisterSyncStateChanged(registerId, syncState);
                 }
             });
 

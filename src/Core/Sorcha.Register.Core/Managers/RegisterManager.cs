@@ -50,6 +50,7 @@ public class RegisterManager
         string? description = null,
         bool devMode = false,
         RegisterPurpose purpose = RegisterPurpose.General,
+        string? syncState = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -70,6 +71,7 @@ public class RegisterManager
             IsFullReplica = isFullReplica,
             Purpose = purpose,
             DevMode = devMode,
+            SyncState = syncState,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -164,6 +166,95 @@ public class RegisterManager
             cancellationToken);
 
         return updated;
+    }
+
+    /// <summary>
+    /// Updates the sync state of a register and publishes a sync-state-changed event.
+    /// </summary>
+    /// <param name="registerId">Register ID to update</param>
+    /// <param name="syncState">New sync state (null to clear)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Updated register, or null if not found</returns>
+    public virtual async Task<Models.Register?> UpdateSyncStateAsync(
+        string registerId,
+        string? syncState,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+
+        var register = await _repository.GetRegisterAsync(registerId, cancellationToken);
+        if (register == null)
+        {
+            _logger?.LogWarning("Cannot update sync state: register {RegisterId} not found", registerId);
+            return null;
+        }
+
+        var previousSyncState = register.SyncState;
+        register.SyncState = syncState;
+        register.UpdatedAt = DateTime.UtcNow;
+
+        var updated = await _repository.UpdateRegisterAsync(register, cancellationToken);
+
+        _logger?.LogInformation(
+            "Register {RegisterId} sync state changed: {PreviousState} → {NewState}",
+            registerId, previousSyncState ?? "null", syncState ?? "null");
+
+        await _eventPublisher.PublishAsync(
+            "register:sync-state-changed",
+            new RegisterSyncStateChangedEvent
+            {
+                RegisterId = registerId,
+                SyncState = syncState ?? string.Empty,
+                PreviousSyncState = previousSyncState,
+                ChangedAt = updated.UpdatedAt
+            },
+            cancellationToken);
+
+        return updated;
+    }
+
+    /// <summary>
+    /// Deletes a remote (synced) register stub without auth checks.
+    /// Only for internal use when processing unsubscribe notifications.
+    /// Will not delete System registers or registers without a SyncState (locally owned).
+    /// </summary>
+    public virtual async Task DeleteRemoteRegisterAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+
+        var register = await _repository.GetRegisterAsync(registerId, cancellationToken);
+        if (register == null)
+        {
+            _logger?.LogDebug("Register {RegisterId} not found for remote delete — already removed", registerId);
+            return;
+        }
+
+        if (register.Purpose == RegisterPurpose.System)
+        {
+            _logger?.LogWarning("Cannot delete system register {RegisterId} via remote delete", registerId);
+            return;
+        }
+
+        if (register.SyncState == null)
+        {
+            _logger?.LogWarning("Register {RegisterId} is locally owned (SyncState=null), refusing remote delete", registerId);
+            return;
+        }
+
+        await _repository.DeleteRegisterAsync(registerId, cancellationToken);
+
+        await _eventPublisher.PublishAsync(
+            "register:deleted",
+            new RegisterDeletedEvent
+            {
+                RegisterId = registerId,
+                DeletedAt = DateTime.UtcNow
+            },
+            cancellationToken);
+
+        _logger?.LogInformation("Deleted remote register stub {RegisterId}", registerId);
     }
 
     /// <summary>

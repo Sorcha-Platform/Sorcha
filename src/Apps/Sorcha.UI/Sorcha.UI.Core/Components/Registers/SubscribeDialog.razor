@@ -159,7 +159,9 @@
 
         try
         {
-            var result = await SubscriptionService.SubscribeAsync(OrganizationId, registerId);
+            var registerInfo = _availableRegisters.FirstOrDefault(r => r.RegisterId == registerId);
+            var result = await SubscriptionService.SubscribeAsync(
+                OrganizationId, registerId, registerInfo?.Name, registerInfo?.Description);
             if (result is not null)
             {
                 SubscribedRegisterIds.Add(registerId);

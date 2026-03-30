@@ -44,11 +44,11 @@ public class RegisterSubscriptionService : IRegisterSubscriptionService
     }
 
     /// <inheritdoc />
-    public async Task<RegisterSubscriptionDto?> SubscribeAsync(Guid orgId, string registerId, CancellationToken ct = default)
+    public async Task<RegisterSubscriptionDto?> SubscribeAsync(Guid orgId, string registerId, string? registerName = null, string? description = null, CancellationToken ct = default)
     {
         try
         {
-            var payload = new { register_id = registerId };
+            var payload = new { register_id = registerId, register_name = registerName, description };
             var response = await _httpClient.PostAsJsonAsync(
                 $"/api/organizations/{Uri.EscapeDataString(orgId.ToString())}/register-subscriptions",
                 payload,

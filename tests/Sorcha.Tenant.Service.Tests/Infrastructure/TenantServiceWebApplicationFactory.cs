@@ -14,6 +14,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Moq;
 using Serilog;
 using Serilog.Events;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
@@ -117,6 +118,22 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
                 .ReturnsAsync(RedisValue.Null);
 
             services.AddSingleton(mockRedis.Object);
+
+            // Remove any existing register service client and mock it
+            services.RemoveAll<IRegisterServiceClient>();
+            var mockRegisterClient = new Mock<IRegisterServiceClient>();
+            mockRegisterClient
+                .Setup(r => r.NotifySubscriptionAsync(
+                    It.IsAny<SubscriptionNotificationRequest>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SubscriptionNotificationResponse
+                {
+                    RegisterId = "mock",
+                    Action = "subscribe",
+                    SyncState = "Subscribing",
+                    Message = "Mock response"
+                });
+            services.AddSingleton(mockRegisterClient.Object);
 
             // Remove any existing wallet service client
             services.RemoveAll<IWalletServiceClient>();

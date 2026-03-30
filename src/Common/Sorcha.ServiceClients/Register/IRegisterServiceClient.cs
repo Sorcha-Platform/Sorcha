@@ -350,6 +350,18 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Notifies the Register Service of a subscription change (subscribe or unsubscribe).
+    /// Called by the Tenant Service after creating or removing a register subscription.
+    /// Uses the internal anonymous endpoint — no auth header required.
+    /// </summary>
+    /// <param name="request">Subscription notification with action, registerId, and optional metadata</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Response with current sync state, or null on failure</returns>
+    Task<SubscriptionNotificationResponse?> NotifySubscriptionAsync(
+        SubscriptionNotificationRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Gets published blueprints for a register (recovery/discovery).
     /// </summary>
     /// <param name="registerId">Register ID</param>

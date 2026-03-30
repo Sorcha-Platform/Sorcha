@@ -76,4 +76,14 @@ public class Register
     /// When false (default), payloads use envelope encryption with disclosure groups.
     /// </summary>
     public bool DevMode { get; set; }
+
+    /// <summary>
+    /// Replication state for remotely-subscribed registers.
+    /// null = locally created (no sync needed),
+    /// "Subscribing" = stub created, awaiting peer sync,
+    /// "Syncing" = peer replication in progress,
+    /// "Synced" = full replication complete,
+    /// "Error" = sync failed (retryable).
+    /// </summary>
+    public string? SyncState { get; set; }
 }

@@ -3,6 +3,7 @@
 
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Sorcha.ServiceClients.Register;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
@@ -16,6 +17,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 {
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<RegisterSubscriptionService> _logger;
+    private readonly IRegisterServiceClient? _registerServiceClient;
 
     /// <summary>
     /// Regex pattern for validating register IDs (32-character lowercase hex string).
@@ -25,10 +27,12 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 
     public RegisterSubscriptionService(
         TenantDbContext dbContext,
-        ILogger<RegisterSubscriptionService> logger)
+        ILogger<RegisterSubscriptionService> logger,
+        IRegisterServiceClient? registerServiceClient = null)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _registerServiceClient = registerServiceClient;
     }
 
     /// <inheritdoc />
@@ -67,7 +71,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 
     /// <inheritdoc />
     public async Task<RegisterSubscriptionResponse> SubscribeAsync(
-        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, CancellationToken ct)
+        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, string? description = null, CancellationToken ct = default)
     {
         ValidateRegisterId(registerId);
 
@@ -90,6 +94,9 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
         _logger.LogInformation(
             "Organization {OrgId} subscribed to register {RegisterId} (Public, Active)",
             orgId, registerId);
+
+        // Fire-and-forget: notify Register Service to create stub and start peer sync
+        NotifyRegisterServiceAsync(orgId, registerId, registerName, description, action: "subscribe");
 
         return MapToResponse(subscription);
     }
@@ -151,6 +158,9 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
         _logger.LogInformation(
             "Organization {OrgId} unsubscribed from register {RegisterId} by user {UserId}",
             orgId, registerId, revokedByUserId);
+
+        // Fire-and-forget: notify Register Service to stop sync and remove stub
+        NotifyRegisterServiceAsync(orgId, registerId, registerName: null, description: null, action: "unsubscribe");
     }
 
     /// <inheritdoc />
@@ -163,6 +173,43 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
             .ToListAsync(ct);
 
         return subscriptions.Select(MapToResponse).ToList();
+    }
+
+    /// <summary>
+    /// Fire-and-forget notification to Register Service about subscription changes.
+    /// Subscription is already persisted — this notification is best-effort.
+    /// </summary>
+    private void NotifyRegisterServiceAsync(
+        Guid orgId, string registerId, string? registerName, string? description, string action)
+    {
+        if (_registerServiceClient == null)
+        {
+            _logger.LogDebug("RegisterServiceClient not available — skipping subscription notification");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _registerServiceClient.NotifySubscriptionAsync(
+                    new SubscriptionNotificationRequest
+                    {
+                        OrganizationId = orgId,
+                        RegisterId = registerId,
+                        RegisterName = registerName,
+                        Description = description,
+                        Action = action
+                    });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to notify Register Service of {Action} for register {RegisterId} — subscription is persisted, sync will reconcile later",
+                    action, registerId);
+            }
+        });
     }
 
     private static void ValidateRegisterId(string registerId)

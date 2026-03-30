@@ -97,6 +97,17 @@ public class RegisterEventBridgeService : BackgroundService
             },
             stoppingToken);
 
+        await _subscriber.SubscribeAsync<RegisterSyncStateChangedEvent>(
+            "register:sync-state-changed",
+            async e =>
+            {
+                _logger.LogDebug("Bridging RegisterSyncStateChanged for {RegisterId} to group {GroupName}", e.RegisterId, $"register:{e.RegisterId}");
+                await _hubContext.Clients
+                    .Group($"register:{e.RegisterId}")
+                    .RegisterSyncStateChanged(e.RegisterId, e.SyncState);
+            },
+            stoppingToken);
+
         _logger.LogInformation("RegisterEventBridgeService subscriptions registered");
     }
 }
