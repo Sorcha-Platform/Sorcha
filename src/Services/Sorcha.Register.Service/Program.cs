@@ -257,6 +257,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
     SubscriptionNotificationRequest request,
     RegisterManager manager,
     IPeerServiceClient peerClient,
+    IServiceScopeFactory scopeFactory,
     ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(request.RegisterId))
@@ -305,21 +306,37 @@ app.MapPost("/api/internal/register-subscriptions", async (
             "Created stub register {RegisterId} (name={Name}) with SyncState=Subscribing",
             request.RegisterId, name);
 
-        // Fire-and-forget: tell Peer Service to start syncing
+        // Fire-and-forget: tell Peer Service to start syncing.
+        // Uses IServiceScopeFactory to avoid capturing request-scoped RegisterManager
+        // which would risk ObjectDisposedException after the HTTP request completes.
+        var registerId = request.RegisterId;
         _ = Task.Run(async () =>
         {
             try
             {
-                await peerClient.SubscribeToRegisterAsync(request.RegisterId, "full-replica");
-                await manager.UpdateSyncStateAsync(request.RegisterId, "Syncing");
+                await peerClient.SubscribeToRegisterAsync(registerId, "full-replica");
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var scopedManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
+                await scopedManager.UpdateSyncStateAsync(registerId, "Syncing");
             }
             catch (Exception ex)
             {
                 logger.LogWarning(
                     ex,
-                    "Failed to initiate peer sync for register {RegisterId} — stub remains in Subscribing state",
-                    request.RegisterId);
-                await manager.UpdateSyncStateAsync(request.RegisterId, "Error");
+                    "Failed to initiate peer sync for register {RegisterId} — setting Error state",
+                    registerId);
+                try
+                {
+                    await using var scope = scopeFactory.CreateAsyncScope();
+                    var scopedManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
+                    await scopedManager.UpdateSyncStateAsync(registerId, "Error");
+                }
+                catch (Exception innerEx)
+                {
+                    logger.LogError(innerEx,
+                        "Failed to set Error sync state for register {RegisterId}",
+                        registerId);
+                }
             }
         });
 
@@ -358,20 +375,17 @@ app.MapPost("/api/internal/register-subscriptions", async (
             });
         }
 
-        // Remote register — stop sync and delete
-        _ = Task.Run(async () =>
+        // Remote register — stop peer sync first, then delete local stub
+        try
         {
-            try
-            {
-                await peerClient.UnsubscribeFromRegisterAsync(request.RegisterId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex,
-                    "Failed to unsubscribe from peer sync for register {RegisterId}",
-                    request.RegisterId);
-            }
-        });
+            await peerClient.UnsubscribeFromRegisterAsync(request.RegisterId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to unsubscribe from peer sync for register {RegisterId} — proceeding with local deletion",
+                request.RegisterId);
+        }
 
         await manager.DeleteRemoteRegisterAsync(request.RegisterId);
 

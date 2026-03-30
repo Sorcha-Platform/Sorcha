@@ -71,7 +71,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 
     /// <inheritdoc />
     public async Task<RegisterSubscriptionResponse> SubscribeAsync(
-        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, CancellationToken ct)
+        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, CancellationToken ct, string? description = null)
     {
         ValidateRegisterId(registerId);
 
@@ -96,7 +96,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
             orgId, registerId);
 
         // Fire-and-forget: notify Register Service to create stub and start peer sync
-        NotifyRegisterServiceAsync(orgId, registerId, registerName, description: null, action: "subscribe");
+        NotifyRegisterServiceAsync(orgId, registerId, registerName, description, action: "subscribe");
 
         return MapToResponse(subscription);
     }

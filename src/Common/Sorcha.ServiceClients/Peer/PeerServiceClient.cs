@@ -419,7 +419,6 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 ex,
                 "Peer Service unavailable — cannot subscribe to register {RegisterId}",
                 registerId);
-            throw;
         }
         catch (Exception ex)
         {
@@ -427,7 +426,6 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 ex,
                 "Failed to subscribe to register {RegisterId} via Peer Service",
                 registerId);
-            throw;
         }
     }
 

@@ -23,6 +23,12 @@ public record SubscribeRequest
     public string? RegisterName { get; init; }
 
     /// <summary>
+    /// Optional register description from peer advertisement (passed through to Register Service).
+    /// </summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
+
+    /// <summary>
     /// Subscription type: "Owner" or "Public" (default). Owner subscriptions are
     /// immediately Active; Public subscriptions start as Pending.
     /// </summary>

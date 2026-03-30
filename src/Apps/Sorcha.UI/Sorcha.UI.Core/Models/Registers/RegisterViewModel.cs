@@ -64,7 +64,7 @@ public record RegisterViewModel
     /// <summary>
     /// Computed: Whether the register is currently syncing or in a sync-related state
     /// </summary>
-    public bool IsSyncing => SyncState is "Subscribing" or "Syncing" or "Error";
+    public bool IsInSyncLifecycle => SyncState is "Subscribing" or "Syncing" or "Error";
 
     /// <summary>
     /// Computed: Human-readable sync state text
