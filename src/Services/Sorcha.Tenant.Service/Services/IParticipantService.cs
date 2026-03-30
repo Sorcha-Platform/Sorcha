@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Tenant.Models;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 
 namespace Sorcha.Tenant.Service.Services;
@@ -118,7 +119,26 @@ public interface IParticipantService
         Guid organizationId,
         CancellationToken cancellationToken = default);
 
-
+    /// <summary>
+    /// Automatically registers the user as a participant (if not already registered)
+    /// and links a wallet address without the challenge/verify flow.
+    /// Used after wallet creation where ownership is already proven by mnemonic generation.
+    /// Failures are non-fatal — callers should catch and log warnings.
+    /// </summary>
+    /// <param name="userId">Authenticated user ID.</param>
+    /// <param name="organizationId">User's current organisation.</param>
+    /// <param name="walletAddress">Newly created wallet address.</param>
+    /// <param name="publicKey">Wallet public key bytes.</param>
+    /// <param name="algorithm">Wallet signing algorithm.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Auto-link result indicating what was created or skipped.</returns>
+    Task<AutoLinkResult> AutoLinkWalletAsync(
+        Guid userId,
+        Guid organizationId,
+        string walletAddress,
+        byte[] publicKey,
+        string algorithm,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates a participant's information.

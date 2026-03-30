@@ -255,6 +255,52 @@ public class ParticipantServiceClient : IParticipantServiceClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<AutoLinkResultInfo> AutoLinkWalletAsync(
+        string walletAddress,
+        Guid userId,
+        Guid organizationId,
+        string? publicKeyBase64 = null,
+        string? algorithm = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var request = new
+            {
+                userId,
+                organizationId,
+                walletAddress,
+                publicKey = publicKeyBase64 != null ? Convert.FromBase64String(publicKeyBase64) : Array.Empty<byte>(),
+                algorithm = algorithm ?? "ED25519"
+            };
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"{_baseAddress}/api/internal/participants/auto-link",
+                request,
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AutoLinkResultInfo>(cancellationToken);
+                return result ?? new AutoLinkResultInfo { SkipReason = "Empty response" };
+            }
+
+            _logger.LogWarning(
+                "Auto-link returned {StatusCode} for wallet {WalletAddress}",
+                response.StatusCode, walletAddress);
+
+            return new AutoLinkResultInfo { SkipReason = $"HTTP {(int)response.StatusCode}" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Auto-link failed for wallet {WalletAddress}", walletAddress);
+            return new AutoLinkResultInfo { SkipReason = ex.Message };
+        }
+    }
+
     private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Participant Service", cancellationToken);

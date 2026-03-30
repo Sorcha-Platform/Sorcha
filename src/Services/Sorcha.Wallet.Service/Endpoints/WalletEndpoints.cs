@@ -16,6 +16,7 @@ using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Services.Implementation;
+using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet.Models;
 using Sorcha.Wallet.Service.Mappers;
 using Sorcha.Wallet.Service.Models;
@@ -312,6 +313,7 @@ public static class WalletEndpoints
         WalletManager walletManager,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
+        IServiceScopeFactory serviceScopeFactory,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -359,6 +361,52 @@ public static class WalletEndpoints
                         pqcKeyResult.ErrorMessage);
                 }
             }
+
+            // T012: Fire-and-forget auto-link — register participant + link wallet in Tenant Service.
+            // Failures don't block wallet creation (FR-004).
+            // Uses IServiceScopeFactory to create a new scope — the request scope is disposed
+            // after Results.Created returns, before this background task executes.
+            var walletAddress = wallet.Address;
+            var walletAlgorithm = request.Algorithm;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var userId = Guid.TryParse(owner, out var uid) ? uid : Guid.Empty;
+                    var orgId = Guid.TryParse(tenant, out var oid) ? oid : Guid.Empty;
+                    if (userId == Guid.Empty || orgId == Guid.Empty)
+                        return;
+
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var client = scope.ServiceProvider.GetRequiredService<IParticipantServiceClient>();
+                    var bgLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+                    var autoLinkResult = await client.AutoLinkWalletAsync(
+                        walletAddress,
+                        userId,
+                        orgId,
+                        publicKeyBase64: null,
+                        walletAlgorithm,
+                        CancellationToken.None);
+
+                    if (autoLinkResult.WalletLinked)
+                    {
+                        bgLogger.LogInformation(
+                            "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (created={Created})",
+                            walletAddress, autoLinkResult.ParticipantId, autoLinkResult.ParticipantCreated);
+                    }
+                    else if (!string.IsNullOrEmpty(autoLinkResult.SkipReason))
+                    {
+                        bgLogger.LogWarning("Auto-link skipped for wallet {WalletAddress}: {Reason}",
+                            walletAddress, autoLinkResult.SkipReason);
+                    }
+                }
+                catch (Exception autoLinkEx)
+                {
+                    // Can't use scoped logger here if scope creation itself failed
+                    Console.Error.WriteLine($"Auto-link failed for wallet {walletAddress}: {autoLinkEx.Message}");
+                }
+            });
 
             return Results.Created($"/api/v1/wallets/{wallet.Address}", response);
         }
