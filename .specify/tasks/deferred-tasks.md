@@ -21,7 +21,7 @@
 | ID | Task | Priority | Effort | Status | Notes |
 |----|------|----------|--------|--------|-------|
 | TENANT-1 | Multi-tenant data isolation | P3 | 16h | 📋 Deferred | Use simple provider for MVD |
-| TENANT-2 | Azure AD integration | P3 | 12h | 📋 Deferred | Full identity federation |
+| TENANT-2 | Azure AD integration | P3 | 12h | ✅ Done | Feature 054: Full OIDC with discovery, 5 provider shortcuts (Entra, Google, Okta, Apple, Cognito) |
 | TENANT-3 | Billing and metering | P3 | 20h | 📋 Deferred | Enterprise feature |
 | TENANT-4 | Activity event multi-tenant isolation | P3 | 8h | 📋 Deferred | Events currently in public schema; consider per-org schema isolation when TENANT-1 is implemented |
 
@@ -70,13 +70,13 @@
 
 | ID | Task | Priority | Effort | Status | Notes |
 |----|------|----------|--------|--------|-------|
-| PART-1 | External identity provider (OIDC) integration for participant authentication | P3 | 24h | 📋 Deferred | Enable orgs to link participants to Microsoft, Google, GitHub, Apple IdPs |
+| PART-1 | External identity provider (OIDC) integration for participant authentication | P3 | 24h | ✅ Done | Feature 054/055: OIDC token exchange, social login (Microsoft, Google, Apple, GitHub), auto-provisioning |
 | PART-2 | API key management for machine participants | P3 | 16h | 📋 Deferred | Service clients and AI agents authenticating via API keys |
-| PART-3 | Blueprint participant resolution by address | P2 | 20h | 📋 Deferred | Phase 2 integration — blueprint participants resolve to wallet addresses instead of text names |
-| PART-4 | Field-level encryption using published public keys | P2 | 24h | 📋 Deferred | Phase 2 — encrypt action payload fields for specific participant addresses |
+| PART-3 | Blueprint participant resolution by address | P2 | 20h | ✅ Done | Feature 065: Participant resolution from published records + instance bindings, starting action binding |
+| PART-4 | Field-level encryption using published public keys | P2 | 24h | ✅ Done | Feature 045/065/075: Envelope encryption with disclosure groups, per-recipient key wrapping, batch public key resolution |
 | PART-5 | DID document generation and resolution endpoints | P3 | 16h | 📋 Deferred | Generate W3C DID documents from published participant records |
 | PART-6 | Peer-to-peer participant record replication and synchronization | P3 | 20h | 📋 Deferred | Replicate participant indexes across peer nodes |
-| PART-7 | UI components for participant management | P2 | 16h | 📋 Deferred | Blazor WASM pages for publishing, updating, revoking, and browsing participants |
+| PART-7 | UI components for participant management | P2 | 16h | ✅ Done | Feature 054: Participant admin pages, publishing, wallet linking UI |
 | PART-8 | Organization-level wallet signing for participant publication | P2 | 12h | 📋 Deferred | Currently uses individual user wallet; upgrade to org-level signing wallet |
 | PART-9 | Migrate participant authorization to register governance/control system | P3 | 16h | 📋 Deferred | Move from Tenant Service enforcement to register Control TX governance roster |
 
@@ -113,7 +113,7 @@
 
 ## Summary
 
-**Total Deferred Tasks:** 43
+**Total Deferred Tasks:** 43 (5 now completed)
 **Total Deferred Effort:** 538+ hours (~14 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.

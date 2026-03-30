@@ -277,7 +277,13 @@
         {
             _tokenRefreshStarted = true;
             await TokenRefreshService.StartAsync(JSRuntime);
-            await RefreshUnreadCount();
+
+            // Only fetch authenticated data if user is logged in — avoids 401 console noise
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                await RefreshUnreadCount();
+            }
 
             ThemeService.OnThemeChanged += OnThemeChanged;
             await ThemeService.InitializeAsync();

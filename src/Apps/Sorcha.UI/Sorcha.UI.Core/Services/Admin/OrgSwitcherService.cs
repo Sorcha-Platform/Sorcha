@@ -58,10 +58,18 @@ public class OrgSwitcherService : IOrgSwitcherService
     /// <inheritdoc />
     public async Task<OrgMembershipListResponse> GetMyOrganizationsAsync(CancellationToken ct = default)
     {
-        var response = await _http.GetFromJsonAsync<OrgMembershipListResponse>(
-            "/api/auth/me/organizations", JsonDefaults.Api, ct);
+        try
+        {
+            var response = await _http.GetFromJsonAsync<OrgMembershipListResponse>(
+                "/api/auth/me/organizations", JsonDefaults.Api, ct);
 
-        return response ?? new OrgMembershipListResponse();
+            return response ?? new OrgMembershipListResponse();
+        }
+        catch (HttpRequestException)
+        {
+            // Suppress 401 noise when token is expired or user is not yet authenticated
+            return new OrgMembershipListResponse();
+        }
     }
 
     /// <inheritdoc />
