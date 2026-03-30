@@ -16,6 +16,7 @@ using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Services.Implementation;
+using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet.Models;
 using Sorcha.Wallet.Service.Mappers;
 using Sorcha.Wallet.Service.Models;
@@ -312,6 +313,7 @@ public static class WalletEndpoints
         WalletManager walletManager,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
+        IParticipantServiceClient participantClient,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -359,6 +361,48 @@ public static class WalletEndpoints
                         pqcKeyResult.ErrorMessage);
                 }
             }
+
+            // T012: Fire-and-forget auto-link — register participant + link wallet in Tenant Service.
+            // Failures don't block wallet creation (FR-004).
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var userId = Guid.TryParse(owner, out var uid) ? uid : Guid.Empty;
+                    var orgId = Guid.TryParse(tenant, out var oid) ? oid : Guid.Empty;
+                    if (userId == Guid.Empty || orgId == Guid.Empty)
+                    {
+                        logger.LogDebug("Skipping auto-link: could not parse user/org from claims");
+                        return;
+                    }
+
+                    var autoLinkResult = await participantClient.AutoLinkWalletAsync(
+                        wallet.Address,
+                        userId,
+                        orgId,
+                        publicKeyBase64: null, // Public key resolved by Tenant Service via Wallet Service lookup
+                        request.Algorithm,
+                        CancellationToken.None);
+
+                    if (autoLinkResult.WalletLinked)
+                    {
+                        logger.LogInformation(
+                            "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (created={Created})",
+                            wallet.Address, autoLinkResult.ParticipantId, autoLinkResult.ParticipantCreated);
+                    }
+                    else if (!string.IsNullOrEmpty(autoLinkResult.SkipReason))
+                    {
+                        logger.LogWarning("Auto-link skipped for wallet {WalletAddress}: {Reason}",
+                            wallet.Address, autoLinkResult.SkipReason);
+                    }
+                }
+                catch (Exception autoLinkEx)
+                {
+                    logger.LogWarning(autoLinkEx,
+                        "Auto-link failed for wallet {WalletAddress} — wallet created successfully, link can be done manually",
+                        wallet.Address);
+                }
+            });
 
             return Results.Created($"/api/v1/wallets/{wallet.Address}", response);
         }

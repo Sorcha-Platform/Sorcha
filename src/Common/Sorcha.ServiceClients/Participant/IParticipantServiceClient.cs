@@ -62,6 +62,25 @@ public interface IParticipantServiceClient
         Guid participantId,
         bool activeOnly = true,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Auto-registers participant and links wallet after wallet creation.
+    /// Bypasses challenge/verify flow. Non-fatal — returns result indicating success or skip reason.
+    /// </summary>
+    /// <param name="walletAddress">Newly created wallet address</param>
+    /// <param name="userId">Authenticated user ID</param>
+    /// <param name="organizationId">User's current organisation</param>
+    /// <param name="publicKey">Wallet public key bytes (Base64)</param>
+    /// <param name="algorithm">Wallet signing algorithm</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Auto-link result</returns>
+    Task<AutoLinkResultInfo> AutoLinkWalletAsync(
+        string walletAddress,
+        Guid userId,
+        Guid organizationId,
+        string? publicKeyBase64 = null,
+        string? algorithm = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -180,4 +199,15 @@ public record LinkedWalletInfo
     /// When the link was revoked (if applicable).
     /// </summary>
     public DateTimeOffset? RevokedAt { get; init; }
+}
+
+/// <summary>
+/// Result of an auto-link wallet operation.
+/// </summary>
+public record AutoLinkResultInfo
+{
+    public bool ParticipantCreated { get; init; }
+    public bool WalletLinked { get; init; }
+    public Guid? ParticipantId { get; init; }
+    public string? SkipReason { get; init; }
 }

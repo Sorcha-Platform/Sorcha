@@ -145,7 +145,81 @@ public class ParticipantService : IParticipantService
         return await MapToDetailResponseAsync(created, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<AutoLinkResult> AutoLinkWalletAsync(
+        Guid userId,
+        Guid organizationId,
+        string walletAddress,
+        byte[] publicKey,
+        string algorithm,
+        CancellationToken cancellationToken = default)
+    {
+        // Step 1: Ensure participant exists — self-register if not
+        var participantCreated = false;
+        var participant = await _participantRepository.GetByUserAndOrgAsync(userId, organizationId, cancellationToken);
 
+        if (participant == null)
+        {
+            // Try to self-register
+            var user = await _identityRepository.GetUserByIdAsync(userId, cancellationToken);
+            if (user == null || user.OrganizationId != organizationId)
+            {
+                return AutoLinkResult.Skipped("User not found or does not belong to organisation");
+            }
+
+            participant = new ParticipantIdentity
+            {
+                UserId = userId,
+                OrganizationId = organizationId,
+                DisplayName = user.DisplayName,
+                Email = user.Email,
+                Status = ParticipantIdentityStatus.Active
+            };
+
+            participant = await _participantRepository.CreateAsync(participant, cancellationToken);
+            participantCreated = true;
+
+            _logger.LogInformation(
+                "Auto-registered participant {ParticipantId} for user {UserId} during wallet creation",
+                participant.Id, userId);
+        }
+
+        // Step 2: Check platform-wide wallet uniqueness
+        var existingLink = await _participantRepository.GetActiveWalletLinkByAddressAsync(walletAddress, cancellationToken);
+        if (existingLink != null)
+        {
+            return AutoLinkResult.Skipped(
+                $"Wallet {walletAddress} already linked to participant {existingLink.ParticipantId}",
+                participant.Id);
+        }
+
+        // Step 3: Check max wallet links (10 per participant)
+        var existingLinks = await _participantRepository.GetWalletLinksAsync(participant.Id, includeRevoked: false, cancellationToken);
+        if (existingLinks.Count >= 10)
+        {
+            return AutoLinkResult.Skipped("Participant has reached maximum wallet links (10)", participant.Id);
+        }
+
+        // Step 4: Create direct wallet link (bypass challenge/verify — ownership proven by creation)
+        var walletLink = new LinkedWalletAddress
+        {
+            ParticipantId = participant.Id,
+            OrganizationId = organizationId,
+            WalletAddress = walletAddress,
+            PublicKey = publicKey,
+            Algorithm = algorithm,
+            Status = WalletLinkStatus.Active,
+            VerificationMethod = "self-created"
+        };
+
+        await _participantRepository.CreateWalletLinkAsync(walletLink, cancellationToken);
+
+        _logger.LogInformation(
+            "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (self-created)",
+            walletAddress, participant.Id);
+
+        return AutoLinkResult.Success(participantCreated, walletLinked: true, participant.Id);
+    }
 
     /// <inheritdoc />
     public async Task<ParticipantDetailResponse?> GetByIdAsync(

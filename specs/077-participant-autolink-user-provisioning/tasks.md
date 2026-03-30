@@ -43,11 +43,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Add `AutoLinkWalletAsync` method to `ParticipantService` — check if participant exists for user+org, self-register if not, create `LinkedWalletAddress` with VerificationMethod="self-created" (bypass challenge/verify), respect platform uniqueness at `src/Services/Sorcha.Tenant.Service/Services/ParticipantService.cs`
-- [ ] T010 [US1] Add `AutoLinkWalletAsync` to `IParticipantServiceClient` interface and implement in `ParticipantServiceClient` — POST to internal endpoint at `src/Common/Sorcha.ServiceClients/Participant/IParticipantServiceClient.cs` and `ParticipantServiceClient.cs`
-- [ ] T011 [US1] Add internal endpoint `POST /api/internal/participants/auto-link` to Tenant Service — accepts walletAddress, userId, orgId; calls `ParticipantService.AutoLinkWalletAsync`; returns `AutoLinkResult` at `src/Services/Sorcha.Tenant.Service/Endpoints/ParticipantEndpoints.cs`
-- [ ] T012 [US1] Add post-creation auto-link call to wallet creation endpoint — after wallet created successfully, fire-and-forget call to `IParticipantServiceClient.AutoLinkWalletAsync(walletAddress, userId, orgId)`; log warning on failure at `src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs`
-- [ ] T013 [US1] Add YARP route for internal auto-link endpoint (if needed — may use direct service discovery) at `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [x] T009 [US1] Add `AutoLinkWalletAsync` method to `ParticipantService` — check if participant exists for user+org, self-register if not, create `LinkedWalletAddress` with VerificationMethod="self-created" (bypass challenge/verify), respect platform uniqueness at `src/Services/Sorcha.Tenant.Service/Services/ParticipantService.cs`
+- [x] T010 [US1] Add `AutoLinkWalletAsync` to `IParticipantServiceClient` interface and implement in `ParticipantServiceClient` — POST to internal endpoint at `src/Common/Sorcha.ServiceClients/Participant/IParticipantServiceClient.cs` and `ParticipantServiceClient.cs`
+- [x] T011 [US1] Add internal endpoint `POST /api/internal/participants/auto-link` to Tenant Service — accepts walletAddress, userId, orgId; calls `ParticipantService.AutoLinkWalletAsync`; returns `AutoLinkResult` at `src/Services/Sorcha.Tenant.Service/Endpoints/ParticipantEndpoints.cs`
+- [x] T012 [US1] Add post-creation auto-link call to wallet creation endpoint — after wallet created successfully, fire-and-forget call to `IParticipantServiceClient.AutoLinkWalletAsync(walletAddress, userId, orgId)`; log warning on failure at `src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs`
+- [x] T013 [US1] Add YARP route for internal auto-link endpoint — not needed, uses direct service-to-service communication via `IParticipantServiceClient`
 
 **Checkpoint**: Create wallet → participant auto-registered → wallet auto-linked → token refresh includes wallet_address → ActionsHub subscription works.
 
