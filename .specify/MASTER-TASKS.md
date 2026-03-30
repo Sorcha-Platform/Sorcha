@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.5
-**Last Updated:** 2026-03-23
+**Version:** 7.6
+**Last Updated:** 2026-03-30
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -197,12 +197,12 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 |-------|----------|-------|--------|-------|
 | 1. Security Hardening | P0 | 7 | 80-100h | Release blocker |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
-| 3. Deferred Feature Gaps | P1-P2 | 16 | 58-78h | Close MVD gaps |
+| 3. Deferred Feature Gaps | P1-P2 | 16 (3 ✅, 13 remaining) | 58-78h | Close MVD gaps — GAP-005/018/019 done (075, 077) |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
-| **Total** | | **64** (6 ✅, 58 remaining) | **558-798h** | |
+| **Total** | | **64** (9 ✅, 55 remaining) | **538-778h** | |
 
 ### Completed Features (not in themes above)
 
@@ -227,6 +227,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.5
-**Last Updated:** 2026-03-23
+**Version:** 7.6
+**Last Updated:** 2026-03-30
 **Document Owner:** Sorcha Architecture Team
