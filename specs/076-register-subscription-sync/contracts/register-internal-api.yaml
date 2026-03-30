@@ -1,0 +1,143 @@
+# Register Service — Internal Subscription Notification API
+# Called by Tenant Service when an organisation subscribes/unsubscribes
+
+openapi: 3.0.3
+info:
+  title: Register Service Internal API — Subscription Notifications
+  version: 1.0.0
+  description: |
+    Internal endpoint for the Tenant Service to notify the Register Service
+    when an organisation subscribes to or unsubscribes from a register.
+    This triggers local stub creation and peer sync orchestration.
+
+paths:
+  /api/internal/register-subscriptions:
+    post:
+      operationId: NotifyRegisterSubscription
+      summary: Notify Register Service of a subscription change
+      description: |
+        Called by the Tenant Service after creating or removing a register subscription.
+        On subscribe: creates a stub register in local storage and initiates peer sync.
+        On unsubscribe: stops peer sync and removes local register data (if not locally owned).
+      tags:
+        - Internal
+      security: []  # AllowAnonymous — internal service-to-service only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscriptionNotificationRequest'
+            examples:
+              subscribe:
+                summary: Subscribe to a remote register
+                value:
+                  organizationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  registerId: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+                  registerName: "Construction Permits"
+                  description: "National construction permit workflow register"
+                  action: "subscribe"
+              unsubscribe:
+                summary: Unsubscribe from a register
+                value:
+                  organizationId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  registerId: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+                  action: "unsubscribe"
+      responses:
+        '200':
+          description: Notification processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionNotificationResponse'
+        '400':
+          description: Invalid request (missing registerId, invalid action)
+        '409':
+          description: Register already exists locally (for subscribe) or not found (for unsubscribe)
+
+  /api/internal/register-subscriptions/{registerId}/sync-state:
+    get:
+      operationId: GetRegisterSyncState
+      summary: Get current sync state for a register
+      description: |
+        Returns the current sync state of a register. Used for reconciliation
+        and health checks.
+      tags:
+        - Internal
+      security: []
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f0-9]{32}$'
+      responses:
+        '200':
+          description: Current sync state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterSyncStateResponse'
+        '404':
+          description: Register not found
+
+components:
+  schemas:
+    SubscriptionNotificationRequest:
+      type: object
+      required:
+        - organizationId
+        - registerId
+        - action
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+          description: Organisation that subscribed/unsubscribed
+        registerId:
+          type: string
+          pattern: '^[a-f0-9]{32}$'
+          description: Target register ID
+        registerName:
+          type: string
+          maxLength: 38
+          nullable: true
+          description: Display name from peer advertisement (subscribe only)
+        description:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: Description from peer advertisement (subscribe only)
+        action:
+          type: string
+          enum:
+            - subscribe
+            - unsubscribe
+
+    SubscriptionNotificationResponse:
+      type: object
+      properties:
+        registerId:
+          type: string
+        action:
+          type: string
+        syncState:
+          type: string
+          nullable: true
+          description: Current sync state after processing (null for unsubscribe)
+        message:
+          type: string
+
+    RegisterSyncStateResponse:
+      type: object
+      properties:
+        registerId:
+          type: string
+        syncState:
+          type: string
+          nullable: true
+        isFullReplica:
+          type: boolean
+        status:
+          type: string

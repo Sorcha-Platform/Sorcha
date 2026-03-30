@@ -377,6 +377,109 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
         }
     }
 
+    public async Task SubscribeToRegisterAsync(
+        string registerId,
+        string mode,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Subscribing to register {RegisterId} with mode {Mode} via Peer Service",
+                registerId, mode);
+
+            if (_httpClient is null)
+            {
+                _logger.LogDebug("Peer Service HTTP not configured — skipping register subscription");
+                return;
+            }
+
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/subscribe",
+                new { mode },
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation(
+                    "Successfully subscribed to register {RegisterId} with mode {Mode}",
+                    registerId, mode);
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Failed to subscribe to register {RegisterId}: {StatusCode} - {Body}",
+                    registerId, response.StatusCode, body);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Peer Service unavailable — cannot subscribe to register {RegisterId}",
+                registerId);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to subscribe to register {RegisterId} via Peer Service",
+                registerId);
+            throw;
+        }
+    }
+
+    public async Task UnsubscribeFromRegisterAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Unsubscribing from register {RegisterId} via Peer Service",
+                registerId);
+
+            if (_httpClient is null)
+            {
+                _logger.LogDebug("Peer Service HTTP not configured — skipping register unsubscription");
+                return;
+            }
+
+            var response = await _httpClient.DeleteAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/subscribe",
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation(
+                    "Successfully unsubscribed from register {RegisterId}",
+                    registerId);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Failed to unsubscribe from register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Peer Service unavailable — cannot unsubscribe from register {RegisterId}",
+                registerId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to unsubscribe from register {RegisterId} via Peer Service",
+                registerId);
+        }
+    }
+
     public async Task AdvertiseRegisterAsync(
         string registerId,
         bool isPublic,

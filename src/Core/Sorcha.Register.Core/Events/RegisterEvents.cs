@@ -64,6 +64,17 @@ public class RegisterStatusChangedEvent
 }
 
 /// <summary>
+/// Event raised when a register's sync state changes
+/// </summary>
+public class RegisterSyncStateChangedEvent
+{
+    public required string RegisterId { get; set; }
+    public required string SyncState { get; set; }
+    public string? PreviousSyncState { get; set; }
+    public DateTime ChangedAt { get; set; }
+}
+
+/// <summary>
 /// Event raised when a register's height is updated
 /// </summary>
 public class RegisterHeightUpdatedEvent

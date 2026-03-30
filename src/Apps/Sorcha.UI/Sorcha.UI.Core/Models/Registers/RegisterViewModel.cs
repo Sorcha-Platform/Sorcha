@@ -57,6 +57,28 @@ public record RegisterViewModel
     public DateTime UpdatedAt { get; init; }
 
     /// <summary>
+    /// Replication state for remotely-subscribed registers. Null for locally created registers.
+    /// </summary>
+    public string? SyncState { get; init; }
+
+    /// <summary>
+    /// Computed: Whether the register is currently syncing or in a sync-related state
+    /// </summary>
+    public bool IsSyncing => SyncState is "Subscribing" or "Syncing" or "Error";
+
+    /// <summary>
+    /// Computed: Human-readable sync state text
+    /// </summary>
+    public string SyncStateText => SyncState switch
+    {
+        "Subscribing" => "Subscribing...",
+        "Syncing" => "Syncing...",
+        "Synced" => "Synced",
+        "Error" => "Sync Error",
+        _ => ""
+    };
+
+    /// <summary>
     /// Computed: Whether the register is currently online
     /// </summary>
     public bool IsOnline => Status == RegisterStatus.Online;

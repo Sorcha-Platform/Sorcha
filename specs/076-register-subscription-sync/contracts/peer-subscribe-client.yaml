@@ -1,0 +1,82 @@
+# Peer Service Client — New Method for Register Subscription
+# Added to existing IPeerServiceClient interface
+
+openapi: 3.0.3
+info:
+  title: Peer Service — Register Subscription API (existing endpoint, new client method)
+  version: 1.0.0
+  description: |
+    The Peer Service already exposes POST /api/registers/{registerId}/subscribe.
+    This contract documents the client method to be added to IPeerServiceClient
+    so the Register Service can trigger peer sync programmatically.
+
+paths:
+  /api/registers/{registerId}/subscribe:
+    post:
+      operationId: SubscribeToRegister
+      summary: Subscribe to a register for peer replication
+      description: |
+        Already implemented in Peer Service. Needs a corresponding client method
+        in IPeerServiceClient and PeerServiceClient.
+      tags:
+        - Peer Sync
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum:
+                    - forward-only
+                    - full-replica
+                  description: Replication mode
+      responses:
+        '201':
+          description: Subscription created, sync will begin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registerId:
+                    type: string
+                  mode:
+                    type: string
+                  syncState:
+                    type: string
+        '404':
+          description: Register not found in network advertisements
+        '409':
+          description: Already subscribed to this register
+
+  /api/registers/{registerId}/subscribe:
+    delete:
+      operationId: UnsubscribeFromRegister
+      summary: Unsubscribe from a register and stop replication
+      description: |
+        Already implemented in Peer Service. Needs a corresponding client method
+        in IPeerServiceClient and PeerServiceClient.
+      tags:
+        - Peer Sync
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Unsubscribed and sync stopped
+        '404':
+          description: Not subscribed to this register

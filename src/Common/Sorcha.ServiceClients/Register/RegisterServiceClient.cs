@@ -1378,6 +1378,52 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
+    public async Task<SubscriptionNotificationResponse?> NotifySubscriptionAsync(
+        SubscriptionNotificationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Notifying Register Service of subscription {Action} for register {RegisterId}",
+                request.Action, request.RegisterId);
+
+            // Internal endpoint is AllowAnonymous — no auth header
+            var response = await _httpClient.PostAsJsonAsync(
+                "api/internal/register-subscriptions",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to notify subscription {Action} for register {RegisterId}: {StatusCode}",
+                    request.Action, request.RegisterId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<SubscriptionNotificationResponse>(
+                JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Register Service unavailable — cannot notify subscription {Action} for register {RegisterId}",
+                request.Action, request.RegisterId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to notify subscription {Action} for register {RegisterId}",
+                request.Action, request.RegisterId);
+            return null;
+        }
+    }
+
     public async Task<PublishedBlueprintsResponse?> GetPublishedBlueprintsAsync(
         string registerId,
         CancellationToken cancellationToken = default)

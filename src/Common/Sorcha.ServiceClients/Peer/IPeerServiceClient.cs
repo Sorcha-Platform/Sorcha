@@ -71,6 +71,26 @@ public interface IPeerServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Subscribes to a register for peer replication via POST /api/registers/{registerId}/subscribe.
+    /// </summary>
+    /// <param name="registerId">Register ID to subscribe to</param>
+    /// <param name="mode">Replication mode: "forward-only" or "full-replica"</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task SubscribeToRegisterAsync(
+        string registerId,
+        string mode,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Unsubscribes from a register and stops replication via DELETE /api/registers/{registerId}/subscribe.
+    /// </summary>
+    /// <param name="registerId">Register ID to unsubscribe from</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task UnsubscribeFromRegisterAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reports validator behavior to Peer Service for reputation scoring
     /// </summary>
     /// <param name="validatorId">Validator ID to report</param>

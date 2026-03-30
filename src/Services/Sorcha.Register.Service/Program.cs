@@ -22,6 +22,7 @@ using Sorcha.Register.Storage.Redis;
 using Sorcha.Register.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.ServiceClients.Peer;
+using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.SystemWallet;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -250,6 +251,147 @@ app.MapGet("/api/internal/registers", async (RegisterManager manager) =>
 .WithDescription("Unauthenticated endpoint for Blueprint Service startup recovery. Returns minimal register info.")
 .AllowAnonymous()
 .ExcludeFromDescription(); // Hidden from public OpenAPI docs
+
+// Internal endpoint for Tenant Service subscription notifications
+app.MapPost("/api/internal/register-subscriptions", async (
+    SubscriptionNotificationRequest request,
+    RegisterManager manager,
+    IPeerServiceClient peerClient,
+    ILogger<Program> logger) =>
+{
+    if (string.IsNullOrWhiteSpace(request.RegisterId))
+    {
+        return Results.BadRequest(new { error = "registerId is required" });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Action)
+        || (request.Action != "subscribe" && request.Action != "unsubscribe"))
+    {
+        return Results.BadRequest(new { error = "action must be 'subscribe' or 'unsubscribe'" });
+    }
+
+    if (request.Action == "subscribe")
+    {
+        // Check if register already exists locally
+        var existing = await manager.GetRegisterAsync(request.RegisterId);
+        if (existing != null)
+        {
+            logger.LogInformation(
+                "Register {RegisterId} already exists locally (SyncState={SyncState}), skipping stub creation",
+                request.RegisterId, existing.SyncState);
+            return Results.Ok(new SubscriptionNotificationResponse
+            {
+                RegisterId = request.RegisterId,
+                Action = "subscribe",
+                SyncState = existing.SyncState,
+                Message = existing.SyncState == null
+                    ? "Register exists locally"
+                    : $"Register already syncing (state: {existing.SyncState})"
+            });
+        }
+
+        // Create stub register
+        var name = !string.IsNullOrWhiteSpace(request.RegisterName) ? request.RegisterName : "Syncing...";
+        var stub = await manager.CreateRegisterAsync(
+            name,
+            advertise: false,
+            isFullReplica: false,
+            registerId: request.RegisterId,
+            description: request.Description);
+
+        await manager.UpdateSyncStateAsync(request.RegisterId, "Subscribing");
+
+        logger.LogInformation(
+            "Created stub register {RegisterId} (name={Name}) with SyncState=Subscribing",
+            request.RegisterId, name);
+
+        // Fire-and-forget: tell Peer Service to start syncing
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await peerClient.SubscribeToRegisterAsync(request.RegisterId, "full-replica");
+                await manager.UpdateSyncStateAsync(request.RegisterId, "Syncing");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Failed to initiate peer sync for register {RegisterId} — stub remains in Subscribing state",
+                    request.RegisterId);
+                await manager.UpdateSyncStateAsync(request.RegisterId, "Error");
+            }
+        });
+
+        return Results.Ok(new SubscriptionNotificationResponse
+        {
+            RegisterId = request.RegisterId,
+            Action = "subscribe",
+            SyncState = "Subscribing",
+            Message = "Stub register created, peer sync initiated"
+        });
+    }
+    else // unsubscribe
+    {
+        var existing = await manager.GetRegisterAsync(request.RegisterId);
+        if (existing == null)
+        {
+            return Results.Ok(new SubscriptionNotificationResponse
+            {
+                RegisterId = request.RegisterId,
+                Action = "unsubscribe",
+                Message = "Register not found locally (already removed)"
+            });
+        }
+
+        if (existing.SyncState == null)
+        {
+            // Locally owned register — do NOT delete
+            logger.LogInformation(
+                "Register {RegisterId} is locally owned (SyncState=null), not deleting",
+                request.RegisterId);
+            return Results.Ok(new SubscriptionNotificationResponse
+            {
+                RegisterId = request.RegisterId,
+                Action = "unsubscribe",
+                Message = "Register is locally owned, not removed"
+            });
+        }
+
+        // Remote register — stop sync and delete
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await peerClient.UnsubscribeFromRegisterAsync(request.RegisterId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Failed to unsubscribe from peer sync for register {RegisterId}",
+                    request.RegisterId);
+            }
+        });
+
+        await manager.DeleteRemoteRegisterAsync(request.RegisterId);
+
+        logger.LogInformation(
+            "Deleted remote register {RegisterId} and stopped peer sync",
+            request.RegisterId);
+
+        return Results.Ok(new SubscriptionNotificationResponse
+        {
+            RegisterId = request.RegisterId,
+            Action = "unsubscribe",
+            Message = "Register removed and peer sync stopped"
+        });
+    }
+})
+.WithName("InternalNotifyRegisterSubscription")
+.WithSummary("Internal: Notify of register subscription change")
+.WithDescription("Called by Tenant Service when an org subscribes/unsubscribes. Creates stub registers and triggers peer sync.")
+.AllowAnonymous()
+.ExcludeFromDescription();
 
 var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")

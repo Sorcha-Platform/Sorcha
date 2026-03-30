@@ -78,7 +78,7 @@ public interface IRegisterSubscriptionService
     /// <summary>
     /// Subscribe an organisation to a register.
     /// </summary>
-    Task<RegisterSubscriptionDto?> SubscribeAsync(Guid orgId, string registerId, CancellationToken ct = default);
+    Task<RegisterSubscriptionDto?> SubscribeAsync(Guid orgId, string registerId, string? registerName = null, string? description = null, CancellationToken ct = default);
 
     /// <summary>
     /// Create an owner subscription for a register the organisation just created.
