@@ -19,12 +19,12 @@
 
 **Purpose**: Shared DTOs, validators, and service interfaces needed by multiple user stories.
 
-- [ ] T001 [P] Create `AdminProvisionUserRequest` and `AdminProvisionUserResponse` DTOs at `src/Services/Sorcha.Tenant.Service/Models/Dtos/PlatformUserProvisioningDtos.cs` — fields per data-model.md
-- [ ] T002 [P] Create `AdminResetPasswordRequest` DTO at `src/Services/Sorcha.Tenant.Service/Models/Dtos/PlatformUserProvisioningDtos.cs` (same file as T001)
-- [ ] T003 [P] Create `AutoLinkResult` internal model at `src/Services/Sorcha.Tenant.Service/Models/AutoLinkResult.cs` — ParticipantCreated, WalletLinked, ParticipantId, SkipReason
-- [ ] T004 [P] Create `AdminProvisionUserValidator` FluentValidation validator at `src/Services/Sorcha.Tenant.Service/Validators/AdminProvisionUserValidator.cs` — email format, displayName non-empty, organizationId required, role valid enum, password NIST policy (if provided)
-- [ ] T005 Add `VerificationMethod` string property to `LinkedWalletAddress` entity at `src/Services/Sorcha.Tenant.Service/Models/LinkedWalletAddress.cs` — default "challenge-verify", new value "self-created" for auto-links
-- [ ] T006 Verify solution builds cleanly after model changes: `dotnet build`
+- [x] T001 [P] Create `AdminProvisionUserRequest` and `AdminProvisionUserResponse` DTOs at `src/Services/Sorcha.Tenant.Service/Models/Dtos/PlatformUserProvisioningDtos.cs` — fields per data-model.md
+- [x] T002 [P] Create `AdminResetPasswordRequest` DTO at `src/Services/Sorcha.Tenant.Service/Models/Dtos/PlatformUserProvisioningDtos.cs` (same file as T001)
+- [x] T003 [P] Create `AutoLinkResult` internal model at `src/Services/Sorcha.Tenant.Service/Models/AutoLinkResult.cs` — ParticipantCreated, WalletLinked, ParticipantId, SkipReason
+- [x] T004 [P] Create `AdminProvisionUserValidator` — using inline validation (Tenant Service convention, no FluentValidation)
+- [x] T005 Add `VerificationMethod` string property to `LinkedWalletAddress` entity at `src/Services/Sorcha.Tenant.Service/Models/LinkedWalletAddress.cs` — default "challenge-verify", new value "self-created" for auto-links
+- [x] T006 Verify solution builds cleanly after model changes: `dotnet build`
 
 **Checkpoint**: All new DTOs and models compile.
 
