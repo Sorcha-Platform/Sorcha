@@ -38,6 +38,15 @@ public interface IPlatformUserProvisioningService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Provisioning result with response or error details.</returns>
     Task<ProvisioningResult> ProvisionUserAsync(AdminProvisionUserRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resets a platform user's password. Validates against NIST policy.
+    /// </summary>
+    /// <param name="userId">PlatformUser ID.</param>
+    /// <param name="newPassword">New password (NIST policy enforced).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Success or error details.</returns>
+    Task<ProvisioningResult> ResetPasswordAsync(Guid userId, string newPassword, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -219,5 +228,32 @@ public class PlatformUserProvisioningService : IPlatformUserProvisioningService
                 EmailVerified = platformUser.EmailVerified,
                 IsExistingPlatformUser = isExistingPlatformUser
             });
+    }
+
+    /// <inheritdoc />
+    public async Task<ProvisioningResult> ResetPasswordAsync(Guid userId, string newPassword, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(newPassword))
+            return new ProvisioningResult(false, Error: "Password is required");
+
+        if (newPassword.Length < 12)
+            return new ProvisioningResult(false, Error: "Password must be at least 12 characters");
+
+        var platformUser = await _dbContext.PlatformUsers
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (platformUser == null)
+            return new ProvisioningResult(false, Error: "Platform user not found", ErrorStatusCode: 404);
+
+        // Validate password against NIST policy
+        var policyResult = await _passwordPolicyService.ValidateAsync(newPassword, ct);
+        if (!policyResult.IsValid)
+            return new ProvisioningResult(false, Error: $"Password policy violation: {string.Join(", ", policyResult.Errors)}");
+
+        platformUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        await _dbContext.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Admin reset password for user {UserId}", userId);
+
+        return new ProvisioningResult(true);
     }
 }

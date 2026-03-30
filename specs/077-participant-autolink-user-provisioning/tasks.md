@@ -87,9 +87,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] Add `ResetPasswordAsync` to `PlatformUserProvisioningService` — validates password against NIST policy, updates PlatformUser.PasswordHash at `src/Services/Sorcha.Tenant.Service/Services/PlatformUserProvisioningService.cs`
-- [ ] T022 [US3] Add `PUT /api/platform/users/{id}/password` endpoint — requires SystemAdmin, validates request, calls ResetPasswordAsync at `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformManagementEndpoints.cs`
-- [ ] T023 [US3] Add YARP route for `PUT /api/platform/users/*/password` at `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [x] T021 [US3] Add `ResetPasswordAsync` to `PlatformUserProvisioningService` — validates password against NIST policy, updates PlatformUser.PasswordHash at `src/Services/Sorcha.Tenant.Service/Services/PlatformUserProvisioningService.cs`
+- [x] T022 [US3] Add `PUT /api/platform/users/{id}/password` endpoint — requires SystemAdmin, validates request, calls ResetPasswordAsync at `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformManagementEndpoints.cs`
+- [x] T023 [US3] Add YARP route for `PUT /api/platform/users/*/password` at `src/Services/Sorcha.ApiGateway/appsettings.json`
 
 **Checkpoint**: Admin resets password → old password fails → new password succeeds.
 

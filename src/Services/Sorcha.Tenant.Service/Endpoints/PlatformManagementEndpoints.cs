@@ -31,6 +31,13 @@ public static class PlatformManagementEndpoints
                 "Requires SystemAdmin role.")
             .RequireAuthorization("RequireSystemAdmin");
 
+        group.MapPut("/{id:guid}/password", ResetPassword)
+            .WithName("AdminResetPassword")
+            .WithSummary("Reset a platform user's password")
+            .WithDescription("Updates the password hash for a platform user. New password must comply with " +
+                "NIST password policy (min 12 characters, breach list check). Requires SystemAdmin role.")
+            .RequireAuthorization("RequireSystemAdmin");
+
         return app;
     }
 
@@ -94,5 +101,33 @@ public static class PlatformManagementEndpoints
             request.Email, request.OrganizationId);
 
         return TypedResults.Created($"/api/platform/users/{result.Response!.UserId}", result.Response);
+    }
+
+    /// <summary>
+    /// Resets a platform user's password. SystemAdmin only.
+    /// </summary>
+    private static async Task<IResult> ResetPassword(
+        Guid id,
+        AdminResetPasswordRequest request,
+        IPlatformUserProvisioningService provisioningService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+            return Results.BadRequest(new { error = "New password is required" });
+
+        var result = await provisioningService.ResetPasswordAsync(id, request.NewPassword, cancellationToken);
+
+        if (!result.Success)
+        {
+            return result.ErrorStatusCode switch
+            {
+                404 => Results.NotFound(new { error = result.Error }),
+                _ => Results.BadRequest(new { error = result.Error })
+            };
+        }
+
+        logger.LogInformation("Admin reset password for user {UserId}", id);
+        return Results.Ok(new { message = "Password updated successfully" });
     }
 }
