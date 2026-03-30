@@ -248,7 +248,11 @@ public class RelayCommunicationService
 
                 // Send initial identification message immediately so the Router
                 // registers this stream before the first keepalive tick (30s delay)
-                var senderId = _configuration.NodeId ?? Environment.MachineName;
+                // IMPORTANT: Use Environment.MachineName (container hostname) as the peer ID
+                // to match what the heartbeat system uses — NOT NodeId, which is the
+                // human-readable name. The Router's ReverseStreamManager must map to
+                // the same ID used in relay message RecipientPeerId fields.
+                var senderId = Environment.MachineName;
                 var hello = new PeerMessage
                 {
                     SenderPeerId = senderId,
@@ -331,7 +335,7 @@ public class RelayCommunicationService
     {
         if (_reverseStreamCall == null) return;
 
-        var senderId = _configuration.NodeId ?? Environment.MachineName;
+        var senderId = Environment.MachineName; // Must match heartbeat PeerId
 
         try
         {
