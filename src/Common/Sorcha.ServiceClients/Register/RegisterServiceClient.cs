@@ -1337,6 +1337,94 @@ public class RegisterServiceClient : IRegisterServiceClient
         public required string PublishedBy { get; init; }
     }
 
+    // =========================================================================
+    // Recovery / Internal Discovery
+    // =========================================================================
+
+    public async Task<List<InternalRegisterInfo>> GetInternalRegistersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Fetching internal register list for recovery");
+
+            // Internal endpoint is AllowAnonymous — no auth header
+            var response = await _httpClient.GetAsync(
+                "api/internal/registers",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to fetch internal registers: {StatusCode}",
+                    response.StatusCode);
+                return [];
+            }
+
+            var registers = await response.Content.ReadFromJsonAsync<List<InternalRegisterInfo>>(
+                JsonOptions, cancellationToken);
+
+            return registers ?? [];
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error fetching internal registers");
+            return [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch internal registers");
+            return [];
+        }
+    }
+
+    public async Task<PublishedBlueprintsResponse?> GetPublishedBlueprintsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Fetching published blueprints for register {RegisterId}", registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/blueprints/published",
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogDebug("Register {RegisterId} not found", registerId);
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to fetch published blueprints for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<PublishedBlueprintsResponse>(
+                JsonOptions, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error fetching published blueprints for register {RegisterId}", registerId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch published blueprints for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    // =========================================================================
+    // Private Records
+    // =========================================================================
+
     private record PrevTxIdQueryResponse
     {
         public List<TransactionModel> Items { get; init; } = [];

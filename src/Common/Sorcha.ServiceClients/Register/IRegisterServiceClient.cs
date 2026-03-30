@@ -337,6 +337,29 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     // =========================================================================
+    // Recovery / Internal Discovery
+    // =========================================================================
+
+    /// <summary>
+    /// Gets all registers via the internal discovery endpoint (no auth).
+    /// Used by Blueprint Service during startup recovery.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of register summaries, or empty list on failure</returns>
+    Task<List<InternalRegisterInfo>> GetInternalRegistersAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets published blueprints for a register (recovery/discovery).
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Published blueprints response, or null on failure</returns>
+    Task<PublishedBlueprintsResponse?> GetPublishedBlueprintsAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
     // Register Management (All Services)
     // =========================================================================
 
@@ -552,4 +575,38 @@ public class PolicyVersionEntry
     /// When this policy version was committed
     /// </summary>
     public DateTimeOffset CommittedAt { get; set; }
+}
+
+/// <summary>
+/// Minimal register info returned by the internal discovery endpoint
+/// </summary>
+public class InternalRegisterInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public long Height { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Response from the published blueprints recovery endpoint
+/// </summary>
+public class PublishedBlueprintsResponse
+{
+    public string RegisterId { get; set; } = string.Empty;
+    public List<PublishedBlueprintEntry> Blueprints { get; set; } = [];
+    public long RegisterHeight { get; set; }
+    public DateTimeOffset QueriedAt { get; set; }
+}
+
+/// <summary>
+/// A single published blueprint entry
+/// </summary>
+public class PublishedBlueprintEntry
+{
+    public string BlueprintId { get; set; } = string.Empty;
+    public string TransactionId { get; set; } = string.Empty;
+    public string PublishedBy { get; set; } = string.Empty;
+    public DateTimeOffset PublishedAt { get; set; }
+    public string BlueprintJson { get; set; } = string.Empty;
 }
