@@ -231,6 +231,20 @@ public class RelayCommunicationService
                 _logger.LogInformation("Reverse stream established to seed node");
                 _reverseStreamBackoffMs = 0; // Reset backoff on successful connection
 
+                // Send initial identification message immediately so the Router
+                // registers this stream before the first keepalive tick (30s delay)
+                var senderId = _configuration.NodeId ?? Environment.MachineName;
+                var hello = new PeerMessage
+                {
+                    SenderPeerId = senderId,
+                    RecipientPeerId = string.Empty,
+                    MessageType = MessageType.Heartbeat,
+                    Payload = Google.Protobuf.ByteString.Empty,
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                };
+                await _reverseStreamCall.RequestStream.WriteAsync(hello, _reverseStreamCts.Token);
+                _logger.LogDebug("Reverse stream identification sent as {PeerId}", senderId);
+
                 // Start receive loop and keepalive in parallel
                 _reverseStreamReceiveTask = RunReceiveLoopAsync(_reverseStreamCts.Token);
                 _reverseStreamKeepaliveTask = RunKeepaliveLoopAsync(_reverseStreamCts.Token);
