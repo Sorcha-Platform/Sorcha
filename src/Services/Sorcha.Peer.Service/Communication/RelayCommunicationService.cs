@@ -214,18 +214,33 @@ public class RelayCommunicationService
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var seedChannel = GetSeedChannel();
-            if (seedChannel == null)
+            // Create a DEDICATED channel for the reverse stream — do not share with
+            // the heartbeat connection pool, which cycles channels on failures and
+            // kills any in-flight streams.
+            var seedAddress = GetSeedNodeAddress();
+            if (seedAddress == null)
             {
-                _logger.LogDebug("No seed channel available for reverse stream, retrying after backoff");
+                _logger.LogDebug("No seed node address available for reverse stream, retrying after backoff");
                 await ApplyBackoffAsync(cancellationToken);
                 continue;
             }
 
+            Grpc.Net.Client.GrpcChannel? dedicatedChannel = null;
             try
             {
+                dedicatedChannel = Grpc.Net.Client.GrpcChannel.ForAddress(seedAddress, new Grpc.Net.Client.GrpcChannelOptions
+                {
+                    HttpHandler = new SocketsHttpHandler
+                    {
+                        PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
+                        KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                        KeepAlivePingTimeout = TimeSpan.FromSeconds(15),
+                        EnableMultipleHttp2Connections = true
+                    }
+                });
+
                 _reverseStreamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                var client = new PeerCommunication.PeerCommunicationClient(seedChannel);
+                var client = new PeerCommunication.PeerCommunicationClient(dedicatedChannel);
                 _reverseStreamCall = client.Stream(cancellationToken: _reverseStreamCts.Token);
 
                 _logger.LogInformation("Reverse stream established to seed node");
@@ -275,6 +290,7 @@ public class RelayCommunicationService
             finally
             {
                 await CleanupReverseStreamAsync();
+                dedicatedChannel?.Dispose();
             }
 
             await ApplyBackoffAsync(cancellationToken);
@@ -401,6 +417,26 @@ public class RelayCommunicationService
             Payload = Google.Protobuf.ByteString.CopyFromUtf8(payloadJson),
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
+    }
+
+    /// <summary>
+    /// Gets the gRPC address of the first available seed node for creating a dedicated channel.
+    /// </summary>
+    private string? GetSeedNodeAddress()
+    {
+        foreach (var peer in _peerListManager.GetAllPeers())
+        {
+            if (peer.IsSeedNode && !string.IsNullOrEmpty(peer.Address))
+            {
+                var scheme = peer.Address.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? "" : "https://";
+                return $"{scheme}{peer.Address}";
+            }
+        }
+
+        // Fall back to seed channel from connection pool to get the address
+        var seedChannel = GetSeedChannel();
+        return seedChannel?.Target;
     }
 
     private Grpc.Net.Client.GrpcChannel? GetSeedChannel()
