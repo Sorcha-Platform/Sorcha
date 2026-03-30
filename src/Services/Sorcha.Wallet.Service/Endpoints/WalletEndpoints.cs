@@ -313,7 +313,7 @@ public static class WalletEndpoints
         WalletManager walletManager,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
-        IParticipantServiceClient participantClient,
+        IServiceScopeFactory serviceScopeFactory,
         HttpContext context,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
@@ -364,6 +364,10 @@ public static class WalletEndpoints
 
             // T012: Fire-and-forget auto-link — register participant + link wallet in Tenant Service.
             // Failures don't block wallet creation (FR-004).
+            // Uses IServiceScopeFactory to create a new scope — the request scope is disposed
+            // after Results.Created returns, before this background task executes.
+            var walletAddress = wallet.Address;
+            var walletAlgorithm = request.Algorithm;
             _ = Task.Run(async () =>
             {
                 try
@@ -371,36 +375,36 @@ public static class WalletEndpoints
                     var userId = Guid.TryParse(owner, out var uid) ? uid : Guid.Empty;
                     var orgId = Guid.TryParse(tenant, out var oid) ? oid : Guid.Empty;
                     if (userId == Guid.Empty || orgId == Guid.Empty)
-                    {
-                        logger.LogDebug("Skipping auto-link: could not parse user/org from claims");
                         return;
-                    }
 
-                    var autoLinkResult = await participantClient.AutoLinkWalletAsync(
-                        wallet.Address,
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var client = scope.ServiceProvider.GetRequiredService<IParticipantServiceClient>();
+                    var bgLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+                    var autoLinkResult = await client.AutoLinkWalletAsync(
+                        walletAddress,
                         userId,
                         orgId,
-                        publicKeyBase64: null, // Public key resolved by Tenant Service via Wallet Service lookup
-                        request.Algorithm,
+                        publicKeyBase64: null,
+                        walletAlgorithm,
                         CancellationToken.None);
 
                     if (autoLinkResult.WalletLinked)
                     {
-                        logger.LogInformation(
+                        bgLogger.LogInformation(
                             "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (created={Created})",
-                            wallet.Address, autoLinkResult.ParticipantId, autoLinkResult.ParticipantCreated);
+                            walletAddress, autoLinkResult.ParticipantId, autoLinkResult.ParticipantCreated);
                     }
                     else if (!string.IsNullOrEmpty(autoLinkResult.SkipReason))
                     {
-                        logger.LogWarning("Auto-link skipped for wallet {WalletAddress}: {Reason}",
-                            wallet.Address, autoLinkResult.SkipReason);
+                        bgLogger.LogWarning("Auto-link skipped for wallet {WalletAddress}: {Reason}",
+                            walletAddress, autoLinkResult.SkipReason);
                     }
                 }
                 catch (Exception autoLinkEx)
                 {
-                    logger.LogWarning(autoLinkEx,
-                        "Auto-link failed for wallet {WalletAddress} — wallet created successfully, link can be done manually",
-                        wallet.Address);
+                    // Can't use scoped logger here if scope creation itself failed
+                    Console.Error.WriteLine($"Auto-link failed for wallet {walletAddress}: {autoLinkEx.Message}");
                 }
             });
 

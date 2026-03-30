@@ -236,9 +236,6 @@ public class PlatformUserProvisioningService : IPlatformUserProvisioningService
         if (string.IsNullOrWhiteSpace(newPassword))
             return new ProvisioningResult(false, Error: "Password is required");
 
-        if (newPassword.Length < 12)
-            return new ProvisioningResult(false, Error: "Password must be at least 12 characters");
-
         var platformUser = await _dbContext.PlatformUsers
             .FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (platformUser == null)

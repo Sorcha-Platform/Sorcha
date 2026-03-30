@@ -201,24 +201,36 @@ public class ParticipantService : IParticipantService
         }
 
         // Step 4: Create direct wallet link (bypass challenge/verify — ownership proven by creation)
-        var walletLink = new LinkedWalletAddress
+        try
         {
-            ParticipantId = participant.Id,
-            OrganizationId = organizationId,
-            WalletAddress = walletAddress,
-            PublicKey = publicKey,
-            Algorithm = algorithm,
-            Status = WalletLinkStatus.Active,
-            VerificationMethod = "self-created"
-        };
+            var walletLink = new LinkedWalletAddress
+            {
+                ParticipantId = participant.Id,
+                OrganizationId = organizationId,
+                WalletAddress = walletAddress,
+                PublicKey = publicKey,
+                Algorithm = algorithm,
+                Status = WalletLinkStatus.Active,
+                VerificationMethod = WalletVerificationMethod.SelfCreated
+            };
 
-        await _participantRepository.CreateWalletLinkAsync(walletLink, cancellationToken);
+            await _participantRepository.CreateWalletLinkAsync(walletLink, cancellationToken);
 
-        _logger.LogInformation(
-            "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (self-created)",
-            walletAddress, participant.Id);
+            _logger.LogInformation(
+                "Auto-linked wallet {WalletAddress} to participant {ParticipantId} (self-created)",
+                walletAddress, participant.Id);
 
-        return AutoLinkResult.Success(participantCreated, walletLinked: true, participant.Id);
+            return AutoLinkResult.Success(participantCreated, walletLinked: true, participant.Id);
+        }
+        catch (Exception ex)
+        {
+            // Wallet link failed. The participant (if newly created) remains — this is harmless
+            // since a participant without wallet links is valid and can be linked manually later.
+            _logger.LogWarning(ex,
+                "Wallet link failed for participant {ParticipantId} (newlyCreated={Created})",
+                participant.Id, participantCreated);
+            return AutoLinkResult.Skipped($"Wallet link failed: {ex.Message}", participant.Id);
+        }
     }
 
     /// <inheritdoc />

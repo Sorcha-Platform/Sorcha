@@ -593,6 +593,11 @@ public class TenantDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(20);
 
+            entity.Property(e => e.VerificationMethod)
+                .IsRequired()
+                .HasMaxLength(30)
+                .HasDefaultValue(WalletVerificationMethod.ChallengeVerify);
+
             // Partial unique index: only one active link per wallet address platform-wide
             if (isInMemory)
             {

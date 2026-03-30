@@ -242,6 +242,8 @@ public static class ParticipantEndpoints
             .Produces(StatusCodes.Status401Unauthorized);
 
         // Internal auto-link endpoint (called by Wallet Service after wallet creation)
+        // Uses standard auth — service-to-service calls use JWT with token_type=service claim.
+        // Not exposed via API Gateway (no YARP route) so only reachable internally.
         var internalGroup = app.MapGroup("/api/internal/participants")
             .WithTags("Participants (Internal)")
             .RequireAuthorization();

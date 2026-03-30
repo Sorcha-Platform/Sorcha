@@ -59,14 +59,24 @@ public class LinkedWalletAddress
     public WalletLinkStatus Status { get; set; } = WalletLinkStatus.Active;
 
     /// <summary>
-    /// How wallet ownership was verified.
-    /// "challenge-verify" for the standard signature challenge flow.
-    /// "self-created" for auto-link during wallet creation (ownership proven by mnemonic generation).
+    /// How wallet ownership was verified. Use constants from <see cref="WalletVerificationMethod"/>.
     /// </summary>
-    public string VerificationMethod { get; set; } = "challenge-verify";
+    public string VerificationMethod { get; set; } = WalletVerificationMethod.ChallengeVerify;
 
     /// <summary>
     /// Navigation property to the owning participant.
     /// </summary>
     public ParticipantIdentity? Participant { get; set; }
+}
+
+/// <summary>
+/// Constants for wallet ownership verification methods.
+/// </summary>
+public static class WalletVerificationMethod
+{
+    /// <summary>Standard challenge/verify signature flow.</summary>
+    public const string ChallengeVerify = "challenge-verify";
+
+    /// <summary>Auto-link during wallet creation (ownership proven by mnemonic generation).</summary>
+    public const string SelfCreated = "self-created";
 }
