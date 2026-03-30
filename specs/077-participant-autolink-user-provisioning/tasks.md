@@ -61,15 +61,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] Unit test for provisioning service — verify PlatformUser created, UserIdentity created, OrgMembership created, existing PlatformUser reused, password hashed, skipEmailVerification works, invalid org returns error at `tests/Sorcha.Tenant.Service.Tests/Services/PlatformUserProvisioningTests.cs`
-- [ ] T015 [P] [US2] Integration test for provisioning endpoint — verify 201 on success, 404 on bad org, 409 on duplicate user+org, 403 on non-admin, 400 on validation errors at `tests/Sorcha.Tenant.Service.Tests/Endpoints/PlatformUserEndpointTests.cs`
+- [x] T014 [P] [US2] Unit test for provisioning service — verify PlatformUser created, UserIdentity created, OrgMembership created, existing PlatformUser reused, password hashed, skipEmailVerification works, invalid org returns error at `tests/Sorcha.Tenant.Service.Tests/Services/PlatformUserProvisioningTests.cs`
+- [x] T015 [P] [US2] Integration test for provisioning endpoint — verify 201 on success, 404 on bad org, 409 on duplicate user+org, 403 on non-admin, 400 on validation errors at `tests/Sorcha.Tenant.Service.Tests/Endpoints/PlatformUserEndpointTests.cs`
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Create `IPlatformUserProvisioningService` interface and `PlatformUserProvisioningService` implementation — ProvisionUserAsync creates PlatformUser (or reuses by email) + UserIdentity + PlatformUserOrgMembership, hashes password if provided, sets EmailVerified if skipEmailVerification at `src/Services/Sorcha.Tenant.Service/Services/PlatformUserProvisioningService.cs`
-- [ ] T017 [US2] Register `IPlatformUserProvisioningService` in DI at `src/Services/Sorcha.Tenant.Service/Program.cs`
-- [ ] T018 [US2] Add `POST /api/platform/users` endpoint — validates request via `AdminProvisionUserValidator`, calls `PlatformUserProvisioningService.ProvisionUserAsync`, requires SystemAdmin authorisation, returns `AdminProvisionUserResponse` at `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformManagementEndpoints.cs`
-- [ ] T019 [US2] Add YARP route for `POST /api/platform/users` at `src/Services/Sorcha.ApiGateway/appsettings.json`
+- [x] T016 [US2] Create `IPlatformUserProvisioningService` interface and `PlatformUserProvisioningService` implementation — ProvisionUserAsync creates PlatformUser (or reuses by email) + UserIdentity + PlatformUserOrgMembership, hashes password if provided, sets EmailVerified if skipEmailVerification at `src/Services/Sorcha.Tenant.Service/Services/PlatformUserProvisioningService.cs`
+- [x] T017 [US2] Register `IPlatformUserProvisioningService` in DI at `src/Services/Sorcha.Tenant.Service/Program.cs`
+- [x] T018 [US2] Add `POST /api/platform/users` endpoint — validates request via `AdminProvisionUserValidator`, calls `PlatformUserProvisioningService.ProvisionUserAsync`, requires SystemAdmin authorisation, returns `AdminProvisionUserResponse` at `src/Services/Sorcha.Tenant.Service/Endpoints/PlatformManagementEndpoints.cs`
+- [x] T019 [US2] Add YARP route for `POST /api/platform/users` at `src/Services/Sorcha.ApiGateway/appsettings.json`
 
 **Checkpoint**: Admin can create user in private org → user can log in → user appears in org with correct role.
 

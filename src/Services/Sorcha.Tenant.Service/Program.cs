@@ -180,6 +180,7 @@ app.MapOidcEndpoints();
 app.MapSocialLoginEndpoints();
 app.MapPlatformSettingsEndpoints();
 app.MapPlatformOrgEndpoints();
+app.MapPlatformManagementEndpoints();
 app.MapOrgSettingsEndpoints();
 app.MapDomainRestrictionEndpoints();
 app.MapAuditEndpoints();

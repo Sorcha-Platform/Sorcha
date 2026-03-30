@@ -151,6 +151,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPlatformUserService, PlatformUserService>();
         services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
         services.AddScoped<IOrgProvisioningService, OrgProvisioningService>();
+        services.AddScoped<IPlatformUserProvisioningService, PlatformUserProvisioningService>();
 
         // IDP configuration services
         services.AddHttpClient<IOidcDiscoveryService, OidcDiscoveryService>();

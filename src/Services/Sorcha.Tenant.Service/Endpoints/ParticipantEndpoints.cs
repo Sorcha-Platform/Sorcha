@@ -4,6 +4,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Sorcha.Tenant.Models;
+using Sorcha.Tenant.Service.Models;
 using Sorcha.Tenant.Service.Models.Dtos;
 using Sorcha.Tenant.Service.Services;
 
@@ -238,6 +239,19 @@ public static class ParticipantEndpoints
             .RequireAuthorization()
             .Produces<List<LinkedWalletAddressResponse>>()
             .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        // Internal auto-link endpoint (called by Wallet Service after wallet creation)
+        var internalGroup = app.MapGroup("/api/internal/participants")
+            .WithTags("Participants (Internal)")
+            .RequireAuthorization();
+
+        internalGroup.MapPost("/auto-link", AutoLinkWallet)
+            .WithName("AutoLinkWallet")
+            .WithSummary("Auto-register participant and link wallet (internal)")
+            .WithDescription("Called by Wallet Service after wallet creation. Registers participant if needed and links wallet without challenge/verify flow. Ownership proven by mnemonic generation.")
+            .Produces<AutoLinkResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
@@ -736,4 +750,46 @@ public static class ParticipantEndpoints
         return TypedResults.Ok(result);
     }
 
+    private static async Task<IResult> AutoLinkWallet(
+        AutoLinkWalletRequest request,
+        IParticipantService participantService,
+        ILogger<Program> logger)
+    {
+        if (string.IsNullOrWhiteSpace(request.WalletAddress))
+            return Results.BadRequest(new { error = "Wallet address is required" });
+        if (request.UserId == Guid.Empty)
+            return Results.BadRequest(new { error = "User ID is required" });
+        if (request.OrganizationId == Guid.Empty)
+            return Results.BadRequest(new { error = "Organization ID is required" });
+
+        try
+        {
+            var result = await participantService.AutoLinkWalletAsync(
+                request.UserId,
+                request.OrganizationId,
+                request.WalletAddress,
+                request.PublicKey ?? [],
+                request.Algorithm ?? "ED25519",
+                default);
+
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Auto-link failed for wallet {WalletAddress}", request.WalletAddress);
+            return Results.Ok(AutoLinkResult.Skipped($"Auto-link failed: {ex.Message}"));
+        }
+    }
+}
+
+/// <summary>
+/// Internal request for auto-linking a wallet after creation.
+/// </summary>
+public record AutoLinkWalletRequest
+{
+    public Guid UserId { get; init; }
+    public Guid OrganizationId { get; init; }
+    public string WalletAddress { get; init; } = string.Empty;
+    public byte[]? PublicKey { get; init; }
+    public string? Algorithm { get; init; }
 }
