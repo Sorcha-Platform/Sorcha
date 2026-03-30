@@ -238,11 +238,11 @@ public class RegisterReplicationService
                     _syncConfig.ReplicationTimeoutMinutes, registerId, sourcePeer.PeerId);
                 await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+            catch (RpcException ex) when (ex.StatusCode is StatusCode.Unavailable or StatusCode.Unimplemented)
             {
                 _logger.LogWarning(
-                    "Source peer {PeerId} unavailable for register {RegisterId}, trying next",
-                    sourcePeer.PeerId, registerId);
+                    "Source peer {PeerId} cannot serve register {RegisterId} ({Status}), trying next",
+                    sourcePeer.PeerId, registerId, ex.StatusCode);
                 await _connectionPool.RecordFailureAsync(sourcePeer.PeerId);
             }
             catch (Exception ex)
