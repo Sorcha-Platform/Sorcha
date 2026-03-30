@@ -1,0 +1,89 @@
+# API Contract: Platform User Admin Provisioning
+# Service: Tenant Service
+# Auth: SystemAdmin role required
+
+endpoints:
+  POST /api/platform/users:
+    description: |
+      Create a platform user with user identity and organisation membership in one operation.
+      Reuses existing PlatformUser if email already exists. SystemAdmin only.
+    auth: SystemAdmin
+    request:
+      email:
+        type: string
+        required: true
+        description: User's email address (unique across platform)
+        example: "jane.doe@ashwick.council.gov"
+      displayName:
+        type: string
+        required: true
+        example: "Jane Doe"
+      organizationId:
+        type: string
+        format: uuid
+        required: true
+        description: Target organisation to provision into
+      role:
+        type: string
+        enum: [Consumer, Member, Admin]
+        required: true
+        example: "Member"
+      password:
+        type: string
+        nullable: true
+        description: Optional password (hashed server-side, NIST policy enforced)
+      skipEmailVerification:
+        type: boolean
+        default: false
+        description: If true, mark email as verified immediately
+
+    responses:
+      201:
+        description: User provisioned successfully
+        body:
+          userId: { type: string, format: uuid }
+          userIdentityId: { type: string, format: uuid }
+          email: { type: string }
+          displayName: { type: string }
+          organizationId: { type: string, format: uuid }
+          organizationName: { type: string }
+          role: { type: string }
+          emailVerified: { type: boolean }
+          isExistingPlatformUser: { type: boolean }
+      400:
+        description: Validation error (invalid email, password policy violation, invalid role)
+      404:
+        description: Organisation not found
+      401:
+        description: Not authenticated
+      403:
+        description: Not a system administrator
+      409:
+        description: User already exists in this organisation
+
+  PUT /api/platform/users/{id}/password:
+    description: |
+      Reset a platform user's password. SystemAdmin only.
+      New password must comply with NIST password policy.
+    auth: SystemAdmin
+    parameters:
+      id:
+        type: string
+        format: uuid
+        description: PlatformUser ID
+    request:
+      newPassword:
+        type: string
+        required: true
+        description: New password (NIST policy enforced)
+    responses:
+      200:
+        description: Password updated successfully
+      400:
+        description: Password does not meet policy requirements
+      404:
+        description: Platform user not found
+      401:
+        description: Not authenticated
+      403:
+        description: Not a system administrator
