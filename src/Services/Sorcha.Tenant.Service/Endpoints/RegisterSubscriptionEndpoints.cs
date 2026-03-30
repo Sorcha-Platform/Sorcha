@@ -144,7 +144,7 @@ public static class RegisterSubscriptionEndpoints
                 ? await subscriptionService.CreateOwnerSubscriptionAsync(
                     orgId, request.RegisterId, request.RegisterName, userId, cancellationToken)
                 : await subscriptionService.SubscribeAsync(
-                    orgId, request.RegisterId, request.RegisterName, userId, cancellationToken, request.Description);
+                    orgId, request.RegisterId, request.RegisterName, userId, request.Description, cancellationToken);
 
             return TypedResults.Created(
                 $"/api/organizations/{orgId}/register-subscriptions/{request.RegisterId}",

@@ -39,7 +39,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange & Act
         var result = await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
@@ -58,7 +58,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange — subscribe to a public register
         await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Act — query subscribed registers (this filters by Active status)
         var subscribed = await _service.GetSubscribedRegistersForOrgAsync(
@@ -76,11 +76,11 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange
         await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Act
         var act = () => _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -97,7 +97,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Act
         var act = () => _service.SubscribeAsync(
-            _testOrgId, invalidId, null, _testUserId, CancellationToken.None);
+            _testOrgId, invalidId, null, _testUserId, ct: CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentException>()
@@ -113,7 +113,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange
         await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         var revokingUserId = Guid.NewGuid();
 
@@ -134,7 +134,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange
         await _service.CreateOwnerSubscriptionAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Act
         var act = () => _service.UnsubscribeAsync(
@@ -165,7 +165,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Act
         var result = await _service.CreateOwnerSubscriptionAsync(
-            _testOrgId, ValidRegisterId, "My Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "My Register", _testUserId, ct: CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
@@ -189,7 +189,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
         {
             var registerId = $"abcdef0123456789abcdef012345678{i}";
             await _service.SubscribeAsync(
-                _testOrgId, registerId, $"Register {i}", _testUserId, CancellationToken.None);
+                _testOrgId, registerId, $"Register {i}", _testUserId, ct: CancellationToken.None);
         }
 
         // Act — page 1, size 2
@@ -207,7 +207,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange
         await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Act
         var result = await _service.ListAsync(Guid.NewGuid(), 1, 10, CancellationToken.None);
@@ -229,10 +229,10 @@ public class RegisterSubscriptionServiceTests : IDisposable
         var publicId = "abcdef0123456789abcdef0123456781";
 
         await _service.CreateOwnerSubscriptionAsync(
-            _testOrgId, ownerId, "Owner Register", _testUserId, CancellationToken.None);
+            _testOrgId, ownerId, "Owner Register", _testUserId, ct: CancellationToken.None);
 
         await _service.SubscribeAsync(
-            _testOrgId, publicId, "Public Register", _testUserId, CancellationToken.None);
+            _testOrgId, publicId, "Public Register", _testUserId, ct: CancellationToken.None);
 
         // Act
         var result = await _service.GetSubscribedRegistersForOrgAsync(
@@ -249,7 +249,7 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         // Arrange
         await _service.SubscribeAsync(
-            _testOrgId, ValidRegisterId, "Test Register", _testUserId, CancellationToken.None);
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
 
         // Manually set to Active then revoke
         var sub = _dbContext.OrganizationRegisterSubscriptions

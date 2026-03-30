@@ -101,7 +101,7 @@ public class RegisterEventBridgeService : BackgroundService
             "register:sync-state-changed",
             async e =>
             {
-                _logger.LogDebug("Bridging RegisterSyncStateChanged for {RegisterId} to register:{RegisterId}", e.RegisterId, e.RegisterId);
+                _logger.LogDebug("Bridging RegisterSyncStateChanged for {RegisterId} to group {GroupName}", e.RegisterId, $"register:{e.RegisterId}");
                 await _hubContext.Clients
                     .Group($"register:{e.RegisterId}")
                     .RegisterSyncStateChanged(e.RegisterId, e.SyncState);

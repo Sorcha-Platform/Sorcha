@@ -291,16 +291,15 @@ app.MapPost("/api/internal/register-subscriptions", async (
             });
         }
 
-        // Create stub register
+        // Create stub register atomically with SyncState set
         var name = !string.IsNullOrWhiteSpace(request.RegisterName) ? request.RegisterName : "Syncing...";
         var stub = await manager.CreateRegisterAsync(
             name,
             advertise: false,
             isFullReplica: false,
             registerId: request.RegisterId,
-            description: request.Description);
-
-        await manager.UpdateSyncStateAsync(request.RegisterId, "Subscribing");
+            description: request.Description,
+            syncState: "Subscribing");
 
         logger.LogInformation(
             "Created stub register {RegisterId} (name={Name}) with SyncState=Subscribing",
@@ -375,17 +374,9 @@ app.MapPost("/api/internal/register-subscriptions", async (
             });
         }
 
-        // Remote register — stop peer sync first, then delete local stub
-        try
-        {
-            await peerClient.UnsubscribeFromRegisterAsync(request.RegisterId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to unsubscribe from peer sync for register {RegisterId} — proceeding with local deletion",
-                request.RegisterId);
-        }
+        // Remote register — stop peer sync first, then delete local stub.
+        // Note: UnsubscribeFromRegisterAsync swallows exceptions internally and logs warnings.
+        await peerClient.UnsubscribeFromRegisterAsync(request.RegisterId);
 
         await manager.DeleteRemoteRegisterAsync(request.RegisterId);
 

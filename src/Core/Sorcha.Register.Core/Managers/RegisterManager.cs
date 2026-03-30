@@ -50,6 +50,7 @@ public class RegisterManager
         string? description = null,
         bool devMode = false,
         RegisterPurpose purpose = RegisterPurpose.General,
+        string? syncState = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -70,6 +71,7 @@ public class RegisterManager
             IsFullReplica = isFullReplica,
             Purpose = purpose,
             DevMode = devMode,
+            SyncState = syncState,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

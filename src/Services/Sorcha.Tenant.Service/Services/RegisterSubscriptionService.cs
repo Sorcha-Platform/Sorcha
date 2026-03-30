@@ -71,7 +71,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 
     /// <inheritdoc />
     public async Task<RegisterSubscriptionResponse> SubscribeAsync(
-        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, CancellationToken ct, string? description = null)
+        Guid orgId, string registerId, string? registerName, Guid subscribedByUserId, string? description = null, CancellationToken ct = default)
     {
         ValidateRegisterId(registerId);
 
