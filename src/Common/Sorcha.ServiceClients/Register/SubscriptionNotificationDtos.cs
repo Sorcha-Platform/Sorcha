@@ -28,6 +28,22 @@ public class SubscriptionNotificationRequest
 }
 
 /// <summary>
+/// Report from Peer Service to Register Service when sync state changes.
+/// Used to update RegisterStatus based on peer sync lifecycle.
+/// </summary>
+public class SyncStatusReport
+{
+    [JsonPropertyName("registerId")]
+    public string RegisterId { get; set; } = string.Empty;
+
+    [JsonPropertyName("syncState")]
+    public string SyncState { get; set; } = string.Empty;
+
+    [JsonPropertyName("peerConnectionActive")]
+    public bool PeerConnectionActive { get; set; } = true;
+}
+
+/// <summary>
 /// Response from Register Service after processing a subscription notification.
 /// </summary>
 public class SubscriptionNotificationResponse
