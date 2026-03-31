@@ -25,6 +25,15 @@
             </MudText>
         </MudStack>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-shrink: 0;">
+            @if (Register.DevMode)
+            {
+                <MudTooltip Text="Unencrypted - update the policy to enable field-level encryption">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning"
+                             Size="Size.Small"
+                             Color="Color.Warning"
+                             data-testid="dev-mode-warning" />
+                </MudTooltip>
+            }
             @if (Register.Advertise)
             {
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">

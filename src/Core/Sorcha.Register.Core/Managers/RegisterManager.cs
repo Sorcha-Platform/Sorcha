@@ -214,6 +214,39 @@ public class RegisterManager
     }
 
     /// <summary>
+    /// Irreversibly disables dev mode on a register, enabling mandatory field-level encryption.
+    /// Once disabled, dev mode cannot be re-enabled.
+    /// </summary>
+    /// <returns>True if dev mode was disabled, false if already disabled</returns>
+    public virtual async Task<bool> DisableDevModeAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+
+        var register = await _repository.GetRegisterAsync(registerId, cancellationToken);
+        if (register == null)
+        {
+            throw new InvalidOperationException($"Register {registerId} not found");
+        }
+
+        if (!register.DevMode)
+        {
+            return false; // Already disabled
+        }
+
+        register.DevMode = false;
+        register.UpdatedAt = DateTime.UtcNow;
+        await _repository.UpdateRegisterAsync(register, cancellationToken);
+
+        _logger?.LogInformation(
+            "Dev mode disabled for register {RegisterId} — field-level encryption now required",
+            registerId);
+
+        return true;
+    }
+
+    /// <summary>
     /// Deletes a remote (synced) register stub without auth checks.
     /// Only for internal use when processing unsubscribe notifications.
     /// Will not delete System registers or registers without a SyncState (locally owned).

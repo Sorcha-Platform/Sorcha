@@ -455,6 +455,28 @@ var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
     .RequireAuthorization("CanManageRegisters");
 
+// Disable dev mode (one-way — enables mandatory field-level encryption)
+registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
+    string registerId,
+    RegisterManager manager) =>
+{
+    var disabled = await manager.DisableDevModeAsync(registerId);
+    if (!disabled)
+    {
+        return Results.Conflict(new { error = "Dev mode is already disabled on this register." });
+    }
+
+    return Results.Ok(new
+    {
+        registerId,
+        devMode = false,
+        message = "Dev mode disabled. Field-level encryption is now required for new transactions."
+    });
+})
+.WithName("DisableDevMode")
+.WithSummary("Disable dev mode (one-way)")
+.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.");
+
 // NOTE: POST /api/registers/ (simple CRUD creation) has been removed.
 // All register creation must go through the two-phase initiate/finalize flow.
 // See register creation endpoints below (POST /api/registers/initiate and POST /api/registers/finalize).
