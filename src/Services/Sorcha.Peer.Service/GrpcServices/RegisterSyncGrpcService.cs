@@ -3,10 +3,12 @@
 
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Register;
 using ProtoSyncState = Sorcha.Peer.Service.Protos.SyncState;
 
 namespace Sorcha.Peer.Service.GrpcServices;
@@ -21,6 +23,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 {
     private readonly RegisterCache _registerCache;
     private readonly RegisterSyncBackgroundService _syncBackgroundService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RegisterSyncGrpcService> _logger;
     private readonly PeerServiceConfiguration _configuration;
 
@@ -32,11 +35,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
     public RegisterSyncGrpcService(
         RegisterCache registerCache,
         RegisterSyncBackgroundService syncBackgroundService,
+        IServiceScopeFactory scopeFactory,
         ILogger<RegisterSyncGrpcService> logger,
         IOptions<PeerServiceConfiguration> configuration)
     {
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _syncBackgroundService = syncBackgroundService ?? throw new ArgumentNullException(nameof(syncBackgroundService));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
     }
@@ -55,42 +60,46 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             request.PeerId, request.RegisterId, request.FromVersion, request.MaxDockets);
 
         var cacheEntry = _registerCache.Get(request.RegisterId);
-        if (cacheEntry == null)
+        if (cacheEntry != null)
         {
-            _logger.LogDebug("Register {RegisterId} not found in cache", request.RegisterId);
-            throw new RpcException(new Status(
-                StatusCode.NotFound,
-                $"Register '{request.RegisterId}' not found in local cache"));
-        }
+            // Serve from in-memory cache
+            var dockets = cacheEntry.GetDocketsFromVersion(request.FromVersion, request.MaxDockets);
+            _logger.LogDebug(
+                "Streaming {Count} dockets from cache for register {RegisterId}",
+                dockets.Count, request.RegisterId);
 
-        var dockets = cacheEntry.GetDocketsFromVersion(request.FromVersion, request.MaxDockets);
-
-        _logger.LogDebug(
-            "Streaming {Count} dockets for register {RegisterId}",
-            dockets.Count, request.RegisterId);
-
-        foreach (var docket in dockets)
-        {
-            if (context.CancellationToken.IsCancellationRequested)
-                break;
-
-            var entry = new Protos.DocketEntry
+            foreach (var docket in dockets)
             {
-                RegisterId = docket.RegisterId,
-                Version = docket.Version,
-                DocketData = ByteString.CopyFrom(docket.Data),
-                DocketHash = docket.DocketHash,
-                PreviousHash = docket.PreviousHash ?? string.Empty,
-                CreatedAt = docket.CreatedAt.ToUnixTimeMilliseconds()
-            };
-            entry.TransactionIds.AddRange(docket.TransactionIds);
+                if (context.CancellationToken.IsCancellationRequested)
+                    break;
 
-            await responseStream.WriteAsync(entry, context.CancellationToken);
+                var entry = new Protos.DocketEntry
+                {
+                    RegisterId = docket.RegisterId,
+                    Version = docket.Version,
+                    DocketData = ByteString.CopyFrom(docket.Data),
+                    DocketHash = docket.DocketHash,
+                    PreviousHash = docket.PreviousHash ?? string.Empty,
+                    CreatedAt = docket.CreatedAt.ToUnixTimeMilliseconds()
+                };
+                entry.TransactionIds.AddRange(docket.TransactionIds);
+
+                await responseStream.WriteAsync(entry, context.CancellationToken);
+            }
+
+            _logger.LogDebug(
+                "PullDocketChain completed for register {RegisterId}: streamed {Count} dockets from cache",
+                request.RegisterId, dockets.Count);
+            return;
         }
 
-        _logger.LogDebug(
-            "PullDocketChain completed for register {RegisterId}: streamed {Count} dockets",
-            request.RegisterId, dockets.Count);
+        // Fall back to Register Service for registers not in cache
+        _logger.LogInformation(
+            "Register {RegisterId} not in cache, falling back to Register Service",
+            request.RegisterId);
+
+        await PullDocketChainFromRegisterServiceAsync(
+            request, responseStream, context.CancellationToken);
     }
 
     /// <summary>
@@ -318,5 +327,65 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         // does not carry a participant field. Allow all through.
         // Filters are a future extension point.
         return true;
+    }
+
+    /// <summary>
+    /// Serves PullDocketChain by reading dockets directly from the local Register Service.
+    /// Used when the register is not in the peer service's in-memory cache but exists
+    /// in the co-located Register Service (e.g., registers created locally).
+    /// </summary>
+    private async Task PullDocketChainFromRegisterServiceAsync(
+        Protos.DocketChainRequest request,
+        IServerStreamWriter<Protos.DocketEntry> responseStream,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+        var height = await registerClient.GetRegisterHeightAsync(request.RegisterId, cancellationToken);
+        if (height < 0)
+        {
+            throw new RpcException(new Status(
+                StatusCode.NotFound,
+                $"Register '{request.RegisterId}' not found in Register Service"));
+        }
+
+        var fromVersion = request.FromVersion;
+        var maxDockets = request.MaxDockets > 0 ? request.MaxDockets : 100;
+        var streamed = 0L;
+
+        for (var docketNum = fromVersion + 1; docketNum <= height && streamed < maxDockets; docketNum++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            var docket = await registerClient.ReadDocketAsync(request.RegisterId, docketNum, cancellationToken);
+            if (docket == null)
+            {
+                _logger.LogWarning(
+                    "Docket {DocketNumber} not found for register {RegisterId}, stopping chain",
+                    docketNum, request.RegisterId);
+                break;
+            }
+
+            var entry = new Protos.DocketEntry
+            {
+                RegisterId = request.RegisterId,
+                Version = docket.DocketNumber,
+                DocketData = ByteString.CopyFromUtf8(System.Text.Json.JsonSerializer.Serialize(docket)),
+                DocketHash = docket.DocketHash,
+                PreviousHash = docket.PreviousHash ?? string.Empty,
+                CreatedAt = docket.CreatedAt.ToUnixTimeMilliseconds()
+            };
+            entry.TransactionIds.AddRange(
+                docket.Transactions.Select(t => t.TxId));
+
+            await responseStream.WriteAsync(entry, cancellationToken);
+            streamed++;
+        }
+
+        _logger.LogInformation(
+            "PullDocketChain from Register Service completed for {RegisterId}: streamed {Count} dockets (height={Height})",
+            request.RegisterId, streamed, height);
     }
 }
