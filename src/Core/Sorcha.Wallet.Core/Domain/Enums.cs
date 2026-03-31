@@ -98,5 +98,10 @@ public enum TransactionState
     /// <summary>
     /// Transaction failed
     /// </summary>
-    Failed
+    Failed,
+
+    /// <summary>
+    /// Transaction has a signed receipt (cryptographic proof of finality)
+    /// </summary>
+    Receipted
 }

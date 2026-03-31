@@ -1,0 +1,75 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Core.Components.Wallet
+
+<span class="tx-lifecycle-ticks @StatusClass" title="@StatusTitle" @onclick="OnTickClick">
+    @if (Status == TransactionTickStatus.Pending)
+    {
+        <span class="tick tick-grey">&#x2713;</span>
+    }
+    else if (Status == TransactionTickStatus.Sealed)
+    {
+        <span class="tick tick-blue">&#x2713;</span>
+    }
+    else if (Status == TransactionTickStatus.Receipted)
+    {
+        <span class="tick tick-blue">&#x2713;&#x2713;</span>
+    }
+</span>
+
+@code {
+    /// <summary>
+    /// Current lifecycle status of the transaction.
+    /// </summary>
+    [Parameter]
+    public TransactionTickStatus Status { get; set; } = TransactionTickStatus.Pending;
+
+    /// <summary>
+    /// Transaction ID — used for receipt detail navigation.
+    /// </summary>
+    [Parameter]
+    public string? TransactionId { get; set; }
+
+    /// <summary>
+    /// Receipt ID — available when status is Receipted.
+    /// </summary>
+    [Parameter]
+    public string? ReceiptId { get; set; }
+
+    /// <summary>
+    /// Register ID — for receipt detail navigation.
+    /// </summary>
+    [Parameter]
+    public string? RegisterId { get; set; }
+
+    /// <summary>
+    /// Callback when the tick indicator is clicked (e.g., to show receipt detail).
+    /// </summary>
+    [Parameter]
+    public EventCallback<string?> OnReceiptDetailRequested { get; set; }
+
+    private string StatusClass => Status switch
+    {
+        TransactionTickStatus.Pending => "status-pending",
+        TransactionTickStatus.Sealed => "status-sealed",
+        TransactionTickStatus.Receipted => "status-receipted",
+        _ => "status-pending"
+    };
+
+    private string StatusTitle => Status switch
+    {
+        TransactionTickStatus.Pending => "Submitted — awaiting docket sealing",
+        TransactionTickStatus.Sealed => "Sealed in docket — awaiting receipt",
+        TransactionTickStatus.Receipted => "Receipted — cryptographic proof of finality",
+        _ => "Unknown status"
+    };
+
+    private async Task OnTickClick()
+    {
+        if (Status == TransactionTickStatus.Receipted && OnReceiptDetailRequested.HasDelegate)
+        {
+            await OnReceiptDetailRequested.InvokeAsync(ReceiptId);
+        }
+    }
+}
