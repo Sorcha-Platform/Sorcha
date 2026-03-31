@@ -62,8 +62,8 @@
 - [X] T021 [US1] Add `TransactionReceipt` SignalR client method to `IRegisterHubClient` in `src/Services/Sorcha.Register.Service/Hubs/RegisterHub.cs`
 - [X] T022 [US1] Subscribe to `receipt:generated` Redis Stream event in `RegisterEventBridgeService` in `src/Services/Sorcha.Register.Service/Services/RegisterEventBridgeService.cs` — push lightweight notification to `register:{registerId}` SignalR group
 - [X] T023 [US1] Create `ReceiptValidator` in `src/Common/Sorcha.Validator.Core/ReceiptValidator.cs` — verify receipt signature against validator public key, verify embedded inclusion proof
-- [ ] T024 [P] [US1] Create unit tests for `ReceiptGenerator` in `tests/Sorcha.Validator.Service.Tests/Services/ReceiptGeneratorTests.cs` — test receipt generation for docket with 1, 5, 100 transactions; verify each receipt has valid proof path; mock wallet signing
-- [ ] T025 [P] [US1] Create unit tests for `ReceiptValidator` in `tests/Sorcha.Validator.Core.Tests/ReceiptValidatorTests.cs` — test valid signature passes, tampered receipt fails, tampered proof fails
+- [X] T024 [P] [US1] Create unit tests for `ReceiptGenerator` in `tests/Sorcha.Validator.Service.Tests/Services/ReceiptGeneratorTests.cs` — test receipt generation for docket with 1, 5, 100 transactions; verify each receipt has valid proof path; mock wallet signing
+- [X] T025 [P] [US1] Create unit tests for `ReceiptValidator` in `tests/Sorcha.Validator.Core.Tests/ReceiptValidatorTests.cs` — test valid signature passes, tampered receipt fails, tampered proof fails
 - [ ] T026 [P] [US1] Create integration tests for receipt endpoints in `tests/Sorcha.Register.Service.Tests/Endpoints/ReceiptEndpointTests.cs` — test GET receipt by txId (200/404), GET docket receipts (pagination), POST verify (valid/invalid), POST batch (201), SignalR receipt notification push to register group
 
 **Checkpoint**: Receipts are generated for every sealed docket, stored in MongoDB, retrievable by txId, pushed via SignalR, verifiable offline.
@@ -83,7 +83,7 @@
 - [X] T027 [US2] Add `GET /api/registers/{registerId}/transactions/{txId}/inclusion-proof` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — fetch docket for the transaction, reconstruct tree, generate proof on-demand via `MerkleTree.GenerateInclusionProof()`
 - [X] T028 [US2] Add `POST /api/registers/{registerId}/inclusion-proofs/verify` public endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — stateless proof verification via `MerkleTree.VerifyMerkleProof()`
 - [X] T029 [US2] Create `InclusionProofValidator` in `src/Common/Sorcha.Validator.Core/InclusionProofValidator.cs` — portable proof verification that delegates to `MerkleTree.VerifyMerkleProof()`, returns structured result
-- [ ] T030 [P] [US2] Create unit tests for `InclusionProofValidator` in `tests/Sorcha.Validator.Core.Tests/InclusionProofValidatorTests.cs` — test valid proof, tampered hash, wrong root, empty proof path (single-leaf docket)
+- [X] T030 [P] [US2] Create unit tests for `InclusionProofValidator` in `tests/Sorcha.Validator.Core.Tests/InclusionProofValidatorTests.cs` — test valid proof, tampered hash, wrong root, empty proof path (single-leaf docket)
 - [ ] T031 [P] [US2] Create integration tests for inclusion proof endpoints in `tests/Sorcha.Register.Service.Tests/Endpoints/InclusionProofEndpointTests.cs` — test GET proof (200/404), POST verify (valid/tampered)
 
 **Checkpoint**: Standalone proofs can be generated and verified. Works alongside embedded receipt proofs.
@@ -105,7 +105,7 @@
 - [X] T034 [US3] Add `POST /api/registers/{registerId}/transactions/revoke` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — accept revocation request, build `RevocationPayload`, create transaction with `TransactionType.Revocation`, submit to Validator pipeline
 - [X] T035 [US3] Add `GET /api/registers/{registerId}/transactions/{txId}/status` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — query for revocation transactions referencing targetTxId, return `TransactionStatusResponse` (active/revoked/superseded)
 - [X] T036 [US3] Add revocation-specific query method to `IRegisterRepository` and MongoDB implementation in `src/Core/Sorcha.Register.Storage.MongoDB/MongoRegisterRepository.cs` — `FindRevocationForTransactionAsync(registerId, targetTxId)` with index on `Metadata.OriginalTxId`
-- [ ] T037 [P] [US3] Create unit tests for `RevocationValidator` in `tests/Sorcha.Validator.Core.Tests/RevocationValidatorTests.cs` — test valid payload, invalid reason, missing supersededByTxId for Superseded reason, extra supersededByTxId for non-Superseded reason
+- [X] T037 [P] [US3] Create unit tests for `RevocationValidator` in `tests/Sorcha.Validator.Core.Tests/RevocationValidatorTests.cs` — test valid payload, invalid reason, missing supersededByTxId for Superseded reason, extra supersededByTxId for non-Superseded reason
 - [ ] T038 [P] [US3] Create unit tests for revocation validation in `tests/Sorcha.Validator.Service.Tests/Services/ValidationEngineRevocationTests.cs` — test authority checks (original signer passes, roster admin passes, non-member rejected), double-revocation rejected, self-revocation-of-revocation rejected
 - [ ] T039 [P] [US3] Create integration tests for revocation and status endpoints in `tests/Sorcha.Register.Service.Tests/Endpoints/RevocationEndpointTests.cs` — test POST revoke (202/400), GET status (active/revoked/superseded/404), error codes (ALREADY_REVOKED, CANNOT_REVOKE_REVOCATION, UNAUTHORIZED_REVOKER)
 
@@ -126,7 +126,7 @@
 - [X] T040 [US4] Create `BundleVerifier` in `src/Common/Sorcha.Validator.Core/BundleVerifier.cs` — orchestrate four checks: credential signature, inclusion proof (via `InclusionProofValidator`), receipt signature (via `ReceiptValidator`), revocation status at export time. Return structured `BundleVerificationResult` with per-check status and warnings
 - [X] T041 [US4] Add `GET /api/registers/{registerId}/transactions/{txId}/verification-bundle` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — assemble `VerificationBundle` from: transaction payload (credential), receipt, inclusion proof, revocation status snapshot, validator public keys. Return 404 if tx not found, 409 if not yet sealed
 - [X] T042 [US4] Add `POST /api/registers/{registerId}/verification-bundles/verify` public endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — accept bundle, verify all four checks via `BundleVerifier`, return structured result with warnings (e.g., stale revocation status)
-- [ ] T043 [P] [US4] Create unit tests for `BundleVerifier` in `tests/Sorcha.Validator.Core.Tests/BundleVerifierTests.cs` — test all-valid bundle, invalid credential signature, invalid inclusion proof, invalid receipt signature, revoked-after-export warning
+- [X] T043 [P] [US4] Create unit tests for `BundleVerifier` in `tests/Sorcha.Validator.Core.Tests/BundleVerifierTests.cs` — test all-valid bundle, invalid credential signature, invalid inclusion proof, invalid receipt signature, revoked-after-export warning
 - [ ] T044 [P] [US4] Create integration tests for bundle endpoints in `tests/Sorcha.Register.Service.Tests/Endpoints/VerificationBundleTests.cs` — test GET bundle (200/404/409), POST verify (all checks pass, partial failures)
 
 **Checkpoint**: Bundles can be exported and verified offline. All four checks work independently and together.
