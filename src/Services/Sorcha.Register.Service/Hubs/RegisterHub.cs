@@ -72,4 +72,5 @@ public interface IRegisterHubClient
     Task DocketSealed(string registerId, ulong docketId, string hash);
     Task RegisterHeightUpdated(string registerId, uint newHeight);
     Task RegisterSyncStateChanged(string registerId, string syncState);
+    Task TransactionReceipt(string transactionId, string registerId, long docketNumber, string receiptId, DateTimeOffset sealedAt);
 }

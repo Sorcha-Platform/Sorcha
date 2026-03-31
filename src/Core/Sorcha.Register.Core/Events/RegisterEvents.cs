@@ -84,3 +84,14 @@ public class RegisterHeightUpdatedEvent
     public uint NewHeight { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// Event raised when transaction receipts are generated and stored
+/// </summary>
+public class ReceiptGeneratedEvent
+{
+    public required string RegisterId { get; set; }
+    public long DocketNumber { get; set; }
+    public int Count { get; set; }
+    public DateTime GeneratedAt { get; set; }
+}

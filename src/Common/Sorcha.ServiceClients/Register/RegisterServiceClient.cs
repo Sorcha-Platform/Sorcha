@@ -159,6 +159,41 @@ public class RegisterServiceClient : IRegisterServiceClient
         }
     }
 
+    public async Task<bool> WriteReceiptBatchAsync(
+        string registerId,
+        long docketNumber,
+        TransactionReceipt[] receipts,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var request = new { DocketNumber = docketNumber, Receipts = receipts };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/receipts/batch",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to write receipt batch for docket {DocketNumber}: {StatusCode}",
+                    docketNumber, response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to write receipt batch for docket {DocketNumber}", docketNumber);
+            return false;
+        }
+    }
+
     public async Task<DocketModel?> ReadDocketAsync(
         string registerId,
         long docketNumber,

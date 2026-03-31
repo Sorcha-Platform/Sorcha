@@ -32,6 +32,9 @@ public static class ServiceIntegrationExtensions
         // Register as scoped (matches service client lifetimes)
         services.AddScoped<IDocketDistributor, DocketDistributor>();
 
+        // Receipt generation (called by DocketDistributor after docket persistence)
+        services.AddScoped<IReceiptGenerator, ReceiptGenerator>();
+
         return services;
     }
 
