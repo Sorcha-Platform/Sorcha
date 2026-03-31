@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -50,13 +51,17 @@ public class PeerCommunicationServiceImplTests : IAsyncDisposable
 
         var registerCache = new RegisterCache(new Mock<ILogger<RegisterCache>>().Object);
 
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            peerListManager);
+
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
-            _connectionPool, peerListManager, registerCache);
+            _connectionPool, peerListManager, advertisementService, registerCache);
 
         var syncBackgroundService = new RegisterSyncBackgroundService(
             new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
-            replicationService, Options.Create(config));
+            replicationService, Options.Create(config), Mock.Of<IServiceScopeFactory>());
 
         var relayMessageHandler = new RelayMessageHandler(
             new Mock<ILogger<RelayMessageHandler>>().Object,

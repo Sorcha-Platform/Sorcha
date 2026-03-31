@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -55,16 +56,22 @@ public class RegisterSyncBackgroundServiceTests : IDisposable
         var registerCache = new RegisterCache(
             new Mock<ILogger<RegisterCache>>().Object);
 
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            peerListManager);
+
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             connectionPool,
             peerListManager,
+            advertisementService,
             registerCache);
 
         _service = new RegisterSyncBackgroundService(
             new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
             replicationService,
-            Options.Create(_config));
+            Options.Create(_config),
+            Mock.Of<IServiceScopeFactory>());
     }
 
     [Fact]
@@ -265,10 +272,15 @@ public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
             Options.Create(config),
             new Lazy<RelayMessageHandler>(() => null!));
 
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            _peerListManager);
+
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             _peerListManager,
+            advertisementService,
             _registerCache,
             Options.Create(config),
             _relayCommunication);
@@ -277,6 +289,7 @@ public class RegisterSyncBackgroundServiceRelayTests : IAsyncDisposable
             new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
             replicationService,
             Options.Create(config),
+            Mock.Of<IServiceScopeFactory>(),
             relayCommunication: _relayCommunication,
             peerListManager: _peerListManager,
             registerCache: _registerCache);
@@ -363,16 +376,22 @@ public class RegisterSyncBackgroundServiceWithDbTests : IDisposable
         var registerCache = new RegisterCache(
             new Mock<ILogger<RegisterCache>>().Object);
 
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            peerListManager);
+
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             connectionPool,
             peerListManager,
+            advertisementService,
             registerCache);
 
         _service = new RegisterSyncBackgroundService(
             new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
             replicationService,
             Options.Create(config),
+            Mock.Of<IServiceScopeFactory>(),
             _dbContextFactory);
     }
 
