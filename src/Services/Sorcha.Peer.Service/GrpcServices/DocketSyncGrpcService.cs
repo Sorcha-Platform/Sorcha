@@ -4,6 +4,7 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
@@ -17,16 +18,16 @@ namespace Sorcha.Peer.Service.GrpcServices;
 public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
 {
     private readonly RegisterCache _registerCache;
-    private readonly PeerIdentity _peerIdentity;
+    private readonly string _localPeerId;
     private readonly ILogger<DocketSyncGrpcService> _logger;
 
     public DocketSyncGrpcService(
         RegisterCache registerCache,
-        PeerIdentity peerIdentity,
+        IOptions<PeerServiceConfiguration> configuration,
         ILogger<DocketSyncGrpcService> logger)
     {
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
-        _peerIdentity = peerIdentity ?? throw new ArgumentNullException(nameof(peerIdentity));
+        _localPeerId = configuration?.Value?.ResolvedPeerId ?? Environment.MachineName;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -53,7 +54,7 @@ public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
             return Task.FromResult(new GetLatestDocketNumberResponse
             {
                 LatestDocketNumber = 0,
-                SourcePeerId = _peerIdentity.Id,
+                SourcePeerId = _localPeerId,
                 QueriedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
                 NetworkAvailable = true
             });
@@ -67,7 +68,7 @@ public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
         return Task.FromResult(new GetLatestDocketNumberResponse
         {
             LatestDocketNumber = latestDocket,
-            SourcePeerId = _peerIdentity.Id,
+            SourcePeerId = _localPeerId,
             QueriedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
             NetworkAvailable = true
         });

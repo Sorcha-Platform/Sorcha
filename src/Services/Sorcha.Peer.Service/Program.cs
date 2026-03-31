@@ -121,13 +121,6 @@ if (string.IsNullOrEmpty(configuredNodeId))
         "Set PeerService:NodeId for stable peer identity across container restarts.");
 }
 
-// Canonical peer identity — single source of truth for this node's ID
-builder.Services.AddSingleton<PeerIdentity>(sp =>
-{
-    var config = sp.GetRequiredService<IOptions<PeerServiceConfiguration>>().Value;
-    return new PeerIdentity(config);
-});
-
 // Register gRPC auth interceptor (FR-014: authenticated peers get higher trust)
 builder.Services.AddSingleton<Sorcha.Peer.Service.GrpcServices.PeerAuthInterceptor>();
 
