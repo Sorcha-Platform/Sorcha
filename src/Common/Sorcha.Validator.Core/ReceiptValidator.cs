@@ -84,7 +84,11 @@ public class ReceiptValidator
                     sig.SignatureValue,
                     sig.Algorithm);
             }
-            catch (Exception ex)
+            catch (FormatException ex)
+            {
+                errors.Add($"Signature verification failed: {ex.Message}");
+            }
+            catch (System.Security.Cryptography.CryptographicException ex)
             {
                 errors.Add($"Signature verification failed: {ex.Message}");
             }

@@ -391,8 +391,9 @@ public class InMemoryRegisterRepository : IRegisterRepository
         var revocation = registerTransactions.Values
             .FirstOrDefault(t =>
                 t.MetaData?.TransactionType == TransactionType.Revocation &&
-                t.Payloads is { Length: > 0 } &&
-                t.Payloads[0].Data.Contains(targetTxId, StringComparison.OrdinalIgnoreCase));
+                t.MetaData?.TrackingData != null &&
+                t.MetaData.TrackingData.TryGetValue("originalTxId", out var origId) &&
+                string.Equals(origId, targetTxId, StringComparison.OrdinalIgnoreCase));
 
         return Task.FromResult(revocation);
     }

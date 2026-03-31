@@ -112,17 +112,16 @@ public class RegisterEventBridgeService : BackgroundService
             "receipt:generated",
             async e =>
             {
-                _logger.LogDebug("Bridging ReceiptGenerated for {RegisterId} docket {DocketNumber} to group register:{GroupRegisterId}",
-                    e.RegisterId, e.DocketNumber, e.RegisterId);
-                // Push lightweight notification — individual receipt details are fetched on demand
+                _logger.LogDebug("Bridging ReceiptGenerated for {RegisterId} docket {DocketNumber} tx {TransactionId} to group register:{GroupRegisterId}",
+                    e.RegisterId, e.DocketNumber, e.TransactionId, e.RegisterId);
                 await _hubContext.Clients
                     .Group($"register:{e.RegisterId}")
                     .TransactionReceipt(
-                        string.Empty,
+                        e.TransactionId,
                         e.RegisterId,
                         e.DocketNumber,
-                        string.Empty,
-                        DateTimeOffset.UtcNow);
+                        e.ReceiptId,
+                        e.SealedAt);
             },
             stoppingToken);
 

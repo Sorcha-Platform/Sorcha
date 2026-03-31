@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -58,8 +59,13 @@ public class TransactionLifecycleEventBridge : BackgroundService
                     {
                         await HandleDocketConfirmedAsync(message!, stoppingToken);
                     }
-                    catch (Exception ex)
+                    catch (JsonException ex)
                     {
+                        _logger.LogWarning(ex, "Error deserializing docket:confirmed event");
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Intentional: top-level error boundary for event handler
                         _logger.LogWarning(ex, "Error handling docket:confirmed event");
                     }
                 });
@@ -73,8 +79,13 @@ public class TransactionLifecycleEventBridge : BackgroundService
                     {
                         await HandleReceiptGeneratedAsync(message!, stoppingToken);
                     }
-                    catch (Exception ex)
+                    catch (JsonException ex)
                     {
+                        _logger.LogWarning(ex, "Error deserializing receipt:generated event");
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Intentional: top-level error boundary for event handler
                         _logger.LogWarning(ex, "Error handling receipt:generated event");
                     }
                 });
@@ -88,8 +99,9 @@ public class TransactionLifecycleEventBridge : BackgroundService
         {
             _logger.LogInformation("Transaction lifecycle event bridge stopping");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Intentional: top-level error boundary for background service
             _logger.LogError(ex, "Transaction lifecycle event bridge failed");
         }
     }

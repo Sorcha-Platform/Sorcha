@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Buffers.Text;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.OData;
 using Microsoft.OData.ModelBuilder;
 using MongoDB.Driver;
@@ -2510,24 +2511,29 @@ receiptsGroup.MapPost("/receipts/batch", async (
 
     // Ensure all receipts belong to this register
     var receipts = request.Receipts.ToList();
-    foreach (var receipt in receipts)
-    {
-        if (!string.Equals(receipt.RegisterId, registerId, StringComparison.OrdinalIgnoreCase))
-            return Results.BadRequest(new { error = $"Receipt {receipt.ReceiptId} has mismatched RegisterId" });
-    }
+    var mismatchedReceipt = receipts
+        .FirstOrDefault(r => !string.Equals(r.RegisterId, registerId, StringComparison.OrdinalIgnoreCase));
+    if (mismatchedReceipt is not null)
+        return Results.BadRequest(new { error = $"Receipt {mismatchedReceipt.ReceiptId} has mismatched RegisterId" });
 
     await repository.InsertReceiptsAsync(receipts);
 
-    // Publish receipt:generated event for SignalR notification
-    await eventPublisher.PublishAsync(
-        "receipt:generated",
-        new ReceiptGeneratedEvent
-        {
-            RegisterId = registerId,
-            DocketNumber = request.DocketNumber,
-            Count = receipts.Count,
-            GeneratedAt = DateTime.UtcNow
-        });
+    // Publish receipt:generated event for each receipt for SignalR notification
+    foreach (var receipt in receipts)
+    {
+        await eventPublisher.PublishAsync(
+            "receipt:generated",
+            new ReceiptGeneratedEvent
+            {
+                RegisterId = registerId,
+                DocketNumber = request.DocketNumber,
+                Count = receipts.Count,
+                TransactionId = receipt.TransactionId,
+                ReceiptId = receipt.ReceiptId,
+                SealedAt = receipt.SealedAt,
+                GeneratedAt = DateTime.UtcNow
+            });
+    }
 
     return Results.Created(
         $"/api/registers/{registerId}/dockets/{request.DocketNumber}/receipts",
@@ -2623,7 +2629,11 @@ receiptsGroup.MapPost("/receipts/verify", (
             errors = result.Errors
         });
     }
-    catch (Exception ex)
+    catch (FormatException ex)
+    {
+        return Results.BadRequest(new { error = $"Verification failed: {ex.Message}" });
+    }
+    catch (System.Security.Cryptography.CryptographicException ex)
     {
         return Results.BadRequest(new { error = $"Verification failed: {ex.Message}" });
     }

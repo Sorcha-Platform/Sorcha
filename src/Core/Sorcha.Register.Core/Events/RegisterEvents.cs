@@ -93,5 +93,8 @@ public class ReceiptGeneratedEvent
     public required string RegisterId { get; set; }
     public long DocketNumber { get; set; }
     public int Count { get; set; }
+    public string TransactionId { get; set; } = string.Empty;
+    public string ReceiptId { get; set; } = string.Empty;
+    public DateTimeOffset SealedAt { get; set; }
     public DateTime GeneratedAt { get; set; }
 }

@@ -107,11 +107,9 @@ public class TransactionLifecycleService : ITransactionLifecycleService
             return;
         }
 
-        foreach (var record in records)
+        foreach (var record in records
+            .Where(r => r.State is not (TransactionState.Confirmed or TransactionState.Receipted)))
         {
-            if (record.State is TransactionState.Confirmed or TransactionState.Receipted)
-                continue; // Already sealed or receipted
-
             record.State = TransactionState.Confirmed;
             record.ConfirmedAt = DateTime.UtcNow;
             record.BlockHeight = docketNumber;
@@ -137,11 +135,9 @@ public class TransactionLifecycleService : ITransactionLifecycleService
             return;
         }
 
-        foreach (var record in records)
+        foreach (var record in records
+            .Where(r => r.State != TransactionState.Receipted))
         {
-            if (record.State == TransactionState.Receipted)
-                continue; // Already receipted
-
             record.State = TransactionState.Receipted;
             record.ReceiptId = receiptId;
             record.ReceiptedAt = DateTime.UtcNow;

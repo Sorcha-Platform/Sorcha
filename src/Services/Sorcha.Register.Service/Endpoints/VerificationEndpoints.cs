@@ -266,7 +266,7 @@ public static class VerificationEndpoints
                         ContentEncoding = "base64"
                     }
                 ],
-                Signature = string.Empty // Revocation transactions are validated by the caller's authority
+                Signature = request.SignerWalletAddress ?? string.Empty // Signer address for authority traceability
             };
 
             // Store the revocation transaction
@@ -327,21 +327,19 @@ public static class VerificationEndpoints
                 try
                 {
                     var data = revocationTx.Payloads[0].Data;
-                    byte[] payloadBytes;
-                    if (data.Contains('+') || data.Contains('/') || data.Contains('='))
-                    {
-                        payloadBytes = Convert.FromBase64String(data);
-                    }
-                    else
-                    {
-                        payloadBytes = System.Buffers.Text.Base64Url.DecodeFromChars(data);
-                    }
+                    var payloadBytes = data.Contains('+') || data.Contains('/') || data.Contains('=')
+                        ? Convert.FromBase64String(data)
+                        : System.Buffers.Text.Base64Url.DecodeFromChars(data);
 
                     revocationPayload = JsonSerializer.Deserialize<RevocationPayload>(
                         payloadBytes,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 }
-                catch
+                catch (FormatException)
+                {
+                    // Failed to decode base64 — return basic revocation status
+                }
+                catch (JsonException)
                 {
                     // Failed to deserialize — return basic revocation status
                 }
@@ -413,7 +411,7 @@ public static class VerificationEndpoints
                     credential = JsonSerializer.Deserialize<JsonElement>(
                         JsonSerializer.Serialize(transaction.Payloads));
                 }
-                catch
+                catch (JsonException)
                 {
                     credential = JsonSerializer.Deserialize<JsonElement>("[]");
                 }
@@ -444,23 +442,21 @@ public static class VerificationEndpoints
                     try
                     {
                         var data = revocationTx.Payloads[0].Data;
-                        byte[] payloadBytes;
-                        if (data.Contains('+') || data.Contains('/') || data.Contains('='))
-                        {
-                            payloadBytes = Convert.FromBase64String(data);
-                        }
-                        else
-                        {
-                            payloadBytes = System.Buffers.Text.Base64Url.DecodeFromChars(data);
-                        }
+                        var payloadBytes = data.Contains('+') || data.Contains('/') || data.Contains('=')
+                            ? Convert.FromBase64String(data)
+                            : System.Buffers.Text.Base64Url.DecodeFromChars(data);
 
                         revPayload = JsonSerializer.Deserialize<RevocationPayload>(
                             payloadBytes,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     }
-                    catch
+                    catch (FormatException)
                     {
-                        // Continue with basic status
+                        // Failed to decode base64 — continue with basic status
+                    }
+                    catch (JsonException)
+                    {
+                        // Failed to deserialize — continue with basic status
                     }
                 }
 

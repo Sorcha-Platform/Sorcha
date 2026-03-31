@@ -201,11 +201,18 @@ public class DocketDistributor : IDocketDistributor
                             docket.RegisterId, docket.DocketNumber, receipts, ct);
                     }
                 }
-                catch (Exception ex)
+                catch (HttpRequestException ex)
                 {
-                    // Receipt generation failure should not fail the docket submission
+                    // Receipt submission failure should not fail the docket submission
                     _logger.LogWarning(ex,
-                        "Failed to generate/submit receipts for docket {DocketNumber}",
+                        "Failed to submit receipts for docket {DocketNumber}",
+                        docket.DocketNumber);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Intentional: top-level error boundary for receipt generation
+                    _logger.LogWarning(ex,
+                        "Failed to generate receipts for docket {DocketNumber}",
                         docket.DocketNumber);
                 }
             }
@@ -219,7 +226,7 @@ public class DocketDistributor : IDocketDistributor
 
             return success;
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             Interlocked.Increment(ref _failedRegisterSubmissions);
             _logger.LogError(

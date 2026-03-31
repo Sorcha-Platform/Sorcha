@@ -186,7 +186,7 @@ public class RegisterServiceClient : IRegisterServiceClient
 
             return true;
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex,
                 "Failed to write receipt batch for docket {DocketNumber}", docketNumber);

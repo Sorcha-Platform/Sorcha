@@ -1237,8 +1237,16 @@ public class ValidationEngine : IValidationEngine
 
     private static bool IsRevocationTransaction(Transaction transaction)
     {
-        return transaction.Metadata.TryGetValue("Type", out var typeStr) &&
-               string.Equals(typeStr, "Revocation", StringComparison.OrdinalIgnoreCase);
+        if (transaction.Metadata.TryGetValue("Type", out var typeStr) &&
+            string.Equals(typeStr, "Revocation", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Fallback: check alternative metadata key
+        if (transaction.Metadata.TryGetValue("transactionType", out var txType) &&
+            string.Equals(txType, "Revocation", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
     }
 
     /// <summary>
@@ -1262,7 +1270,7 @@ public class ValidationEngine : IValidationEngine
                     transaction.Payload.GetRawText(),
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
                 errors.Add(CreateError("VAL_REV_001",
                     $"Invalid revocation payload: {ex.Message}",
@@ -1311,8 +1319,37 @@ public class ValidationEngine : IValidationEngine
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
-            // Check not already revoked (query for existing revocations of this target)
-            // This requires querying transactions by metadata — simplified check via status endpoint pattern
+            // Check authority: revoker must be original signer or governance roster Owner/Admin
+            var revokerWallet = transaction.Signatures?.FirstOrDefault()?.SignedBy;
+            var targetSender = targetTx.SenderWallet;
+
+            if (!string.IsNullOrEmpty(revokerWallet) && !string.IsNullOrEmpty(targetSender) &&
+                !string.Equals(revokerWallet, targetSender, StringComparison.OrdinalIgnoreCase))
+            {
+                // Not the original signer — check governance roster for Owner/Admin role
+                var govResult = await _rightsEnforcementService.ValidateGovernanceRightsAsync(transaction, ct);
+                if (!govResult.IsValid)
+                {
+                    errors.Add(CreateError("VAL_REV_005",
+                        "Revoker is neither the original transaction signer nor a governance roster Owner/Admin",
+                        ValidationErrorCategory.Structure, "Signature"));
+                    return CreateFailureResult(transaction, sw.Elapsed, errors);
+                }
+            }
+
+            // Check not already revoked
+            var existingRevocations = await _registerClient.GetTransactionsByPrevTxIdAsync(
+                transaction.RegisterId, revocationPayload.OriginalTxId, 1, 10, ct);
+            var existingRevocation = existingRevocations?.Transactions?.FirstOrDefault(t =>
+                t.MetaData?.TransactionType == Register.Models.Enums.TransactionType.Revocation);
+            if (existingRevocation != null)
+            {
+                errors.Add(CreateError("VAL_REV_003",
+                    $"Transaction {revocationPayload.OriginalTxId} is already revoked by {existingRevocation.TxId}",
+                    ValidationErrorCategory.Structure, "OriginalTxId"));
+                return CreateFailureResult(transaction, sw.Elapsed, errors);
+            }
+
             _logger.LogDebug(
                 "Revocation validation passed for transaction {TxId} revoking {TargetTxId}",
                 transaction.TransactionId, revocationPayload.OriginalTxId);
@@ -1322,7 +1359,7 @@ public class ValidationEngine : IValidationEngine
                 transaction.RegisterId,
                 sw.Elapsed);
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             _logger.LogError(ex,
                 "Error validating revocation transaction {TxId}", transaction.TransactionId);

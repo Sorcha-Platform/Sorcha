@@ -3,7 +3,10 @@
 
 @namespace Sorcha.UI.Core.Components.Wallet
 
-<span class="tx-lifecycle-ticks @StatusClass" title="@StatusTitle" @onclick="OnTickClick">
+<span class="tx-lifecycle-ticks @StatusClass" title="@StatusTitle" @onclick="OnTickClick"
+      role="@(Status == TransactionTickStatus.Receipted ? "button" : null)"
+      tabindex="@(Status == TransactionTickStatus.Receipted ? 0 : -1)"
+      @onkeydown="OnKeyDown">
     @if (Status == TransactionTickStatus.Pending)
     {
         <span class="tick tick-grey">&#x2713;</span>
@@ -70,6 +73,14 @@
         if (Status == TransactionTickStatus.Receipted && OnReceiptDetailRequested.HasDelegate)
         {
             await OnReceiptDetailRequested.InvokeAsync(ReceiptId);
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await OnTickClick();
         }
     }
 }

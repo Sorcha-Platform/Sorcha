@@ -141,7 +141,7 @@ public class ReceiptGenerator : IReceiptGenerator
                     Signatures = [validatorSig]
                 };
             }
-            catch (Exception ex)
+            catch (HttpRequestException ex)
             {
                 _logger.LogWarning(ex,
                     "Failed to sign receipt for transaction {TxId} in docket {DocketNumber}",

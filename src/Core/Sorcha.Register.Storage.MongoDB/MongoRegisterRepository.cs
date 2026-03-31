@@ -271,6 +271,11 @@ public class MongoRegisterRepository : IRegisterRepository
         {
             await CreateTransactionIndexesAsync(_legacyTransactions);
             await CreateDocketIndexesAsync(_legacyDockets);
+
+            // Receipt indexes in legacy mode
+            var registryDatabase = _client.GetDatabase(_config.DatabaseName);
+            var legacyReceipts = registryDatabase.GetCollection<TransactionReceipt>("receipts");
+            await CreateReceiptIndexesAsync(legacyReceipts);
         }
 
         _logger.LogInformation("MongoDB indexes created successfully");
@@ -290,9 +295,11 @@ public class MongoRegisterRepository : IRegisterRepository
 
         var transactions = GetTransactionsCollection(registerId);
         var dockets = GetDocketsCollection(registerId);
+        var receipts = GetReceiptsCollection(registerId);
 
         await CreateTransactionIndexesAsync(transactions);
         await CreateDocketIndexesAsync(dockets);
+        await CreateReceiptIndexesAsync(receipts);
 
         _logger.LogDebug("Indexes created for register {RegisterId}", registerId);
     }
@@ -657,9 +664,6 @@ public class MongoRegisterRepository : IRegisterRepository
         {
             var collection = GetReceiptsCollection(group.Key);
 
-            // Ensure indexes exist for the receipts collection
-            await CreateReceiptIndexesAsync(collection);
-
             await collection.InsertManyAsync(group.ToList(), new InsertManyOptions(), cancellationToken);
             _logger.LogDebug("Inserted {Count} receipts for register {RegisterId}", group.Count(), group.Key);
         }
@@ -730,8 +734,8 @@ public class MongoRegisterRepository : IRegisterRepository
     {
         var transactions = GetTransactionsCollection(registerId);
         var filter = Builders<TransactionModel>.Filter.And(
-            Builders<TransactionModel>.Filter.Eq("MetaData.TransactionType", TransactionType.Revocation),
-            Builders<TransactionModel>.Filter.Regex("Payloads.Data", new BsonRegularExpression(targetTxId, "i")));
+            Builders<TransactionModel>.Filter.Eq("MetaData.TrackingData.originalTxId", targetTxId),
+            Builders<TransactionModel>.Filter.Eq("MetaData.TransactionType", TransactionType.Revocation));
         return await transactions.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
 }
