@@ -128,39 +128,20 @@ public class RegisterReplicationService
 
             if (channel == null)
             {
-                // Try on-demand connection if peer has a known address
-                if (!string.IsNullOrEmpty(sourcePeer.Address))
+                // No direct channel — try relay batch sync for NAT'd peers
+                if (string.IsNullOrEmpty(sourcePeer.Address) && _relayCommunication != null)
                 {
-                    var address = $"http://{sourcePeer.Address}:{sourcePeer.Port}";
-                    _logger.LogDebug(
-                        "No existing channel to {PeerId}, attempting on-demand connection to {Address}",
-                        sourcePeer.PeerId, address);
+                    var (relayResult, relayDockets, relayTransactions) = await TryRelayBatchSyncAsync(
+                        sourcePeer, subscription, cacheEntry, replicationToken);
 
-                    var connected = await _connectionPool.ConnectToPeerAsync(
-                        sourcePeer.PeerId, address, replicationToken);
-                    if (connected)
-                    {
-                        channel = _connectionPool.GetChannel(sourcePeer.PeerId);
-                    }
+                    totalDockets += relayDockets;
+                    totalTransactions += relayTransactions;
+
+                    if (relayResult != null)
+                        return relayResult;
                 }
 
-                // Still no channel — try relay batch sync for NAT'd peers
-                if (channel == null)
-                {
-                    if (string.IsNullOrEmpty(sourcePeer.Address) && _relayCommunication != null)
-                    {
-                        var (relayResult, relayDockets, relayTransactions) = await TryRelayBatchSyncAsync(
-                            sourcePeer, subscription, cacheEntry, replicationToken);
-
-                        totalDockets += relayDockets;
-                        totalTransactions += relayTransactions;
-
-                        if (relayResult != null)
-                            return relayResult;
-                    }
-
-                    continue;
-                }
+                continue;
             }
 
             try
