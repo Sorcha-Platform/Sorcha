@@ -245,6 +245,15 @@ public class RegisterService : IRegisterService
         catch (Exception ex) { _logger.LogError(ex, "Error proposing policy update for register {RegisterId}", registerId); return null; }
     }
 
+    /// <inheritdoc />
+    public async Task DisableDevModeAsync(string registerId, CancellationToken ct = default)
+    {
+        var response = await _httpClient.PostAsync(
+            $"/api/registers/{Uri.EscapeDataString(registerId)}/disable-dev-mode",
+            null, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     private static RegisterViewModel MapToViewModel(Register.Models.Register register)
     {
         return new RegisterViewModel
@@ -258,7 +267,8 @@ public class RegisterService : IRegisterService
             IsFullReplica = register.IsFullReplica,
             CreatedAt = register.CreatedAt,
             UpdatedAt = register.UpdatedAt,
-            SyncState = register.SyncState
+            SyncState = register.SyncState,
+            DevMode = register.DevMode
         };
     }
 }
