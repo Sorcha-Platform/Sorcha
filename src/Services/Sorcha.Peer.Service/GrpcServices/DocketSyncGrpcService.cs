@@ -4,6 +4,7 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
 
@@ -16,13 +17,16 @@ namespace Sorcha.Peer.Service.GrpcServices;
 public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
 {
     private readonly RegisterCache _registerCache;
+    private readonly PeerIdentity _peerIdentity;
     private readonly ILogger<DocketSyncGrpcService> _logger;
 
     public DocketSyncGrpcService(
         RegisterCache registerCache,
+        PeerIdentity peerIdentity,
         ILogger<DocketSyncGrpcService> logger)
     {
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
+        _peerIdentity = peerIdentity ?? throw new ArgumentNullException(nameof(peerIdentity));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -49,7 +53,7 @@ public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
             return Task.FromResult(new GetLatestDocketNumberResponse
             {
                 LatestDocketNumber = 0,
-                SourcePeerId = Environment.MachineName,
+                SourcePeerId = _peerIdentity.Id,
                 QueriedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
                 NetworkAvailable = true
             });
@@ -63,7 +67,7 @@ public class DocketSyncGrpcService : DocketSyncService.DocketSyncServiceBase
         return Task.FromResult(new GetLatestDocketNumberResponse
         {
             LatestDocketNumber = latestDocket,
-            SourcePeerId = Environment.MachineName,
+            SourcePeerId = _peerIdentity.Id,
             QueriedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
             NetworkAvailable = true
         });

@@ -173,7 +173,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                 $"Register '{request.RegisterId}' not found in local cache"));
         }
 
-        var localPeerId = _configuration.NodeId ?? Environment.MachineName;
+        var localPeerId = _configuration.ResolvedPeerId;
         var lastSentVersion = request.FromVersion;
 
         // Send initial cached transactions with version > fromVersion

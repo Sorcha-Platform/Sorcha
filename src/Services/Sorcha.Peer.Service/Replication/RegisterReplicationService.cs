@@ -34,6 +34,7 @@ public class RegisterReplicationService
     private readonly RelayCommunicationService? _relayCommunication;
     private readonly DocketFinalizationService? _docketFinalizationService;
     private readonly RegisterSyncConfiguration _syncConfig;
+    private readonly string _localPeerId;
 
     public RegisterReplicationService(
         ILogger<RegisterReplicationService> logger,
@@ -53,6 +54,7 @@ public class RegisterReplicationService
         _relayCommunication = relayCommunication;
         _docketFinalizationService = docketFinalizationService;
         _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
+        _localPeerId = configuration?.Value?.ResolvedPeerId ?? Environment.MachineName;
     }
 
     /// <summary>
@@ -157,7 +159,7 @@ public class RegisterReplicationService
                     var docketRequest = new DocketChainRequest
                     {
                         RegisterId = registerId,
-                        PeerId = Environment.MachineName,
+                        PeerId = _localPeerId,
                         FromVersion = fromVersion,
                         MaxDockets = batchSize
                     };
@@ -187,7 +189,7 @@ public class RegisterReplicationService
                             var txRequest = new DocketTransactionRequest
                             {
                                 RegisterId = registerId,
-                                PeerId = Environment.MachineName
+                                PeerId = _localPeerId
                             };
                             txRequest.TransactionIds.AddRange(docketEntry.TransactionIds);
 
@@ -499,7 +501,7 @@ public class RegisterReplicationService
                 var request = new RegisterSubscriptionRequest
                 {
                     RegisterId = registerId,
-                    PeerId = Environment.MachineName,
+                    PeerId = _localPeerId,
                     FromVersion = subscription.LastSyncedTransactionVersion
                 };
 

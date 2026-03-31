@@ -413,9 +413,9 @@ public class PeerConnectionPool : IAsyncDisposable
             {
                 PeerInfo = new PeerInfo
                 {
-                    PeerId = localPeer?.PeerId ?? _configuration.NodeId ?? Environment.MachineName,
-                    NodeName = _configuration.NodeId ?? Environment.MachineName,
-                    Address = _configuration.NetworkAddress.ExternalAddress ?? Environment.MachineName,
+                    PeerId = _configuration.ResolvedPeerId,
+                    NodeName = _configuration.ResolvedPeerId,
+                    Address = _configuration.NetworkAddress.ExternalAddress ?? _configuration.ResolvedPeerId,
                     Port = _configuration.ListenPort,
                     BuildVersion = BuildInfo.Version,
                     SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }

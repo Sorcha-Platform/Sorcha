@@ -74,7 +74,7 @@ public class PeerHeartbeatGrpcService : PeerHeartbeat.PeerHeartbeatBase
         var response = new PeerHeartbeatResponse
         {
             Success = true,
-            PeerId = _configuration.NodeId ?? Environment.MachineName,
+            PeerId = _configuration.ResolvedPeerId,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
 
@@ -121,7 +121,7 @@ public class PeerHeartbeatGrpcService : PeerHeartbeat.PeerHeartbeatBase
             var response = new PeerHeartbeatResponse
             {
                 Success = true,
-                PeerId = _configuration.NodeId ?? Environment.MachineName,
+                PeerId = _configuration.ResolvedPeerId,
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
 
