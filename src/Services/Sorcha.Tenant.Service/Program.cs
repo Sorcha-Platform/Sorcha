@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.Tenant.Service.Extensions;
@@ -132,6 +133,20 @@ builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventServi
 builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
 
 var app = builder.Build();
+
+// Run database migrations and seeding BEFORE app.Run() to prevent race conditions
+// with background services (AuditCleanupService, EventCleanupService, etc.)
+// that query the database immediately on startup.
+// This matches the pattern used by Wallet and Blueprint services.
+{
+    var initializer = app.Services.GetRequiredService<DatabaseInitializer>();
+    await initializer.InitializeAsync();
+
+    // Signal ready immediately — background services that await DatabaseReadySignal
+    // will unblock, and the DB is guaranteed to be initialised at this point.
+    var readySignal = app.Services.GetRequiredService<DatabaseReadySignal>();
+    readySignal.Signal();
+}
 
 // Map default endpoints (OpenAPI, health checks)
 app.MapDefaultEndpoints();

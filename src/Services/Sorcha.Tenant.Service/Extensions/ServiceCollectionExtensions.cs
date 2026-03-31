@@ -18,14 +18,14 @@ namespace Sorcha.Tenant.Service.Extensions;
 public static class WebApplicationExtensions
 {
     /// <summary>
-    /// Adds automatic database migration and seeding on startup.
-    /// Creates default organization (sorcha.local) and admin user if not exists.
+    /// Registers database initializer and ready signal for explicit startup initialization.
+    /// Migrations and seeding are run in Program.cs before app.Run() to prevent
+    /// race conditions with background services that query the database.
     /// </summary>
     public static IServiceCollection AddDatabaseInitializer(this IServiceCollection services)
     {
         services.AddSingleton<DatabaseReadySignal>();
         services.AddSingleton<DatabaseInitializer>();
-        services.AddHostedService<DatabaseInitializerHostedService>();
         return services;
     }
 
