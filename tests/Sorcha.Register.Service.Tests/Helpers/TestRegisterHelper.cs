@@ -15,16 +15,18 @@ public static class TestRegisterHelper
 {
     /// <summary>
     /// Creates a test register directly via <see cref="RegisterManager"/>.
+    /// The tenantId parameter is retained for API compatibility but is no longer
+    /// passed to RegisterManager (TenantId was removed from the Register model).
     /// </summary>
     public static async Task<Models.Register> CreateTestRegisterAsync(
         this WebApplicationFactory<Program> factory,
         string name,
-        string tenantId,
+        string? tenantId = null,
         bool advertise = false,
         bool isFullReplica = true)
     {
         using var scope = factory.Services.CreateScope();
         var manager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
-        return await manager.CreateRegisterAsync(name, tenantId, advertise, isFullReplica);
+        return await manager.CreateRegisterAsync(name, advertise, isFullReplica);
     }
 }
