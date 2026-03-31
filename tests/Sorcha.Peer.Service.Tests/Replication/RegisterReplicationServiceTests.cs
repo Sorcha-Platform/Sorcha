@@ -22,6 +22,7 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
     private readonly PeerConnectionPool _connectionPool;
     private readonly RegisterCache _registerCache;
     private readonly RelayCommunicationService _relayCommunication;
+    private readonly RegisterAdvertisementService _advertisementService;
     private readonly PeerServiceMetrics _metrics;
     private readonly PeerServiceActivitySource _activitySource;
     private readonly IOptions<PeerServiceConfiguration> _config;
@@ -71,16 +72,22 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             _config,
             new Lazy<RelayMessageHandler>(() => null!));
 
+        _advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            _peerListManager);
+
         _service = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             _peerListManager,
+            _advertisementService,
             _registerCache);
 
         _serviceWithRelay = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             _peerListManager,
+            _advertisementService,
             _registerCache,
             _config,
             _relayCommunication);
@@ -93,6 +100,7 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             null!,
             _connectionPool,
             _peerListManager,
+            _advertisementService,
             _registerCache);
 
         act.Should().Throw<ArgumentNullException>();
@@ -105,6 +113,7 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RegisterReplicationService>>().Object,
             null!,
             _peerListManager,
+            _advertisementService,
             _registerCache);
 
         act.Should().Throw<ArgumentNullException>();
@@ -117,6 +126,7 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             null!,
+            _advertisementService,
             _registerCache);
 
         act.Should().Throw<ArgumentNullException>();
@@ -129,6 +139,7 @@ public class RegisterReplicationServiceTests : IAsyncDisposable
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             _peerListManager,
+            _advertisementService,
             null!);
 
         act.Should().Throw<ArgumentNullException>();

@@ -57,6 +57,12 @@ public record RegisterViewModel
     public DateTime UpdatedAt { get; init; }
 
     /// <summary>
+    /// Whether field-level encryption is NOT enforced (development mode).
+    /// When true, a warning should be displayed to the user.
+    /// </summary>
+    public bool DevMode { get; init; }
+
+    /// <summary>
     /// Replication state for remotely-subscribed registers. Null for locally created registers.
     /// </summary>
     public string? SyncState { get; init; }

@@ -7,11 +7,13 @@ using System.Text;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using FluentAssertions;
 using Grpc.Core;
 using Moq;
 
+using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.GrpcServices;
 using Sorcha.Peer.Service.Replication;
 
@@ -36,6 +38,7 @@ public class DocketSyncGrpcServiceTests
         _registerCache = new RegisterCache(NullLogger<RegisterCache>.Instance);
         _service = new DocketSyncGrpcService(
             _registerCache,
+            Options.Create(new PeerServiceConfiguration()),
             NullLogger<DocketSyncGrpcService>.Instance);
     }
 

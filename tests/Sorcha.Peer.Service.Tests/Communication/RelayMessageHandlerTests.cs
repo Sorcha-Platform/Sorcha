@@ -4,6 +4,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Google.Protobuf;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -67,16 +68,22 @@ public class RelayMessageHandlerTests : IAsyncDisposable
         _registerCache = new RegisterCache(
             new Mock<ILogger<RegisterCache>>().Object);
 
+        var advertisementService = new RegisterAdvertisementService(
+            new Mock<ILogger<RegisterAdvertisementService>>().Object,
+            peerListManager);
+
         var replicationService = new RegisterReplicationService(
             new Mock<ILogger<RegisterReplicationService>>().Object,
             _connectionPool,
             peerListManager,
+            advertisementService,
             _registerCache);
 
         _syncBackgroundService = new RegisterSyncBackgroundService(
             new Mock<ILogger<RegisterSyncBackgroundService>>().Object,
             replicationService,
-            Options.Create(config));
+            Options.Create(config),
+            Mock.Of<IServiceScopeFactory>());
 
         _handler = new RelayMessageHandler(
             new Mock<ILogger<RelayMessageHandler>>().Object,

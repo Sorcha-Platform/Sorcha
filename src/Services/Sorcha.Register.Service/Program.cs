@@ -291,7 +291,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
             });
         }
 
-        // Create stub register atomically with SyncState set
+        // Create stub register with Checking status (subscription just created, connecting to peers)
         var name = !string.IsNullOrWhiteSpace(request.RegisterName) ? request.RegisterName : "Syncing...";
         var stub = await manager.CreateRegisterAsync(
             name,
@@ -300,6 +300,9 @@ app.MapPost("/api/internal/register-subscriptions", async (
             registerId: request.RegisterId,
             description: request.Description,
             syncState: "Subscribing");
+
+        // Set initial status to Checking (connecting to source peers)
+        await manager.UpdateRegisterStatusAsync(request.RegisterId, RegisterStatus.Checking);
 
         logger.LogInformation(
             "Created stub register {RegisterId} (name={Name}) with SyncState=Subscribing",
@@ -398,9 +401,84 @@ app.MapPost("/api/internal/register-subscriptions", async (
 .AllowAnonymous()
 .ExcludeFromDescription();
 
+// Internal endpoint: Peer Service reports sync state changes for a register.
+// Maps peer sync state to RegisterStatus and updates both SyncState and Status.
+app.MapPost("/api/internal/register-sync-status", async (
+    SyncStatusReport report,
+    RegisterManager manager,
+    ILogger<Program> logger) =>
+{
+    if (string.IsNullOrWhiteSpace(report.RegisterId))
+        return Results.BadRequest(new { error = "registerId is required" });
+
+    var register = await manager.GetRegisterAsync(report.RegisterId);
+    if (register == null)
+        return Results.NotFound(new { error = $"Register '{report.RegisterId}' not found" });
+
+    // Map peer sync state to RegisterStatus
+    var newStatus = report.SyncState switch
+    {
+        "Subscribing" => RegisterStatus.Checking,
+        "Syncing" => RegisterStatus.Recovery,
+        "FullyReplicated" or "Active" => RegisterStatus.Online,
+        "Error" => RegisterStatus.Offline,
+        _ when !report.PeerConnectionActive => RegisterStatus.Offline,
+        _ => register.Status
+    };
+
+    // Update sync state string
+    var syncStateString = report.SyncState switch
+    {
+        "FullyReplicated" or "Active" => "Synced",
+        _ => report.SyncState
+    };
+
+    if (register.SyncState != syncStateString)
+    {
+        await manager.UpdateSyncStateAsync(report.RegisterId, syncStateString);
+    }
+
+    if (register.Status != newStatus)
+    {
+        await manager.UpdateRegisterStatusAsync(report.RegisterId, newStatus);
+        logger.LogInformation(
+            "Register {RegisterId} status updated: {OldStatus} → {NewStatus} (sync: {SyncState})",
+            report.RegisterId, register.Status, newStatus, report.SyncState);
+    }
+
+    return Results.Ok(new { registerId = report.RegisterId, status = newStatus.ToString(), syncState = syncStateString });
+})
+.WithName("InternalReportSyncStatus")
+.WithSummary("Internal: Report peer sync status change")
+.WithDescription("Called by Peer Service when sync state changes. Maps sync state to RegisterStatus.")
+.RequireAuthorization("InternalService")
+.ExcludeFromDescription();
+
 var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
     .RequireAuthorization("CanManageRegisters");
+
+// Disable dev mode (one-way — enables mandatory field-level encryption)
+registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
+    string registerId,
+    RegisterManager manager) =>
+{
+    var disabled = await manager.DisableDevModeAsync(registerId);
+    if (!disabled)
+    {
+        return Results.Conflict(new { error = "Dev mode is already disabled on this register." });
+    }
+
+    return Results.Ok(new
+    {
+        registerId,
+        devMode = false,
+        message = "Dev mode disabled. Field-level encryption is now required for new transactions."
+    });
+})
+.WithName("DisableDevMode")
+.WithSummary("Disable dev mode (one-way)")
+.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.");
 
 // NOTE: POST /api/registers/ (simple CRUD creation) has been removed.
 // All register creation must go through the two-phase initiate/finalize flow.

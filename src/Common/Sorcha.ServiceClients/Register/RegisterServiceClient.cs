@@ -57,6 +57,43 @@ public class RegisterServiceClient : IRegisterServiceClient
             _httpClient, _serviceAuth, _logger, "Register Service", cancellationToken);
 
     // =========================================================================
+    // Sync Status Reporting
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task ReportSyncStatusAsync(
+        string registerId,
+        string syncState,
+        bool peerConnectionActive,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var payload = new { registerId, syncState, peerConnectionActive };
+            var response = await _httpClient.PostAsJsonAsync(
+                "api/internal/register-sync-status",
+                payload,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to report sync status for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Failed to report sync status for register {RegisterId} (non-critical)",
+                registerId);
+        }
+    }
+
+    // =========================================================================
     // Docket Operations
     // =========================================================================
 

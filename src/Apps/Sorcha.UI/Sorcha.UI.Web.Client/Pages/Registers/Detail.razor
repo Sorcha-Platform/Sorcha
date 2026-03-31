@@ -55,48 +55,6 @@
         }
     </MudStack>
 
-    @* New transactions notification banner *@
-    @if (_newTransactionsCount > 0)
-    {
-        <MudAlert Severity="Severity.Info"
-                  Class="mb-4"
-                  Icon="@Icons.Material.Filled.NewReleases"
-                  data-testid="new-transactions-alert">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText>
-                    @_newTransactionsCount new transaction@(_newTransactionsCount > 1 ? "s" : "") available
-                </MudText>
-                <MudButton Variant="Variant.Text"
-                           Color="Color.Info"
-                           Size="Size.Small"
-                           OnClick="LoadNewTransactionsAsync">
-                    Load Now
-                </MudButton>
-            </MudStack>
-        </MudAlert>
-    }
-
-    @* New dockets notification banner *@
-    @if (_newDocketsCount > 0)
-    {
-        <MudAlert Severity="Severity.Info"
-                  Class="mb-4"
-                  Icon="@Icons.Material.Filled.Link"
-                  data-testid="new-dockets-alert">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText>
-                    @_newDocketsCount new docket@(_newDocketsCount > 1 ? "s" : "") sealed
-                </MudText>
-                <MudButton Variant="Variant.Text"
-                           Color="Color.Info"
-                           Size="Size.Small"
-                           OnClick="LoadNewDocketsAsync">
-                    Load Now
-                </MudButton>
-            </MudStack>
-        </MudAlert>
-    }
-
     @if (_registerError is not null)
     {
         <MudAlert Severity="Severity.Error" Class="mb-4">
@@ -271,9 +229,6 @@
     private int _activeTabIndex;
     private ConnectionState _connectionState = new();
     private bool _realtimeEnabled = true;
-    private int _newTransactionsCount;
-    private int _newDocketsCount;
-    private List<string> _pendingTransactionIds = [];
     private ExplorerNavigationContext _navContext = new();
 
     protected override async Task OnInitializedAsync()
@@ -347,9 +302,19 @@
         if (registerId != RegisterId)
             return;
 
-        // Track new transaction - will be loaded when user clicks "Load Now"
-        _pendingTransactionIds.Add(txId);
-        _newTransactionsCount = _pendingTransactionIds.Count;
+        // Auto-prepend the new transaction to the table
+        try
+        {
+            var transaction = await TransactionService.GetTransactionAsync(RegisterId, txId);
+            if (transaction is not null && _transactionListRef is not null)
+            {
+                await _transactionListRef.PrependTransactionAsync(transaction);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Failed to auto-load transaction {TxId}", txId);
+        }
 
         await InvokeAsync(StateHasChanged);
     }
@@ -369,37 +334,20 @@
         if (registerId != RegisterId)
             return;
 
-        _newDocketsCount++;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task LoadNewTransactionsAsync()
-    {
-        if (_transactionListRef is null || _pendingTransactionIds.Count == 0)
-            return;
-
-        // Fetch and prepend each new transaction
-        foreach (var txId in _pendingTransactionIds.ToList())
+        // Auto-refresh the docket table
+        try
         {
-            var transaction = await TransactionService.GetTransactionAsync(RegisterId, txId);
-            if (transaction is not null)
+            if (_docketChainRef is not null)
             {
-                await _transactionListRef.PrependTransactionAsync(transaction);
+                await _docketChainRef.RefreshAsync();
             }
         }
-
-        _pendingTransactionIds.Clear();
-        _newTransactionsCount = 0;
-    }
-
-    private async Task LoadNewDocketsAsync()
-    {
-        if (_docketChainRef is not null)
+        catch (Exception ex)
         {
-            await _docketChainRef.RefreshAsync();
+            Logger.LogDebug(ex, "Failed to auto-refresh dockets for register {RegisterId}", registerId);
         }
 
-        _newDocketsCount = 0;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadRegisterAsync()
@@ -448,10 +396,6 @@
         // Reload register metadata
         await LoadRegisterAsync();
 
-        // Clear pending notifications since we did a full refresh
-        _pendingTransactionIds.Clear();
-        _newTransactionsCount = 0;
-        _newDocketsCount = 0;
     }
 
     private void OnTransactionsLoaded(int total)

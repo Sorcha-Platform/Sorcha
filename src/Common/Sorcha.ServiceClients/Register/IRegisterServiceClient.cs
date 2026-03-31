@@ -69,6 +69,24 @@ public interface IRegisterServiceClient
         CancellationToken cancellationToken = default);
 
     // =========================================================================
+    // Sync Status Reporting (Peer Service)
+    // =========================================================================
+
+    /// <summary>
+    /// Reports peer sync state changes for a register.
+    /// Maps sync state to RegisterStatus and updates the register accordingly.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="syncState">Peer sync state (Subscribing, Syncing, FullyReplicated, Active, Error)</param>
+    /// <param name="peerConnectionActive">Whether at least one source peer is connected</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task ReportSyncStatusAsync(
+        string registerId,
+        string syncState,
+        bool peerConnectionActive,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
     // Transaction Operations (Blueprint Service, CLI)
     // =========================================================================
 

@@ -65,6 +65,11 @@ public interface IRegisterService
     Task<RegisterPolicyViewModel?> GetPolicyAsync(string registerId, CancellationToken ct = default);
     Task<PolicyHistoryViewModel> GetPolicyHistoryAsync(string registerId, int page = 1, int pageSize = 20, CancellationToken ct = default);
     Task<PolicyUpdateProposalViewModel?> ProposePolicyUpdateAsync(string registerId, RegisterPolicyFields policy, CancellationToken ct = default);
+
+    /// <summary>
+    /// Irreversibly disables dev mode on a register, enabling mandatory field-level encryption.
+    /// </summary>
+    Task DisableDevModeAsync(string registerId, CancellationToken ct = default);
 }
 
 /// <summary>

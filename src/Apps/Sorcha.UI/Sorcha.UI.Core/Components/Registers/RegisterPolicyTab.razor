@@ -108,6 +108,39 @@
             }
         </MudPaper>
 
+        @* Encryption Policy Section *@
+        @if (DevMode)
+        {
+            <MudPaper Elevation="0" Class="pa-4 mt-2" data-testid="encryption-policy-section">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                            <MudText Typo="Typo.subtitle2">Field-Level Encryption</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            This register is running in dev mode. Payloads are stored as plaintext.
+                        </MudText>
+                    </MudStack>
+                    <MudSwitch T="bool"
+                               Color="Color.Warning"
+                               Label="Enable Encryption"
+                               Checked="false"
+                               CheckedChanged="OnEncryptionToggled"
+                               data-testid="enable-encryption-switch" />
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Elevation="0" Class="pa-4 mt-2" data-testid="encryption-enabled-section">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Success" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Success">Field-level encryption enabled</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+
         <MudStack Row="true" Spacing="2" Class="pa-4">
             <MudButton Variant="Variant.Outlined"
                        Color="Color.Default"
@@ -133,6 +166,18 @@
     /// </summary>
     [Parameter]
     public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the register is in dev mode (no field-level encryption).
+    /// </summary>
+    [Parameter]
+    public bool DevMode { get; set; }
+
+    /// <summary>
+    /// Callback when dev mode is disabled (encryption enabled).
+    /// </summary>
+    [Parameter]
+    public EventCallback OnDevModeDisabled { get; set; }
 
     private RegisterPolicyViewModel? _policy;
     private bool _isLoading = true;
@@ -203,6 +248,33 @@
         if (result is not null && !result.Canceled)
         {
             await LoadPolicyAsync();
+        }
+    }
+
+    private async Task OnEncryptionToggled(bool enabled)
+    {
+        if (!enabled) return; // Only handle enable (one-way)
+
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Enable Field-Level Encryption",
+            "This action is irreversible. Once enabled, field-level encryption cannot be disabled.\n\n" +
+            "Existing transactions will remain unencrypted. Only new transactions will use encryption.\n\n" +
+            "Are you sure you want to enable encryption?",
+            yesText: "Enable Encryption",
+            cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await RegisterService.DisableDevModeAsync(RegisterId);
+            DevMode = false;
+            await OnDevModeDisabled.InvokeAsync();
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+            _error = "Failed to enable encryption. Please try again.";
         }
     }
 }
