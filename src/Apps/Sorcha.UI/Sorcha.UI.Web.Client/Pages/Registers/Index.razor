@@ -370,8 +370,23 @@
                 .Where(r => subscribedRegisterIds.Contains(r.Id))
                 .ToList();
 
-            // Also include any registers with subscription data but not in the register list
-            // (they may be from different tenants and returned in subscriptions only)
+            // Include subscribed registers not yet in Register Service (still syncing from peers)
+            var loadedIds = _registers.Select(r => r.Id).ToHashSet();
+            foreach (var sub in subscriptions)
+            {
+                if (!string.IsNullOrEmpty(sub.RegisterId) && !loadedIds.Contains(sub.RegisterId))
+                {
+                    _registers.Add(new RegisterViewModel
+                    {
+                        Id = sub.RegisterId,
+                        Name = sub.RegisterName ?? "Syncing...",
+                        Description = "Waiting for peer sync",
+                        Height = 0,
+                        Status = RegisterStatus.Checking,
+                        SyncState = "Subscribing"
+                    });
+                }
+            }
         }
         catch (Exception ex)
         {
