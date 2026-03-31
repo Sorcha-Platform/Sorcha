@@ -272,9 +272,9 @@
             await OnDevModeDisabled.InvokeAsync();
             StateHasChanged();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _error = $"Failed to enable encryption: {ex.Message}";
+            _error = "Failed to enable encryption. Please try again.";
         }
     }
 }

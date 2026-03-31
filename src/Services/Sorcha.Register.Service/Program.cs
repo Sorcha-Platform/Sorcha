@@ -433,7 +433,10 @@ app.MapPost("/api/internal/register-sync-status", async (
         _ => report.SyncState
     };
 
-    await manager.UpdateSyncStateAsync(report.RegisterId, syncStateString);
+    if (register.SyncState != syncStateString)
+    {
+        await manager.UpdateSyncStateAsync(report.RegisterId, syncStateString);
+    }
 
     if (register.Status != newStatus)
     {
@@ -448,7 +451,7 @@ app.MapPost("/api/internal/register-sync-status", async (
 .WithName("InternalReportSyncStatus")
 .WithSummary("Internal: Report peer sync status change")
 .WithDescription("Called by Peer Service when sync state changes. Maps sync state to RegisterStatus.")
-.AllowAnonymous()
+.RequireAuthorization("InternalService")
 .ExcludeFromDescription();
 
 var registersGroup = app.MapGroup("/api/registers")

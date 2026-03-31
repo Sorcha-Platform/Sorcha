@@ -243,6 +243,18 @@ public class RegisterManager
             "Dev mode disabled for register {RegisterId} — field-level encryption now required",
             registerId);
 
+        // Publish event so UI updates via SignalR
+        await _eventPublisher.PublishAsync(
+            "register:status-changed",
+            new RegisterStatusChangedEvent
+            {
+                RegisterId = registerId,
+                OldStatus = register.Status.ToString(),
+                NewStatus = register.Status.ToString(),
+                ChangedAt = register.UpdatedAt
+            },
+            cancellationToken);
+
         return true;
     }
 
