@@ -13,7 +13,7 @@ using Sorcha.Wallet.Core.Data;
 namespace Sorcha.Wallet.Core.Migrations
 {
     [DbContext(typeof(WalletDbContext))]
-    [Migration("20260331083101_InitialCreate")]
+    [Migration("20260331225826_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -511,10 +511,20 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CounterpartyAddress")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Outbound");
 
                     b.Property<Dictionary<string, string>>("Metadata")
                         .HasColumnType("jsonb");
@@ -525,6 +535,17 @@ namespace Sorcha.Wallet.Core.Migrations
 
                     b.Property<string>("RawTransaction")
                         .HasColumnType("text");
+
+                    b.Property<string>("ReceiptId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("ReceiptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RegisterId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("State")
                         .IsRequired()
