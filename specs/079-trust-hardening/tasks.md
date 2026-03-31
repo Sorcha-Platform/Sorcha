@@ -106,7 +106,7 @@
 - [X] T035 [US3] Add `GET /api/registers/{registerId}/transactions/{txId}/status` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — query for revocation transactions referencing targetTxId, return `TransactionStatusResponse` (active/revoked/superseded)
 - [X] T036 [US3] Add revocation-specific query method to `IRegisterRepository` and MongoDB implementation in `src/Core/Sorcha.Register.Storage.MongoDB/MongoRegisterRepository.cs` — `FindRevocationForTransactionAsync(registerId, targetTxId)` with index on `Metadata.OriginalTxId`
 - [X] T037 [P] [US3] Create unit tests for `RevocationValidator` in `tests/Sorcha.Validator.Core.Tests/RevocationValidatorTests.cs` — test valid payload, invalid reason, missing supersededByTxId for Superseded reason, extra supersededByTxId for non-Superseded reason
-- [ ] T038 [P] [US3] Create unit tests for revocation validation in `tests/Sorcha.Validator.Service.Tests/Services/ValidationEngineRevocationTests.cs` — test authority checks (original signer passes, roster admin passes, non-member rejected), double-revocation rejected, self-revocation-of-revocation rejected
+- [X] T038 [P] [US3] Create unit tests for revocation validation in `tests/Sorcha.Validator.Service.Tests/Services/ValidationEngineRevocationTests.cs` — test authority checks (original signer passes, roster admin passes, non-member rejected), double-revocation rejected, self-revocation-of-revocation rejected
 - [ ] T039 [P] [US3] Create integration tests for revocation and status endpoints in `tests/Sorcha.Register.Service.Tests/Endpoints/RevocationEndpointTests.cs` — test POST revoke (202/400), GET status (active/revoked/superseded/404), error codes (ALREADY_REVOKED, CANNOT_REVOKE_REVOCATION, UNAUTHORIZED_REVOKER)
 
 **Checkpoint**: Revocations are validated, sealed, and persisted. Status endpoint returns correct lifecycle state.
@@ -148,8 +148,8 @@
 - [X] T047 [US5] Create `TransactionLifecycleEventBridge` background service in `src/Services/Sorcha.Wallet.Service/Services/TransactionLifecycleEventBridge.cs` — subscribes to Redis Stream events (docket:confirmed, receipt:generated), calls TransactionLifecycleService to update records, pushes `TransactionLifecycleUpdate` event to ActionsHub wallet group via INotificationService or direct SignalR
 - [X] T048 [US5] Add `OnTransactionLifecycleUpdate` event to `ActionsHubConnection` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs` — new event with TxId, Status (Pending/Sealed/Receipted), ReceiptId?, DocketNumber?
 - [X] T049 [US5] Create `TransactionLifecycleTicks.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Wallet/TransactionLifecycleTicks.razor` — renders tick indicators: single grey tick (Pending), single blue tick (Sealed), double blue ticks (Receipted). Click on double-tick opens receipt detail. CSS isolation file for tick styling.
-- [ ] T050 [US5] Integrate tick component into wallet transaction list page — add `<TransactionLifecycleTicks>` to each transaction row, subscribe to `OnTransactionLifecycleUpdate` events, wire up initial state from `GET /api/v1/wallets/{address}/transaction-status/{txId}`
-- [ ] T051 [P] [US5] Create unit tests for `TransactionLifecycleService` in `tests/Sorcha.Wallet.Service.Tests/Services/TransactionLifecycleServiceTests.cs` — test Pending→Sealed→Receipted progression, duplicate event handling, unknown txId handling
+- [ ] T050 [US5] *(Deferred — requires running UI)* Integrate tick component into wallet transaction list page — add `<TransactionLifecycleTicks>` to each transaction row, subscribe to `OnTransactionLifecycleUpdate` events, wire up initial state from `GET /api/v1/wallets/{address}/transaction-status/{txId}`
+- [X] T051 [P] [US5] Create unit tests for `TransactionLifecycleService` in `tests/Sorcha.Wallet.Service.Tests/Services/TransactionLifecycleServiceTests.cs` — test Pending→Sealed→Receipted progression, duplicate event handling, unknown txId handling
 
 **Checkpoint**: Transaction list shows real-time tick progression. Receipt notifications arrive via wallet group.
 
@@ -159,14 +159,14 @@
 
 **Purpose**: Documentation, API docs, cleanup.
 
-- [ ] T052 Update Register Service README with receipt, revocation, status, bundle, and proof endpoints in `src/Services/Sorcha.Register.Service/README.md`
+- [X] T052 Update Register Service README with receipt, revocation, status, bundle, and proof endpoints in `src/Services/Sorcha.Register.Service/README.md`
 - [ ] T053 [P] Update Validator Service README with receipt generation and revocation validation in `src/Services/Sorcha.Validator.Service/README.md`
 - [ ] T054 [P] Add OpenAPI `.WithSummary()` and `.WithDescription()` to all new endpoints in `src/Services/Sorcha.Register.Service/Program.cs`
 - [ ] T055 [P] Add XML doc comments to all new public types in `src/Common/Sorcha.Register.Models/` and `src/Common/Sorcha.Validator.Core/`
-- [ ] T056 Update CLAUDE.md with new endpoints (receipt, revocation, status, bundle, proof, lifecycle ticks) in project root `CLAUDE.md`
-- [ ] T057 Update `.specify/MASTER-TASKS.md` — mark TRUST-3, TRUST-4, TRUST-5 as complete, add Feature 079 entry
+- [X] T056 Update CLAUDE.md with new endpoints (receipt, revocation, status, bundle, proof, lifecycle ticks) in project root `CLAUDE.md`
+- [X] T057 Update `.specify/MASTER-TASKS.md` — mark TRUST-3, TRUST-4, TRUST-5 as complete, add Feature 079 entry
 - [ ] T058 [P] Update API documentation in `docs/reference/API-DOCUMENTATION.md` with new endpoints
-- [ ] T059 Run quickstart.md scenarios end-to-end to validate all integration scenarios
+- [ ] T059 *(Deferred — requires Docker stack)* Run quickstart.md scenarios end-to-end to validate all integration scenarios
 
 ---
 
