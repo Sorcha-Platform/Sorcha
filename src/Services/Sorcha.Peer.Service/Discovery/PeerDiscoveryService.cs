@@ -171,7 +171,7 @@ public class PeerDiscoveryService : IDisposable
                 PeerInfo = new PeerInfo
                 {
                     PeerId = _configuration.NodeId ?? "unknown",
-                    NodeName = _configuration.NodeId ?? Environment.MachineName,
+                    NodeName = _configuration.ResolvedPeerId,
                     Address = externalAddress,
                     Port = _configuration.ListenPort,
                     BuildVersion = BuildInfo.Version,

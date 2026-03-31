@@ -18,6 +18,7 @@ public class PeerListManager : IDisposable
 {
     private readonly ILogger<PeerListManager> _logger;
     private readonly PeerDiscoveryConfiguration _configuration;
+    private readonly string _localPeerId;
     private readonly ConcurrentDictionary<string, PeerNode> _peers;
     private readonly IDbContextFactory<PeerDbContext>? _dbContextFactory;
     private bool _disposed;
@@ -29,7 +30,9 @@ public class PeerListManager : IDisposable
         IDbContextFactory<PeerDbContext>? dbContextFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _configuration = configuration?.Value?.PeerDiscovery ?? throw new ArgumentNullException(nameof(configuration));
+        var config = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
+        _configuration = config.PeerDiscovery;
+        _localPeerId = config.ResolvedPeerId;
         _peers = new ConcurrentDictionary<string, PeerNode>();
         _dbContextFactory = dbContextFactory;
     }
@@ -361,7 +364,7 @@ public class PeerListManager : IDisposable
         {
             _localPeerInfo = new ActivePeerInfo
             {
-                PeerId = Environment.MachineName ?? "unknown",
+                PeerId = _localPeerId,
                 ConnectionEstablished = DateTime.UtcNow
             };
         }

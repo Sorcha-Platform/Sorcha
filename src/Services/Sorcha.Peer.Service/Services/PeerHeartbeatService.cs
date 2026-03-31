@@ -28,6 +28,7 @@ public class PeerHeartbeatBackgroundService : BackgroundService
     private readonly PeerServiceMetrics _metrics;
     private readonly PeerServiceActivitySource _activitySource;
     private readonly RegisterSyncConfiguration _syncConfig;
+    private readonly string _localPeerId;
     private long _sequenceNumber;
     private int _heartbeatCycleCount;
 
@@ -46,7 +47,9 @@ public class PeerHeartbeatBackgroundService : BackgroundService
         _advertisementService = advertisementService ?? throw new ArgumentNullException(nameof(advertisementService));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
         _activitySource = activitySource ?? throw new ArgumentNullException(nameof(activitySource));
-        _syncConfig = configuration?.Value?.RegisterSync ?? new RegisterSyncConfiguration();
+        var config = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
+        _syncConfig = config.RegisterSync;
+        _localPeerId = config.ResolvedPeerId;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -211,7 +214,7 @@ public class PeerHeartbeatBackgroundService : BackgroundService
     {
         var request = new PeerHeartbeatRequest
         {
-            PeerId = _peerListManager.GetLocalPeerStatus()?.PeerId ?? Environment.MachineName,
+            PeerId = _localPeerId,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             SequenceNumber = sequenceNumber,
             BuildVersion = BuildInfo.Version

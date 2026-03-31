@@ -21,6 +21,13 @@ public class PeerServiceConfiguration
     public string? NodeId { get; set; }
 
     /// <summary>
+    /// Canonical peer identity used consistently across heartbeats, relay messages,
+    /// reverse streams, connection pool keys, and peer list entries.
+    /// Returns <see cref="NodeId"/> if configured, otherwise <see cref="Environment.MachineName"/>.
+    /// </summary>
+    public string ResolvedPeerId => NodeId ?? Environment.MachineName;
+
+    /// <summary>
     /// Port to listen on for peer connections
     /// </summary>
     [Range(1, 65535)]

@@ -105,7 +105,7 @@ public class PeerExchangeService : IDisposable
 
         var request = new PeerExchangeRequest
         {
-            PeerId = _configuration.NodeId ?? Environment.MachineName,
+            PeerId = _configuration.ResolvedPeerId,
             MaxPeers = PeerServiceConstants.MaxPeersInExchangeResponse
         };
         request.KnownPeers.AddRange(ourPeers);
@@ -127,7 +127,7 @@ public class PeerExchangeService : IDisposable
         foreach (var remotePeer in response.KnownPeers)
         {
             // Don't add ourselves
-            if (remotePeer.PeerId == (_configuration.NodeId ?? Environment.MachineName))
+            if (remotePeer.PeerId == (_configuration.ResolvedPeerId))
                 continue;
 
             var peer = ConvertToPeerNode(remotePeer);
@@ -173,7 +173,7 @@ public class PeerExchangeService : IDisposable
                 var request = new FindPeersForRegisterRequest
                 {
                     RegisterId = registerId,
-                    RequestingPeerId = _configuration.NodeId ?? Environment.MachineName,
+                    RequestingPeerId = _configuration.ResolvedPeerId,
                     RequireFullReplica = requireFullReplica,
                     MaxPeers = 10
                 };
