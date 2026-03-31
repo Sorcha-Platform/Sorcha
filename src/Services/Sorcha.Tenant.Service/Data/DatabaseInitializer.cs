@@ -521,13 +521,16 @@ public class DatabaseInitializer
 public class DatabaseInitializerHostedService : IHostedService
 {
     private readonly DatabaseInitializer _initializer;
+    private readonly DatabaseReadySignal _readySignal;
     private readonly ILogger<DatabaseInitializerHostedService> _logger;
 
     public DatabaseInitializerHostedService(
         DatabaseInitializer initializer,
+        DatabaseReadySignal readySignal,
         ILogger<DatabaseInitializerHostedService> logger)
     {
         _initializer = initializer;
+        _readySignal = readySignal;
         _logger = logger;
     }
 
@@ -544,6 +547,12 @@ public class DatabaseInitializerHostedService : IHostedService
             _logger.LogError(ex, "Failed to initialize database. Service may not function correctly.");
             // Don't rethrow - allow service to start even if DB init fails
             // Health checks will report unhealthy status
+        }
+        finally
+        {
+            // Signal readiness even on failure so background services don't hang forever.
+            // They will encounter DB errors naturally and log/retry as appropriate.
+            _readySignal.Signal();
         }
     }
 

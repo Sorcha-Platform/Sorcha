@@ -473,7 +473,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     Algorithm = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     LinkedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     RevokedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    VerificationMethod = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false, defaultValue: "challenge-verify")
                 },
                 constraints: table =>
                 {

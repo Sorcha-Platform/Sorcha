@@ -1,7 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
-// Copyright (c) 2026 Sorcha Contributors
-
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -33,7 +30,8 @@ namespace Sorcha.Peer.Service.Data.Migrations
                     AverageLatencyMs = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
                     IsBanned = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
                     BannedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    BanReason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true)
+                    BanReason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    BanExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

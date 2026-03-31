@@ -338,6 +338,13 @@ namespace Sorcha.Tenant.Service.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("VerificationMethod")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("challenge-verify");
+
                     b.Property<string>("WalletAddress")
                         .IsRequired()
                         .HasMaxLength(256)

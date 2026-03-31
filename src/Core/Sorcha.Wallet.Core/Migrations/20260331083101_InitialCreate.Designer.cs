@@ -13,7 +13,7 @@ using Sorcha.Wallet.Core.Data;
 namespace Sorcha.Wallet.Core.Migrations
 {
     [DbContext(typeof(WalletDbContext))]
-    [Migration("20260317165741_InitialCreate")]
+    [Migration("20260331083101_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
