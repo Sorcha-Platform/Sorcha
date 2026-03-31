@@ -35,7 +35,9 @@ public class RegisterSyncBackgroundService : BackgroundService
     private readonly ConcurrentDictionary<string, RegisterSubscription> _subscriptions = new();
     private readonly ConcurrentDictionary<string, Task> _liveSubscriptionTasks = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _syncSemaphores = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _offlineDebounceTimers = new();
     private readonly ManualResetEventSlim _immediateSyncSignal = new(false);
+    private static readonly TimeSpan OfflineDebounceDelay = TimeSpan.FromSeconds(30);
     private CancellationTokenSource? _serviceCts;
 
     public RegisterSyncBackgroundService(
@@ -534,7 +536,74 @@ public class RegisterSyncBackgroundService : BackgroundService
 
         _syncSemaphores.Clear();
         _immediateSyncSignal.Dispose();
+
+        foreach (var cts in _offlineDebounceTimers.Values)
+            cts.Dispose();
+        _offlineDebounceTimers.Clear();
+
         base.Dispose();
+    }
+
+    /// <summary>
+    /// Starts a 30-second debounce timer before reporting a register as Offline.
+    /// If the source peer reconnects within 30 seconds, the timer is cancelled
+    /// and no Offline status is reported (prevents status flapping).
+    /// </summary>
+    public void StartOfflineDebounce(string registerId)
+    {
+        // Cancel any existing debounce for this register
+        CancelOfflineDebounce(registerId);
+
+        var cts = new CancellationTokenSource();
+        _offlineDebounceTimers[registerId] = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(OfflineDebounceDelay, cts.Token);
+
+                // Timer expired — report Offline
+                _logger.LogWarning(
+                    "Offline debounce expired for register {RegisterId} — reporting Offline",
+                    registerId);
+                await ReportSyncStatusAsync(registerId, RegisterSyncState.Error, CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                // Debounce cancelled — source peer reconnected within 30s
+                _logger.LogDebug(
+                    "Offline debounce cancelled for register {RegisterId} — peer reconnected",
+                    registerId);
+            }
+            finally
+            {
+                _offlineDebounceTimers.TryRemove(registerId, out _);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Cancels an active offline debounce timer. Called when a source peer reconnects.
+    /// If no debounce is active, reports Checking status to begin recovery.
+    /// </summary>
+    public void CancelOfflineDebounce(string registerId)
+    {
+        if (_offlineDebounceTimers.TryRemove(registerId, out var cts))
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Called when a source peer reconnects for a register.
+    /// Cancels any offline debounce and reports Checking status.
+    /// </summary>
+    public async Task OnSourcePeerReconnectedAsync(string registerId, CancellationToken cancellationToken)
+    {
+        CancelOfflineDebounce(registerId);
+        await ReportSyncStatusAsync(registerId, RegisterSyncState.Subscribing, cancellationToken);
     }
 
     /// <summary>

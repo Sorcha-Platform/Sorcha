@@ -34,7 +34,7 @@
 - [x] T004 Add internal endpoint `POST /api/internal/register-sync-status` in `src/Services/Sorcha.Register.Service/Program.cs` — receives sync state from Peer Service, maps to RegisterStatus (Subscribing→Checking, Syncing→Recovery, FullyReplicated/Active→Online, Error→Offline), calls `RegisterManager.UpdateRegisterStatusAsync()`
 - [x] T005 Add `ReportSyncStatusAsync` method to `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in `src/Common/Sorcha.ServiceClients/Register/RegisterServiceClient.cs`
 - [x] T006 Wire status reporting into `ProcessSubscriptionAsync` state transitions in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — call `ReportSyncStatusToRegisterServiceAsync` on each state change (Subscribing→Syncing, Syncing→FullyReplicated, errors)
-- [ ] T007 [P] Write tests for sync state → RegisterStatus mapping in `tests/Sorcha.Register.Core.Tests/` — test all 5 transitions from data-model.md
+- [x] T007 [P] Write tests for sync state → RegisterStatus mapping in `tests/Sorcha.Register.Core.Tests/` — test all 5 transitions from data-model.md
 
 **Checkpoint**: Peer sync state changes now propagate to Register Service and update RegisterStatus
 
@@ -49,13 +49,13 @@
 ### Tests for User Story 1
 
 - [ ] T008 [P] [US1] Write tests for offline debounce logic (30s grace period, cancellation on reconnect) in `tests/Sorcha.Peer.Service.Tests/Replication/OfflineDebounceTests.cs`
-- [ ] T009 [P] [US1] Write tests for RegisterStatus lifecycle transitions in `tests/Sorcha.Register.Core.Tests/Managers/RegisterStatusLifecycleTests.cs`
+- [x] T009 [P] [US1] Write tests for RegisterStatus lifecycle transitions in `tests/Sorcha.Register.Core.Tests/Managers/RegisterStatusLifecycleTests.cs`
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Implement offline debounce in Peer Service: add `ConcurrentDictionary<string, CancellationTokenSource>` for per-register debounce timers in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — when all source peers unreachable, start 30s timer; cancel if reconnected within window
-- [ ] T011 [US1] Report Offline status to Register Service when debounce timer expires in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
-- [ ] T012 [US1] Report Checking status when reconnected peer detected (debounce cancelled) in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
+- [x] T010 [US1] Implement offline debounce in Peer Service: add `ConcurrentDictionary<string, CancellationTokenSource>` for per-register debounce timers in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — when all source peers unreachable, start 30s timer; cancel if reconnected within window
+- [x] T011 [US1] Report Offline status to Register Service when debounce timer expires in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
+- [x] T012 [US1] Report Checking status when reconnected peer detected (debounce cancelled) in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
 - [x] T013 [US1] Update subscription handler in `src/Services/Sorcha.Register.Service/Program.cs` (lines 256-399) — set initial register status to Checking on subscribe action, not just create stub
 - [x] T014 [US1] Update register list placeholder in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor` — use RegisterStatus.Recovery (not "Subscribing" text) for subscribed-but-not-synced registers, show Checking for just-subscribed
 
@@ -106,7 +106,7 @@
 
 ### Tests for User Story 4
 
-- [ ] T024 [P] [US4] Write test for DevMode one-way disable in `tests/Sorcha.Register.Core.Tests/Managers/DevModeDisableTests.cs` — verify DevMode can go true→false but not false→true
+- [x] T024 [P] [US4] Write test for DevMode one-way disable in `tests/Sorcha.Register.Core.Tests/Managers/DevModeDisableTests.cs` — verify DevMode can go true→false but not false→true
 
 ### Implementation for User Story 4
 
@@ -114,8 +114,8 @@
 - [x] T026 [P] [US4] Add DevMode field to `RegisterViewModel` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Registers/RegisterViewModel.cs` and populate from register API response
 - [x] T027 [US4] Add `POST /api/registers/{registerId}/disable-dev-mode` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — RequireAdministrator auth, call `RegisterManager`, return 409 if already disabled
 - [x] T028 [US4] Add `DisableDevModeAsync` to `src/Core/Sorcha.Register.Core/Managers/RegisterManager.cs` — set DevMode=false, reject if already false (idempotent), publish governance control-chain transaction
-- [ ] T029 [US4] Add encryption enable switch to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterPolicyTab.razor` — `MudSwitch` disabled when DevMode=false, confirmation dialog via `DialogService.ShowMessageBoxAsync` warning one-way nature and that existing transactions remain unencrypted
-- [ ] T030 [US4] Wire switch to call disable-dev-mode endpoint from `RegisterPolicyTab.razor` — on confirm, call API, refresh policy display, lock switch
+- [x] T029 [US4] Add encryption enable switch to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterPolicyTab.razor` — `MudSwitch` disabled when DevMode=false, confirmation dialog via `DialogService.ShowMessageBoxAsync` warning one-way nature and that existing transactions remain unencrypted
+- [x] T030 [US4] Wire switch to call disable-dev-mode endpoint from `RegisterPolicyTab.razor` — on confirm, call API, refresh policy display, lock switch
 
 **Checkpoint**: Unencrypted registers display warning, encryption can be enabled once (irreversible)
 
@@ -125,7 +125,7 @@
 
 - [x] T031 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI `.WithSummary()` and `.WithDescription()` to new disable-dev-mode endpoint
 - [x] T032 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI docs to internal register-sync-status endpoint
-- [ ] T033 Add structured logging for all status transitions in Peer Service and Register Service
+- [x] T033 Add structured logging for all status transitions in Peer Service and Register Service
 - [ ] T034 Run `scripts/check-clean-install.sh` to validate deployment after changes
 - [ ] T035 Update `docs/reference/API-DOCUMENTATION.md` with new endpoints
 - [ ] T036 Docker rebuild and multi-node sync test per quickstart.md test scenarios
