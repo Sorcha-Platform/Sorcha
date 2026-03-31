@@ -19,8 +19,8 @@
 
 **Purpose**: No new projects needed. This phase ensures prerequisite understanding.
 
-- [ ] T001 Read existing sync state flow: `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`, `src/Services/Sorcha.Peer.Service/Core/RegisterSyncState.cs`, `src/Core/Sorcha.Register.Core/Managers/RegisterManager.cs` (UpdateRegisterStatusAsync + UpdateSyncStateAsync)
-- [ ] T002 Read existing UI components: `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` (notification boxes lines 59-98), `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterPolicyTab.razor`
+- [x] T001 Read existing sync state flow: `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`, `src/Services/Sorcha.Peer.Service/Core/RegisterSyncState.cs`, `src/Core/Sorcha.Register.Core/Managers/RegisterManager.cs` (UpdateRegisterStatusAsync + UpdateSyncStateAsync)
+- [x] T002 Read existing UI components: `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` (notification boxes lines 59-98), `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterPolicyTab.razor`
 
 ---
 
@@ -30,10 +30,10 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Add sync-status reporting method to Peer Service: create `ReportSyncStatusToRegisterServiceAsync(registerId, syncState, peerConnectionActive)` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — calls Register Service internal endpoint via IRegisterServiceClient
-- [ ] T004 Add internal endpoint `POST /api/internal/register-sync-status` in `src/Services/Sorcha.Register.Service/Program.cs` — receives sync state from Peer Service, maps to RegisterStatus (Subscribing→Checking, Syncing→Recovery, FullyReplicated/Active→Online, Error→Offline), calls `RegisterManager.UpdateRegisterStatusAsync()`
-- [ ] T005 Add `ReportSyncStatusAsync` method to `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in `src/Common/Sorcha.ServiceClients/Register/RegisterServiceClient.cs`
-- [ ] T006 Wire status reporting into `ProcessSubscriptionAsync` state transitions in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — call `ReportSyncStatusToRegisterServiceAsync` on each state change (Subscribing→Syncing, Syncing→FullyReplicated, errors)
+- [x] T003 Add sync-status reporting method to Peer Service: create `ReportSyncStatusToRegisterServiceAsync(registerId, syncState, peerConnectionActive)` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — calls Register Service internal endpoint via IRegisterServiceClient
+- [x] T004 Add internal endpoint `POST /api/internal/register-sync-status` in `src/Services/Sorcha.Register.Service/Program.cs` — receives sync state from Peer Service, maps to RegisterStatus (Subscribing→Checking, Syncing→Recovery, FullyReplicated/Active→Online, Error→Offline), calls `RegisterManager.UpdateRegisterStatusAsync()`
+- [x] T005 Add `ReportSyncStatusAsync` method to `src/Common/Sorcha.ServiceClients/Register/IRegisterServiceClient.cs` and implement in `src/Common/Sorcha.ServiceClients/Register/RegisterServiceClient.cs`
+- [x] T006 Wire status reporting into `ProcessSubscriptionAsync` state transitions in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — call `ReportSyncStatusToRegisterServiceAsync` on each state change (Subscribing→Syncing, Syncing→FullyReplicated, errors)
 - [ ] T007 [P] Write tests for sync state → RegisterStatus mapping in `tests/Sorcha.Register.Core.Tests/` — test all 5 transitions from data-model.md
 
 **Checkpoint**: Peer sync state changes now propagate to Register Service and update RegisterStatus
@@ -56,8 +56,8 @@
 - [ ] T010 [US1] Implement offline debounce in Peer Service: add `ConcurrentDictionary<string, CancellationTokenSource>` for per-register debounce timers in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — when all source peers unreachable, start 30s timer; cancel if reconnected within window
 - [ ] T011 [US1] Report Offline status to Register Service when debounce timer expires in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
 - [ ] T012 [US1] Report Checking status when reconnected peer detected (debounce cancelled) in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
-- [ ] T013 [US1] Update subscription handler in `src/Services/Sorcha.Register.Service/Program.cs` (lines 256-399) — set initial register status to Checking on subscribe action, not just create stub
-- [ ] T014 [US1] Update register list placeholder in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor` — use RegisterStatus.Recovery (not "Subscribing" text) for subscribed-but-not-synced registers, show Checking for just-subscribed
+- [x] T013 [US1] Update subscription handler in `src/Services/Sorcha.Register.Service/Program.cs` (lines 256-399) — set initial register status to Checking on subscribe action, not just create stub
+- [x] T014 [US1] Update register list placeholder in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Index.razor` — use RegisterStatus.Recovery (not "Subscribing" text) for subscribed-but-not-synced registers, show Checking for just-subscribed
 
 **Checkpoint**: Register status accurately reflects sync lifecycle including offline debounce
 
@@ -71,9 +71,9 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Remove notification box markup and counter state from `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — delete lines 59-98 (MudAlert blocks), remove `_newTransactionsCount` and `_newDocketsCount` fields
-- [ ] T016 [US2] Modify `OnTransactionConfirmedAsync` handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — instead of incrementing counter, fetch transaction details and prepend to `_transactions` list, call `StateHasChanged()`
-- [ ] T017 [US2] Modify `OnDocketSealedAsync` handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — fetch docket details and prepend to `_dockets` list, call `StateHasChanged()`
+- [x] T015 [US2] Remove notification box markup and counter state from `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — delete lines 59-98 (MudAlert blocks), remove `_newTransactionsCount` and `_newDocketsCount` fields
+- [x] T016 [US2] Modify `OnTransactionConfirmedAsync` handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — instead of incrementing counter, fetch transaction details and prepend to `_transactions` list, call `StateHasChanged()`
+- [x] T017 [US2] Modify `OnDocketSealedAsync` handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — fetch docket details and prepend to `_dockets` list, call `StateHasChanged()`
 - [ ] T018 [US2] Add 100ms batching buffer for rapid updates in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Registers/Detail.razor` — use `Timer` to collect multiple events and apply as single batch to avoid excessive re-renders
 - [ ] T019 [US2] Ensure scroll position preservation — prepending to list should not change the user's current scroll offset (verify MudTable behaviour, add JS interop if needed)
 
@@ -89,9 +89,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Add `ManualResetEventSlim _immediateSync` signal field to `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
-- [ ] T021 [US3] Modify `ExecuteAsync` loop in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — wait on both `timer.WaitForNextTickAsync` and `_immediateSync.Wait` using `Task.WhenAny`, reset signal after processing
-- [ ] T022 [US3] Signal `_immediateSync` from `SubscribeToRegisterAsync` method in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` after adding subscription
+- [x] T020 [US3] Add `ManualResetEventSlim _immediateSync` signal field to `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs`
+- [x] T021 [US3] Modify `ExecuteAsync` loop in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` — wait on both `timer.WaitForNextTickAsync` and `_immediateSync.Wait` using `Task.WhenAny`, reset signal after processing
+- [x] T022 [US3] Signal `_immediateSync` from `SubscribeToRegisterAsync` method in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs` after adding subscription
 - [ ] T023 [P] [US3] Write test verifying immediate sync trigger in `tests/Sorcha.Peer.Service.Tests/Replication/ImmediateSyncTriggerTests.cs`
 
 **Checkpoint**: Subscriptions trigger sync immediately, periodic timer still handles retries
@@ -110,10 +110,10 @@
 
 ### Implementation for User Story 4
 
-- [ ] T025 [P] [US4] Add warning icon to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterCard.razor` — show `Icons.Material.Filled.Warning` (amber) with `MudTooltip` "Unencrypted - update the policy to enable field-level encryption" when register DevMode=true
-- [ ] T026 [P] [US4] Add DevMode field to `RegisterViewModel` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Registers/RegisterViewModel.cs` and populate from register API response
-- [ ] T027 [US4] Add `POST /api/registers/{registerId}/disable-dev-mode` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — RequireAdministrator auth, call `RegisterManager`, return 409 if already disabled
-- [ ] T028 [US4] Add `DisableDevModeAsync` to `src/Core/Sorcha.Register.Core/Managers/RegisterManager.cs` — set DevMode=false, reject if already false (idempotent), publish governance control-chain transaction
+- [x] T025 [P] [US4] Add warning icon to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterCard.razor` — show `Icons.Material.Filled.Warning` (amber) with `MudTooltip` "Unencrypted - update the policy to enable field-level encryption" when register DevMode=true
+- [x] T026 [P] [US4] Add DevMode field to `RegisterViewModel` in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Registers/RegisterViewModel.cs` and populate from register API response
+- [x] T027 [US4] Add `POST /api/registers/{registerId}/disable-dev-mode` endpoint in `src/Services/Sorcha.Register.Service/Program.cs` — RequireAdministrator auth, call `RegisterManager`, return 409 if already disabled
+- [x] T028 [US4] Add `DisableDevModeAsync` to `src/Core/Sorcha.Register.Core/Managers/RegisterManager.cs` — set DevMode=false, reject if already false (idempotent), publish governance control-chain transaction
 - [ ] T029 [US4] Add encryption enable switch to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Registers/RegisterPolicyTab.razor` — `MudSwitch` disabled when DevMode=false, confirmation dialog via `DialogService.ShowMessageBoxAsync` warning one-way nature and that existing transactions remain unencrypted
 - [ ] T030 [US4] Wire switch to call disable-dev-mode endpoint from `RegisterPolicyTab.razor` — on confirm, call API, refresh policy display, lock switch
 
@@ -123,8 +123,8 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T031 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI `.WithSummary()` and `.WithDescription()` to new disable-dev-mode endpoint
-- [ ] T032 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI docs to internal register-sync-status endpoint
+- [x] T031 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI `.WithSummary()` and `.WithDescription()` to new disable-dev-mode endpoint
+- [x] T032 [P] Update `src/Services/Sorcha.Register.Service/Program.cs` — add OpenAPI docs to internal register-sync-status endpoint
 - [ ] T033 Add structured logging for all status transitions in Peer Service and Register Service
 - [ ] T034 Run `scripts/check-clean-install.sh` to validate deployment after changes
 - [ ] T035 Update `docs/reference/API-DOCUMENTATION.md` with new endpoints
