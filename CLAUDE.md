@@ -163,6 +163,54 @@ Private register invitation system using cryptographic envelopes (ED25519 sign +
 
 ---
 
+## Trust Hardening API (Feature 079)
+
+Transaction receipts, Merkle inclusion proofs, revocation transactions, and offline verification bundles. All operate on transaction envelopes (FLE-compatible).
+
+### Transaction Receipts & Proofs (Register Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/registers/{registerId}/receipts/batch` | Store receipt batch (internal) |
+| GET | `/registers/{registerId}/transactions/{txId}/receipt` | Get receipt by tx ID |
+| GET | `/registers/{registerId}/dockets/{docketNumber}/receipts` | List docket receipts |
+| POST | `/registers/{registerId}/receipts/verify` | Verify receipt (public) |
+| GET | `/registers/{registerId}/transactions/{txId}/inclusion-proof` | Generate Merkle proof |
+| POST | `/registers/{registerId}/inclusion-proofs/verify` | Verify proof (public) |
+
+### Revocation & Status (Register Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/registers/{registerId}/transactions/revoke` | Submit revocation |
+| GET | `/registers/{registerId}/transactions/{txId}/status` | Get lifecycle status (active/revoked/superseded) |
+
+### Verification Bundles (Register Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable bundle |
+| POST | `/registers/{registerId}/verification-bundles/verify` | Verify bundle (public) |
+
+### Key Models
+
+- **TransactionReceipt**: Signed attestation of finality with embedded Merkle inclusion proof and validator signature(s)
+- **MerkleInclusionProof**: Compact proof (log2(n) steps) of transaction inclusion in a docket
+- **RevocationPayload**: Revocation reason + target tx reference (Superseded/Erroneous/Compromised/Expired/Withdrawn/Regulatory)
+- **VerificationBundle**: Portable package (VC + receipt + proof + revocation status) for offline verification
+- **TransactionLifecycleStatus**: Active, Revoked, or Superseded
+
+### Transaction Lifecycle Ticks (Wallet Service)
+
+WhatsApp-style delivery indicators tracked per-wallet:
+- Grey tick: Submitted (Pending)
+- Blue tick: Sealed in docket (Confirmed)
+- Double blue ticks: Receipt confirmed (Receipted)
+
+`WalletTransaction` entity tracks both outbound (signed) and inbound (recipient) transactions.
+
+---
+
 ## Platform Organisation Topology API
 
 Three-tier org topology: system admin org, public org (social login + email/password), and private orgs. `PlatformUser` is the cross-org identity anchor; `UserIdentity` handles per-org authorisation.

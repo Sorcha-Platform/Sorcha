@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.6
-**Last Updated:** 2026-03-30
+**Version:** 7.7
+**Last Updated:** 2026-03-31
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -19,7 +19,7 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
 **Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications)
-**Remaining:** 68 tasks across 7 themes
+**Remaining:** 65 tasks across 7 themes (TRUST-3/4/5 completed in Feature 079)
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -122,9 +122,9 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 |---|------|----------|--------|--------|-------|
 | TRUST-001 | Verifiable calculations — Validator re-executes JSON Logic | P2 | 32h | 🔬 Research | Compromised Blueprint Service could submit incorrect values |
 | TRUST-002 | Validator-enforced disclosure — verify disclosed fields match rules | P2 | 24h | 🔬 Research | Disclosure currently enforced at app layer only |
-| TRUST-003 | Transaction receipts — signed finality proofs | P2 | 16h | 🔬 Research | Submitter has no cryptographic proof of inclusion |
-| TRUST-004 | Merkle inclusion proofs — lightweight offline verification | P2 | 16h | 🔬 Research | Currently requires fetching entire docket |
-| TRUST-005 | Revocation & amendment model — supersede/amend transactions | P2 | 24h | 🔬 Research | No structural mechanism for on-chain correction |
+| TRUST-003 | Transaction receipts — signed finality proofs | P2 | 16h | ✅ | Feature 079 — receipts generated during docket sealing, signed by Validator, stored in MongoDB, pushed via SignalR |
+| TRUST-004 | Merkle inclusion proofs — lightweight offline verification | P2 | 16h | ✅ | Feature 079 — on-demand proof generation, portable verification in Validator.Core, verification bundles |
+| TRUST-005 | Revocation & amendment model — supersede/amend transactions | P2 | 24h | ✅ | Feature 079 — TransactionType.Revocation, per-tx revocation with authority check, status endpoint, irrevocable |
 
 > **Tier 2-3** (TRUST-6 through TRUST-10: consensus finality, cross-register references, audit trails, timestamps, key rotation) remain in [deferred-tasks.md](tasks/deferred-tasks.md) for post-release.
 
@@ -217,6 +217,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | Feature 065 | ✅ | **Register Invitations** — Private register invitation system with cryptographic envelope (ED25519 sign + X25519 encrypt via Wallet Service). 4 Minimal API endpoints (create/accept/list/revoke), Organization DID support (`did:sorcha:org:{address}`), nonce replay protection with unique DB index, rate limiting (50 pending/10 per hour), InvitationNonce + RegisterInvitationRecord entities, EF Core migration, API Gateway YARP routes, `SubscriptionType.Invited`. 19 unit tests. |
 | Feature 075 | ✅ | **FLE Completion & Crypto Progress UX** — Per-recipient SignalR events from encryption pipeline (RecipientEncryptionNotification), floating CryptoProgressPopover UI (expanded/minimised/dismissed), EncryptionOperationTracker scoped service, DevMode unit tests (initiation, toggle, plaintext path), FLE disclosure group tests (grouping, key resolution, atomic failure), actionable error feedback with retry, DisplayName resolution from blueprint participants. 35+ new tests. |
 | Feature 077 | ✅ | **Auto-Register Participant & PlatformUser Provisioning** — Auto-link wallet during creation (ParticipantService.AutoLinkWalletAsync, VerificationMethod="self-created", fire-and-forget from Wallet Service), admin user provisioning (POST /api/platform/users creates PlatformUser + UserIdentity + OrgMembership atomically), admin password reset (PUT /api/platform/users/{id}/password with NIST policy). 20+ tests. |
+| Feature 079 | ✅ | **Trust Hardening: Receipts, Proofs & Revocation (TRUST-3/4/5)** — Transaction receipts (signed finality proofs generated at docket sealing, stored in MongoDB, pushed via SignalR), Merkle inclusion proofs (on-demand generation, positional verification, portable in Validator.Core), revocation transactions (TransactionType.Revocation, authority check via original signer or governance roster, status endpoint), verification bundles (portable offline verification with 4-check pipeline), transaction lifecycle ticks (WhatsApp-style grey/blue/double-blue delivery indicators, WalletTransaction entity with outbound/inbound tracking, Redis event bridge). 97+ tests. |
 
 ### Release Gating
 
@@ -230,6 +231,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.6
-**Last Updated:** 2026-03-30
+**Version:** 7.7
+**Last Updated:** 2026-03-31
 **Document Owner:** Sorcha Architecture Team
