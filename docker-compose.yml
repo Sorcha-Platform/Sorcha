@@ -344,6 +344,7 @@ services:
       ServiceAuth__ClientSecret: peer-service-secret
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
+      ServiceClients__RegisterService__Address: http://register-service:8080
       # Node identity and network configuration
       PeerService__NodeId: "${PEER_NODE_ID:-local-peer.sorcha.dev}"
       PeerService__PublicAddress: "${PEER_PUBLIC_ADDRESS:-}"
