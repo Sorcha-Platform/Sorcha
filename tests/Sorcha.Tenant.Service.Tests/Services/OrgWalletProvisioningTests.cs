@@ -50,7 +50,9 @@ public class OrgWalletProvisioningTests : IDisposable
     private OrgWalletReconciliationService CreateService()
     {
         var scopeFactory = _serviceProvider.GetRequiredService<IServiceScopeFactory>();
-        return new OrgWalletReconciliationService(scopeFactory, _loggerMock.Object)
+        var dbReady = new DatabaseReadySignal();
+        dbReady.Signal(); // Tests don't need to wait for migrations
+        return new OrgWalletReconciliationService(scopeFactory, dbReady, _loggerMock.Object)
         {
             ScanInterval = TimeSpan.FromMilliseconds(50),
             MaxRetries = 5,

@@ -23,6 +23,7 @@ public static class WebApplicationExtensions
     /// </summary>
     public static IServiceCollection AddDatabaseInitializer(this IServiceCollection services)
     {
+        services.AddSingleton<DatabaseReadySignal>();
         services.AddSingleton<DatabaseInitializer>();
         services.AddHostedService<DatabaseInitializerHostedService>();
         return services;

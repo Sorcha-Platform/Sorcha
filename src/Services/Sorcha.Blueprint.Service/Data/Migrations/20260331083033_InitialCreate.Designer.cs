@@ -12,7 +12,7 @@ using Sorcha.Blueprint.Service.Data;
 namespace Sorcha.Blueprint.Service.Data.Migrations
 {
     [DbContext(typeof(BlueprintDbContext))]
-    [Migration("20260324144948_InitialCreate")]
+    [Migration("20260331083033_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />

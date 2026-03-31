@@ -16,6 +16,7 @@ namespace Sorcha.Tenant.Service.Services;
 public class OrgWalletReconciliationService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly DatabaseReadySignal _dbReady;
     private readonly ILogger<OrgWalletReconciliationService> _logger;
 
     /// <summary>
@@ -41,15 +42,20 @@ public class OrgWalletReconciliationService : BackgroundService
 
     public OrgWalletReconciliationService(
         IServiceScopeFactory scopeFactory,
+        DatabaseReadySignal dbReady,
         ILogger<OrgWalletReconciliationService> logger)
     {
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _dbReady = dbReady ?? throw new ArgumentNullException(nameof(dbReady));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Organization wallet reconciliation service starting");
+
+        // Wait for database migrations and seeding to complete before querying
+        await _dbReady.WaitAsync(stoppingToken);
 
         using var timer = new PeriodicTimer(ScanInterval);
 

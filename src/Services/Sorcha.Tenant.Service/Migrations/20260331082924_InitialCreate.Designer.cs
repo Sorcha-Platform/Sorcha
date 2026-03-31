@@ -14,7 +14,7 @@ using Sorcha.Tenant.Service.Data;
 namespace Sorcha.Tenant.Service.Migrations
 {
     [DbContext(typeof(TenantDbContext))]
-    [Migration("20260323225540_InitialCreate")]
+    [Migration("20260331082924_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -340,6 +340,13 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("VerificationMethod")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("challenge-verify");
 
                     b.Property<string>("WalletAddress")
                         .IsRequired()
