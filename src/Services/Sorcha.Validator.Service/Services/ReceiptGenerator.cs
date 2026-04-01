@@ -14,22 +14,6 @@ using Sorcha.Validator.Core;
 namespace Sorcha.Validator.Service.Services;
 
 /// <summary>
-/// Interface for generating transaction receipts during docket sealing.
-/// </summary>
-public interface IReceiptGenerator
-{
-    /// <summary>
-    /// Generates signed receipts for all transactions in a confirmed docket.
-    /// </summary>
-    /// <param name="docket">The confirmed docket.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Array of signed receipts, one per transaction.</returns>
-    Task<TransactionReceipt[]> GenerateReceiptsForDocketAsync(
-        Sorcha.Validator.Service.Models.Docket docket,
-        CancellationToken ct = default);
-}
-
-/// <summary>
 /// Generates signed transaction receipts with Merkle inclusion proofs.
 /// Called by DocketDistributor after successful docket persistence.
 /// </summary>

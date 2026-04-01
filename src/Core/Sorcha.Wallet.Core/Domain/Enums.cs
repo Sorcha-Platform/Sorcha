@@ -105,3 +105,19 @@ public enum TransactionState
     /// </summary>
     Receipted
 }
+
+/// <summary>
+/// Represents the direction of a wallet transaction
+/// </summary>
+public enum TransactionDirection
+{
+    /// <summary>
+    /// Transaction was signed by the wallet (outgoing)
+    /// </summary>
+    Outbound,
+
+    /// <summary>
+    /// Transaction was received by the wallet (incoming)
+    /// </summary>
+    Inbound
+}

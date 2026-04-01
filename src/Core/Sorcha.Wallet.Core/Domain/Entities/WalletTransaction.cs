@@ -76,7 +76,7 @@ public class WalletTransaction
     /// <summary>
     /// Transaction direction: Outbound (wallet signed it) or Inbound (wallet is recipient)
     /// </summary>
-    public string Direction { get; set; } = "Outbound";
+    public TransactionDirection Direction { get; set; } = TransactionDirection.Outbound;
 
     /// <summary>
     /// Custom metadata

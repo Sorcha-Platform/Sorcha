@@ -48,7 +48,7 @@ public class TransactionLifecycleService : ITransactionLifecycleService
             ParentWalletAddress = walletAddress,
             TransactionType = "sent",
             RegisterId = registerId,
-            Direction = "Outbound",
+            Direction = TransactionDirection.Outbound,
             CounterpartyAddress = counterpartyAddress,
             State = TransactionState.Submitted,
             CreatedAt = DateTime.UtcNow
@@ -80,7 +80,7 @@ public class TransactionLifecycleService : ITransactionLifecycleService
             ParentWalletAddress = walletAddress,
             TransactionType = "received",
             RegisterId = registerId,
-            Direction = "Inbound",
+            Direction = TransactionDirection.Inbound,
             CounterpartyAddress = counterpartyAddress,
             State = TransactionState.Submitted,
             CreatedAt = DateTime.UtcNow

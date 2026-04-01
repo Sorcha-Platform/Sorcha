@@ -24,6 +24,7 @@ public record ReceiptValidationResult
     public required bool SignatureValid { get; init; }
     public required bool InclusionProofValid { get; init; }
     public required bool MerkleRootConsistent { get; init; }
+    public bool SignatureCheckSkipped { get; init; }
     public List<string> Errors { get; init; } = [];
 }
 
@@ -63,14 +64,16 @@ public class ReceiptValidator
         bool inclusionProofValid = false;
         bool merkleRootConsistent = false;
 
-        // Check 1: Verify at least one validator signature
-        if (receipt.Signatures.Count == 0)
+        // Check 1: Verify at least one validator signature (skipped when no verification func provided)
+        bool signatureCheckApplicable = _verifySignature != null;
+
+        if (!signatureCheckApplicable)
+        {
+            // Proof-only mode — skip signature checking
+        }
+        else if (receipt.Signatures.Count == 0)
         {
             errors.Add("Receipt has no validator signatures");
-        }
-        else if (_verifySignature == null)
-        {
-            errors.Add("No signature verification function provided");
         }
         else
         {
@@ -111,10 +114,11 @@ public class ReceiptValidator
 
         return new ReceiptValidationResult
         {
-            IsValid = signatureValid && inclusionProofValid && merkleRootConsistent,
+            IsValid = (!signatureCheckApplicable || signatureValid) && inclusionProofValid && merkleRootConsistent,
             SignatureValid = signatureValid,
             InclusionProofValid = inclusionProofValid,
             MerkleRootConsistent = merkleRootConsistent,
+            SignatureCheckSkipped = !signatureCheckApplicable,
             Errors = errors
         };
     }

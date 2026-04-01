@@ -1319,6 +1319,19 @@ public class ValidationEngine : IValidationEngine
                 return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
+            // Check not already revoked (cheap DB query — run before expensive authority check)
+            var existingRevocations = await _registerClient.GetTransactionsByPrevTxIdAsync(
+                transaction.RegisterId, revocationPayload.OriginalTxId, 1, 10, ct);
+            var existingRevocation = existingRevocations?.Transactions?.FirstOrDefault(t =>
+                t.MetaData?.TransactionType == Register.Models.Enums.TransactionType.Revocation);
+            if (existingRevocation != null)
+            {
+                errors.Add(CreateError("VAL_REV_003",
+                    $"Transaction {revocationPayload.OriginalTxId} is already revoked by {existingRevocation.TxId}",
+                    ValidationErrorCategory.Structure, "OriginalTxId"));
+                return CreateFailureResult(transaction, sw.Elapsed, errors);
+            }
+
             // Check authority: revoker must be original signer or governance roster Owner/Admin
             var revokerWallet = transaction.Signatures?.FirstOrDefault()?.SignedBy;
             var targetSender = targetTx.SenderWallet;
@@ -1335,19 +1348,6 @@ public class ValidationEngine : IValidationEngine
                         ValidationErrorCategory.Structure, "Signature"));
                     return CreateFailureResult(transaction, sw.Elapsed, errors);
                 }
-            }
-
-            // Check not already revoked
-            var existingRevocations = await _registerClient.GetTransactionsByPrevTxIdAsync(
-                transaction.RegisterId, revocationPayload.OriginalTxId, 1, 10, ct);
-            var existingRevocation = existingRevocations?.Transactions?.FirstOrDefault(t =>
-                t.MetaData?.TransactionType == Register.Models.Enums.TransactionType.Revocation);
-            if (existingRevocation != null)
-            {
-                errors.Add(CreateError("VAL_REV_003",
-                    $"Transaction {revocationPayload.OriginalTxId} is already revoked by {existingRevocation.TxId}",
-                    ValidationErrorCategory.Structure, "OriginalTxId"));
-                return CreateFailureResult(transaction, sw.Elapsed, errors);
             }
 
             _logger.LogDebug(

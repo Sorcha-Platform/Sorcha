@@ -61,7 +61,7 @@ public class TransactionLifecycleServiceTests : IDisposable
         record.ParentWalletAddress.Should().Be(walletAddress);
         record.RegisterId.Should().Be(registerId);
         record.TransactionType.Should().Be("sent");
-        record.Direction.Should().Be("Outbound");
+        record.Direction.Should().Be(TransactionDirection.Outbound);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public class TransactionLifecycleServiceTests : IDisposable
                 ParentWalletAddress = walletAddress,
                 TransactionType = "sent",
                 RegisterId = "reg-001",
-                Direction = "Outbound",
+                Direction = TransactionDirection.Outbound,
                 State = TransactionState.Submitted,
                 CreatedAt = DateTime.UtcNow.AddMinutes(-10 + i) // increasing times
             };

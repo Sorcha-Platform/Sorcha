@@ -330,7 +330,13 @@ public class MongoRegisterRepository : IRegisterRepository
             new(Builders<TransactionModel>.IndexKeys.Ascending(t => t.PrevTxId)),
 
             // Index for transaction type queries (participant record lookups)
-            new(Builders<TransactionModel>.IndexKeys.Ascending("MetaData.TransactionType"))
+            new(Builders<TransactionModel>.IndexKeys.Ascending("MetaData.TransactionType")),
+
+            // Compound index for revocation lookups by original transaction ID
+            new(Builders<TransactionModel>.IndexKeys
+                .Ascending("MetaData.TransactionType")
+                .Ascending("MetaData.TrackingData.originalTxId"),
+                new CreateIndexOptions { Name = "IX_Transactions_Revocation_OriginalTxId" })
         };
         await collection.Indexes.CreateManyAsync(transactionIndexes);
     }

@@ -235,6 +235,14 @@ public class DocketDistributor : IDocketDistributor
                 docket.DocketNumber);
             return false;
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Interlocked.Increment(ref _failedRegisterSubmissions);
+            _logger.LogError(ex,
+                "Failed to submit docket {DocketNumber} to Register Service",
+                docket.DocketNumber);
+            return false;
+        }
     }
 
     /// <inheritdoc/>

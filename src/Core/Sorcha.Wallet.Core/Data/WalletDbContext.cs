@@ -363,8 +363,9 @@ public class WalletDbContext : DbContext
                 .HasColumnType("text");
 
             entity.Property(e => e.Direction)
+                .HasConversion<string>()
                 .HasMaxLength(20)
-                .HasDefaultValue("Outbound");
+                .HasDefaultValue(TransactionDirection.Outbound);
 
             // JSON column for metadata
             entity.Property(e => e.Metadata)
