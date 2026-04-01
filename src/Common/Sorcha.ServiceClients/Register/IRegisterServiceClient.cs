@@ -36,6 +36,24 @@ public interface IRegisterServiceClient
         DocketModel docket,
         CancellationToken cancellationToken = default);
 
+    // =========================================================================
+    // Receipt Operations
+    // =========================================================================
+
+    /// <summary>
+    /// Writes a batch of receipts to the Register Service.
+    /// </summary>
+    /// <param name="registerId">Register ID</param>
+    /// <param name="docketNumber">Docket number the receipts belong to</param>
+    /// <param name="receipts">Transaction receipts to store</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if write succeeded</returns>
+    Task<bool> WriteReceiptBatchAsync(
+        string registerId,
+        long docketNumber,
+        TransactionReceipt[] receipts,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Reads a docket by number from the Register Service
     /// </summary>

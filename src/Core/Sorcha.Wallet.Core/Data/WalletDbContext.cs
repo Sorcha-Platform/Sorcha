@@ -352,6 +352,21 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.RawTransaction)
                 .HasColumnType("text");
 
+            // Transaction lifecycle fields
+            entity.Property(e => e.RegisterId)
+                .HasMaxLength(256);
+
+            entity.Property(e => e.ReceiptId)
+                .HasMaxLength(256);
+
+            entity.Property(e => e.CounterpartyAddress)
+                .HasColumnType("text");
+
+            entity.Property(e => e.Direction)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .HasDefaultValue(TransactionDirection.Outbound);
+
             // JSON column for metadata
             entity.Property(e => e.Metadata)
                 .HasColumnType("jsonb");

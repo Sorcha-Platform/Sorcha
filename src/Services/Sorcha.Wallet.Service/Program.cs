@@ -54,6 +54,11 @@ builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.Noti
 // Feature 047: Digest notification batching (US5)
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.NotificationDigestWorker>();
 
+// Feature 079: Transaction lifecycle tracking (TRUST-3/4/5)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ITransactionLifecycleService,
+    Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleService>();
+builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleEventBridge>();
+
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
 

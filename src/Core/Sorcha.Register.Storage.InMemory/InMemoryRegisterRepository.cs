@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 
 namespace Sorcha.Register.Storage.InMemory;
 
@@ -16,6 +17,7 @@ public class InMemoryRegisterRepository : IRegisterRepository
     private readonly ConcurrentDictionary<string, Models.Register> _registers = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TransactionModel>> _transactions = new();
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<ulong, Docket>> _dockets = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, TransactionReceipt>> _receipts = new();
 
     // ===========================
     // Register Operations
@@ -306,5 +308,93 @@ public class InMemoryRegisterRepository : IRegisterRepository
             .OrderByDescending(t => t.TimeStamp)
             .ToList();
         return Task.FromResult(result);
+    }
+
+    // ===========================
+    // Receipt Operations
+    // ===========================
+
+    public Task InsertReceiptsAsync(
+        IEnumerable<TransactionReceipt> receipts,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var receipt in receipts)
+        {
+            if (!_receipts.TryGetValue(receipt.RegisterId, out var registerReceipts))
+            {
+                registerReceipts = new ConcurrentDictionary<string, TransactionReceipt>();
+                _receipts.TryAdd(receipt.RegisterId, registerReceipts);
+            }
+
+            registerReceipts.TryAdd(receipt.TransactionId, receipt);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<TransactionReceipt?> GetReceiptByTxIdAsync(
+        string registerId,
+        string txId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_receipts.TryGetValue(registerId, out var registerReceipts))
+        {
+            return Task.FromResult<TransactionReceipt?>(null);
+        }
+
+        registerReceipts.TryGetValue(txId, out var receipt);
+        return Task.FromResult(receipt);
+    }
+
+    public Task<(IEnumerable<TransactionReceipt> Receipts, int Total)> GetReceiptsByDocketAsync(
+        string registerId,
+        long docketNumber,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_receipts.TryGetValue(registerId, out var registerReceipts))
+        {
+            return Task.FromResult<(IEnumerable<TransactionReceipt>, int)>(
+                (Enumerable.Empty<TransactionReceipt>(), 0));
+        }
+
+        var matching = registerReceipts.Values
+            .Where(r => r.DocketNumber == docketNumber)
+            .OrderBy(r => r.TransactionId)
+            .ToList();
+
+        var total = matching.Count;
+        var paged = matching
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return Task.FromResult<(IEnumerable<TransactionReceipt>, int)>((paged, total));
+    }
+
+    // ===========================
+    // Revocation Queries
+    // ===========================
+
+    /// <inheritdoc/>
+    public Task<TransactionModel?> FindRevocationForTransactionAsync(
+        string registerId,
+        string targetTxId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_transactions.TryGetValue(registerId, out var registerTransactions))
+        {
+            return Task.FromResult<TransactionModel?>(null);
+        }
+
+        var revocation = registerTransactions.Values
+            .FirstOrDefault(t =>
+                t.MetaData?.TransactionType == TransactionType.Revocation &&
+                t.MetaData?.TrackingData != null &&
+                t.MetaData.TrackingData.TryGetValue("originalTxId", out var origId) &&
+                string.Equals(origId, targetTxId, StringComparison.OrdinalIgnoreCase));
+
+        return Task.FromResult(revocation);
     }
 }

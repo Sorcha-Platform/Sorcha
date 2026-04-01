@@ -26,5 +26,10 @@ public enum TransactionType
     /// <summary>
     /// Participant transaction (published participant identity record)
     /// </summary>
-    Participant = 3
+    Participant = 3,
+
+    /// <summary>
+    /// Revocation transaction (supersedes or revokes a previously sealed transaction)
+    /// </summary>
+    Revocation = 4
 }

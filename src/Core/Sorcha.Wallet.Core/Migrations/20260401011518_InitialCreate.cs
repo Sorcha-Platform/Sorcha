@@ -199,6 +199,11 @@ namespace Sorcha.Wallet.Core.Migrations
                     ConfirmedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     BlockHeight = table.Column<long>(type: "bigint", nullable: true),
                     RawTransaction = table.Column<string>(type: "text", nullable: true),
+                    RegisterId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    ReceiptId = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
+                    ReceiptedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CounterpartyAddress = table.Column<string>(type: "text", nullable: true),
+                    Direction = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "Outbound"),
                     Metadata = table.Column<Dictionary<string, string>>(type: "jsonb", nullable: true)
                 },
                 constraints: table =>

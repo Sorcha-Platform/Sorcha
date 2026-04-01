@@ -53,6 +53,32 @@ public class WalletTransaction
     public string? RawTransaction { get; set; }
 
     /// <summary>
+    /// Register ID this transaction belongs to
+    /// </summary>
+    public string? RegisterId { get; set; }
+
+    /// <summary>
+    /// Receipt ID — set when a signed receipt is received (cryptographic proof of finality).
+    /// Presence of a receipt ID indicates the transaction has been receipted (double blue tick).
+    /// </summary>
+    public string? ReceiptId { get; set; }
+
+    /// <summary>
+    /// When the receipt was confirmed
+    /// </summary>
+    public DateTime? ReceiptedAt { get; set; }
+
+    /// <summary>
+    /// Counterparty wallet address (sender for inbound, recipient for outbound)
+    /// </summary>
+    public string? CounterpartyAddress { get; set; }
+
+    /// <summary>
+    /// Transaction direction: Outbound (wallet signed it) or Inbound (wallet is recipient)
+    /// </summary>
+    public TransactionDirection Direction { get; set; } = TransactionDirection.Outbound;
+
+    /// <summary>
     /// Custom metadata
     /// </summary>
     public Dictionary<string, string>? Metadata { get; set; }

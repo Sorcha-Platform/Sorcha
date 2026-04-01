@@ -125,4 +125,44 @@ public interface IReadOnlyRegisterRepository
         string registerId,
         string prevTxId,
         CancellationToken cancellationToken = default);
+
+    // ===========================
+    // Receipt Reads
+    // ===========================
+
+    /// <summary>
+    /// Gets a transaction receipt by transaction ID
+    /// </summary>
+    Task<TransactionReceipt?> GetReceiptByTxIdAsync(
+        string registerId,
+        string txId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets paginated receipts for a specific docket
+    /// </summary>
+    Task<(IEnumerable<TransactionReceipt> Receipts, int Total)> GetReceiptsByDocketAsync(
+        string registerId,
+        long docketNumber,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    // ===========================
+    // Revocation Queries
+    // ===========================
+
+    /// <summary>
+    /// Finds a revocation transaction that targets the specified transaction ID.
+    /// Searches for transactions with TransactionType.Revocation whose payload
+    /// contains an OriginalTxId matching the target.
+    /// </summary>
+    /// <param name="registerId">The register identifier.</param>
+    /// <param name="targetTxId">The transaction ID being checked for revocation.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The revocation transaction if found, null otherwise.</returns>
+    Task<TransactionModel?> FindRevocationForTransactionAsync(
+        string registerId,
+        string targetTxId,
+        CancellationToken cancellationToken = default);
 }

@@ -4,11 +4,13 @@
 using System.Linq.Expressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Sorcha.Register.Core.Storage;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Storage.MongoDB.Mappers;
 using Sorcha.Register.Storage.MongoDB.Serialization;
 using MongoModels = Sorcha.Register.Storage.MongoDB.Models;
@@ -269,6 +271,11 @@ public class MongoRegisterRepository : IRegisterRepository
         {
             await CreateTransactionIndexesAsync(_legacyTransactions);
             await CreateDocketIndexesAsync(_legacyDockets);
+
+            // Receipt indexes in legacy mode
+            var registryDatabase = _client.GetDatabase(_config.DatabaseName);
+            var legacyReceipts = registryDatabase.GetCollection<TransactionReceipt>("receipts");
+            await CreateReceiptIndexesAsync(legacyReceipts);
         }
 
         _logger.LogInformation("MongoDB indexes created successfully");
@@ -288,9 +295,11 @@ public class MongoRegisterRepository : IRegisterRepository
 
         var transactions = GetTransactionsCollection(registerId);
         var dockets = GetDocketsCollection(registerId);
+        var receipts = GetReceiptsCollection(registerId);
 
         await CreateTransactionIndexesAsync(transactions);
         await CreateDocketIndexesAsync(dockets);
+        await CreateReceiptIndexesAsync(receipts);
 
         _logger.LogDebug("Indexes created for register {RegisterId}", registerId);
     }
@@ -321,7 +330,13 @@ public class MongoRegisterRepository : IRegisterRepository
             new(Builders<TransactionModel>.IndexKeys.Ascending(t => t.PrevTxId)),
 
             // Index for transaction type queries (participant record lookups)
-            new(Builders<TransactionModel>.IndexKeys.Ascending("MetaData.TransactionType"))
+            new(Builders<TransactionModel>.IndexKeys.Ascending("MetaData.TransactionType")),
+
+            // Compound index for revocation lookups by original transaction ID
+            new(Builders<TransactionModel>.IndexKeys
+                .Ascending("MetaData.TransactionType")
+                .Ascending("MetaData.TrackingData.originalTxId"),
+                new CreateIndexOptions { Name = "IX_Transactions_Revocation_OriginalTxId" })
         };
         await collection.Indexes.CreateManyAsync(transactionIndexes);
     }
@@ -620,5 +635,113 @@ public class MongoRegisterRepository : IRegisterRepository
         return await transactions.Find(filter)
             .SortByDescending(t => t.TimeStamp)
             .ToListAsync(cancellationToken);
+    }
+
+    // ===========================
+    // Receipt Operations
+    // ===========================
+
+    /// <summary>
+    /// Gets the receipts collection for a specific register.
+    /// </summary>
+    private IMongoCollection<TransactionReceipt> GetReceiptsCollection(string registerId)
+    {
+        if (!_config.UseDatabasePerRegister)
+        {
+            var registryDatabase = _client.GetDatabase(_config.DatabaseName);
+            return registryDatabase.GetCollection<TransactionReceipt>("receipts");
+        }
+
+        var db = GetRegisterDatabase(registerId);
+        return db.GetCollection<TransactionReceipt>("receipts");
+    }
+
+    /// <inheritdoc/>
+    public async Task InsertReceiptsAsync(
+        IEnumerable<TransactionReceipt> receipts,
+        CancellationToken cancellationToken = default)
+    {
+        var receiptList = receipts.ToList();
+        if (receiptList.Count == 0) return;
+
+        // Group by register for per-register database mode
+        var grouped = receiptList.GroupBy(r => r.RegisterId);
+        foreach (var group in grouped)
+        {
+            var collection = GetReceiptsCollection(group.Key);
+
+            await collection.InsertManyAsync(group.ToList(), new InsertManyOptions(), cancellationToken);
+            _logger.LogDebug("Inserted {Count} receipts for register {RegisterId}", group.Count(), group.Key);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<TransactionReceipt?> GetReceiptByTxIdAsync(
+        string registerId,
+        string txId,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetReceiptsCollection(registerId);
+        var filter = Builders<TransactionReceipt>.Filter.Eq(r => r.TransactionId, txId);
+        return await collection.Find(filter).FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(IEnumerable<TransactionReceipt> Receipts, int Total)> GetReceiptsByDocketAsync(
+        string registerId,
+        long docketNumber,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = GetReceiptsCollection(registerId);
+        var filter = Builders<TransactionReceipt>.Filter.And(
+            Builders<TransactionReceipt>.Filter.Eq(r => r.RegisterId, registerId),
+            Builders<TransactionReceipt>.Filter.Eq(r => r.DocketNumber, docketNumber));
+
+        var total = (int)await collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var receipts = await collection.Find(filter)
+            .SortBy(r => r.TransactionId)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (receipts, total);
+    }
+
+    /// <summary>
+    /// Creates indexes for the receipts collection.
+    /// </summary>
+    private static async Task CreateReceiptIndexesAsync(IMongoCollection<TransactionReceipt> collection)
+    {
+        var indexes = new List<CreateIndexModel<TransactionReceipt>>
+        {
+            // Unique index on TransactionId
+            new(Builders<TransactionReceipt>.IndexKeys.Ascending(r => r.TransactionId),
+                new CreateIndexOptions { Unique = true }),
+
+            // Compound index on RegisterId + DocketNumber for docket queries
+            new(Builders<TransactionReceipt>.IndexKeys
+                .Ascending(r => r.RegisterId)
+                .Ascending(r => r.DocketNumber))
+        };
+        await collection.Indexes.CreateManyAsync(indexes);
+    }
+
+    // ===========================
+    // Revocation Queries
+    // ===========================
+
+    /// <inheritdoc/>
+    public async Task<TransactionModel?> FindRevocationForTransactionAsync(
+        string registerId,
+        string targetTxId,
+        CancellationToken cancellationToken = default)
+    {
+        var transactions = GetTransactionsCollection(registerId);
+        var filter = Builders<TransactionModel>.Filter.And(
+            Builders<TransactionModel>.Filter.Eq("MetaData.TrackingData.originalTxId", targetTxId),
+            Builders<TransactionModel>.Filter.Eq("MetaData.TransactionType", TransactionType.Revocation));
+        return await transactions.Find(filter).FirstOrDefaultAsync(cancellationToken);
     }
 }

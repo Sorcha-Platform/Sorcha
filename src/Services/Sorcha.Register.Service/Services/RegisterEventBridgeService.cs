@@ -108,6 +108,23 @@ public class RegisterEventBridgeService : BackgroundService
             },
             stoppingToken);
 
+        await _subscriber.SubscribeAsync<ReceiptGeneratedEvent>(
+            "receipt:generated",
+            async e =>
+            {
+                _logger.LogDebug("Bridging ReceiptGenerated for {RegisterId} docket {DocketNumber} tx {TransactionId} to group register:{GroupRegisterId}",
+                    e.RegisterId, e.DocketNumber, e.TransactionId, e.RegisterId);
+                await _hubContext.Clients
+                    .Group($"register:{e.RegisterId}")
+                    .TransactionReceipt(
+                        e.TransactionId,
+                        e.RegisterId,
+                        e.DocketNumber,
+                        e.ReceiptId,
+                        e.SealedAt);
+            },
+            stoppingToken);
+
         _logger.LogInformation("RegisterEventBridgeService subscriptions registered");
     }
 }

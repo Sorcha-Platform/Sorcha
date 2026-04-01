@@ -421,4 +421,49 @@ public class CachedRegisterRepository : IRegisterRepository
 
         _logger?.LogInformation("Invalidated all caches for register {RegisterId}", registerId);
     }
+
+    // ===========================
+    // Receipt Operations
+    // ===========================
+
+    /// <inheritdoc/>
+    public Task InsertReceiptsAsync(
+        IEnumerable<TransactionReceipt> receipts,
+        CancellationToken cancellationToken = default)
+    {
+        return _innerRepository.InsertReceiptsAsync(receipts, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<TransactionReceipt?> GetReceiptByTxIdAsync(
+        string registerId,
+        string txId,
+        CancellationToken cancellationToken = default)
+    {
+        return _innerRepository.GetReceiptByTxIdAsync(registerId, txId, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<(IEnumerable<TransactionReceipt> Receipts, int Total)> GetReceiptsByDocketAsync(
+        string registerId,
+        long docketNumber,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return _innerRepository.GetReceiptsByDocketAsync(registerId, docketNumber, page, pageSize, cancellationToken);
+    }
+
+    // ===========================
+    // Revocation Queries
+    // ===========================
+
+    /// <inheritdoc/>
+    public Task<TransactionModel?> FindRevocationForTransactionAsync(
+        string registerId,
+        string targetTxId,
+        CancellationToken cancellationToken = default)
+    {
+        return _innerRepository.FindRevocationForTransactionAsync(registerId, targetTxId, cancellationToken);
+    }
 }

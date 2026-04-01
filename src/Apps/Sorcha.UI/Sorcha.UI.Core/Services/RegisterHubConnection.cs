@@ -56,6 +56,12 @@ public class RegisterHubConnection : IAsyncDisposable
     public event Func<string, string, Task>? OnRegisterSyncStateChanged;
 
     /// <summary>
+    /// Event raised when a transaction receipt is generated (double blue tick).
+    /// Parameters: transactionId, registerId, docketNumber, receiptId, sealedAt
+    /// </summary>
+    public event Func<string, string, long, string, DateTimeOffset, Task>? OnTransactionReceipted;
+
+    /// <summary>
     /// Event raised when connection state changes.
     /// </summary>
     public event Action<ConnectionState>? OnConnectionStateChanged;
@@ -137,6 +143,15 @@ public class RegisterHubConnection : IAsyncDisposable
                 if (OnDocketSealed != null)
                 {
                     await OnDocketSealed(registerId, docketId, hash);
+                }
+            });
+
+            _hubConnection.On<string, string, long, string, DateTimeOffset>("TransactionReceipt", async (txId, registerId, docketNumber, receiptId, sealedAt) =>
+            {
+                _logger.LogDebug("Transaction receipted: {TxId} in register {RegisterId} (receipt {ReceiptId})", txId, registerId, receiptId);
+                if (OnTransactionReceipted != null)
+                {
+                    await OnTransactionReceipted(txId, registerId, docketNumber, receiptId, sealedAt);
                 }
             });
 

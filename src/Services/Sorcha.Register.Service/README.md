@@ -323,11 +323,41 @@ Registers are classified by a `RegisterPurpose` enum:
 | `General` | Default purpose. Standard registers created by organisations for workflow data. |
 | `System` | Platform-internal registers used for system operations (e.g., the well-known system register). Creating a system register requires the `CanCreateSystemRegisters` policy (SystemAdmin only). System registers cannot be deleted. |
 
+### Transaction Receipts (Feature 079)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/registers/{registerId}/receipts/batch` | Store receipt batch (internal, `CanWriteDockets`) |
+| GET | `/api/registers/{registerId}/transactions/{txId}/receipt` | Get receipt by transaction ID |
+| GET | `/api/registers/{registerId}/dockets/{docketNumber}/receipts` | List docket receipts (paginated) |
+| POST | `/api/registers/{registerId}/receipts/verify` | Verify receipt (public, stateless) |
+
+### Merkle Inclusion Proofs (Feature 079)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/registers/{registerId}/transactions/{txId}/inclusion-proof` | Generate inclusion proof on-demand |
+| POST | `/api/registers/{registerId}/inclusion-proofs/verify` | Verify proof (public, stateless) |
+
+### Transaction Revocation (Feature 079)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/registers/{registerId}/transactions/revoke` | Submit revocation transaction |
+| GET | `/api/registers/{registerId}/transactions/{txId}/status` | Get transaction lifecycle status (active/revoked/superseded) |
+
+### Verification Bundles (Feature 079)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/registers/{registerId}/transactions/{txId}/verification-bundle` | Export portable verification bundle |
+| POST | `/api/registers/{registerId}/verification-bundles/verify` | Verify bundle (public, stateless) |
+
 ### SignalR Hub
 
 | Hub | Endpoint | Events |
 |-----|----------|--------|
-| RegisterHub | `/hubs/register` | `RegisterCreated`, `RegisterDeleted`, `TransactionConfirmed`, `DocketSealed`, `RegisterHeightUpdated` |
+| RegisterHub | `/hubs/register` | `RegisterCreated`, `RegisterDeleted`, `TransactionConfirmed`, `DocketSealed`, `RegisterHeightUpdated`, `TransactionReceipt` |
 
 **SignalR Methods:**
 - `SubscribeToRegister(registerId)` - Subscribe to register-specific events

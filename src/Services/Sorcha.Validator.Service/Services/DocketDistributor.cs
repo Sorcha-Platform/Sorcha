@@ -18,6 +18,7 @@ public class DocketDistributor : IDocketDistributor
 {
     private readonly IPeerServiceClient _peerClient;
     private readonly IRegisterServiceClient _registerClient;
+    private readonly IReceiptGenerator _receiptGenerator;
     private readonly DocketDistributorConfiguration _config;
     private readonly ILogger<DocketDistributor> _logger;
 
@@ -33,11 +34,13 @@ public class DocketDistributor : IDocketDistributor
     public DocketDistributor(
         IPeerServiceClient peerClient,
         IRegisterServiceClient registerClient,
+        IReceiptGenerator receiptGenerator,
         IOptions<DocketDistributorConfiguration> config,
         ILogger<DocketDistributor> logger)
     {
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
+        _receiptGenerator = receiptGenerator ?? throw new ArgumentNullException(nameof(receiptGenerator));
         _config = config?.Value ?? new DocketDistributorConfiguration();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -187,6 +190,31 @@ public class DocketDistributor : IDocketDistributor
                 _logger.LogInformation(
                     "Successfully submitted docket {DocketNumber} to Register Service",
                     docket.DocketNumber);
+
+                // Generate and submit receipts for all transactions in the docket
+                try
+                {
+                    var receipts = await _receiptGenerator.GenerateReceiptsForDocketAsync(docket, ct);
+                    if (receipts.Length > 0)
+                    {
+                        await _registerClient.WriteReceiptBatchAsync(
+                            docket.RegisterId, docket.DocketNumber, receipts, ct);
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Receipt submission failure should not fail the docket submission
+                    _logger.LogWarning(ex,
+                        "Failed to submit receipts for docket {DocketNumber}",
+                        docket.DocketNumber);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Intentional: top-level error boundary for receipt generation
+                    _logger.LogWarning(ex,
+                        "Failed to generate receipts for docket {DocketNumber}",
+                        docket.DocketNumber);
+                }
             }
             else
             {
@@ -198,11 +226,19 @@ public class DocketDistributor : IDocketDistributor
 
             return success;
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             Interlocked.Increment(ref _failedRegisterSubmissions);
             _logger.LogError(
                 ex,
+                "Failed to submit docket {DocketNumber} to Register Service",
+                docket.DocketNumber);
+            return false;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Interlocked.Increment(ref _failedRegisterSubmissions);
+            _logger.LogError(ex,
                 "Failed to submit docket {DocketNumber} to Register Service",
                 docket.DocketNumber);
             return false;

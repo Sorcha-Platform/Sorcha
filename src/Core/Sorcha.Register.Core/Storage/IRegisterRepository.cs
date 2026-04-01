@@ -66,4 +66,15 @@ public interface IRegisterRepository : IReadOnlyRegisterRepository
         string registerId,
         string txId,
         CancellationToken cancellationToken = default);
+
+    // ===========================
+    // Receipt Writes
+    // ===========================
+
+    /// <summary>
+    /// Inserts a batch of transaction receipts
+    /// </summary>
+    Task InsertReceiptsAsync(
+        IEnumerable<TransactionReceipt> receipts,
+        CancellationToken cancellationToken = default);
 }
