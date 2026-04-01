@@ -48,10 +48,11 @@ public class EventStreamService : IAsyncDisposable
     {
         _gatewayUrl = gatewayUrl.TrimEnd('/');
         _accessToken = accessToken;
-        _channel = Channel.CreateUnbounded<EventStreamMessage>(new UnboundedChannelOptions
+        _channel = Channel.CreateBounded<EventStreamMessage>(new BoundedChannelOptions(1000)
         {
             SingleReader = true,
-            SingleWriter = false
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
         });
     }
 

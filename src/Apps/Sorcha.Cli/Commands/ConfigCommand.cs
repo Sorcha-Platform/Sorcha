@@ -330,6 +330,7 @@ public class ConfigInitCommand : Command
         HttpClient httpClient;
         if (!profile.VerifySsl)
         {
+            Console.Error.WriteLine("[WARN] SSL certificate verification is disabled — do not use in production.");
             var handler = new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = (_, _, _, _) => true
@@ -561,6 +562,7 @@ public class ConfigValidateCommand : BaseCommand
         HttpClient httpClient;
         if (!profile.VerifySsl)
         {
+            Console.Error.WriteLine("[WARN] SSL certificate verification is disabled — do not use in production.");
             var handler = new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = (_, _, _, _) => true

@@ -233,6 +233,7 @@ public class HttpClientFactory
         // Disable SSL verification for dev profiles if specified
         if (!profile.VerifySsl)
         {
+            Console.Error.WriteLine("[WARN] SSL certificate verification is disabled for this profile — do not use in production.");
             handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
         }
 

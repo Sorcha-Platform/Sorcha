@@ -83,7 +83,7 @@ public abstract class BaseCommand : Command
 
         if (string.IsNullOrEmpty(profileName) && ConfigService != null)
         {
-            var activeProfile = ConfigService.GetActiveProfileAsync().GetAwaiter().GetResult();
+            var activeProfile = Task.Run(() => ConfigService.GetActiveProfileAsync()).GetAwaiter().GetResult();
             profileName = activeProfile?.Name;
         }
 
