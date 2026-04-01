@@ -32,6 +32,11 @@ public class CommandContext
     public bool Verbose { get; set; }
 
     /// <summary>
+    /// Machine-readable mode - wrap output in JSON envelope.
+    /// </summary>
+    public bool MachineReadable { get; set; }
+
+    /// <summary>
     /// Configuration service.
     /// </summary>
     public IConfigurationService ConfigurationService { get; set; } = null!;

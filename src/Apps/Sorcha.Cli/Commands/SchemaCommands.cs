@@ -21,7 +21,7 @@ public class SchemaCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("schema", "Schema management operations")
+        : base("schema", "Schema management operations\n\nExamples:\n  sorcha schema providers list\n  sorcha schema providers refresh --id <provider-id>")
     {
         Subcommands.Add(new SchemaProvidersCommand(clientFactory, authService, configService));
     }

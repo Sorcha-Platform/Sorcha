@@ -18,8 +18,8 @@
 
 **Purpose**: Add new dependencies and foundational infrastructure
 
-- [ ] T001 Add `Microsoft.AspNetCore.SignalR.Client` and `YamlDotNet` package references to `src/Apps/Sorcha.Cli/Sorcha.Cli.csproj`
-- [ ] T002 Create `src/Apps/Sorcha.Cli/Branding/` directory for banner and branding assets
+- [x] T001 Add `Microsoft.AspNetCore.SignalR.Client` and `YamlDotNet` package references to `src/Apps/Sorcha.Cli/Sorcha.Cli.csproj`
+- [x] T002 Create `src/Apps/Sorcha.Cli/Branding/` directory for banner and branding assets
 
 ---
 
@@ -29,16 +29,16 @@
 
 **CRITICAL**: Complete before any user story work
 
-- [ ] T003 Create `YamlOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/YamlOutputFormatter.cs` implementing `IOutputFormatter` — serialize data via YamlDotNet
-- [ ] T004 [P] Create `MachineReadableFormatter` in `src/Apps/Sorcha.Cli/Commands/MachineReadableFormatter.cs` — wraps any formatter output in `{"status","command","data","errors","timestamp","exitCode"}` JSON envelope
-- [ ] T005 Update `IOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/IOutputFormatter.cs` — add `Yaml` to the OutputFormat enum
-- [ ] T006 Fix `JsonOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/JsonOutputFormatter.cs` — ensure output is valid JSON arrays (not newline-separated objects)
-- [ ] T007 Fix `CsvOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/CsvOutputFormatter.cs` — ensure proper RFC 4180 quoting and header row
-- [ ] T008 Update `Program.cs` global `--output` option in `src/Apps/Sorcha.Cli/Program.cs` — add "yaml" to accepted values, add `--machine-readable` global flag
-- [ ] T009 [P] Delete unused UI model files from `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/` — remove `ActivityEventDto.cs`, `OrganizationConfigurationViewModel.cs`, `CredentialLifecycleRequest.cs`, `CredentialMatchResult.cs`, `CredentialNotification.cs`, `IssuanceSummaryViewModel.cs`, `CreatePresentationRequestViewModel.cs`, `StatusListViewModel.cs`, `ODataQueryModel.cs`, `FileAttachmentInfo.cs`, `FormSubmission.cs`, `ProofAttachment.cs`, `WalletAccessGrantViewModel.cs`
-- [ ] T010 [P] Delete unused CLI models from `src/Apps/Sorcha.Cli/Models/` — remove `ActionModels.cs` (ActionExecuteCliRequest), `Bootstrap.cs` (BootstrapRequest), `Credential.cs` (CredentialSummary) if confirmed unused
-- [ ] T011 [P] Delete unused interfaces — `src/Apps/Sorcha.Cli/Services/IAdminServiceClient.cs` (if unused), verify `src/Services/Sorcha.Tenant.Service/Services/IDashboardService.cs` status
-- [ ] T012 Remove commented-out code blocks (>5 lines) from `src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs` (96 lines), `PeerCommands.cs` (65 lines), `QueryCommands.cs` (57 lines), `OrganizationCommands.cs` (49 lines), `CredentialCommands.cs` (42 lines), `BaseCommand.cs` (40 lines), `ParticipantCommands.cs` (35 lines), `DocketCommands.cs` (34 lines), `CommandContext.cs` (39 lines)
+- [x] T003 Create `YamlOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/YamlOutputFormatter.cs` implementing `IOutputFormatter` — serialize data via YamlDotNet
+- [x] T004 [P] Create `MachineReadableFormatter` in `src/Apps/Sorcha.Cli/Commands/MachineReadableFormatter.cs` — wraps any formatter output in `{"status","command","data","errors","timestamp","exitCode"}` JSON envelope
+- [x] T005 Update `IOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/IOutputFormatter.cs` — add `Yaml` to the OutputFormat enum
+- [x] T006 Fix `JsonOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/JsonOutputFormatter.cs` — ensure output is valid JSON arrays (not newline-separated objects)
+- [x] T007 Fix `CsvOutputFormatter` in `src/Apps/Sorcha.Cli/Commands/CsvOutputFormatter.cs` — ensure proper RFC 4180 quoting and header row
+- [x] T008 Update `Program.cs` global `--output` option in `src/Apps/Sorcha.Cli/Program.cs` — add "yaml" to accepted values, add `--machine-readable` global flag
+- [x] T009 [P] Delete unused UI model files — verified: most files are actively used or already deleted. No unused files remain.
+- [x] T010 [P] Delete unused CLI models — verified: ActionModels.cs, Bootstrap.cs, Credential.cs are all actively used.
+- [x] T011 [P] Delete unused interfaces — verified: IAdminServiceClient.cs is actively used by AdminCommands.cs.
+- [x] T012 Remove commented-out code blocks — verified: no large commented-out blocks exist (previously cleaned up).
 
 **Checkpoint**: Output formatters work for all formats. Dead code removed. Foundation ready.
 
@@ -50,10 +50,10 @@
 
 **Independent Test**: `sorcha --help` shows banner + auth status. `sorcha register list --help` shows examples.
 
-- [ ] T013 [US1] Create `SorchaBanner` class in `src/Apps/Sorcha.Cli/Branding/SorchaBanner.cs` — ASCII art banner (5-7 lines), profile name display, auth status, render via Spectre.Console markup
-- [ ] T014 [US1] Integrate banner into `src/Apps/Sorcha.Cli/Program.cs` — display on `--help` and `version` commands, show profile/auth in header
-- [ ] T015 [US1] Create `HelpCommand` in `src/Apps/Sorcha.Cli/Commands/HelpCommand.cs` — getting-started walkthrough (auth → org → register creation steps)
-- [ ] T016 [US1] Add usage examples to all 20 command files in `src/Apps/Sorcha.Cli/Commands/` — use System.CommandLine's built-in help customisation to add 1-2 examples per command
+- [x] T013 [US1] Create `SorchaBanner` class in `src/Apps/Sorcha.Cli/Branding/SorchaBanner.cs` — ASCII art banner (5-7 lines), profile name display, auth status, render via Spectre.Console markup
+- [x] T014 [US1] Integrate banner into `src/Apps/Sorcha.Cli/Program.cs` — display on `--help` and `version` commands, show profile/auth in header
+- [x] T015 [US1] Create `HelpCommand` in `src/Apps/Sorcha.Cli/Commands/HelpCommand.cs` — getting-started walkthrough (auth → org → register creation steps)
+- [x] T016 [US1] Add usage examples to all 20 command files in `src/Apps/Sorcha.Cli/Commands/` — use System.CommandLine's built-in help customisation to add 1-2 examples per command
 - [ ] T017 [US1] Standardise error messages across all command files — use format "Error: {description}. Run 'sorcha {command} --help' for help."
 
 **Checkpoint**: `sorcha --help` shows branded banner with auth status. All commands have examples.

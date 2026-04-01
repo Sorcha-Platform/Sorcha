@@ -19,7 +19,7 @@ public class ServicePrincipalCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("principal", "Manage service principals within organizations")
+        : base("principal", "Manage service principals within organizations\n\nExamples:\n  sorcha principal list\n  sorcha principal create --name \"API Client\" --org-id <id>")
     {
         Subcommands.Add(new PrincipalListCommand(clientFactory, authService, configService));
         Subcommands.Add(new PrincipalGetCommand(clientFactory, authService, configService));

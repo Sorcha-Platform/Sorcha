@@ -21,7 +21,7 @@ public class OperationCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("operation", "Encryption operation management")
+        : base("operation", "Encryption operation management\n\nExamples:\n  sorcha operation status --id <operation-id>")
     {
         Subcommands.Add(new OperationStatusCommand(clientFactory, authService, configService));
     }

@@ -17,6 +17,7 @@ public abstract class BaseCommand : Command
     public static Option<string>? OutputOption { get; set; }
     public static Option<bool>? QuietOption { get; set; }
     public static Option<bool>? VerboseOption { get; set; }
+    public static Option<bool>? MachineReadableOption { get; set; }
 
     // Config service - set by Program.cs for profile resolution
     public static IConfigurationService? ConfigService { get; set; }
@@ -91,7 +92,8 @@ public abstract class BaseCommand : Command
             ProfileName = profileName ?? "docker", // Default to docker if no config
             OutputFormat = (OutputOption != null ? parseResult.GetValue(OutputOption) : null) ?? "table",
             Quiet = QuietOption != null && parseResult.GetValue(QuietOption),
-            Verbose = VerboseOption != null && parseResult.GetValue(VerboseOption)
+            Verbose = VerboseOption != null && parseResult.GetValue(VerboseOption),
+            MachineReadable = MachineReadableOption != null && parseResult.GetValue(MachineReadableOption)
         };
     }
 
@@ -104,6 +106,7 @@ public abstract class BaseCommand : Command
         {
             "json" => new JsonOutputFormatter(),
             "csv" => new CsvOutputFormatter(),
+            "yaml" => new YamlOutputFormatter(),
             "table" => new TableOutputFormatter(),
             _ => new TableOutputFormatter()
         };

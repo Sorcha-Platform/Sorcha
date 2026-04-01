@@ -19,7 +19,7 @@ public class OrganizationCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("org", "Manage organizations")
+        : base("org", "Manage organizations\n\nExamples:\n  sorcha org list\n  sorcha org get --id <org-id>\n  sorcha org create --name \"My Org\" --subdomain myorg")
     {
         Subcommands.Add(new OrgListCommand(clientFactory, authService, configService));
         Subcommands.Add(new OrgGetCommand(clientFactory, authService, configService));

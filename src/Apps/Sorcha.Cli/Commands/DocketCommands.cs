@@ -21,7 +21,7 @@ public class DocketCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("docket", "Inspect dockets (sealed blocks) in registers")
+        : base("docket", "Inspect dockets (sealed blocks) in registers\n\nExamples:\n  sorcha docket list --register-id <id>\n  sorcha docket get --register-id <id> --id <docket-id>\n  sorcha docket transactions --register-id <id> --docket-number 1")
     {
         Subcommands.Add(new DocketListCommand(clientFactory, authService, configService));
         Subcommands.Add(new DocketGetCommand(clientFactory, authService, configService));

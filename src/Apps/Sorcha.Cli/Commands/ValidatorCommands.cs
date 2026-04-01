@@ -21,7 +21,7 @@ public class ValidatorCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("validator", "Manage the validator service")
+        : base("validator", "Manage the validator service\n\nExamples:\n  sorcha validator status\n  sorcha validator start\n  sorcha validator metrics")
     {
         Subcommands.Add(new ValidatorStatusCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorStartCommand(clientFactory, authService, configService));

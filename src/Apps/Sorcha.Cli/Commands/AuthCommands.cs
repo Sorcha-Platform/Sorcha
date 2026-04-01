@@ -17,7 +17,7 @@ public class AuthCommand : Command
     public AuthCommand(
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("auth", "Manage authentication and login sessions")
+        : base("auth", "Manage authentication and login sessions\n\nExamples:\n  sorcha auth login --username admin@example.com --password <pass>\n  sorcha auth status\n  sorcha auth logout")
     {
         Subcommands.Add(new AuthLoginCommand(authService, configService));
         Subcommands.Add(new AuthLogoutCommand(authService, configService));

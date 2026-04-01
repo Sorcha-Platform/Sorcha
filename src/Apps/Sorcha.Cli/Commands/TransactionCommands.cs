@@ -21,7 +21,8 @@ public class TransactionCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("tx", "Manage transactions in registers")
+        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --data '{\"key\":\"value\"}'")
+
     {
         Subcommands.Add(new TxListCommand(clientFactory, authService, configService));
         Subcommands.Add(new TxGetCommand(clientFactory, authService, configService));

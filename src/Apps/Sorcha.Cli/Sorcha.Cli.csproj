@@ -44,6 +44,12 @@
     <!-- Resilience Policies -->
     <PackageReference Include="Microsoft.Extensions.Http.Polly" />
 
+    <!-- Real-Time Event Streaming -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+
+    <!-- YAML Output Format -->
+    <PackageReference Include="YamlDotNet" />
+
     <!-- Dependency Injection -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />

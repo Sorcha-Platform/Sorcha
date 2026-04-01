@@ -21,7 +21,7 @@ public class BlueprintCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("blueprint", "Manage blueprints (workflow definitions)")
+        : base("blueprint", "Manage blueprints (workflow definitions)\n\nExamples:\n  sorcha blueprint list\n  sorcha blueprint create --file blueprint.json\n  sorcha blueprint publish --id <id> --register-id <reg-id>")
     {
         Subcommands.Add(new BlueprintListCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintGetCommand(clientFactory, authService, configService));

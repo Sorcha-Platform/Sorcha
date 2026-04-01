@@ -13,7 +13,7 @@ namespace Sorcha.Cli.Commands;
 public class ConfigCommand : BaseCommand
 {
     public ConfigCommand()
-        : base("config", "Manage CLI configuration and profiles")
+        : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --url https://sorcha.example.com")
     {
         Subcommands.Add(new ConfigInitCommand());
         Subcommands.Add(new ProfileListCommand());

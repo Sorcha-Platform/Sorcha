@@ -21,7 +21,7 @@ public class AdminCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("admin", "Administrative operations")
+        : base("admin", "Administrative operations\n\nExamples:\n  sorcha admin health\n  sorcha admin alerts\n  sorcha admin events list")
     {
         Subcommands.Add(new AdminHealthCommand(clientFactory, authService, configService));
         Subcommands.Add(new AdminAlertsCommand(clientFactory, authService, configService));

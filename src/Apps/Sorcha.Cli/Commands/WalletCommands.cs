@@ -19,7 +19,7 @@ public class WalletCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("wallet", "Manage cryptographic wallets")
+        : base("wallet", "Manage cryptographic wallets\n\nExamples:\n  sorcha wallet list\n  sorcha wallet create --name \"My Wallet\" --algorithm ED25519\n  sorcha wallet sign --address <addr> --data <hex>")
     {
         Subcommands.Add(new WalletListCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletGetCommand(clientFactory, authService, configService));

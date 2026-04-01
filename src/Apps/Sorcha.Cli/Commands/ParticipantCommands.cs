@@ -21,7 +21,7 @@ public class ParticipantCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("participant", "Manage participant identities")
+        : base("participant", "Manage participant identities\n\nExamples:\n  sorcha participant list --org-id <id>\n  sorcha participant register --org-id <id> --display-name \"Alice\"\n  sorcha participant search --query alice")
     {
         Subcommands.Add(new ParticipantRegisterCommand(clientFactory, authService, configService));
         Subcommands.Add(new ParticipantListCommand(clientFactory, authService, configService));
