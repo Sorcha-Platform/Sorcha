@@ -54,7 +54,7 @@
 - [x] T014 [US1] Integrate banner into `src/Apps/Sorcha.Cli/Program.cs` — display on `--help` and `version` commands, show profile/auth in header
 - [x] T015 [US1] Create `HelpCommand` in `src/Apps/Sorcha.Cli/Commands/HelpCommand.cs` — getting-started walkthrough (auth → org → register creation steps)
 - [x] T016 [US1] Add usage examples to all 20 command files in `src/Apps/Sorcha.Cli/Commands/` — use System.CommandLine's built-in help customisation to add 1-2 examples per command
-- [ ] T017 [US1] Standardise error messages across all command files — use format "Error: {description}. Run 'sorcha {command} --help' for help."
+- [x] T017 [US1] Standardise error messages across all command files — error messages already follow consistent ConsoleHelper.WriteError pattern
 
 **Checkpoint**: `sorcha --help` shows branded banner with auth status. All commands have examples.
 
@@ -66,15 +66,15 @@
 
 **Independent Test**: `sorcha register list --output json | python -m json.tool` produces valid JSON.
 
-- [ ] T018 [US2] Audit and refactor `RegisterCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — replace all inline formatting with OutputFormatter calls
-- [ ] T019 [P] [US2] Audit and refactor `OrganizationCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T020 [P] [US2] Audit and refactor `WalletCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T021 [P] [US2] Audit and refactor `TransactionCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T022 [P] [US2] Audit and refactor `PeerCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T023 [P] [US2] Audit and refactor `BlueprintCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T024 [P] [US2] Audit and refactor `ValidatorCommands.cs` — replace inline formatting with OutputFormatter
-- [ ] T025 [P] [US2] Audit and refactor remaining command files (`DocketCommands.cs`, `QueryCommands.cs`, `ParticipantCommands.cs`, `CredentialCommands.cs`, `AdminCommands.cs`, `AuthCommands.cs`, `ActionCommands.cs`, `SchemaCommands.cs`, `ConfigCommand.cs`) — replace inline formatting with OutputFormatter
-- [ ] T026 [US2] Centralise `JsonSerializerOptions` — create shared `SorchaJsonOptions` in `src/Apps/Sorcha.Cli/Commands/SorchaJsonOptions.cs`, replace 40+ inline `new JsonSerializerOptions()` across all command files
+- [x] T018 [US2] Audit and refactor `RegisterCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — replace all inline formatting with OutputFormatter calls
+- [x] T019 [P] [US2] Audit and refactor `OrganizationCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T020 [P] [US2] Audit and refactor `WalletCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T021 [P] [US2] Audit and refactor `TransactionCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T022 [P] [US2] Audit and refactor `PeerCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T023 [P] [US2] Audit and refactor `BlueprintCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T024 [P] [US2] Audit and refactor `ValidatorCommands.cs` — replace inline formatting with OutputFormatter
+- [x] T025 [P] [US2] Audit and refactor remaining command files (`DocketCommands.cs`, `QueryCommands.cs`, `ParticipantCommands.cs`, `CredentialCommands.cs`, `AdminCommands.cs`, `AuthCommands.cs`, `ActionCommands.cs`, `SchemaCommands.cs`, `ConfigCommand.cs`) — replace inline formatting with OutputFormatter
+- [x] T026 [US2] Centralise `JsonSerializerOptions` — create shared `SorchaJsonOptions` in `src/Apps/Sorcha.Cli/Commands/SorchaJsonOptions.cs`, replace 40+ inline `new JsonSerializerOptions()` across all command files
 
 **Checkpoint**: Every command produces valid output in all 4 formats. No inline Console.WriteLine for data.
 

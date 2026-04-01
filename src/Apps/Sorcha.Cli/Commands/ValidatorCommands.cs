@@ -62,10 +62,10 @@ public class ValidatorStatusCommand : Command
                 var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
                 var status = await client.GetStatusAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, status);
                     return ExitCodes.Success;
                 }
 
@@ -307,10 +307,10 @@ public class ValidatorProcessCommand : Command
 
                 var result = await client.ProcessRegisterAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, result);
                     return ExitCodes.Success;
                 }
 
@@ -395,10 +395,10 @@ public class ValidatorIntegrityCheckCommand : Command
 
                 var result = await client.IntegrityCheckAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, result);
                     return ExitCodes.Success;
                 }
 
@@ -535,8 +535,8 @@ public class ValidatorConsentPendingCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -854,8 +854,8 @@ public class ValidatorConsentRefreshCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -957,8 +957,8 @@ public class ValidatorMetricsCommand : Command
                 return ExitCodes.GeneralError;
             }
 
-            var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-            if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+            var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+            if (OutputHelper.IsStructuredFormat(outputFormat))
             {
                 Console.WriteLine(content);
                 return ExitCodes.Success;
@@ -1098,8 +1098,8 @@ public class ValidatorThresholdStatusCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1241,8 +1241,8 @@ public class ValidatorThresholdSetupCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;

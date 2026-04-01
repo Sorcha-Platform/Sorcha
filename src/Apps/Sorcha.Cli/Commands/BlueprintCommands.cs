@@ -61,10 +61,10 @@ public class BlueprintListCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var blueprints = await client.ListBlueprintsAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprints, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, blueprints);
                     return ExitCodes.Success;
                 }
 
@@ -145,10 +145,10 @@ public class BlueprintGetCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var blueprint = await client.GetBlueprintAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprint, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, blueprint);
                     return ExitCodes.Success;
                 }
 
@@ -273,10 +273,10 @@ public class BlueprintCreateCommand : Command
 
                 var blueprint = await client.CreateBlueprintAsync(request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprint, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, blueprint);
                     return ExitCodes.Success;
                 }
 
@@ -373,10 +373,10 @@ public class BlueprintPublishCommand : Command
 
                 var response = await client.PublishBlueprintAsync(id, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -544,10 +544,10 @@ public class BlueprintVersionsCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var versions = await client.ListBlueprintVersionsAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(versions, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, versions);
                     return ExitCodes.Success;
                 }
 
@@ -632,10 +632,10 @@ public class BlueprintInstancesCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var instances = await client.ListInstancesAsync(blueprintId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(instances, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, instances);
                     return ExitCodes.Success;
                 }
 

@@ -4,7 +4,6 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Net;
-using System.Text.Json;
 using Refit;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
@@ -64,10 +63,10 @@ public class OperationStatusCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var status = await client.GetOperationStatusAsync(operationId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, status);
                     return ExitCodes.Success;
                 }
 

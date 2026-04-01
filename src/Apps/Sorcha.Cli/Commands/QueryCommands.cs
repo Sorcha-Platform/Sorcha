@@ -93,10 +93,10 @@ public class QueryWalletCommand : Command
                 var response = await client.QueryByWalletAsync(address, page, pageSize, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -219,10 +219,10 @@ public class QuerySenderCommand : Command
                 var response = await client.QueryBySenderAsync(address, page, pageSize, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -345,10 +345,10 @@ public class QueryBlueprintCommand : Command
                 var response = await client.QueryByBlueprintAsync(blueprintId, page, pageSize, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -441,10 +441,10 @@ public class QueryStatsCommand : Command
                 var stats = await client.GetQueryStatsAsync($"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(stats, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, stats);
                     return ExitCodes.Success;
                 }
 
@@ -597,7 +597,7 @@ public class QueryODataCommand : Command
                 try
                 {
                     var json = JsonDocument.Parse(content);
-                    Console.WriteLine(JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true }));
+                    Console.WriteLine(JsonSerializer.Serialize(json, SorchaJsonOptions.Default));
                 }
                 catch (JsonException)
                 {

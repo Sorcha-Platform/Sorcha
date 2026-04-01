@@ -81,6 +81,13 @@ public class UserListCommand : Command
                     return ExitCodes.Success;
                 }
 
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, users);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Found {users.Count} user(s) in organization '{orgId}':");
                 Console.WriteLine();
                 Console.WriteLine($"{"ID",-30} {"Username",-20} {"Email",-30} {"Active",-8} {"Roles",-20}");
@@ -173,6 +180,13 @@ public class UserGetCommand : Command
                 var user = await client.GetUserAsync(orgId, userId, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess("User details:");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {user.Id}");
@@ -331,6 +345,13 @@ public class UserCreateCommand : Command
                 var user = await client.CreateUserAsync(orgId, request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"User created successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {user.Id}");
@@ -498,6 +519,13 @@ public class UserUpdateCommand : Command
                 var user = await client.UpdateUserAsync(orgId, userId, request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"User updated successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:       {user.Id}");

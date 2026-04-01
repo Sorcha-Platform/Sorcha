@@ -71,14 +71,6 @@ public class RegisterListCommand : Command
                 // Call API
                 var registers = await client.ListRegistersAsync($"Bearer {token}");
 
-                // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(registers, new JsonSerializerOptions { WriteIndented = true }));
-                    return ExitCodes.Success;
-                }
-
                 // Display results
                 if (registers == null || registers.Count == 0)
                 {
@@ -86,10 +78,16 @@ public class RegisterListCommand : Command
                     return ExitCodes.Success;
                 }
 
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, registers);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Found {registers.Count} register(s):");
                 Console.WriteLine();
 
-                // Display as table with new fields
                 Console.WriteLine($"{"ID",-34} {"Name",-25} {"Height",8} {"Status",-10} {"Purpose",-10} {"Advertise",-9} {"Created"}");
                 Console.WriteLine(new string('-', 120));
 
@@ -177,10 +175,10 @@ public class RegisterGetCommand : Command
                 var register = await client.GetRegisterAsync(id, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(register, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, register);
                     return ExitCodes.Success;
                 }
 
@@ -437,10 +435,10 @@ public class RegisterCreateCommand : Command
                 }
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(finalizeResponse, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, finalizeResponse);
                     return ExitCodes.Success;
                 }
 
@@ -692,10 +690,10 @@ public class RegisterUpdateCommand : Command
                 var register = await client.UpdateRegisterAsync(id, request, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(register, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, register);
                     return ExitCodes.Success;
                 }
 
@@ -779,10 +777,10 @@ public class RegisterStatsCommand : Command
                 var stats = await client.GetRegisterStatsAsync($"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(stats, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, stats);
                     return ExitCodes.Success;
                 }
 
@@ -886,8 +884,8 @@ public class RegisterPolicyGetCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -997,8 +995,8 @@ public class RegisterPolicyHistoryCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1169,8 +1167,8 @@ public class RegisterPolicyUpdateCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1264,8 +1262,8 @@ public class RegisterSystemStatusCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1357,8 +1355,8 @@ public class RegisterSystemBlueprintsCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;

@@ -81,6 +81,13 @@ public class PrincipalListCommand : Command
                     return ExitCodes.Success;
                 }
 
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, principals);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Found {principals.Count} service principal(s) in organization '{orgId}':");
                 Console.WriteLine();
                 Console.WriteLine($"{"Client ID",-40} {"Name",-30} {"Active",-8} {"Scopes",-20}");
@@ -173,6 +180,13 @@ public class PrincipalGetCommand : Command
                 var sp = await client.GetServicePrincipalAsync(orgId, clientId, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, sp);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess("Service principal details:");
                 Console.WriteLine();
                 Console.WriteLine($"  Client ID:       {sp.ClientId}");
@@ -304,6 +318,13 @@ public class PrincipalCreateCommand : Command
                 var response = await client.CreateServicePrincipalAsync(orgId, request, $"Bearer {token}");
 
                 // Display results with security warning
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Service principal created successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  Client ID:       {response.ServicePrincipal.ClientId}");
@@ -523,6 +544,13 @@ public class PrincipalRotateSecretCommand : Command
                 var response = await client.RotateSecretAsync(orgId, clientId, $"Bearer {token}");
 
                 // Display results with security warning
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Client secret rotated successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  Rotated At:      {response.RotatedAt:yyyy-MM-dd HH:mm:ss}");
