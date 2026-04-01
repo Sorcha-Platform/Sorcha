@@ -2,8 +2,13 @@
 // Copyright (c) 2026 Sorcha Contributors
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Diagnostics;
+using System.Text.Json;
+using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
 using Sorcha.Cli.Services;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace Sorcha.Cli.Commands;
 
@@ -13,11 +18,14 @@ namespace Sorcha.Cli.Commands;
 public class ConfigCommand : BaseCommand
 {
     public ConfigCommand()
-        : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --url https://sorcha.example.com")
+        : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --url https://sorcha.example.com\n  sorcha config view\n  sorcha config validate\n  sorcha config export --output config.json")
     {
         Subcommands.Add(new ConfigInitCommand());
         Subcommands.Add(new ProfileListCommand());
         Subcommands.Add(new ProfileSetActiveCommand());
+        Subcommands.Add(new ConfigViewCommand());
+        Subcommands.Add(new ConfigValidateCommand());
+        Subcommands.Add(new ConfigExportCommand());
     }
 
     protected override Task<int> ExecuteAsync(CommandContext context)
@@ -365,5 +373,423 @@ public class ConfigInitCommand : Command
         return successCount == totalCount ? "passed"
             : successCount > 0 ? "partial"
             : "failed";
+    }
+}
+
+/// <summary>
+/// Displays the current configuration including profile, API URLs, and auth status.
+/// </summary>
+public class ConfigViewCommand : BaseCommand
+{
+    public ConfigViewCommand()
+        : base("view", "Display current configuration details\n\nExamples:\n  sorcha config view\n  sorcha config view --output json")
+    {
+    }
+
+    protected override async Task<int> ExecuteAsync(CommandContext context)
+    {
+        var configService = new ConfigurationService();
+        var config = await configService.GetConfigurationAsync();
+        var profile = await configService.GetActiveProfileAsync();
+
+        if (profile == null)
+        {
+            ConsoleHelper.WriteWarning("No active profile configured. Run 'sorcha config init' first.");
+            return ExitCodes.ConfigurationError;
+        }
+
+        // Check auth status
+        var authService = new AuthenticationService(
+            configService,
+            CreateTokenCache(),
+            new HttpClient());
+        var isAuthenticated = await authService.IsAuthenticatedAsync(profile.Name);
+        string? tokenExpiry = null;
+
+        if (isAuthenticated)
+        {
+            var token = await authService.GetAccessTokenAsync(profile.Name);
+            if (!string.IsNullOrEmpty(token))
+            {
+                // Decode JWT to get expiry
+                tokenExpiry = TryGetTokenExpiry(token);
+            }
+        }
+
+        var configView = new
+        {
+            ProfileName = profile.Name,
+            BaseServiceUrl = profile.ServiceUrl ?? "(not set)",
+            TenantServiceUrl = profile.GetTenantServiceUrl(),
+            RegisterServiceUrl = profile.GetRegisterServiceUrl(),
+            WalletServiceUrl = profile.GetWalletServiceUrl(),
+            PeerServiceUrl = profile.GetPeerServiceUrl(),
+            BlueprintServiceUrl = profile.GetBlueprintServiceUrl(),
+            ValidatorServiceUrl = profile.GetValidatorServiceUrl(),
+            GatewayUrl = profile.GetGatewayUrl(),
+            AuthTokenUrl = profile.GetAuthTokenUrl(),
+            VerifySsl = profile.VerifySsl,
+            TimeoutSeconds = profile.TimeoutSeconds,
+            Authenticated = isAuthenticated,
+            TokenExpiry = tokenExpiry ?? "(not authenticated)",
+            ConfigFile = configService.GetConfigFilePath()
+        };
+
+        var outputFormat = context.OutputFormat;
+        if (OutputHelper.IsStructuredFormat(outputFormat))
+        {
+            var formatter = OutputHelper.GetFormatter(outputFormat);
+            Console.WriteLine(formatter.FormatSingle(configView));
+            return ExitCodes.Success;
+        }
+
+        // Table-style display
+        Console.WriteLine($"Profile:            {profile.Name}");
+        Console.WriteLine($"Base Service URL:   {profile.ServiceUrl ?? "(not set)"}");
+        Console.WriteLine();
+        Console.WriteLine("Service URLs:");
+        Console.WriteLine($"  Tenant:           {profile.GetTenantServiceUrl()}");
+        Console.WriteLine($"  Register:         {profile.GetRegisterServiceUrl()}");
+        Console.WriteLine($"  Wallet:           {profile.GetWalletServiceUrl()}");
+        Console.WriteLine($"  Peer:             {profile.GetPeerServiceUrl()}");
+        Console.WriteLine($"  Blueprint:        {profile.GetBlueprintServiceUrl()}");
+        Console.WriteLine($"  Validator:        {profile.GetValidatorServiceUrl()}");
+        Console.WriteLine($"  Gateway:          {profile.GetGatewayUrl()}");
+        Console.WriteLine($"  Auth Token:       {profile.GetAuthTokenUrl()}");
+        Console.WriteLine();
+        Console.WriteLine("Settings:");
+        Console.WriteLine($"  Verify SSL:       {profile.VerifySsl}");
+        Console.WriteLine($"  Timeout:          {profile.TimeoutSeconds}s");
+        Console.WriteLine();
+        Console.WriteLine("Authentication:");
+
+        if (isAuthenticated)
+        {
+            ConsoleHelper.WriteSuccess($"Authenticated (expires: {tokenExpiry ?? "unknown"})");
+        }
+        else
+        {
+            ConsoleHelper.WriteWarning("Not authenticated. Run 'sorcha auth login' to authenticate.");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Config file:        {configService.GetConfigFilePath()}");
+
+        return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Attempts to decode the JWT token expiry without full validation.
+    /// </summary>
+    private static string? TryGetTokenExpiry(string token)
+    {
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length < 2) return null;
+
+            // Decode the payload (base64url)
+            var payload = parts[1];
+            // Pad to multiple of 4
+            payload = payload.Replace('-', '+').Replace('_', '/');
+            switch (payload.Length % 4)
+            {
+                case 2: payload += "=="; break;
+                case 3: payload += "="; break;
+            }
+
+            var bytes = Convert.FromBase64String(payload);
+            var json = System.Text.Encoding.UTF8.GetString(bytes);
+            using var doc = JsonDocument.Parse(json);
+
+            if (doc.RootElement.TryGetProperty("exp", out var expElement))
+            {
+                var exp = expElement.GetInt64();
+                var expiry = DateTimeOffset.FromUnixTimeSeconds(exp);
+                return expiry.ToString("yyyy-MM-dd HH:mm:ss UTC");
+            }
+        }
+        catch
+        {
+            // Ignore decode errors
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Creates a TokenCache using the platform-appropriate encryption provider.
+    /// </summary>
+    private static TokenCache CreateTokenCache()
+    {
+        IEncryptionProvider encryptionProvider;
+        if (OperatingSystem.IsWindows())
+        {
+            encryptionProvider = new WindowsDpapiEncryption();
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            encryptionProvider = new MacOsKeychainEncryption();
+        }
+        else
+        {
+            encryptionProvider = new LinuxEncryption();
+        }
+
+        return new TokenCache(encryptionProvider);
+    }
+}
+
+/// <summary>
+/// Validates connectivity to each Sorcha service by checking health endpoints.
+/// </summary>
+public class ConfigValidateCommand : BaseCommand
+{
+    public ConfigValidateCommand()
+        : base("validate", "Check connectivity to all configured services\n\nExamples:\n  sorcha config validate\n  sorcha config validate --output json")
+    {
+    }
+
+    protected override async Task<int> ExecuteAsync(CommandContext context)
+    {
+        var configService = new ConfigurationService();
+        var profile = await configService.GetActiveProfileAsync();
+
+        if (profile == null)
+        {
+            ConsoleHelper.WriteWarning("No active profile configured. Run 'sorcha config init' first.");
+            return ExitCodes.ConfigurationError;
+        }
+
+        Console.WriteLine($"Validating connectivity for profile '{profile.Name}'...");
+        Console.WriteLine();
+
+        var services = new[]
+        {
+            ("Tenant", profile.GetTenantServiceUrl()),
+            ("Register", profile.GetRegisterServiceUrl()),
+            ("Wallet", profile.GetWalletServiceUrl()),
+            ("Peer", profile.GetPeerServiceUrl()),
+            ("Blueprint", profile.GetBlueprintServiceUrl()),
+            ("Validator", profile.GetValidatorServiceUrl()),
+            ("Gateway", profile.GetGatewayUrl())
+        };
+
+        HttpClient httpClient;
+        if (!profile.VerifySsl)
+        {
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+            };
+            httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        }
+        else
+        {
+            httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        }
+
+        var results = new List<object>();
+        var allHealthy = true;
+
+        using (httpClient)
+        {
+            foreach (var (serviceName, baseUrl) in services)
+            {
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    results.Add(new { Service = serviceName, Status = "Not Configured", ResponseTimeMs = (long?)null, Error = "URL not set" });
+                    allHealthy = false;
+                    continue;
+                }
+
+                var healthUrl = baseUrl.TrimEnd('/') + "/api/health";
+                var stopwatch = Stopwatch.StartNew();
+
+                try
+                {
+                    var response = await httpClient.GetAsync(healthUrl);
+                    stopwatch.Stop();
+
+                    var status = response.IsSuccessStatusCode ? "Healthy" : $"HTTP {(int)response.StatusCode}";
+
+                    results.Add(new { Service = serviceName, Status = status, ResponseTimeMs = (long?)stopwatch.ElapsedMilliseconds, Error = (string?)null });
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        allHealthy = false;
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    stopwatch.Stop();
+                    results.Add(new { Service = serviceName, Status = "Timeout", ResponseTimeMs = (long?)stopwatch.ElapsedMilliseconds, Error = "Request timed out" });
+                    allHealthy = false;
+                }
+                catch (HttpRequestException ex)
+                {
+                    stopwatch.Stop();
+                    results.Add(new { Service = serviceName, Status = "Error", ResponseTimeMs = (long?)stopwatch.ElapsedMilliseconds, Error = ex.Message });
+                    allHealthy = false;
+                }
+                catch (Exception ex)
+                {
+                    stopwatch.Stop();
+                    results.Add(new { Service = serviceName, Status = "Error", ResponseTimeMs = (long?)stopwatch.ElapsedMilliseconds, Error = ex.Message });
+                    allHealthy = false;
+                }
+            }
+        }
+
+        var outputFormat = context.OutputFormat;
+        if (OutputHelper.IsStructuredFormat(outputFormat))
+        {
+            var formatter = OutputHelper.GetFormatter(outputFormat);
+            Console.WriteLine(formatter.FormatCollection(results));
+            return allHealthy ? ExitCodes.Success : ExitCodes.NetworkError;
+        }
+
+        // Table display
+        Console.WriteLine($"{"Service",-15} {"Status",-18} {"Response (ms)",13}  {"Error"}");
+        Console.WriteLine(new string('-', 75));
+
+        foreach (dynamic result in results)
+        {
+            string service = result.Service;
+            string status = result.Status;
+            long? responseTimeMs = result.ResponseTimeMs;
+            string? error = result.Error;
+
+            var statusColor = status switch
+            {
+                "Healthy" => ConsoleColor.Green,
+                "Timeout" => ConsoleColor.Yellow,
+                "Not Configured" => ConsoleColor.Yellow,
+                _ => ConsoleColor.Red
+            };
+
+            var originalColor = Console.ForegroundColor;
+            Console.Write($"{service,-15} ");
+            Console.ForegroundColor = statusColor;
+            Console.Write($"{status,-18}");
+            Console.ForegroundColor = originalColor;
+            Console.Write($" {(responseTimeMs.HasValue ? responseTimeMs.Value.ToString() : "-"),13}");
+            Console.WriteLine(!string.IsNullOrEmpty(error) ? $"  {error}" : string.Empty);
+        }
+
+        Console.WriteLine();
+
+        if (allHealthy)
+        {
+            ConsoleHelper.WriteSuccess("All services are reachable.");
+        }
+        else
+        {
+            ConsoleHelper.WriteWarning("Some services are not reachable. Check the errors above.");
+        }
+
+        return allHealthy ? ExitCodes.Success : ExitCodes.NetworkError;
+    }
+}
+
+/// <summary>
+/// Exports the current configuration to a file in JSON or YAML format.
+/// </summary>
+public class ConfigExportCommand : Command
+{
+    public ConfigExportCommand()
+        : base("export", "Export current configuration to a file\n\nExamples:\n  sorcha config export --output config.json\n  sorcha config export --output config.yaml --format yaml")
+    {
+        var outputOption = new Option<string>("--output", "-o")
+        {
+            Description = "Output file path",
+            Required = true
+        };
+
+        var formatOption = new Option<string>("--format", "-f")
+        {
+            Description = "Export format (json or yaml)",
+            DefaultValueFactory = _ => "json"
+        };
+
+        Options.Add(outputOption);
+        Options.Add(formatOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            try
+            {
+                var outputPath = parseResult.GetValue(outputOption)!;
+                var format = parseResult.GetValue(formatOption)!.ToLowerInvariant();
+
+                if (format != "json" && format != "yaml")
+                {
+                    ConsoleHelper.WriteError("Invalid format. Use 'json' or 'yaml'.");
+                    return ExitCodes.ValidationError;
+                }
+
+                var configService = new ConfigurationService();
+                var config = await configService.GetConfigurationAsync();
+                var profile = await configService.GetActiveProfileAsync();
+
+                // Build export object (exclude sensitive data like tokens)
+                var exportData = new
+                {
+                    ActiveProfile = config.ActiveProfile,
+                    Profiles = (await configService.ListProfilesAsync()).Select(p => new
+                    {
+                        p.Name,
+                        p.ServiceUrl,
+                        p.TenantServiceUrl,
+                        p.RegisterServiceUrl,
+                        p.WalletServiceUrl,
+                        p.PeerServiceUrl,
+                        p.BlueprintServiceUrl,
+                        p.ValidatorServiceUrl,
+                        p.GatewayUrl,
+                        p.AuthTokenUrl,
+                        p.DefaultClientId,
+                        p.VerifySsl,
+                        p.TimeoutSeconds,
+                        p.CustomSettings
+                    })
+                };
+
+                string content;
+                if (format == "yaml")
+                {
+                    var serializer = new SerializerBuilder()
+                        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+                        .DisableAliases()
+                        .Build();
+                    content = serializer.Serialize(exportData);
+                }
+                else
+                {
+                    content = JsonSerializer.Serialize(exportData, new JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+                }
+
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                await File.WriteAllTextAsync(outputPath, content, ct);
+
+                ConsoleHelper.WriteSuccess($"Configuration exported to '{Path.GetFullPath(outputPath)}' ({format.ToUpperInvariant()})");
+                return ExitCodes.Success;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to export configuration: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
     }
 }

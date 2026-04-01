@@ -193,14 +193,18 @@ internal class Program
         // Real-time event streaming
         rootCommand.Subcommands.Add(new EventsCommand(clientFactory, authService, configService));
 
-        // API coverage commands: Invitations, Health, Verify, Platform
+        // API coverage commands: Invitations, Health, Verify, Platform, Audit
         rootCommand.Subcommands.Add(new InvitationCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new HealthCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new VerifyCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new PlatformCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new AuditCommand(clientFactory, authService, configService));
 
         // Configuration management commands
         rootCommand.Subcommands.Add(new ConfigCommand());
+
+        // Shell completion
+        rootCommand.Subcommands.Add(new CompletionCommand());
 
         // Getting-started guide
         rootCommand.Subcommands.Add(new HelpCommand(configService));

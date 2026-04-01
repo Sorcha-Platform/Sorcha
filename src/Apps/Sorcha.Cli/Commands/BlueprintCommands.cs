@@ -30,6 +30,7 @@ public class BlueprintCommand : Command
         Subcommands.Add(new BlueprintDeleteCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintVersionsCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintInstancesCommand(clientFactory, authService, configService));
+        Subcommands.Add(new BlueprintExportCommand(clientFactory, authService, configService));
     }
 }
 
@@ -671,6 +672,113 @@ public class BlueprintInstancesCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to list instances: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Exports a blueprint definition as JSON to a file.
+/// </summary>
+public class BlueprintExportCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _outputOption;
+
+    public BlueprintExportCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("export", "Export a blueprint definition as JSON")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Blueprint ID",
+            Required = true
+        };
+
+        _outputOption = new Option<string>("--output")
+        {
+            Description = "Output file path (JSON)",
+            Required = true
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_outputOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var outputPath = parseResult.GetValue(_outputOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
+
+                ConsoleHelper.WriteInfo($"Exporting blueprint '{id}'...");
+
+                var blueprint = await client.GetBlueprintAsync(id, $"Bearer {token}");
+
+                var export = new
+                {
+                    ExportedAt = DateTimeOffset.UtcNow,
+                    Blueprint = blueprint
+                };
+
+                var json = JsonSerializer.Serialize(export, new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                await File.WriteAllTextAsync(outputPath, json, ct);
+
+                ConsoleHelper.WriteSuccess($"Blueprint exported to: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine();
+                Console.WriteLine($"  ID:           {blueprint.Id}");
+                Console.WriteLine($"  Title:        {blueprint.Title}");
+                Console.WriteLine($"  Version:      {blueprint.Version}");
+                Console.WriteLine($"  Participants: {blueprint.Participants.Count}");
+                Console.WriteLine($"  Actions:      {blueprint.Actions.Count}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Blueprint '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to export blueprint: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });
