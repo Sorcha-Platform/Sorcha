@@ -62,18 +62,30 @@ public static class VerificationEndpoints
                 return Results.NotFound(new { error = $"Docket {transaction.DocketNumber} not found" });
             }
 
-            var txIds = docket.TransactionIds?.ToList() ?? [];
-            if (txIds.Count == 0)
+            // Fetch all transactions in the docket to compute proper Merkle leaf hashes
+            // (must match ReceiptGenerator which uses DocketHasher.ComputeTransactionHash)
+            var docketTransactions = (await repository.GetTransactionsByDocketAsync(
+                registerId, docket.Id, cancellationToken)).ToList();
+            if (docketTransactions.Count == 0)
             {
                 return Results.Problem(
                     title: "Data integrity error",
-                    detail: "Docket has no transaction IDs",
+                    detail: "Docket has no transactions",
                     statusCode: 500);
             }
 
-            // Find the leaf index
-            int leafIndex = txIds.FindIndex(id =>
-                string.Equals(id, txId, StringComparison.OrdinalIgnoreCase));
+            // Compute transaction hashes the same way as ReceiptGenerator
+            var docketHasher = new DocketHasher(hashProvider);
+            var txHashes = docketTransactions
+                .Select(tx => docketHasher.ComputeTransactionHash(
+                    tx.TxId ?? tx.Id ?? string.Empty,
+                    tx.Payloads?.FirstOrDefault()?.Hash ?? string.Empty,
+                    new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero)))
+                .ToList();
+
+            // Find the leaf index by matching the target transaction
+            int leafIndex = docketTransactions.FindIndex(tx =>
+                string.Equals(tx.TxId ?? tx.Id, txId, StringComparison.OrdinalIgnoreCase));
             if (leafIndex < 0)
             {
                 return Results.Problem(
@@ -82,15 +94,15 @@ public static class VerificationEndpoints
                     statusCode: 500);
             }
 
-            // Generate the inclusion proof using MerkleTree
+            // Generate the inclusion proof using MerkleTree with proper hashes
             var merkleTree = new MerkleTree(hashProvider);
-            var proof = merkleTree.GenerateInclusionProof(leafIndex, txIds.AsReadOnly());
+            var proof = merkleTree.GenerateInclusionProof(leafIndex, txHashes.AsReadOnly());
 
             // Map from MerkleProof (Cryptography) to MerkleInclusionProof (Register.Models)
             var inclusionProof = new MerkleInclusionProof
             {
                 TransactionHash = proof.TransactionHash,
-                DocketNumber = (long)docket.Id,
+                DocketNumber = checked((long)docket.Id),
                 MerkleRoot = proof.MerkleRoot,
                 ProofPath = proof.ProofPath.Select(step => new MerkleProofStep
                 {
