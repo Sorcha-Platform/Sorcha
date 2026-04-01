@@ -736,11 +736,7 @@ public class BlueprintExportCommand : Command
                     Blueprint = blueprint
                 };
 
-                var json = JsonSerializer.Serialize(export, new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                var json = JsonSerializer.Serialize(export, SorchaJsonOptions.Default);
 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));

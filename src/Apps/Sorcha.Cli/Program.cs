@@ -201,7 +201,7 @@ internal class Program
         rootCommand.Subcommands.Add(new AuditCommand(clientFactory, authService, configService));
 
         // Configuration management commands
-        rootCommand.Subcommands.Add(new ConfigCommand());
+        rootCommand.Subcommands.Add(new ConfigCommand(configService, authService));
 
         // Shell completion
         rootCommand.Subcommands.Add(new CompletionCommand());

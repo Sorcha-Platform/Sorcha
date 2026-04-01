@@ -37,10 +37,16 @@ public static class OutputHelper
     }
 
     /// <summary>
-    /// Gets a formatter from the parse result.
+    /// Gets a formatter from the parse result, including --machine-readable support.
     /// </summary>
     public static IOutputFormatter GetFormatter(ParseResult parseResult)
     {
+        if (BaseCommand.MachineReadableOption != null && parseResult.GetValue(BaseCommand.MachineReadableOption))
+        {
+            var commandName = parseResult.CommandResult.Command.Name;
+            return new MachineReadableFormatter(commandName);
+        }
+
         return GetFormatter(GetOutputFormat(parseResult));
     }
 

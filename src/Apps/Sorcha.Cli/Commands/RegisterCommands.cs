@@ -1530,11 +1530,7 @@ public class RegisterExportCommand : Command
                     Policy = policy
                 };
 
-                var json = JsonSerializer.Serialize(export, new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                var json = JsonSerializer.Serialize(export, SorchaJsonOptions.Default);
 
                 // Ensure directory exists
                 var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
@@ -1672,11 +1668,7 @@ public class RegisterExportTransactionsCommand : Command
 
                 if (format == "json")
                 {
-                    var json = JsonSerializer.Serialize(allTransactions, new JsonSerializerOptions
-                    {
-                        WriteIndented = true,
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                    });
+                    var json = JsonSerializer.Serialize(allTransactions, SorchaJsonOptions.Default);
                     await File.WriteAllTextAsync(outputPath, json, ct);
                 }
                 else // csv

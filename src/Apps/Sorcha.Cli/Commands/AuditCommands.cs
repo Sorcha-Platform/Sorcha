@@ -299,11 +299,7 @@ public class AuditExportCommand : Command
                 }
                 else
                 {
-                    content = JsonSerializer.Serialize(allEntries, new JsonSerializerOptions
-                    {
-                        WriteIndented = true,
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                    });
+                    content = JsonSerializer.Serialize(allEntries, SorchaJsonOptions.Default);
                 }
 
                 await File.WriteAllTextAsync(outputPath, content, ct);

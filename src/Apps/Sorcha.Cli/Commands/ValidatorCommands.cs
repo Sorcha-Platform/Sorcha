@@ -44,7 +44,7 @@ public class ValidatorStatusCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("status", "Get validator service status")
+        : base("status", "Get validator service status\n\nNote: --register-id is required (breaking change from v1.0.x)")
     {
         _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
         Options.Add(_registerIdOption);

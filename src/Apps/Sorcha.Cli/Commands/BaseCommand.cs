@@ -102,6 +102,11 @@ public abstract class BaseCommand : Command
     /// </summary>
     protected IOutputFormatter GetFormatter(CommandContext context)
     {
+        if (context.MachineReadable)
+        {
+            return new MachineReadableFormatter(Name);
+        }
+
         return context.OutputFormat.ToLowerInvariant() switch
         {
             "json" => new JsonOutputFormatter(),

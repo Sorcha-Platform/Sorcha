@@ -17,14 +17,14 @@ namespace Sorcha.Cli.Commands;
 /// </summary>
 public class ConfigCommand : BaseCommand
 {
-    public ConfigCommand()
+    public ConfigCommand(IConfigurationService configService, IAuthenticationService authService)
         : base("config", "Manage CLI configuration and profiles\n\nExamples:\n  sorcha config list\n  sorcha config init --profile prod --url https://sorcha.example.com\n  sorcha config view\n  sorcha config validate\n  sorcha config export --output config.json")
     {
         Subcommands.Add(new ConfigInitCommand());
-        Subcommands.Add(new ProfileListCommand());
+        Subcommands.Add(new ProfileListCommand(configService));
         Subcommands.Add(new ProfileSetActiveCommand());
-        Subcommands.Add(new ConfigViewCommand());
-        Subcommands.Add(new ConfigValidateCommand());
+        Subcommands.Add(new ConfigViewCommand(configService, authService));
+        Subcommands.Add(new ConfigValidateCommand(configService));
         Subcommands.Add(new ConfigExportCommand());
     }
 
@@ -41,16 +41,18 @@ public class ConfigCommand : BaseCommand
 /// </summary>
 public class ProfileListCommand : BaseCommand
 {
-    public ProfileListCommand()
+    private readonly IConfigurationService _configService;
+
+    public ProfileListCommand(IConfigurationService configService)
         : base("list", "List all available profiles")
     {
+        _configService = configService;
     }
 
     protected override async Task<int> ExecuteAsync(CommandContext context)
     {
-        var configService = new ConfigurationService();
-        var profiles = await configService.ListProfilesAsync();
-        var config = await configService.GetConfigurationAsync();
+        var profiles = await _configService.ListProfilesAsync();
+        var config = await _configService.GetConfigurationAsync();
 
         var profileList = profiles.Select(p => new
         {
@@ -381,16 +383,20 @@ public class ConfigInitCommand : Command
 /// </summary>
 public class ConfigViewCommand : BaseCommand
 {
-    public ConfigViewCommand()
+    private readonly IConfigurationService _configService;
+    private readonly IAuthenticationService _authService;
+
+    public ConfigViewCommand(IConfigurationService configService, IAuthenticationService authService)
         : base("view", "Display current configuration details\n\nExamples:\n  sorcha config view\n  sorcha config view --output json")
     {
+        _configService = configService;
+        _authService = authService;
     }
 
     protected override async Task<int> ExecuteAsync(CommandContext context)
     {
-        var configService = new ConfigurationService();
-        var config = await configService.GetConfigurationAsync();
-        var profile = await configService.GetActiveProfileAsync();
+        var config = await _configService.GetConfigurationAsync();
+        var profile = await _configService.GetActiveProfileAsync();
 
         if (profile == null)
         {
@@ -399,16 +405,12 @@ public class ConfigViewCommand : BaseCommand
         }
 
         // Check auth status
-        var authService = new AuthenticationService(
-            configService,
-            CreateTokenCache(),
-            new HttpClient());
-        var isAuthenticated = await authService.IsAuthenticatedAsync(profile.Name);
+        var isAuthenticated = await _authService.IsAuthenticatedAsync(profile.Name);
         string? tokenExpiry = null;
 
         if (isAuthenticated)
         {
-            var token = await authService.GetAccessTokenAsync(profile.Name);
+            var token = await _authService.GetAccessTokenAsync(profile.Name);
             if (!string.IsNullOrEmpty(token))
             {
                 // Decode JWT to get expiry
@@ -432,7 +434,7 @@ public class ConfigViewCommand : BaseCommand
             TimeoutSeconds = profile.TimeoutSeconds,
             Authenticated = isAuthenticated,
             TokenExpiry = tokenExpiry ?? "(not authenticated)",
-            ConfigFile = configService.GetConfigFilePath()
+            ConfigFile = _configService.GetConfigFilePath()
         };
 
         var outputFormat = context.OutputFormat;
@@ -473,7 +475,7 @@ public class ConfigViewCommand : BaseCommand
         }
 
         Console.WriteLine();
-        Console.WriteLine($"Config file:        {configService.GetConfigFilePath()}");
+        Console.WriteLine($"Config file:        {_configService.GetConfigFilePath()}");
 
         return ExitCodes.Success;
     }
@@ -517,27 +519,6 @@ public class ConfigViewCommand : BaseCommand
         return null;
     }
 
-    /// <summary>
-    /// Creates a TokenCache using the platform-appropriate encryption provider.
-    /// </summary>
-    private static TokenCache CreateTokenCache()
-    {
-        IEncryptionProvider encryptionProvider;
-        if (OperatingSystem.IsWindows())
-        {
-            encryptionProvider = new WindowsDpapiEncryption();
-        }
-        else if (OperatingSystem.IsMacOS())
-        {
-            encryptionProvider = new MacOsKeychainEncryption();
-        }
-        else
-        {
-            encryptionProvider = new LinuxEncryption();
-        }
-
-        return new TokenCache(encryptionProvider);
-    }
 }
 
 /// <summary>
@@ -545,15 +526,17 @@ public class ConfigViewCommand : BaseCommand
 /// </summary>
 public class ConfigValidateCommand : BaseCommand
 {
-    public ConfigValidateCommand()
+    private readonly IConfigurationService _configService;
+
+    public ConfigValidateCommand(IConfigurationService configService)
         : base("validate", "Check connectivity to all configured services\n\nExamples:\n  sorcha config validate\n  sorcha config validate --output json")
     {
+        _configService = configService;
     }
 
     protected override async Task<int> ExecuteAsync(CommandContext context)
     {
-        var configService = new ConfigurationService();
-        var profile = await configService.GetActiveProfileAsync();
+        var profile = await _configService.GetActiveProfileAsync();
 
         if (profile == null)
         {
@@ -766,11 +749,7 @@ public class ConfigExportCommand : Command
                 }
                 else
                 {
-                    content = JsonSerializer.Serialize(exportData, new JsonSerializerOptions
-                    {
-                        WriteIndented = true,
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                    });
+                    content = JsonSerializer.Serialize(exportData, SorchaJsonOptions.Default);
                 }
 
                 // Ensure directory exists

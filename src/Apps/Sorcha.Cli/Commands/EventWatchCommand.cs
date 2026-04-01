@@ -33,11 +33,7 @@ public class EventsCommand : Command
 /// </summary>
 public class EventWatchCommand : Command
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = false,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private static readonly JsonSerializerOptions JsonOptions = SorchaJsonOptions.Compact;
 
     /// <summary>
     /// Initializes the watch subcommand with its options.
