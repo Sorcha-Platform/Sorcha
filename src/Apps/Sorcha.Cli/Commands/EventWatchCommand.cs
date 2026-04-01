@@ -64,9 +64,9 @@ public class EventWatchCommand : Command
             Description = "Filter events by participant role"
         };
 
-        var sinceOption = new Option<DateTime?>("--since")
+        var sinceOption = new Option<DateTimeOffset?>("--since")
         {
-            Description = "Only show events after this timestamp (ISO 8601)"
+            Description = "Only show events after this timestamp (ISO 8601). Note: filtering is applied client-side"
         };
 
         Options.Add(registerOption);
@@ -142,7 +142,7 @@ public class EventWatchCommand : Command
                         cancellationToken: cancellationToken))
                     {
                         // Apply --since filter
-                        if (since.HasValue && message.Timestamp < since.Value.ToUniversalTime())
+                        if (since.HasValue && message.Timestamp < since.Value.UtcDateTime)
                         {
                             continue;
                         }

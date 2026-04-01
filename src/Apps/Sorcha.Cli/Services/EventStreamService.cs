@@ -19,6 +19,7 @@ public class EventStreamService : IAsyncDisposable
     private HubConnection? _registerHubConnection;
     private HubConnection? _eventsHubConnection;
     private readonly List<IDisposable> _subscriptions = new();
+    private int _closedHubCount;
 
     /// <summary>
     /// Known event types that the service subscribes to.
@@ -169,7 +170,13 @@ public class EventStreamService : IAsyncDisposable
             {
                 Console.Error.WriteLine($"Connection closed with error: {error.Message}");
             }
-            _channel.Writer.TryComplete();
+
+            // Only complete the channel when both hubs have closed
+            if (Interlocked.Increment(ref _closedHubCount) >= 2)
+            {
+                _channel.Writer.TryComplete();
+            }
+
             return Task.CompletedTask;
         };
 
@@ -194,7 +201,10 @@ public class EventStreamService : IAsyncDisposable
                     RegisterId = ExtractRegisterId(data)
                 };
 
-                _channel.Writer.TryWrite(message);
+                if (!_channel.Writer.TryWrite(message))
+                {
+                    Console.Error.WriteLine("[WARN] Event dropped — consumer too slow");
+                }
             });
 
             _subscriptions.Add(subscription);

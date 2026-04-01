@@ -958,8 +958,8 @@ public class WalletCreateBatchCommand : Command
                 var result = new BulkOperationResult { TotalItems = count };
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-                ConsoleHelper.WriteInfo($"Creating {count} wallet(s) with algorithm {algorithm}...");
-                Console.WriteLine();
+                Console.Error.WriteLine($"Creating {count} wallet(s) with algorithm {algorithm}...");
+                Console.Error.WriteLine();
 
                 for (var i = 0; i < count; i++)
                 {
@@ -975,7 +975,7 @@ public class WalletCreateBatchCommand : Command
 
                         var response = await client.CreateWalletAsync(request, $"Bearer {token}");
                         result.Succeeded++;
-                        Console.WriteLine($"  [{i + 1}/{count}] Created: {response.Wallet?.Address} ({walletName})");
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] Created: {response.Wallet?.Address} ({walletName})");
                     }
                     catch (ApiException ex)
                     {
@@ -986,7 +986,7 @@ public class WalletCreateBatchCommand : Command
                             Identifier = walletName,
                             Error = $"API error ({ex.StatusCode}): {ex.Content}"
                         });
-                        Console.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.StatusCode}");
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.StatusCode}");
                     }
                     catch (Exception ex)
                     {
@@ -997,29 +997,29 @@ public class WalletCreateBatchCommand : Command
                             Identifier = walletName,
                             Error = ex.Message
                         });
-                        Console.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.Message}");
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.Message}");
                     }
                 }
 
                 stopwatch.Stop();
                 result.Duration = stopwatch.Elapsed;
 
-                // Summary
-                Console.WriteLine();
-                Console.WriteLine(new string('-', 50));
-                ConsoleHelper.WriteInfo("Batch Operation Summary:");
-                Console.WriteLine($"  Total:     {result.TotalItems}");
-                Console.WriteLine($"  Succeeded: {result.Succeeded}");
-                Console.WriteLine($"  Failed:    {result.Failed}");
-                Console.WriteLine($"  Duration:  {result.Duration.TotalSeconds:F2}s");
+                // Summary (to stderr so structured output on stdout is clean)
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(new string('-', 50));
+                Console.Error.WriteLine("Batch Operation Summary:");
+                Console.Error.WriteLine($"  Total:     {result.TotalItems}");
+                Console.Error.WriteLine($"  Succeeded: {result.Succeeded}");
+                Console.Error.WriteLine($"  Failed:    {result.Failed}");
+                Console.Error.WriteLine($"  Duration:  {result.Duration.TotalSeconds:F2}s");
 
                 if (result.Errors.Count > 0)
                 {
-                    Console.WriteLine();
-                    ConsoleHelper.WriteWarning("Errors:");
+                    Console.Error.WriteLine();
+                    Console.Error.WriteLine("Errors:");
                     foreach (var error in result.Errors)
                     {
-                        Console.WriteLine($"  [{error.Index}] {error.Identifier}: {error.Error}");
+                        Console.Error.WriteLine($"  [{error.Index}] {error.Identifier}: {error.Error}");
                     }
                 }
 
