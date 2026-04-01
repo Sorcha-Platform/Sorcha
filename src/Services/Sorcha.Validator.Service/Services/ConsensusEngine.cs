@@ -147,8 +147,9 @@ public class ConsensusEngine : IConsensusEngine
 
                 // Collect any votes that completed before timeout
                 collectedVotes = voteCollectionTasks
-                    .Where(t => t.IsCompleted && !t.IsFaulted && t.Result != null)
-                    .Select(t => t.Result)
+                    .Where(t => t.IsCompletedSuccessfully)
+                    .Select(t => t.GetAwaiter().GetResult())
+                    .Where(v => v != null)
                     .ToList()!;
             }
 

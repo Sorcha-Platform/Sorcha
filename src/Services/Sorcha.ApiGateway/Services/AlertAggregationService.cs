@@ -36,10 +36,10 @@ public class AlertAggregationService
         var validatorTask = FetchValidatorMetricsAsync(cancellationToken);
         var peerTask = FetchPeerHealthAsync(cancellationToken);
 
-        await Task.WhenAll(validatorTask, peerTask);
+        var results = await Task.WhenAll(validatorTask, peerTask);
 
-        alerts.AddRange(validatorTask.Result);
-        alerts.AddRange(peerTask.Result);
+        alerts.AddRange(results[0]);
+        alerts.AddRange(results[1]);
 
         // Sort by severity descending (Critical first)
         alerts.Sort((a, b) => b.Severity.CompareTo(a.Severity));

@@ -38,6 +38,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
     internal const int StepSubmitting = 4;
     internal const int TotalSteps = 4;
 
+    /// <summary>Initialises a new instance of the <see cref="EncryptionBackgroundService"/> class.</summary>
     public EncryptionBackgroundService(
         Channel<EncryptionWorkItem> channel,
         IEncryptionOperationStore operationStore,

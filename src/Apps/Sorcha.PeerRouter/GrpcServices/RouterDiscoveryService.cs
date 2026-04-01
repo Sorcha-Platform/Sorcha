@@ -20,6 +20,7 @@ public sealed class RouterDiscoveryService : PeerDiscovery.PeerDiscoveryBase
     private readonly RouterConfiguration _config;
     private readonly ILogger<RouterDiscoveryService> _logger;
 
+    /// <summary>Initialises a new instance of the <see cref="RouterDiscoveryService"/> class.</summary>
     public RouterDiscoveryService(
         RoutingTable routingTable,
         EventBuffer eventBuffer,

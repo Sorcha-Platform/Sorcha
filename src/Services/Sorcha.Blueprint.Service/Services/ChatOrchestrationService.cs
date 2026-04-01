@@ -169,6 +169,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - Consider "need to know" — approvers may need summary, not details
         """;
 
+    /// <summary>Initialises a new instance of the <see cref="ChatOrchestrationService"/> class.</summary>
     public ChatOrchestrationService(
         IChatSessionStore sessionStore,
         IAIProviderService aiProvider,

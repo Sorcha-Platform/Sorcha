@@ -896,8 +896,8 @@ public class CryptoModule : ICryptoModule
             var pqcTask = SignAsync(hash, pqcNetwork, pqcPrivateKey, cancellationToken);
             await Task.WhenAll(classicalTask, pqcTask);
 
-            var classicalResult = classicalTask.Result;
-            var pqcResult = pqcTask.Result;
+            var classicalResult = await classicalTask;
+            var pqcResult = await pqcTask;
 
             if (!classicalResult.IsSuccess)
                 return CryptoResult<HybridSignature>.Failure(classicalResult.Status,

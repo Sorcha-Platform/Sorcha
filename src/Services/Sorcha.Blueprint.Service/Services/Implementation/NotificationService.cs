@@ -17,6 +17,7 @@ public class NotificationService : INotificationService
     private readonly IHubContext<EventsHub> _eventsHubContext;
     private readonly ILogger<NotificationService> _logger;
 
+    /// <summary>Initialises a new instance of the <see cref="NotificationService"/> class.</summary>
     public NotificationService(
         IHubContext<ActionsHub> hubContext,
         IHubContext<EventsHub> eventsHubContext,

@@ -7,14 +7,14 @@ Comprehensive audit of dead code, duplicates, constitution compliance, validatio
 ## CRITICAL
 
 - [ ] **SEC-001**: CORS `AllowAnyOrigin()` at service level in `src/Common/Sorcha.ServiceDefaults/CorsExtensions.cs:25-27` — any service accessed directly bypasses gateway CORS. Restrict to specific origins or remove service-level CORS entirely.
-- [ ] **SEC-002**: Peer subscribe endpoint `POST /api/registers/{registerId}/subscribe` is `.AllowAnonymous()` in `src/Services/Sorcha.Peer.Service/Program.cs:660` — tracked as #165, must be resolved.
-- [ ] **CODE-001**: 50+ direct `new HttpClient(handler)` instantiations in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.cs` — causes socket exhaustion and poor connection pooling. Refactor to `AddHttpClient<T>()` typed clients.
+- [x] **SEC-002**: Peer subscribe endpoint `POST /api/registers/{registerId}/subscribe` is `.AllowAnonymous()` in `src/Services/Sorcha.Peer.Service/Program.cs:660` — tracked as #165, must be resolved.
+- [x] **CODE-001**: ~WONTFIX~ 41 direct `new HttpClient(handler)` in Blazor WASM `ServiceCollectionExtensions.cs` — reviewed: this is idiomatic for Blazor WASM where the browser manages connection pooling. Not a socket exhaustion risk. No refactor needed.
 
 ## HIGH
 
-- [ ] **CODE-002**: Sync-over-async `.Result` in `src/Services/Sorcha.ApiGateway/Services/AlertAggregationService.cs:41-42` — `validatorTask.Result` and `peerTask.Result` risk deadlocks. Use `await Task.WhenAll()` then access results.
-- [ ] **CODE-003**: Sync-over-async `.Result` in `src/Common/Sorcha.Cryptography/Core/CryptoModule.cs:899-900` — `classicalTask.Result` and `pqcTask.Result` after `Task.WhenAll()`. Replace with awaited values.
-- [ ] **CODE-004**: Sync-over-async `.Result` in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs:150-151` — `.Select(t => t.Result)` pattern fragile even with IsCompleted guard.
+- [x] **CODE-002**: Sync-over-async `.Result` in `src/Services/Sorcha.ApiGateway/Services/AlertAggregationService.cs:41-42` — `validatorTask.Result` and `peerTask.Result` risk deadlocks. Use `await Task.WhenAll()` then access results.
+- [x] **CODE-003**: Sync-over-async `.Result` in `src/Common/Sorcha.Cryptography/Core/CryptoModule.cs:899-900` — `classicalTask.Result` and `pqcTask.Result` after `Task.WhenAll()`. Replace with awaited values.
+- [x] **CODE-004**: Sync-over-async `.Result` in `src/Services/Sorcha.Validator.Service/Services/ConsensusEngine.cs:150-151` — `.Select(t => t.Result)` pattern fragile even with IsCompleted guard.
 - [ ] **VAL-001**: Request DTOs lack explicit validation attributes (`[Required]`, `[StringLength]`, etc.) — global middleware catches attacks but not business logic validation. Files: `Sorcha.Tenant.Service/Models/Dtos/OrganizationDtos.cs`, `Sorcha.Blueprint.Service/Models/Requests/ActionSubmissionRequest.cs`.
 
 ## MEDIUM
@@ -28,13 +28,13 @@ Comprehensive audit of dead code, duplicates, constitution compliance, validatio
 - [ ] **SEC-004**: Public org lookup `GET /api/organizations/by-subdomain/{subdomain}` is `.AllowAnonymous()` in `src/Services/Sorcha.Tenant.Service/Endpoints/OrganizationEndpoints.cs:91` — enables subdomain enumeration. Consider rate limiting.
 - [ ] **CODE-005**: `async void` event handler in `src/Services/Sorcha.Validator.Service/Services/RotatingLeaderElectionService.cs:465` — `OnValidatorListChanged`. Verify intentional event handler pattern; if not, change to `Task`-returning.
 - [ ] **CODE-006**: `ManualResetEventSlim.Wait()` inside `Task.Run()` in `src/Services/Sorcha.Peer.Service/Replication/RegisterSyncBackgroundService.cs:108` — blocks thread pool thread for up to 5 minutes. Replace with `SemaphoreSlim` or `Channel<Unit>`.
-- [ ] **CODE-007**: Placeholder test files `tests/Sorcha.UI.Core.Tests/UnitTest1.cs` and `tests/Sorcha.UI.Integration.Tests/UnitTest1.cs` — rename or delete.
+- [x] **CODE-007**: Placeholder test files `tests/Sorcha.UI.Core.Tests/UnitTest1.cs` and `tests/Sorcha.UI.Integration.Tests/UnitTest1.cs` — rename or delete.
 
 ## LOW
 
-- [ ] **DOC-001**: Missing XML documentation on 10+ public constructors in Blueprint Service implementations — `AnthropicProviderService.cs:26`, `ChatOrchestrationService.cs:172`, `ActionExecutionService.cs:65`, `ActionResolverService.cs:31`, `BlueprintRecoveryService.cs:22`, `EncryptionBackgroundService.cs:41`, `EventsHubNotificationBridge.cs:40`, `InMemoryEncryptionOperationStore.cs:21`, `NotificationService.cs:20`.
+- [x] **DOC-001**: Missing XML documentation on 10+ public constructors in Blueprint Service implementations — `AnthropicProviderService.cs:26`, `ChatOrchestrationService.cs:172`, `ActionExecutionService.cs:65`, `ActionResolverService.cs:31`, `BlueprintRecoveryService.cs:22`, `EncryptionBackgroundService.cs:41`, `EventsHubNotificationBridge.cs:40`, `InMemoryEncryptionOperationStore.cs:21`, `NotificationService.cs:20`.
 - [ ] **DOC-002**: Missing XML documentation on MCP Server services — `McpAuthorizationService.cs`, `RateLimitService.cs`. Minimal doc coverage.
-- [ ] **DOC-003**: Missing XML documentation on PeerRouter gRPC services — `RouterDiscoveryService.cs` methods undocumented.
+- [x] **DOC-003**: Missing XML documentation on PeerRouter gRPC services — `RouterDiscoveryService.cs` methods undocumented.
 - [ ] **DOC-004**: Missing XML documentation on CLI services — `ConfigurationService.cs` (4 docs vs 11 public members), `DemoAuthService.cs` (3 docs vs 10 public members).
 - [ ] **CODE-008**: Only 4 uses of `.ConfigureAwait(false)` in entire codebase. Library/infrastructure code should use it on all await points to prevent context deadlocks.
 - [ ] **CODE-009**: Commented-out code in CLI commands (96 lines in `RegisterCommands.cs`, 65 in `PeerCommands.cs`, 57 in `QueryCommands.cs`, 49 in `OrganizationCommands.cs`). Review and clean up if truly dead.

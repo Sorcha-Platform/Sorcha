@@ -37,6 +37,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
     private readonly ILogger<EventsHubNotificationBridge> _logger;
     private ISubscriber? _subscriber;
 
+    /// <summary>Initialises a new instance of the <see cref="EventsHubNotificationBridge"/> class.</summary>
     public EventsHubNotificationBridge(
         IConnectionMultiplexer redis,
         IHubContext<EventsHub> hubContext,
