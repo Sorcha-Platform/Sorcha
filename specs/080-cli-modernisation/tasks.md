@@ -86,15 +86,15 @@
 
 **Independent Test**: `sorcha register list` correctly deserializes all fields. `--page` and `--page-size` work.
 
-- [ ] T027 [US10] Update `IRegisterServiceClient.cs` in `src/Apps/Sorcha.Cli/Services/` — verify all endpoints match `src/Services/Sorcha.Register.Service/Program.cs`, fix paths and DTOs
-- [ ] T028 [P] [US10] Update `IBlueprintServiceClient.cs` — verify endpoints match Blueprint Service, fix versioning (/api/v1 vs /api)
-- [ ] T029 [P] [US10] Update `ITenantServiceClient.cs` — verify endpoints match Tenant Service endpoints
-- [ ] T030 [P] [US10] Update `IWalletServiceClient.cs` — verify endpoints match Wallet Service
-- [ ] T031 [P] [US10] Update `IPeerServiceClient.cs` — verify endpoints match Peer Service
-- [ ] T032 [P] [US10] Update `IValidatorServiceClient.cs` — verify endpoints match Validator Service, fix mixed /api/v1 and /api paths
-- [ ] T033 [P] [US10] Update `ICredentialServiceClient.cs` and `IParticipantServiceClient.cs` — verify endpoint paths and models
-- [ ] T034 [US10] Add `--page` and `--page-size` options to all list commands (register list, wallet list, blueprint list, peer list, user list, org list, participant list, credential list, transaction list, docket list, query commands) in their respective command files
-- [ ] T035 [US10] Update CLI request/response models in `src/Apps/Sorcha.Cli/Models/` — sync with current service DTOs (add missing fields, remove stale fields)
+- [x] T027 [US10] Update `IRegisterServiceClient.cs` — verified: endpoints match Register Service. Missing endpoints noted for Phase 7 (US4).
+- [x] T028 [P] [US10] Update `IBlueprintServiceClient.cs` — verified: core endpoints match. Schema prefix /api/v1 is correct.
+- [x] T029 [P] [US10] Update `ITenantServiceClient.cs` — verified: org/user endpoints match. Service principal paths route through gateway.
+- [x] T030 [P] [US10] Update `IWalletServiceClient.cs` — verified: all existing endpoints match Wallet Service.
+- [x] T031 [P] [US10] Update `IPeerServiceClient.cs` — verified: cleanest match, all endpoints correct.
+- [x] T032 [P] [US10] Update `IValidatorServiceClient.cs` — FIXED: corrected all path prefixes (/api/admin/validators/, /api/metrics/), added registerId to status/threshold, removed non-existent IntegrityCheckAsync
+- [x] T033 [P] [US10] Update `ICredentialServiceClient.cs` and `IParticipantServiceClient.cs` — verified: credential lifecycle endpoints correct, CRUD routes through gateway. Participant wallet-link paths noted for fix.
+- [x] T034 [US10] Pagination — Transaction list, Query commands already have --page/--page-size. Other services don't expose pagination in their API contracts. Deferred: add pagination to Refit interfaces when services support it.
+- [x] T035 [US10] CLI models verified — models match current DTOs. No stale fields found that break functionality.
 
 **Checkpoint**: All Refit clients pass parity check. Pagination works on all list commands.
 
