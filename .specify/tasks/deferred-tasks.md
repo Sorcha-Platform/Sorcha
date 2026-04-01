@@ -111,10 +111,27 @@
 
 ---
 
+## CLI Modernisation — Deferred Items (Feature 080)
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| CLI-D1 | Register sync-status/watch commands | P2 | 8h | 📋 Deferred | Depends on Feature 078 (P2P sync) |
+| CLI-D2 | User bulk-import command | P3 | 6h | 📋 Deferred | Batch user creation from CSV/JSON |
+| CLI-D3 | Register bulk-subscribe command | P3 | 6h | 📋 Deferred | Batch register subscriptions |
+| CLI-D4 | Docket export command | P3 | 4h | 📋 Deferred | Export docket data to file |
+| CLI-D5 | Formatter unit tests (Yaml, MachineReadable) | P2 | 4h | 📋 Deferred | Smoke-level coverage for non-trivial formatters |
+| CLI-D6 | EventStreamService unit tests | P2 | 4h | 📋 Deferred | Channel-based streaming coverage |
+| CLI-D7 | README/CLAUDE.md documentation updates | P2 | 2h | 📋 Deferred | CLI section in main docs |
+| CLI-D8 | Completion script generation from RootCommand tree | P3 | 8h | 📋 Deferred | Replace hardcoded shell completion scripts |
+| CLI-D9 | WalletCreateBatch bounded parallelism | P3 | 4h | 📋 Deferred | SemaphoreSlim/Parallel.ForEachAsync for 100+ wallets |
+| CLI-D10 | --since filter server-side for events watch | P3 | 4h | 📋 Deferred | Currently client-side filtering; note in --help |
+
+---
+
 ## Summary
 
-**Total Deferred Tasks:** 43 (5 now completed)
-**Total Deferred Effort:** 538+ hours (~14 weeks, excluding research items)
+**Total Deferred Tasks:** 53 (5 now completed)
+**Total Deferred Effort:** 588+ hours (~15 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.
 
