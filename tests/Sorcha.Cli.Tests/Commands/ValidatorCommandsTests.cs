@@ -50,9 +50,9 @@ public class ValidatorCommandsTests
     public void ValidatorCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new ValidatorCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(8);
+        command.Subcommands.Should().HaveCount(7);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "status", "start", "stop", "process", "integrity-check", "consent", "metrics", "threshold" });
+            new[] { "status", "start", "stop", "process", "consent", "metrics", "threshold" });
     }
 
     #region ValidatorStatusCommand Tests
@@ -121,24 +121,5 @@ public class ValidatorCommandsTests
 
     #endregion
 
-    #region ValidatorIntegrityCheckCommand Tests
-
-    [Fact]
-    public void ValidatorIntegrityCheckCommand_ShouldHaveCorrectNameAndDescription()
-    {
-        var command = new ValidatorIntegrityCheckCommand(_clientFactory, AuthService, ConfigService);
-        command.Name.Should().Be("integrity-check");
-        command.Description.Should().NotBeNullOrWhiteSpace();
-    }
-
-    [Fact]
-    public void ValidatorIntegrityCheckCommand_ShouldHaveRequiredRegisterIdOption()
-    {
-        var command = new ValidatorIntegrityCheckCommand(_clientFactory, AuthService, ConfigService);
-        var option = command.Options.FirstOrDefault(o => o.Name == "--register-id");
-        option.Should().NotBeNull();
-        option!.Required.Should().BeTrue();
-    }
-
-    #endregion
+    // ValidatorIntegrityCheckCommand removed — endpoint does not exist in Validator Service
 }

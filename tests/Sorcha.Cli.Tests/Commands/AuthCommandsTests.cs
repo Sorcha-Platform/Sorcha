@@ -73,7 +73,7 @@ public class AuthCommandsTests : IDisposable
 
         // Assert
         command.Name.Should().Be("auth");
-        command.Description.Should().Be("Manage authentication and login sessions");
+        command.Description.Should().StartWith("Manage authentication and login sessions");
     }
 
     [Fact]

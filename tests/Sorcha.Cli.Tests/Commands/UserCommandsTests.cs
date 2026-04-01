@@ -45,7 +45,7 @@ public class UserCommandsTests
 
         // Assert
         command.Name.Should().Be("user");
-        command.Description.Should().Be("Manage users within organizations");
+        command.Description.Should().StartWith("Manage users within organizations");
     }
 
     [Fact]

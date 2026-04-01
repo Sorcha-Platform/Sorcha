@@ -72,7 +72,7 @@ public class ValidatorThresholdCommandTests
     public void ValidatorThresholdStatusCommand_ShouldHaveNoOptions()
     {
         var command = new ValidatorThresholdStatusCommand(_clientFactory, AuthService, ConfigService);
-        command.Options.Should().BeEmpty();
+        command.Options.Should().HaveCount(1); // --register-id added
     }
 
     #endregion
