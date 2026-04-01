@@ -160,6 +160,70 @@ public class HttpClientFactory
     }
 
     /// <summary>
+    /// Creates an Invitation Service client for the specified profile.
+    /// Uses the Tenant Service URL since invitation endpoints are on the Tenant Service.
+    /// </summary>
+    public async Task<IInvitationServiceClient> CreateInvitationServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetTenantServiceUrl());
+        return RestService.For<IInvitationServiceClient>(httpClient);
+    }
+
+    /// <summary>
+    /// Creates an Audit Service client for the specified profile.
+    /// Uses the Tenant Service URL since audit endpoints are on the Tenant Service.
+    /// </summary>
+    public async Task<IAuditServiceClient> CreateAuditServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetTenantServiceUrl());
+        return RestService.For<IAuditServiceClient>(httpClient);
+    }
+
+    /// <summary>
+    /// Creates a Verification Service client for the specified profile.
+    /// Uses the Register Service URL since verification endpoints are on the Register Service.
+    /// </summary>
+    public async Task<IVerificationServiceClient> CreateVerificationServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetRegisterServiceUrl());
+        return RestService.For<IVerificationServiceClient>(httpClient);
+    }
+
+    /// <summary>
+    /// Creates a Platform Service client for the specified profile.
+    /// Uses the Gateway URL since platform endpoints route through the API Gateway.
+    /// </summary>
+    public async Task<IPlatformServiceClient> CreatePlatformServiceClientAsync(string profileName)
+    {
+        var profile = await _configService.GetProfileAsync(profileName);
+        if (profile == null)
+        {
+            throw new InvalidOperationException($"Profile '{profileName}' does not exist.");
+        }
+
+        var httpClient = CreateHttpClient(profile, profile.GetGatewayUrl());
+        return RestService.For<IPlatformServiceClient>(httpClient);
+    }
+
+    /// <summary>
     /// Creates an HTTP client with resilience policies.
     /// </summary>
     private HttpClient CreateHttpClient(Profile profile, string baseUrl)

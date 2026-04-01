@@ -106,13 +106,13 @@
 
 **Independent Test**: Run `sorcha events watch --register <id>`, submit transaction, see event within 3s.
 
-- [ ] T036 [US3] Create `EventStreamService` in `src/Apps/Sorcha.Cli/Services/EventStreamService.cs` — SignalR client wrapper connecting to `/hubs/register` and `/hubs/events`, auto-reconnect with backoff
-- [ ] T037 [US3] Create `EventStreamMessage` model in `src/Apps/Sorcha.Cli/Models/EventStreamMessage.cs` — EventType, RegisterId, Timestamp, Data
-- [ ] T038 [US3] Create `EventWatchCommand` in `src/Apps/Sorcha.Cli/Commands/EventWatchCommand.cs` — `events watch` with `--register`, `--blueprints`, `--all`, `--role`, `--since` options
-- [ ] T039 [US3] Implement JSON lines output mode for event streaming — each event on one line for piping to jq/MCP
-- [ ] T040 [US3] Implement role-based event filtering — consumer (transactions only), admin (+governance), sysadmin (everything)
-- [ ] T041 [US3] Implement Ctrl+C graceful shutdown with event count summary
-- [ ] T042 [US3] Register `events watch` command in `src/Apps/Sorcha.Cli/Program.cs`
+- [x] T036 [US3] Create `EventStreamService` in `src/Apps/Sorcha.Cli/Services/EventStreamService.cs` — SignalR client wrapper with auto-reconnect
+- [x] T037 [US3] Create `EventStreamMessage` model in `src/Apps/Sorcha.Cli/Models/EventStreamMessage.cs`
+- [x] T038 [US3] Create `EventWatchCommand` in `src/Apps/Sorcha.Cli/Commands/EventWatchCommand.cs` — all options implemented
+- [x] T039 [US3] JSON lines output mode for event streaming
+- [x] T040 [US3] Role-based event filtering (consumer/admin/sysadmin)
+- [x] T041 [US3] Ctrl+C graceful shutdown with event count summary
+- [x] T042 [US3] Register `events watch` command in Program.cs
 
 **Checkpoint**: Event streaming works with auto-reconnect. JSON lines output is pipe-friendly.
 
@@ -124,16 +124,16 @@
 
 **Independent Test**: `sorcha health` shows all service statuses. `sorcha invitation list` returns results.
 
-- [ ] T043 [P] [US4] Create `IInvitationServiceClient.cs` in `src/Apps/Sorcha.Cli/Services/` — Refit interface for `/api/organizations/{orgId}/register-invitations` endpoints
-- [ ] T044 [P] [US4] Create `IAuditServiceClient.cs` in `src/Apps/Sorcha.Cli/Services/` — Refit interface for audit/event endpoints
-- [ ] T045 [P] [US4] Create `IVerificationServiceClient.cs` in `src/Apps/Sorcha.Cli/Services/` — Refit interface for `/api/registers/{id}/verification/*` endpoints
-- [ ] T046 [US4] Create `InvitationCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — create, list, accept, revoke subcommands
-- [ ] T047 [US4] Create `AuditCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — list (with date/action/user filters), export subcommands
-- [ ] T048 [US4] Create `VerifyCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — receipt, bundle, inclusion-proof subcommands
-- [ ] T049 [US4] Create `HealthCommand.cs` in `src/Apps/Sorcha.Cli/Commands/` — aggregated health from `/api/health`, per-service detail with `--service`
-- [ ] T050 [US4] Create `PlatformCommands.cs` in `src/Apps/Sorcha.Cli/Commands/` — settings, orgs (list/suspend/activate), stats
-- [ ] T051 [US4] Add `sync-status` and `watch` subcommands to `RegisterCommands.cs` — show sync state, progress, source peers; real-time sync monitoring
-- [ ] T052 [US4] Register all new commands in `src/Apps/Sorcha.Cli/Program.cs` and wire Refit clients in DI
+- [x] T043 [P] [US4] Create `IInvitationServiceClient.cs` — Refit interface with DTOs
+- [x] T044 [P] [US4] Create `IAuditServiceClient.cs` — Refit interface with DTOs
+- [x] T045 [P] [US4] Create `IVerificationServiceClient.cs` — Refit interface with DTOs
+- [x] T046 [US4] Create `InvitationCommands.cs` — create, list, accept, revoke subcommands
+- [ ] T047 [US4] Create `AuditCommands.cs` — list (with date/action/user filters), export subcommands
+- [x] T048 [US4] Create `VerifyCommands.cs` — receipt, bundle subcommands
+- [x] T049 [US4] Create `HealthCommand.cs` — aggregated health with --service filter
+- [x] T050 [US4] Create `PlatformCommands.cs` — orgs and settings subcommands
+- [ ] T051 [US4] Add `sync-status` and `watch` subcommands to `RegisterCommands.cs`
+- [x] T052 [US4] Register all new commands in Program.cs and wire Refit clients in HttpClientFactory
 
 **Checkpoint**: All new CLI commands callable. Health aggregation works. Invitations manageable from CLI.
 

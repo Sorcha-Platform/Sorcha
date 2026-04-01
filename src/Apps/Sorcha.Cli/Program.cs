@@ -190,6 +190,15 @@ internal class Program
         rootCommand.Subcommands.Add(new OperationCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new ActionCommand(clientFactory, authService, configService));
 
+        // Real-time event streaming
+        rootCommand.Subcommands.Add(new EventsCommand(clientFactory, authService, configService));
+
+        // API coverage commands: Invitations, Health, Verify, Platform
+        rootCommand.Subcommands.Add(new InvitationCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new HealthCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new VerifyCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new PlatformCommand(clientFactory, authService, configService));
+
         // Configuration management commands
         rootCommand.Subcommands.Add(new ConfigCommand());
 
