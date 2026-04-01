@@ -45,7 +45,7 @@ public class ServicePrincipalCommandsTests
 
         // Assert
         command.Name.Should().Be("principal");
-        command.Description.Should().Be("Manage service principals within organizations");
+        command.Description.Should().StartWith("Manage service principals within organizations");
     }
 
     [Fact]

@@ -19,7 +19,7 @@ public class OrganizationCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("org", "Manage organizations")
+        : base("org", "Manage organizations\n\nExamples:\n  sorcha org list\n  sorcha org get --id <org-id>\n  sorcha org create --name \"My Org\" --subdomain myorg")
     {
         Subcommands.Add(new OrgListCommand(clientFactory, authService, configService));
         Subcommands.Add(new OrgGetCommand(clientFactory, authService, configService));
@@ -66,6 +66,13 @@ public class OrgListCommand : Command
                 if (response?.Organizations == null || response.Organizations.Count == 0)
                 {
                     ConsoleHelper.WriteInfo("No organizations found.");
+                    return ExitCodes.Success;
+                }
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, response.Organizations);
                     return ExitCodes.Success;
                 }
 
@@ -145,6 +152,13 @@ public class OrgGetCommand : Command
                 var org = await client.GetOrganizationAsync(id, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, org);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess("Organization details:");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:          {org.Id}");
@@ -251,6 +265,13 @@ public class OrgCreateCommand : Command
                 var org = await client.CreateOrganizationAsync(request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, org);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Organization created successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:          {org.Id}");
@@ -365,6 +386,13 @@ public class OrgUpdateCommand : Command
                 var org = await client.UpdateOrganizationAsync(id, request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, org);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Organization updated successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:          {org.Id}");

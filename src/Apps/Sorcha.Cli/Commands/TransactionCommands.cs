@@ -4,7 +4,6 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Net;
-using System.Text.Json;
 using Refit;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Services;
@@ -21,7 +20,8 @@ public class TransactionCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("tx", "Manage transactions in registers")
+        : base("tx", "Manage transactions in registers\n\nExamples:\n  sorcha tx list --register-id <id>\n  sorcha tx get --register-id <id> --id <tx-id>\n  sorcha tx submit --register-id <id> --wallet <addr> --data '{\"key\":\"value\"}'")
+
     {
         Subcommands.Add(new TxListCommand(clientFactory, authService, configService));
         Subcommands.Add(new TxGetCommand(clientFactory, authService, configService));
@@ -93,10 +93,10 @@ public class TxListCommand : Command
                 var transactions = await client.ListTransactionsAsync(registerId, page, pageSize, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(transactions, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, transactions);
                     return ExitCodes.Success;
                 }
 
@@ -220,10 +220,10 @@ public class TxGetCommand : Command
                 var tx = await client.GetTransactionAsync(registerId, txId, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(tx, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, tx);
                     return ExitCodes.Success;
                 }
 
@@ -413,10 +413,10 @@ public class TxSubmitCommand : Command
                 var response = await client.SubmitTransactionAsync(registerId, request, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -542,10 +542,10 @@ public class TxStatusCommand : Command
                 var response = await client.GetTransactionStatusAsync(registerId, txId, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 

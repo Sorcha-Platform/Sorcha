@@ -4,6 +4,7 @@ using System.CommandLine;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Sorcha.Cli.Branding;
 using Sorcha.Cli.Commands;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Services;
@@ -117,7 +118,7 @@ internal class Program
 
         var outputOption = new Option<string>("--output", "-o")
         {
-            Description = "Output format (table, json, csv)",
+            Description = "Output format (table, json, csv, yaml)",
             DefaultValueFactory = _ => "table"
         };
 
@@ -131,10 +132,16 @@ internal class Program
             Description = "Enable verbose logging"
         };
 
+        var machineReadableOption = new Option<bool>("--machine-readable")
+        {
+            Description = "Wrap output in standard JSON envelope for automation"
+        };
+
         rootCommand.Options.Add(profileOption);
         rootCommand.Options.Add(outputOption);
         rootCommand.Options.Add(quietOption);
         rootCommand.Options.Add(verboseOption);
+        rootCommand.Options.Add(machineReadableOption);
 
         // Get config service for profile resolution
         var configService = serviceProvider.GetRequiredService<IConfigurationService>();
@@ -144,6 +151,7 @@ internal class Program
         BaseCommand.OutputOption = outputOption;
         BaseCommand.QuietOption = quietOption;
         BaseCommand.VerboseOption = verboseOption;
+        BaseCommand.MachineReadableOption = machineReadableOption;
         BaseCommand.ConfigService = configService;
 
         // Get services from DI container
@@ -182,19 +190,35 @@ internal class Program
         rootCommand.Subcommands.Add(new OperationCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new ActionCommand(clientFactory, authService, configService));
 
+        // Real-time event streaming
+        rootCommand.Subcommands.Add(new EventsCommand(clientFactory, authService, configService));
+
+        // API coverage commands: Invitations, Health, Verify, Platform, Audit
+        rootCommand.Subcommands.Add(new InvitationCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new HealthCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new VerifyCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new PlatformCommand(clientFactory, authService, configService));
+        rootCommand.Subcommands.Add(new AuditCommand(clientFactory, authService, configService));
+
         // Configuration management commands
-        rootCommand.Subcommands.Add(new ConfigCommand());
+        rootCommand.Subcommands.Add(new ConfigCommand(configService, authService));
+
+        // Shell completion
+        rootCommand.Subcommands.Add(new CompletionCommand());
+
+        // Getting-started guide
+        rootCommand.Subcommands.Add(new HelpCommand(configService));
 
         // Version command
         var versionCommand = new Command("version", "Display CLI version information");
         versionCommand.SetAction((parseResult, ct) =>
         {
+            SorchaBanner.Render(configService);
+
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();
             var version = assembly.GetName().Version;
             var fileVersion = assembly.GetCustomAttribute<System.Reflection.AssemblyFileVersionAttribute>()?.Version;
-            var infoVersion = assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
-            Console.WriteLine($"Sorcha CLI v{infoVersion ?? version?.ToString() ?? "1.0.0"}");
             Console.WriteLine($"Assembly Version: {version}");
             Console.WriteLine($"File Version: {fileVersion}");
             Console.WriteLine($".NET Runtime: {Environment.Version}");

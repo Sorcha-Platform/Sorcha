@@ -49,8 +49,8 @@ public class WalletCommandsTests
     public void WalletCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new WalletCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(7);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign", "access" });
+        command.Subcommands.Should().HaveCount(8);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "recover", "delete", "sign", "access", "create-batch" });
     }
 
     #region WalletListCommand Tests

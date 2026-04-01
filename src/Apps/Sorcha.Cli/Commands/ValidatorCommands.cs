@@ -21,13 +21,12 @@ public class ValidatorCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("validator", "Manage the validator service")
+        : base("validator", "Manage the validator service\n\nExamples:\n  sorcha validator status\n  sorcha validator start\n  sorcha validator metrics")
     {
         Subcommands.Add(new ValidatorStatusCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorStartCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorStopCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorProcessCommand(clientFactory, authService, configService));
-        Subcommands.Add(new ValidatorIntegrityCheckCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorConsentCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorMetricsCommand(clientFactory, authService, configService));
         Subcommands.Add(new ValidatorThresholdCommand(clientFactory, authService, configService));
@@ -39,16 +38,22 @@ public class ValidatorCommand : Command
 /// </summary>
 public class ValidatorStatusCommand : Command
 {
+    private readonly Option<string> _registerIdOption;
+
     public ValidatorStatusCommand(
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("status", "Get validator service status")
+        : base("status", "Get validator service status\n\nNote: --register-id is required (breaking change from v1.0.x)")
     {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        Options.Add(_registerIdOption);
+
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             try
             {
+                var registerId = parseResult.GetValue(_registerIdOption)!;
                 var profile = await configService.GetActiveProfileAsync();
                 var profileName = profile?.Name ?? "dev";
 
@@ -60,12 +65,12 @@ public class ValidatorStatusCommand : Command
                 }
 
                 var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
-                var status = await client.GetStatusAsync($"Bearer {token}");
+                var status = await client.GetStatusAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, status);
                     return ExitCodes.Success;
                 }
 
@@ -307,10 +312,10 @@ public class ValidatorProcessCommand : Command
 
                 var result = await client.ProcessRegisterAsync(registerId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, result);
                     return ExitCodes.Success;
                 }
 
@@ -347,121 +352,6 @@ public class ValidatorProcessCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to process transactions: {ex.Message}");
-                return ExitCodes.GeneralError;
-            }
-        });
-    }
-}
-
-/// <summary>
-/// Runs an integrity check on a register's chain.
-/// </summary>
-public class ValidatorIntegrityCheckCommand : Command
-{
-    private readonly Option<string> _registerIdOption;
-
-    public ValidatorIntegrityCheckCommand(
-        HttpClientFactory clientFactory,
-        IAuthenticationService authService,
-        IConfigurationService configService)
-        : base("integrity-check", "Run integrity check on a register's chain")
-    {
-        _registerIdOption = new Option<string>("--register-id", "-r")
-        {
-            Description = "Register ID to check",
-            Required = true
-        };
-
-        Options.Add(_registerIdOption);
-
-        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
-        {
-            var registerId = parseResult.GetValue(_registerIdOption)!;
-
-            try
-            {
-                var profile = await configService.GetActiveProfileAsync();
-                var profileName = profile?.Name ?? "dev";
-
-                var token = await authService.GetAccessTokenAsync(profileName);
-                if (string.IsNullOrEmpty(token))
-                {
-                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
-                    return ExitCodes.AuthenticationError;
-                }
-
-                var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
-                ConsoleHelper.WriteInfo($"Running integrity check on register '{registerId}'...");
-
-                var result = await client.IntegrityCheckAsync(registerId, $"Bearer {token}");
-
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-                    return ExitCodes.Success;
-                }
-
-                if (result.IsValid)
-                {
-                    ConsoleHelper.WriteSuccess("Integrity check PASSED.");
-                }
-                else
-                {
-                    ConsoleHelper.WriteError("Integrity check FAILED.");
-                }
-
-                Console.WriteLine();
-                Console.WriteLine($"  Register ID:   {result.RegisterId}");
-                Console.WriteLine($"  Chain Length:   {result.ChainLength}");
-                Console.WriteLine($"  Valid:          {(result.IsValid ? "Yes" : "No")}");
-                Console.WriteLine($"  Checked At:    {result.CheckedAt:yyyy-MM-dd HH:mm:ss}");
-
-                if (result.Errors.Count > 0)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("  Errors:");
-                    foreach (var error in result.Errors)
-                    {
-                        Console.WriteLine($"    - {error}");
-                    }
-                }
-
-                if (result.Warnings.Count > 0)
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("  Warnings:");
-                    foreach (var warning in result.Warnings)
-                    {
-                        Console.WriteLine($"    - {warning}");
-                    }
-                }
-
-                return ExitCodes.Success;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                ConsoleHelper.WriteError($"Register '{registerId}' not found.");
-                return ExitCodes.NotFound;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
-                return ExitCodes.AuthenticationError;
-            }
-            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
-            {
-                ConsoleHelper.WriteError("You do not have permission to run integrity checks.");
-                return ExitCodes.AuthorizationError;
-            }
-            catch (ApiException ex)
-            {
-                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
-                return ExitCodes.GeneralError;
-            }
-            catch (Exception ex)
-            {
-                ConsoleHelper.WriteError($"Failed to run integrity check: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });
@@ -535,8 +425,8 @@ public class ValidatorConsentPendingCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -854,8 +744,8 @@ public class ValidatorConsentRefreshCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -957,8 +847,8 @@ public class ValidatorMetricsCommand : Command
                 return ExitCodes.GeneralError;
             }
 
-            var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-            if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+            var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+            if (OutputHelper.IsStructuredFormat(outputFormat))
             {
                 Console.WriteLine(content);
                 return ExitCodes.Success;
@@ -1068,16 +958,22 @@ public class ValidatorThresholdCommand : Command
 /// </summary>
 public class ValidatorThresholdStatusCommand : Command
 {
+    private readonly Option<string> _registerIdOption;
+
     public ValidatorThresholdStatusCommand(
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
         : base("status", "Get threshold signing status")
     {
+        _registerIdOption = new Option<string>("--register-id", "-r") { Description = "Register ID", Required = true };
+        Options.Add(_registerIdOption);
+
         this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
             try
             {
+                var registerId = parseResult.GetValue(_registerIdOption)!;
                 var profile = await configService.GetActiveProfileAsync();
                 var profileName = profile?.Name ?? "dev";
 
@@ -1089,7 +985,7 @@ public class ValidatorThresholdStatusCommand : Command
                 }
 
                 var client = await clientFactory.CreateValidatorServiceClientAsync(profileName);
-                var response = await client.GetThresholdStatusAsync($"Bearer {token}");
+                var response = await client.GetThresholdStatusAsync(registerId, $"Bearer {token}");
                 var content = await response.Content.ReadAsStringAsync(ct);
 
                 if (!response.IsSuccessStatusCode)
@@ -1098,8 +994,8 @@ public class ValidatorThresholdStatusCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1241,8 +1137,8 @@ public class ValidatorThresholdSetupCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;

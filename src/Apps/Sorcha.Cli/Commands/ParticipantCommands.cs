@@ -4,7 +4,6 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Net;
-using System.Text.Json;
 using Refit;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
@@ -21,7 +20,7 @@ public class ParticipantCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("participant", "Manage participant identities")
+        : base("participant", "Manage participant identities\n\nExamples:\n  sorcha participant list --org-id <id>\n  sorcha participant register --org-id <id> --display-name \"Alice\"\n  sorcha participant search --query alice")
     {
         Subcommands.Add(new ParticipantRegisterCommand(clientFactory, authService, configService));
         Subcommands.Add(new ParticipantListCommand(clientFactory, authService, configService));
@@ -101,10 +100,10 @@ public class ParticipantRegisterCommand : Command
 
                 var participant = await client.RegisterParticipantAsync(orgId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, participant);
                     return ExitCodes.Success;
                 }
 
@@ -188,10 +187,10 @@ public class ParticipantListCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var participants = await client.ListParticipantsAsync(orgId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(participants, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, participants);
                     return ExitCodes.Success;
                 }
 
@@ -286,10 +285,10 @@ public class ParticipantGetCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var participant = await client.GetParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, participant);
                     return ExitCodes.Success;
                 }
 
@@ -418,10 +417,10 @@ public class ParticipantUpdateCommand : Command
 
                 var participant = await client.UpdateParticipantAsync(orgId, id, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(participant, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, participant);
                     return ExitCodes.Success;
                 }
 
@@ -513,10 +512,10 @@ public class ParticipantSearchCommand : Command
 
                 var participants = await client.SearchParticipantsAsync(request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(participants, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, participants);
                     return ExitCodes.Success;
                 }
 
@@ -612,10 +611,10 @@ public class ParticipantWalletLinkCommand : Command
 
                 var challenge = await client.InitiateWalletLinkAsync(participantId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(challenge, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, challenge);
                     return ExitCodes.Success;
                 }
 
@@ -708,10 +707,10 @@ public class ParticipantSuspendCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 await client.SuspendParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Suspended" }, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, new { participantId = id, status = "Suspended" });
                     return ExitCodes.Success;
                 }
 
@@ -805,10 +804,10 @@ public class ParticipantReactivateCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 await client.ReactivateParticipantAsync(orgId, id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(new { participantId = id, status = "Active" }, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, new { participantId = id, status = "Active" });
                     return ExitCodes.Success;
                 }
 
@@ -948,10 +947,10 @@ public class ParticipantPublishCommand : Command
 
                 var result = await client.PublishParticipantAsync(orgId, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, result);
                     return ExitCodes.Success;
                 }
 
@@ -1065,10 +1064,10 @@ public class ParticipantUnpublishCommand : Command
                 var client = await clientFactory.CreateParticipantServiceClientAsync(profileName);
                 var result = await client.UnpublishParticipantAsync(orgId, id, registerId, signer, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, result);
                     return ExitCodes.Success;
                 }
 

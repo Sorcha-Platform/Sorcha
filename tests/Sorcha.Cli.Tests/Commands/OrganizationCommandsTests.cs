@@ -45,7 +45,7 @@ public class OrganizationCommandsTests
 
         // Assert
         command.Name.Should().Be("org");
-        command.Description.Should().Be("Manage organizations");
+        command.Description.Should().StartWith("Manage organizations");
     }
 
     [Fact]

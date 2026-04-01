@@ -19,7 +19,7 @@ public class WalletCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("wallet", "Manage cryptographic wallets")
+        : base("wallet", "Manage cryptographic wallets\n\nExamples:\n  sorcha wallet list\n  sorcha wallet create --name \"My Wallet\" --algorithm ED25519\n  sorcha wallet sign --address <addr> --data <hex>")
     {
         Subcommands.Add(new WalletListCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletGetCommand(clientFactory, authService, configService));
@@ -28,6 +28,7 @@ public class WalletCommand : Command
         Subcommands.Add(new WalletDeleteCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletSignCommand(clientFactory, authService, configService));
         Subcommands.Add(new WalletAccessCommand(clientFactory, authService, configService));
+        Subcommands.Add(new WalletCreateBatchCommand(clientFactory, authService, configService));
     }
 }
 
@@ -894,6 +895,156 @@ public class WalletAccessCheckCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to check access: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Creates multiple wallets in a batch operation.
+/// </summary>
+public class WalletCreateBatchCommand : Command
+{
+    private readonly Option<int> _countOption;
+    private readonly Option<string> _algorithmOption;
+
+    public WalletCreateBatchCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("create-batch", "Create multiple wallets in a batch")
+    {
+        _countOption = new Option<int>("--count", "-c")
+        {
+            Description = "Number of wallets to create",
+            Required = true
+        };
+
+        _algorithmOption = new Option<string>("--algorithm", "-a")
+        {
+            Description = "Cryptographic algorithm (ED25519, NISTP256, RSA4096)",
+            DefaultValueFactory = _ => "ED25519"
+        };
+
+        Options.Add(_countOption);
+        Options.Add(_algorithmOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var count = parseResult.GetValue(_countOption);
+            var algorithm = parseResult.GetValue(_algorithmOption)!;
+
+            if (count < 1 || count > 100)
+            {
+                ConsoleHelper.WriteError("Count must be between 1 and 100.");
+                return ExitCodes.ValidationError;
+            }
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateWalletServiceClientAsync(profileName);
+
+                var result = new BulkOperationResult { TotalItems = count };
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                Console.Error.WriteLine($"Creating {count} wallet(s) with algorithm {algorithm}...");
+                Console.Error.WriteLine();
+
+                for (var i = 0; i < count; i++)
+                {
+                    var walletName = $"batch-wallet-{i + 1:D4}";
+                    try
+                    {
+                        var request = new CreateWalletRequest
+                        {
+                            Name = walletName,
+                            Algorithm = algorithm,
+                            WordCount = 12
+                        };
+
+                        var response = await client.CreateWalletAsync(request, $"Bearer {token}");
+                        result.Succeeded++;
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] Created: {response.Wallet?.Address} ({walletName})");
+                    }
+                    catch (ApiException ex)
+                    {
+                        result.Failed++;
+                        result.Errors.Add(new BulkItemError
+                        {
+                            Index = i,
+                            Identifier = walletName,
+                            Error = $"API error ({ex.StatusCode}): {ex.Content}"
+                        });
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.StatusCode}");
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Failed++;
+                        result.Errors.Add(new BulkItemError
+                        {
+                            Index = i,
+                            Identifier = walletName,
+                            Error = ex.Message
+                        });
+                        Console.Error.WriteLine($"  [{i + 1}/{count}] FAILED: {walletName} - {ex.Message}");
+                    }
+                }
+
+                stopwatch.Stop();
+                result.Duration = stopwatch.Elapsed;
+
+                // Summary (to stderr so structured output on stdout is clean)
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(new string('-', 50));
+                Console.Error.WriteLine("Batch Operation Summary:");
+                Console.Error.WriteLine($"  Total:     {result.TotalItems}");
+                Console.Error.WriteLine($"  Succeeded: {result.Succeeded}");
+                Console.Error.WriteLine($"  Failed:    {result.Failed}");
+                Console.Error.WriteLine($"  Duration:  {result.Duration.TotalSeconds:F2}s");
+
+                if (result.Errors.Count > 0)
+                {
+                    Console.Error.WriteLine();
+                    Console.Error.WriteLine("Errors:");
+                    foreach (var error in result.Errors)
+                    {
+                        Console.Error.WriteLine($"  [{error.Index}] {error.Identifier}: {error.Error}");
+                    }
+                }
+
+                if (result.Failed > 0)
+                {
+                    ConsoleHelper.WriteWarning($"{result.Failed} wallet(s) failed to create.");
+                }
+                else
+                {
+                    ConsoleHelper.WriteSuccess($"All {result.Succeeded} wallet(s) created successfully!");
+                }
+
+                ConsoleHelper.WriteWarning("IMPORTANT: Mnemonic phrases for batch wallets are not displayed.");
+                ConsoleHelper.WriteWarning("Use 'sorcha wallet get --address <addr>' to inspect individual wallets.");
+
+                return result.Failed > 0 ? ExitCodes.GeneralError : ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to execute batch: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

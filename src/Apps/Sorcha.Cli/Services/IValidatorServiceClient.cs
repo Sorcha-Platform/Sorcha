@@ -12,71 +12,65 @@ namespace Sorcha.Cli.Services;
 public interface IValidatorServiceClient
 {
     /// <summary>
-    /// Gets the current validator status.
-    /// </summary>
-    [Get("/api/validator/status")]
-    Task<ValidatorStatus> GetStatusAsync([Header("Authorization")] string authorization);
-
-    /// <summary>
     /// Starts the validator service.
     /// </summary>
-    [Post("/api/validator/start")]
+    [Post("/api/admin/validators/start")]
     Task<ValidatorActionResponse> StartAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Stops the validator service.
     /// </summary>
-    [Post("/api/validator/stop")]
+    [Post("/api/admin/validators/stop")]
     Task<ValidatorActionResponse> StopAsync([Header("Authorization")] string authorization);
+
+    /// <summary>
+    /// Gets the validator status for a register.
+    /// </summary>
+    [Get("/api/admin/validators/{registerId}/status")]
+    Task<ValidatorStatus> GetStatusAsync(string registerId, [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Triggers processing of pending transactions for a register.
     /// </summary>
-    [Post("/api/validator/registers/{registerId}/process")]
+    [Post("/api/admin/validators/{registerId}/process")]
     Task<ValidatorProcessResult> ProcessRegisterAsync(string registerId, [Header("Authorization")] string authorization);
-
-    /// <summary>
-    /// Runs an integrity check on a register's chain.
-    /// </summary>
-    [Post("/api/validator/registers/{registerId}/integrity-check")]
-    Task<IntegrityCheckResult> IntegrityCheckAsync(string registerId, [Header("Authorization")] string authorization);
 
     // --- Metrics ---
 
     /// <summary>
     /// Gets aggregated validator metrics.
     /// </summary>
-    [Get("/api/validator/metrics")]
+    [Get("/api/metrics")]
     Task<HttpResponseMessage> GetAggregatedMetricsAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets validation-specific metrics.
     /// </summary>
-    [Get("/api/validator/metrics/validation")]
+    [Get("/api/metrics/validation")]
     Task<HttpResponseMessage> GetValidationMetricsAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets consensus metrics.
     /// </summary>
-    [Get("/api/validator/metrics/consensus")]
+    [Get("/api/metrics/consensus")]
     Task<HttpResponseMessage> GetConsensusMetricsAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets pool metrics.
     /// </summary>
-    [Get("/api/validator/metrics/pools")]
+    [Get("/api/metrics/pools")]
     Task<HttpResponseMessage> GetPoolMetricsAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets cache metrics.
     /// </summary>
-    [Get("/api/validator/metrics/caches")]
+    [Get("/api/metrics/caches")]
     Task<HttpResponseMessage> GetCacheMetricsAsync([Header("Authorization")] string authorization);
 
     /// <summary>
     /// Gets configuration metrics.
     /// </summary>
-    [Get("/api/validator/metrics/config")]
+    [Get("/api/metrics/config")]
     Task<HttpResponseMessage> GetConfigMetricsAsync([Header("Authorization")] string authorization);
 
     // --- Consent ---
@@ -108,10 +102,10 @@ public interface IValidatorServiceClient
     // --- Threshold ---
 
     /// <summary>
-    /// Gets the threshold signing status.
+    /// Gets the threshold signing status for a register.
     /// </summary>
-    [Get("/api/v1/validators/threshold/status")]
-    Task<HttpResponseMessage> GetThresholdStatusAsync([Header("Authorization")] string authorization);
+    [Get("/api/v1/validators/threshold/{registerId}/status")]
+    Task<HttpResponseMessage> GetThresholdStatusAsync(string registerId, [Header("Authorization")] string authorization);
 
     /// <summary>
     /// Sets up threshold signing for a register.

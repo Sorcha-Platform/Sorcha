@@ -50,9 +50,9 @@ public class BlueprintCommandsTests
     public void BlueprintCommand_ShouldHaveSevenSubcommands()
     {
         var command = new BlueprintCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(7);
+        command.Subcommands.Should().HaveCount(8);
         command.Subcommands.Select(c => c.Name).Should().Contain(
-            new[] { "list", "get", "create", "publish", "delete", "versions", "instances" });
+            new[] { "list", "get", "create", "publish", "delete", "versions", "instances", "export" });
     }
 
     #region BlueprintListCommand Tests

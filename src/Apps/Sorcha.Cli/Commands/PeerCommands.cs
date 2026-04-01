@@ -19,7 +19,7 @@ public class PeerCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("peer", "Monitor peer network and node health")
+        : base("peer", "Monitor peer network and node health\n\nExamples:\n  sorcha peer list\n  sorcha peer health\n  sorcha peer subscriptions\n  sorcha peer subscribe --register-id <id>")
     {
         Subcommands.Add(new PeerListCommand(clientFactory, authService, configService));
         Subcommands.Add(new PeerGetCommand(clientFactory, authService, configService));

@@ -19,7 +19,7 @@ public class ServicePrincipalCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("principal", "Manage service principals within organizations")
+        : base("principal", "Manage service principals within organizations\n\nExamples:\n  sorcha principal list\n  sorcha principal create --name \"API Client\" --org-id <id>")
     {
         Subcommands.Add(new PrincipalListCommand(clientFactory, authService, configService));
         Subcommands.Add(new PrincipalGetCommand(clientFactory, authService, configService));
@@ -78,6 +78,13 @@ public class PrincipalListCommand : Command
                 if (principals == null || principals.Count == 0)
                 {
                     ConsoleHelper.WriteInfo("No service principals found.");
+                    return ExitCodes.Success;
+                }
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, principals);
                     return ExitCodes.Success;
                 }
 
@@ -173,6 +180,13 @@ public class PrincipalGetCommand : Command
                 var sp = await client.GetServicePrincipalAsync(orgId, clientId, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, sp);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess("Service principal details:");
                 Console.WriteLine();
                 Console.WriteLine($"  Client ID:       {sp.ClientId}");
@@ -304,6 +318,13 @@ public class PrincipalCreateCommand : Command
                 var response = await client.CreateServicePrincipalAsync(orgId, request, $"Bearer {token}");
 
                 // Display results with security warning
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Service principal created successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  Client ID:       {response.ServicePrincipal.ClientId}");
@@ -523,6 +544,13 @@ public class PrincipalRotateSecretCommand : Command
                 var response = await client.RotateSecretAsync(orgId, clientId, $"Bearer {token}");
 
                 // Display results with security warning
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, response);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Client secret rotated successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  Rotated At:      {response.RotatedAt:yyyy-MM-dd HH:mm:ss}");

@@ -21,7 +21,7 @@ public class BlueprintCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("blueprint", "Manage blueprints (workflow definitions)")
+        : base("blueprint", "Manage blueprints (workflow definitions)\n\nExamples:\n  sorcha blueprint list\n  sorcha blueprint create --file blueprint.json\n  sorcha blueprint publish --id <id> --register-id <reg-id>")
     {
         Subcommands.Add(new BlueprintListCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintGetCommand(clientFactory, authService, configService));
@@ -30,6 +30,7 @@ public class BlueprintCommand : Command
         Subcommands.Add(new BlueprintDeleteCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintVersionsCommand(clientFactory, authService, configService));
         Subcommands.Add(new BlueprintInstancesCommand(clientFactory, authService, configService));
+        Subcommands.Add(new BlueprintExportCommand(clientFactory, authService, configService));
     }
 }
 
@@ -61,10 +62,10 @@ public class BlueprintListCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var blueprints = await client.ListBlueprintsAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprints, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, blueprints);
                     return ExitCodes.Success;
                 }
 
@@ -145,10 +146,10 @@ public class BlueprintGetCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var blueprint = await client.GetBlueprintAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprint, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, blueprint);
                     return ExitCodes.Success;
                 }
 
@@ -273,10 +274,10 @@ public class BlueprintCreateCommand : Command
 
                 var blueprint = await client.CreateBlueprintAsync(request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(blueprint, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, blueprint);
                     return ExitCodes.Success;
                 }
 
@@ -373,10 +374,10 @@ public class BlueprintPublishCommand : Command
 
                 var response = await client.PublishBlueprintAsync(id, request, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, response);
                     return ExitCodes.Success;
                 }
 
@@ -544,10 +545,10 @@ public class BlueprintVersionsCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var versions = await client.ListBlueprintVersionsAsync(id, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(versions, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, versions);
                     return ExitCodes.Success;
                 }
 
@@ -632,10 +633,10 @@ public class BlueprintInstancesCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var instances = await client.ListInstancesAsync(blueprintId, $"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(instances, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, instances);
                     return ExitCodes.Success;
                 }
 
@@ -671,6 +672,109 @@ public class BlueprintInstancesCommand : Command
             catch (Exception ex)
             {
                 ConsoleHelper.WriteError($"Failed to list instances: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Exports a blueprint definition as JSON to a file.
+/// </summary>
+public class BlueprintExportCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _outputOption;
+
+    public BlueprintExportCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("export", "Export a blueprint definition as JSON")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Blueprint ID",
+            Required = true
+        };
+
+        _outputOption = new Option<string>("--output")
+        {
+            Description = "Output file path (JSON)",
+            Required = true
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_outputOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var outputPath = parseResult.GetValue(_outputOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
+
+                ConsoleHelper.WriteInfo($"Exporting blueprint '{id}'...");
+
+                var blueprint = await client.GetBlueprintAsync(id, $"Bearer {token}");
+
+                var export = new
+                {
+                    ExportedAt = DateTimeOffset.UtcNow,
+                    Blueprint = blueprint
+                };
+
+                var json = JsonSerializer.Serialize(export, SorchaJsonOptions.Default);
+
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                await File.WriteAllTextAsync(outputPath, json, ct);
+
+                ConsoleHelper.WriteSuccess($"Blueprint exported to: {Path.GetFullPath(outputPath)}");
+                Console.WriteLine();
+                Console.WriteLine($"  ID:           {blueprint.Id}");
+                Console.WriteLine($"  Title:        {blueprint.Title}");
+                Console.WriteLine($"  Version:      {blueprint.Version}");
+                Console.WriteLine($"  Participants: {blueprint.Participants.Count}");
+                Console.WriteLine($"  Actions:      {blueprint.Actions.Count}");
+
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Blueprint '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to export blueprint: {ex.Message}");
                 return ExitCodes.GeneralError;
             }
         });

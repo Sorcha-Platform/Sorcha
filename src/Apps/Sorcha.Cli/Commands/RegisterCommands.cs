@@ -24,7 +24,7 @@ public class RegisterCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("register", "Manage registers (distributed ledgers)")
+        : base("register", "Manage registers (distributed ledgers)\n\nExamples:\n  sorcha register list\n  sorcha register get --id <register-id>\n  sorcha register create --name \"My Register\" --blueprint-id <id>\n  sorcha register stats --id <register-id>")
     {
         Subcommands.Add(new RegisterListCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterGetCommand(clientFactory, authService, configService));
@@ -34,6 +34,8 @@ public class RegisterCommand : Command
         Subcommands.Add(new RegisterStatsCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterPolicyCommand(clientFactory, authService, configService));
         Subcommands.Add(new RegisterSystemCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterExportCommand(clientFactory, authService, configService));
+        Subcommands.Add(new RegisterExportTransactionsCommand(clientFactory, authService, configService));
     }
 }
 
@@ -71,14 +73,6 @@ public class RegisterListCommand : Command
                 // Call API
                 var registers = await client.ListRegistersAsync($"Bearer {token}");
 
-                // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(registers, new JsonSerializerOptions { WriteIndented = true }));
-                    return ExitCodes.Success;
-                }
-
                 // Display results
                 if (registers == null || registers.Count == 0)
                 {
@@ -86,10 +80,16 @@ public class RegisterListCommand : Command
                     return ExitCodes.Success;
                 }
 
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, registers);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"Found {registers.Count} register(s):");
                 Console.WriteLine();
 
-                // Display as table with new fields
                 Console.WriteLine($"{"ID",-34} {"Name",-25} {"Height",8} {"Status",-10} {"Purpose",-10} {"Advertise",-9} {"Created"}");
                 Console.WriteLine(new string('-', 120));
 
@@ -177,10 +177,10 @@ public class RegisterGetCommand : Command
                 var register = await client.GetRegisterAsync(id, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(register, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, register);
                     return ExitCodes.Success;
                 }
 
@@ -437,10 +437,10 @@ public class RegisterCreateCommand : Command
                 }
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(finalizeResponse, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, finalizeResponse);
                     return ExitCodes.Success;
                 }
 
@@ -692,10 +692,10 @@ public class RegisterUpdateCommand : Command
                 var register = await client.UpdateRegisterAsync(id, request, $"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(register, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, register);
                     return ExitCodes.Success;
                 }
 
@@ -779,10 +779,10 @@ public class RegisterStatsCommand : Command
                 var stats = await client.GetRegisterStatsAsync($"Bearer {token}");
 
                 // Check output format
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(stats, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteSingle(parseResult, stats);
                     return ExitCodes.Success;
                 }
 
@@ -886,8 +886,8 @@ public class RegisterPolicyGetCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -997,8 +997,8 @@ public class RegisterPolicyHistoryCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1169,8 +1169,8 @@ public class RegisterPolicyUpdateCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1264,8 +1264,8 @@ public class RegisterSystemStatusCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1357,8 +1357,8 @@ public class RegisterSystemBlueprintsCommand : Command
                     return ExitCodes.GeneralError;
                 }
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
                     Console.WriteLine(content);
                     return ExitCodes.Success;
@@ -1450,5 +1450,287 @@ file static class RegisterJsonHelper
             return value.ToString();
         }
         return "-";
+    }
+}
+
+/// <summary>
+/// Exports register metadata and policy as JSON to a file.
+/// </summary>
+public class RegisterExportCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _outputOption;
+
+    public RegisterExportCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("export", "Export register metadata and policy as JSON")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _outputOption = new Option<string>("--output")
+        {
+            Description = "Output file path (JSON)",
+            Required = true
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_outputOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var outputPath = parseResult.GetValue(_outputOption)!;
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+
+                ConsoleHelper.WriteInfo($"Exporting register '{id}'...");
+
+                // Fetch register metadata
+                var register = await client.GetRegisterAsync(id, $"Bearer {token}");
+
+                // Fetch policy (returns HttpResponseMessage)
+                JsonElement? policy = null;
+                try
+                {
+                    var policyResponse = await client.GetPolicyAsync(id, $"Bearer {token}");
+                    if (policyResponse.IsSuccessStatusCode)
+                    {
+                        var policyContent = await policyResponse.Content.ReadAsStringAsync(ct);
+                        policy = JsonSerializer.Deserialize<JsonElement>(policyContent);
+                    }
+                }
+                catch
+                {
+                    // Policy may not exist; continue without it
+                }
+
+                // Build export object
+                var export = new
+                {
+                    ExportedAt = DateTimeOffset.UtcNow,
+                    Register = register,
+                    Policy = policy
+                };
+
+                var json = JsonSerializer.Serialize(export, SorchaJsonOptions.Default);
+
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                await File.WriteAllTextAsync(outputPath, json, ct);
+
+                ConsoleHelper.WriteSuccess($"Register exported to: {Path.GetFullPath(outputPath)}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Register '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to export register: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+}
+
+/// <summary>
+/// Exports all transactions from a register as CSV or JSON.
+/// </summary>
+public class RegisterExportTransactionsCommand : Command
+{
+    private readonly Option<string> _idOption;
+    private readonly Option<string> _outputOption;
+    private readonly Option<string> _formatOption;
+
+    public RegisterExportTransactionsCommand(
+        HttpClientFactory clientFactory,
+        IAuthenticationService authService,
+        IConfigurationService configService)
+        : base("export-transactions", "Export register transactions as CSV or JSON")
+    {
+        _idOption = new Option<string>("--id", "-i")
+        {
+            Description = "Register ID",
+            Required = true
+        };
+
+        _outputOption = new Option<string>("--output")
+        {
+            Description = "Output file path",
+            Required = true
+        };
+
+        _formatOption = new Option<string>("--format", "-f")
+        {
+            Description = "Export format (json or csv)",
+            DefaultValueFactory = _ => "json"
+        };
+
+        Options.Add(_idOption);
+        Options.Add(_outputOption);
+        Options.Add(_formatOption);
+
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
+        {
+            var id = parseResult.GetValue(_idOption)!;
+            var outputPath = parseResult.GetValue(_outputOption)!;
+            var format = parseResult.GetValue(_formatOption)!.ToLowerInvariant();
+
+            if (format is not "json" and not "csv")
+            {
+                ConsoleHelper.WriteError("Format must be 'json' or 'csv'.");
+                return ExitCodes.ValidationError;
+            }
+
+            try
+            {
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+
+                var token = await authService.GetAccessTokenAsync(profileName);
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var client = await clientFactory.CreateRegisterServiceClientAsync(profileName);
+
+                ConsoleHelper.WriteInfo($"Fetching transactions for register '{id}'...");
+
+                // Fetch all transactions with pagination
+                var allTransactions = new List<TransactionModel>();
+                var page = 1;
+                const int pageSize = 100;
+
+                while (true)
+                {
+                    var batch = await client.ListTransactionsAsync(id, page, pageSize, $"Bearer {token}");
+                    if (batch == null || batch.Count == 0)
+                        break;
+
+                    allTransactions.AddRange(batch);
+                    Console.WriteLine($"  Fetched page {page} ({allTransactions.Count} transactions so far)...");
+
+                    if (batch.Count < pageSize)
+                        break;
+
+                    page++;
+                }
+
+                if (allTransactions.Count == 0)
+                {
+                    ConsoleHelper.WriteInfo("No transactions found to export.");
+                    return ExitCodes.Success;
+                }
+
+                // Ensure directory exists
+                var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                if (format == "json")
+                {
+                    var json = JsonSerializer.Serialize(allTransactions, SorchaJsonOptions.Default);
+                    await File.WriteAllTextAsync(outputPath, json, ct);
+                }
+                else // csv
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("Id,TxId,RegisterId,SenderWallet,DocketNumber,Version,TimeStamp,PayloadCount,PrevTxId");
+
+                    foreach (var tx in allTransactions)
+                    {
+                        var txIdField = Escape(tx.Id);
+                        var txHash = Escape(tx.TxId);
+                        var regId = Escape(tx.RegisterId);
+                        var sender = Escape(tx.SenderWallet);
+                        var docket = tx.DocketNumber?.ToString() ?? "";
+                        var version = tx.Version.ToString();
+                        var timestamp = tx.TimeStamp.ToString("o");
+                        var payloadCount = tx.PayloadCount.ToString();
+                        var prevTxId = Escape(tx.PrevTxId);
+
+                        sb.AppendLine($"{txIdField},{txHash},{regId},{sender},{docket},{version},{timestamp},{payloadCount},{prevTxId}");
+                    }
+
+                    await File.WriteAllTextAsync(outputPath, sb.ToString(), ct);
+                }
+
+                ConsoleHelper.WriteSuccess($"Exported {allTransactions.Count} transaction(s) to: {Path.GetFullPath(outputPath)}");
+                return ExitCodes.Success;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                ConsoleHelper.WriteError($"Register '{id}' not found.");
+                return ExitCodes.NotFound;
+            }
+            catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login'.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (ApiException ex)
+            {
+                ConsoleHelper.WriteError($"API error ({ex.StatusCode}): {ex.Content}");
+                return ExitCodes.GeneralError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Failed to export transactions: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Escapes a value for CSV output.
+    /// </summary>
+    private static string Escape(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+
+        return value;
     }
 }

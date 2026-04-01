@@ -4,7 +4,6 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Net;
-using System.Text.Json;
 using Refit;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
@@ -21,7 +20,7 @@ public class SchemaCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("schema", "Schema management operations")
+        : base("schema", "Schema management operations\n\nExamples:\n  sorcha schema providers list\n  sorcha schema providers refresh --id <provider-id>")
     {
         Subcommands.Add(new SchemaProvidersCommand(clientFactory, authService, configService));
     }
@@ -71,10 +70,10 @@ public class SchemaProvidersListCommand : Command
                 var client = await clientFactory.CreateBlueprintServiceClientAsync(profileName);
                 var providers = await client.GetSchemaProvidersAsync($"Bearer {token}");
 
-                var outputFormat = parseResult.GetValue(BaseCommand.OutputOption!) ?? "table";
-                if (outputFormat.Equals("json", StringComparison.OrdinalIgnoreCase))
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
                 {
-                    Console.WriteLine(JsonSerializer.Serialize(providers, new JsonSerializerOptions { WriteIndented = true }));
+                    OutputHelper.WriteCollection(parseResult, providers);
                     return ExitCodes.Success;
                 }
 

@@ -19,7 +19,7 @@ public class UserCommand : Command
         HttpClientFactory clientFactory,
         IAuthenticationService authService,
         IConfigurationService configService)
-        : base("user", "Manage users within organizations")
+        : base("user", "Manage users within organizations\n\nExamples:\n  sorcha user list\n  sorcha user create --email user@example.com --first-name John --last-name Doe\n  sorcha user get --id <user-id>")
     {
         Subcommands.Add(new UserListCommand(clientFactory, authService, configService));
         Subcommands.Add(new UserGetCommand(clientFactory, authService, configService));
@@ -78,6 +78,13 @@ public class UserListCommand : Command
                 if (users == null || users.Count == 0)
                 {
                     ConsoleHelper.WriteInfo("No users found.");
+                    return ExitCodes.Success;
+                }
+
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteCollection(parseResult, users);
                     return ExitCodes.Success;
                 }
 
@@ -173,6 +180,13 @@ public class UserGetCommand : Command
                 var user = await client.GetUserAsync(orgId, userId, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess("User details:");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {user.Id}");
@@ -331,6 +345,13 @@ public class UserCreateCommand : Command
                 var user = await client.CreateUserAsync(orgId, request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"User created successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:              {user.Id}");
@@ -498,6 +519,13 @@ public class UserUpdateCommand : Command
                 var user = await client.UpdateUserAsync(orgId, userId, request, $"Bearer {token}");
 
                 // Display results
+                var outputFormat = OutputHelper.GetOutputFormat(parseResult);
+                if (OutputHelper.IsStructuredFormat(outputFormat))
+                {
+                    OutputHelper.WriteSingle(parseResult, user);
+                    return ExitCodes.Success;
+                }
+
                 ConsoleHelper.WriteSuccess($"User updated successfully!");
                 Console.WriteLine();
                 Console.WriteLine($"  ID:       {user.Id}");

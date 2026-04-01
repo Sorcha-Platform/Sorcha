@@ -50,8 +50,8 @@ public class RegisterCommandsTests
     public void RegisterCommand_ShouldHaveExpectedSubcommands()
     {
         var command = new RegisterCommand(_clientFactory, AuthService, ConfigService);
-        command.Subcommands.Should().HaveCount(8);
-        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "delete", "update", "stats", "policy", "system" });
+        command.Subcommands.Should().HaveCount(10);
+        command.Subcommands.Select(c => c.Name).Should().Contain(new[] { "list", "get", "create", "delete", "update", "stats", "policy", "system", "export", "export-transactions" });
     }
 
     #region RegisterListCommand Tests
