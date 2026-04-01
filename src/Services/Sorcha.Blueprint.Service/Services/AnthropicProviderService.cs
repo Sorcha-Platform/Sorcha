@@ -23,6 +23,7 @@ public class AnthropicProviderService : IAIProviderService
     private readonly AIProviderOptions _options;
     private readonly ILogger<AnthropicProviderService> _logger;
 
+    /// <summary>Initialises a new instance of the <see cref="AnthropicProviderService"/> class.</summary>
     public AnthropicProviderService(
         IOptions<AIProviderOptions> options,
         ILogger<AnthropicProviderService> logger)

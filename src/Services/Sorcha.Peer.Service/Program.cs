@@ -657,7 +657,7 @@ app.MapPost("/api/registers/{registerId}/subscribe", async (
     .WithSummary("Subscribe to a register for replication")
     .WithDescription("Creates a new subscription to replicate a register. Mode can be 'forward-only' (new transactions only) or 'full-replica' (complete docket chain pull).")
     .WithTags("Registers")
-    .AllowAnonymous(); // TODO(#165): restore .RequireAuthorization after Tenant→Peer bridge is built
+    .RequireAuthorization("RequireAdministrator");
 
 // Unsubscribe from a register
 app.MapDelete("/api/registers/{registerId}/subscribe", async (

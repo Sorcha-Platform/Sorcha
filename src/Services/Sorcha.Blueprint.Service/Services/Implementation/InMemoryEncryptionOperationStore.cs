@@ -18,6 +18,7 @@ public sealed class InMemoryEncryptionOperationStore : IEncryptionOperationStore
     private readonly TimeSpan _retentionPeriod;
     private readonly ILogger<InMemoryEncryptionOperationStore> _logger;
 
+    /// <summary>Initialises a new instance of the <see cref="InMemoryEncryptionOperationStore"/> class.</summary>
     public InMemoryEncryptionOperationStore(ILogger<InMemoryEncryptionOperationStore> logger)
         : this(logger, TimeSpan.FromHours(1))
     {

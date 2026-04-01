@@ -28,6 +28,7 @@ public class ActionResolverService : IActionResolverService
     /// </summary>
     private static readonly ConcurrentDictionary<string, Dictionary<int, ActionModel>> _actionIndexCache = new();
 
+    /// <summary>Initialises a new instance of the <see cref="ActionResolverService"/> class.</summary>
     public ActionResolverService(
         IBlueprintStore blueprintStore,
         IDistributedCache cache,

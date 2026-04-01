@@ -19,6 +19,7 @@ public class BlueprintRecoveryService : BackgroundService
     private readonly RecoveryOptions _options;
     private readonly ILogger<BlueprintRecoveryService> _logger;
 
+    /// <summary>Initialises a new instance of the <see cref="BlueprintRecoveryService"/> class.</summary>
     public BlueprintRecoveryService(
         IServiceScopeFactory scopeFactory,
         RecoveryState recoveryState,

@@ -62,6 +62,7 @@ public class ActionExecutionService : IActionExecutionService
     /// </summary>
     private const int MaxExecutionDepth = 1000;
 
+    /// <summary>Initialises a new instance of the <see cref="ActionExecutionService"/> class.</summary>
     public ActionExecutionService(
         IActionResolverService actionResolver,
         IStateReconstructionService stateReconstruction,
