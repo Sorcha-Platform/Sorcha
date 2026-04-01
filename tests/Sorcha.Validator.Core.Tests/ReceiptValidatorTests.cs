@@ -240,12 +240,13 @@ public class ReceiptValidatorTests
         // Act
         var result = validator.Verify(receipt, publicKeyBase64);
 
-        // Assert
-        result.IsValid.Should().BeFalse(); // Sig invalid because no verify func
-        result.SignatureValid.Should().BeFalse();
+        // Assert — proof-only mode: signature check is skipped, not failed
+        result.IsValid.Should().BeTrue();
+        result.SignatureValid.Should().BeFalse(); // Not verified, but not a failure
+        result.SignatureCheckSkipped.Should().BeTrue();
         result.InclusionProofValid.Should().BeTrue();
         result.MerkleRootConsistent.Should().BeTrue();
-        result.Errors.Should().Contain("No signature verification function provided");
+        result.Errors.Should().BeEmpty();
     }
 
     #endregion
