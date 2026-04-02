@@ -10,7 +10,7 @@ This constitution establishes the foundational principles, standards, and guidel
 
 ## Project Overview
 
-SORCHA is a distributed ledger platform built on microservices architecture, providing secure, scalable blockchain capabilities through a suite of specialized services including Wallet, Tenant, Register, Peer, Blueprint, Action, and Validator services.
+SORCHA is a decentralised register platform built on microservices architecture, providing secure, scalable blockchain capabilities through a suite of specialized services including Wallet, Tenant, Register, Peer, Blueprint, Action, and Validator services.
 
 ## Core Principles
 

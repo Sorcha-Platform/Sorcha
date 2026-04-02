@@ -1,5 +1,6 @@
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Models;
+using Sorcha.Cli.Tests.Utilities;
 
 namespace Sorcha.Cli.Tests.Infrastructure;
 
@@ -11,7 +12,7 @@ namespace Sorcha.Cli.Tests.Infrastructure;
 public class TokenCacheTests : IDisposable
 {
     private readonly string _testConfigDir;
-    private readonly WindowsDpapiEncryption _encryption;
+    private readonly IEncryptionProvider _encryption;
     private readonly TokenCache _cache;
 
     public TokenCacheTests()
@@ -23,7 +24,7 @@ public class TokenCacheTests : IDisposable
         // Override the config directory for testing
         Environment.SetEnvironmentVariable("SORCHA_CONFIG_DIR", _testConfigDir);
 
-        _encryption = new WindowsDpapiEncryption();
+        _encryption = new TestEncryptionProvider();
         _cache = new TokenCache(_encryption);
     }
 

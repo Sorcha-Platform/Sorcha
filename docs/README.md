@@ -1,6 +1,6 @@
 # Sorcha Documentation
 
-Comprehensive documentation for the Sorcha distributed ledger platform.
+Comprehensive documentation for the Sorcha decentralised register platform.
 
 **Current Status:** 100% MVD (Minimum Viable Deployment) | [Detailed Status Report](reference/development-status.md)
 

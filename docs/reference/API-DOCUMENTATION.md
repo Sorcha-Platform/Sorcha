@@ -175,7 +175,7 @@ Authorization: Bearer {token}
       "branding": {
         "primaryColor": "#6366f1",
         "secondaryColor": "#8b5cf6",
-        "companyTagline": "Distributed Ledger Platform"
+        "companyTagline": "Decentralised Register Platform"
       }
     }
   ]

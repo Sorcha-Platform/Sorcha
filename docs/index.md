@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: Sorcha
-  text: Distributed Ledger Platform
+  text: Decentralised Register Platform
   tagline: Secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire
   actions:
     - theme: brand

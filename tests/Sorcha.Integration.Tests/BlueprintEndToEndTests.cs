@@ -75,10 +75,10 @@ public class BlueprintEndToEndTests
         // Assert
         schemas.Should().NotBeNull();
         schemas.Should().NotBeEmpty();
-        schemas.Should().Contain(s => s.Metadata.Id == "person");
-        schemas.Should().Contain(s => s.Metadata.Id == "address");
-        schemas.Should().Contain(s => s.Metadata.Id == "document");
-        schemas.Should().Contain(s => s.Metadata.Id == "payment");
+        schemas.Should().Contain(s => s.Metadata.Id == "https://sorcha.dev/schemas/person/v1");
+        schemas.Should().Contain(s => s.Metadata.Id == "https://sorcha.dev/schemas/address/v1");
+        schemas.Should().Contain(s => s.Metadata.Id == "https://sorcha.dev/schemas/document/v1");
+        schemas.Should().Contain(s => s.Metadata.Id == "https://sorcha.dev/schemas/payment/v1");
     }
 
     [Fact]
@@ -89,11 +89,11 @@ public class BlueprintEndToEndTests
 
         // Act
         var searchResults = await schemaLibrary.SearchAsync("person");
-        var personSchema = await schemaLibrary.GetSchemaByIdAsync("person");
+        var personSchema = await schemaLibrary.GetSchemaByIdAsync("https://sorcha.dev/schemas/person/v1");
 
         // Assert
         searchResults.Should().NotBeEmpty();
-        searchResults.Should().Contain(s => s.Metadata.Id == "person");
+        searchResults.Should().Contain(s => s.Metadata.Id == "https://sorcha.dev/schemas/person/v1");
 
         personSchema.Should().NotBeNull();
         personSchema!.Metadata.Title.Should().Contain("Person");

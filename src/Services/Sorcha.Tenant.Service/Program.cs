@@ -20,7 +20,7 @@ builder.AddServiceDefaults();
 builder.AddSerilogLogging();
 
 // Add OpenAPI services with standard Sorcha metadata
-builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization management and authentication/authorization for the Sorcha distributed ledger platform, including user management, service principal authentication, and role-based access control.");
+builder.AddSorchaOpenApi("Sorcha Tenant Service API", "Multi-tenant organization management and authentication/authorization for the Sorcha decentralised register platform, including user management, service principal authentication, and role-based access control.");
 
 // Add controllers and minimal API support
 builder.Services.AddEndpointsApiExplorer();

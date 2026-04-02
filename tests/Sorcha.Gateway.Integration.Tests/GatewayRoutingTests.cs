@@ -14,6 +14,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task BlueprintRoutes_AreProxiedCorrectly()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act - Get blueprints through gateway
         var response = await GatewayClient!.GetAsync("/api/blueprint/blueprints");
 
@@ -24,6 +26,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task BlueprintStatus_MapsToHealthEndpoint()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/blueprint/status");
 
@@ -38,6 +42,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task PeerRoutes_AreProxiedCorrectly()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act - Get peers through gateway
         var response = await GatewayClient!.GetAsync("/api/peer/peers");
 
@@ -48,6 +54,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task PeerStatus_MapsToHealthEndpoint()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/peer/status");
 
@@ -62,6 +70,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task NonExistentRoute_Returns404()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/nonexistent/route");
 
@@ -72,6 +82,8 @@ public class GatewayRoutingTests : GatewayIntegrationTestBase
     [Fact]
     public async Task CorsHeaders_ArePresent()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Arrange
         var request = new HttpRequestMessage(HttpMethod.Options, "/api/health");
         request.Headers.Add("Origin", "http://localhost:5000");

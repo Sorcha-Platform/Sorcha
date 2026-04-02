@@ -1,8 +1,8 @@
 # System Administrator Guide
 
-This guide covers deploying, configuring, scaling, and managing a Sorcha distributed ledger instance.
+This guide covers deploying, configuring, scaling, and managing a Sorcha Decentrailised Register instance.
 
-Sorcha is a distributed ledger platform for secure, multi-participant data flow orchestration. It runs as 7 microservices plus supporting infrastructure (PostgreSQL, MongoDB, Redis), orchestrated via Docker Compose with .NET Aspire for observability.
+Sorcha is a decentralised register platform for secure, multi-participant data flow orchestration. It runs as 7 microservices plus supporting infrastructure (PostgreSQL, MongoDB, Redis), orchestrated via Docker Compose with .NET Aspire for observability.
 
 ## Contents
 

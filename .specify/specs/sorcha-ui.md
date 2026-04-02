@@ -35,7 +35,7 @@
 
 ## Executive Summary
 
-**Sorcha.UI** is a next-generation multi-platform user interface for the Sorcha distributed ledger platform, replacing the existing **Sorcha.Admin** application. Built on the **MAUI Blazor Hybrid and Web** template, Sorcha.UI provides:
+**Sorcha.UI** is a next-generation multi-platform user interface for the Sorcha decentralised register platform, replacing the existing **Sorcha.Admin** application. Built on the **MAUI Blazor Hybrid and Web** template, Sorcha.UI provides:
 
 - **Primary Focus: Web Deployment (Blazor WASM)** - Browser-based application for immediate use
 - **Modular architecture**: Functionality split into WASM assemblies (Admin, Designer, Explorer) for lazy loading and maintainability

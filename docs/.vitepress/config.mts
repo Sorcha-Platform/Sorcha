@@ -7,7 +7,7 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 export default withMermaid(
   defineConfig({
     title: 'Sorcha Docs',
-    description: 'Documentation for the Sorcha distributed ledger platform',
+    description: 'Documentation for the Sorcha decentralised register platform',
     base: '/',
 
     head: [

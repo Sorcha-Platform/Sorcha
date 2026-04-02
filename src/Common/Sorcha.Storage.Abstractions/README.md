@@ -4,7 +4,7 @@ Core storage abstraction interfaces for the Sorcha platform multi-tier storage l
 
 ## Overview
 
-This library provides a unified abstraction layer for multi-tier storage in the Sorcha distributed ledger platform. It implements a three-tier architecture:
+This library provides a unified abstraction layer for multi-tier storage in the Sorcha decentralised register platform. It implements a three-tier architecture:
 
 - **Hot Tier (Cache)**: Redis-backed high-performance cache for frequently accessed data
 - **Warm Tier (Operational)**: PostgreSQL/MongoDB for operational queries and mutable data

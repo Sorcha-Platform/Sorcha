@@ -33,7 +33,7 @@ public class AuthCommandsTests : IDisposable
         Environment.SetEnvironmentVariable("SORCHA_CONFIG_DIR", _testConfigDir);
 
         _configService = new ConfigurationService();
-        var encryption = new WindowsDpapiEncryption();
+        var encryption = new TestEncryptionProvider();
         _tokenCache = new TokenCache(encryption);
 
         _httpHandler = new TestHttpMessageHandler();

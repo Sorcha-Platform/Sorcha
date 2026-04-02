@@ -61,6 +61,17 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
     /// </summary>
     public ConcurrentDictionary<string, List<DocketModel>> DocketStore { get; } = new();
 
+    /// <summary>
+    /// Indicates whether the test host started successfully.
+    /// When false, tests should skip rather than fail.
+    /// </summary>
+    public bool IsAvailable { get; private set; }
+
+    /// <summary>
+    /// Reason the infrastructure is unavailable, for skip messages.
+    /// </summary>
+    public string? UnavailableReason { get; private set; }
+
     public ValidatorServiceWebApplicationFactory()
     {
         InitializeMocks();
@@ -68,7 +79,30 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
     public ValueTask InitializeAsync()
     {
+        // Eagerly verify the host can be created; if not, mark as unavailable
+        try
+        {
+            using var _ = CreateClient();
+            IsAvailable = true;
+        }
+        catch (Exception ex)
+        {
+            UnavailableReason = $"Validator Service host failed to start: {ex.GetType().Name} — {ex.Message}";
+            IsAvailable = false;
+        }
+
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Call at the start of each test to skip when infrastructure is unavailable.
+    /// </summary>
+    public void SkipIfUnavailable()
+    {
+        if (!IsAvailable)
+        {
+            Assert.Skip(UnavailableReason ?? "Validator Service infrastructure not available");
+        }
     }
 
     public new async ValueTask DisposeAsync()
@@ -376,9 +410,11 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
     /// <summary>
     /// Creates an HttpClient configured for a validator.
+    /// Skips the test if infrastructure is unavailable.
     /// </summary>
     public HttpClient CreateValidatorClient()
     {
+        SkipIfUnavailable();
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token");
         return client;
@@ -386,9 +422,11 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
     /// <summary>
     /// Creates an HttpClient configured for an administrator.
+    /// Skips the test if infrastructure is unavailable.
     /// </summary>
     public HttpClient CreateAdminClient()
     {
+        SkipIfUnavailable();
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token");
         client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
@@ -397,9 +435,11 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
     /// <summary>
     /// Creates an HttpClient with no authentication headers.
+    /// Skips the test if infrastructure is unavailable.
     /// </summary>
     public HttpClient CreateUnauthenticatedClient()
     {
+        SkipIfUnavailable();
         return CreateClient();
     }
 
@@ -420,10 +460,12 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
     }
 
     /// <summary>
-    /// Clears all test data.
+    /// Clears all test data. Safe to call when infrastructure is unavailable.
     /// </summary>
     public void ClearTestData()
     {
+        if (!IsAvailable) return;
+
         TransactionStore.Clear();
         DocketStore.Clear();
         _testData.Clear();

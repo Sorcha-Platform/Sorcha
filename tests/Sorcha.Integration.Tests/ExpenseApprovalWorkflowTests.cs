@@ -377,23 +377,34 @@ public class ExpenseApprovalWorkflowTests
                 new Disclosure("manager", new List<string> { "/amount", "/description", "/category", "/date" }),
                 new Disclosure("finance", new List<string> { "/amount", "/description", "/category", "/date" })
             },
-            // Routing logic:
+            // Routing logic via Routes:
             // if amount < 100 then 1 (instant approval)
             // else if amount < 1000 then 2 (manager review)
-            // else 3 (finance review)
-            Condition = JsonNode.Parse("""
+            // else 3 (finance review - default)
+            Routes = new[]
             {
-                "if": [
-                    { "<": [{ "var": "amount" }, 100] },
-                    1,
-                    { "if": [
-                        { "<": [{ "var": "amount" }, 1000] },
-                        2,
-                        3
-                    ]}
-                ]
+                new Route
+                {
+                    Id = "instant-approval",
+                    NextActionIds = new[] { 1 },
+                    Condition = JsonNode.Parse("""{ "<": [{ "var": "amount" }, 100] }"""),
+                    Description = "Amount under $100 - instant approval"
+                },
+                new Route
+                {
+                    Id = "manager-review",
+                    NextActionIds = new[] { 2 },
+                    Condition = JsonNode.Parse("""{ "<": [{ "var": "amount" }, 1000] }"""),
+                    Description = "Amount $100-$999 - manager review"
+                },
+                new Route
+                {
+                    Id = "finance-review",
+                    NextActionIds = new[] { 3 },
+                    IsDefault = true,
+                    Description = "Amount >= $1000 - finance review"
+                }
             }
-            """)
         };
 
         // Action 1: Instant approval (< $100)

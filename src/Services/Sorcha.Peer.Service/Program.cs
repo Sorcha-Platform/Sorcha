@@ -105,7 +105,7 @@ builder.Services.AddGrpcReflection();
 AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
 
 // Add OpenAPI services with standard Sorcha metadata
-builder.AddSorchaOpenApi("Sorcha Peer Service API", "P2P networking, peer discovery, gossip protocol, register replication, and connection quality monitoring for the Sorcha distributed ledger platform.");
+builder.AddSorchaOpenApi("Sorcha Peer Service API", "P2P networking, peer discovery, gossip protocol, register replication, and connection quality monitoring for the Sorcha decentralised register platform.");
 
 // Configure peer service
 builder.Services.Configure<PeerServiceConfiguration>(

@@ -1,6 +1,6 @@
 # Sorcha MCP Server
 
-A Model Context Protocol (MCP) server for the Sorcha distributed ledger platform. This server enables AI assistants like Claude Desktop to interact with Sorcha's Blueprint, Register, Wallet, and other services through a standardized protocol.
+A Model Context Protocol (MCP) server for the Sorcha decentralised register platform. This server enables AI assistants like Claude Desktop to interact with Sorcha's Blueprint, Register, Wallet, and other services through a standardized protocol.
 
 ## Overview
 

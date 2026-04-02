@@ -19,7 +19,7 @@ Configure NuGet package with proper metadata, versioning, and dependencies.
   <PackageId>Sorcha.TransactionHandler</PackageId>
   <Version>2.0.0</Version>
   <Authors>Sorcha Contributors</Authors>
-  <Description>Transaction and payload management library for the Sorcha distributed ledger platform. Provides transaction building, signing, verification, and multi-recipient payload encryption.</Description>
+  <Description>Transaction and payload management library for the Sorcha decentralised register platform. Provides transaction building, signing, verification, and multi-recipient payload encryption.</Description>
   <PackageTags>sorcha;blockchain;transaction;payload;distributed-ledger;encryption</PackageTags>
   <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>

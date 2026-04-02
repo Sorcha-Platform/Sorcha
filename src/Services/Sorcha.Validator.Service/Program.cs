@@ -38,7 +38,7 @@ builder.AddInputValidation();
 builder.AddRedisClient("redis");
 
 // Add OpenAPI services with standard Sorcha metadata
-builder.AddSorchaOpenApi("Sorcha Validator Service API", "Transaction validation, consensus, chain integrity verification, and docket building for the Sorcha distributed ledger platform.");
+builder.AddSorchaOpenApi("Sorcha Validator Service API", "Transaction validation, consensus, chain integrity verification, and docket building for the Sorcha decentralised register platform.");
 
 // Configure strongly-typed configuration sections
 builder.Services.Configure<Sorcha.Validator.Service.Configuration.ValidatorConfiguration>(

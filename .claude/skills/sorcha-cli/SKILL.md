@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # Sorcha CLI Skill
 
-The Sorcha CLI (`sorcha`) is a .NET 10 global tool for managing the Sorcha distributed ledger platform. It uses **System.CommandLine 2.0.2** for command parsing, **Refit** for HTTP API clients, and **Spectre.Console** for rich terminal output.
+The Sorcha CLI (`sorcha`) is a .NET 10 global tool for managing the Sorcha decentralised register platform. It uses **System.CommandLine 2.0.2** for command parsing, **Refit** for HTTP API clients, and **Spectre.Console** for rich terminal output.
 
 ## Project Location
 

@@ -7,12 +7,12 @@
 
 ## Executive Summary
 
-SORCHA is a distributed ledger platform designed to provide secure, scalable, and enterprise-ready blockchain capabilities through a microservices architecture. The platform enables organizations to build transparent, immutable, and auditable business processes while maintaining data sovereignty and regulatory compliance.
+SORCHA is a decentralised register platform designed to provide secure, scalable, and enterprise-ready blockchain capabilities through a microservices architecture. The platform enables organizations to build transparent, immutable, and auditable business processes while maintaining data sovereignty and regulatory compliance.
 
 ## Vision and Goals
 
 ### Primary Vision
-Create a production-grade distributed ledger platform that combines the benefits of blockchain technology with enterprise-scale performance, security, and operational requirements.
+Create a production-grade decentralised register platform that combines the benefits of blockchain technology with enterprise-scale performance, security, and operational requirements.
 
 ### Strategic Goals
 

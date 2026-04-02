@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # PostgreSQL Skill
 
-PostgreSQL database management for Sorcha's distributed ledger platform. This project uses PostgreSQL 17 with Npgsql 8.0+ and Entity Framework Core 10, featuring dedicated schemas (`wallet`, `public`), JSONB columns for metadata, and .NET Aspire service discovery for connection management.
+PostgreSQL database management for Sorcha's decentralised register platform. This project uses PostgreSQL 17 with Npgsql 8.0+ and Entity Framework Core 10, featuring dedicated schemas (`wallet`, `public`), JSONB columns for metadata, and .NET Aspire service discovery for connection management.
 
 ## Quick Start
 

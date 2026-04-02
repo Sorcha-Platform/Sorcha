@@ -108,7 +108,7 @@ internal class Program
     /// </summary>
     private static RootCommand BuildRootCommand(ServiceProvider serviceProvider)
     {
-        var rootCommand = new RootCommand("Sorcha CLI - Administrative tool for managing Sorcha distributed ledger platform");
+        var rootCommand = new RootCommand("Sorcha CLI - Administrative tool for managing Sorcha decentralised register platform");
 
         // Global options
         var profileOption = new Option<string>("--profile", "-p")

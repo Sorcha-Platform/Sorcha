@@ -3,11 +3,11 @@
 **Feature Branch**: `001-mcp-server`
 **Created**: 2026-01-29
 **Status**: Draft
-**Input**: User description: "Sorcha MCP Server - A Model Context Protocol server that enables AI assistants to interact with the Sorcha distributed ledger platform on behalf of three user personas: System Administrators, Workflow Process Designers, and Participants"
+**Input**: User description: "Sorcha MCP Server - A Model Context Protocol server that enables AI assistants to interact with the Sorcha decentralised register platform on behalf of three user personas: System Administrators, Workflow Process Designers, and Participants"
 
 ## Overview
 
-The Sorcha MCP Server provides a standardized interface for AI assistants (such as Claude, GPT, or other LLM-based tools) to interact with the Sorcha distributed ledger platform. By implementing the Model Context Protocol (MCP), the server exposes Sorcha's capabilities as tools and resources that AI assistants can invoke on behalf of authenticated users.
+The Sorcha MCP Server provides a standardized interface for AI assistants (such as Claude, GPT, or other LLM-based tools) to interact with the Sorcha decentralised register platform. By implementing the Model Context Protocol (MCP), the server exposes Sorcha's capabilities as tools and resources that AI assistants can invoke on behalf of authenticated users.
 
 The server supports three distinct user personas, each with access to different capabilities based on their role and permissions within the platform.
 

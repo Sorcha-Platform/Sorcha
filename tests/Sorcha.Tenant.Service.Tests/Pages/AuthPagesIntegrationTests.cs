@@ -219,7 +219,7 @@ public class AuthPagesIntegrationTests : IClassFixture<TenantServiceWebApplicati
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("missing provider");
+        html.Should().Contain("Invalid callback parameters");
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public class AuthPagesIntegrationTests : IClassFixture<TenantServiceWebApplicati
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("cancelled or denied");
+        html.Should().Contain("cancelled or failed");
     }
 
     // ───── POST /auth/login ─────

@@ -5,7 +5,7 @@
 
 ## Summary
 
-This document provides an overview of all tasks required to complete the Sorcha.TransactionHandler library. The library will handle transaction creation, signing, verification, multi-recipient payload management, and serialization for the Sorcha distributed ledger platform.
+This document provides an overview of all tasks required to complete the Sorcha.TransactionHandler library. The library will handle transaction creation, signing, verification, multi-recipient payload management, and serialization for the Sorcha decentralised register platform.
 
 ### 🎉 Implementation Status
 

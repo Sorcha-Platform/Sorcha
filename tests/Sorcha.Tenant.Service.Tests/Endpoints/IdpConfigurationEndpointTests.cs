@@ -46,6 +46,9 @@ public class IdpConfigurationEndpointTests : IClassFixture<TenantServiceWebAppli
     [Fact]
     public async Task GetIdpConfiguration_NoConfig_Returns404()
     {
+        // Remove any seeded IDP config to test the "no config" scenario
+        await _adminClient.DeleteAsync(BasePath);
+
         var response = await _adminClient.GetAsync(BasePath);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -94,7 +97,8 @@ public class IdpConfigurationEndpointTests : IClassFixture<TenantServiceWebAppli
     [Fact]
     public async Task PutIdpConfiguration_ValidRequest_Returns200()
     {
-        // Arrange
+        // Arrange — delete any seeded config so this is a fresh create
+        await _adminClient.DeleteAsync(BasePath);
         var request = CreateValidIdpRequest();
 
         // Act
@@ -169,6 +173,10 @@ public class IdpConfigurationEndpointTests : IClassFixture<TenantServiceWebAppli
     [Fact]
     public async Task DeleteIdpConfiguration_NoConfig_Returns404()
     {
+        // Remove any seeded IDP config first
+        await _adminClient.DeleteAsync(BasePath);
+
+        // Now deleting again should return 404
         var response = await _adminClient.DeleteAsync(BasePath);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -256,6 +264,9 @@ public class IdpConfigurationEndpointTests : IClassFixture<TenantServiceWebAppli
     [Fact]
     public async Task PostTest_NoConfig_Returns404()
     {
+        // Remove any seeded IDP config to test the "no config" scenario
+        await _adminClient.DeleteAsync(BasePath);
+
         var response = await _adminClient.PostAsync($"{BasePath}/test", null);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -306,6 +317,9 @@ public class IdpConfigurationEndpointTests : IClassFixture<TenantServiceWebAppli
     [Fact]
     public async Task PostToggle_NoConfig_Returns404()
     {
+        // Remove any seeded IDP config to test the "no config" scenario
+        await _adminClient.DeleteAsync(BasePath);
+
         var response = await _adminClient.PostAsJsonAsync($"{BasePath}/toggle",
             new ToggleIdpRequest { Enabled = true });
 

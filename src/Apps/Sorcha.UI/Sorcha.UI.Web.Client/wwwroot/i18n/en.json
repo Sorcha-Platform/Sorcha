@@ -201,7 +201,7 @@
   "settings.connections.system": "System",
 
   "settings.about.title": "Sorcha Platform",
-  "settings.about.description": "A distributed ledger platform for secure, multi-participant data flow orchestration",
+  "settings.about.description": "A decentralised register platform for secure, multi-participant data flow orchestration",
   "settings.about.versionInfo": "Version Information",
   "settings.about.version": "Version:",
   "settings.about.build": "Build:",

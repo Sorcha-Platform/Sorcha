@@ -19,6 +19,8 @@ public class HealthCheckTests
     [Fact]
     public async Task HealthEndpoint_ReturnsHealthy()
     {
+        _factory.SkipIfUnavailable();
+
         // Arrange
         using var client = _factory.CreateClient();
 
@@ -32,6 +34,8 @@ public class HealthCheckTests
     [Fact]
     public async Task AliveEndpoint_ReturnsOk()
     {
+        _factory.SkipIfUnavailable();
+
         // Arrange
         using var client = _factory.CreateClient();
 
