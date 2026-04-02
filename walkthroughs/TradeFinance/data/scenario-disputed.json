@@ -1,0 +1,133 @@
+{
+  "name": "Scenario B: Disputed Invoice",
+  "description": "Procurement-to-pay with invoice dispute. Buyer disputes first invoice (incorrect quantities), supplier resubmits with corrections, second submission approved. Finance flow proceeds normally.",
+  "expectedProcurementPath": [1, 2, 3, 4, 5, 6],
+  "expectedFinancePath": [1, 2, 3, 4],
+  "expectedDispute": true,
+  "expectedRejection": false,
+  "expectedInvoiceTotal": 9548.00,
+  "expectedDaysSinceDelivery": 3,
+  "expectedAdvanceAmount": 8593.20,
+  "expectedFeeAmount": 214.83,
+  "expectedNetAdvance": 8378.37,
+  "procurement": {
+    "1": {
+      "poReference": "PO-CAIRN-2026-00143",
+      "projectName": "Grantown Affordable Housing Phase 1",
+      "siteAddress": "Plots 1-8, Spey Valley Business Park, Grantown-on-Spey PH26 3HG",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantity": 400, "unit": "linear metre", "unitPrice": 8.50 },
+        { "description": "Plywood Sheathing 12mm", "quantity": 80, "unit": "sheet", "unitPrice": 28.00 },
+        { "description": "Joist Hangers Assorted", "quantity": 15, "unit": "box", "unitPrice": 38.00 }
+      ],
+      "deliveryAddress": "Site Office, Spey Valley Business Park, Grantown-on-Spey PH26 3HG",
+      "paymentTerms": "Net 30",
+      "requiredDeliveryDate": "2026-04-20"
+    },
+    "2": {
+      "accepted": true,
+      "estimatedDeliveryDate": "2026-04-19",
+      "orderConfirmationRef": "HTS-ACK-2026-0893",
+      "notes": "Stock available. Delivery scheduled Friday AM."
+    },
+    "3": {
+      "deliveryNoteRef": "HTS-DN-2026-1205",
+      "actualDeliveryDate": "2026-04-19",
+      "deliveredItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantityDelivered": 400 },
+        { "description": "Plywood Sheathing 12mm", "quantityDelivered": 80 },
+        { "description": "Joist Hangers Assorted", "quantityDelivered": 15 }
+      ],
+      "deliveryCondition": "Good — minor surface marks on 3 sheets plywood, acceptable"
+    },
+    "4": {
+      "grnReference": "CAIRN-GRN-2026-00419",
+      "receivedDate": "2026-04-19",
+      "conditionNotes": "All items received. 3 sheets plywood with surface marks — within tolerance.",
+      "discrepancyFlag": false
+    },
+    "5": {
+      "invoiceNumber": "HTS-INV-2026-03848",
+      "invoiceDate": "2026-04-22",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantity": 450, "unitPrice": 8.50, "lineTotal": 3825.00 },
+        { "description": "Plywood Sheathing 12mm", "quantity": 80, "unitPrice": 28.00, "lineTotal": 2240.00 },
+        { "description": "Joist Hangers Assorted", "quantity": 15, "unitPrice": 38.00, "lineTotal": 570.00 }
+      ],
+      "subtotal": 6635.00,
+      "vatRate": 0.20,
+      "vatAmount": 1327.00,
+      "invoiceTotal": 7962.00,
+      "paymentTerms": "Net 30",
+      "paymentDueDate": "2026-05-22",
+      "supplierCostBreakdown": {
+        "materialCost": 4800.00,
+        "logistics": 420.00,
+        "margin": 1415.00,
+        "marginPercentage": 21.3
+      }
+    },
+    "6_dispute": {
+      "decision": "dispute",
+      "disputeReason": "Timber quantity invoiced as 450 LM but PO and delivery note both show 400 LM. Please resubmit with corrected quantity."
+    },
+    "5_resubmit": {
+      "invoiceNumber": "HTS-INV-2026-03848-R1",
+      "invoiceDate": "2026-04-22",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantity": 400, "unitPrice": 8.50, "lineTotal": 3400.00 },
+        { "description": "Plywood Sheathing 12mm", "quantity": 80, "unitPrice": 28.00, "lineTotal": 2240.00 },
+        { "description": "Joist Hangers Assorted", "quantity": 15, "unitPrice": 38.00, "lineTotal": 570.00 }
+      ],
+      "subtotal": 6210.00,
+      "vatRate": 0.20,
+      "vatAmount": 1242.00,
+      "invoiceTotal": 7452.00,
+      "paymentTerms": "Net 30",
+      "paymentDueDate": "2026-05-22",
+      "supplierCostBreakdown": {
+        "materialCost": 4375.00,
+        "logistics": 420.00,
+        "margin": 1415.00,
+        "marginPercentage": 22.8
+      }
+    },
+    "6": {
+      "decision": "approve",
+      "approvalNotes": "Corrected invoice matches PO quantities. Approved for payment.",
+      "approvedAmount": 7452.00
+    }
+  },
+  "finance": {
+    "1": {
+      "invoiceReference": "HTS-INV-2026-03848-R1",
+      "invoiceAmount": 7452.00,
+      "buyerName": "Cairngorm Construction Ltd",
+      "requestedAdvancePercentage": 90,
+      "urgency": "standard"
+    },
+    "2": {
+      "buyerCreditScore": 85,
+      "creditLimit": 250000.00,
+      "riskRating": "low",
+      "assessmentDate": "2026-04-22",
+      "paymentHistoryScore": 92,
+      "yearsTrading": 14,
+      "assessmentNotes": "Strong payment history. No defaults. Established Highland contractor."
+    },
+    "3": {
+      "evaluationNotes": "Verified invoice credential confirmed (resubmitted invoice). Buyer credit score 85/100 — well above threshold.",
+      "advancePercentage": 90,
+      "feeRate": 2.5
+    },
+    "4": {
+      "decision": "approve",
+      "advanceAmount": 6706.80,
+      "feeAmount": 167.67,
+      "netAdvance": 6539.13,
+      "repaymentTerms": "Net 30 from original invoice due date",
+      "repaymentDate": "2026-05-22",
+      "financingReference": "STF-FIN-2026-00292"
+    }
+  }
+}

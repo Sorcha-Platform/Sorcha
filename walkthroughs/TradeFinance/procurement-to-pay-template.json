@@ -1,0 +1,1119 @@
+{
+  "id": "trade-finance-procurement-to-pay-v1",
+  "title": "SME Procurement-to-Pay",
+  "description": "Multi-organisation procurement-to-pay workflow for SME trade finance. A buyer (Cairngorm Construction) raises a purchase order to a supplier (Highland Timber Supplies), who acknowledges, delivers, and invoices. The buyer confirms goods received and approves or disputes the invoice. A funder (ScotTrade Finance) observes with limited disclosure. Features field-level encryption, selective disclosure, verifiable credential issuance on approval, and a dispute loop.",
+  "version": 1,
+  "category": "trade-finance",
+  "tags": ["procurement", "trade-finance", "sme", "multi-org", "verifiable-credential", "field-level-encryption", "selective-disclosure"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "trade-finance-procurement-to-pay-generated",
+    "title": "SME Procurement-to-Pay",
+    "description": "A realistic procurement-to-pay process between a construction buyer and timber supplier, with a trade finance funder observing under selective disclosure. Six actions cover the full cycle from purchase order through delivery, goods receipt, invoicing, and approval with dispute routing. Demonstrates field-level encryption, selective disclosure to a funder, and VerifiedInvoiceCredential issuance.",
+    "version": 1,
+    "metadata": {
+      "category": "Trade Finance",
+      "complexity": "Medium",
+      "actions": "6",
+      "features": "Multi-Org, Field-Level Encryption, Selective Disclosure, Verifiable Credential, Dispute Routing, Calculations",
+      "sector": "Construction & Supply Chain"
+    },
+    "instanceReference": {
+      "prefix": "PO",
+      "components": [
+        { "field": "/projectName", "transform": "FirstWord", "chars": 3 },
+        { "field": "/poReference", "transform": "Truncate", "chars": 4 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "procurement-mgr",
+        "name": "Procurement Manager",
+        "organisation": "Cairngorm Construction Ltd",
+        "description": "Raises purchase orders, confirms goods received notices, and approves or disputes invoices."
+      },
+      {
+        "id": "site-mgr",
+        "name": "Site Manager",
+        "organisation": "Cairngorm Construction Ltd",
+        "description": "Confirms goods received on site against delivery notes and flags any discrepancies."
+      },
+      {
+        "id": "sales-mgr",
+        "name": "Sales Manager",
+        "organisation": "Highland Timber Supplies",
+        "description": "Acknowledges purchase orders, confirms delivery, and raises invoices for completed orders."
+      },
+      {
+        "id": "finance-director",
+        "name": "Finance Director",
+        "organisation": "Highland Timber Supplies",
+        "description": "Observes procurement workflow for internal finance oversight and trade financing purposes."
+      },
+      {
+        "id": "credit-analyst",
+        "name": "Credit Analyst",
+        "organisation": "ScotTrade Finance",
+        "description": "Funder observer with limited disclosure — sees only payment terms and invoice totals for credit assessment."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Raise Purchase Order",
+        "description": "Procurement manager raises a purchase order specifying line items, delivery address, payment terms, and required delivery date. This is the entry point for the procurement-to-pay workflow.",
+        "sender": "procurement-mgr",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "poReference": {
+                "type": "string",
+                "title": "PO Reference",
+                "maxLength": 30
+              },
+              "projectName": {
+                "type": "string",
+                "title": "Project Name",
+                "minLength": 3,
+                "maxLength": 200
+              },
+              "siteAddress": {
+                "type": "string",
+                "title": "Site Address",
+                "maxLength": 500
+              },
+              "lineItems": {
+                "type": "array",
+                "title": "Line Items",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "title": "Description"
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "title": "Quantity",
+                      "minimum": 1
+                    },
+                    "unit": {
+                      "type": "string",
+                      "title": "Unit"
+                    },
+                    "unitPrice": {
+                      "type": "number",
+                      "title": "Unit Price (GBP)",
+                      "minimum": 0.01
+                    }
+                  },
+                  "required": ["description", "quantity", "unit", "unitPrice"]
+                }
+              },
+              "deliveryAddress": {
+                "type": "string",
+                "title": "Delivery Address",
+                "maxLength": 500
+              },
+              "paymentTerms": {
+                "type": "string",
+                "title": "Payment Terms",
+                "enum": ["Net 15", "Net 30", "Net 45", "Net 60"]
+              },
+              "requiredDeliveryDate": {
+                "type": "string",
+                "title": "Required Delivery Date",
+                "format": "date"
+              }
+            },
+            "required": [
+              "poReference",
+              "projectName",
+              "siteAddress",
+              "lineItems",
+              "deliveryAddress",
+              "paymentTerms",
+              "requiredDeliveryDate"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "site-mgr",
+            "dataPointers": ["/poReference", "/projectName", "/siteAddress", "/lineItems", "/deliveryAddress", "/requiredDeliveryDate"]
+          },
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/paymentTerms"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-acknowledge-po",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to supplier for PO acknowledgement"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Raise Purchase Order",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Order Details",
+              "elements": [
+                {
+                  "type": "TextLine",
+                  "scope": "/poReference",
+                  "title": "PO Reference"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/projectName",
+                  "title": "Project Name"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/siteAddress",
+                  "title": "Site Address"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/deliveryAddress",
+                  "title": "Delivery Address"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Line Items",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "Group",
+                  "scope": "/lineItems",
+                  "title": "Line Items",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/description",
+                      "title": "Description"
+                    },
+                    {
+                      "type": "Layout",
+                      "layout": "HorizontalLayout",
+                      "elements": [
+                        {
+                          "type": "Numeric",
+                          "scope": "/quantity",
+                          "title": "Quantity"
+                        },
+                        {
+                          "type": "TextLine",
+                          "scope": "/unit",
+                          "title": "Unit"
+                        },
+                        {
+                          "type": "Numeric",
+                          "scope": "/unitPrice",
+                          "title": "Unit Price (GBP)"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Terms",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/paymentTerms",
+                      "title": "Payment Terms"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/requiredDeliveryDate",
+                      "title": "Required Delivery Date"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Acknowledge PO",
+        "description": "Sales manager at the supplier acknowledges the purchase order, confirms acceptance, provides an estimated delivery date and order confirmation reference.",
+        "sender": "sales-mgr",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "accepted": {
+                "type": "boolean",
+                "title": "Order Accepted"
+              },
+              "estimatedDeliveryDate": {
+                "type": "string",
+                "title": "Estimated Delivery Date",
+                "format": "date"
+              },
+              "orderConfirmationRef": {
+                "type": "string",
+                "title": "Order Confirmation Reference",
+                "maxLength": 30
+              },
+              "notes": {
+                "type": "string",
+                "title": "Notes",
+                "maxLength": 1000
+              }
+            },
+            "required": ["accepted", "estimatedDeliveryDate", "orderConfirmationRef"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "site-mgr",
+            "dataPointers": ["/estimatedDeliveryDate", "/orderConfirmationRef"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-confirm-delivery",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Route to supplier for delivery confirmation"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Acknowledge Purchase Order",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Acknowledgement",
+              "elements": [
+                {
+                  "type": "Checkbox",
+                  "scope": "/accepted",
+                  "title": "Order Accepted"
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "DateTime",
+                      "scope": "/estimatedDeliveryDate",
+                      "title": "Estimated Delivery Date"
+                    },
+                    {
+                      "type": "TextLine",
+                      "scope": "/orderConfirmationRef",
+                      "title": "Order Confirmation Reference"
+                    }
+                  ]
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/notes",
+                  "title": "Notes (optional)"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "title": "Confirm Delivery",
+        "description": "Sales manager confirms that goods have been delivered, providing a delivery note reference, actual delivery date, itemised delivered quantities, and delivery condition notes.",
+        "sender": "sales-mgr",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "deliveryNoteRef": {
+                "type": "string",
+                "title": "Delivery Note Reference",
+                "maxLength": 30
+              },
+              "actualDeliveryDate": {
+                "type": "string",
+                "title": "Actual Delivery Date",
+                "format": "date"
+              },
+              "deliveredItems": {
+                "type": "array",
+                "title": "Delivered Items",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "title": "Description"
+                    },
+                    "quantityDelivered": {
+                      "type": "number",
+                      "title": "Quantity Delivered",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["description", "quantityDelivered"]
+                }
+              },
+              "deliveryCondition": {
+                "type": "string",
+                "title": "Delivery Condition",
+                "maxLength": 500
+              }
+            },
+            "required": ["deliveryNoteRef", "actualDeliveryDate", "deliveredItems", "deliveryCondition"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "site-mgr",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-goods-received",
+            "nextActionIds": [4],
+            "isDefault": true,
+            "description": "Route to site manager for goods received confirmation"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Confirm Delivery",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Delivery Details",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/deliveryNoteRef",
+                      "title": "Delivery Note Reference"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/actualDeliveryDate",
+                      "title": "Actual Delivery Date"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Delivered Items",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "Group",
+                  "scope": "/deliveredItems",
+                  "title": "Delivered Items",
+                  "elements": [
+                    {
+                      "type": "Layout",
+                      "layout": "HorizontalLayout",
+                      "elements": [
+                        {
+                          "type": "TextLine",
+                          "scope": "/description",
+                          "title": "Description"
+                        },
+                        {
+                          "type": "Numeric",
+                          "scope": "/quantityDelivered",
+                          "title": "Quantity Delivered"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Condition",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/deliveryCondition",
+                  "title": "Delivery Condition Notes"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Confirm Goods Received",
+        "description": "Site manager confirms receipt of goods on site, records a GRN reference, notes any condition issues, and flags discrepancies against the delivery note.",
+        "sender": "site-mgr",
+        "requiredPriorActions": [3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "grnReference": {
+                "type": "string",
+                "title": "GRN Reference",
+                "maxLength": 30
+              },
+              "receivedDate": {
+                "type": "string",
+                "title": "Received Date",
+                "format": "date"
+              },
+              "conditionNotes": {
+                "type": "string",
+                "title": "Condition Notes",
+                "maxLength": 1000
+              },
+              "discrepancyFlag": {
+                "type": "boolean",
+                "title": "Discrepancy Found"
+              }
+            },
+            "required": ["grnReference", "receivedDate", "conditionNotes", "discrepancyFlag"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "site-mgr",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-raise-invoice",
+            "nextActionIds": [5],
+            "isDefault": true,
+            "description": "Route to supplier for invoice submission"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Confirm Goods Received",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Goods Receipt",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/grnReference",
+                      "title": "GRN Reference"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/receivedDate",
+                      "title": "Received Date"
+                    }
+                  ]
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/conditionNotes",
+                  "title": "Condition Notes"
+                },
+                {
+                  "type": "Checkbox",
+                  "scope": "/discrepancyFlag",
+                  "title": "Discrepancy found between delivery and order"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Raise Invoice",
+        "description": "Sales manager raises an invoice for the delivered goods, including line item totals, VAT, and payment terms. The supplier cost breakdown is private to the supplier and finance director only.",
+        "sender": "sales-mgr",
+        "requiredPriorActions": [4],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "invoiceNumber": {
+                "type": "string",
+                "title": "Invoice Number",
+                "maxLength": 30
+              },
+              "invoiceDate": {
+                "type": "string",
+                "title": "Invoice Date",
+                "format": "date"
+              },
+              "lineItems": {
+                "type": "array",
+                "title": "Invoice Line Items",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "title": "Description"
+                    },
+                    "quantity": {
+                      "type": "number",
+                      "title": "Quantity"
+                    },
+                    "unitPrice": {
+                      "type": "number",
+                      "title": "Unit Price (GBP)"
+                    },
+                    "lineTotal": {
+                      "type": "number",
+                      "title": "Line Total (GBP)"
+                    }
+                  },
+                  "required": ["description", "quantity", "unitPrice", "lineTotal"]
+                }
+              },
+              "subtotal": {
+                "type": "number",
+                "title": "Subtotal (GBP)",
+                "minimum": 0
+              },
+              "vatRate": {
+                "type": "number",
+                "title": "VAT Rate",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "vatAmount": {
+                "type": "number",
+                "title": "VAT Amount (GBP)",
+                "minimum": 0
+              },
+              "invoiceTotal": {
+                "type": "number",
+                "title": "Invoice Total (GBP)",
+                "minimum": 0
+              },
+              "paymentTerms": {
+                "type": "string",
+                "title": "Payment Terms",
+                "enum": ["Net 15", "Net 30", "Net 45", "Net 60"]
+              },
+              "paymentDueDate": {
+                "type": "string",
+                "title": "Payment Due Date",
+                "format": "date"
+              },
+              "supplierCostBreakdown": {
+                "type": "object",
+                "title": "Supplier Cost Breakdown (Confidential)",
+                "properties": {
+                  "materialCost": {
+                    "type": "number",
+                    "title": "Material Cost (GBP)"
+                  },
+                  "logistics": {
+                    "type": "number",
+                    "title": "Logistics Cost (GBP)"
+                  },
+                  "margin": {
+                    "type": "number",
+                    "title": "Margin (GBP)"
+                  },
+                  "marginPercentage": {
+                    "type": "number",
+                    "title": "Margin Percentage"
+                  }
+                }
+              }
+            },
+            "required": [
+              "invoiceNumber",
+              "invoiceDate",
+              "lineItems",
+              "subtotal",
+              "vatRate",
+              "vatAmount",
+              "invoiceTotal",
+              "paymentTerms",
+              "paymentDueDate"
+            ]
+          }
+        ],
+        "calculations": {
+          "invoiceTotal": {
+            "reduce": [
+              { "var": "lineItems" },
+              { "+": [{ "var": "accumulator" }, { "var": "current.lineTotal" }] },
+              0
+            ]
+          }
+        },
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/invoiceNumber", "/invoiceDate", "/lineItems", "/subtotal", "/vatRate", "/vatAmount", "/invoiceTotal", "/paymentTerms", "/paymentDueDate"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "finance-director",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/invoiceTotal", "/paymentTerms"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-approve-invoice",
+            "nextActionIds": [6],
+            "isDefault": true,
+            "description": "Route to buyer for invoice approval or dispute"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Raise Invoice",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Invoice Details",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/invoiceNumber",
+                      "title": "Invoice Number"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/invoiceDate",
+                      "title": "Invoice Date"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Invoice Line Items",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "Group",
+                  "scope": "/lineItems",
+                  "title": "Line Items",
+                  "elements": [
+                    {
+                      "type": "TextLine",
+                      "scope": "/description",
+                      "title": "Description"
+                    },
+                    {
+                      "type": "Layout",
+                      "layout": "HorizontalLayout",
+                      "elements": [
+                        {
+                          "type": "Numeric",
+                          "scope": "/quantity",
+                          "title": "Quantity"
+                        },
+                        {
+                          "type": "Numeric",
+                          "scope": "/unitPrice",
+                          "title": "Unit Price (GBP)"
+                        },
+                        {
+                          "type": "Numeric",
+                          "scope": "/lineTotal",
+                          "title": "Line Total (GBP)"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Totals",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/subtotal",
+                      "title": "Subtotal (GBP)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/vatRate",
+                      "title": "VAT Rate (e.g. 0.20)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/vatAmount",
+                      "title": "VAT Amount (GBP)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/invoiceTotal",
+                  "title": "Invoice Total (GBP)"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Payment Terms",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Selection",
+                      "scope": "/paymentTerms",
+                      "title": "Payment Terms"
+                    },
+                    {
+                      "type": "DateTime",
+                      "scope": "/paymentDueDate",
+                      "title": "Payment Due Date"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Supplier Cost Breakdown (Confidential)",
+              "elements": [
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/supplierCostBreakdown/materialCost",
+                      "title": "Material Cost (GBP)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/supplierCostBreakdown/logistics",
+                      "title": "Logistics Cost (GBP)"
+                    }
+                  ]
+                },
+                {
+                  "type": "Layout",
+                  "layout": "HorizontalLayout",
+                  "elements": [
+                    {
+                      "type": "Numeric",
+                      "scope": "/supplierCostBreakdown/margin",
+                      "title": "Margin (GBP)"
+                    },
+                    {
+                      "type": "Numeric",
+                      "scope": "/supplierCostBreakdown/marginPercentage",
+                      "title": "Margin Percentage"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "title": "Approve/Dispute Invoice",
+        "description": "Procurement manager reviews the invoice and either approves (issuing a VerifiedInvoiceCredential to the supplier) or disputes and returns to the supplier for resubmission.",
+        "sender": "procurement-mgr",
+        "requiredPriorActions": [5],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approve", "dispute"]
+              },
+              "approvalNotes": {
+                "type": "string",
+                "title": "Approval Notes",
+                "maxLength": 1000
+              },
+              "approvedAmount": {
+                "type": "number",
+                "title": "Approved Amount (GBP)",
+                "minimum": 0
+              },
+              "disputeReason": {
+                "type": "string",
+                "title": "Dispute Reason",
+                "maxLength": 1000
+              }
+            },
+            "required": ["decision"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "VerifiedInvoiceCredential",
+          "recipientParticipantId": "sales-mgr",
+          "expiryDuration": "P90D",
+          "claimMappings": [
+            { "claimName": "invoiceNumber", "sourceField": "/invoiceNumber" },
+            { "claimName": "invoiceAmount", "sourceField": "/invoiceTotal" },
+            { "claimName": "buyerName", "sourceField": "/projectName" },
+            { "claimName": "supplierName", "sourceField": "/orderConfirmationRef" },
+            { "claimName": "poReference", "sourceField": "/poReference" },
+            { "claimName": "paymentDueDate", "sourceField": "/paymentDueDate" }
+          ],
+          "disclosable": [
+            "invoiceNumber",
+            "invoiceAmount",
+            "poReference",
+            "paymentDueDate"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "procurement-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/decision", "/approvedAmount"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "dispute-invoice",
+            "nextActionIds": [5],
+            "condition": { "==": [{ "var": "decision" }, "dispute"] },
+            "description": "Invoice disputed — return to supplier for resubmission"
+          },
+          {
+            "id": "approved-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Invoice approved — workflow complete, VC issued"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Approve or Dispute Invoice",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Decision",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/decision",
+                  "title": "Decision"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Approval Details",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/approvedAmount",
+                  "title": "Approved Amount (GBP)"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/approvalNotes",
+                  "title": "Approval Notes (optional)"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Dispute Details",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/disputeReason",
+                  "title": "Dispute Reason"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "parameterSchema": {
+    "type": "object",
+    "properties": {
+      "procurementMgrWallet": {
+        "type": "string",
+        "description": "Wallet address for the Procurement Manager (Cairngorm Construction Ltd)"
+      },
+      "siteMgrWallet": {
+        "type": "string",
+        "description": "Wallet address for the Site Manager (Cairngorm Construction Ltd)"
+      },
+      "salesMgrWallet": {
+        "type": "string",
+        "description": "Wallet address for the Sales Manager (Highland Timber Supplies)"
+      },
+      "financeDirectorWallet": {
+        "type": "string",
+        "description": "Wallet address for the Finance Director (Highland Timber Supplies)"
+      },
+      "creditAnalystWallet": {
+        "type": "string",
+        "description": "Wallet address for the Credit Analyst (ScotTrade Finance)"
+      }
+    },
+    "required": [
+      "procurementMgrWallet",
+      "siteMgrWallet",
+      "salesMgrWallet",
+      "financeDirectorWallet",
+      "creditAnalystWallet"
+    ]
+  },
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "Golden Path — Timber Supply Order",
+      "description": "Standard procurement cycle: PO raised, acknowledged, delivered, goods received, invoiced, and approved with VerifiedInvoiceCredential issued to supplier",
+      "parameters": {
+        "procurementMgrWallet": "0xPROCUREMENT_MGR_WALLET",
+        "siteMgrWallet": "0xSITE_MGR_WALLET",
+        "salesMgrWallet": "0xSALES_MGR_WALLET",
+        "financeDirectorWallet": "0xFINANCE_DIRECTOR_WALLET",
+        "creditAnalystWallet": "0xCREDIT_ANALYST_WALLET"
+      }
+    },
+    {
+      "name": "Disputed Invoice",
+      "description": "Invoice disputed by procurement manager due to quantity discrepancy — routed back to supplier for resubmission, then approved on second attempt",
+      "parameters": {
+        "procurementMgrWallet": "0xPROCUREMENT_MGR_WALLET",
+        "siteMgrWallet": "0xSITE_MGR_WALLET",
+        "salesMgrWallet": "0xSALES_MGR_WALLET",
+        "financeDirectorWallet": "0xFINANCE_DIRECTOR_WALLET",
+        "creditAnalystWallet": "0xCREDIT_ANALYST_WALLET"
+      }
+    },
+    {
+      "name": "Declined Finance",
+      "description": "Full procurement cycle completes but credit analyst observes unfavourable payment terms — demonstrates selective disclosure to funder with limited data pointers",
+      "parameters": {
+        "procurementMgrWallet": "0xPROCUREMENT_MGR_WALLET",
+        "siteMgrWallet": "0xSITE_MGR_WALLET",
+        "salesMgrWallet": "0xSALES_MGR_WALLET",
+        "financeDirectorWallet": "0xFINANCE_DIRECTOR_WALLET",
+        "creditAnalystWallet": "0xCREDIT_ANALYST_WALLET"
+      }
+    }
+  ]
+}

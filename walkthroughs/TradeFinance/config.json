@@ -1,0 +1,79 @@
+{
+  "name": "TradeFinance",
+  "description": "SME Procurement-to-Pay with Invoice Finance — 4 organisations, 6 participants, 2 registers, cross-register verifiable credentials, field-level encryption, and AI agent-driven execution.",
+  "category": "multi-org",
+  "secretsKey": "trade-finance",
+  "requiresRegister": true,
+  "requiresParticipants": true,
+  "organizations": [
+    {
+      "name": "Cairngorm Construction Ltd",
+      "subdomain": "cairngorm",
+      "role": "buyer",
+      "participants": [
+        { "id": "procurement-mgr", "displayName": "Procurement Manager", "algorithm": "ED25519" },
+        { "id": "site-mgr", "displayName": "Site Manager", "algorithm": "ED25519" }
+      ]
+    },
+    {
+      "name": "Highland Timber Supplies",
+      "subdomain": "highland-timber",
+      "role": "supplier",
+      "participants": [
+        { "id": "sales-mgr", "displayName": "Sales Manager", "algorithm": "ED25519" },
+        { "id": "finance-director", "displayName": "Finance Director", "algorithm": "ED25519" }
+      ]
+    },
+    {
+      "name": "ScotTrade Finance",
+      "subdomain": "scottrade",
+      "role": "funder",
+      "participants": [
+        { "id": "credit-analyst", "displayName": "Credit Analyst", "algorithm": "ED25519" }
+      ]
+    },
+    {
+      "name": "UK Trade Credit Bureau",
+      "subdomain": "trade-credit",
+      "role": "credit-insurer",
+      "participants": [
+        { "id": "assessment-svc", "displayName": "Assessment Service", "algorithm": "ED25519" }
+      ]
+    }
+  ],
+  "registers": [
+    {
+      "name": "SME Trade Register",
+      "purpose": "Procurement-to-pay workflow between buyer and supplier",
+      "ownerOrg": "cairngorm",
+      "template": "procurement-to-pay-template.json"
+    },
+    {
+      "name": "Trade Finance Register",
+      "purpose": "Invoice financing between supplier, funder, and credit insurer",
+      "ownerOrg": "scottrade",
+      "template": "invoice-finance-template.json"
+    }
+  ],
+  "templates": [
+    "procurement-to-pay-template.json",
+    "invoice-finance-template.json"
+  ],
+  "scenarios": [
+    "data/scenario-golden-path.json",
+    "data/scenario-disputed.json",
+    "data/scenario-declined.json"
+  ],
+  "agentAssignments": {
+    "box1": {
+      "label": "Buyer Side",
+      "organizations": ["cairngorm", "trade-credit"],
+      "participants": ["procurement-mgr", "site-mgr", "assessment-svc"]
+    },
+    "box2": {
+      "label": "Supplier/Funder Side",
+      "organizations": ["highland-timber", "scottrade"],
+      "participants": ["sales-mgr", "finance-director", "credit-analyst"]
+    }
+  }
+}

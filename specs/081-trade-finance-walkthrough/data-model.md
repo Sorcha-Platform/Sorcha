@@ -137,11 +137,11 @@ Written by setup.ps1 or the setup wizard after bootstrapping.
   "description": "Full procurement-to-pay with approved invoice financing",
   "expectedProcurementPath": [1, 2, 3, 4, 5, 6],
   "expectedFinancePath": [1, 2, 3, 4],
-  "expectedInvoiceTotal": 47500.00,
+  "expectedInvoiceTotal": 10248.00,
   "expectedDaysSinceDelivery": 3,
-  "expectedAdvanceAmount": 42750.00,
-  "expectedFeeAmount": 1068.75,
-  "expectedNetAdvance": 41681.25,
+  "expectedAdvanceAmount": 9223.20,
+  "expectedFeeAmount": 230.58,
+  "expectedNetAdvance": 8992.62,
   "expectedRejection": false,
   "procurement": {
     "1": {

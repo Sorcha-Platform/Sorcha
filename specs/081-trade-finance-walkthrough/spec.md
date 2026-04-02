@@ -2,7 +2,7 @@
 
 **Feature Branch**: `081-trade-finance-walkthrough`  
 **Created**: 2026-04-02  
-**Status**: Draft  
+**Status**: Implementation Complete  
 **Input**: Multi-organisation, multi-peer walkthrough
 
 ## Clarifications
@@ -10,7 +10,7 @@
 ### Session 2026-04-02
 
 - Q: In multi-machine mode, who creates which registers? → A: Each machine creates the registers owned by its organisations (based on manifest ownership). Box 1 creates Register 1 (Buyer-owned), Box 2 creates Register 2 (Funder-owned). Each subscribes to the other's registers via replication.
-- Q: What credit score threshold determines approve/decline routing in Invoice Finance? → A: 50/100. Golden path buyer scores 85 (approved), declined scenario buyer scores 35 (refused). demonstrating Sorcha's procurement-to-pay capabilities with field-level encryption, cross-register credential chains, and AI agent-driven participants. Addresses the Digital Trust Centre of Excellence Innovation Challenge 2: Digitising SME Trade Finance.
+- Q: What credit score threshold determines approve/decline routing in Invoice Finance? → A: 50/100. Golden path buyer scores 85 (approved), declined scenario buyer scores 35 (refused).
 
 ## User Scenarios & Testing *(mandatory)*
 
