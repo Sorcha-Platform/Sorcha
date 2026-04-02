@@ -7,6 +7,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +23,39 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      - name: Test (unit + in-memory integration)
+        run: |
+          # Infrastructure-dependent test projects require Docker, databases,
+          # or browsers not available on the CI runner. Skip them here;
+          # run locally or in a dedicated integration test workflow.
+          INFRA_PROJECTS=(
+            "tests/Sorcha.UI.E2E.Tests/Sorcha.UI.E2E.Tests.csproj"
+            "tests/Sorcha.Gateway.Integration.Tests/Sorcha.Gateway.Integration.Tests.csproj"
+            "tests/Sorcha.Validator.Service.IntegrationTests/Sorcha.Validator.Service.IntegrationTests.csproj"
+            "tests/Sorcha.Tenant.Service.IntegrationTests/Sorcha.Tenant.Service.IntegrationTests.csproj"
+            "tests/Sorcha.Wallet.Service.IntegrationTests/Sorcha.Wallet.Service.IntegrationTests.csproj"
+            "tests/Sorcha.Blueprint.Service.IntegrationTests/Sorcha.Blueprint.Service.IntegrationTests.csproj"
+            "tests/Sorcha.Register.Service.IntegrationTests/Sorcha.Register.Service.IntegrationTests.csproj"
+            "tests/Sorcha.Register.Storage.MongoDB.Tests/Sorcha.Register.Storage.MongoDB.Tests.csproj"
+          )
+
+          EXIT_CODE=0
+          for proj in tests/**/*.csproj; do
+            skip=false
+            for infra in "${INFRA_PROJECTS[@]}"; do
+              if [[ "$proj" == "$infra" ]]; then
+                echo "⏭️  Skipping $(basename $proj .csproj) (requires infrastructure)"
+                skip=true
+                break
+              fi
+            done
+            if [[ "$skip" == "false" ]]; then
+              echo "🧪 Testing $(basename $proj .csproj)..."
+              dotnet test "$proj" --no-build --configuration Release --verbosity normal \
+                --logger "trx;LogFileName=test-results.trx" || EXIT_CODE=1
+            fi
+          done
+          exit $EXIT_CODE
 
       - name: Pack NuGet packages (validation only)
         run: |
