@@ -1,0 +1,108 @@
+{
+  "name": "Scenario A: Golden Path",
+  "description": "Full procurement-to-pay with approved invoice financing",
+  "expectedProcurementPath": [1, 2, 3, 4, 5, 6],
+  "expectedFinancePath": [1, 2, 3, 4],
+  "expectedDispute": false,
+  "expectedRejection": false,
+  "expectedInvoiceTotal": 10248.00,
+  "expectedDaysSinceDelivery": 3,
+  "expectedAdvanceAmount": 9223.20,
+  "expectedFeeAmount": 230.58,
+  "expectedNetAdvance": 8992.62,
+  "procurement": {
+    "1": {
+      "poReference": "PO-CAIRN-2026-00142",
+      "projectName": "Aviemore Heights Phase 2",
+      "siteAddress": "Plot 14-18, Craig na Gower Road, Aviemore PH22 1RN",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantity": 500, "unit": "linear metre", "unitPrice": 8.50 },
+        { "description": "OSB Sheathing Board 18mm", "quantity": 120, "unit": "sheet", "unitPrice": 32.00 },
+        { "description": "Timber Connectors Assorted", "quantity": 10, "unit": "box", "unitPrice": 45.00 }
+      ],
+      "deliveryAddress": "Site Compound, Craig na Gower Road, Aviemore PH22 1RN",
+      "paymentTerms": "Net 30",
+      "requiredDeliveryDate": "2026-04-15"
+    },
+    "2": {
+      "accepted": true,
+      "estimatedDeliveryDate": "2026-04-14",
+      "orderConfirmationRef": "HTS-ACK-2026-0892",
+      "notes": "Stock confirmed. Delivery by Highland Haulage."
+    },
+    "3": {
+      "deliveryNoteRef": "HTS-DN-2026-1204",
+      "actualDeliveryDate": "2026-04-14",
+      "deliveredItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantityDelivered": 500 },
+        { "description": "OSB Sheathing Board 18mm", "quantityDelivered": 120 },
+        { "description": "Timber Connectors Assorted", "quantityDelivered": 10 }
+      ],
+      "deliveryCondition": "Good — no damage noted"
+    },
+    "4": {
+      "grnReference": "CAIRN-GRN-2026-00418",
+      "receivedDate": "2026-04-14",
+      "conditionNotes": "All items received in good condition, quantities verified against DN",
+      "discrepancyFlag": false
+    },
+    "5": {
+      "invoiceNumber": "HTS-INV-2026-03847",
+      "invoiceDate": "2026-04-17",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x200mm", "quantity": 500, "unitPrice": 8.50, "lineTotal": 4250.00 },
+        { "description": "OSB Sheathing Board 18mm", "quantity": 120, "unitPrice": 32.00, "lineTotal": 3840.00 },
+        { "description": "Timber Connectors Assorted", "quantity": 10, "unitPrice": 45.00, "lineTotal": 450.00 }
+      ],
+      "subtotal": 8540.00,
+      "vatRate": 0.20,
+      "vatAmount": 1708.00,
+      "invoiceTotal": 10248.00,
+      "paymentTerms": "Net 30",
+      "paymentDueDate": "2026-05-17",
+      "supplierCostBreakdown": {
+        "materialCost": 6200.00,
+        "logistics": 480.00,
+        "margin": 1860.00,
+        "marginPercentage": 21.8
+      }
+    },
+    "6": {
+      "decision": "approve",
+      "approvalNotes": "Invoice matches PO and GRN. Approved for payment.",
+      "approvedAmount": 10248.00
+    }
+  },
+  "finance": {
+    "1": {
+      "invoiceReference": "HTS-INV-2026-03847",
+      "invoiceAmount": 10248.00,
+      "buyerName": "Cairngorm Construction Ltd",
+      "requestedAdvancePercentage": 90,
+      "urgency": "standard"
+    },
+    "2": {
+      "buyerCreditScore": 85,
+      "creditLimit": 250000.00,
+      "riskRating": "low",
+      "assessmentDate": "2026-04-17",
+      "paymentHistoryScore": 92,
+      "yearsTrading": 14,
+      "assessmentNotes": "Strong payment history. No defaults. Established Highland contractor."
+    },
+    "3": {
+      "evaluationNotes": "Verified invoice credential confirmed. Buyer credit score 85/100 — well above threshold. Invoice amount within credit limit.",
+      "advancePercentage": 90,
+      "feeRate": 2.5
+    },
+    "4": {
+      "decision": "approve",
+      "advanceAmount": 9223.20,
+      "feeAmount": 230.58,
+      "netAdvance": 8992.62,
+      "repaymentTerms": "Net 30 from original invoice due date",
+      "repaymentDate": "2026-05-17",
+      "financingReference": "STF-FIN-2026-00291"
+    }
+  }
+}

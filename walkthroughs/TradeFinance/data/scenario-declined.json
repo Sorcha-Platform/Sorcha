@@ -1,0 +1,101 @@
+{
+  "name": "Scenario C: Declined Finance",
+  "description": "Procurement-to-pay completes normally (approved invoice, VC issued). Finance flow initiated but buyer has low credit score (35/100) — financing declined by funder.",
+  "expectedProcurementPath": [1, 2, 3, 4, 5, 6],
+  "expectedFinancePath": [1, 2, 3, 4],
+  "expectedDispute": false,
+  "expectedRejection": true,
+  "rejectionReason": "Buyer credit score 35/100 — below minimum threshold of 50. Financing declined.",
+  "expectedInvoiceTotal": 5916.00,
+  "expectedDaysSinceDelivery": 2,
+  "procurement": {
+    "1": {
+      "poReference": "PO-LOCH-2026-00087",
+      "projectName": "Loch Ness View Cottages",
+      "siteAddress": "Plot 3, Drumnadrochit Road, Drumnadrochit IV63 6TX",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x150mm", "quantity": 200, "unit": "linear metre", "unitPrice": 7.20 },
+        { "description": "Roofing Battens 25x50mm", "quantity": 150, "unit": "linear metre", "unitPrice": 3.80 },
+        { "description": "DPC Membrane 4m wide", "quantity": 50, "unit": "linear metre", "unitPrice": 12.50 }
+      ],
+      "deliveryAddress": "Site Entrance, Drumnadrochit Road, Drumnadrochit IV63 6TX",
+      "paymentTerms": "Net 30",
+      "requiredDeliveryDate": "2026-04-25"
+    },
+    "2": {
+      "accepted": true,
+      "estimatedDeliveryDate": "2026-04-24",
+      "orderConfirmationRef": "HTS-ACK-2026-0894",
+      "notes": "All items in stock. Standard delivery."
+    },
+    "3": {
+      "deliveryNoteRef": "HTS-DN-2026-1206",
+      "actualDeliveryDate": "2026-04-24",
+      "deliveredItems": [
+        { "description": "Treated Structural Timber 47x150mm", "quantityDelivered": 200 },
+        { "description": "Roofing Battens 25x50mm", "quantityDelivered": 150 },
+        { "description": "DPC Membrane 4m wide", "quantityDelivered": 50 }
+      ],
+      "deliveryCondition": "Good — all items as ordered"
+    },
+    "4": {
+      "grnReference": "LOCH-GRN-2026-00088",
+      "receivedDate": "2026-04-24",
+      "conditionNotes": "All materials received and checked against delivery note. No issues.",
+      "discrepancyFlag": false
+    },
+    "5": {
+      "invoiceNumber": "HTS-INV-2026-03849",
+      "invoiceDate": "2026-04-26",
+      "lineItems": [
+        { "description": "Treated Structural Timber 47x150mm", "quantity": 200, "unitPrice": 7.20, "lineTotal": 1440.00 },
+        { "description": "Roofing Battens 25x50mm", "quantity": 150, "unitPrice": 3.80, "lineTotal": 570.00 },
+        { "description": "DPC Membrane 4m wide", "quantity": 50, "unitPrice": 12.50, "lineTotal": 625.00 }
+      ],
+      "subtotal": 2635.00,
+      "vatRate": 0.20,
+      "vatAmount": 527.00,
+      "invoiceTotal": 3162.00,
+      "paymentTerms": "Net 30",
+      "paymentDueDate": "2026-05-26",
+      "supplierCostBreakdown": {
+        "materialCost": 1850.00,
+        "logistics": 320.00,
+        "margin": 465.00,
+        "marginPercentage": 17.6
+      }
+    },
+    "6": {
+      "decision": "approve",
+      "approvalNotes": "Invoice matches PO and GRN. Approved for payment.",
+      "approvedAmount": 3162.00
+    }
+  },
+  "finance": {
+    "1": {
+      "invoiceReference": "HTS-INV-2026-03849",
+      "invoiceAmount": 3162.00,
+      "buyerName": "Lochside Developments Ltd",
+      "requestedAdvancePercentage": 85,
+      "urgency": "express"
+    },
+    "2": {
+      "buyerCreditScore": 35,
+      "creditLimit": 25000.00,
+      "riskRating": "high",
+      "assessmentDate": "2026-04-26",
+      "paymentHistoryScore": 41,
+      "yearsTrading": 2,
+      "assessmentNotes": "Recent CCJ. Multiple late payments. Limited trading history."
+    },
+    "3": {
+      "evaluationNotes": "Buyer credit score 35/100 — below minimum threshold of 50. High risk rating. Recommendation: DECLINE.",
+      "advancePercentage": 0,
+      "feeRate": 0
+    },
+    "4": {
+      "decision": "decline",
+      "declineReason": "Buyer credit score 35/100 — below minimum threshold of 50. Recent CCJ and limited trading history present unacceptable risk."
+    }
+  }
+}

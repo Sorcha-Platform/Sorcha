@@ -51,6 +51,14 @@ Multiple organizations with cross-org participants, encrypted transactions, and 
 | [ConstructionPermit](./ConstructionPermit/) | **Primary multi-org integration test.** 4 organizations, 5 participants (including 2 users in the same org), per-user authentication, encrypted transactions, JSON Logic calculations (risk score, permit fee), conditional routing (high-risk → environmental review, low-risk → skip), rejection paths, and verifiable credential issuance. Three scenarios exercise the full pipeline: **A** low-risk residential (5 actions, skips environmental), **B** high-risk commercial (6 actions, triggers environmental review), **C** rejection at planning review. Each scenario creates a fresh workflow instance, authenticates each participant individually, executes actions through the async encrypted transaction pipeline (validator → docket → confirmation), and verifies instance advancement. |
 | [SelfBuildHouse](./SelfBuildHouse/) | **Advanced multi-register workflow.** 6 organizations, 7 participants, **2 separate registers** with a planning permission blueprint (8 actions) and a building warrant blueprint (6 actions). Exercises cross-register verifiable credentials (3 VCs issued), credential chains (building warrant requires presenting the planning permission VC), credential-gated actions, document uploads, staged inspections (foundation → structure → final), conditional routing (protected species triggers ecological survey), rejection loops, and 5+ JSON Logic calculations. Three scenarios: standard approval, ecological branch, and rejection. |
 
+### Agent-Driven
+
+AI agent-operated walkthroughs using MCP Server connections for autonomous execution.
+
+| Walkthrough | What It Tests |
+|-------------|--------------|
+| [TradeFinance](./TradeFinance/) | **Agent-driven multi-register workflow.** 4 organisations, 6 participants, **2 registers** with a procurement-to-pay blueprint (6 actions) and an invoice finance blueprint (4 actions). Exercises cross-register verifiable credentials (VerifiedInvoiceCredential required on Register 2), credential chains, selective disclosure under field-level encryption, AI agent coordination via MCP Server (2 Claude Code sessions on separate machines), scripted and persona execution modes, DevMode-to-FLE transition, and 5 JSON Logic calculations. Three scenarios: golden path (approved), disputed invoice (rejection + resubmission), and declined financing (low credit score). |
+
 ### Advanced
 
 Specialized infrastructure scenarios requiring additional setup beyond `docker-compose up -d`.

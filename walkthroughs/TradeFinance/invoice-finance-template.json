@@ -1,0 +1,644 @@
+{
+  "id": "trade-finance-invoice-finance-v1",
+  "title": "SME Invoice Finance",
+  "description": "Invoice finance workflow for SMEs. A finance director presents a VerifiedInvoiceCredential from a procurement register to request advance financing against an outstanding invoice. The application flows through an automated buyer credit assessment, credit analyst evaluation with calculated advance amounts, and a final approve/decline decision that issues a TradeFinanceCredential. Features cross-register credential requirements, selective disclosure, JsonLogic calculations, and verifiable credential issuance.",
+  "version": 1,
+  "category": "trade-finance",
+  "tags": ["invoice-finance", "trade-finance", "sme", "multi-org", "verifiable-credential", "cross-register-credential", "selective-disclosure"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "invoice-finance-generated",
+    "title": "SME Invoice Finance",
+    "description": "Invoice finance workflow where an SME finance director requests advance financing against a verified invoice. Includes buyer credit assessment, credit analyst evaluation with calculated advance/fee amounts, and a final approve/decline decision with TradeFinanceCredential issuance on approval.",
+    "version": 1,
+    "metadata": {
+      "category": "Trade Finance",
+      "complexity": "Medium",
+      "actions": "4",
+      "features": "Cross-Register Credential, Selective Disclosure, Calculations, Verifiable Credential Issuance",
+      "sector": "Financial Services",
+      "jurisdiction": "UK"
+    },
+    "instanceReference": {
+      "prefix": "IF",
+      "components": [
+        { "field": "/invoiceReference", "transform": "Truncate", "chars": 6 },
+        { "field": "/buyerName", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "finance-director",
+        "name": "Finance Director",
+        "organisation": "Highland Timber Supplies",
+        "description": "Requests invoice financing by presenting a VerifiedInvoiceCredential from the procurement register."
+      },
+      {
+        "id": "assessment-svc",
+        "name": "Assessment Service",
+        "organisation": "UK Trade Credit Bureau",
+        "description": "Provides automated buyer creditworthiness assessment including credit score, risk rating, and payment history."
+      },
+      {
+        "id": "credit-analyst",
+        "name": "Credit Analyst",
+        "organisation": "ScotTrade Finance",
+        "description": "Evaluates the financing application against credit assessment data and approves or declines with financing terms."
+      },
+      {
+        "id": "sales-mgr",
+        "name": "Sales Manager",
+        "organisation": "Highland Timber Supplies",
+        "description": "Observer who receives the financing outcome and approved terms."
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Request Financing",
+        "description": "Finance director submits an invoice financing request. A VerifiedInvoiceCredential from the procurement register is required as proof of a legitimate, verified invoice.",
+        "sender": "finance-director",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "VerifiedInvoiceCredential",
+            "requiredClaims": [
+              { "claimName": "invoiceNumber" },
+              { "claimName": "invoiceAmount" },
+              { "claimName": "poReference" },
+              { "claimName": "paymentDueDate" }
+            ],
+            "revocationCheckPolicy": "FailOpen",
+            "description": "A verified invoice credential from the procurement register is required to request financing"
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "invoiceReference": {
+                "type": "string",
+                "title": "Invoice Reference",
+                "maxLength": 30
+              },
+              "invoiceAmount": {
+                "type": "number",
+                "title": "Invoice Amount (GBP)",
+                "minimum": 0.01
+              },
+              "buyerName": {
+                "type": "string",
+                "title": "Buyer Name",
+                "maxLength": 200
+              },
+              "requestedAdvancePercentage": {
+                "type": "number",
+                "title": "Requested Advance %",
+                "minimum": 50,
+                "maximum": 100
+              },
+              "urgency": {
+                "type": "string",
+                "title": "Urgency",
+                "enum": ["standard", "express"]
+              }
+            },
+            "required": [
+              "invoiceReference",
+              "invoiceAmount",
+              "buyerName",
+              "requestedAdvancePercentage",
+              "urgency"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "finance-director",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-credit-assessment",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to buyer credit assessment"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Request Financing",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Invoice Details",
+              "elements": [
+                {
+                  "type": "TextLine",
+                  "scope": "/invoiceReference",
+                  "title": "Invoice Reference"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/invoiceAmount",
+                  "title": "Invoice Amount (GBP)"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/buyerName",
+                  "title": "Buyer Name"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Financing Request",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/requestedAdvancePercentage",
+                  "title": "Requested Advance %"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/urgency",
+                  "title": "Urgency"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Buyer Credit Assessment",
+        "description": "The credit bureau assessment service provides a creditworthiness report on the buyer, including credit score, risk rating, payment history, and trading years.",
+        "sender": "assessment-svc",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "buyerCreditScore": {
+                "type": "integer",
+                "title": "Buyer Credit Score",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "creditLimit": {
+                "type": "number",
+                "title": "Credit Limit (GBP)",
+                "minimum": 0
+              },
+              "riskRating": {
+                "type": "string",
+                "title": "Risk Rating",
+                "enum": ["low", "medium", "high"]
+              },
+              "assessmentDate": {
+                "type": "string",
+                "title": "Assessment Date",
+                "format": "date"
+              },
+              "paymentHistoryScore": {
+                "type": "integer",
+                "title": "Payment History Score",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "yearsTrading": {
+                "type": "integer",
+                "title": "Years Trading",
+                "minimum": 0
+              },
+              "assessmentNotes": {
+                "type": "string",
+                "title": "Assessment Notes",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "buyerCreditScore",
+              "creditLimit",
+              "riskRating",
+              "assessmentDate",
+              "paymentHistoryScore",
+              "yearsTrading",
+              "assessmentNotes"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "assessment-svc",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-evaluation",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Route to credit analyst for evaluation"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Buyer Credit Assessment",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Credit Score",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/buyerCreditScore",
+                  "title": "Buyer Credit Score"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/creditLimit",
+                  "title": "Credit Limit (GBP)"
+                },
+                {
+                  "type": "Selection",
+                  "scope": "/riskRating",
+                  "title": "Risk Rating"
+                },
+                {
+                  "type": "DateTime",
+                  "scope": "/assessmentDate",
+                  "title": "Assessment Date"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "History",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/paymentHistoryScore",
+                  "title": "Payment History Score"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/yearsTrading",
+                  "title": "Years Trading"
+                },
+                {
+                  "type": "TextArea",
+                  "scope": "/assessmentNotes",
+                  "title": "Assessment Notes"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "title": "Evaluate Application",
+        "description": "Credit analyst evaluates the financing application using the credit assessment data. JsonLogic calculations automatically compute advance amount, fee amount, and net advance based on the analyst's approved percentage and fee rate.",
+        "sender": "credit-analyst",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "evaluationNotes": {
+                "type": "string",
+                "title": "Evaluation Notes",
+                "maxLength": 2000
+              },
+              "advancePercentage": {
+                "type": "number",
+                "title": "Approved Advance %",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "feeRate": {
+                "type": "number",
+                "title": "Fee Rate %",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "evaluationNotes",
+              "advancePercentage",
+              "feeRate"
+            ]
+          }
+        ],
+        "calculations": {
+          "advanceAmount": {
+            "*": [
+              { "var": "invoiceAmount" },
+              { "/": [{ "var": "advancePercentage" }, 100] }
+            ]
+          },
+          "feeAmount": {
+            "*": [
+              { "var": "advanceAmount" },
+              { "/": [{ "var": "feeRate" }, 100] }
+            ]
+          },
+          "netAdvance": {
+            "-": [
+              { "var": "advanceAmount" },
+              { "var": "feeAmount" }
+            ]
+          }
+        },
+        "disclosures": [
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/advancePercentage", "/feeRate"]
+          },
+          {
+            "participantAddress": "finance-director",
+            "dataPointers": ["/advancePercentage", "/feeRate"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-decision",
+            "nextActionIds": [4],
+            "isDefault": true,
+            "description": "Route to final approval or decline decision"
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Evaluate Application",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Evaluation",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/evaluationNotes",
+                  "title": "Evaluation Notes"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Financing Terms",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/advancePercentage",
+                  "title": "Approved Advance %"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/feeRate",
+                  "title": "Fee Rate %"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Approve/Decline Financing",
+        "description": "Credit analyst makes the final approve or decline decision. On approval, a TradeFinanceCredential is issued to the finance director with financing details including advance amount, fee, and repayment terms.",
+        "sender": "credit-analyst",
+        "requiredPriorActions": [3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approve", "decline"]
+              },
+              "advanceAmount": {
+                "type": "number",
+                "title": "Advance Amount (GBP)",
+                "minimum": 0
+              },
+              "feeAmount": {
+                "type": "number",
+                "title": "Fee Amount (GBP)",
+                "minimum": 0
+              },
+              "netAdvance": {
+                "type": "number",
+                "title": "Net Advance (GBP)",
+                "minimum": 0
+              },
+              "repaymentTerms": {
+                "type": "string",
+                "title": "Repayment Terms",
+                "maxLength": 200
+              },
+              "repaymentDate": {
+                "type": "string",
+                "title": "Repayment Date",
+                "format": "date"
+              },
+              "financingReference": {
+                "type": "string",
+                "title": "Financing Reference",
+                "maxLength": 30
+              },
+              "declineReason": {
+                "type": "string",
+                "title": "Decline Reason",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "decision"
+            ]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "TradeFinanceCredential",
+          "recipientParticipantId": "finance-director",
+          "expiryDuration": "P180D",
+          "claimMappings": [
+            { "claimName": "financingReference", "sourceField": "/financingReference" },
+            { "claimName": "invoiceReference", "sourceField": "/invoiceReference" },
+            { "claimName": "advanceAmount", "sourceField": "/advanceAmount" },
+            { "claimName": "feeAmount", "sourceField": "/feeAmount" },
+            { "claimName": "netAdvance", "sourceField": "/netAdvance" },
+            { "claimName": "repaymentDate", "sourceField": "/repaymentDate" }
+          ],
+          "disclosable": [
+            "financingReference",
+            "invoiceReference",
+            "advanceAmount",
+            "repaymentDate"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "credit-analyst",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "finance-director",
+            "dataPointers": ["/decision", "/advanceAmount", "/feeAmount", "/netAdvance", "/repaymentTerms", "/repaymentDate", "/financingReference"]
+          },
+          {
+            "participantAddress": "sales-mgr",
+            "dataPointers": ["/decision", "/advanceAmount", "/feeAmount", "/netAdvance", "/repaymentTerms", "/repaymentDate", "/financingReference"]
+          }
+        ],
+        "routes": [],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "title": "Approve/Decline Financing",
+          "elements": [
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Decision",
+              "elements": [
+                {
+                  "type": "Selection",
+                  "scope": "/decision",
+                  "title": "Decision"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Approval Details",
+              "elements": [
+                {
+                  "type": "Numeric",
+                  "scope": "/advanceAmount",
+                  "title": "Advance Amount (GBP)"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/feeAmount",
+                  "title": "Fee Amount (GBP)"
+                },
+                {
+                  "type": "Numeric",
+                  "scope": "/netAdvance",
+                  "title": "Net Advance (GBP)"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/repaymentTerms",
+                  "title": "Repayment Terms"
+                },
+                {
+                  "type": "DateTime",
+                  "scope": "/repaymentDate",
+                  "title": "Repayment Date"
+                },
+                {
+                  "type": "TextLine",
+                  "scope": "/financingReference",
+                  "title": "Financing Reference"
+                }
+              ]
+            },
+            {
+              "type": "Layout",
+              "layout": "Group",
+              "title": "Decline",
+              "elements": [
+                {
+                  "type": "TextArea",
+                  "scope": "/declineReason",
+                  "title": "Decline Reason"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "parameterSchema": {
+    "type": "object",
+    "properties": {
+      "financeDirectorWallet": {
+        "type": "string",
+        "description": "Wallet address for the Finance Director (Highland Timber Supplies)"
+      },
+      "assessmentSvcWallet": {
+        "type": "string",
+        "description": "Wallet address for the Assessment Service (UK Trade Credit Bureau)"
+      },
+      "creditAnalystWallet": {
+        "type": "string",
+        "description": "Wallet address for the Credit Analyst (ScotTrade Finance)"
+      },
+      "salesMgrWallet": {
+        "type": "string",
+        "description": "Wallet address for the Sales Manager (Highland Timber Supplies)"
+      }
+    },
+    "required": [
+      "financeDirectorWallet",
+      "assessmentSvcWallet",
+      "creditAnalystWallet",
+      "salesMgrWallet"
+    ]
+  },
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "Golden Path — Approved Invoice Finance",
+      "description": "Invoice financing approved with standard terms. Buyer has a strong credit score, financing is approved at the requested advance percentage, and a TradeFinanceCredential is issued.",
+      "parameters": {
+        "financeDirectorWallet": "0xFINANCE_DIRECTOR_WALLET",
+        "assessmentSvcWallet": "0xASSESSMENT_SVC_WALLET",
+        "creditAnalystWallet": "0xCREDIT_ANALYST_WALLET",
+        "salesMgrWallet": "0xSALES_MGR_WALLET"
+      }
+    },
+    {
+      "name": "Declined Finance — Low Credit Score",
+      "description": "Invoice financing declined due to poor buyer creditworthiness. The credit assessment returns a low score, and the credit analyst declines the application without issuing a credential.",
+      "parameters": {
+        "financeDirectorWallet": "0xFINANCE_DIRECTOR_WALLET",
+        "assessmentSvcWallet": "0xASSESSMENT_SVC_WALLET",
+        "creditAnalystWallet": "0xCREDIT_ANALYST_WALLET",
+        "salesMgrWallet": "0xSALES_MGR_WALLET"
+      }
+    }
+  ]
+}

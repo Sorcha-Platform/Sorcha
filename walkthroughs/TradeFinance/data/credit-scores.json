@@ -1,0 +1,23 @@
+{
+  "description": "Scripted buyer credit data for the UK Trade Credit Bureau Assessment Service",
+  "buyers": {
+    "cairngorm": {
+      "buyerName": "Cairngorm Construction Ltd",
+      "creditScore": 85,
+      "creditLimit": 250000.00,
+      "riskRating": "low",
+      "paymentHistoryScore": 92,
+      "yearsTrading": 14,
+      "notes": "Strong payment history. No defaults. Established Highland contractor."
+    },
+    "lowcredit": {
+      "buyerName": "Lochside Developments Ltd",
+      "creditScore": 35,
+      "creditLimit": 25000.00,
+      "riskRating": "high",
+      "paymentHistoryScore": 41,
+      "yearsTrading": 2,
+      "notes": "Recent CCJ. Multiple late payments. Limited trading history."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sorcha-PARTICIPANT_ID": {
+      "command": "dotnet",
+      "args": ["run", "--project", "src/Apps/Sorcha.McpServer", "--", "--jwt-token", "JWT_TOKEN_PLACEHOLDER"],
+      "env": {
+        "SORCHA_GATEWAY_URL": "GATEWAY_URL_PLACEHOLDER"
+      }
+    }
+  }
+}
