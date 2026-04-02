@@ -9,6 +9,7 @@ using Moq;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Data;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Replication;
 using Sorcha.Peer.Service.Services;
 using Xunit;
 
@@ -85,6 +86,34 @@ public class PeerDataCleanupServiceTests : IDisposable
         // Assert
         _peerListManager.GetPeer("stale-peer").Should().BeNull();
         _peerListManager.GetPeer("fresh-peer").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task RunPrimaryCleanupAsync_CleansUpRedisAdvertisementsForEvictedPeers()
+    {
+        // Arrange
+        var mockStore = new Mock<IRedisAdvertisementStore>();
+        var cleanupWithRedis = new PeerDataCleanupService(
+            Mock.Of<ILogger<PeerDataCleanupService>>(),
+            _peerListManager,
+            Options.Create(_config),
+            _dbContextFactory,
+            mockStore.Object);
+
+        var stalePeer = new PeerNode
+        {
+            PeerId = "stale-peer-redis",
+            Address = "10.0.0.1",
+            Port = 5000,
+            LastSeen = DateTimeOffset.UtcNow.AddMinutes(-60)
+        };
+        await _peerListManager.AddOrUpdatePeerAsync(stalePeer);
+
+        // Act
+        await cleanupWithRedis.RunPrimaryCleanupAsync(CancellationToken.None);
+
+        // Assert - Redis advertisements should be cleaned up for the evicted peer
+        mockStore.Verify(s => s.RemoveRemoteByPeerAsync("stale-peer-redis", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

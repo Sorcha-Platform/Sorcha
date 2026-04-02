@@ -255,10 +255,11 @@ public class RegisterAdvertisementService
     /// <summary>
     /// Aggregates registers advertised across all known peers and local advertisements (public only).
     /// Returns one entry per register with peer count, max versions, and full replica count.
+    /// Only includes registers from healthy peers (recently seen, low failure count, not banned).
     /// </summary>
     public IReadOnlyCollection<AvailableRegisterInfo> GetNetworkAdvertisedRegisters()
     {
-        var allPeers = _peerListManager.GetAllPeers();
+        var healthyPeers = _peerListManager.GetAllHealthyPeers();
         var registerMap = new Dictionary<string, AvailableRegisterInfo>();
 
         // Include local public advertisements first
@@ -279,11 +280,9 @@ public class RegisterAdvertisementService
             };
         }
 
-        // Aggregate remote peer advertisements
-        foreach (var peer in allPeers)
+        // Aggregate remote peer advertisements (healthy peers only)
+        foreach (var peer in healthyPeers)
         {
-            if (peer.IsBanned) continue;
-
             foreach (var reg in peer.AdvertisedRegisters)
             {
                 if (!reg.IsPublic) continue;
