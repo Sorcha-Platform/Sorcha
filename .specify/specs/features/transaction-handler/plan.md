@@ -6,7 +6,7 @@
 
 ## Summary
 
-The Sorcha.TransactionHandler library provides transaction and payload management for the Sorcha distributed ledger platform. It handles transaction creation, signing, verification, multi-recipient payload encryption, and serialization with backward compatibility for V1-V4 transaction formats.
+The Sorcha.TransactionHandler library provides transaction and payload management for the Sorcha decentralised register platform. It handles transaction creation, signing, verification, multi-recipient payload encryption, and serialization with backward compatibility for V1-V4 transaction formats.
 
 ## Design Decisions
 

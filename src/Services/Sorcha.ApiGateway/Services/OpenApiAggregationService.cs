@@ -93,11 +93,11 @@ public class OpenApiAggregationService
                 ["title"] = "Sorcha Platform API",
                 ["version"] = "1.0.0",
                 ["description"] = """
-                    # Sorcha Distributed Ledger Platform
+                    # Sorcha Decentralised Register Platform
 
                     ## Overview
 
-                    Sorcha is a **distributed ledger platform** for building secure, auditable, multi-party workflows with cryptographic guarantees. It combines blockchain-inspired immutability with practical enterprise features like multi-tenancy, selective disclosure, and workflow orchestration.
+                    Sorcha is a **decentralised register platform** for building secure, auditable, multi-party workflows with cryptographic guarantees. It combines blockchain-inspired immutability with practical enterprise features like multi-tenancy, selective disclosure, and workflow orchestration.
 
                     ## Platform Architecture
 

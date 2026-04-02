@@ -221,7 +221,8 @@ public class TestReport
 
     public override string ToString()
     {
-        return $"Tests: {PassedTests}/{TotalTests} passed ({PassRate:P0}) in {TotalDuration.TotalMilliseconds:F2}ms";
+        var percentText = $"{PassRate * 100:0}%";
+        return $"Tests: {PassedTests}/{TotalTests} passed ({percentText}) in {TotalDuration.TotalMilliseconds:F2}ms";
     }
 }
 

@@ -4,7 +4,7 @@
 **Status:** 🟡 **In Active Development** (60% Feature Complete)
 **Last Updated:** 2026-01-05
 
-The Sorcha CLI is a cross-platform command-line interface for managing the Sorcha distributed ledger platform. It provides comprehensive commands for authentication, organization management, wallet operations, transaction handling, register administration, and peer network monitoring.
+The Sorcha CLI is a cross-platform command-line interface for managing the Sorcha decentralised register platform. It provides comprehensive commands for authentication, organization management, wallet operations, transaction handling, register administration, and peer network monitoring.
 
 ## 📊 **Current Implementation Status**
 

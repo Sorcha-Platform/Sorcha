@@ -71,7 +71,7 @@ builder.Services
             Version = "1.0.0"
         };
         options.ServerInstructions = """
-            Sorcha MCP Server - A Model Context Protocol server for the Sorcha distributed ledger platform.
+            Sorcha MCP Server - A Model Context Protocol server for the Sorcha decentralised register platform.
 
             Available tool categories based on your role:
             - Administrator (sorcha:admin): Platform health, logs, metrics, tenant/user management

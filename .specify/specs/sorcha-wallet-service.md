@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-This specification defines the requirements for the Sorcha Wallet Service. This service handles cryptographic wallet creation, key management, transaction signing, delegation/access control, and secure key storage for the Sorcha distributed ledger platform. The implementation follows the standard Sorcha service architecture pattern.
+This specification defines the requirements for the Sorcha Wallet Service. This service handles cryptographic wallet creation, key management, transaction signing, delegation/access control, and secure key storage for the Sorcha decentralised register platform. The implementation follows the standard Sorcha service architecture pattern.
 
 ## Background
 

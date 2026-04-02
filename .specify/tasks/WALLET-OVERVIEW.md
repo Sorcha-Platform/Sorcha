@@ -6,7 +6,7 @@
 
 ## Summary
 
-This document provides an overview of all tasks required to complete the Sorcha.WalletService library. The library will handle cryptographic wallet creation, key management, transaction signing, delegation/access control, and secure key storage for the Sorcha distributed ledger platform.
+This document provides an overview of all tasks required to complete the Sorcha.WalletService library. The library will handle cryptographic wallet creation, key management, transaction signing, delegation/access control, and secure key storage for the Sorcha decentralised register platform.
 
 ## Task Dependencies
 

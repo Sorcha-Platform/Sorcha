@@ -5,7 +5,7 @@
 [![Playwright Tests](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml/badge.svg)](https://github.com/Sorcha-Platform/Sorcha/actions/workflows/playwright.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A distributed ledger platform for secure, multi-participant data flow orchestration.
+A decentralised register platform for secure, multi-participant data flow orchestration.
 
 Sorcha lets organizations define structured workflows — called **blueprints** — where multiple parties exchange, validate, and record data with cryptographic guarantees. Every transaction is signed, every change is immutable, and every participant sees only what they're authorized to access.
 

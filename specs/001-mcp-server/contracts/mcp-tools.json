@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Sorcha MCP Server Tools",
-  "description": "MCP tool definitions for the Sorcha distributed ledger platform",
+  "description": "MCP tool definitions for the Sorcha decentralised register platform",
   "version": "1.0.0",
   "tools": {
     "admin": {

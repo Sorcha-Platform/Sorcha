@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-libra
 
 # .NET Aspire 13.x Skill
 
-.NET Aspire 13.x provides orchestration for this distributed ledger platform. The AppHost (`src/Apps/Sorcha.AppHost/AppHost.cs`) orchestrates 7 microservices with PostgreSQL, MongoDB, and Redis. Services use `AddServiceDefaults()` for consistent OpenTelemetry, health checks, and service discovery. JWT signing keys are generated once and shared across all services via environment variables.
+.NET Aspire 13.x provides orchestration for this decentralised register platform. The AppHost (`src/Apps/Sorcha.AppHost/AppHost.cs`) orchestrates 7 microservices with PostgreSQL, MongoDB, and Redis. Services use `AddServiceDefaults()` for consistent OpenTelemetry, health checks, and service discovery. JWT signing keys are generated once and shared across all services via environment variables.
 
 ## Version Info
 

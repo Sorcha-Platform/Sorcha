@@ -22,7 +22,7 @@ const spec = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
 const collection = {
   info: {
     name: 'Sorcha Platform API',
-    description: spec.info?.description || 'Sorcha distributed ledger platform API collection',
+    description: spec.info?.description || 'Sorcha decentralised register platform API collection',
     schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
     version: spec.info?.version || '1.0.0',
   },

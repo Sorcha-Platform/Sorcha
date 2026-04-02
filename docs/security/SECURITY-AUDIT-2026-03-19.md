@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The Sorcha distributed ledger platform demonstrates **strong foundational security** in cryptography, input validation, and authentication design. However, **critical gaps in consensus integrity, replay protection, and production configuration** must be addressed before any production deployment.
+The Sorcha decentralised register platform demonstrates **strong foundational security** in cryptography, input validation, and authentication design. However, **critical gaps in consensus integrity, replay protection, and production configuration** must be addressed before any production deployment.
 
 **Finding Summary:**
 

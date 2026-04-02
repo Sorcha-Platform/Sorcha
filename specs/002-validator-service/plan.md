@@ -4,7 +4,7 @@
 
 ## Summary
 
-The Validator Service is a critical component of the Sorcha distributed ledger platform, responsible for validating transactions, building dockets (blocks), achieving distributed consensus, and maintaining blockchain integrity. It receives unvalidated transactions from the Peer Service, validates them against blueprint rules, creates proposed dockets using hybrid triggering (time OR size threshold), coordinates consensus voting across validator instances, and persists confirmed dockets to the Register Service. The service implements longest-chain fork resolution, FIFO-with-priority memory pool management, and integrates with Peer Service reputation scoring to isolate malicious validators.
+The Validator Service is a critical component of the Sorcha decentralised register platform, responsible for validating transactions, building dockets (blocks), achieving distributed consensus, and maintaining blockchain integrity. It receives unvalidated transactions from the Peer Service, validates them against blueprint rules, creates proposed dockets using hybrid triggering (time OR size threshold), coordinates consensus voting across validator instances, and persists confirmed dockets to the Register Service. The service implements longest-chain fork resolution, FIFO-with-priority memory pool management, and integrates with Peer Service reputation scoring to isolate malicious validators.
 
 ## Technical Context
 

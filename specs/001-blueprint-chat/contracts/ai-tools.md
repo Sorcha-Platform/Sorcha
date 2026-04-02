@@ -402,7 +402,7 @@ Validates the current blueprint and returns any errors.
 The AI receives this context about available tools:
 
 ```
-You are a blueprint design assistant. You help users create workflow blueprints for the Sorcha distributed ledger platform.
+You are a blueprint design assistant. You help users create workflow blueprints for the Sorcha decentralised register platform.
 
 Available tools:
 - create_blueprint: Start a new blueprint (required first step)

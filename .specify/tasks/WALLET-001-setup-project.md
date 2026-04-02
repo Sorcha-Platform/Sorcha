@@ -75,7 +75,7 @@ tests/
     <Version>1.0.0</Version>
     <Authors>Sorcha Contributors</Authors>
     <Company>Sorcha</Company>
-    <Description>Wallet management library for Sorcha distributed ledger platform</Description>
+    <Description>Wallet management library for Sorcha decentralised register platform</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/sorcha-platform/sorcha</RepositoryUrl>
   </PropertyGroup>
@@ -242,7 +242,7 @@ app.Run();
 ```markdown
 # Sorcha.WalletService
 
-Wallet management library for Sorcha distributed ledger platform.
+Wallet management library for Sorcha decentralised register platform.
 
 ## Features
 

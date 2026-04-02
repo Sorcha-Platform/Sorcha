@@ -12,7 +12,7 @@
 
 ## Executive Summary
 
-The Sorcha CLI (`sorcha.cli`) is a **cross-platform administrative command-line tool** for managing the Sorcha distributed ledger platform. It provides operators, administrators, and DevOps teams with direct access to platform services for:
+The Sorcha CLI (`sorcha.cli`) is a **cross-platform administrative command-line tool** for managing the Sorcha decentralised register platform. It provides operators, administrators, and DevOps teams with direct access to platform services for:
 
 - **Tenant Management** - Organizations, users, roles, and permissions
 - **Register Operations** - Register lifecycle, transaction inspection, blockchain queries
@@ -1243,7 +1243,7 @@ dotnet tool install -g --add-source ./nupkg sorcha.cli
     <PackageId>Sorcha.Cli</PackageId>
     <Version>1.0.0</Version>
     <Authors>Sorcha Team</Authors>
-    <Description>Administrative command-line tool for Sorcha distributed ledger platform</Description>
+    <Description>Administrative command-line tool for Sorcha decentralised register platform</Description>
     <PackageTags>blockchain;distributed-ledger;cli;admin</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
   </PropertyGroup>

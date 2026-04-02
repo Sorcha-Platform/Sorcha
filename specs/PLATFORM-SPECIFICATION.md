@@ -30,7 +30,7 @@
 
 ## 1. Platform Overview
 
-Sorcha is a distributed ledger platform for secure, multi-participant data flow orchestration. It enables organizations to define structured workflows (blueprints) where multiple parties exchange, validate, and record data with cryptographic guarantees.
+Sorcha is a decentralised register platform for secure, multi-participant data flow orchestration. It enables organizations to define structured workflows (blueprints) where multiple parties exchange, validate, and record data with cryptographic guarantees.
 
 ### Core Concepts
 

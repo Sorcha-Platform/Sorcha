@@ -29,7 +29,7 @@ public class ChatOrchestrationService : IChatOrchestrationService
 
     // Base system prompt for the AI assistant — dynamic sections are appended at session creation
     private const string BaseSystemPrompt = """
-        You are a professional blueprint design assistant for the Sorcha distributed ledger platform. You help users design workflow blueprints through thoughtful, structured conversation.
+        You are a professional blueprint design assistant for the Sorcha decentralised register platform. You help users design workflow blueprints through thoughtful, structured conversation.
 
         ## Your Approach
 

@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an MCP (Model Context Protocol) server that enables AI assistants to interact with the Sorcha distributed ledger platform. The server exposes 33 tools and 6 resources across three user personas (Administrator, Designer, Participant), using the official Microsoft C# MCP SDK and leveraging existing Sorcha.ServiceClients for backend communication.
+Build an MCP (Model Context Protocol) server that enables AI assistants to interact with the Sorcha decentralised register platform. The server exposes 33 tools and 6 resources across three user personas (Administrator, Designer, Participant), using the official Microsoft C# MCP SDK and leveraging existing Sorcha.ServiceClients for backend communication.
 
 ## Technical Context
 

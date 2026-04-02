@@ -157,7 +157,7 @@ public class DatabaseInitializer
             {
                 PrimaryColor = "#6366f1",
                 SecondaryColor = "#8b5cf6",
-                CompanyTagline = "Distributed Ledger Platform"
+                CompanyTagline = "Decentralised Register Platform"
             }
         };
 

@@ -11,7 +11,7 @@
 
 ## Executive Summary
 
-This specification defines the requirements for creating a standalone, reusable transaction and payload management library named **Sorcha.TransactionHandler**. This library will handle transaction creation, signing, verification, serialization, and multi-recipient payload encryption for the Sorcha distributed ledger platform.
+This specification defines the requirements for creating a standalone, reusable transaction and payload management library named **Sorcha.TransactionHandler**. This library will handle transaction creation, signing, verification, serialization, and multi-recipient payload encryption for the Sorcha decentralised register platform.
 
 ## Background
 

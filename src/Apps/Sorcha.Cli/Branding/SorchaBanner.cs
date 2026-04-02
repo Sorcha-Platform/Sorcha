@@ -32,7 +32,7 @@ public static class SorchaBanner
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         var infoVersion = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        AnsiConsole.MarkupLine($"  [dim]Distributed Ledger Platform[/]  [green]v{infoVersion ?? version?.ToString() ?? "1.0.0"}[/]");
+        AnsiConsole.MarkupLine($"  [dim]Decentralised Register Platform[/]  [green]v{infoVersion ?? version?.ToString() ?? "1.0.0"}[/]");
 
         var profile = activeProfile;
         if (profile == null && configService != null)

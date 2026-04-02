@@ -1,6 +1,6 @@
 # Sorcha
 
-A distributed ledger platform for secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire.
+A decentralised register platform for secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire.
 
 Sorcha implements the **DAD** (Disclosure, Alteration, Destruction) security model - creating cryptographically secured registers where disclosure is managed through defined schemas, alteration is recorded on immutable ledgers, and destruction risk is eliminated through peer network replication.
 
