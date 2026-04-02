@@ -6,30 +6,34 @@ using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Data;
 using Sorcha.Peer.Service.Discovery;
+using Sorcha.Peer.Service.Replication;
 
 namespace Sorcha.Peer.Service.Services;
 
 /// <summary>
 /// Background service that periodically cleans stale transitory data from PostgreSQL.
 /// Evicts dead peers, expires timed bans, purges completed/expired queued transactions,
-/// and removes orphaned sync checkpoints.
+/// and removes orphaned sync checkpoints. Also cleans up Redis advertisements for evicted peers.
 /// </summary>
 public class PeerDataCleanupService : BackgroundService
 {
     private readonly ILogger<PeerDataCleanupService> _logger;
     private readonly PeerListManager _peerListManager;
     private readonly IDbContextFactory<PeerDbContext>? _dbContextFactory;
+    private readonly IRedisAdvertisementStore? _advertisementStore;
     private readonly DataCleanupConfiguration _config;
 
     public PeerDataCleanupService(
         ILogger<PeerDataCleanupService> logger,
         PeerListManager peerListManager,
         IOptions<PeerServiceConfiguration> configuration,
-        IDbContextFactory<PeerDbContext>? dbContextFactory = null)
+        IDbContextFactory<PeerDbContext>? dbContextFactory = null,
+        IRedisAdvertisementStore? advertisementStore = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _dbContextFactory = dbContextFactory;
+        _advertisementStore = advertisementStore;
         _config = configuration?.Value?.DataCleanup ?? new DataCleanupConfiguration();
     }
 
@@ -82,6 +86,22 @@ public class PeerDataCleanupService : BackgroundService
 
         // 1. Evict stale peers (in-memory + database)
         var evictedPeers = await _peerListManager.EvictStalePeersAsync(staleThreshold, cancellationToken);
+
+        // 1b. Clean up Redis advertisements for evicted peers
+        if (evictedPeers.Count > 0 && _advertisementStore != null)
+        {
+            foreach (var peerId in evictedPeers)
+            {
+                try
+                {
+                    await _advertisementStore.RemoveRemoteByPeerAsync(peerId, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to clean up Redis advertisements for evicted peer {PeerId}", peerId);
+                }
+            }
+        }
 
         // 2. Unban expired bans (in-memory + database)
         var unbannedCount = await _peerListManager.UnbanExpiredAsync(cancellationToken);

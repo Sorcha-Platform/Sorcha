@@ -338,6 +338,71 @@ public class RegisterAdvertisementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetNetworkAdvertisedRegisters_ExcludesStaleDisconnectedPeers()
+    {
+        // Arrange - one healthy peer, one stale peer (last seen 60 min ago)
+        var healthyPeer = new PeerNode
+        {
+            PeerId = "healthy-peer", Address = "192.168.1.100", Port = 5001,
+            LastSeen = DateTimeOffset.UtcNow,
+            AdvertisedRegisters = new List<PeerRegisterInfo>
+            {
+                new() { RegisterId = "reg-1", SyncState = RegisterSyncState.Active, LatestVersion = 100, IsPublic = true }
+            }
+        };
+        var stalePeer = new PeerNode
+        {
+            PeerId = "stale-peer", Address = "192.168.1.101", Port = 5001,
+            LastSeen = DateTimeOffset.UtcNow.AddMinutes(-60), // Well past healthy threshold
+            AdvertisedRegisters = new List<PeerRegisterInfo>
+            {
+                new() { RegisterId = "reg-2", SyncState = RegisterSyncState.Active, LatestVersion = 200, IsPublic = true }
+            }
+        };
+        await _peerListManager.AddOrUpdatePeerAsync(healthyPeer);
+        await _peerListManager.AddOrUpdatePeerAsync(stalePeer);
+
+        // Act
+        var result = _service.GetNetworkAdvertisedRegisters();
+
+        // Assert - only the healthy peer's register should appear
+        result.Should().ContainSingle();
+        result.First().RegisterId.Should().Be("reg-1");
+    }
+
+    [Fact]
+    public async Task GetNetworkAdvertisedRegisters_ExcludesHighFailureCountPeers()
+    {
+        // Arrange - one healthy peer, one with many failures
+        var healthyPeer = new PeerNode
+        {
+            PeerId = "healthy-peer", Address = "192.168.1.100", Port = 5001,
+            AdvertisedRegisters = new List<PeerRegisterInfo>
+            {
+                new() { RegisterId = "reg-1", SyncState = RegisterSyncState.Active, LatestVersion = 100, IsPublic = true }
+            }
+        };
+        var failingPeer = new PeerNode
+        {
+            PeerId = "failing-peer", Address = "192.168.1.101", Port = 5001,
+            FailureCount = 4, // Below removal threshold (5) but above healthy threshold (3)
+            AdvertisedRegisters = new List<PeerRegisterInfo>
+            {
+                new() { RegisterId = "reg-2", SyncState = RegisterSyncState.Active, LatestVersion = 200, IsPublic = true }
+            }
+        };
+        await _peerListManager.AddOrUpdatePeerAsync(healthyPeer);
+        await _peerListManager.AddOrUpdatePeerAsync(failingPeer);
+
+        // Act
+        var result = _service.GetNetworkAdvertisedRegisters();
+
+        // Assert - only the healthy peer's register should appear
+        result.Should().ContainSingle();
+        result.First().RegisterId.Should().Be("reg-1");
+    }
+
+    [Fact]
     public void GetNetworkAdvertisedRegisters_EmptyNetwork_ReturnsEmpty()
     {
         var result = _service.GetNetworkAdvertisedRegisters();
