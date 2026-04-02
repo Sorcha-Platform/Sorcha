@@ -346,6 +346,7 @@ public class BlueprintActionEndToEndTests : IAsyncLifetime
             .WithTitle("Validation Test")
             .WithDescription("Blueprint for testing data validation scenarios")
             .AddParticipant("sender", p => p.Named("Sender"))
+            .AddParticipant("receiver", p => p.Named("Receiver"))
             .AddAction(0, a => a
                 .WithTitle("Test Action")
                 .SentBy("sender")

@@ -16,6 +16,8 @@ public class ClientDownloadTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetClientInfo_ReturnsMetadata()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/client/info");
 
@@ -35,6 +37,8 @@ public class ClientDownloadTests : GatewayIntegrationTestBase
     [Fact]
     public async Task DownloadClient_ReturnsZipFile()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/client/download");
 
@@ -48,6 +52,8 @@ public class ClientDownloadTests : GatewayIntegrationTestBase
     [Fact]
     public async Task DownloadClient_ZipContainsValidFiles()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/client/download");
         var zipBytes = await response.Content.ReadAsByteArrayAsync();
@@ -70,6 +76,8 @@ public class ClientDownloadTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetInstallationInstructions_ReturnsMarkdown()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/client/instructions");
 

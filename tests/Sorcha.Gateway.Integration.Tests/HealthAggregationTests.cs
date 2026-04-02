@@ -16,6 +16,8 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetAggregatedHealth_ReturnsHealthStatus()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/health");
 
@@ -35,6 +37,8 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetAggregatedHealth_IncludesAllServices()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/health");
         var content = await response.Content.ReadAsStringAsync();
@@ -55,6 +59,8 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetSystemStats_ReturnsStatistics()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/api/stats");
 
@@ -73,6 +79,8 @@ public class HealthAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetLandingPage_ReturnsHtml()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/");
 

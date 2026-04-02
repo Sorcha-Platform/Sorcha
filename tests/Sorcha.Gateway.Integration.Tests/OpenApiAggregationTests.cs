@@ -15,6 +15,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GetAggregatedOpenApi_ReturnsValidSpec()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/openapi/aggregated.json");
 
@@ -36,6 +38,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task AggregatedOpenApi_IncludesBlueprintPaths()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/openapi/aggregated.json");
         var content = await response.Content.ReadAsStringAsync();
@@ -51,6 +55,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task AggregatedOpenApi_IncludesPeerPaths()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/openapi/aggregated.json");
         var content = await response.Content.ReadAsStringAsync();
@@ -66,6 +72,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task AggregatedOpenApi_HasComponents()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/openapi/aggregated.json");
         var content = await response.Content.ReadAsStringAsync();
@@ -79,6 +87,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task ScalarDocumentation_IsAccessible()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/scalar/v1");
 
@@ -93,6 +103,8 @@ public class OpenApiAggregationTests : GatewayIntegrationTestBase
     [Fact]
     public async Task GatewayOpenApi_IsAccessible()
     {
+        SkipIfInfrastructureUnavailable();
+
         // Act
         var response = await GatewayClient!.GetAsync("/openapi/v1.json");
 

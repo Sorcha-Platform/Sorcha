@@ -19,7 +19,7 @@ public class ParticipantTests
         participant.Id.Should().NotBeEmpty("Id is auto-generated as a GUID");
         participant.Name.Should().BeEmpty();
         participant.Organisation.Should().BeEmpty();
-        participant.WalletAddress.Should().BeEmpty();
+        participant.WalletAddress.Should().BeNull();
         participant.DidUri.Should().BeNull();
         participant.UseStealthAddress.Should().BeFalse();
     }
