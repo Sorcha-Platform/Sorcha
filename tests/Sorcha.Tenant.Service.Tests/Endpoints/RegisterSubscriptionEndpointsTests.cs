@@ -69,7 +69,7 @@ public class RegisterSubscriptionEndpointsTests : IClassFixture<TenantServiceWeb
         result!.RegisterId.Should().Be(ValidRegisterId);
         result.OrganizationId.Should().Be(TestDataSeeder.TestOrganizationId);
         result.SubscriptionType.Should().Be("Public");
-        result.Status.Should().Be("Pending");
+        result.Status.Should().Be("Active");
         result.SubscribedByUserId.Should().Be(TestDataSeeder.AdminUserId);
     }
 

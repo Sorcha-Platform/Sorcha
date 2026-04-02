@@ -271,9 +271,9 @@ public class ParticipantRecordTests
     }
 
     [Fact]
-    public void TransactionType_HasFourValues()
+    public void TransactionType_HasFiveValues()
     {
-        Enum.GetValues<TransactionType>().Should().HaveCount(4);
+        Enum.GetValues<TransactionType>().Should().HaveCount(5);
     }
 
     #endregion

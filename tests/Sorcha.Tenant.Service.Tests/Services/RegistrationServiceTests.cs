@@ -136,7 +136,7 @@ public class RegistrationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RegisterAsync_DuplicateEmail_ReturnsConflictError()
+    public async Task RegisterAsync_DuplicateEmail_ReturnsSuccessShape_ForTimingSafety()
     {
         // Arrange
         var org = CreateTestOrg();
@@ -160,10 +160,10 @@ public class RegistrationServiceTests : IDisposable
         // Act
         var result = await service.RegisterAsync("testorg", "existing@test.com", "StrongPassword123!", "New User");
 
-        // Assert
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("email already exists");
-        result.ErrorStatusCode.Should().Be(409);
+        // Assert — timing-safe: returns success shape to prevent email enumeration
+        result.Success.Should().BeTrue();
+        result.Message.Should().Contain("Account created");
+        result.UserId.Should().Be(Guid.Empty, "duplicate email returns empty GUID to prevent enumeration");
     }
 
     [Fact]
