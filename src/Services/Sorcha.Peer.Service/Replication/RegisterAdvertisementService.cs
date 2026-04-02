@@ -259,7 +259,7 @@ public class RegisterAdvertisementService
     /// </summary>
     public IReadOnlyCollection<AvailableRegisterInfo> GetNetworkAdvertisedRegisters()
     {
-        var healthyPeers = _peerListManager.GetHealthyPeers();
+        var healthyPeers = _peerListManager.GetAllHealthyPeers();
         var registerMap = new Dictionary<string, AvailableRegisterInfo>();
 
         // Include local public advertisements first

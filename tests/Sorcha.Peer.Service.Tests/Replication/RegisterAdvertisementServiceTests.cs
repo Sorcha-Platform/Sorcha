@@ -385,7 +385,7 @@ public class RegisterAdvertisementServiceTests : IDisposable
         var failingPeer = new PeerNode
         {
             PeerId = "failing-peer", Address = "192.168.1.101", Port = 5001,
-            FailureCount = 4, // Below removal threshold (5) but above healthy threshold (3)
+            FailureCount = 4, // Unhealthy: threshold is FailureCount < 3 (max healthy is 2)
             AdvertisedRegisters = new List<PeerRegisterInfo>
             {
                 new() { RegisterId = "reg-2", SyncState = RegisterSyncState.Active, LatestVersion = 200, IsPublic = true }

@@ -62,6 +62,21 @@ public class PeerListManager : IDisposable
     }
 
     /// <summary>
+    /// Gets all healthy peers without the subset cap applied by GetHealthyPeers().
+    /// Use this for aggregate queries (e.g. building the full available registers list)
+    /// where truncation would silently omit valid data.
+    /// </summary>
+    public IReadOnlyCollection<PeerNode> GetAllHealthyPeers()
+    {
+        var cutoffTime = DateTimeOffset.UtcNow.AddMinutes(-_configuration.RefreshIntervalMinutes * 2);
+
+        return _peers.Values
+            .Where(p => !p.IsBanned && p.FailureCount < 3 && p.LastSeen > cutoffTime)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    /// <summary>
     /// Gets a random selection of peers for gossip
     /// </summary>
     public IReadOnlyCollection<PeerNode> GetRandomPeers(int count)
@@ -75,7 +90,10 @@ public class PeerListManager : IDisposable
     }
 
     /// <summary>
-    /// Gets peers that advertise a specific register (register-aware peering)
+    /// Gets peers that advertise a specific register (register-aware peering).
+    /// Intentionally includes degraded peers (high failure count, stale) because
+    /// replication should attempt all known sources — gRPC calls will fail gracefully
+    /// if the peer is unreachable, and the failure count will trigger eventual eviction.
     /// </summary>
     public IReadOnlyCollection<PeerNode> GetPeersForRegister(string registerId)
     {
