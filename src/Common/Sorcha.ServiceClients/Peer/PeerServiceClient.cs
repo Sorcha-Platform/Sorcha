@@ -7,6 +7,8 @@ using Grpc.Net.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Protos;
+using Sorcha.ServiceClients.Auth;
+using Sorcha.ServiceClients.Helpers;
 
 namespace Sorcha.ServiceClients.Peer;
 
@@ -24,13 +26,16 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
     private readonly string _localPeerId;
     private bool _disposed;
     private bool _peerServiceUnavailableLogged;
+    private readonly IServiceAuthClient? _serviceAuth;
 
     public PeerServiceClient(
         IConfiguration configuration,
         ILogger<PeerServiceClient> logger,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        IServiceAuthClient? serviceAuth = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _serviceAuth = serviceAuth;
 
         _serviceAddress = configuration["ServiceClients:PeerService:Address"]
             ?? configuration["GrpcClients:PeerService:Address"]
@@ -65,6 +70,13 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
 
         _logger.LogInformation("PeerServiceClient initialized (gRPC: {Address}, HTTP: {HttpAddress}, PeerId: {PeerId})",
             _serviceAddress, httpAddress, _localPeerId);
+    }
+
+    private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
+    {
+        if (_httpClient is null || _serviceAuth is null) return;
+        await ServiceClientAuthHelper.SetAuthHeaderAsync(
+            _httpClient, _serviceAuth, _logger, "Peer Service", cancellationToken);
     }
 
     public async Task<List<ValidatorInfo>> QueryValidatorsAsync(
@@ -394,6 +406,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 return;
             }
 
+            await SetAuthHeaderAsync(cancellationToken);
             var response = await _httpClient.PostAsJsonAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/subscribe",
                 new { mode },
@@ -445,6 +458,7 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
                 return;
             }
 
+            await SetAuthHeaderAsync(cancellationToken);
             var response = await _httpClient.DeleteAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/subscribe",
                 cancellationToken);
