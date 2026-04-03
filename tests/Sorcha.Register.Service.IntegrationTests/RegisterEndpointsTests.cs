@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net;
+using System.Net.Http.Json;
 using FluentAssertions;
 using Sorcha.Register.Service.IntegrationTests.Fixtures;
 
@@ -153,4 +154,62 @@ public class RegisterEndpointsTests : IAsyncLifetime
             HttpStatusCode.UnsupportedMediaType,
             HttpStatusCode.InternalServerError);
     }
+
+    #region Internal Endpoint Auth Tests
+
+    [Fact]
+    public async Task InternalGetRegisters_WithoutAuth_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var unauthenticatedClient = _factory.CreateUnauthenticatedClient();
+
+        // Act
+        var response = await unauthenticatedClient.GetAsync("/api/internal/registers");
+
+        // Assert
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task InternalGetRegisters_WithServiceToken_ReturnsOk()
+    {
+        // Arrange
+        using var serviceClient = _factory.CreateServiceClient();
+
+        // Act
+        var response = await serviceClient.GetAsync("/api/internal/registers");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task InternalRegisterSubscriptions_WithoutAuth_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var unauthenticatedClient = _factory.CreateUnauthenticatedClient();
+        var content = JsonContent.Create(new { registerId = "abcdef0123456789abcdef0123456789", action = "subscribe" });
+
+        // Act
+        var response = await unauthenticatedClient.PostAsync("/api/internal/register-subscriptions", content);
+
+        // Assert
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task InternalSyncStatus_WithoutAuth_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var unauthenticatedClient = _factory.CreateUnauthenticatedClient();
+        var content = JsonContent.Create(new { registerId = "abcdef0123456789abcdef0123456789", syncState = "Active", peerConnectionActive = true });
+
+        // Act
+        var response = await unauthenticatedClient.PostAsync("/api/internal/register-sync-status", content);
+
+        // Assert
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+    }
+
+    #endregion
 }
