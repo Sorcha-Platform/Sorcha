@@ -42,7 +42,8 @@ This document now tracks **remaining work for the first production release**, or
 | SEC-008 | Wallet sign/decrypt delegate access — extend ownership check with DelegationService | P1 | 4h | 📋 | PR #170 added owner-only check; needs DelegationService.HasAccessAsync for delegated wallets (SignOnly for /sign, ReadOnly for /decrypt, etc.). Pattern exists on wallet detail endpoint (line 518). |
 | SEC-009 | Participant publishing wallet-link verification | P1 | 4h | 📋 | ParticipantPublishingService should verify signer wallet is linked to the participant being published. Currently accepts any wallet as signer. |
 | SEC-010 | Peer replication participant record re-validation | P2 | 8h | 📋 | Re-validate participant records during peer sync (verify signatures, check conflicts with existing records). Currently accepted verbatim. |
-| SEC-011 | Service-to-service authentication for internal endpoints | P1 | 8h | 📋 | Internal endpoints (Peer subscribe/unsubscribe, Register internal notifications, bulk-advertise) currently AllowAnonymous within Docker network. Add S2S JWT or shared-secret auth to prevent unauthorized internal API access. |
+| SEC-011 | Service-to-service authentication for internal endpoints | P1 | 8h | ✅ | Closed: RequireService policy on all 5 internal endpoints. Service clients attach JWT headers. |
+| SEC-011b | Defence-in-depth: per-service identity policies | P2 | 8h | 📋 | Check `service_name` claim per endpoint, scope enforcement, API Gateway internal route blocking, audit logging. Deferred from SEC-011. |
 
 ---
 
