@@ -74,7 +74,12 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
 
     private async Task SetAuthHeaderAsync(CancellationToken cancellationToken)
     {
-        if (_httpClient is null || _serviceAuth is null) return;
+        if (_httpClient is null || _serviceAuth is null)
+        {
+            _logger.LogWarning("SetAuthHeaderAsync skipped — {Missing} is null; request will be unauthenticated",
+                _serviceAuth is null ? "IServiceAuthClient" : "HttpClient");
+            return;
+        }
         await ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "Peer Service", cancellationToken);
     }
