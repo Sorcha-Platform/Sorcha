@@ -1607,8 +1607,8 @@ app.MapGet("/api/registers/{registerId}/blueprints/published", async (
         string blueprintJson;
         try
         {
-            // Attempt base64 decode — payload is stored as base64 in MongoDB Binary fields
-            var bytes = Convert.FromBase64String(rawPayload);
+            // Payload data is Base64Url-encoded (via DocketSerializer → MongoDocumentMapper round-trip)
+            var bytes = Base64Url.DecodeFromChars(rawPayload.AsSpan());
             blueprintJson = System.Text.Encoding.UTF8.GetString(bytes);
         }
         catch (FormatException)
