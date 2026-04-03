@@ -232,11 +232,11 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
         if (existing is null)
             return;
 
-        // Allow re-subscribing to revoked subscriptions by removing the old record
+        // Allow re-subscribing to revoked subscriptions by marking old record for removal.
+        // No SaveChangesAsync here — caller commits delete + insert together atomically.
         if (existing.Status == SubscriptionStatus.Revoked)
         {
             _dbContext.OrganizationRegisterSubscriptions.Remove(existing);
-            await _dbContext.SaveChangesAsync(ct);
             return;
         }
 
