@@ -1420,7 +1420,8 @@ public class RegisterServiceClient : IRegisterServiceClient
         {
             _logger.LogDebug("Fetching internal register list for recovery");
 
-            // Internal endpoint is AllowAnonymous — no auth header
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.GetAsync(
                 "api/internal/registers",
                 cancellationToken);
@@ -1460,7 +1461,8 @@ public class RegisterServiceClient : IRegisterServiceClient
                 "Notifying Register Service of subscription {Action} for register {RegisterId}",
                 request.Action, request.RegisterId);
 
-            // Internal endpoint is AllowAnonymous — no auth header
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.PostAsJsonAsync(
                 "api/internal/register-subscriptions",
                 request,
