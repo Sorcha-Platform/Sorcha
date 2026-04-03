@@ -42,7 +42,7 @@
 
         .dashboard {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 16px;
             padding: 16px 24px;
             max-width: 1400px;
@@ -103,6 +103,96 @@
         }
 
         .full-width { grid-column: 1 / -1; }
+
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid #30363d;
+            background: #0d1117;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #8b949e;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        .tab-btn:hover { color: #c9d1d9; }
+        .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+        .tab-btn .tab-badge {
+            font-size: 11px;
+            color: #484f58;
+            margin-left: 6px;
+            font-weight: 400;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .register-group {
+            border-bottom: 1px solid #21262d;
+        }
+
+        .register-group-header {
+            padding: 10px 12px;
+            background: #0d1117;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            cursor: default;
+        }
+
+        .register-group-header .peer-name {
+            color: #58a6ff;
+            font-weight: 600;
+        }
+
+        .register-group-header .peer-id-label {
+            color: #484f58;
+            font-family: Consolas, monospace;
+            font-size: 11px;
+        }
+
+        .register-item {
+            padding: 6px 12px 6px 32px;
+            border-top: 1px solid #161b22;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .register-item:hover { background: #1c2128; }
+
+        .register-id-cell {
+            font-family: Consolas, monospace;
+            color: #c9d1d9;
+            min-width: 180px;
+        }
+
+        .register-name-cell {
+            color: #d2a8ff;
+            flex: 1;
+        }
+
+        .register-badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .badge-replica { background: #238636; color: #fff; }
+        .badge-partial { background: #d29922; color: #fff; }
+        .badge-public { background: #1f6feb; color: #fff; }
 
         table {
             width: 100%;
@@ -256,38 +346,44 @@
             </div>
         </div>
 
-        <div class="panel">
-            <div class="panel-header">
-                Peer Table
-                <span class="event-count" id="peer-count">0 peers</span>
+        <div class="panel full-width">
+            <div class="tab-bar" id="tab-bar">
+                <button class="tab-btn active" data-tab="peers">Peers<span class="tab-badge" id="peer-count">0</span></button>
+                <button class="tab-btn" data-tab="events">Live Events<span class="tab-badge" id="event-count">0</span></button>
+                <button class="tab-btn" data-tab="registers">Network Registers<span class="tab-badge" id="register-count">0</span></button>
             </div>
-            <div class="panel-body">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Node Name</th>
-                            <th>Peer ID</th>
-                            <th>Source IP</th>
-                            <th>Status</th>
-                            <th>Last Seen</th>
-                            <th>Heartbeats</th>
-                        </tr>
-                    </thead>
-                    <tbody id="peer-table-body">
-                        <tr><td colspan="6" class="no-data">No peers connected</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
 
-        <div class="panel">
-            <div class="panel-header">
-                Live Events
-                <span class="event-count" id="event-count">0 events</span>
+            <div class="tab-content active" id="tab-peers">
+                <div class="panel-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Node Name</th>
+                                <th>Peer ID</th>
+                                <th>Source IP</th>
+                                <th>Status</th>
+                                <th>Last Seen</th>
+                                <th>Heartbeats</th>
+                            </tr>
+                        </thead>
+                        <tbody id="peer-table-body">
+                            <tr><td colspan="6" class="no-data">No peers connected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="filter-bar" id="filter-bar"></div>
-            <div class="panel-body" id="event-list">
-                <div class="no-data">Waiting for events...</div>
+
+            <div class="tab-content" id="tab-events">
+                <div class="filter-bar" id="filter-bar"></div>
+                <div class="panel-body" id="event-list">
+                    <div class="no-data">Waiting for events...</div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-registers">
+                <div class="panel-body" id="register-list">
+                    <div class="no-data">No registers advertised</div>
+                </div>
             </div>
         </div>
     </div>
@@ -518,7 +614,10 @@
                 if (resp.ok) return resp.json();
                 return null;
             }).then(function(data) {
-                if (data) renderPeers(data);
+                if (data) {
+                    renderPeers(data);
+                    renderNetworkRegisters(data);
+                }
             }).catch(function() {});
         }
 
@@ -529,6 +628,89 @@
             }).then(function(data) {
                 if (data) renderHealth(data);
             }).catch(function() {});
+        }
+
+        // Tab switching
+        var tabBar = document.getElementById('tab-bar');
+        tabBar.addEventListener('click', function(e) {
+            var btn = e.target.closest('.tab-btn');
+            if (!btn) return;
+            var tabName = btn.getAttribute('data-tab');
+            tabBar.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+            document.getElementById('tab-' + tabName).classList.add('active');
+        });
+
+        function renderNetworkRegisters(data) {
+            var container = document.getElementById('register-list');
+            var countEl = document.getElementById('register-count');
+            var peers = data.peers || [];
+            var totalRegisters = 0;
+
+            clearChildren(container);
+
+            for (var p = 0; p < peers.length; p++) {
+                var peer = peers[p];
+                var regs = peer.advertisedRegisters || [];
+                if (regs.length === 0) continue;
+                totalRegisters += regs.length;
+
+                var group = document.createElement('div');
+                group.className = 'register-group';
+
+                var header = document.createElement('div');
+                header.className = 'register-group-header';
+                var nameSpan = createTextEl('span', peer.nodeName || 'Unknown', 'peer-name');
+                header.appendChild(nameSpan);
+                var idSpan = createTextEl('span', shortenPeerId(peer.peerId), 'peer-id-label');
+                idSpan.title = peer.peerId;
+                header.appendChild(idSpan);
+                var statusSpan = createTextEl('span', peer.isHealthy ? 'Healthy' : 'Unhealthy',
+                    peer.isHealthy ? 'peer-healthy' : 'peer-unhealthy');
+                statusSpan.style.fontSize = '11px';
+                statusSpan.style.marginLeft = 'auto';
+                header.appendChild(statusSpan);
+                group.appendChild(header);
+
+                for (var r = 0; r < regs.length; r++) {
+                    var reg = regs[r];
+                    var item = document.createElement('div');
+                    item.className = 'register-item';
+
+                    item.appendChild(createTextEl('span', reg.registerId || '--', 'register-id-cell'));
+
+                    var name = reg.name || reg.registerName || '';
+                    item.appendChild(createTextEl('span', name || '(unnamed)', 'register-name-cell'));
+
+                    if (reg.hasFullReplica) {
+                        item.appendChild(createTextEl('span', 'Full Replica', 'register-badge badge-replica'));
+                    } else {
+                        item.appendChild(createTextEl('span', 'Partial', 'register-badge badge-partial'));
+                    }
+
+                    if (reg.isPublic) {
+                        item.appendChild(createTextEl('span', 'Public', 'register-badge badge-public'));
+                    }
+
+                    var verSpan = createTextEl('span', 'v' + (reg.latestVersion || 0));
+                    verSpan.style.color = '#484f58';
+                    verSpan.style.fontSize = '11px';
+                    verSpan.style.minWidth = '40px';
+                    verSpan.style.textAlign = 'right';
+                    item.appendChild(verSpan);
+
+                    group.appendChild(item);
+                }
+
+                container.appendChild(group);
+            }
+
+            countEl.textContent = totalRegisters;
+
+            if (totalRegisters === 0) {
+                container.appendChild(createTextEl('div', 'No registers advertised', 'no-data'));
+            }
         }
 
         buildFilterBar();

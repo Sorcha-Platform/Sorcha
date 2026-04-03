@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Tenant.Service.Data;
@@ -24,7 +25,11 @@ public class RegisterSubscriptionServiceTests : IDisposable
     {
         _dbContext = InMemoryDbContextFactory.Create();
         var loggerMock = new Mock<ILogger<RegisterSubscriptionService>>();
-        _service = new RegisterSubscriptionService(_dbContext, loggerMock.Object);
+        var scopeFactoryMock = new Mock<IServiceScopeFactory>();
+        var scopeMock = new Mock<IServiceScope>();
+        scopeMock.Setup(s => s.ServiceProvider).Returns(new Mock<IServiceProvider>().Object);
+        scopeFactoryMock.Setup(f => f.CreateScope()).Returns(scopeMock.Object);
+        _service = new RegisterSubscriptionService(_dbContext, loggerMock.Object, scopeFactoryMock.Object);
     }
 
     public void Dispose()
@@ -85,6 +90,23 @@ public class RegisterSubscriptionServiceTests : IDisposable
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*already has a subscription*");
+    }
+
+    [Fact]
+    public async Task SubscribeAsync_AfterUnsubscribe_AllowsResubscription()
+    {
+        // Arrange — subscribe then unsubscribe
+        await _service.SubscribeAsync(
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
+        await _service.UnsubscribeAsync(_testOrgId, ValidRegisterId, _testUserId, CancellationToken.None);
+
+        // Act — re-subscribe should succeed
+        var result = await _service.SubscribeAsync(
+            _testOrgId, ValidRegisterId, "Test Register", _testUserId, ct: CancellationToken.None);
+
+        // Assert
+        result.RegisterId.Should().Be(ValidRegisterId);
+        result.Status.Should().Be("Active");
     }
 
     [Theory]

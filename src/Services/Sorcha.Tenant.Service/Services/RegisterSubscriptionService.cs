@@ -17,7 +17,7 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 {
     private readonly TenantDbContext _dbContext;
     private readonly ILogger<RegisterSubscriptionService> _logger;
-    private readonly IRegisterServiceClient? _registerServiceClient;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// Regex pattern for validating register IDs (32-character lowercase hex string).
@@ -28,11 +28,11 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
     public RegisterSubscriptionService(
         TenantDbContext dbContext,
         ILogger<RegisterSubscriptionService> logger,
-        IRegisterServiceClient? registerServiceClient = null)
+        IServiceScopeFactory scopeFactory)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _registerServiceClient = registerServiceClient;
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
     }
 
     /// <inheritdoc />
@@ -182,17 +182,19 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
     private void NotifyRegisterServiceAsync(
         Guid orgId, string registerId, string? registerName, string? description, string action)
     {
-        if (_registerServiceClient == null)
-        {
-            _logger.LogDebug("RegisterServiceClient not available — skipping subscription notification");
-            return;
-        }
-
         _ = Task.Run(async () =>
         {
             try
             {
-                await _registerServiceClient.NotifySubscriptionAsync(
+                using var scope = _scopeFactory.CreateScope();
+                var client = scope.ServiceProvider.GetService<IRegisterServiceClient>();
+                if (client == null)
+                {
+                    _logger.LogDebug("RegisterServiceClient not available — skipping subscription notification");
+                    return;
+                }
+
+                await client.NotifySubscriptionAsync(
                     new SubscriptionNotificationRequest
                     {
                         OrganizationId = orgId,
@@ -224,14 +226,22 @@ public partial class RegisterSubscriptionService : IRegisterSubscriptionService
 
     private async Task EnsureNoExistingSubscription(Guid orgId, string registerId, CancellationToken ct)
     {
-        var exists = await _dbContext.OrganizationRegisterSubscriptions
-            .AnyAsync(s => s.OrganizationId == orgId && s.RegisterId == registerId, ct);
+        var existing = await _dbContext.OrganizationRegisterSubscriptions
+            .FirstOrDefaultAsync(s => s.OrganizationId == orgId && s.RegisterId == registerId, ct);
 
-        if (exists)
+        if (existing is null)
+            return;
+
+        // Allow re-subscribing to revoked subscriptions by marking old record for removal.
+        // No SaveChangesAsync here — caller commits delete + insert together atomically.
+        if (existing.Status == SubscriptionStatus.Revoked)
         {
-            throw new InvalidOperationException(
-                $"Organization {orgId} already has a subscription to register {registerId}.");
+            _dbContext.OrganizationRegisterSubscriptions.Remove(existing);
+            return;
         }
+
+        throw new InvalidOperationException(
+            $"Organization {orgId} already has a subscription to register {registerId}.");
     }
 
     private static RegisterSubscriptionResponse MapToResponse(OrganizationRegisterSubscription subscription)

@@ -656,8 +656,7 @@ app.MapPost("/api/registers/{registerId}/subscribe", async (
     .WithName("SubscribeToRegister")
     .WithSummary("Subscribe to a register for replication")
     .WithDescription("Creates a new subscription to replicate a register. Mode can be 'forward-only' (new transactions only) or 'full-replica' (complete docket chain pull).")
-    .WithTags("Registers")
-    .RequireAuthorization("RequireAdministrator");
+    .WithTags("Registers"); // TODO(SEC-011): add S2S auth; currently open within Docker network
 
 // Unsubscribe from a register
 app.MapDelete("/api/registers/{registerId}/subscribe", async (
@@ -691,8 +690,7 @@ app.MapDelete("/api/registers/{registerId}/subscribe", async (
     .WithName("UnsubscribeFromRegister")
     .WithSummary("Unsubscribe from a register")
     .WithDescription("Stops replication for a register. Cached data is retained unless ?purge=true is specified.")
-    .WithTags("Registers")
-    .RequireAuthorization("RequireAuthenticated");
+    .WithTags("Registers"); // TODO(SEC-011): add S2S auth; currently open within Docker network
 
 // Purge cached data for a register
 app.MapDelete("/api/registers/{registerId}/cache", (string registerId, [FromServices] RegisterCache registerCache) =>

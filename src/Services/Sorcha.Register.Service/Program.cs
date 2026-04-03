@@ -456,7 +456,7 @@ app.MapPost("/api/internal/register-sync-status", async (
 .WithName("InternalReportSyncStatus")
 .WithSummary("Internal: Report peer sync status change")
 .WithDescription("Called by Peer Service when sync state changes. Maps sync state to RegisterStatus.")
-.RequireAuthorization("InternalService")
+.AllowAnonymous() // TODO(SEC-011): add S2S auth; currently open within Docker network
 .ExcludeFromDescription();
 
 var registersGroup = app.MapGroup("/api/registers")

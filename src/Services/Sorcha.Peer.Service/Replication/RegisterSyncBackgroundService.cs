@@ -486,7 +486,15 @@ public class RegisterSyncBackgroundService : BackgroundService
 
             if (existing != null)
             {
-                context.Entry(existing).CurrentValues.SetValues(entity);
+                existing.Mode = entity.Mode;
+                existing.SyncState = entity.SyncState;
+                existing.LastSyncedDocketVersion = entity.LastSyncedDocketVersion;
+                existing.LastSyncedTransactionVersion = entity.LastSyncedTransactionVersion;
+                existing.TotalDocketsInChain = entity.TotalDocketsInChain;
+                existing.SourcePeerIds = entity.SourcePeerIds;
+                existing.LastSyncAt = entity.LastSyncAt;
+                existing.ErrorMessage = entity.ErrorMessage;
+                existing.ConsecutiveFailures = entity.ConsecutiveFailures;
             }
             else
             {
