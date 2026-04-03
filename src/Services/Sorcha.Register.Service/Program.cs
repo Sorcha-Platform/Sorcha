@@ -253,8 +253,8 @@ app.MapGet("/api/internal/registers", async (RegisterManager manager) =>
 })
 .WithName("InternalGetRegisters")
 .WithSummary("Internal: List all registers for service recovery")
-.WithDescription("Unauthenticated endpoint for Blueprint Service startup recovery. Returns minimal register info.")
-.AllowAnonymous()
+.WithDescription("Internal endpoint for Blueprint Service startup recovery. Returns minimal register info. Requires service token.")
+.RequireAuthorization("RequireService")
 .ExcludeFromDescription(); // Hidden from public OpenAPI docs
 
 // Internal endpoint for Tenant Service subscription notifications
@@ -403,7 +403,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
 .WithName("InternalNotifyRegisterSubscription")
 .WithSummary("Internal: Notify of register subscription change")
 .WithDescription("Called by Tenant Service when an org subscribes/unsubscribes. Creates stub registers and triggers peer sync.")
-.AllowAnonymous()
+.RequireAuthorization("RequireService")
 .ExcludeFromDescription();
 
 // Internal endpoint: Peer Service reports sync state changes for a register.
@@ -456,7 +456,7 @@ app.MapPost("/api/internal/register-sync-status", async (
 .WithName("InternalReportSyncStatus")
 .WithSummary("Internal: Report peer sync status change")
 .WithDescription("Called by Peer Service when sync state changes. Maps sync state to RegisterStatus.")
-.AllowAnonymous() // TODO(SEC-011): add S2S auth; currently open within Docker network
+.RequireAuthorization("RequireService")
 .ExcludeFromDescription();
 
 var registersGroup = app.MapGroup("/api/registers")
