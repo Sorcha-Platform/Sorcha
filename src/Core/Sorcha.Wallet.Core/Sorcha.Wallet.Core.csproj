@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <!-- Internal Dependencies -->
+    <ProjectReference Include="..\Sorcha.Wallet.Portable\Sorcha.Wallet.Portable.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Storage.Abstractions\Sorcha.Storage.Abstractions.csproj" />

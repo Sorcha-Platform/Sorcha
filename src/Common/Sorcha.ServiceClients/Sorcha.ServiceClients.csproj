@@ -25,6 +25,8 @@
   <ItemGroup>
     <!-- Reference common models -->
     <ProjectReference Include="..\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+    <!-- HTTP clients (extracted) -->
+    <ProjectReference Include="..\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

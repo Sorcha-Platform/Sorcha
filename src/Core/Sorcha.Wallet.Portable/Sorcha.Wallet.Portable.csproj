@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Sorcha.Wallet.Portable</PackageId>
+    <Description>Portable wallet library for Sorcha — HD derivation, key types, enums. No server dependencies.</Description>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Internal Dependencies -->
+    <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HD Wallet Support -->
+    <PackageReference Include="NBitcoin" />
+
+    <!-- Logging -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>
