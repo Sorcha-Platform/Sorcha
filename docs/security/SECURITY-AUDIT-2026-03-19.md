@@ -15,7 +15,7 @@ The Sorcha decentralised register platform demonstrates **strong foundational se
 
 | Severity | Count | Key Areas |
 |----------|-------|-----------|
-| CRITICAL | 7 | Consensus votes unsigned, replay protection missing, secrets exposed, Redis unauthenticated |
+| CRITICAL | 7 (1 closed) | Consensus votes unsigned, replay protection missing, ~~secrets exposed~~, Redis unauthenticated |
 | HIGH | 14 | Blueprint cache poisoning, participant auth bypass, CORS wide open, docket ordering races |
 | MEDIUM | 16 | State poisoning, cycle detection, cache invalidation, fork detection logic |
 | LOW | 4 | Logging PII, config validation, documentation mismatches |
@@ -349,13 +349,12 @@ Truncated public key hex logged in error messages. Could enable correlation atta
 
 ## 5. Infrastructure & Configuration
 
-### 5.1 [CRITICAL] Anthropic API Key Committed to Repository
+### 5.1 [CLOSED] Anthropic API Key in Local .env
 
 **File:** `.env:82`
+**Status:** Closed (2026-04-04) — Non-issue after investigation.
 
-A real `sk-ant-api03-*` API key is present in the `.env` file. Even though `.env` is in `.gitignore`, it may exist in git history.
-
-**Action Required:** Revoke immediately from Anthropic console. Generate new key. Store in vault. Scan git history with `truffleHog` or `git-secrets`.
+A real `sk-ant-api03-*` API key is present in the local `.env` file. `.env` has been in `.gitignore` since before the key was added. Full git history scan (`git log --all -p -S`) confirms the key value was never committed or pushed. The key exists only on the developer's local machine and has not been shared publicly. No remediation required.
 
 ### 5.2 [CRITICAL] Redis Exposed Without Authentication
 
@@ -480,7 +479,7 @@ Unauthenticated peers are allowed through with "lower trust" but no actual trust
 
 | # | Finding | Effort | Section |
 |---|---------|--------|---------|
-| 1 | Revoke exposed Anthropic API key | 30 min | 5.1 |
+| ~~1~~ | ~~Revoke exposed Anthropic API key~~ | ~~30 min~~ | ~~5.1 (CLOSED — key local-only, never committed)~~ |
 | 2 | Implement Redis authentication | 2 hrs | 5.2 |
 | 3 | Enable gRPC TLS for peer communication | 4 hrs | 5.3 |
 | 4 | Cryptographically verify consensus votes | 2 days | 4.1 |
