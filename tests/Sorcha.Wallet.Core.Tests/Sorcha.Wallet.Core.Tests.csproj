@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Sorcha.Wallet.Core\Sorcha.Wallet.Core.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Wallet.Service\Sorcha.Wallet.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
