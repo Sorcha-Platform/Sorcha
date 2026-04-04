@@ -658,15 +658,96 @@ Enable detailed logging:
 
 ---
 
+## Cloud KMS Configuration
+
+Feature 082 delivered full Azure Key Vault integration for wallet key storage. The service uses an **envelope encryption** model: Data Encryption Keys (DEKs) are generated locally per wallet and wrapped by the Key Protection Provider (KPP). The KPP can be a local provider (development) or Azure Key Vault (production).
+
+### EncryptionProvider settings
+
+Set `EncryptionProvider:Type` in `appsettings.json` (or environment variables):
+
+| Type | When to use |
+|------|-------------|
+| `Local` | Development only — keys lost on restart |
+| `WindowsDpapi` | Production on Windows hosts |
+| `LinuxSecretService` | Production on Linux hosts / Docker |
+| `AzureKeyVault` | Production on Azure — recommended |
+
+#### Azure Key Vault (recommended for production)
+
+```json
+{
+  "EncryptionProvider": {
+    "Type": "AzureKeyVault",
+    "DefaultKeyId": "wallet-key-2025",
+    "AzureKeyVault": {
+      "VaultUri": "https://your-vault.vault.azure.net/",
+      "DefaultKeyName": "wallet-encryption-key",
+      "UseManagedIdentity": true,
+      "EnableDekCache": true,
+      "DekCacheTtlMinutes": 60,
+      "AllowStaleDeksOnOutage": true
+    }
+  }
+}
+```
+
+Docker Compose / Azure Container Apps environment variables:
+
+```bash
+EncryptionProvider__Type=AzureKeyVault
+EncryptionProvider__DefaultKeyId=wallet-key-2025
+EncryptionProvider__AzureKeyVault__VaultUri=https://your-vault.vault.azure.net/
+EncryptionProvider__AzureKeyVault__UseManagedIdentity=true
+# For non-managed-identity (service principal):
+AZURE_TENANT_ID=<tenant-id>
+AZURE_CLIENT_ID=<client-id>
+AZURE_CLIENT_SECRET=<client-secret>
+```
+
+Required Key Vault permissions for the Managed Identity / service principal:
+- `keys/get`, `keys/wrapKey`, `keys/unwrapKey`
+- `keys/create` (if auto-creating the KEK on first start)
+
+### WalletKeyManagement settings
+
+Controls DEK caching and signing mode policy:
+
+```json
+{
+  "WalletKeyManagement": {
+    "DefaultKeyId": "wallet-key-2025",
+    "DekCacheTtlMinutes": 30,
+    "DekCacheGracePeriodMinutes": 5,
+    "MaxCachedDeks": 1000,
+    "SigningPolicy": {
+      "DefaultMode": "Local",
+      "AllowLocalToKmsMigration": false,
+      "AllowedKmsAlgorithms": ["ED25519", "NISTP256"]
+    }
+  }
+}
+```
+
+`DefaultMode` options:
+- `Local` — private keys are stored encrypted by envelope encryption (default).
+- `KmsResident` — private keys are generated inside Azure Key Vault and never leave the HSM. Signing calls are forwarded to the KMS. Use when regulatory requirements mandate HSM-resident keys.
+
+`AllowLocalToKmsMigration` — set to `true` to allow migrating existing `Local` wallets to `KmsResident`. The reverse is never permitted.
+
+`AllowedKmsAlgorithms` — list of algorithm names permitted for KMS-resident keys. Empty list means all algorithms are allowed.
+
+---
+
 ## Production Feature Status
 
 ### Completed (MVD)
 - [x] **EF Core Repository**: PostgreSQL persistence via EF Core
 - [x] **JWT Authentication**: Integration with Tenant Service
+- [x] **Azure Key Vault Integration**: Envelope encryption + KMS-resident signing via `Sorcha.Wallet.Providers.Azure` (Feature 082)
 
 ### Deferred (Post-MVD)
-- [ ] **Azure Key Vault Integration**: Production-grade key encryption (HSM)
-- [ ] **AWS KMS Support**: Alternative to Azure Key Vault
+- [ ] **AWS KMS / GCP KMS Support**: Multi-cloud KMS providers (deferred from Feature 082)
 - [ ] **Hardware Wallet Integration**: Ledger, Trezor support
 - [ ] **Audit Logging**: Comprehensive operation logging
 - [ ] **Backup/Restore**: Encrypted wallet backup system

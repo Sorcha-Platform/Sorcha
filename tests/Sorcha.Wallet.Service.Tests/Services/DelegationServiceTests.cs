@@ -36,7 +36,7 @@ public class DelegationServiceTests : IDisposable
         SetupCryptoMocks(mockCryptoModule, mockWalletUtilities);
 
         var keyManagement = new KeyManagementService(
-            encryptionProvider,
+            (Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider)encryptionProvider,
             mockCryptoModule.Object,
             mockWalletUtilities.Object,
             Mock.Of<ILogger<KeyManagementService>>());

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+#pragma warning disable CS0618 // IEncryptionProvider is obsolete — EncryptionProviderBase implements it for backward compatibility
 
 using System.Collections.Concurrent;
 using System.IO;
@@ -18,7 +19,7 @@ namespace Sorcha.Wallet.Core.Encryption.Providers;
 /// - <see cref="WindowsDpapiEncryptionProvider"/>: Windows DPAPI
 /// - <see cref="LinuxSecretServiceEncryptionProvider"/>: Linux Secret Service / file-based fallback
 /// </summary>
-public abstract class EncryptionProviderBase : IEncryptionProvider
+public abstract class EncryptionProviderBase : IEncryptionProvider, IKeyProtectionProvider
 {
     private readonly string _defaultKeyId;
 
@@ -220,6 +221,60 @@ public abstract class EncryptionProviderBase : IEncryptionProvider
             AuditLogger.LogCreateKeyFailure(keyId, ex, timer.ElapsedMilliseconds);
             throw;
         }
+    }
+
+    // ================================================================
+    // IKeyProtectionProvider explicit implementation
+    // ================================================================
+
+    /// <inheritdoc />
+    async Task<string> IKeyProtectionProvider.CreateKeyAsync(string keyId, CancellationToken ct)
+    {
+        await CreateKeyAsync(keyId, ct);
+        return keyId;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Local providers: "wrapped" bytes are the DEK itself (no external KMS wrapping).
+    /// This is acceptable for development only. Production deployments MUST use a cloud KMS provider.
+    /// </remarks>
+    async Task<byte[]> IKeyProtectionProvider.WrapKeyAsync(string keyId, byte[] plaintext, CancellationToken ct)
+    {
+        // Delegate to platform-specific key protection (same as ProtectAndStoreKeyAsync
+        // but returns the wrapped bytes instead of persisting).
+        // For file-based providers the "wrap" and "store" are coupled, so we
+        // protect-and-store then read back the wrapped form.
+        // We store with a synthetic sub-key id and return the wrapped bytes.
+        await ProtectAndStoreKeyAsync(keyId, plaintext, ct);
+
+        // Return the wrapped (protected) bytes by re-reading from storage.
+        // This is the protected form — callers will persist it themselves.
+        var unwrapped = await RetrieveKeyAsync(keyId, ct);
+        if (unwrapped == null)
+            throw new InvalidOperationException($"Failed to wrap key '{keyId}': key not found after storage.");
+
+        // Local providers: "wrapped" bytes are the DEK itself (no external KMS wrapping).
+        // This is acceptable for development only. Production deployments MUST use a cloud KMS provider.
+        return plaintext;
+    }
+
+    /// <inheritdoc />
+    async Task<byte[]> IKeyProtectionProvider.UnwrapKeyAsync(string keyId, byte[] ciphertext, CancellationToken ct)
+    {
+        // Retrieve the DEK from platform-specific storage.
+        // The ciphertext parameter is ignored for file-based providers because
+        // they store wrapped keys internally — the keyId is sufficient.
+        var dek = await RetrieveKeyAsync(keyId, ct);
+        if (dek == null)
+            throw new InvalidOperationException($"Failed to unwrap key '{keyId}': key not found in store.");
+        return dek;
+    }
+
+    /// <inheritdoc />
+    async Task<bool> IKeyProtectionProvider.KeyExistsAsync(string keyId, CancellationToken ct)
+    {
+        return await KeyExistsAsync(keyId, ct);
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ public class KeyManagementServiceTests : IDisposable
         _encryptionProvider = new LocalEncryptionProvider(Mock.Of<ILogger<LocalEncryptionProvider>>());
 
         _keyManagement = new KeyManagementService(
-            _encryptionProvider,
+            (Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider)_encryptionProvider,
             _mockCryptoModule.Object,
             _mockWalletUtilities.Object,
             Mock.Of<ILogger<KeyManagementService>>());

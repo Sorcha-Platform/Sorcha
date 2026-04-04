@@ -53,6 +53,16 @@ public class WalletDto
     public DateTime UpdatedAt { get; set; }
 
     /// <summary>
+    /// Signing mode: "Local" (keys stored encrypted locally) or "KmsResident" (keys held in cloud KMS)
+    /// </summary>
+    public string SigningMode { get; set; } = "Local";
+
+    /// <summary>
+    /// Cloud KMS key identifier. Null for Local wallets.
+    /// </summary>
+    public string? KmsKeyId { get; set; }
+
+    /// <summary>
     /// Optional metadata
     /// </summary>
     public Dictionary<string, string> Metadata { get; set; } = new();

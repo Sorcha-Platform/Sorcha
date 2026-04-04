@@ -33,7 +33,7 @@ public class HybridSigningIntegrationTests
                 $"ws1test{Convert.ToHexString(key[..Math.Min(8, key.Length)]).ToLowerInvariant()}");
 
         var keyManagement = new KeyManagementService(
-            _encryptionProvider,
+            (Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider)_encryptionProvider,
             _cryptoModule,
             mockWalletUtilities.Object,
             Mock.Of<ILogger<KeyManagementService>>());

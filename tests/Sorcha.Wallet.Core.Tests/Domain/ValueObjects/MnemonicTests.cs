@@ -59,7 +59,7 @@ public class MnemonicTests
     [Fact]
     public void Constructor_NullPhrase_ThrowsArgumentException()
     {
-        var act = () => new Mnemonic(null!);
+        var act = () => new Mnemonic((string)null!);
 
         act.Should().Throw<ArgumentException>()
             .WithParameterName("phrase");

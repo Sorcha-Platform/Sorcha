@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+#pragma warning disable CS0618 // IEncryptionProvider is obsolete — retained for development/testing use
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
@@ -10,7 +11,7 @@ namespace Sorcha.Wallet.Core.Encryption.Providers;
 /// Local encryption provider using AES-256-GCM for development and testing.
 /// WARNING: This stores keys in memory only and should not be used in production.
 /// </summary>
-public class LocalEncryptionProvider : IEncryptionProvider
+public class LocalEncryptionProvider : IEncryptionProvider, IKeyProtectionProvider
 {
     private readonly ILogger<LocalEncryptionProvider> _logger;
     private readonly Dictionary<string, byte[]> _keys = new();
@@ -167,6 +168,44 @@ public class LocalEncryptionProvider : IEncryptionProvider
         _logger.LogInformation("Created new encryption key with ID {KeyId}", keyId);
 
         return Task.CompletedTask;
+    }
+
+    // ================================================================
+    // IKeyProtectionProvider implementation
+    // ================================================================
+
+    /// <inheritdoc />
+    async Task<string> IKeyProtectionProvider.CreateKeyAsync(string keyId, CancellationToken ct)
+    {
+        await CreateKeyAsync(keyId, ct);
+        return keyId;
+    }
+
+    /// <inheritdoc />
+    Task<byte[]> IKeyProtectionProvider.WrapKeyAsync(string keyId, byte[] plaintext, CancellationToken ct)
+    {
+        if (!_keys.ContainsKey(keyId))
+            throw new InvalidOperationException($"Key '{keyId}' not found. Create it first.");
+
+        // Local provider: "wrapping" is a no-op since keys are in memory.
+        // Store the DEK and return the plaintext (the provider is the wrapping boundary).
+        _keys[keyId] = (byte[])plaintext.Clone();
+        return Task.FromResult(plaintext);
+    }
+
+    /// <inheritdoc />
+    Task<byte[]> IKeyProtectionProvider.UnwrapKeyAsync(string keyId, byte[] ciphertext, CancellationToken ct)
+    {
+        if (!_keys.TryGetValue(keyId, out var key))
+            throw new InvalidOperationException($"Key '{keyId}' not found.");
+
+        return Task.FromResult(key);
+    }
+
+    /// <inheritdoc />
+    async Task<bool> IKeyProtectionProvider.KeyExistsAsync(string keyId, CancellationToken ct)
+    {
+        return await KeyExistsAsync(keyId, ct);
     }
 
     /// <inheritdoc />

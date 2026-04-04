@@ -39,7 +39,7 @@ For detailed implementation status, see the individual section files:
 | Service | Status | Details |
 |---------|--------|---------|
 | [Blueprint-Action Service](status/blueprint-service.md) | 100% | Full orchestration, SignalR, JWT auth |
-| [Wallet Service](status/wallet-service.md) | 95% | EF Core, API complete, HD wallets |
+| [Wallet Service](status/wallet-service.md) | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082) |
 | [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
 | [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
 | **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
@@ -60,7 +60,7 @@ For detailed implementation status, see the individual section files:
 |-----------|-----------|--------|---------|
 | **Blueprint.Engine** | 100% | Complete | None |
 | **Blueprint.Service** | 100% | Complete | None |
-| **Wallet.Service** | 95% | Nearly Complete | Azure Key Vault |
+| **Wallet.Service** | 98% | Nearly Complete | AWS/GCP KMS (deferred) |
 | **Register.Service** | 100% | Complete | None |
 | **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
 | **Sorcha.PeerRouter** | 100% | Complete | None |
@@ -97,6 +97,18 @@ For detailed implementation status, see the individual section files:
 ---
 
 ## Recent Completions
+
+### 2026-04-02
+- **082-Cloud-KMS-Key-Management** (Feature 082 complete)
+  - Envelope encryption model: DEKs generated locally, wrapped by Key Protection Provider (KPP)
+  - `IKeyProtectionProvider` — new interface replacing legacy `IEncryptionProvider` for production use
+  - `AzureKeyVaultKeyProtectionProvider`: full AES-256-GCM envelope encryption backed by Azure Key Vault wrap/unwrap
+  - `AzureSigningProvider`: KMS-resident signing — keys generated in AKV and never exported; supports ED25519, P-256
+  - `Sorcha.Wallet.Providers.Azure` NuGet package registered via `AddAzureKeyProtectionProvider()`
+  - `WalletKeyManagementOptions.SigningPolicy`: `DefaultMode` (Local/KmsResident), `AllowLocalToKmsMigration`, `AllowedKmsAlgorithms`
+  - DEK cache: TTL + grace period for outage tolerance, configurable max entries
+  - Health check: `EncryptionProviderHealthCheck` validates KPP connectivity on startup
+  - AWS/GCP KMS deferred to post-release
 
 ### 2026-03-16
 - **058-Platform-Organisation-Topology** (Phases 1-10 complete, 81 tasks)
@@ -349,7 +361,7 @@ For detailed implementation status, see the individual section files:
 These items are explicitly **out of scope for MVD** and deferred to production readiness phases:
 
 1. **Azure AD B2C** — Dedicated Azure AD B2C provider (generic OIDC integration now available via Feature 054)
-2. **Azure Key Vault** — Production key management for Wallet Service
+2. **Azure Key Vault** — ~~Production key management for Wallet Service~~ **Complete (Feature 082)**. AWS/GCP KMS deferred.
 3. **Fork Detection** — Validator Service chain fork handling
 4. **Enclave Support** — Trusted execution environment for Validator
 5. **BLS Threshold Coordination** — Peer Service distributed docket signing
@@ -364,7 +376,7 @@ The platform is feature-complete for MVD but requires the following for producti
 | Area | Status | Priority | MASTER-TASKS Theme |
 |------|--------|----------|-------------------|
 | Security hardening (HTTPS, validation, audit) | Pending | P0 | Theme 1 |
-| Azure Key Vault for key storage | Pending | P0 | Theme 1 |
+| Azure Key Vault for key storage | Complete (Feature 082) | P0 | Theme 1 |
 | Deployment documentation & automation | Pending | P1 | Theme 2 |
 | Backup and disaster recovery | Pending | P1 | Theme 2 |
 | Production database tuning | Pending | P1 | Theme 2 |

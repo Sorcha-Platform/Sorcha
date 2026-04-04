@@ -68,4 +68,27 @@ public interface IKeyManagementService
         string encryptedPrivateKey,
         string oldKeyId,
         string newKeyId);
+
+    /// <summary>
+    /// Creates a KMS-resident signing key pair. Key material never leaves the KMS.
+    /// </summary>
+    /// <param name="keyId">Logical identifier for the signing key.</param>
+    /// <param name="algorithm">Cryptographic algorithm (must be supported by the KMS provider).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Information about the created key including its public key.</returns>
+    Task<Encryption.Models.KmsKeyInfo> CreateKmsSigningKeyAsync(string keyId, string algorithm, CancellationToken ct = default);
+
+    /// <summary>
+    /// Signs data using a KMS-resident private key. The private key never leaves the KMS.
+    /// </summary>
+    /// <param name="kmsKeyId">Identifier of the KMS signing key.</param>
+    /// <param name="data">The data to sign.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The digital signature bytes.</returns>
+    Task<byte[]> SignWithKmsAsync(string kmsKeyId, byte[] data, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether a KMS signing provider is available.
+    /// </summary>
+    bool IsKmsSigningAvailable { get; }
 }
