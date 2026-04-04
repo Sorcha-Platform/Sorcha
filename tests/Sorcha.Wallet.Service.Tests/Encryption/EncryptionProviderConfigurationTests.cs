@@ -402,6 +402,58 @@ public class EncryptionProviderConfigurationTests
     }
 
     [Fact]
+    public void DIRegistration_ShouldRegisterKeyProtectionProvider_WhenTypeIsLocal()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["EncryptionProvider:Type"] = "Local",
+                ["EncryptionProvider:DefaultKeyId"] = "test-key"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWalletService(config);
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Act
+        var keyProtectionProvider = serviceProvider.GetRequiredService<Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider>();
+
+        // Assert
+        keyProtectionProvider.Should().NotBeNull();
+        keyProtectionProvider.Should().BeOfType<LocalEncryptionProvider>();
+    }
+
+    [Fact]
+    public void DIRegistration_ShouldResolveSameInstance_ForBothInterfaces()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["EncryptionProvider:Type"] = "Local",
+                ["EncryptionProvider:DefaultKeyId"] = "test-key"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWalletService(config);
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Act
+        var encryptionProvider = serviceProvider.GetRequiredService<IEncryptionProvider>();
+        var keyProtectionProvider = serviceProvider.GetRequiredService<Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider>();
+
+        // Assert — they should be the same object
+        keyProtectionProvider.Should().BeSameAs(encryptionProvider);
+    }
+
+    [Fact]
     public void Configuration_ShouldSupportCaseInsensitiveProviderType()
     {
         // Arrange - Test various casing

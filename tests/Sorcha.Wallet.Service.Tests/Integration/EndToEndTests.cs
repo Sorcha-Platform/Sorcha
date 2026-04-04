@@ -30,7 +30,7 @@ public class EndToEndTests : IDisposable
 
         // Create service instances
         var keyManagement = new KeyManagementService(
-            _encryptionProvider,
+            (Sorcha.Wallet.Core.Encryption.Interfaces.IKeyProtectionProvider)_encryptionProvider,
             _mockCryptoModule.Object,
             _mockWalletUtilities.Object,
             Mock.Of<ILogger<KeyManagementService>>());

@@ -210,6 +210,10 @@ public static class WalletServiceExtensions
         services.Configure<EncryptionProviderOptions>(
             configuration.GetSection(EncryptionProviderOptions.SectionName));
 
+        // Bind WalletKeyManagementOptions (Phase 2 — envelope encryption config)
+        services.Configure<WalletKeyManagementOptions>(
+            configuration.GetSection(WalletKeyManagementOptions.SectionName));
+
         // Register encryption provider factory
         services.AddSingleton<IEncryptionProvider>(serviceProvider =>
         {
@@ -223,6 +227,22 @@ public static class WalletServiceExtensions
                 "local" => CreateLocalProvider(options, loggerFactory),
                 _ => CreateLocalProviderWithWarning(options, loggerFactory)
             };
+        });
+
+        // Register IKeyProtectionProvider — resolves to the same instance as IEncryptionProvider
+        // since all providers now implement both interfaces.
+        services.AddSingleton<IKeyProtectionProvider>(serviceProvider =>
+        {
+            var encryptionProvider = serviceProvider.GetRequiredService<IEncryptionProvider>();
+            if (encryptionProvider is IKeyProtectionProvider keyProtectionProvider)
+            {
+                return keyProtectionProvider;
+            }
+
+            // Should never happen — all built-in providers implement IKeyProtectionProvider
+            throw new InvalidOperationException(
+                $"The registered IEncryptionProvider ({encryptionProvider.GetType().Name}) does not implement IKeyProtectionProvider. " +
+                "All encryption providers must implement IKeyProtectionProvider for Phase 2 key management.");
         });
 
         return services;
