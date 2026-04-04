@@ -1,0 +1,59 @@
+# Wallet API Changes for Cloud KMS — OpenAPI Fragment
+# Only showing new/modified parts of the existing wallet creation endpoint
+
+paths:
+  /api/v1/wallets:
+    post:
+      summary: Create a new wallet
+      description: >
+        Creates a new wallet with key material. If signingMode is KmsResident,
+        the signing key is created inside the configured cloud KMS and never
+        leaves it. If Local (default), the private key is derived from the
+        mnemonic seed and stored encrypted locally.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                # ... existing properties (mnemonic, derivationPath, algorithm, etc.)
+                signingMode:
+                  type: string
+                  enum: [Local, KmsResident]
+                  description: >
+                    Optional. Overrides the policy-determined signing mode.
+                    Only effective if AllowSigningModeOverride is enabled in config.
+                    KmsResident requires a cloud KMS provider and P-256 algorithm.
+                  default: null
+      responses:
+        '201':
+          description: Wallet created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  # ... existing properties
+                  signingMode:
+                    type: string
+                    enum: [Local, KmsResident]
+                    description: The resolved signing mode for this wallet
+                  kmsKeyId:
+                    type: string
+                    nullable: true
+                    description: Cloud KMS key reference (null for Local wallets)
+        '400':
+          description: >
+            Bad request. Possible reasons:
+            - KmsResident requested with non-P-256 algorithm
+            - KmsResident requested but no cloud KMS provider configured
+            - SigningMode override not allowed by configuration
+
+components:
+  schemas:
+    SigningMode:
+      type: string
+      enum: [Local, KmsResident]
+      description: >
+        Local: Private key encrypted locally with envelope encryption (DEK protected by KMS or platform).
+        KmsResident: Private key created and held inside cloud KMS. Signing performed by KMS.
