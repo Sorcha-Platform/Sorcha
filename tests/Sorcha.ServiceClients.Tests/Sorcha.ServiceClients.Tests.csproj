@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

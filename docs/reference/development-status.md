@@ -1,7 +1,7 @@
 # Sorcha Platform - Development Status Report
 
 **Date:** 2026-03-16
-**Version:** 4.4 (Updated after Feature 083 Wallet Key Derivation)
+**Version:** 4.5 (Updated after Feature 084 Mobile Package Infrastructure)
 **Overall Completion:** 100% MVD
 
 ---
@@ -99,6 +99,14 @@ For detailed implementation status, see the individual section files:
 ## Recent Completions
 
 ### 2026-04-04
+- **084-Mobile-Package-Infrastructure** (Feature 084 complete)
+  - Extracted `Sorcha.Wallet.Portable` from Wallet.Core: entities, enums, service interfaces, derivation path builder -- zero EF Core/Npgsql dependencies
+  - Extracted `Sorcha.ServiceClients.Http` from ServiceClients: all HTTP REST clients + SignalR helper -- zero gRPC/Protobuf dependencies
+  - GitHub Actions workflow (`publish-nuget.yml`) for automated NuGet publishing of 9 packages on merge/tag
+  - `SorchaHubConnectionBuilder` for mobile-friendly SignalR with JWT auth and exponential backoff reconnection
+  - `HttpServiceCollectionExtensions` for registering HTTP-only service clients
+  - MOB-001 eliminated (SorchaMobile confirmed .NET 10), MOB-002/003/004 complete
+  - Full backward compatibility: 6254 unit tests pass, all Docker images build, zero breaking changes
 - **083-Wallet-Key-Derivation** (Feature 083 complete)
   - Organisation-level HD key derivation using Sorcha-specific BIP32 paths (`m/0x534F52'/org'/dept'/user'/usage/index`)
   - `OrgMasterKey`: Per-org root seed encrypted at rest via Key Protection Provider

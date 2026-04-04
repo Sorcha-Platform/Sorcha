@@ -4,7 +4,7 @@
 using FluentAssertions;
 
 using Sorcha.Wallet.Core.Domain.Enums;
-using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Portable;
 
 using Xunit;
 

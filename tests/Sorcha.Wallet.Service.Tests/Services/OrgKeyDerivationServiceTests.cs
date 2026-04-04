@@ -13,6 +13,7 @@ using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Sorcha.Wallet.Portable;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Xunit;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;

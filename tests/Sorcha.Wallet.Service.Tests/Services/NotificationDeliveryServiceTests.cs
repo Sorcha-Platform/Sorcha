@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-extern alias ServiceClients;
-
 using System.Net.Http;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using ServiceClients::Sorcha.ServiceClients.Models;
+using Sorcha.ServiceClients.Models;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Sorcha.Wallet.Service.Services.Interfaces;

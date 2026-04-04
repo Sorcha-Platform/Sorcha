@@ -11,6 +11,7 @@ using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Services.Interfaces;
+using Sorcha.Wallet.Portable;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 

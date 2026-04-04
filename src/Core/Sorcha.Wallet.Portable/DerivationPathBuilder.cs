@@ -4,7 +4,7 @@
 using System.Security.Cryptography;
 using Sorcha.Wallet.Core.Domain.Enums;
 
-namespace Sorcha.Wallet.Service.Services.Implementation;
+namespace Sorcha.Wallet.Portable;
 
 /// <summary>
 /// Builds Sorcha-specific BIP32 derivation paths for hierarchical deterministic key generation.
