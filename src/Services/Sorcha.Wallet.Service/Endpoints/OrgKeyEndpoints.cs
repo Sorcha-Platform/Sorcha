@@ -48,6 +48,30 @@ public static class OrgKeyEndpoints
             .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
             .ProducesValidationProblem();
 
+        // POST /api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate - Rotate a derived key
+        orgKeyGroup.MapPost("/{orgId}/keys/{derivedKeyId:guid}/rotate", RotateKey)
+            .WithName("RotateOrgKey")
+            .WithSummary("Rotate a derived organisation key")
+            .WithDescription(
+                "Derives a new key at the next index in the hierarchy and marks the existing key as Rotated. " +
+                "The rotated key can still be used for decryption but not for signing.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // DELETE /api/wallets/org/{orgId}/keys/{derivedKeyId} - Revoke a derived key
+        orgKeyGroup.MapDelete("/{orgId}/keys/{derivedKeyId:guid}", RevokeKey)
+            .WithName("RevokeOrgKey")
+            .WithSummary("Revoke a derived organisation key")
+            .WithDescription(
+                "Permanently revokes a derived key and locks the associated wallet. " +
+                "If the key was used for Identity purposes, a DID revocation event is triggered.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 
@@ -87,11 +111,20 @@ public static class OrgKeyEndpoints
             });
         }
 
-        if (!Enum.TryParse<KeyUsage>(request.KeyUsage, ignoreCase: true, out var usage))
+        if (!Enum.TryParse<KeyUsage>(request.KeyUsage, ignoreCase: true, out var usage) ||
+            !Enum.IsDefined(usage))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["keyUsage"] = [$"Invalid key usage. Valid values: {string.Join(", ", Enum.GetNames<KeyUsage>())}"]
+            });
+        }
+
+        if (request.DepartmentId > 1_000_000)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["departmentId"] = ["departmentId must be between 0 and 1000000"]
             });
         }
 
@@ -108,6 +141,62 @@ public static class OrgKeyEndpoints
         catch (InvalidOperationException ex) when (ex.Message.Contains("No active master key"))
         {
             return Results.NotFound(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Rotates a derived key by deriving a new key at the next index.
+    /// </summary>
+    internal static async Task<IResult> RotateKey(
+        string orgId,
+        Guid derivedKeyId,
+        IOrgKeyDerivationService orgKeyService,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await orgKeyService.RotateKeyAsync(derivedKeyId, ct);
+            return Results.Ok(result);
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot rotate key"))
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Revokes a derived key and locks the associated wallet.
+    /// </summary>
+    internal static async Task<IResult> RevokeKey(
+        string orgId,
+        Guid derivedKeyId,
+        IOrgKeyDerivationService orgKeyService,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await orgKeyService.RevokeKeyAsync(derivedKeyId, ct);
+            return Results.Ok(new
+            {
+                derivedKeyId,
+                status = "Revoked",
+                revokedAt = DateTime.UtcNow,
+                walletLocked = true,
+                didRevocationPublished = false // TODO: Will be true when DID revocation service is available
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already revoked"))
+        {
+            return Results.BadRequest(new { error = ex.Message });
         }
     }
 

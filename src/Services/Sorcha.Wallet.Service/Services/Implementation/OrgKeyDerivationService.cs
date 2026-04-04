@@ -235,16 +235,191 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
     }
 
     /// <inheritdoc />
-    public Task<DerivedKeyResult> RotateKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
+    public async Task<DerivedKeyResult> RotateKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
     {
-        // TODO: Implement in Phase 6 (T040)
-        throw new NotImplementedException();
+        // Find the existing derived key record
+        var oldRecord = await _db.DerivedKeyRecords
+            .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, ct);
+
+        if (oldRecord is null)
+        {
+            throw new KeyNotFoundException($"Derived key record {derivedKeyRecordId} not found");
+        }
+
+        if (oldRecord.Status != DerivedKeyStatus.Active)
+        {
+            throw new InvalidOperationException(
+                $"Cannot rotate key with status {oldRecord.Status}. Only Active keys can be rotated.");
+        }
+
+        // Load the org master key
+        var masterKey = await _db.OrgMasterKeys
+            .FirstOrDefaultAsync(m => m.Id == oldRecord.OrgMasterKeyId, ct);
+
+        if (masterKey is null)
+        {
+            throw new InvalidOperationException(
+                $"Org master key {oldRecord.OrgMasterKeyId} not found for derived key record");
+        }
+
+        // Build new derivation path at incremented key index
+        var newKeyIndex = oldRecord.KeyIndex + 1;
+        var newPath = DerivationPathBuilder.Build(
+            Guid.Parse(oldRecord.OrganizationId),
+            oldRecord.DepartmentId,
+            Guid.Parse(oldRecord.UserId),
+            oldRecord.KeyUsage,
+            newKeyIndex);
+
+        // Decrypt master seed
+        var seed = await _protectionProvider.DecryptSeedAsync(masterKey.EncryptedSeed, masterKey.ProtectionKeyId, ct);
+
+        try
+        {
+            // Derive child key using NBitcoin BIP32
+            var masterExtKey = ExtKey.CreateFromSeed(seed);
+            var keyPath = new KeyPath(newPath.Replace("m/", ""));
+            var childExtKey = masterExtKey.Derive(keyPath);
+
+            // Extract private key bytes for ED25519 generation
+            var childPrivateKeyBytes = childExtKey.PrivateKey.ToBytes();
+
+            // Generate ED25519 key pair from the derived seed
+            var keySetResult = await _cryptoModule.GenerateKeySetAsync(
+                WalletNetworks.ED25519, childPrivateKeyBytes, ct);
+
+            if (!keySetResult.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to generate ED25519 key from derived seed: {keySetResult.ErrorMessage}");
+            }
+
+            var keySet = keySetResult.Value;
+            var publicKeyBytes = keySet.PublicKey.Key!;
+            var privateKeyBytes = keySet.PrivateKey.Key!;
+
+            // Generate wallet address from public key
+            var walletAddress = _walletUtilities.PublicKeyToWallet(
+                publicKeyBytes, (byte)WalletNetworks.ED25519);
+
+            if (string.IsNullOrEmpty(walletAddress))
+            {
+                throw new InvalidOperationException("Failed to generate wallet address from derived public key");
+            }
+
+            // Encrypt the derived private key
+            var encResult = await _protectionProvider.EncryptSeedAsync(privateKeyBytes, ct);
+            var encryptedPrivateKey = encResult.EncryptedSeed;
+            var encKeyId = encResult.KeyId;
+
+            // Mark the old record as Rotated
+            oldRecord.Status = DerivedKeyStatus.Rotated;
+
+            // Create new wallet entity
+            var wallet = new Core.Domain.Entities.Wallet
+            {
+                Address = walletAddress,
+                EncryptedPrivateKey = Convert.ToBase64String(encryptedPrivateKey),
+                EncryptionKeyId = encKeyId,
+                Algorithm = "ED25519",
+                Owner = oldRecord.UserId,
+                Tenant = oldRecord.OrganizationId,
+                Name = $"Org-derived {oldRecord.KeyUsage} key (rotated)",
+                Description = $"Rotated key derived at path {newPath} for organisation {oldRecord.OrganizationId}",
+                PublicKey = Convert.ToBase64String(publicKeyBytes),
+                Status = WalletStatus.Active,
+                CustodyMode = CustodyMode.Custodial
+            };
+
+            // Create new derived key record
+            var newRecord = new DerivedKeyRecord
+            {
+                OrgMasterKeyId = masterKey.Id,
+                OrganizationId = oldRecord.OrganizationId,
+                UserId = oldRecord.UserId,
+                DepartmentId = oldRecord.DepartmentId,
+                KeyUsage = oldRecord.KeyUsage,
+                KeyIndex = newKeyIndex,
+                DerivationPath = newPath,
+                WalletAddress = walletAddress,
+                Status = DerivedKeyStatus.Active,
+                CustodyMode = CustodyMode.Custodial
+            };
+
+            _db.Wallets.Add(wallet);
+            _db.DerivedKeyRecords.Add(newRecord);
+
+            // Link wallet to derived key record
+            wallet.DerivedKeyRecordId = newRecord.Id;
+
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Rotated {Usage} key for user {UserId} in organisation {OrganizationId} from index {OldIndex} to {NewIndex}",
+                oldRecord.KeyUsage, oldRecord.UserId, oldRecord.OrganizationId, oldRecord.KeyIndex, newKeyIndex);
+
+            return new DerivedKeyResult(
+                newRecord.Id,
+                walletAddress,
+                newPath,
+                oldRecord.KeyUsage,
+                newKeyIndex,
+                DerivedKeyStatus.Active.ToString(),
+                CustodyMode.Custodial.ToString(),
+                newRecord.CreatedAt);
+        }
+        finally
+        {
+            // Clear sensitive seed material
+            Array.Clear(seed);
+        }
     }
 
     /// <inheritdoc />
-    public Task RevokeKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
+    public async Task RevokeKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
     {
-        // TODO: Implement in Phase 7 (T045)
-        throw new NotImplementedException();
+        // Find the derived key record
+        var record = await _db.DerivedKeyRecords
+            .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, ct);
+
+        if (record is null)
+        {
+            throw new KeyNotFoundException($"Derived key record {derivedKeyRecordId} not found");
+        }
+
+        if (record.Status == DerivedKeyStatus.Revoked)
+        {
+            throw new InvalidOperationException(
+                $"Key {derivedKeyRecordId} is already revoked.");
+        }
+
+        // Mark as Revoked
+        record.Status = DerivedKeyStatus.Revoked;
+        record.RevokedAt = DateTime.UtcNow;
+
+        // Lock the associated wallet
+        var wallet = await _db.Wallets
+            .FirstOrDefaultAsync(w => w.Address == record.WalletAddress, ct);
+
+        if (wallet is not null)
+        {
+            wallet.Status = WalletStatus.Locked;
+        }
+
+        // If this is an Identity key, log that a DID revocation event should be published
+        if (record.KeyUsage == KeyUsage.Identity)
+        {
+            // TODO: Publish DID revocation event when DID revocation service is available
+            _logger.LogWarning(
+                "Identity key {DerivedKeyRecordId} revoked for wallet {WalletAddress}. " +
+                "DID revocation event should be published (DID revocation service not yet implemented).",
+                derivedKeyRecordId, record.WalletAddress);
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Revoked {Usage} key {DerivedKeyRecordId} for user {UserId} in organisation {OrganizationId}. Wallet {WalletAddress} locked.",
+            record.KeyUsage, derivedKeyRecordId, record.UserId, record.OrganizationId, record.WalletAddress);
     }
 }
