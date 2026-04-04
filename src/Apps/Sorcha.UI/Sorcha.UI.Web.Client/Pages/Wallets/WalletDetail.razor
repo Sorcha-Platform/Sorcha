@@ -2,6 +2,7 @@
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Sorcha.UI.Core.Models.Registers
+@using Sorcha.UI.Core.Components.Wallet
 @inject IWalletApiService WalletService
 @inject ITransactionService TransactionService
 @inject NavigationManager Navigation
@@ -358,8 +359,11 @@
                     }
                     else
                     {
-                        <MudTable Items="@transactions" Hover="true" Striped="true" Dense="true">
+                        <MudTable Items="@transactions" Hover="true" Striped="true" Dense="true"
+                                   OnRowClick="OnTransactionRowClick" T="TransactionQueryResultItem"
+                                   RowStyle="cursor: pointer;">
                             <HeaderContent>
+                                <MudTh Style="width: 50px;">Status</MudTh>
                                 <MudTh>Transaction ID</MudTh>
                                 <MudTh>Register</MudTh>
                                 <MudTh>Sender</MudTh>
@@ -367,6 +371,9 @@
                                 <MudTh>Docket</MudTh>
                             </HeaderContent>
                             <RowTemplate>
+                                <MudTd DataLabel="Status">
+                                    <TransactionLifecycleTicks Status="@GetTickStatus(context)" />
+                                </MudTd>
                                 <MudTd DataLabel="Transaction ID">
                                     <TruncatedId Value="@context.Transaction.TxId" />
                                 </MudTd>
@@ -387,6 +394,13 @@
                                 <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
                             </PagerContent>
                         </MudTable>
+
+                        <!-- Tick Legend -->
+                        <MudStack Row="true" Spacing="4" Class="mt-2 pa-2" Style="font-size: 0.8rem;">
+                            <span><span style="color: #9e9e9e; font-weight: bold;">&#x2713;</span> Pending</span>
+                            <span><span style="color: #2196f3; font-weight: bold;">&#x2713;</span> Sealed</span>
+                            <span><span style="color: #2196f3; font-weight: bold;">&#x2713;&#x2713;</span> Receipted</span>
+                        </MudStack>
                     }
                 </MudPaper>
             </MudTabPanel>
@@ -398,6 +412,16 @@
         </MudTabs>
     }
 </MudContainer>
+
+<!-- Transaction Detail Drawer -->
+<TransactionDetailDrawer @bind-Open="_drawerOpen"
+                         Transaction="@_selectedTransaction?.Transaction"
+                         RegisterId="@_selectedTransaction?.RegisterId"
+                         Direction="Outbound"
+                         ConfirmedAt="@(_selectedTransaction?.Transaction.DocketNumber.HasValue == true ? _selectedTransaction.Transaction.TimeStamp : null)"
+                         ReceiptedAt="@null"
+                         ReceiptId="@null"
+                         BlockHeight="@null" />
 
 <!-- Register Address Dialog -->
 <MudDialog @bind-Visible="registerAddressDialogVisible" Options="dialogOptions">
@@ -460,6 +484,10 @@
     private List<TransactionQueryResultItem> transactions = [];
     private bool isLoadingTransactions;
     private bool transactionError;
+
+    // Transaction drawer state
+    private TransactionQueryResultItem? _selectedTransaction;
+    private bool _drawerOpen;
 
     // KEM detection
     private bool IsKemWallet => wallet?.Algorithm is "ML-KEM-768" or "ML-KEM-1024";
@@ -728,4 +756,27 @@
         "RSA4096" => Color.Tertiary,
         _ => Color.Default
     };
+
+    private void OnTransactionRowClick(TableRowClickEventArgs<TransactionQueryResultItem> args)
+    {
+        _selectedTransaction = args.Item;
+        _drawerOpen = true;
+    }
+
+    /// <summary>
+    /// Derives tick status from the transaction data.
+    /// DocketNumber present = Sealed; otherwise Pending.
+    /// Receipted status requires backend WalletTransaction state (not yet available on TransactionViewModel).
+    /// </summary>
+    private static TransactionTickStatus GetTickStatus(TransactionQueryResultItem item)
+    {
+        // TODO: When TransactionViewModel gains State/ReceiptId fields from WalletTransaction,
+        // use those for accurate Receipted detection.
+        if (item.Transaction.DocketNumber.HasValue)
+            return TransactionTickStatus.Sealed;
+
+        return TransactionTickStatus.Pending;
+    }
+
+    // TODO: Wire SignalR subscription for real-time tick updates (T035)
 }

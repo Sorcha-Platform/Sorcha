@@ -1,0 +1,264 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Core.Components.Wallet
+
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Registers
+
+<MudDrawer Open="@Open" OpenChanged="OnDrawerOpenChanged" Anchor="Anchor.End"
+           Width="450px" Elevation="1" Variant="DrawerVariant.Temporary">
+    <MudDrawerHeader>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Style="width: 100%;">
+            <MudText Typo="Typo.h6">Transaction Details</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseDrawer" Size="Size.Small" />
+        </MudStack>
+    </MudDrawerHeader>
+
+    @if (Transaction is not null)
+    {
+        <MudNavMenu>
+            <div class="pa-4">
+                <!-- Header: Transaction ID + Status -->
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+                    <TransactionLifecycleTicks Status="@ComputedTickStatus"
+                                              TransactionId="@Transaction.TxId"
+                                              RegisterId="@RegisterId" />
+                    <MudText Typo="Typo.body2" Style="font-family: monospace; word-break: break-all;">
+                        @Transaction.TxId
+                    </MudText>
+                </MudStack>
+
+                <MudChip T="string" Color="@StatusColor" Size="Size.Small" Class="mb-4">
+                    @StatusLabel
+                </MudChip>
+
+                <!-- Lifecycle Timeline -->
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Lifecycle</MudText>
+                <MudTimeline TimelinePosition="TimelinePosition.Start" Class="mb-4">
+                    <MudTimelineItem Color="Color.Success" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.body2"><strong>Submitted</strong></MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @Transaction.TimeStamp.ToString("yyyy-MM-dd HH:mm:ss") UTC
+                            </MudText>
+                        </ItemContent>
+                    </MudTimelineItem>
+
+                    @if (ConfirmedAt.HasValue)
+                    {
+                        <MudTimelineItem Color="Color.Info" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.body2"><strong>Sealed in Docket</strong></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @ConfirmedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @FormatRelativeTime(Transaction.TimeStamp, ConfirmedAt.Value) after submit
+                                </MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    }
+                    else
+                    {
+                        <MudTimelineItem Color="Color.Default" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Sealed in Docket</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Awaiting...</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    }
+
+                    @if (ReceiptedAt.HasValue)
+                    {
+                        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.body2"><strong>Receipted</strong></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @ReceiptedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @FormatRelativeTime(Transaction.TimeStamp, ReceiptedAt.Value) after submit
+                                </MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    }
+                    else
+                    {
+                        <MudTimelineItem Color="Color.Default" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Receipted</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Awaiting...</MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    }
+                </MudTimeline>
+
+                <!-- Details Grid -->
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Details</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Class="mb-4">
+                    <tbody>
+                        <tr>
+                            <td><strong>Register</strong></td>
+                            <td><code style="font-size: 0.8rem; word-break: break-all;">@RegisterId</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Direction</strong></td>
+                            <td>@Direction</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sender</strong></td>
+                            <td><code style="font-size: 0.8rem; word-break: break-all;">@Transaction.SenderWallet</code></td>
+                        </tr>
+                        @if (Transaction.RecipientsWallets.Count > 0)
+                        {
+                            <tr>
+                                <td><strong>Recipients</strong></td>
+                                <td>
+                                    @foreach (var recipient in Transaction.RecipientsWallets)
+                                    {
+                                        <code style="font-size: 0.8rem; word-break: break-all; display: block;">@recipient</code>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (Transaction.DocketNumber.HasValue)
+                        {
+                            <tr>
+                                <td><strong>Docket</strong></td>
+                                <td>@Transaction.DocketNumber</td>
+                            </tr>
+                        }
+                        @if (BlockHeight.HasValue)
+                        {
+                            <tr>
+                                <td><strong>Block Height</strong></td>
+                                <td>@BlockHeight</td>
+                            </tr>
+                        }
+                        <tr>
+                            <td><strong>Type</strong></td>
+                            <td>@Transaction.TransactionType</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <!-- Receipt Proof Card (shown when receipted) -->
+                @if (!string.IsNullOrEmpty(ReceiptId))
+                {
+                    <ReceiptProofCard ReceiptId="@ReceiptId"
+                                     RegisterId="@RegisterId"
+                                     TransactionId="@Transaction.TxId" />
+                }
+            </div>
+        </MudNavMenu>
+    }
+    else
+    {
+        <div class="pa-4">
+            <MudText Typo="Typo.body1" Color="Color.Secondary">Select a transaction to view details.</MudText>
+        </div>
+    }
+</MudDrawer>
+
+@code {
+    /// <summary>
+    /// Whether the drawer is open.
+    /// </summary>
+    [Parameter]
+    public bool Open { get; set; }
+
+    /// <summary>
+    /// Callback when the drawer open state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>
+    /// The transaction to display details for.
+    /// </summary>
+    [Parameter]
+    public TransactionViewModel? Transaction { get; set; }
+
+    /// <summary>
+    /// Register ID containing the transaction.
+    /// </summary>
+    [Parameter]
+    public string? RegisterId { get; set; }
+
+    /// <summary>
+    /// Direction of the transaction relative to the wallet (Outbound/Inbound).
+    /// </summary>
+    [Parameter]
+    public string Direction { get; set; } = "Outbound";
+
+    /// <summary>
+    /// Timestamp when the transaction was confirmed (sealed in docket).
+    /// </summary>
+    [Parameter]
+    public DateTime? ConfirmedAt { get; set; }
+
+    /// <summary>
+    /// Timestamp when the receipt was generated.
+    /// </summary>
+    [Parameter]
+    public DateTime? ReceiptedAt { get; set; }
+
+    /// <summary>
+    /// Receipt ID if the transaction has been receipted.
+    /// </summary>
+    [Parameter]
+    public string? ReceiptId { get; set; }
+
+    /// <summary>
+    /// Block height in the docket chain.
+    /// </summary>
+    [Parameter]
+    public ulong? BlockHeight { get; set; }
+
+    private TransactionTickStatus ComputedTickStatus
+    {
+        get
+        {
+            if (ReceiptedAt.HasValue) return TransactionTickStatus.Receipted;
+            if (ConfirmedAt.HasValue) return TransactionTickStatus.Sealed;
+            return TransactionTickStatus.Pending;
+        }
+    }
+
+    private string StatusLabel => ComputedTickStatus switch
+    {
+        TransactionTickStatus.Pending => "Pending",
+        TransactionTickStatus.Sealed => "Sealed",
+        TransactionTickStatus.Receipted => "Receipted",
+        _ => "Unknown"
+    };
+
+    private Color StatusColor => ComputedTickStatus switch
+    {
+        TransactionTickStatus.Pending => Color.Default,
+        TransactionTickStatus.Sealed => Color.Info,
+        TransactionTickStatus.Receipted => Color.Primary,
+        _ => Color.Default
+    };
+
+    private async Task OnDrawerOpenChanged(bool value)
+    {
+        Open = value;
+        await OpenChanged.InvokeAsync(value);
+    }
+
+    private async Task CloseDrawer()
+    {
+        await OnDrawerOpenChanged(false);
+    }
+
+    private static string FormatRelativeTime(DateTime from, DateTime to)
+    {
+        var span = to - from;
+        if (span.TotalSeconds < 60) return $"{span.TotalSeconds:F0}s";
+        if (span.TotalMinutes < 60) return $"{span.TotalMinutes:F0}m {span.Seconds}s";
+        if (span.TotalHours < 24) return $"{span.TotalHours:F0}h {span.Minutes}m";
+        return $"{span.TotalDays:F0}d {span.Hours}h";
+    }
+}

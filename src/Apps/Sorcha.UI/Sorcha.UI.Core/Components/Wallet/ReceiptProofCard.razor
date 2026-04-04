@@ -1,0 +1,114 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Core.Components.Wallet
+
+@using MudBlazor
+
+@if (!string.IsNullOrEmpty(ReceiptId))
+{
+    <MudCard Outlined="true" Class="mt-3">
+        <MudCardContent>
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" Class="mr-1" />
+                Receipt Proof
+            </MudText>
+            <MudSimpleTable Dense="true" Hover="true" Class="mb-3">
+                <tbody>
+                    <tr>
+                        <td><strong>Receipt ID</strong></td>
+                        <td><code style="font-size: 0.8rem; word-break: break-all;">@ReceiptId</code></td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+
+            @if (_verificationResult is not null)
+            {
+                <MudAlert Severity="@(_verificationResult.Value ? Severity.Success : Severity.Error)" Class="mb-2" Dense="true">
+                    @(_verificationResult.Value ? "Receipt verified successfully." : "Receipt verification failed.")
+                </MudAlert>
+            }
+
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Verified"
+                           Disabled="@(_isVerifying || string.IsNullOrEmpty(RegisterId))"
+                           OnClick="VerifyReceiptAsync">
+                    @if (_isVerifying)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    Verify Receipt
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           Disabled="@(_isDownloading || string.IsNullOrEmpty(RegisterId) || string.IsNullOrEmpty(TransactionId))"
+                           OnClick="DownloadBundleAsync">
+                    @if (_isDownloading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    Download Bundle
+                </MudButton>
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    /// <summary>
+    /// Receipt identifier for the transaction.
+    /// </summary>
+    [Parameter]
+    public string? ReceiptId { get; set; }
+
+    /// <summary>
+    /// Register identifier containing the transaction.
+    /// </summary>
+    [Parameter]
+    public string? RegisterId { get; set; }
+
+    /// <summary>
+    /// Transaction identifier for verification bundle download.
+    /// </summary>
+    [Parameter]
+    public string? TransactionId { get; set; }
+
+    private bool _isVerifying;
+    private bool _isDownloading;
+    private bool? _verificationResult;
+
+    // TODO: Wire to /registers/{registerId}/receipts/verify endpoint via service client
+    private async Task VerifyReceiptAsync()
+    {
+        _isVerifying = true;
+        _verificationResult = null;
+
+        try
+        {
+            // Placeholder: actual API call to POST /registers/{RegisterId}/receipts/verify
+            await Task.Delay(500);
+            _verificationResult = true;
+        }
+        finally
+        {
+            _isVerifying = false;
+        }
+    }
+
+    // TODO: Wire to /registers/{registerId}/transactions/{txId}/verification-bundle endpoint
+    private async Task DownloadBundleAsync()
+    {
+        _isDownloading = true;
+
+        try
+        {
+            // Placeholder: actual API call to GET /registers/{RegisterId}/transactions/{TransactionId}/verification-bundle
+            await Task.Delay(500);
+        }
+        finally
+        {
+            _isDownloading = false;
+        }
+    }
+}
