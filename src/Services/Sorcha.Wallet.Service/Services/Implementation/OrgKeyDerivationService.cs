@@ -208,8 +208,8 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             _db.Wallets.Add(wallet);
             _db.DerivedKeyRecords.Add(derivedKeyRecord);
 
-            // Link wallet to derived key record after both are tracked
-            wallet.DerivedKeyRecord = derivedKeyRecord;
+            // Link wallet to derived key record via FK
+            wallet.DerivedKeyRecordId = derivedKeyRecord.Id;
 
             await _db.SaveChangesAsync(ct);
 

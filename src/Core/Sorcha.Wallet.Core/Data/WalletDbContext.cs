@@ -228,7 +228,7 @@ public class WalletDbContext : DbContext
                 .HasMaxLength(50)
                 .HasDefaultValue(CustodyMode.Custodial);
 
-            entity.HasOne(e => e.DerivedKeyRecord)
+            entity.HasOne<DerivedKeyRecord>()
                 .WithOne(d => d.Wallet)
                 .HasForeignKey<Domain.Entities.Wallet>(e => e.DerivedKeyRecordId)
                 .OnDelete(DeleteBehavior.SetNull);

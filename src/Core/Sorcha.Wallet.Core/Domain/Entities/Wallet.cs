@@ -133,9 +133,6 @@ public class Wallet
     /// <summary>How the wallet's private key is managed (custodial, co-signed, self-custody).</summary>
     public CustodyMode CustodyMode { get; set; } = CustodyMode.Custodial;
 
-    /// <summary>Navigation to the derived key record (null for standalone wallets).</summary>
-    public DerivedKeyRecord? DerivedKeyRecord { get; set; }
-
     /// <summary>
     /// Schema version for migrations
     /// </summary>

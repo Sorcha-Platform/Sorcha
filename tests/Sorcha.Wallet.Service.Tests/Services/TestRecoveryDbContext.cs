@@ -80,5 +80,19 @@ internal class TestRecoveryDbContext : WalletDbContext
         {
             entity.HasKey(e => e.Id);
         });
+
+        // Feature 083: Configure one-to-one relationship for DerivedKeyRecord
+        modelBuilder.Entity<DerivedKeyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.KeyUsage).HasConversion<string>();
+            entity.Property(e => e.Status).HasConversion<string>();
+            entity.Property(e => e.CustodyMode).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<Sorcha.Wallet.Core.Domain.Entities.Wallet>()
+            .HasOne<DerivedKeyRecord>()
+            .WithOne(d => d.Wallet)
+            .HasForeignKey<Sorcha.Wallet.Core.Domain.Entities.Wallet>(e => e.DerivedKeyRecordId);
     }
 }
