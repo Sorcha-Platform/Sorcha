@@ -1,7 +1,7 @@
 # Sorcha Wallet Service
 
 **Version**: 1.0.0
-**Status**: 95% Complete (Azure Key Vault Deferred)
+**Status**: 98% Complete
 **Framework**: .NET 10.0
 **Architecture**: Microservice
 
@@ -208,6 +208,44 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 | GET | `/api/v1/wallets/{walletAddress}/access/{subject}/check` | Check if subject has access |
 
 For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7084/scalar`.
+
+---
+
+## Org Key Derivation (Feature 083)
+
+Organisation-level HD key derivation using Sorcha-specific BIP32 paths (`m/0x534F52'/org'/dept'/user'/usage/index`). Enables org-controlled key lifecycle without individual mnemonic management.
+
+### Custody Modes
+
+| Mode | Description | Status |
+|------|-------------|--------|
+| **Custodial** | Full key in KMS, no device share — service accounts/automation | Implemented |
+| **Co-signed** | Server share + device share — standard user operations | Schema only |
+| **Self-custody** | Full key on device, optional recovery escrow — external wallets | Schema only |
+
+### Org Key Derivation Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/wallets/org/{orgId}/master-key` | Provision org master key (one-shot, returns mnemonic once) |
+| POST | `/api/wallets/org/{orgId}/derive-key` | Derive user key (idempotent) |
+| POST | `/api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate` | Rotate key (new at next index, old decrypt-only) |
+| DELETE | `/api/wallets/org/{orgId}/keys/{derivedKeyId}` | Revoke key (wallet locked, DID event for identity keys) |
+
+### Key Usage Types
+
+| Value | Name | Purpose |
+|-------|------|---------|
+| 0 | Identity | DID identity keys |
+| 1 | VCIssuance | Verifiable credential signing |
+| 2 | Governance | Register governance operations |
+| 3 | Communications | Encrypted communications |
+| 4 | ServiceAuth | Service-to-service authentication |
+
+### Key Entities
+
+- **OrgMasterKey**: Organisation root seed, encrypted at rest via Key Protection Provider (KPP), one per org
+- **DerivedKeyRecord**: User key derived from org master, tracks derivation path, usage type, index, and status (Active/Rotated/Revoked)
 
 ---
 
@@ -911,4 +949,4 @@ Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
 
 **Last Updated**: 2026-03-03
 **Maintained By**: Sorcha Contributors
-**Status**: 95% Complete (Azure Key Vault Deferred)
+**Status**: 98% Complete
