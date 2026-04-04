@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+#pragma warning disable CS0618 // IEncryptionProvider is obsolete — EncryptionProviderBase implements it for backward compatibility
 
 using System.Collections.Concurrent;
 using System.IO;

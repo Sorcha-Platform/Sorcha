@@ -14,6 +14,7 @@ using Sorcha.Cryptography.Models;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Services.Implementation;
 using Sorcha.ServiceClients.Participant;
@@ -51,7 +52,10 @@ public static class WalletEndpoints
         walletGroup.MapPost("/", CreateWallet)
             .WithName("CreateWallet")
             .WithSummary("Create a new wallet")
-            .WithDescription("Creates a new HD wallet with the specified algorithm and returns the mnemonic phrase for backup")
+            .WithDescription("Creates a new HD wallet with the specified algorithm and returns the mnemonic phrase for backup. " +
+                "Optionally accepts a 'signingMode' parameter ('Local' or 'KmsResident') to override the server-side signing mode policy. " +
+                "When signingMode is 'KmsResident', the private key is created and held within cloud KMS and never extracted. " +
+                "The response includes 'signingMode' and 'kmsKeyId' fields indicating the wallet's key management configuration.")
             .Produces<CreateWalletResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
             .Produces(StatusCodes.Status401Unauthorized)
@@ -62,7 +66,8 @@ public static class WalletEndpoints
                       "name": "My Primary Wallet",
                       "algorithm": "ED25519",
                       "wordCount": 12,
-                      "enableHybrid": false
+                      "enableHybrid": false,
+                      "signingMode": "Local"
                     }
                     """);
                 OpenApiExamples.SetResponseExample(operation, "201", """
@@ -75,6 +80,8 @@ public static class WalletEndpoints
                         "status": "Active",
                         "owner": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
                         "tenant": "acme-corp",
+                        "signingMode": "Local",
+                        "kmsKeyId": null,
                         "createdAt": "2026-03-15T10:30:00Z",
                         "updatedAt": "2026-03-15T10:30:00Z",
                         "metadata": {}
@@ -325,8 +332,16 @@ public static class WalletEndpoints
                 return Results.Unauthorized();
             var tenant = GetCurrentTenant(context);
 
-            logger.LogInformation("Creating wallet for user {Owner} in tenant {Tenant}, Hybrid={Hybrid}",
-                owner, tenant, request.EnableHybrid);
+            // Parse optional signing mode override
+            SigningMode? signingModeOverride = null;
+            if (!string.IsNullOrWhiteSpace(request.SigningMode) &&
+                Enum.TryParse<SigningMode>(request.SigningMode, ignoreCase: true, out var parsedMode))
+            {
+                signingModeOverride = parsedMode;
+            }
+
+            logger.LogInformation("Creating wallet for user {Owner} in tenant {Tenant}, Hybrid={Hybrid}, SigningMode={SigningMode}",
+                owner, tenant, request.EnableHybrid, signingModeOverride?.ToString() ?? "policy-default");
 
             var (wallet, mnemonic) = await walletManager.CreateWalletAsync(
                 request.Name,
@@ -335,6 +350,7 @@ public static class WalletEndpoints
                 tenant,
                 request.WordCount,
                 request.Passphrase,
+                signingModeOverride,
                 cancellationToken);
 
             var response = new CreateWalletResponse
@@ -1402,6 +1418,7 @@ public static class WalletEndpoints
                 systemTenant,
                 wordCount: 24, // Strong entropy for system wallets
                 passphrase: null,
+                signingModeOverride: null,
                 cancellationToken);
 
             logger.LogInformation(

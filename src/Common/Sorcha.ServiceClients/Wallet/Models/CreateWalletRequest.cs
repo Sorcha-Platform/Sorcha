@@ -46,6 +46,13 @@ public class CreateWalletRequest
     public bool EnableHybrid { get; set; }
 
     /// <summary>
+    /// Optional signing mode override. When provided and AllowSigningModeOverride is true,
+    /// overrides the policy-determined signing mode.
+    /// Values: "Local" (default — keys stored encrypted locally) or "KmsResident" (keys held in cloud KMS).
+    /// </summary>
+    public string? SigningMode { get; set; }
+
+    /// <summary>
     /// Optional metadata tags
     /// </summary>
     public Dictionary<string, string>? Tags { get; set; }

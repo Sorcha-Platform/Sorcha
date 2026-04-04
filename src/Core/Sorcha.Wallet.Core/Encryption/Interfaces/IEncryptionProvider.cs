@@ -3,8 +3,17 @@
 namespace Sorcha.Wallet.Core.Encryption.Interfaces;
 
 /// <summary>
-/// Provider for encrypting and decrypting private keys at rest
+/// Provider for encrypting and decrypting private keys at rest.
 /// </summary>
+/// <remarks>
+/// Deprecated: Use <see cref="IKeyProtectionProvider"/> for new code.
+/// <see cref="IKeyProtectionProvider"/> implements the envelope encryption model
+/// (wrap/unwrap DEKs) and is the interface used by production KMS providers such as
+/// <c>AzureKeyVaultKeyProtectionProvider</c>. This interface is retained for
+/// backward compatibility with the health check and local development providers
+/// (<c>LocalEncryptionProvider</c>, <c>EncryptionProviderBase</c>).
+/// </remarks>
+[Obsolete("Use IKeyProtectionProvider instead. This interface will be removed in a future release.")]
 public interface IEncryptionProvider : IDisposable
 {
     /// <summary>

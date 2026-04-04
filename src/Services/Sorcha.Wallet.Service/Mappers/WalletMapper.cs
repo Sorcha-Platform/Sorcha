@@ -28,6 +28,8 @@ public static class WalletMapper
             Tenant = wallet.Tenant,
             CreatedAt = wallet.CreatedAt,
             UpdatedAt = wallet.UpdatedAt,
+            SigningMode = wallet.SigningMode.ToString(),
+            KmsKeyId = wallet.KmsKeyId,
             Metadata = new Dictionary<string, string>(wallet.Metadata)
         };
     }

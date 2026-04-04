@@ -33,7 +33,7 @@ This document now tracks **remaining work for the first production release**, or
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
 | SEC-001 | HTTPS enforcement across all services (Kestrel TLS, cert management) | P0 | 12h | 📋 | Currently HTTP in Docker; HTTPS only in Aspire dev |
-| SEC-002 | Azure Key Vault integration for Wallet Service key storage | P0 | 16h | 📋 | Keys currently stored in-memory or local EF Core |
+| SEC-002 | Azure Key Vault integration for Wallet Service key storage | P0 | 16h | ✅ | Feature 082: Multi-cloud KMS with Azure Key Vault (envelope encryption + KMS-resident signing). AWS/GCP deferred. |
 | SEC-003 | Input validation hardening (request size limits, field validation) | P0 | 12h | 📋 | Partial — some endpoints lack validation |
 | SEC-004 | Security audit (OWASP Top 10 review, penetration testing) | P0 | 24h | 📋 | Pre-release requirement |
 | SEC-005 | Secret management review (connection strings, JWT keys, API keys) | P0 | 8h | 📋 | Ensure no hardcoded secrets in deployed configs |
@@ -200,7 +200,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | Theme | Priority | Tasks | Effort | Focus |
 |-------|----------|-------|--------|-------|
-| 1. Security Hardening | P0 | 7 | 80-100h | Release blocker |
+| 1. Security Hardening | P0 | 7 (1 ✅, 6 remaining) | 80-100h | Release blocker |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 16 (3 ✅, 13 remaining) | 58-78h | Close MVD gaps — GAP-005/018/019 done (075, 077) |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
@@ -219,6 +219,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | Feature 065 | ✅ | **Register Invitations** — Private register invitation system with cryptographic envelope (ED25519 sign + X25519 encrypt via Wallet Service). 4 Minimal API endpoints (create/accept/list/revoke), Organization DID support (`did:sorcha:org:{address}`), nonce replay protection with unique DB index, rate limiting (50 pending/10 per hour), InvitationNonce + RegisterInvitationRecord entities, EF Core migration, API Gateway YARP routes, `SubscriptionType.Invited`. 19 unit tests. |
 | Feature 075 | ✅ | **FLE Completion & Crypto Progress UX** — Per-recipient SignalR events from encryption pipeline (RecipientEncryptionNotification), floating CryptoProgressPopover UI (expanded/minimised/dismissed), EncryptionOperationTracker scoped service, DevMode unit tests (initiation, toggle, plaintext path), FLE disclosure group tests (grouping, key resolution, atomic failure), actionable error feedback with retry, DisplayName resolution from blueprint participants. 35+ new tests. |
 | Feature 077 | ✅ | **Auto-Register Participant & PlatformUser Provisioning** — Auto-link wallet during creation (ParticipantService.AutoLinkWalletAsync, VerificationMethod="self-created", fire-and-forget from Wallet Service), admin user provisioning (POST /api/platform/users creates PlatformUser + UserIdentity + OrgMembership atomically), admin password reset (PUT /api/platform/users/{id}/password with NIST policy). 20+ tests. |
+| Feature 082 | ✅ | **Cloud KMS Key Management (SEC-002)** — Envelope encryption model: DEKs wrapped by `IKeyProtectionProvider`. `AzureKeyVaultKeyProtectionProvider` wraps/unwraps DEKs via AKV. `AzureSigningProvider` for KMS-resident keys (ED25519/P-256). `WalletKeyManagementOptions.SigningPolicy` controls default signing mode and migration. DEK cache with TTL + outage grace period. `Sorcha.Wallet.Providers.Azure` package. AWS/GCP providers deferred. |
 | Feature 079 | ✅ | **Trust Hardening: Receipts, Proofs & Revocation (TRUST-3/4/5)** — Transaction receipts (signed finality proofs generated at docket sealing, stored in MongoDB, pushed via SignalR), Merkle inclusion proofs (on-demand generation, positional verification, portable in Validator.Core), revocation transactions (TransactionType.Revocation, authority check via original signer or governance roster, status endpoint), verification bundles (portable offline verification with 4-check pipeline), transaction lifecycle ticks (WhatsApp-style grey/blue/double-blue delivery indicators, WalletTransaction entity with outbound/inbound tracking, Redis event bridge). 97+ tests. |
 
 ### Release Gating

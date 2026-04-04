@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Core.Domain.Enums;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 
@@ -20,6 +21,7 @@ public interface IWalletService
     /// <param name="tenant">Tenant identifier</param>
     /// <param name="wordCount">Mnemonic word count (12 or 24)</param>
     /// <param name="passphrase">Optional BIP39 passphrase</param>
+    /// <param name="signingModeOverride">Optional signing mode override from API caller. Honoured only when AllowSigningModeOverride is true.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Created wallet and the mnemonic (MUST be saved by caller)</returns>
     Task<(WalletEntity Wallet, Mnemonic Mnemonic)> CreateWalletAsync(
@@ -29,6 +31,7 @@ public interface IWalletService
         string tenant,
         int wordCount = 12,
         string? passphrase = null,
+        SigningMode? signingModeOverride = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

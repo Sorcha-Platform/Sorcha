@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+#pragma warning disable CS0618 // IEncryptionProvider is obsolete — retained for development/testing use
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Sorcha.Wallet.Core.Encryption.Interfaces;

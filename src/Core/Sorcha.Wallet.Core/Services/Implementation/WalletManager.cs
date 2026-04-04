@@ -29,6 +29,7 @@ public class WalletManager : IWalletService
     private readonly IRecoveryKeyService _recoveryKeyService;
     private readonly ISigningProvider? _signingProvider;
     private readonly SigningModePolicy _signingPolicy;
+    private readonly WalletKeyManagementOptions _keyManagementOptions;
     private readonly ILogger<WalletManager> _logger;
 
     /// <summary>
@@ -67,7 +68,8 @@ public class WalletManager : IWalletService
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
         _recoveryKeyService = recoveryKeyService ?? throw new ArgumentNullException(nameof(recoveryKeyService));
         _signingProvider = signingProvider;
-        _signingPolicy = keyManagementOptions?.Value.SigningPolicy ?? new SigningModePolicy();
+        _keyManagementOptions = keyManagementOptions?.Value ?? new WalletKeyManagementOptions();
+        _signingPolicy = _keyManagementOptions.SigningPolicy;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -79,6 +81,7 @@ public class WalletManager : IWalletService
         string tenant,
         int wordCount = 12,
         string? passphrase = null,
+        SigningMode? signingModeOverride = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(algorithm))
@@ -88,8 +91,8 @@ public class WalletManager : IWalletService
         if (string.IsNullOrWhiteSpace(tenant))
             throw new ArgumentException("Tenant cannot be empty", nameof(tenant));
 
-        // Resolve signing mode from policy
-        var signingMode = _signingPolicy.DefaultMode;
+        // Resolve signing mode: API override → path match → policy default
+        var signingMode = ResolveSigningMode(signingModeOverride);
 
         // Validate KmsResident requirements
         if (signingMode == SigningMode.KmsResident)
@@ -130,6 +133,44 @@ public class WalletManager : IWalletService
             _logger.LogError(ex, "Failed to create wallet for owner {Owner}", owner);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Resolves the effective signing mode using a priority chain:
+    /// 1. API caller override (if <see cref="WalletKeyManagementOptions.AllowSigningModeOverride"/> is true)
+    /// 2. Policy default (<see cref="WalletKeyManagementOptions.DefaultSigningMode"/>)
+    /// </summary>
+    /// <param name="apiOverride">Optional signing mode requested by the API caller.</param>
+    /// <param name="derivationPath">Optional derivation path to match against KmsResidentPaths.</param>
+    /// <returns>The resolved <see cref="SigningMode"/>.</returns>
+    internal SigningMode ResolveSigningMode(SigningMode? apiOverride, string? derivationPath = null)
+    {
+        // 1. API override (highest priority)
+        if (apiOverride.HasValue && _keyManagementOptions.AllowSigningModeOverride)
+        {
+            _logger.LogDebug("Signing mode resolved from API override: {Mode}", apiOverride.Value);
+            return apiOverride.Value;
+        }
+
+        // 2. Derivation path match against KmsResidentPaths
+        if (!string.IsNullOrWhiteSpace(derivationPath) && _keyManagementOptions.KmsResidentPaths.Count > 0)
+        {
+            foreach (var kmsPath in _keyManagementOptions.KmsResidentPaths)
+            {
+                if (derivationPath.Equals(kmsPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogDebug(
+                        "Signing mode resolved from KmsResidentPaths match ({Path}): KmsResident",
+                        derivationPath);
+                    return SigningMode.KmsResident;
+                }
+            }
+        }
+
+        // 3. Policy default
+        var defaultMode = _keyManagementOptions.DefaultSigningMode;
+        _logger.LogDebug("Signing mode resolved from policy default: {Mode}", defaultMode);
+        return defaultMode;
     }
 
     /// <summary>

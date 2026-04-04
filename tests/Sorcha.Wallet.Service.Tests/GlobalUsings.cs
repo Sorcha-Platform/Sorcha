@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // IEncryptionProvider is obsolete — tests cover the backward-compatible providers
 global using System;
 global using System.Collections.Generic;
 global using System.IO;

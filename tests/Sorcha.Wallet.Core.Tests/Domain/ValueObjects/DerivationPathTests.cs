@@ -28,7 +28,7 @@ public class DerivationPathTests
     [Fact]
     public void Constructor_NullPath_ThrowsArgumentException()
     {
-        var act = () => new DerivationPath(null!);
+        var act = () => new DerivationPath((string)null!);
 
         act.Should().Throw<ArgumentException>()
             .WithParameterName("path");

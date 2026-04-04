@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Sorcha.Wallet.Core.Domain.Enums;
+
 namespace Sorcha.Wallet.Core.Encryption.Configuration;
 
 /// <summary>
@@ -45,4 +47,21 @@ public sealed class WalletKeyManagementOptions
     /// Signing mode policy configuration.
     /// </summary>
     public SigningModePolicy SigningPolicy { get; set; } = new();
+
+    /// <summary>
+    /// Default signing mode for newly created wallets when no override is provided.
+    /// </summary>
+    public SigningMode DefaultSigningMode { get; set; } = SigningMode.Local;
+
+    /// <summary>
+    /// BIP44 derivation paths that should always use KMS-resident signing.
+    /// Paths are matched as prefixes (e.g., "m/44'/0'/0'/0/100" matches exact path).
+    /// </summary>
+    public List<string> KmsResidentPaths { get; set; } = new();
+
+    /// <summary>
+    /// Whether API callers may override the signing mode on wallet creation requests.
+    /// When false, the API-provided signing mode is ignored and policy defaults apply.
+    /// </summary>
+    public bool AllowSigningModeOverride { get; set; } = true;
 }
