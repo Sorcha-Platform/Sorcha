@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.7
-**Last Updated:** 2026-03-31
+**Version:** 7.8
+**Last Updated:** 2026-04-04
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -196,18 +196,39 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
+## Theme 8: Mobile App Prerequisites — P1
+
+> **Priority:** P1 (Enables SorchaMobile project)
+> **Estimated Effort:** 60-80h
+> **Goal:** Make Sorcha packages consumable by .NET MAUI mobile app, add device-aware capabilities
+> **Related:** SorchaMobile project (C:\projects\SorchaMobile — separate repo)
+
+| # | Task | Priority | Effort | Status | Notes |
+|---|------|----------|--------|--------|-------|
+| MOB-001 | Multi-target Tier 1 packages to net10.0;net8.0 | P1 | 8h | 📋 | Cryptography, Blueprint.Models, Register.Models, Tenant.Models, TransactionHandler, Validator.Core, Blueprint.Engine, ServiceClients, Blueprint.Fluent. MAUI targets net8.0/net9.0. |
+| MOB-002 | Extract Sorcha.Wallet.Portable from Wallet.Core | P1 | 16h | 📋 | HD derivation, mnemonic handling, key generation without EF Core/PostgreSQL dependency. Mobile wallet needs this for offline key management. |
+| MOB-003 | NuGet packaging pipeline (GitHub Packages or private feed) | P1 | 8h | 📋 | CI/CD to publish internal NuGet packages so SorchaMobile can consume them as packages, not project references. |
+| MOB-004 | ServiceClients REST-only variant | P1 | 4h | 📋 | Strip or make optional the gRPC dependencies (Grpc.Net.Client, protobuf stubs) for mobile consumption. Mobile talks REST via API Gateway only. |
+| MOB-005 | Blueprint schema: device input field types | P2 | 8h | 📋 | New field types in Blueprint.Models for camera/photo, GPS location, document scan. Shared between web and mobile — web renders file upload fallbacks, mobile bridges to native device APIs. |
+| MOB-006 | Blazor UI form controls for device input fields | P2 | 12h | 📋 | MudBlazor components in Sorcha.UI.Core for MOB-005 field types. On web: file upload / manual entry. On Blazor Hybrid (mobile): bridge to MAUI native APIs (camera, GPS). |
+| MOB-007 | Tenant Service: org branding configuration | P1 | 8h | 📋 | Brand colours, logo URL, font family, display name on Organization entity. GET endpoint to fetch branding by org ID. Supports runtime white-labelling in mobile app. |
+| MOB-008 | VC exchange protocol definition (QR / BLE / NFC) | P2 | 12h | 📋 | Define shared models and protocol for credential presentation/handover between devices. QR code (MVP), BLE proximity, NFC tap-to-verify. Protocol defined in shared models, implemented per-platform. |
+
+---
+
 ## Summary
 
 | Theme | Priority | Tasks | Effort | Focus |
 |-------|----------|-------|--------|-------|
-| 1. Security Hardening | P0 | 7 (1 ✅, 6 remaining) | 80-100h | Release blocker |
+| 1. Security Hardening | P0 | 7 (2 ✅, 5 remaining) | 80-100h | Release blocker |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 16 (3 ✅, 13 remaining) | 58-78h | Close MVD gaps — GAP-005/018/019 done (075, 077) |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
-| **Total** | | **64** (9 ✅, 55 remaining) | **538-778h** | |
+| 8. Mobile App Prerequisites | P1 | 8 (0 ✅, 8 remaining) | 60-80h | Package portability, device inputs, white-label branding |
+| **Total** | | **72** (11 ✅, 61 remaining) | **598-858h** | |
 
 ### Completed Features (not in themes above)
 
@@ -234,6 +255,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.7
-**Last Updated:** 2026-03-31
+**Version:** 7.8
+**Last Updated:** 2026-04-04
 **Document Owner:** Sorcha Architecture Team
