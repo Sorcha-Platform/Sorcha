@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Wallet Org Key Derivation API
+  version: 1.0.0
+  description: Organisation-level HD key derivation endpoints for the Wallet Service
+
+paths:
+  /api/wallets/org/{orgId}/master-key:
+    post:
+      operationId: ProvisionOrgMasterKey
+      summary: Provision organisation master key
+      description: >
+        Generates a new BIP39 mnemonic, derives the master seed, encrypts it
+        using the configured protection provider, and stores the OrgMasterKey record.
+        Returns the mnemonic exactly once — it is never stored or retrievable again.
+        Fails if the organisation already has an active master key.
+      tags: [Org Key Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Organisation ID
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                algorithm:
+                  type: string
+                  default: ED25519
+                  enum: [ED25519]
+                  description: Cryptographic algorithm for derived keys
+      responses:
+        '201':
+          description: Master key provisioned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organizationId, masterPublicKey, mnemonic, algorithm]
+                properties:
+                  organizationId:
+                    type: string
+                    format: uuid
+                  masterPublicKey:
+                    type: string
+                    description: Extended public key (xpub) for verification
+                  mnemonic:
+                    type: string
+                    description: BIP39 mnemonic words (24 words). Shown ONCE — not stored.
+                  algorithm:
+                    type: string
+        '409':
+          description: Organisation already has an active master key
+        '403':
+          description: Caller is not an organisation administrator
+
+  /api/wallets/org/{orgId}/derive-key:
+    post:
+      operationId: DeriveUserKey
+      summary: Derive a user key from org master
+      description: >
+        Derives a key at the specified path from the org master seed.
+        Creates a Wallet entity and DerivedKeyRecord. Idempotent — returns
+        existing wallet if the derivation path has already been used.
+      tags: [Org Key Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, keyUsage]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: Target user ID
+                departmentId:
+                  type: integer
+                  format: uint32
+                  default: 0
+                  description: Department level in derivation path (0 = flat org)
+                keyUsage:
+                  type: string
+                  enum: [Identity, VCIssuance, Governance, Communications, ServiceAuth]
+                  description: Purpose of the derived key
+      responses:
+        '201':
+          description: Key derived successfully (new)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedKeyResponse'
+        '200':
+          description: Key already existed (idempotent return)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedKeyResponse'
+        '404':
+          description: Organisation has no provisioned master key
+        '403':
+          description: Caller lacks administrator or service token
+
+  /api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate:
+    post:
+      operationId: RotateKey
+      summary: Rotate a derived key
+      description: >
+        Derives a new key at the next index (N+1), marks the current key as
+        Rotated. The rotated key can still decrypt but cannot sign. The new
+        key becomes the active signing key.
+      tags: [Org Key Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: derivedKeyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the DerivedKeyRecord to rotate
+      responses:
+        '200':
+          description: Key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedKeyResponse'
+        '404':
+          description: Derived key record not found
+        '400':
+          description: Key is already rotated or revoked
+        '403':
+          description: Caller is not an organisation administrator
+
+  /api/wallets/org/{orgId}/keys/{derivedKeyId}:
+    delete:
+      operationId: RevokeKey
+      summary: Revoke a derived key
+      description: >
+        Permanently revokes a derived key. The associated wallet is locked.
+        For identity keys (usage=0), a DID revocation event is published.
+        This action cannot be undone.
+      tags: [Org Key Management]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: derivedKeyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Key revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  derivedKeyId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [Revoked]
+                  revokedAt:
+                    type: string
+                    format: date-time
+                  walletLocked:
+                    type: boolean
+                  didRevocationPublished:
+                    type: boolean
+                    description: True if this was an identity key and DID revocation was published
+        '404':
+          description: Derived key record not found
+        '400':
+          description: Key is already revoked
+        '403':
+          description: Caller is not an organisation administrator
+
+components:
+  schemas:
+    DerivedKeyResponse:
+      type: object
+      required: [derivedKeyId, walletAddress, derivationPath, keyUsage, keyIndex, status]
+      properties:
+        derivedKeyId:
+          type: string
+          format: uuid
+        walletAddress:
+          type: string
+          description: Address of the derived wallet
+        derivationPath:
+          type: string
+          description: "Full BIP32 path (e.g., m/0x534F52'/123'/0'/456'/0/0)"
+        keyUsage:
+          type: string
+          enum: [Identity, VCIssuance, Governance, Communications, ServiceAuth]
+        keyIndex:
+          type: integer
+          format: uint32
+        status:
+          type: string
+          enum: [Active, Rotated, Revoked]
+        custodyMode:
+          type: string
+          enum: [Custodial, CoSigned, SelfCustody]
+        createdAt:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
