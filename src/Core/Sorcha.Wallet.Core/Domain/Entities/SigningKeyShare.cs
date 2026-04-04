@@ -43,7 +43,8 @@ public class SigningKeyShare
     public required string ProtectionKeyId { get; set; }
 
     /// <summary>
-    /// Lifecycle status of this key share (Active or Revoked).
+    /// Share lifecycle status. Reuses ThresholdKeyGroupStatus (Active/Revoked values)
+    /// until a dedicated SigningKeyShareStatus is warranted by FROST implementation.
     /// </summary>
     public ThresholdKeyGroupStatus Status { get; set; } = ThresholdKeyGroupStatus.Active;
 

@@ -64,7 +64,7 @@ public class SoftwareKeyProtectionProvider : IOrgKeyProtectionProvider
     {
         ArgumentNullException.ThrowIfNull(seed);
 
-        _logger.LogInformation("Encrypting org master seed ({SeedLength} bytes) with software provider", seed.Length);
+        _logger.LogDebug("Encrypting org master seed ({SeedLength} bytes) with software provider", seed.Length);
 
         var nonce = new byte[NonceSize];
         RandomNumberGenerator.Fill(nonce);
@@ -81,7 +81,7 @@ public class SoftwareKeyProtectionProvider : IOrgKeyProtectionProvider
         ciphertext.CopyTo(result, NonceSize);
         tag.CopyTo(result, NonceSize + ciphertext.Length);
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "Org master seed encrypted successfully ({OutputLength} bytes, KeyId: {KeyId})",
             result.Length, DefaultKeyId);
 
@@ -105,7 +105,7 @@ public class SoftwareKeyProtectionProvider : IOrgKeyProtectionProvider
                 nameof(encryptedSeed));
         }
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "Decrypting org master seed ({EncryptedLength} bytes, KeyId: {KeyId}) with software provider",
             encryptedSeed.Length, keyId);
 
@@ -119,7 +119,7 @@ public class SoftwareKeyProtectionProvider : IOrgKeyProtectionProvider
         using var aes = new AesGcm(_encryptionKey, TagSize);
         aes.Decrypt(nonce, ciphertext, tag, plaintext);
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "Org master seed decrypted successfully ({PlaintextLength} bytes)",
             plaintext.Length);
 

@@ -15,11 +15,12 @@ public interface IOrgKeyDerivationService
     /// Provision org master key. Returns mnemonic ONCE for admin backup.
     /// </summary>
     /// <param name="organizationId">Organisation identifier</param>
+    /// <param name="createdBy">User ID of the admin provisioning the key</param>
     /// <param name="algorithm">Cryptographic algorithm (default ED25519)</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Provisioning result including the one-time mnemonic</returns>
     Task<OrgMasterKeyProvisionResult> ProvisionMasterKeyAsync(
-        string organizationId, string algorithm = "ED25519", CancellationToken ct = default);
+        string organizationId, string createdBy, string algorithm = "ED25519", CancellationToken ct = default);
 
     /// <summary>
     /// Derive user key at path. Idempotent — returns existing if path already derived.
@@ -36,17 +37,19 @@ public interface IOrgKeyDerivationService
     /// <summary>
     /// Rotate key — derives at next index, marks old as Rotated.
     /// </summary>
+    /// <param name="organizationId">Organisation identifier for ownership validation</param>
     /// <param name="derivedKeyRecordId">Existing derived key record identifier</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>New derived key result replacing the rotated key</returns>
-    Task<DerivedKeyResult> RotateKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default);
+    Task<DerivedKeyResult> RotateKeyAsync(string organizationId, Guid derivedKeyRecordId, CancellationToken ct = default);
 
     /// <summary>
     /// Revoke key — marks as Revoked, locks wallet.
     /// </summary>
+    /// <param name="organizationId">Organisation identifier for ownership validation</param>
     /// <param name="derivedKeyRecordId">Derived key record identifier to revoke</param>
     /// <param name="ct">Cancellation token</param>
-    Task RevokeKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default);
+    Task RevokeKeyAsync(string organizationId, Guid derivedKeyRecordId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -73,6 +76,7 @@ public record OrgMasterKeyProvisionResult(
 /// <param name="Status">Key status (Active, Rotated, Revoked)</param>
 /// <param name="CustodyMode">Custody mode (Platform, Hybrid)</param>
 /// <param name="CreatedAt">Timestamp when the key was created</param>
+/// <param name="IsNewlyCreated">Whether the key was newly created (true) or returned from idempotent lookup (false)</param>
 public record DerivedKeyResult(
     Guid DerivedKeyId,
     string WalletAddress,
@@ -81,4 +85,5 @@ public record DerivedKeyResult(
     uint KeyIndex,
     string Status,
     string CustodyMode,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    bool IsNewlyCreated = true);

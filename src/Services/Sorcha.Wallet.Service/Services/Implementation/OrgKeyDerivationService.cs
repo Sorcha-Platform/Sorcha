@@ -50,9 +50,10 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
 
     /// <inheritdoc />
     public async Task<OrgMasterKeyProvisionResult> ProvisionMasterKeyAsync(
-        string organizationId, string algorithm = "ED25519", CancellationToken ct = default)
+        string organizationId, string createdBy, string algorithm = "ED25519", CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(organizationId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(createdBy);
 
         var exists = await _db.OrgMasterKeys.AnyAsync(m => m.OrganizationId == organizationId, ct);
         if (exists)
@@ -80,7 +81,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             Algorithm = algorithm,
             MasterPublicKey = masterPublicKey,
             Status = OrgMasterKeyStatus.Active,
-            CreatedBy = organizationId // Admin provisioning on behalf of org
+            CreatedBy = createdBy
         };
 
         _db.OrgMasterKeys.Add(orgMasterKey);
@@ -130,12 +131,15 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
                 existingRecord.KeyIndex,
                 existingRecord.Status.ToString(),
                 existingRecord.CustodyMode.ToString(),
-                existingRecord.CreatedAt);
+                existingRecord.CreatedAt,
+                IsNewlyCreated: false);
         }
 
         // Decrypt master seed
         var seed = await _protectionProvider.DecryptSeedAsync(masterKey.EncryptedSeed, masterKey.ProtectionKeyId, ct);
 
+        byte[]? childPrivateKeyBytes = null;
+        byte[]? privateKeyBytes = null;
         try
         {
             // Derive child key using NBitcoin BIP32
@@ -144,7 +148,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             var childExtKey = masterExtKey.Derive(keyPath);
 
             // Extract the 32-byte private key seed from the derived key for ED25519 generation
-            var childPrivateKeyBytes = childExtKey.PrivateKey.ToBytes();
+            childPrivateKeyBytes = childExtKey.PrivateKey.ToBytes();
 
             // Generate ED25519 key pair from the derived seed using Sorcha crypto module
             var keySetResult = await _cryptoModule.GenerateKeySetAsync(
@@ -158,7 +162,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
 
             var keySet = keySetResult.Value;
             var publicKeyBytes = keySet.PublicKey.Key!;
-            var privateKeyBytes = keySet.PrivateKey.Key!;
+            privateKeyBytes = keySet.PrivateKey.Key!;
 
             // Generate wallet address from public key
             var walletAddress = _walletUtilities.PublicKeyToWallet(
@@ -229,14 +233,18 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
         }
         finally
         {
-            // Clear sensitive seed material
+            // Clear sensitive key material
             Array.Clear(seed);
+            if (childPrivateKeyBytes is not null) Array.Clear(childPrivateKeyBytes);
+            if (privateKeyBytes is not null) Array.Clear(privateKeyBytes);
         }
     }
 
     /// <inheritdoc />
-    public async Task<DerivedKeyResult> RotateKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
+    public async Task<DerivedKeyResult> RotateKeyAsync(string organizationId, Guid derivedKeyRecordId, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(organizationId);
+
         // Find the existing derived key record
         var oldRecord = await _db.DerivedKeyRecords
             .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, ct);
@@ -244,6 +252,11 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
         if (oldRecord is null)
         {
             throw new KeyNotFoundException($"Derived key record {derivedKeyRecordId} not found");
+        }
+
+        if (oldRecord.OrganizationId != organizationId)
+        {
+            throw new UnauthorizedAccessException("Key does not belong to this organisation");
         }
 
         if (oldRecord.Status != DerivedKeyStatus.Active)
@@ -274,6 +287,8 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
         // Decrypt master seed
         var seed = await _protectionProvider.DecryptSeedAsync(masterKey.EncryptedSeed, masterKey.ProtectionKeyId, ct);
 
+        byte[]? childPrivateKeyBytes = null;
+        byte[]? privateKeyBytes = null;
         try
         {
             // Derive child key using NBitcoin BIP32
@@ -282,7 +297,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             var childExtKey = masterExtKey.Derive(keyPath);
 
             // Extract private key bytes for ED25519 generation
-            var childPrivateKeyBytes = childExtKey.PrivateKey.ToBytes();
+            childPrivateKeyBytes = childExtKey.PrivateKey.ToBytes();
 
             // Generate ED25519 key pair from the derived seed
             var keySetResult = await _cryptoModule.GenerateKeySetAsync(
@@ -296,7 +311,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
 
             var keySet = keySetResult.Value;
             var publicKeyBytes = keySet.PublicKey.Key!;
-            var privateKeyBytes = keySet.PrivateKey.Key!;
+            privateKeyBytes = keySet.PrivateKey.Key!;
 
             // Generate wallet address from public key
             var walletAddress = _walletUtilities.PublicKeyToWallet(
@@ -370,14 +385,18 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
         }
         finally
         {
-            // Clear sensitive seed material
+            // Clear sensitive key material
             Array.Clear(seed);
+            if (childPrivateKeyBytes is not null) Array.Clear(childPrivateKeyBytes);
+            if (privateKeyBytes is not null) Array.Clear(privateKeyBytes);
         }
     }
 
     /// <inheritdoc />
-    public async Task RevokeKeyAsync(Guid derivedKeyRecordId, CancellationToken ct = default)
+    public async Task RevokeKeyAsync(string organizationId, Guid derivedKeyRecordId, CancellationToken ct = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(organizationId);
+
         // Find the derived key record
         var record = await _db.DerivedKeyRecords
             .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, ct);
@@ -385,6 +404,11 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
         if (record is null)
         {
             throw new KeyNotFoundException($"Derived key record {derivedKeyRecordId} not found");
+        }
+
+        if (record.OrganizationId != organizationId)
+        {
+            throw new UnauthorizedAccessException("Key does not belong to this organisation");
         }
 
         if (record.Status == DerivedKeyStatus.Revoked)

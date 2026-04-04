@@ -43,7 +43,7 @@ public static class OrgKeyEndpoints
                 "Derives a child key for a specific user, department, and usage purpose using " +
                 "BIP32 hierarchical deterministic derivation. Idempotent: returns existing key " +
                 "if the same derivation path has already been derived.")
-            .RequireAuthorization()
+            .RequireAuthorization("RequireAdministrator")
             .Produces<DerivedKeyResult>(StatusCodes.Status201Created)
             .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
             .ProducesValidationProblem();
@@ -58,6 +58,7 @@ public static class OrgKeyEndpoints
             .RequireAuthorization("RequireAdministrator")
             .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
         // DELETE /api/wallets/org/{orgId}/keys/{derivedKeyId} - Revoke a derived key
@@ -70,6 +71,7 @@ public static class OrgKeyEndpoints
             .RequireAuthorization("RequireAdministrator")
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
         return app;
@@ -81,11 +83,24 @@ public static class OrgKeyEndpoints
     private static async Task<IResult> ProvisionMasterKey(
         string orgId,
         IOrgKeyDerivationService orgKeyService,
+        HttpContext httpContext,
         CancellationToken ct)
     {
+        if (!Guid.TryParse(orgId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["orgId"] = ["orgId must be a valid GUID"]
+            });
+        }
+
+        var createdBy = httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? "unknown";
+
         try
         {
-            var result = await orgKeyService.ProvisionMasterKeyAsync(orgId, "ED25519", ct);
+            var result = await orgKeyService.ProvisionMasterKeyAsync(orgId, createdBy, "ED25519", ct);
             return Results.Created($"/api/wallets/org/{orgId}/master-key", result);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already has a provisioned master key"))
@@ -103,11 +118,27 @@ public static class OrgKeyEndpoints
         IOrgKeyDerivationService orgKeyService,
         CancellationToken ct)
     {
+        if (!Guid.TryParse(orgId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["orgId"] = ["orgId must be a valid GUID"]
+            });
+        }
+
         if (string.IsNullOrWhiteSpace(request.UserId))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["userId"] = ["userId is required"]
+            });
+        }
+
+        if (!Guid.TryParse(request.UserId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["userId"] = ["userId must be a valid GUID"]
             });
         }
 
@@ -133,10 +164,9 @@ public static class OrgKeyEndpoints
             var result = await orgKeyService.DeriveUserKeyAsync(
                 orgId, request.UserId, request.DepartmentId, usage, ct);
 
-            // Return 200 if the key already existed (idempotent), 201 if newly created
-            // We can tell by checking if CreatedAt is recent (within last few seconds)
-            // For simplicity, always return 201 — the service is idempotent either way
-            return Results.Created($"/api/wallets/org/{orgId}/derive-key", result);
+            return result.IsNewlyCreated
+                ? Results.Created($"/api/wallets/org/{orgId}/derive-key", result)
+                : Results.Ok(result);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("No active master key"))
         {
@@ -155,12 +185,16 @@ public static class OrgKeyEndpoints
     {
         try
         {
-            var result = await orgKeyService.RotateKeyAsync(derivedKeyId, ct);
+            var result = await orgKeyService.RotateKeyAsync(orgId, derivedKeyId, ct);
             return Results.Ok(result);
         }
         catch (KeyNotFoundException)
         {
             return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot rotate key"))
         {
@@ -180,7 +214,7 @@ public static class OrgKeyEndpoints
     {
         try
         {
-            await orgKeyService.RevokeKeyAsync(derivedKeyId, ct);
+            await orgKeyService.RevokeKeyAsync(orgId, derivedKeyId, ct);
             return Results.Ok(new
             {
                 derivedKeyId,
@@ -193,6 +227,10 @@ public static class OrgKeyEndpoints
         catch (KeyNotFoundException)
         {
             return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already revoked"))
         {

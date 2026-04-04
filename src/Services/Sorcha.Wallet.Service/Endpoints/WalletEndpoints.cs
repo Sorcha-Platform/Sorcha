@@ -668,34 +668,43 @@ public static class WalletEndpoints
                 }
             }
 
-            // Check if this wallet is derived from an org key and verify key status
-            var derivedKeyRecord = await dbContext.DerivedKeyRecords
-                .FirstOrDefaultAsync(d => d.WalletAddress == address, cancellationToken);
+            // Only check derived key status if this is an org-derived wallet.
+            // Use DerivedKeyRecordId FK to avoid a full table scan for standalone wallets.
+            var derivedKeyRecordId = await dbContext.Wallets
+                .Where(w => w.Address == address)
+                .Select(w => w.DerivedKeyRecordId)
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (derivedKeyRecord is not null)
+            if (derivedKeyRecordId is not null)
             {
-                if (derivedKeyRecord.Status == Sorcha.Wallet.Core.Domain.Enums.DerivedKeyStatus.Rotated)
-                {
-                    return Results.Json(
-                        new ProblemDetails
-                        {
-                            Title = "Key Rotated",
-                            Detail = "Key has been rotated. Use the current active key.",
-                            Status = StatusCodes.Status403Forbidden
-                        },
-                        statusCode: StatusCodes.Status403Forbidden);
-                }
+                var derivedKeyRecord = await dbContext.DerivedKeyRecords
+                    .FirstOrDefaultAsync(d => d.Id == derivedKeyRecordId, cancellationToken);
 
-                if (derivedKeyRecord.Status == Sorcha.Wallet.Core.Domain.Enums.DerivedKeyStatus.Revoked)
+                if (derivedKeyRecord is not null)
                 {
-                    return Results.Json(
-                        new ProblemDetails
-                        {
-                            Title = "Key Revoked",
-                            Detail = "Key has been revoked.",
-                            Status = StatusCodes.Status403Forbidden
-                        },
-                        statusCode: StatusCodes.Status403Forbidden);
+                    if (derivedKeyRecord.Status == Sorcha.Wallet.Core.Domain.Enums.DerivedKeyStatus.Rotated)
+                    {
+                        return Results.Json(
+                            new ProblemDetails
+                            {
+                                Title = "Key Rotated",
+                                Detail = "Key has been rotated. Use the current active key.",
+                                Status = StatusCodes.Status403Forbidden
+                            },
+                            statusCode: StatusCodes.Status403Forbidden);
+                    }
+
+                    if (derivedKeyRecord.Status == Sorcha.Wallet.Core.Domain.Enums.DerivedKeyStatus.Revoked)
+                    {
+                        return Results.Json(
+                            new ProblemDetails
+                            {
+                                Title = "Key Revoked",
+                                Detail = "Key has been revoked.",
+                                Status = StatusCodes.Status403Forbidden
+                            },
+                            statusCode: StatusCodes.Status403Forbidden);
+                    }
                 }
             }
 

@@ -104,7 +104,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
             .Returns(() => $"wallet-rotated-{++callCount}");
 
         // Act
-        var result = await _sut.RotateKeyAsync(derivedKey.Id);
+        var result = await _sut.RotateKeyAsync(OrgId, derivedKey.Id);
 
         // Assert
         result.Should().NotBeNull();
@@ -132,7 +132,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var act = () => _sut.RotateKeyAsync(derivedKey.Id);
+        var act = () => _sut.RotateKeyAsync(OrgId, derivedKey.Id);
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -143,7 +143,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
     public async Task RotateKeyAsync_NonExistentKey_ThrowsKeyNotFound()
     {
         // Act
-        var act = () => _sut.RotateKeyAsync(Guid.NewGuid());
+        var act = () => _sut.RotateKeyAsync(OrgId, Guid.NewGuid());
 
         // Assert
         await act.Should().ThrowAsync<KeyNotFoundException>();
@@ -160,7 +160,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
         var (_, derivedKey) = await SeedActiveKey();
 
         // Act
-        await _sut.RevokeKeyAsync(derivedKey.Id);
+        await _sut.RevokeKeyAsync(OrgId, derivedKey.Id);
 
         // Assert
         var record = await _dbContext.DerivedKeyRecords.FindAsync(derivedKey.Id);
@@ -182,7 +182,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // Act
-        var act = () => _sut.RevokeKeyAsync(derivedKey.Id);
+        var act = () => _sut.RevokeKeyAsync(OrgId, derivedKey.Id);
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -196,7 +196,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
         var (_, derivedKey) = await SeedActiveKey(KeyUsage.Identity);
 
         // Act
-        await _sut.RevokeKeyAsync(derivedKey.Id);
+        await _sut.RevokeKeyAsync(OrgId, derivedKey.Id);
 
         // Assert - verify logger was called with DID revocation message
         _loggerMock.Verify(
