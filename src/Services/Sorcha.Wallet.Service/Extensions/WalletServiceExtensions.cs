@@ -13,6 +13,8 @@ using Sorcha.Wallet.Core.Data;
 using Sorcha.Wallet.Core.Encryption.Configuration;
 using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Encryption.Providers;
+using Sorcha.Wallet.Providers.Azure;
+using Sorcha.Wallet.Providers.Azure.Extensions;
 using Sorcha.Wallet.Core.Events.Interfaces;
 using Sorcha.Wallet.Core.Events.Publishers;
 using Sorcha.Wallet.Core.Repositories;
@@ -214,36 +216,49 @@ public static class WalletServiceExtensions
         services.Configure<WalletKeyManagementOptions>(
             configuration.GetSection(WalletKeyManagementOptions.SectionName));
 
-        // Register encryption provider factory
-        services.AddSingleton<IEncryptionProvider>(serviceProvider =>
+        // Determine provider type from configuration
+        var providerType = configuration
+            .GetSection(EncryptionProviderOptions.SectionName)["Type"]?
+            .ToLowerInvariant() ?? "local";
+
+        if (providerType == "azurekeyvault")
         {
-            var options = serviceProvider.GetRequiredService<IOptions<EncryptionProviderOptions>>().Value;
-            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-
-            return options.Type.ToLowerInvariant() switch
-            {
-                "windowsdpapi" => CreateWindowsDpapiProvider(options, loggerFactory),
-                "linuxsecretservice" => CreateLinuxSecretServiceProvider(options, loggerFactory),
-                "local" => CreateLocalProvider(options, loggerFactory),
-                _ => CreateLocalProviderWithWarning(options, loggerFactory)
-            };
-        });
-
-        // Register IKeyProtectionProvider — resolves to the same instance as IEncryptionProvider
-        // since all providers now implement both interfaces.
-        services.AddSingleton<IKeyProtectionProvider>(serviceProvider =>
+            // Azure Key Vault: dedicated providers for key protection and signing.
+            // IEncryptionProvider is not used — envelope encryption goes through IKeyProtectionProvider.
+            services.AddAzureKeyVaultProvider(configuration);
+        }
+        else
         {
-            var encryptionProvider = serviceProvider.GetRequiredService<IEncryptionProvider>();
-            if (encryptionProvider is IKeyProtectionProvider keyProtectionProvider)
+            // Local/DPAPI/Linux providers implement both IEncryptionProvider and IKeyProtectionProvider.
+            services.AddSingleton<IEncryptionProvider>(serviceProvider =>
             {
-                return keyProtectionProvider;
-            }
+                var options = serviceProvider.GetRequiredService<IOptions<EncryptionProviderOptions>>().Value;
+                var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
 
-            // Should never happen — all built-in providers implement IKeyProtectionProvider
-            throw new InvalidOperationException(
-                $"The registered IEncryptionProvider ({encryptionProvider.GetType().Name}) does not implement IKeyProtectionProvider. " +
-                "All encryption providers must implement IKeyProtectionProvider for Phase 2 key management.");
-        });
+                return options.Type.ToLowerInvariant() switch
+                {
+                    "windowsdpapi" => CreateWindowsDpapiProvider(options, loggerFactory),
+                    "linuxsecretservice" => CreateLinuxSecretServiceProvider(options, loggerFactory),
+                    "local" => CreateLocalProvider(options, loggerFactory),
+                    _ => CreateLocalProviderWithWarning(options, loggerFactory)
+                };
+            });
+
+            // Register IKeyProtectionProvider — resolves to the same instance as IEncryptionProvider
+            // since all local providers implement both interfaces.
+            services.AddSingleton<IKeyProtectionProvider>(serviceProvider =>
+            {
+                var encryptionProvider = serviceProvider.GetRequiredService<IEncryptionProvider>();
+                if (encryptionProvider is IKeyProtectionProvider keyProtectionProvider)
+                {
+                    return keyProtectionProvider;
+                }
+
+                throw new InvalidOperationException(
+                    $"The registered IEncryptionProvider ({encryptionProvider.GetType().Name}) does not implement IKeyProtectionProvider. " +
+                    "All encryption providers must implement IKeyProtectionProvider for Phase 2 key management.");
+            });
+        }
 
         return services;
     }
