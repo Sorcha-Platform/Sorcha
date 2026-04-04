@@ -205,10 +205,10 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|
-| MOB-001 | Multi-target Tier 1 packages to net10.0;net8.0 | P1 | 8h | 📋 | Cryptography, Blueprint.Models, Register.Models, Tenant.Models, TransactionHandler, Validator.Core, Blueprint.Engine, ServiceClients, Blueprint.Fluent. MAUI targets net8.0/net9.0. |
-| MOB-002 | Extract Sorcha.Wallet.Portable from Wallet.Core | P1 | 16h | 📋 | HD derivation, mnemonic handling, key generation without EF Core/PostgreSQL dependency. Mobile wallet needs this for offline key management. |
-| MOB-003 | NuGet packaging pipeline (GitHub Packages or private feed) | P1 | 8h | 📋 | CI/CD to publish internal NuGet packages so SorchaMobile can consume them as packages, not project references. |
-| MOB-004 | ServiceClients REST-only variant | P1 | 4h | 📋 | Strip or make optional the gRPC dependencies (Grpc.Net.Client, protobuf stubs) for mobile consumption. Mobile talks REST via API Gateway only. |
+| MOB-001 | Multi-target Tier 1 packages to net10.0;net8.0 | P1 | 8h | ❌ | Eliminated -- SorchaMobile confirmed .NET 10, no multi-targeting needed. |
+| MOB-002 | Extract Sorcha.Wallet.Portable from Wallet.Core | P1 | 16h | ✅ | Feature 084 -- Sorcha.Wallet.Portable extracted with entities, enums, derivation. |
+| MOB-003 | NuGet packaging pipeline (GitHub Packages or private feed) | P1 | 8h | ✅ | Feature 084 -- GitHub Actions workflow for 9 NuGet packages. |
+| MOB-004 | ServiceClients REST-only variant | P1 | 4h | ✅ | Feature 084 -- Sorcha.ServiceClients.Http with HTTP-only clients + SignalR. |
 | MOB-005 | Blueprint schema: device input field types | P2 | 8h | 📋 | New field types in Blueprint.Models for camera/photo, GPS location, document scan. Shared between web and mobile — web renders file upload fallbacks, mobile bridges to native device APIs. |
 | MOB-006 | Blazor UI form controls for device input fields | P2 | 12h | 📋 | MudBlazor components in Sorcha.UI.Core for MOB-005 field types. On web: file upload / manual entry. On Blazor Hybrid (mobile): bridge to MAUI native APIs (camera, GPS). |
 | MOB-007 | Tenant Service: org branding configuration | P1 | 8h | 📋 | Brand colours, logo URL, font family, display name on Organization entity. GET endpoint to fetch branding by org ID. Supports runtime white-labelling in mobile app. |
@@ -227,8 +227,8 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
-| 8. Mobile App Prerequisites | P1 | 8 (0 ✅, 8 remaining) | 60-80h | Package portability, device inputs, white-label branding |
-| **Total** | | **72** (11 ✅, 61 remaining) | **598-858h** | |
+| 8. Mobile App Prerequisites | P1 | 8 (3 ✅, 1 ❌, 4 remaining) | 60-80h | Package portability, device inputs, white-label branding — Feature 084 done (MOB-002/003/004), MOB-001 eliminated |
+| **Total** | | **72** (14 ✅, 1 ❌, 57 remaining) | **598-858h** | |
 
 ### Completed Features (not in themes above)
 

@@ -294,6 +294,7 @@ src/
 │   ├── Sorcha.Cryptography/         # Multi-algorithm crypto (ED25519, P-256, RSA)
 │   ├── Sorcha.Register.Models/      # Register domain models
 │   ├── Sorcha.ServiceClients/       # Consolidated HTTP/gRPC clients
+│   ├── Sorcha.ServiceClients.Http/  # HTTP REST clients + SignalR (NuGet, mobile-friendly)
 │   ├── Sorcha.ServiceDefaults/      # Aspire shared configuration
 │   ├── Sorcha.Storage.*/            # Storage abstraction layer (5 projects)
 │   │   ├── Abstractions/            # IRepository<T>, IUnitOfWork interfaces
@@ -304,7 +305,8 @@ src/
 │   ├── Sorcha.Tenant.Models/        # Tenant domain models
 │   ├── Sorcha.TransactionHandler/   # Transaction building/serialization
 │   ├── Sorcha.Validator.Core/       # Enclave-safe validation library
-│   └── Sorcha.Wallet.Core/          # Wallet domain logic
+│   ├── Sorcha.Wallet.Core/          # Wallet domain logic
+│   └── Sorcha.Wallet.Portable/      # Portable wallet: entities, enums, derivation (NuGet)
 ├── Core/
 │   ├── Sorcha.Blueprint.Engine/     # Portable execution (WASM-compatible)
 │   ├── Sorcha.Blueprint.Fluent/     # Fluent API for blueprint construction
@@ -330,7 +332,7 @@ tests/                               # 30 test projects
 └── Sorcha.UI.E2E.Tests/             # End-to-end Playwright tests
 ```
 
-**Project Count:** 39 source projects, 30 test projects
+**Project Count:** 41 source projects, 30 test projects
 
 ---
 

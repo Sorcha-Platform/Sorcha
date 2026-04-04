@@ -280,8 +280,9 @@ Sorcha.Wallet.Service/
 
 External Libraries:
 ├── Sorcha.Cryptography/                # Multi-algorithm crypto
-├── Sorcha.Wallet.Core/                 # Core wallet logic
-└── NBitcoin/                           # BIP32/BIP39/BIP44
+├── Sorcha.Wallet.Core/                 # Core wallet logic (EF Core, repositories, encryption)
+├── Sorcha.Wallet.Portable/             # Portable wallet: entities, enums, derivation (NuGet package)
+└── NBitcoin/                           # BIP32/BIP39/BIP44 (via Wallet.Portable)
 ```
 
 ### Running Tests

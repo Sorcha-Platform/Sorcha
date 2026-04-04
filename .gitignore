@@ -13,6 +13,7 @@ obj/
 *.dll
 *.nupkg
 *.snupkg
+nupkgs/
 *.swp
 *.*~
 project.lock.json
