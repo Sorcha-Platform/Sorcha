@@ -48,6 +48,7 @@ public class DelegationServiceTests : IDisposable
 
         _walletManager = new WalletManager(
             keyManagement,
+            keyManagement,
             transactionService,
             _delegationService,
             _repository,

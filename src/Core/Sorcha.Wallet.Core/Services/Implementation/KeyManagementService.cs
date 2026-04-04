@@ -25,6 +25,7 @@ namespace Sorcha.Wallet.Core.Services.Implementation;
 public class KeyManagementService : IKeyManagementService
 {
     private readonly IKeyProtectionProvider _keyProtectionProvider;
+    private readonly ISigningProvider? _signingProvider;
     private readonly ICryptoModule _cryptoModule;
     private readonly IWalletUtilities _walletUtilities;
     private readonly ILogger<KeyManagementService> _logger;
@@ -48,14 +49,17 @@ public class KeyManagementService : IKeyManagementService
     /// <param name="walletUtilities">Utility service for wallet-specific operations.</param>
     /// <param name="logger">Logger for key management operations and security events.</param>
     /// <param name="options">Optional key management configuration.</param>
+    /// <param name="signingProvider">Optional KMS signing provider for KMS-resident key operations.</param>
     public KeyManagementService(
         IKeyProtectionProvider keyProtectionProvider,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
         ILogger<KeyManagementService> logger,
-        IOptions<WalletKeyManagementOptions>? options = null)
+        IOptions<WalletKeyManagementOptions>? options = null,
+        ISigningProvider? signingProvider = null)
     {
         _keyProtectionProvider = keyProtectionProvider ?? throw new ArgumentNullException(nameof(keyProtectionProvider));
+        _signingProvider = signingProvider; // Optional — null for Local-only deployments
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _walletUtilities = walletUtilities ?? throw new ArgumentNullException(nameof(walletUtilities));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -247,6 +251,67 @@ public class KeyManagementService : IKeyManagementService
             _logger.LogError(ex, "Failed to rotate encryption key from {OldKeyId} to {NewKeyId}", oldKeyId, newKeyId);
             throw;
         }
+    }
+
+    // ================================================================
+    // KMS-resident signing operations
+    // ================================================================
+
+    /// <summary>
+    /// Whether a KMS signing provider is available.
+    /// </summary>
+    public bool IsKmsSigningAvailable => _signingProvider is not null;
+
+    /// <summary>
+    /// Creates a KMS-resident signing key pair. Key material never leaves the KMS.
+    /// </summary>
+    /// <param name="keyId">Logical identifier for the signing key.</param>
+    /// <param name="algorithm">Cryptographic algorithm (must be supported by the KMS provider).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Information about the created key including its public key.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no ISigningProvider is configured.</exception>
+    public async Task<Encryption.Models.KmsKeyInfo> CreateKmsSigningKeyAsync(
+        string keyId, string algorithm, CancellationToken ct = default)
+    {
+        if (_signingProvider is null)
+            throw new InvalidOperationException(
+                "KMS signing is not available. No ISigningProvider configured.");
+
+        return await _signingProvider.CreateSigningKeyAsync(keyId, algorithm, ct);
+    }
+
+    /// <summary>
+    /// Signs data using a KMS-resident private key. The private key never leaves the KMS.
+    /// </summary>
+    /// <param name="kmsKeyId">Identifier of the KMS signing key.</param>
+    /// <param name="data">The data to sign.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The digital signature bytes.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no ISigningProvider is configured.</exception>
+    public async Task<byte[]> SignWithKmsAsync(string kmsKeyId, byte[] data, CancellationToken ct = default)
+    {
+        if (_signingProvider is null)
+            throw new InvalidOperationException(
+                "KMS signing is not available. No ISigningProvider configured.");
+
+        _logger.LogInformation("Signing data with KMS key '{KmsKeyId}'", kmsKeyId);
+        return await _signingProvider.SignAsync(kmsKeyId, data, ct);
+    }
+
+    /// <summary>
+    /// Retrieves the public key for a KMS-resident signing key.
+    /// </summary>
+    /// <param name="kmsKeyId">Identifier of the KMS signing key.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The public key bytes.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when no ISigningProvider is configured.</exception>
+    public async Task<byte[]> GetKmsPublicKeyAsync(string kmsKeyId, CancellationToken ct = default)
+    {
+        if (_signingProvider is null)
+            throw new InvalidOperationException(
+                "KMS signing is not available. No ISigningProvider configured.");
+
+        return await _signingProvider.GetPublicKeyAsync(kmsKeyId, ct);
     }
 
     // ================================================================

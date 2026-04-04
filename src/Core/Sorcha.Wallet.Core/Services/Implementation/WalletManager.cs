@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Core.Domain.Enums;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 using Sorcha.Wallet.Core.Domain.Events;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
+using Sorcha.Wallet.Core.Encryption.Configuration;
+using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Events.Interfaces;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
@@ -17,11 +21,14 @@ namespace Sorcha.Wallet.Core.Services.Implementation;
 public class WalletManager : IWalletService
 {
     private readonly IKeyManagementService _keyManagement;
+    private readonly KeyManagementService _keyManagementConcrete;
     private readonly ITransactionService _transactionService;
     private readonly IDelegationService _delegationService;
     private readonly IWalletRepository _repository;
     private readonly IEventPublisher _eventPublisher;
     private readonly IRecoveryKeyService _recoveryKeyService;
+    private readonly ISigningProvider? _signingProvider;
+    private readonly SigningModePolicy _signingPolicy;
     private readonly ILogger<WalletManager> _logger;
 
     /// <summary>
@@ -31,26 +38,36 @@ public class WalletManager : IWalletService
     /// delegation, and event publishing.
     /// </summary>
     /// <param name="keyManagement">Service for cryptographic key operations and HD wallet management.</param>
+    /// <param name="keyManagementConcrete">Concrete KeyManagementService for KMS operations.</param>
     /// <param name="transactionService">Service for transaction signing and verification.</param>
     /// <param name="delegationService">Service for access control and permission management.</param>
     /// <param name="repository">Repository for wallet data persistence.</param>
     /// <param name="eventPublisher">Publisher for wallet domain events (audit and notification).</param>
     /// <param name="logger">Logger for wallet operations and error tracking.</param>
+    /// <param name="recoveryKeyService">Service for recovery key management.</param>
+    /// <param name="signingProvider">Optional KMS signing provider for KMS-resident wallets.</param>
+    /// <param name="keyManagementOptions">Optional key management options including signing policy.</param>
     public WalletManager(
         IKeyManagementService keyManagement,
+        KeyManagementService keyManagementConcrete,
         ITransactionService transactionService,
         IDelegationService delegationService,
         IWalletRepository repository,
         IEventPublisher eventPublisher,
         ILogger<WalletManager> logger,
-        IRecoveryKeyService recoveryKeyService)
+        IRecoveryKeyService recoveryKeyService,
+        ISigningProvider? signingProvider = null,
+        IOptions<WalletKeyManagementOptions>? keyManagementOptions = null)
     {
         _keyManagement = keyManagement ?? throw new ArgumentNullException(nameof(keyManagement));
+        _keyManagementConcrete = keyManagementConcrete ?? throw new ArgumentNullException(nameof(keyManagementConcrete));
         _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
         _delegationService = delegationService ?? throw new ArgumentNullException(nameof(delegationService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _eventPublisher = eventPublisher ?? throw new ArgumentNullException(nameof(eventPublisher));
         _recoveryKeyService = recoveryKeyService ?? throw new ArgumentNullException(nameof(recoveryKeyService));
+        _signingProvider = signingProvider;
+        _signingPolicy = keyManagementOptions?.Value.SigningPolicy ?? new SigningModePolicy();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -71,90 +88,194 @@ public class WalletManager : IWalletService
         if (string.IsNullOrWhiteSpace(tenant))
             throw new ArgumentException("Tenant cannot be empty", nameof(tenant));
 
-        try
+        // Resolve signing mode from policy
+        var signingMode = _signingPolicy.DefaultMode;
+
+        // Validate KmsResident requirements
+        if (signingMode == SigningMode.KmsResident)
         {
-            _logger.LogInformation("Creating wallet for owner {Owner} using {Algorithm}", owner, algorithm);
-
-            // Generate mnemonic
-            var mnemonic = Mnemonic.Generate(wordCount);
-
-            // Derive master key from mnemonic
-            var masterKey = await _keyManagement.DeriveMasterKeyAsync(mnemonic, passphrase);
-
-            // Derive first key at BIP44 path m/44'/0'/0'/0/0
-            var path = DerivationPath.CreateBip44(0, 0, 0, 0);
-            var (privateKey, publicKey) = await _keyManagement.DeriveKeyAtPathAsync(
-                masterKey, path, algorithm);
-
-            // Generate wallet address
-            var address = await _keyManagement.GenerateAddressAsync(publicKey, algorithm);
-
-            // Encrypt private key
-            var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(
-                privateKey, string.Empty);
-
-            // Create wallet entity
-            var wallet = new WalletEntity
+            if (!algorithm.Equals("NISTP256", StringComparison.OrdinalIgnoreCase) &&
+                !algorithm.Equals("P-256", StringComparison.OrdinalIgnoreCase) &&
+                !algorithm.Equals("P256", StringComparison.OrdinalIgnoreCase))
             {
-                Address = address,
-                PublicKey = Convert.ToBase64String(publicKey),
-                EncryptedPrivateKey = encryptedKey,
-                EncryptionKeyId = keyId,
-                Algorithm = algorithm,
-                Owner = owner,
-                Tenant = tenant,
-                Name = name,
-                Status = WalletStatus.Active,
-                CreatedAt = DateTime.UtcNow,
-                LastAccessedAt = DateTime.UtcNow,
-                Metadata = new Dictionary<string, string>
-                {
-                    ["WordCount"] = mnemonic.WordCount.ToString(),
-                    ["DerivationPath"] = path.Path
-                }
-            };
-
-            // Generate recovery key and encrypt master key (Feature 060)
-            {
-                try
-                {
-                    var recoveryKey = await _recoveryKeyService.GenerateRecoveryKeyAsync(cancellationToken);
-                    wallet.EncryptedMasterKeyBlob = await _recoveryKeyService.EncryptMasterKeyAsync(
-                        masterKey, recoveryKey, cancellationToken);
-                    wallet.RecoveryEnabled = true;
-
-                    _logger.LogDebug("Recovery key generated for wallet {Address}", address);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to generate recovery key for wallet {Address} — wallet created without recovery",
-                        address);
-                }
+                throw new InvalidOperationException(
+                    $"KMS-resident signing requires NIST P-256 algorithm, but '{algorithm}' was requested.");
             }
 
-            // Save to repository
-            await _repository.AddAsync(wallet, cancellationToken);
-
-            // Publish event
-            await _eventPublisher.PublishAsync(new WalletCreatedEvent
+            if (_signingProvider is null)
             {
-                WalletAddress = wallet.Address,
-                OccurredAt = wallet.CreatedAt,
-                Owner = wallet.Owner,
-                Tenant = wallet.Tenant,
-                Algorithm = wallet.Algorithm,
-                Name = wallet.Name
-            }, cancellationToken);
+                throw new InvalidOperationException(
+                    "KMS-resident signing mode is configured but no ISigningProvider is registered. " +
+                    "Register an Azure Key Vault or compatible KMS provider.");
+            }
+        }
 
-            _logger.LogInformation("Created wallet {Address} for owner {Owner}", wallet.Address, owner);
-            return (wallet, mnemonic);
+        try
+        {
+            _logger.LogInformation(
+                "Creating wallet for owner {Owner} using {Algorithm} (SigningMode={SigningMode})",
+                owner, algorithm, signingMode);
+
+            if (signingMode == SigningMode.KmsResident)
+            {
+                return await CreateKmsResidentWalletAsync(
+                    name, algorithm, owner, tenant, cancellationToken);
+            }
+
+            return await CreateLocalWalletAsync(
+                name, algorithm, owner, tenant, wordCount, passphrase, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create wallet for owner {Owner}", owner);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Creates a wallet with local key storage (existing flow).
+    /// </summary>
+    private async Task<(WalletEntity Wallet, Mnemonic Mnemonic)> CreateLocalWalletAsync(
+        string name, string algorithm, string owner, string tenant,
+        int wordCount, string? passphrase, CancellationToken cancellationToken)
+    {
+        // Generate mnemonic
+        var mnemonic = Mnemonic.Generate(wordCount);
+
+        // Derive master key from mnemonic
+        var masterKey = await _keyManagement.DeriveMasterKeyAsync(mnemonic, passphrase);
+
+        // Derive first key at BIP44 path m/44'/0'/0'/0/0
+        var path = DerivationPath.CreateBip44(0, 0, 0, 0);
+        var (privateKey, publicKey) = await _keyManagement.DeriveKeyAtPathAsync(
+            masterKey, path, algorithm);
+
+        // Generate wallet address
+        var address = await _keyManagement.GenerateAddressAsync(publicKey, algorithm);
+
+        // Encrypt private key
+        var (encryptedKey, keyId) = await _keyManagement.EncryptPrivateKeyAsync(
+            privateKey, string.Empty);
+
+        // Create wallet entity
+        var wallet = new WalletEntity
+        {
+            Address = address,
+            PublicKey = Convert.ToBase64String(publicKey),
+            EncryptedPrivateKey = encryptedKey,
+            EncryptionKeyId = keyId,
+            Algorithm = algorithm,
+            Owner = owner,
+            Tenant = tenant,
+            Name = name,
+            SigningMode = SigningMode.Local,
+            Status = WalletStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            LastAccessedAt = DateTime.UtcNow,
+            Metadata = new Dictionary<string, string>
+            {
+                ["WordCount"] = mnemonic.WordCount.ToString(),
+                ["DerivationPath"] = path.Path
+            }
+        };
+
+        // Generate recovery key and encrypt master key (Feature 060)
+        {
+            try
+            {
+                var recoveryKey = await _recoveryKeyService.GenerateRecoveryKeyAsync(cancellationToken);
+                wallet.EncryptedMasterKeyBlob = await _recoveryKeyService.EncryptMasterKeyAsync(
+                    masterKey, recoveryKey, cancellationToken);
+                wallet.RecoveryEnabled = true;
+
+                _logger.LogDebug("Recovery key generated for wallet {Address}", address);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to generate recovery key for wallet {Address} ��� wallet created without recovery",
+                    address);
+            }
+        }
+
+        // Save to repository
+        await _repository.AddAsync(wallet, cancellationToken);
+
+        // Publish event
+        await _eventPublisher.PublishAsync(new WalletCreatedEvent
+        {
+            WalletAddress = wallet.Address,
+            OccurredAt = wallet.CreatedAt,
+            Owner = wallet.Owner,
+            Tenant = wallet.Tenant,
+            Algorithm = wallet.Algorithm,
+            Name = wallet.Name
+        }, cancellationToken);
+
+        _logger.LogInformation("Created Local wallet {Address} for owner {Owner}", wallet.Address, owner);
+        return (wallet, mnemonic);
+    }
+
+    /// <summary>
+    /// Creates a wallet with KMS-resident signing keys. Private key never leaves the KMS.
+    /// </summary>
+    private async Task<(WalletEntity Wallet, Mnemonic Mnemonic)> CreateKmsResidentWalletAsync(
+        string name, string algorithm, string owner, string tenant,
+        CancellationToken cancellationToken)
+    {
+        // Create signing key in KMS
+        var kmsKeyId = $"wallet-{Guid.NewGuid():N}";
+        var kmsKeyInfo = await _keyManagementConcrete.CreateKmsSigningKeyAsync(
+            kmsKeyId, algorithm, cancellationToken);
+
+        // Generate address from the KMS public key
+        var address = await _keyManagement.GenerateAddressAsync(kmsKeyInfo.PublicKey, algorithm);
+
+        // Generate a dummy mnemonic for API compatibility (not used for signing)
+        var mnemonic = Mnemonic.Generate(12);
+
+        // Create wallet entity — no encrypted private key for KMS-resident wallets
+        var wallet = new WalletEntity
+        {
+            Address = address,
+            PublicKey = Convert.ToBase64String(kmsKeyInfo.PublicKey),
+            EncryptedPrivateKey = string.Empty, // No local private key
+            EncryptionKeyId = string.Empty, // No local encryption key
+            Algorithm = algorithm,
+            Owner = owner,
+            Tenant = tenant,
+            Name = name,
+            SigningMode = SigningMode.KmsResident,
+            KmsKeyId = kmsKeyInfo.KeyId,
+            Status = WalletStatus.Active,
+            CreatedAt = DateTime.UtcNow,
+            LastAccessedAt = DateTime.UtcNow,
+            Metadata = new Dictionary<string, string>
+            {
+                ["SigningMode"] = "KmsResident",
+                ["KmsKeyId"] = kmsKeyInfo.KeyId
+            }
+        };
+
+        // Save to repository
+        await _repository.AddAsync(wallet, cancellationToken);
+
+        // Publish event
+        await _eventPublisher.PublishAsync(new WalletCreatedEvent
+        {
+            WalletAddress = wallet.Address,
+            OccurredAt = wallet.CreatedAt,
+            Owner = wallet.Owner,
+            Tenant = wallet.Tenant,
+            Algorithm = wallet.Algorithm,
+            Name = wallet.Name
+        }, cancellationToken);
+
+        _logger.LogInformation(
+            "Created KMS-resident wallet {Address} for owner {Owner} (KmsKeyId={KmsKeyId})",
+            wallet.Address, owner, kmsKeyInfo.KeyId);
+
+        return (wallet, mnemonic);
     }
 
     /// <inheritdoc/>
@@ -574,48 +695,68 @@ public class WalletManager : IWalletService
                 throw new InvalidOperationException($"Wallet {walletAddress} not found");
             }
 
-            // Decrypt master private key
-            var masterKey = await _keyManagement.DecryptPrivateKeyAsync(
-                wallet.EncryptedPrivateKey,
-                wallet.EncryptionKeyId);
-
-            byte[] signingKey;
+            byte[] signature;
             byte[] publicKey;
 
-            // If derivation path provided, derive child key
-            if (!string.IsNullOrWhiteSpace(derivationPath))
+            if (wallet.SigningMode == SigningMode.KmsResident)
             {
-                // Resolve Sorcha system paths (e.g., "sorcha:register-attestation") to BIP44 paths
-                var resolvedPath = Constants.SorchaDerivationPaths.IsSystemPath(derivationPath)
-                    ? Constants.SorchaDerivationPaths.ResolvePath(derivationPath)
-                    : derivationPath;
-
-                var parsedPath = new DerivationPath(resolvedPath);
-                var (derivedPrivateKey, derivedPublicKey) = await _keyManagement.DeriveKeyAtPathAsync(
-                    masterKey,
-                    parsedPath,
-                    wallet.Algorithm);
-
-                signingKey = derivedPrivateKey;
-                publicKey = derivedPublicKey;
+                // KMS-resident: sign via cloud KMS — private key never leaves the HSM
+                if (string.IsNullOrWhiteSpace(wallet.KmsKeyId))
+                    throw new InvalidOperationException(
+                        $"Wallet {walletAddress} is KMS-resident but has no KmsKeyId.");
 
                 _logger.LogInformation(
-                    "Signing transaction for wallet {Address} with derived key at path {Path} (resolved: {ResolvedPath})",
-                    walletAddress, derivationPath, resolvedPath);
+                    "Signing transaction for KMS-resident wallet {Address} (KmsKeyId={KmsKeyId})",
+                    walletAddress, wallet.KmsKeyId);
+
+                signature = await _keyManagementConcrete.SignWithKmsAsync(
+                    wallet.KmsKeyId, transactionData, cancellationToken);
+                publicKey = Convert.FromBase64String(wallet.PublicKey!);
             }
             else
             {
-                signingKey = masterKey;
-                publicKey = Convert.FromBase64String(wallet.PublicKey!);
+                // Local: decrypt private key and sign locally
+                var masterKey = await _keyManagement.DecryptPrivateKeyAsync(
+                    wallet.EncryptedPrivateKey,
+                    wallet.EncryptionKeyId);
 
-                _logger.LogInformation(
-                    "Signing transaction for wallet {Address} with master key",
-                    walletAddress);
+                byte[] signingKey;
+
+                // If derivation path provided, derive child key
+                if (!string.IsNullOrWhiteSpace(derivationPath))
+                {
+                    // Resolve Sorcha system paths (e.g., "sorcha:register-attestation") to BIP44 paths
+                    var resolvedPath = Constants.SorchaDerivationPaths.IsSystemPath(derivationPath)
+                        ? Constants.SorchaDerivationPaths.ResolvePath(derivationPath)
+                        : derivationPath;
+
+                    var parsedPath = new DerivationPath(resolvedPath);
+                    var (derivedPrivateKey, derivedPublicKey) = await _keyManagement.DeriveKeyAtPathAsync(
+                        masterKey,
+                        parsedPath,
+                        wallet.Algorithm);
+
+                    signingKey = derivedPrivateKey;
+                    publicKey = derivedPublicKey;
+
+                    _logger.LogInformation(
+                        "Signing transaction for wallet {Address} with derived key at path {Path} (resolved: {ResolvedPath})",
+                        walletAddress, derivationPath, resolvedPath);
+                }
+                else
+                {
+                    signingKey = masterKey;
+                    publicKey = Convert.FromBase64String(wallet.PublicKey!);
+
+                    _logger.LogInformation(
+                        "Signing transaction for wallet {Address} with master key",
+                        walletAddress);
+                }
+
+                // Sign transaction
+                signature = await _transactionService.SignTransactionAsync(
+                    transactionData, signingKey, wallet.Algorithm, isPreHashed);
             }
-
-            // Sign transaction
-            var signature = await _transactionService.SignTransactionAsync(
-                transactionData, signingKey, wallet.Algorithm, isPreHashed);
 
             // Publish event
             await _eventPublisher.PublishAsync(new TransactionSignedEvent
