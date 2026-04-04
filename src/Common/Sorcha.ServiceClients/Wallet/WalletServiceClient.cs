@@ -496,6 +496,130 @@ public class WalletServiceClient : IWalletServiceClient
     }
 
     // =========================================================================
+    // Org Key Management Operations
+    // =========================================================================
+
+    public async Task<OrgMasterKeyProvisionResponse?> ProvisionOrgMasterKeyAsync(
+        string orgId,
+        string algorithm = "ED25519",
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug("Provisioning org master key for {OrgId} with algorithm {Algorithm}", orgId, algorithm);
+
+            await SetAuthHeaderAsync(ct);
+
+            var requestBody = new { algorithm };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/wallets/org/{orgId}/master-key", requestBody, JsonOptions, ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                _logger.LogWarning("Organisation {OrgId} already has a master key provisioned", orgId);
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<OrgMasterKeyProvisionResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to provision org master key for {OrgId}", orgId);
+            throw;
+        }
+    }
+
+    public async Task<DerivedKeyResponse?> DeriveOrgKeyAsync(
+        string orgId,
+        string userId,
+        uint departmentId,
+        string keyUsage,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Deriving org key for {OrgId}, user {UserId}, dept {DepartmentId}, usage {KeyUsage}",
+                orgId, userId, departmentId, keyUsage);
+
+            await SetAuthHeaderAsync(ct);
+
+            var requestBody = new { userId, departmentId, keyUsage };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"/api/wallets/org/{orgId}/derive-key", requestBody, JsonOptions, ct);
+
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to derive org key for {OrgId}, user {UserId}", orgId, userId);
+            throw;
+        }
+    }
+
+    public async Task<DerivedKeyResponse?> RotateOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug("Rotating org key {DerivedKeyId} for {OrgId}", derivedKeyId, orgId);
+
+            await SetAuthHeaderAsync(ct);
+
+            var response = await _httpClient.PostAsync(
+                $"/api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate", null, ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("Derived key {DerivedKeyId} not found for rotation", derivedKeyId);
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<DerivedKeyResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rotate org key {DerivedKeyId} for {OrgId}", derivedKeyId, orgId);
+            throw;
+        }
+    }
+
+    public async Task<RevokeKeyResponse?> RevokeOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            _logger.LogDebug("Revoking org key {DerivedKeyId} for {OrgId}", derivedKeyId, orgId);
+
+            await SetAuthHeaderAsync(ct);
+
+            var response = await _httpClient.DeleteAsync(
+                $"/api/wallets/org/{orgId}/keys/{derivedKeyId}", ct);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("Derived key {DerivedKeyId} not found for revocation", derivedKeyId);
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<RevokeKeyResponse>(JsonOptions, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to revoke org key {DerivedKeyId} for {OrgId}", derivedKeyId, orgId);
+            throw;
+        }
+    }
+
+    // =========================================================================
     // Private Helpers
     // =========================================================================
 

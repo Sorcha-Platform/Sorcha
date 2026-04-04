@@ -180,6 +180,7 @@ services:
       ServiceAuth__ClientSecret: wallet-service-secret
       ServiceAuth__Scopes: "registers:write"
       ServiceClients__TenantService__Address: http://tenant-service:8080
+      OrgKeyProtection__EncryptionKey: "dGhpcy1pcy1hLTMyLWJ5dGUtdGVzdC1rZXkh"
       # Encryption Provider Configuration
       # LinuxSecretService with fallback to file-based key storage (Docker doesn't have D-Bus)
       EncryptionProvider__Type: LinuxSecretService

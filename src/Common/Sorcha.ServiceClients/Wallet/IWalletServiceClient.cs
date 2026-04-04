@@ -229,6 +229,62 @@ public interface IWalletServiceClient
         string owner,
         string tenant,
         CancellationToken cancellationToken = default);
+
+    // =========================================================================
+    // Org Key Management Operations
+    // =========================================================================
+
+    /// <summary>
+    /// Provisions a new HD master key for an organisation
+    /// </summary>
+    /// <param name="orgId">Organisation identifier</param>
+    /// <param name="algorithm">Cryptographic algorithm (default ED25519)</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Provisioning result with master public key and mnemonic</returns>
+    Task<OrgMasterKeyProvisionResponse?> ProvisionOrgMasterKeyAsync(
+        string orgId,
+        string algorithm = "ED25519",
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Derives a user key from an organisation's master key hierarchy
+    /// </summary>
+    /// <param name="orgId">Organisation identifier</param>
+    /// <param name="userId">User subject identifier</param>
+    /// <param name="departmentId">Department index in derivation hierarchy</param>
+    /// <param name="keyUsage">Intended key usage (Identity, VCIssuance, Governance, Communications, ServiceAuth)</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Derived key details</returns>
+    Task<DerivedKeyResponse?> DeriveOrgKeyAsync(
+        string orgId,
+        string userId,
+        uint departmentId,
+        string keyUsage,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Rotates a derived organisation key by deriving a new key at the next index
+    /// </summary>
+    /// <param name="orgId">Organisation identifier</param>
+    /// <param name="derivedKeyId">ID of the key to rotate</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>New derived key details</returns>
+    Task<DerivedKeyResponse?> RotateOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes a derived organisation key and locks the associated wallet
+    /// </summary>
+    /// <param name="orgId">Organisation identifier</param>
+    /// <param name="derivedKeyId">ID of the key to revoke</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>Revocation result</returns>
+    Task<RevokeKeyResponse?> RevokeOrgKeyAsync(
+        string orgId,
+        Guid derivedKeyId,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -373,3 +429,52 @@ public class WalletInfo
     /// </summary>
     public Dictionary<string, string> Metadata { get; init; } = new();
 }
+
+/// <summary>
+/// Response from provisioning an organisation master key
+/// </summary>
+/// <param name="OrganizationId">Organisation that was provisioned</param>
+/// <param name="MasterPublicKey">Public key of the master HD key</param>
+/// <param name="Mnemonic">BIP39 mnemonic (returned once, must be backed up)</param>
+/// <param name="Algorithm">Cryptographic algorithm used</param>
+public record OrgMasterKeyProvisionResponse(
+    string OrganizationId,
+    string MasterPublicKey,
+    string Mnemonic,
+    string Algorithm);
+
+/// <summary>
+/// Response from deriving or rotating an organisation key
+/// </summary>
+/// <param name="DerivedKeyId">Unique identifier for the derived key record</param>
+/// <param name="WalletAddress">Wallet address of the derived key</param>
+/// <param name="DerivationPath">BIP32 derivation path used</param>
+/// <param name="KeyUsage">Intended key usage purpose</param>
+/// <param name="KeyIndex">Index in the derivation hierarchy</param>
+/// <param name="Status">Current key status (Active, Rotated, Revoked)</param>
+/// <param name="CustodyMode">Key custody mode (ServiceManaged or UserManaged)</param>
+/// <param name="CreatedAt">When the key was created</param>
+public record DerivedKeyResponse(
+    Guid DerivedKeyId,
+    string WalletAddress,
+    string DerivationPath,
+    string KeyUsage,
+    uint KeyIndex,
+    string Status,
+    string CustodyMode,
+    DateTime CreatedAt);
+
+/// <summary>
+/// Response from revoking a derived organisation key
+/// </summary>
+/// <param name="DerivedKeyId">ID of the revoked key</param>
+/// <param name="Status">Final status (Revoked)</param>
+/// <param name="RevokedAt">When the key was revoked</param>
+/// <param name="WalletLocked">Whether the associated wallet was locked</param>
+/// <param name="DidRevocationPublished">Whether a DID revocation event was published</param>
+public record RevokeKeyResponse(
+    Guid DerivedKeyId,
+    string Status,
+    DateTime RevokedAt,
+    bool WalletLocked,
+    bool DidRevocationPublished);
