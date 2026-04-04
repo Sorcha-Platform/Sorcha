@@ -131,6 +131,7 @@ app.MapWalletEndpoints();
 app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
+app.MapOrgKeyEndpoints();
 
 // ===========================
 // Statistics Endpoint (public, no auth)
