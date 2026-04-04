@@ -3,12 +3,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Sorcha.Cryptography.Interfaces;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Events;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
-using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Events.Interfaces;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Implementation;
@@ -47,16 +45,8 @@ public class WalletManagerTests
         recoveryKeyServiceMock.Setup(r => r.EncryptMasterKeyAsync(It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("encrypted-master-key-blob");
 
-        // Create a concrete KeyManagementService for the KMS operations parameter
-        var concreteKeyManagement = new KeyManagementService(
-            Mock.Of<IKeyProtectionProvider>(),
-            Mock.Of<ICryptoModule>(),
-            Mock.Of<IWalletUtilities>(),
-            Mock.Of<ILogger<KeyManagementService>>());
-
         _sut = new WalletManager(
             _keyManagementMock.Object,
-            concreteKeyManagement,
             _transactionServiceMock.Object,
             _delegationServiceMock.Object,
             _repositoryMock.Object,

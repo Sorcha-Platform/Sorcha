@@ -8,10 +8,8 @@ using Microsoft.Extensions.Options;
 
 using Moq;
 
-using Sorcha.Cryptography.Interfaces;
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Encryption.Configuration;
-using Sorcha.Wallet.Core.Encryption.Interfaces;
 using Sorcha.Wallet.Core.Events.Interfaces;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Implementation;
@@ -26,11 +24,6 @@ public class SigningModePolicyTests
     private static WalletManager CreateManager(WalletKeyManagementOptions options)
     {
         var keyManagementMock = new Mock<IKeyManagementService>();
-        var concreteKeyManagement = new KeyManagementService(
-            Mock.Of<IKeyProtectionProvider>(),
-            Mock.Of<ICryptoModule>(),
-            Mock.Of<IWalletUtilities>(),
-            Mock.Of<ILogger<KeyManagementService>>());
 
         var recoveryKeyServiceMock = new Mock<IRecoveryKeyService>();
         recoveryKeyServiceMock.Setup(r => r.GenerateRecoveryKeyAsync(It.IsAny<CancellationToken>()))
@@ -40,7 +33,6 @@ public class SigningModePolicyTests
 
         return new WalletManager(
             keyManagementMock.Object,
-            concreteKeyManagement,
             Mock.Of<ITransactionService>(),
             Mock.Of<IDelegationService>(),
             Mock.Of<IWalletRepository>(),

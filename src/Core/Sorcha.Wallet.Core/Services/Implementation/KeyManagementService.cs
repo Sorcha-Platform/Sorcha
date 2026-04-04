@@ -30,6 +30,7 @@ public class KeyManagementService : IKeyManagementService
     private readonly IWalletUtilities _walletUtilities;
     private readonly ILogger<KeyManagementService> _logger;
     private readonly EncryptionAuditLogger _auditLogger;
+    private readonly WalletKeyManagementOptions _options;
     private readonly string _defaultKeyId;
     private readonly TimeSpan _cacheTtl;
     private readonly TimeSpan _graceperiod;
@@ -65,6 +66,7 @@ public class KeyManagementService : IKeyManagementService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         var opts = options?.Value ?? new WalletKeyManagementOptions();
+        _options = opts;
         _defaultKeyId = opts.DefaultKeyId;
         _cacheTtl = TimeSpan.FromMinutes(opts.DekCacheTtlMinutes);
         _graceperiod = TimeSpan.FromMinutes(opts.DekCacheGracePeriodMinutes);
@@ -435,6 +437,8 @@ public class KeyManagementService : IKeyManagementService
                     var refreshed = await UnwrapDekFromProviderAsync(keyId, ct);
                     if (refreshed != null)
                     {
+                        // Zero old DEK bytes before overwriting cache entry
+                        Array.Clear(cached.Key, 0, cached.Key.Length);
                         _dekCache[keyId] = (refreshed, DateTime.UtcNow);
                         return refreshed;
                     }
@@ -466,7 +470,20 @@ public class KeyManagementService : IKeyManagementService
             _auditLogger.LogCreateKeySuccess(keyId, 0);
         }
 
+        // Zero old DEK bytes before overwriting cache entry
+        if (_dekCache.TryGetValue(keyId, out var old))
+            Array.Clear(old.Key, 0, old.Key.Length);
+
         _dekCache[keyId] = (dek, DateTime.UtcNow);
+
+        // Evict oldest entry if cache exceeds MaxCachedDeks
+        if (_dekCache.Count > _options.MaxCachedDeks)
+        {
+            var oldest = _dekCache.OrderBy(kvp => kvp.Value.LoadedAt).First();
+            if (_dekCache.TryRemove(oldest.Key, out var evicted))
+                Array.Clear(evicted.Key, 0, evicted.Key.Length);
+        }
+
         return dek;
     }
 

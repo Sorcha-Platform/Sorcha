@@ -235,6 +235,10 @@ public abstract class EncryptionProviderBase : IEncryptionProvider, IKeyProtecti
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Local providers: "wrapped" bytes are the DEK itself (no external KMS wrapping).
+    /// This is acceptable for development only. Production deployments MUST use a cloud KMS provider.
+    /// </remarks>
     async Task<byte[]> IKeyProtectionProvider.WrapKeyAsync(string keyId, byte[] plaintext, CancellationToken ct)
     {
         // Delegate to platform-specific key protection (same as ProtectAndStoreKeyAsync
@@ -250,9 +254,8 @@ public abstract class EncryptionProviderBase : IEncryptionProvider, IKeyProtecti
         if (unwrapped == null)
             throw new InvalidOperationException($"Failed to wrap key '{keyId}': key not found after storage.");
 
-        // The wrapped form is opaque to the caller; for local providers the
-        // plaintext is the DEK itself since the "wrapping" is in-memory.
-        // Return the plaintext that was stored (the DEK) — the provider stores it protected.
+        // Local providers: "wrapped" bytes are the DEK itself (no external KMS wrapping).
+        // This is acceptable for development only. Production deployments MUST use a cloud KMS provider.
         return plaintext;
     }
 

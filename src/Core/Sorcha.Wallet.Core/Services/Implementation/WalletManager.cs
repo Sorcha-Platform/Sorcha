@@ -21,14 +21,12 @@ namespace Sorcha.Wallet.Core.Services.Implementation;
 public class WalletManager : IWalletService
 {
     private readonly IKeyManagementService _keyManagement;
-    private readonly KeyManagementService _keyManagementConcrete;
     private readonly ITransactionService _transactionService;
     private readonly IDelegationService _delegationService;
     private readonly IWalletRepository _repository;
     private readonly IEventPublisher _eventPublisher;
     private readonly IRecoveryKeyService _recoveryKeyService;
     private readonly ISigningProvider? _signingProvider;
-    private readonly SigningModePolicy _signingPolicy;
     private readonly WalletKeyManagementOptions _keyManagementOptions;
     private readonly ILogger<WalletManager> _logger;
 
@@ -39,7 +37,6 @@ public class WalletManager : IWalletService
     /// delegation, and event publishing.
     /// </summary>
     /// <param name="keyManagement">Service for cryptographic key operations and HD wallet management.</param>
-    /// <param name="keyManagementConcrete">Concrete KeyManagementService for KMS operations.</param>
     /// <param name="transactionService">Service for transaction signing and verification.</param>
     /// <param name="delegationService">Service for access control and permission management.</param>
     /// <param name="repository">Repository for wallet data persistence.</param>
@@ -50,7 +47,6 @@ public class WalletManager : IWalletService
     /// <param name="keyManagementOptions">Optional key management options including signing policy.</param>
     public WalletManager(
         IKeyManagementService keyManagement,
-        KeyManagementService keyManagementConcrete,
         ITransactionService transactionService,
         IDelegationService delegationService,
         IWalletRepository repository,
@@ -61,7 +57,6 @@ public class WalletManager : IWalletService
         IOptions<WalletKeyManagementOptions>? keyManagementOptions = null)
     {
         _keyManagement = keyManagement ?? throw new ArgumentNullException(nameof(keyManagement));
-        _keyManagementConcrete = keyManagementConcrete ?? throw new ArgumentNullException(nameof(keyManagementConcrete));
         _transactionService = transactionService ?? throw new ArgumentNullException(nameof(transactionService));
         _delegationService = delegationService ?? throw new ArgumentNullException(nameof(delegationService));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -69,7 +64,6 @@ public class WalletManager : IWalletService
         _recoveryKeyService = recoveryKeyService ?? throw new ArgumentNullException(nameof(recoveryKeyService));
         _signingProvider = signingProvider;
         _keyManagementOptions = keyManagementOptions?.Value ?? new WalletKeyManagementOptions();
-        _signingPolicy = _keyManagementOptions.SigningPolicy;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -91,8 +85,11 @@ public class WalletManager : IWalletService
         if (string.IsNullOrWhiteSpace(tenant))
             throw new ArgumentException("Tenant cannot be empty", nameof(tenant));
 
+        // Compute derivation path first so path-based signing mode resolution works
+        var derivationPath = DerivationPath.CreateBip44(0, 0, 0, 0).Path;
+
         // Resolve signing mode: API override → path match → policy default
-        var signingMode = ResolveSigningMode(signingModeOverride);
+        var signingMode = ResolveSigningMode(signingModeOverride, derivationPath);
 
         // Validate KmsResident requirements
         if (signingMode == SigningMode.KmsResident)
@@ -266,7 +263,7 @@ public class WalletManager : IWalletService
     {
         // Create signing key in KMS
         var kmsKeyId = $"wallet-{Guid.NewGuid():N}";
-        var kmsKeyInfo = await _keyManagementConcrete.CreateKmsSigningKeyAsync(
+        var kmsKeyInfo = await _keyManagement.CreateKmsSigningKeyAsync(
             kmsKeyId, algorithm, cancellationToken);
 
         // Generate address from the KMS public key
@@ -750,7 +747,7 @@ public class WalletManager : IWalletService
                     "Signing transaction for KMS-resident wallet {Address} (KmsKeyId={KmsKeyId})",
                     walletAddress, wallet.KmsKeyId);
 
-                signature = await _keyManagementConcrete.SignWithKmsAsync(
+                signature = await _keyManagement.SignWithKmsAsync(
                     wallet.KmsKeyId, transactionData, cancellationToken);
                 publicKey = Convert.FromBase64String(wallet.PublicKey!);
             }

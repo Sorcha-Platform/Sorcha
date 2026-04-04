@@ -20,6 +20,7 @@ namespace Sorcha.Wallet.Providers.Azure;
 public class AzureKeyProtectionProvider : IKeyProtectionProvider
 {
     private readonly KeyClient _keyClient;
+    private readonly AzureKmsOptions _options;
     private readonly ILogger<AzureKeyProtectionProvider> _logger;
 
     /// <summary>
@@ -38,6 +39,7 @@ public class AzureKeyProtectionProvider : IKeyProtectionProvider
         if (string.IsNullOrWhiteSpace(opts.VaultUri))
             throw new ArgumentException("VaultUri must be configured.", nameof(options));
 
+        _options = opts;
         var credential = AzureCredentialFactory.Create(opts);
         _keyClient = new KeyClient(new Uri(opts.VaultUri), credential);
 
@@ -51,10 +53,12 @@ public class AzureKeyProtectionProvider : IKeyProtectionProvider
     /// </summary>
     internal AzureKeyProtectionProvider(
         KeyClient keyClient,
-        ILogger<AzureKeyProtectionProvider> logger)
+        ILogger<AzureKeyProtectionProvider> logger,
+        AzureKmsOptions? options = null)
     {
         _keyClient = keyClient ?? throw new ArgumentNullException(nameof(keyClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options ?? new AzureKmsOptions();
     }
 
     /// <inheritdoc/>
@@ -65,17 +69,17 @@ public class AzureKeyProtectionProvider : IKeyProtectionProvider
         var sw = Stopwatch.StartNew();
         try
         {
-            var keyOptions = new CreateRsaKeyOptions(keyId, hardwareProtected: false)
+            var keyOptions = new CreateRsaKeyOptions(keyId, hardwareProtected: _options.HardwareProtected)
             {
-                KeySize = 2048
+                KeySize = _options.RsaKeySize
             };
 
             var response = await _keyClient.CreateRsaKeyAsync(keyOptions, ct);
             sw.Stop();
 
             _logger.LogInformation(
-                "Created RSA-2048 key '{KeyId}' in Key Vault ({ElapsedMs}ms)",
-                keyId, sw.ElapsedMilliseconds);
+                "Created RSA-{KeySize} key '{KeyId}' in Key Vault (HSM={HardwareProtected}, {ElapsedMs}ms)",
+                _options.RsaKeySize, keyId, _options.HardwareProtected, sw.ElapsedMilliseconds);
 
             return response.Value.Id.ToString();
         }

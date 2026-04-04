@@ -21,4 +21,10 @@ public class AzureKmsOptions
 
     /// <summary>Default key name for DEK wrapping.</summary>
     public string DefaultKeyName { get; set; } = "wallet-encryption-key";
+
+    /// <summary>Use HSM-backed keys (requires Premium tier Key Vault).</summary>
+    public bool HardwareProtected { get; set; } = false;
+
+    /// <summary>RSA key size in bits. Default 2048; recommend 4096 for long-lived keys.</summary>
+    public int RsaKeySize { get; set; } = 2048;
 }

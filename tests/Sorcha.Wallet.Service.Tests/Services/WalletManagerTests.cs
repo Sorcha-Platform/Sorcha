@@ -55,7 +55,6 @@ public class WalletManagerTests : IDisposable
 
         _walletManager = new WalletManager(
             keyManagement,
-            keyManagement,
             transactionService,
             delegationService,
             _repository,
