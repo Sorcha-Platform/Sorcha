@@ -9,6 +9,7 @@
     <RootNamespace>Sorcha.Blueprint.Engine</RootNamespace>
     <DocumentationFile>Sorcha.Blueprint.Engine.xml</DocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>

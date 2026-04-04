@@ -6,6 +6,7 @@
     <Description>Domain models with JSON-LD for blueprint workflow definitions</Description>
     <PackageTags>sorcha;blueprint;models;json-ld;workflow</PackageTags>
     <RootNamespace>Sorcha.Blueprint.Models</RootNamespace>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <!-- CS1591: Suppress missing XML doc warnings for internal types; public API is documented -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>

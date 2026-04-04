@@ -5,6 +5,7 @@
     <Version>2.0.0</Version>
     <Description>Multi-tenant identity and organization domain models</Description>
     <PackageTags>sorcha;tenant;models;identity</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
 </Project>

@@ -5,6 +5,7 @@
     <Version>2.0.0</Version>
     <Description>Enclave-safe validation and consensus logic</Description>
     <PackageTags>sorcha;validator;consensus;validation</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>

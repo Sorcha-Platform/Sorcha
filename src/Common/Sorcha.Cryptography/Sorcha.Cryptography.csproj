@@ -5,6 +5,7 @@
     <Description>Multi-algorithm cryptography: ED25519, P-256, RSA-4096, BLS threshold signatures, post-quantum (ML-KEM/ML-DSA), zero-knowledge proofs, SD-JWT, HD wallet support (BIP32/39/44), Merkle trees, and encoding utilities</Description>
     <PackageTags>sorcha;cryptography;ed25519;ecdsa;rsa;bls;post-quantum;zero-knowledge;sd-jwt;wallet</PackageTags>
     <Product>Sorcha.Cryptography</Product>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <NoWarn>$(NoWarn);1591</NoWarn>
 
     <!-- Build -->

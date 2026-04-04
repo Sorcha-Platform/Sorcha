@@ -5,6 +5,7 @@
     <Description>Transaction building, signing, and serialization for the Sorcha decentralised register platform</Description>
     <PackageTags>sorcha;transaction;signing;serialization;distributed-ledger</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <NoWarn>$(NoWarn);1591</NoWarn>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
   </PropertyGroup>
