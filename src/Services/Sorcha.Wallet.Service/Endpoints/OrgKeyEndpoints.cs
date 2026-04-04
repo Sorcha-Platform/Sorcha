@@ -1,0 +1,248 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+
+using Sorcha.Wallet.Core.Domain.Enums;
+using Sorcha.Wallet.Core.Services.Interfaces;
+
+namespace Sorcha.Wallet.Service.Endpoints;
+
+/// <summary>
+/// Organisation key management minimal API endpoints for provisioning
+/// master keys and deriving user keys within an org's HD key hierarchy.
+/// </summary>
+public static class OrgKeyEndpoints
+{
+    /// <summary>
+    /// Maps all org key management endpoints.
+    /// </summary>
+    /// <param name="app">The endpoint route builder.</param>
+    /// <returns>The endpoint route builder for chaining.</returns>
+    public static IEndpointRouteBuilder MapOrgKeyEndpoints(this IEndpointRouteBuilder app)
+    {
+        var orgKeyGroup = app.MapGroup("/api/wallets/org")
+            .WithTags("Org Key Management");
+
+        // POST /api/wallets/org/{orgId}/master-key - Provision org master key
+        orgKeyGroup.MapPost("/{orgId}/master-key", ProvisionMasterKey)
+            .WithName("ProvisionOrgMasterKey")
+            .WithSummary("Provision organisation master key")
+            .WithDescription(
+                "Generates a new BIP39 mnemonic and provisions an HD master key for the organisation. " +
+                "The mnemonic is returned once and must be securely backed up by the administrator. " +
+                "Returns 409 Conflict if the organisation already has a master key.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<OrgMasterKeyProvisionResult>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
+
+        // POST /api/wallets/org/{orgId}/derive-key - Derive user key
+        orgKeyGroup.MapPost("/{orgId}/derive-key", DeriveUserKey)
+            .WithName("DeriveOrgUserKey")
+            .WithSummary("Derive a user key from the organisation master key")
+            .WithDescription(
+                "Derives a child key for a specific user, department, and usage purpose using " +
+                "BIP32 hierarchical deterministic derivation. Idempotent: returns existing key " +
+                "if the same derivation path has already been derived.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<DerivedKeyResult>(StatusCodes.Status201Created)
+            .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem();
+
+        // POST /api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate - Rotate a derived key
+        orgKeyGroup.MapPost("/{orgId}/keys/{derivedKeyId:guid}/rotate", RotateKey)
+            .WithName("RotateOrgKey")
+            .WithSummary("Rotate a derived organisation key")
+            .WithDescription(
+                "Derives a new key at the next index in the hierarchy and marks the existing key as Rotated. " +
+                "The rotated key can still be used for decryption but not for signing.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces<DerivedKeyResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
+
+        // DELETE /api/wallets/org/{orgId}/keys/{derivedKeyId} - Revoke a derived key
+        orgKeyGroup.MapDelete("/{orgId}/keys/{derivedKeyId:guid}", RevokeKey)
+            .WithName("RevokeOrgKey")
+            .WithSummary("Revoke a derived organisation key")
+            .WithDescription(
+                "Permanently revokes a derived key and locks the associated wallet. " +
+                "If the key was used for Identity purposes, a DID revocation event is triggered.")
+            .RequireAuthorization("RequireAdministrator")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound);
+
+        return app;
+    }
+
+    /// <summary>
+    /// Provisions a new HD master key for the specified organisation.
+    /// </summary>
+    private static async Task<IResult> ProvisionMasterKey(
+        string orgId,
+        IOrgKeyDerivationService orgKeyService,
+        HttpContext httpContext,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(orgId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["orgId"] = ["orgId must be a valid GUID"]
+            });
+        }
+
+        var createdBy = httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? "unknown";
+
+        try
+        {
+            var result = await orgKeyService.ProvisionMasterKeyAsync(orgId, createdBy, "ED25519", ct);
+            return Results.Created($"/api/wallets/org/{orgId}/master-key", result);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already has a provisioned master key"))
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Derives a user key from the organisation's master key hierarchy.
+    /// </summary>
+    private static async Task<IResult> DeriveUserKey(
+        string orgId,
+        DeriveKeyRequest request,
+        IOrgKeyDerivationService orgKeyService,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(orgId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["orgId"] = ["orgId must be a valid GUID"]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserId))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["userId"] = ["userId is required"]
+            });
+        }
+
+        if (!Guid.TryParse(request.UserId, out _))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["userId"] = ["userId must be a valid GUID"]
+            });
+        }
+
+        if (!Enum.TryParse<KeyUsage>(request.KeyUsage, ignoreCase: true, out var usage) ||
+            !Enum.IsDefined(usage))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["keyUsage"] = [$"Invalid key usage. Valid values: {string.Join(", ", Enum.GetNames<KeyUsage>())}"]
+            });
+        }
+
+        if (request.DepartmentId > 1_000_000)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["departmentId"] = ["departmentId must be between 0 and 1000000"]
+            });
+        }
+
+        try
+        {
+            var result = await orgKeyService.DeriveUserKeyAsync(
+                orgId, request.UserId, request.DepartmentId, usage, ct);
+
+            return result.IsNewlyCreated
+                ? Results.Created($"/api/wallets/org/{orgId}/derive-key", result)
+                : Results.Ok(result);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No active master key"))
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Rotates a derived key by deriving a new key at the next index.
+    /// </summary>
+    internal static async Task<IResult> RotateKey(
+        string orgId,
+        Guid derivedKeyId,
+        IOrgKeyDerivationService orgKeyService,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await orgKeyService.RotateKeyAsync(orgId, derivedKeyId, ct);
+            return Results.Ok(result);
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot rotate key"))
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Revokes a derived key and locks the associated wallet.
+    /// </summary>
+    internal static async Task<IResult> RevokeKey(
+        string orgId,
+        Guid derivedKeyId,
+        IOrgKeyDerivationService orgKeyService,
+        ILogger<Program> logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await orgKeyService.RevokeKeyAsync(orgId, derivedKeyId, ct);
+            return Results.Ok(new
+            {
+                derivedKeyId,
+                status = "Revoked",
+                revokedAt = DateTime.UtcNow,
+                walletLocked = true,
+                didRevocationPublished = false // TODO: Will be true when DID revocation service is available
+            });
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound(new { error = $"Derived key {derivedKeyId} not found" });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already revoked"))
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Request body for deriving a user key.
+    /// </summary>
+    /// <param name="UserId">Subject identifier of the user to derive a key for.</param>
+    /// <param name="DepartmentId">Department index in the derivation hierarchy (default 0).</param>
+    /// <param name="KeyUsage">Intended key usage purpose (Identity, VCIssuance, Governance, Communications, ServiceAuth).</param>
+    public record DeriveKeyRequest(string UserId, uint DepartmentId = 0, string KeyUsage = "Identity");
+}

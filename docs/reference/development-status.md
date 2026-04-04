@@ -1,7 +1,7 @@
 # Sorcha Platform - Development Status Report
 
 **Date:** 2026-03-16
-**Version:** 4.3 (Updated after Feature 058 Platform Organisation Topology)
+**Version:** 4.4 (Updated after Feature 083 Wallet Key Derivation)
 **Overall Completion:** 100% MVD
 
 ---
@@ -12,7 +12,7 @@ This document provides an accurate, evidence-based assessment of the Sorcha plat
 
 **Key Findings:**
 - Blueprint-Action Service is 100% complete with full orchestration and JWT authentication (123 tests)
-- Wallet Service is 95% complete with full API implementation, JWT authentication, and EF Core persistence
+- Wallet Service is 98% complete with full API implementation, JWT authentication, EF Core persistence, and org key derivation
 - Register Service is 100% complete with comprehensive testing, JWT authentication, and decentralized governance (234 tests)
 - **Peer Service 95%**: P2P topology, JWT auth, EF Core, 7 gRPC RPCs, register replication, live subscriptions, circuit breaking, PostgreSQL queue
 - **Validator Service 100% MVD**: Memory pool, docket building, consensus, gRPC, duplicate detection cross-check (620+ tests)
@@ -39,7 +39,7 @@ For detailed implementation status, see the individual section files:
 | Service | Status | Details |
 |---------|--------|---------|
 | [Blueprint-Action Service](status/blueprint-service.md) | 100% | Full orchestration, SignalR, JWT auth |
-| [Wallet Service](status/wallet-service.md) | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082) |
+| [Wallet Service](status/wallet-service.md) | 98% | EF Core, API complete, HD wallets, Azure Key Vault KMS (Feature 082), Org Key Derivation (Feature 083) |
 | [Register Service](status/register-service.md) | 100% | 20 REST endpoints, OData, SignalR |
 | [Peer Service](status/peer-service.md) | 95% | P2P, 7 gRPC RPCs, replication, circuit breaking, PostgreSQL queue |
 | **Sorcha.PeerRouter** | 100% | Standalone P2P network bootstrap and debug tool |
@@ -60,7 +60,7 @@ For detailed implementation status, see the individual section files:
 |-----------|-----------|--------|---------|
 | **Blueprint.Engine** | 100% | Complete | None |
 | **Blueprint.Service** | 100% | Complete | None |
-| **Wallet.Service** | 98% | Nearly Complete | AWS/GCP KMS (deferred) |
+| **Wallet.Service** | 98% | Nearly Complete | AWS/GCP KMS (deferred), threshold signing (deferred) |
 | **Register.Service** | 100% | Complete | None |
 | **Peer.Service** | 95% | Complete | None (deferred: BLS threshold) |
 | **Sorcha.PeerRouter** | 100% | Complete | None |
@@ -97,6 +97,17 @@ For detailed implementation status, see the individual section files:
 ---
 
 ## Recent Completions
+
+### 2026-04-04
+- **083-Wallet-Key-Derivation** (Feature 083 complete)
+  - Organisation-level HD key derivation using Sorcha-specific BIP32 paths (`m/0x534F52'/org'/dept'/user'/usage/index`)
+  - `OrgMasterKey`: Per-org root seed encrypted at rest via Key Protection Provider
+  - `DerivedKeyRecord`: User keys derived from org master with path/usage/index/status tracking
+  - Key rotation (index increment, old key decrypt-only) and revocation (wallet lock + DID event)
+  - `KeyUsage` enum: Identity, VCIssuance, Governance, Communications, ServiceAuth
+  - `CustodyMode` model: Custodial (implemented), CoSigned and SelfCustody (schema only)
+  - 4 new REST endpoints for master key provisioning, key derivation, rotation, and revocation
+  - Implements WALLET-R1 through R4 from deferred research items
 
 ### 2026-04-02
 - **082-Cloud-KMS-Key-Management** (Feature 082 complete)
@@ -386,8 +397,8 @@ The platform is feature-complete for MVD but requires the following for producti
 
 ---
 
-**Document Version:** 4.3
-**Last Updated:** 2026-03-16
+**Document Version:** 4.4
+**Last Updated:** 2026-04-04
 **Owner:** Sorcha Architecture Team
 
 **See Also:**

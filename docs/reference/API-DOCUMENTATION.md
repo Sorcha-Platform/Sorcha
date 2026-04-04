@@ -948,6 +948,88 @@ POST /api/wallets/{id}/decrypt
 }
 ```
 
+#### 5. Provision Org Master Key (Feature 083)
+
+```http
+POST /api/wallets/org/{orgId}/master-key
+```
+
+Provisions an organisation master key for HD key derivation. One-shot operation — the mnemonic is returned once and cannot be retrieved again.
+
+**Response:** `201 Created`
+```json
+{
+  "orgId": "org-123",
+  "mnemonic": "word1 word2 ... word24",
+  "walletAddress": "did:sorcha:org:0xabc...",
+  "message": "Store mnemonic securely. It cannot be retrieved again."
+}
+```
+
+#### 6. Derive User Key (Feature 083)
+
+```http
+POST /api/wallets/org/{orgId}/derive-key
+```
+
+**Request Body:**
+```json
+{
+  "userId": "user-456",
+  "departmentId": "dept-789",
+  "usage": "Identity",
+  "custodyMode": "Custodial"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "derivedKeyId": "dk-001",
+  "walletAddress": "did:sorcha:w:0xdef...",
+  "publicKey": "base64-encoded-public-key",
+  "derivationPath": "m/0x534F52'/org'/dept'/user'/0/0",
+  "usage": "Identity",
+  "status": "Active"
+}
+```
+
+#### 7. Rotate Key (Feature 083)
+
+```http
+POST /api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate
+```
+
+Rotates a derived key by incrementing the index. The old key remains available for decryption only.
+
+**Response:** `200 OK`
+```json
+{
+  "newDerivedKeyId": "dk-002",
+  "previousKeyId": "dk-001",
+  "previousKeyStatus": "Rotated",
+  "walletAddress": "did:sorcha:w:0xghi...",
+  "publicKey": "base64-encoded-new-public-key"
+}
+```
+
+#### 8. Revoke Key (Feature 083)
+
+```http
+DELETE /api/wallets/org/{orgId}/keys/{derivedKeyId}
+```
+
+Revokes a derived key. The wallet is locked and a DID revocation event is published for identity keys.
+
+**Response:** `200 OK`
+```json
+{
+  "derivedKeyId": "dk-001",
+  "status": "Revoked",
+  "revokedAt": "2026-04-04T12:00:00Z"
+}
+```
+
 ---
 
 ## Register Service API

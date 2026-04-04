@@ -70,7 +70,7 @@ dotnet restore && dotnet build && dotnet test
 |---------|--------|---------------------|---------|
 | Blueprint | 100% | 5000 / 7000 | Workflow management, SignalR |
 | Register | 100% | 5290 / 7290 | Distributed ledger, OData |
-| Wallet | 95% | internal / 7001 | Crypto operations, HD wallets |
+| Wallet | 98% | internal / 7001 | Crypto operations, HD wallets |
 | Tenant | 98% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
 | Validator | 95% | internal / 7004 | Consensus, chain integrity |
 | Peer | 70% | 5002 / 7002 | P2P network, gRPC |
@@ -208,6 +208,28 @@ WhatsApp-style delivery indicators tracked per-wallet:
 - Double blue ticks: Receipt confirmed (Receipted)
 
 `WalletTransaction` entity tracks both outbound (signed) and inbound (recipient) transactions.
+
+---
+
+## Org Key Derivation API (Feature 083)
+
+Organisation-level HD key derivation using Sorcha-specific BIP32 paths (`m/0x534F52'/org'/dept'/user'/usage/index`). Custodial mode with pluggable seed protection.
+
+### Endpoints (Wallet Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/wallets/org/{orgId}/master-key` | Provision org master key (one-shot, returns mnemonic once) |
+| POST | `/api/wallets/org/{orgId}/derive-key` | Derive user key (idempotent) |
+| POST | `/api/wallets/org/{orgId}/keys/{derivedKeyId}/rotate` | Rotate key (new at next index, old decrypt-only) |
+| DELETE | `/api/wallets/org/{orgId}/keys/{derivedKeyId}` | Revoke key (wallet locked, DID event for identity keys) |
+
+### Key Models
+
+- **OrgMasterKey**: Organisation root seed, encrypted at rest, one per org
+- **DerivedKeyRecord**: User key derived from org master, tracks path/usage/index/status
+- **KeyUsage**: Identity (0), VCIssuance (1), Governance (2), Communications (3), ServiceAuth (4)
+- **CustodyMode**: Custodial (implemented), CoSigned (schema only), SelfCustody (schema only)
 
 ---
 

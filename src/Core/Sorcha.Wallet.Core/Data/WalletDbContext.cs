@@ -50,6 +50,31 @@ public class WalletDbContext : DbContext
     public DbSet<RecoveryAuditLog> RecoveryAuditLogs => Set<RecoveryAuditLog>();
 
     /// <summary>
+    /// Organisation master keys for HD key derivation
+    /// </summary>
+    public DbSet<OrgMasterKey> OrgMasterKeys => Set<OrgMasterKey>();
+
+    /// <summary>
+    /// Derived key records linking users to org-derived wallets
+    /// </summary>
+    public DbSet<DerivedKeyRecord> DerivedKeyRecords => Set<DerivedKeyRecord>();
+
+    /// <summary>
+    /// Threshold key groups (schema only — no service code)
+    /// </summary>
+    public DbSet<ThresholdKeyGroup> ThresholdKeyGroups => Set<ThresholdKeyGroup>();
+
+    /// <summary>
+    /// Signing key shares (schema only — no service code)
+    /// </summary>
+    public DbSet<SigningKeyShare> SigningKeyShares => Set<SigningKeyShare>();
+
+    /// <summary>
+    /// Signing sessions (schema only — no service code)
+    /// </summary>
+    public DbSet<SigningSession> SigningSessions => Set<SigningSession>();
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="WalletDbContext"/> class.
     /// </summary>
     /// <param name="options">The database context options configured with PostgreSQL connection string.</param>
@@ -83,6 +108,11 @@ public class WalletDbContext : DbContext
         ConfigureCredential(modelBuilder);
         ConfigureRecoveryKeyWrap(modelBuilder);
         ConfigureRecoveryAuditLog(modelBuilder);
+        ConfigureOrgMasterKey(modelBuilder);
+        ConfigureDerivedKeyRecord(modelBuilder);
+        ConfigureThresholdKeyGroup(modelBuilder);
+        ConfigureSigningKeyShare(modelBuilder);
+        ConfigureSigningSession(modelBuilder);
     }
 
     private static void ConfigureWallet(ModelBuilder modelBuilder)
@@ -189,6 +219,19 @@ public class WalletDbContext : DbContext
 
             entity.Property(e => e.RecoveryEnabled)
                 .HasDefaultValue(false);
+
+            // Org key derivation fields (Feature 083)
+            entity.Property(e => e.DerivedKeyRecordId);
+
+            entity.Property(e => e.CustodyMode)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(CustodyMode.Custodial);
+
+            entity.HasOne<DerivedKeyRecord>()
+                .WithOne(d => d.Wallet)
+                .HasForeignKey<Domain.Entities.Wallet>(e => e.DerivedKeyRecordId)
+                .OnDelete(DeleteBehavior.SetNull);
 
             // Soft delete filter
             entity.HasQueryFilter(e => e.DeletedAt == null);
@@ -568,6 +611,230 @@ public class WalletDbContext : DbContext
 
             entity.HasIndex(e => new { e.UserId, e.Timestamp })
                 .HasDatabaseName("IX_RecoveryAuditLogs_User_Timestamp");
+        });
+    }
+
+    private static void ConfigureOrgMasterKey(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OrgMasterKey>(entity =>
+        {
+            entity.ToTable("OrgMasterKeys");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.OrganizationId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.EncryptedSeed)
+                .IsRequired();
+
+            entity.Property(e => e.ProtectionProvider)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.ProtectionKeyId)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Algorithm)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasDefaultValue("ED25519");
+
+            entity.Property(e => e.MasterPublicKey)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(OrgMasterKeyStatus.Active);
+
+            entity.Property(e => e.CreatedBy)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.OrganizationId)
+                .IsUnique()
+                .HasDatabaseName("IX_OrgMasterKeys_OrganizationId");
+        });
+    }
+
+    private static void ConfigureDerivedKeyRecord(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<DerivedKeyRecord>(entity =>
+        {
+            entity.ToTable("DerivedKeyRecords");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.OrganizationId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.UserId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.KeyUsage)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(e => e.DerivationPath)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.WalletAddress)
+                .IsRequired()
+                .HasColumnType("text");
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(DerivedKeyStatus.Active);
+
+            entity.Property(e => e.CustodyMode)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(CustodyMode.Custodial);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // FK to OrgMasterKey
+            entity.HasOne(e => e.OrgMasterKey)
+                .WithMany(m => m.DerivedKeys)
+                .HasForeignKey(e => e.OrgMasterKeyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Unique composite: one derivation per (master, user, dept, usage, index)
+            entity.HasIndex(e => new { e.OrgMasterKeyId, e.UserId, e.DepartmentId, e.KeyUsage, e.KeyIndex })
+                .IsUnique()
+                .HasDatabaseName("IX_DerivedKeyRecords_Unique_Path");
+
+            entity.HasIndex(e => new { e.OrganizationId, e.UserId })
+                .HasDatabaseName("IX_DerivedKeyRecords_Org_User");
+
+            entity.HasIndex(e => e.WalletAddress)
+                .HasDatabaseName("IX_DerivedKeyRecords_WalletAddress");
+        });
+    }
+
+    private static void ConfigureThresholdKeyGroup(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ThresholdKeyGroup>(entity =>
+        {
+            entity.ToTable("ThresholdKeyGroups");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.GroupPublicKey)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Algorithm)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(e => e.DkgSessionId)
+                .HasMaxLength(256);
+
+            entity.Property(e => e.OrganizationId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(ThresholdKeyGroupStatus.Pending);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(e => e.OrganizationId)
+                .HasDatabaseName("IX_ThresholdKeyGroups_OrganizationId");
+        });
+    }
+
+    private static void ConfigureSigningKeyShare(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SigningKeyShare>(entity =>
+        {
+            entity.ToTable("SigningKeyShares");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.ParticipantId)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.EncryptedShareData)
+                .IsRequired();
+
+            entity.Property(e => e.ProtectionKeyId)
+                .IsRequired()
+                .HasMaxLength(512);
+
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(ThresholdKeyGroupStatus.Active);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(e => e.ThresholdKeyGroup)
+                .WithMany(g => g.Shares)
+                .HasForeignKey(e => e.ThresholdKeyGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.ThresholdKeyGroupId, e.ShareIndex })
+                .IsUnique()
+                .HasDatabaseName("IX_SigningKeyShares_Group_Index");
+        });
+    }
+
+    private static void ConfigureSigningSession(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SigningSession>(entity =>
+        {
+            entity.ToTable("SigningSessions");
+
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.TransactionId)
+                .HasMaxLength(256);
+
+            entity.Property(e => e.State)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(SigningSessionState.Initializing);
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(e => e.ThresholdKeyGroup)
+                .WithMany(g => g.Sessions)
+                .HasForeignKey(e => e.ThresholdKeyGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.ThresholdKeyGroupId)
+                .HasDatabaseName("IX_SigningSessions_ThresholdKeyGroupId");
         });
     }
 }

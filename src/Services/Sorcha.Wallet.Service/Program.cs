@@ -59,6 +59,12 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.ITransactio
     Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleService>();
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.TransactionLifecycleEventBridge>();
 
+// Feature 083: Org key derivation services
+builder.Services.AddSingleton<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProtectionProvider,
+    Sorcha.Wallet.Service.Services.Implementation.SoftwareKeyProtectionProvider>();
+builder.Services.AddScoped<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyDerivationService,
+    Sorcha.Wallet.Service.Services.Implementation.OrgKeyDerivationService>();
+
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
 
@@ -125,6 +131,7 @@ app.MapWalletEndpoints();
 app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
+app.MapOrgKeyEndpoints();
 
 // ===========================
 // Statistics Endpoint (public, no auth)

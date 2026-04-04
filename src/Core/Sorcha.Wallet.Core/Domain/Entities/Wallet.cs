@@ -127,6 +127,12 @@ public class Wallet
     /// <summary>Cloud KMS key identifier. Null for Local wallets.</summary>
     public string? KmsKeyId { get; set; }
 
+    /// <summary>FK to DerivedKeyRecord if this wallet was derived from an org master key. Null for standalone/legacy wallets.</summary>
+    public Guid? DerivedKeyRecordId { get; set; }
+
+    /// <summary>How the wallet's private key is managed (custodial, co-signed, self-custody).</summary>
+    public CustodyMode CustodyMode { get; set; } = CustodyMode.Custodial;
+
     /// <summary>
     /// Schema version for migrations
     /// </summary>
