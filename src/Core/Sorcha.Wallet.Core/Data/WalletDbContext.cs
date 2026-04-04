@@ -4,6 +4,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sorcha.Wallet.Core.Domain;
 using Sorcha.Wallet.Core.Domain.Entities;
+using Sorcha.Wallet.Core.Domain.Enums;
 
 namespace Sorcha.Wallet.Core.Data;
 
@@ -172,6 +173,15 @@ public class WalletDbContext : DbContext
 
             entity.HasIndex(e => new { e.Tenant, e.Status })
                 .HasDatabaseName("IX_Wallets_Tenant_Status");
+
+            // Signing mode (Feature 082)
+            entity.Property(e => e.SigningMode)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .HasDefaultValue(SigningMode.Local);
+
+            entity.Property(e => e.KmsKeyId)
+                .HasMaxLength(512);
 
             // Recovery fields (Feature 060)
             entity.Property(e => e.EncryptedMasterKeyBlob)

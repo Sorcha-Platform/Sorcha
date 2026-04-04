@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
+
+using Sorcha.Wallet.Core.Domain.Enums;
+
 namespace Sorcha.Wallet.Core.Domain.Entities;
 
 /// <summary>
@@ -117,6 +120,12 @@ public class Wallet
     /// Whether recovery key wraps exist for this wallet.
     /// </summary>
     public bool RecoveryEnabled { get; set; }
+
+    /// <summary>How this wallet's signing keys are managed.</summary>
+    public SigningMode SigningMode { get; set; } = SigningMode.Local;
+
+    /// <summary>Cloud KMS key identifier. Null for Local wallets.</summary>
+    public string? KmsKeyId { get; set; }
 
     /// <summary>
     /// Schema version for migrations
