@@ -71,7 +71,8 @@
 - [ ] T025 [US1] Implement `OrgKeyDerivationService.ProvisionMasterKeyAsync` — generate BIP39 mnemonic (24 words), derive seed, encrypt via `IOrgKeyProtectionProvider`, store `OrgMasterKey`, derive identity keys for all existing org members (query Tenant Service for member list), return mnemonic once in `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgKeyDerivationService.cs`
 - [ ] T026 [US1] Implement `OrgKeyDerivationService.DeriveUserKeyAsync` — construct derivation path via `DerivationPathBuilder`, decrypt master seed, derive child key via NBitcoin `ExtKey.Derive()`, create `Wallet` + `DerivedKeyRecord`, return existing if path already derived (idempotent) in `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgKeyDerivationService.cs`
 - [ ] T027 [US1] Create `OrgKeyEndpoints` with `POST /api/wallets/org/{orgId}/master-key` (RequireAdministrator) and `POST /api/wallets/org/{orgId}/derive-key` (RequireService or RequireAdministrator) per OpenAPI contract in `src/Services/Sorcha.Wallet.Service/Endpoints/OrgKeyEndpoints.cs`
-- [ ] T028 [US1] Implement auto-derivation hook — subscribe to Tenant Service "user added to organisation" event (SignalR or internal API), call `DeriveUserKeyAsync(orgId, userId, 0, KeyUsage.Identity)` when fired, log warning and skip if org has no master key in `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgKeyDerivationService.cs`
+- [ ] T027b [US1] Add internal notification when user is added to organisation — emit event via `IEventServiceClient` or internal API POST from Tenant Service when `UserAddedToOrganization` audit event fires, so Wallet Service can subscribe. Follow existing EventEndpoints pattern in `src/Services/Sorcha.Tenant.Service/Endpoints/EventEndpoints.cs` and `src/Services/Sorcha.Tenant.Service/Services/PlatformUserProvisioningService.cs`
+- [ ] T028 [US1] Implement auto-derivation hook — subscribe to the Tenant Service user-added-to-org event created in T027b, call `DeriveUserKeyAsync(orgId, userId, 0, KeyUsage.Identity)` when fired, log warning and skip if org has no master key in `src/Services/Sorcha.Wallet.Service/Services/Implementation/OrgKeyDerivationService.cs`
 
 **Checkpoint**: Org master key provisioning works end-to-end. Identity wallets auto-created. Core MVP complete.
 
@@ -283,10 +284,10 @@ Developer B (frontend): T029-T035 (Transaction ticks + detail panel)
 
 | Metric | Value |
 |--------|-------|
-| Total tasks | 59 |
+| Total tasks | 60 |
 | Phase 1 (Setup) | 16 tasks |
 | Phase 2 (Foundational) | 5 tasks |
-| US1 — Org Key Provisioning (P1) | 7 tasks |
+| US1 — Org Key Provisioning (P1) | 8 tasks |
 | US2 — Transaction Ticks (P1) | 7 tasks |
 | US3 — Purpose-Specific Keys (P2) | 2 tasks |
 | US4 — Key Rotation (P2) | 5 tasks |

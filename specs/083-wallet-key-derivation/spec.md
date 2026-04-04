@@ -114,7 +114,7 @@ The system stores data structures for future threshold (multi-party) signing wit
 
 - What happens when two admins simultaneously attempt to provision a master key for the same org? The system must ensure only one succeeds via a unique constraint on organisation ID.
 - What happens when the auto-derivation hook fires but the org has no provisioned master key? The system logs a warning and skips derivation; the user can have a wallet created manually or the hook retries once the master key is provisioned.
-- What happens when a user is removed from an organisation? Their derived keys remain in "Active" status but are no longer usable because their org membership (checked at signing time) is revoked.
+- What happens when a user is removed from an organisation? Their derived keys remain in "Active" status but are no longer usable because the Tenant Service revokes their JWT tokens on org removal — they cannot authenticate to the signing endpoint. The keys themselves are not revoked (admin can explicitly revoke if permanent lockout is needed).
 - What happens when the transaction lifecycle event fires but the UI is not connected to SignalR? On next page load, the transaction list fetches current state from the API, showing the correct tick status.
 - What happens when a receipt verification fails? The UI displays the failure reason and the receipt proof details so the user can investigate.
 - What happens when a GUID-to-derivation-index mapping produces a collision for two different users? The unique constraint on the full derivation path tuple prevents duplicate key creation; the second derivation attempt would need manual resolution (extremely unlikely at practical user counts).
@@ -178,6 +178,6 @@ The system stores data structures for future threshold (multi-party) signing wit
 - The existing HD wallet infrastructure (BIP32/39/44) and cryptographic modules are stable and require no changes for this feature.
 - The TransactionLifecycleService and TransactionLifecycleEventBridge backends are complete and fire correct SignalR events for docket sealing and receipt generation.
 - Feature 079 (transaction receipts, Merkle proofs, verification bundles) endpoints are available for the UI verify/download actions.
-- The Tenant Service emits an event (SignalR or internal API) when a user is added to an organisation, which the Wallet Service can subscribe to.
+- The Tenant Service logs UserAddedToOrganization as an audit event but does not currently emit an external notification. A new internal event notification must be added (T027b) so the Wallet Service auto-derivation hook can subscribe.
 - Only the custodial custody mode is implemented in this release; the co-signed and self-custody modes exist in the schema but have no code paths.
 - Database migrations will be squashed into a single migration per context to maintain a clean migration history.
