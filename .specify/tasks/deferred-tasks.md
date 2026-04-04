@@ -111,6 +111,43 @@
 
 ---
 
+## Wallet Key Derivation & Threshold Signing — Research & Investigation
+
+> **Source:** Brainstorming session on extending Sorcha's wallet service with HD key derivation, corporate key recovery, and threshold signing (2026-04-04). These features explore organisation-level key management, eliminating individual recovery phrases, and split-custody signing via FROST (RFC 9591). Each item represents a discrete capability that should be researched, scoped, and classified as pre-release or post-1.0.
+
+| ID | Area | Priority | Impact | Status | Description |
+|----|------|----------|--------|--------|-------------|
+| WALLET-R1 | HD Derivation Path Schema | P2 | High | 🔬 Research | Define and register Sorcha-specific BIP-32 derivation purposes: `m / sorcha_purpose' / org_id' / dept_id' / user_id' / key_usage / index`. Purpose values: 100' DID identity, 101' VC issuance, 102' governance, 103' encrypted comms, 104' service auth. Hardened at purpose/org/dept/user levels; non-hardened at usage/index. Path encodes audit context (org, department, user, purpose). |
+| WALLET-R2 | Org Master Seed Management | P2 | High | 🔬 Research | Organisation holds a master seed in HSM/KMS. Admin recovery via Shamir's Secret Sharing (K-of-N threshold to reconstruct) — prevents single-admin unilateral recovery. Integrates with Azure KMS work (feature 082): master seed in Key Vault/HSM, derivation is server-side. No individual recovery phrases needed. |
+| WALLET-R3 | User Key Derivation Service | P2 | High | 🔬 Research | Derive per-user keys deterministically from org master seed at defined paths. Users never see or hold a seed phrase. Recovery = re-derivation from master seed at known path. Enables org-controlled key lifecycle without individual secret management burden. |
+| WALLET-R4 | Key Rotation & Revocation | P2 | High | 🔬 Research | Index-based key rotation (increment index in derivation path). Revocation = stop deriving from that path + publish DID revocation. Must integrate with existing DID document management and credential lifecycle. Related to TRUST-10 (key rotation & re-encryption). |
+| WALLET-R5 | ISigningProvider Threshold Extension | P2 | High | 🔬 Research | Extend `ISigningProvider` abstraction to support threshold signing alongside existing KMS and local signing modes. Must maintain backward compatibility with current single-party signing. Verifiers cannot distinguish threshold-signed from single-signed Ed25519 signatures. |
+| WALLET-R6 | FROST Sidecar Service | P2 | High | 🔬 Research | Rust gRPC sidecar wrapping Zcash Foundation `frost-ed25519` crate (NCC Group-audited). Called via `ISigningProvider`. Avoids writing crypto from scratch. Fits existing Aspire orchestration and gRPC architecture. Interop options: Rust gRPC sidecar (recommended) or FFI via CsBindgen/UniFFI. |
+| WALLET-R7 | Distributed Key Generation (DKG) | P3 | High | 🔬 Research | FROST DKG provisioning flow for co-signed key pairs. Shares generated without a trusted dealer. Each party (wallet service + user device) holds a share; full private key never exists whole anywhere. On device loss, server share (from org master seed) retained, new device share provisioned via key resharing without changing public key. |
+| WALLET-R8 | Device Share Management | P3 | Medium | 🔬 Research | Secure storage of user's signing share on phone/local HSM. Re-provisioning flow on device loss via key resharing protocol. Must handle offline/lost device scenarios gracefully. Consider platform-specific secure enclaves (iOS Secure Enclave, Android StrongBox). |
+| WALLET-R9 | Custody Level Model | P2 | High | 🔬 Research | Three first-class wallet modes: **Custodial** (full key in KMS, no device share — service accounts/automation), **Co-signed** (server share + device share — standard user operations), **Self-custody** (full key on device, optional recovery escrow — external/citizen wallets). Must be a core wallet property, not bolted on. |
+| WALLET-R10 | Policy Enforcement Layer | P3 | Medium | 🔬 Research | Server-side partial signing gated by policy: approval workflows, rate limits, time-of-day restrictions, geo-fencing. The server share only participates after policy checks pass. Provides genuine non-repudiation — neither party can sign alone. |
+| WALLET-R11 | Delegation Model | P3 | Medium | 🔬 Research | Department-level extended keys for hierarchical admin access. Derived from org master at `dept_id'` level. Enables department admins to manage user keys within their branch without access to sibling departments or parent org key. |
+| WALLET-R12 | Proof of Derivation | P3 | Medium | 🔬 Research | Prove a key was derived from org master without revealing the master seed. For audit/compliance: cryptographic proof of organisational key provenance. Could use BIP-32 chain code properties or ZKP-based approaches. |
+| WALLET-R13 | Governance Role Derivation | P3 | Medium | 🔬 Research | Derive keys per governance role from the same wallet seed using purpose 102'. A single user's wallet can hold multiple role-specific keys (e.g., register owner vs validator vs participant) with clear separation and auditable derivation paths. |
+
+### Priority Rationale
+
+| Tier | IDs | Rationale |
+|------|-----|-----------|
+| **Tier 1 — Core key management** | WALLET-R1, R2, R3, R4, R5, R9 | Foundation for org-level key lifecycle. R9 (custody model) shapes all other decisions. R5 is the integration seam for threshold signing. |
+| **Tier 2 — Threshold signing** | WALLET-R6, R7 | FROST sidecar and DKG are the cryptographic core. Depend on Tier 1 abstractions. Rust sidecar is the recommended path — no native .NET FROST implementation exists. |
+| **Tier 3 — Operational maturity** | WALLET-R8, R10, R11, R12, R13 | Device management, policy enforcement, delegation, proof-of-derivation, and governance roles. Important for enterprise adoption but not blocking core functionality. |
+
+### Implementation Notes
+
+- **Post-quantum (ML-DSA):** Threshold schemes are immature for PQ algorithms; keep PQ keys as single-party KMS for now.
+- **Offline scenarios:** Co-signed mode requires connectivity; consider pre-signed authorisations or time-limited single-party keys as fallback.
+- **Latency:** Threshold signing adds a round-trip; batch operations may need a server-only key branch (custodial mode).
+- **FROST protocol:** RFC 9591, production-ready in Rust (Zcash Foundation frost-ed25519).
+
+---
+
 ## CLI Modernisation — Deferred Items (Feature 080)
 
 | ID | Task | Priority | Effort | Status | Notes |
@@ -130,7 +167,7 @@
 
 ## Summary
 
-**Total Deferred Tasks:** 53 (5 now completed)
+**Total Deferred Tasks:** 66 (5 now completed)
 **Total Deferred Effort:** 588+ hours (~15 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.
