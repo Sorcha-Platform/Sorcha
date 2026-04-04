@@ -82,13 +82,16 @@ public static class HttpServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDidResolvers(this IServiceCollection services)
     {
-        services.AddSingleton<SorchaDidResolver>();
+        // SorchaDidResolver depends on IWalletServiceClient (Scoped), so it must also be Scoped.
+        // KeyDidResolver has no scoped dependencies — Singleton is fine.
+        services.AddScoped<SorchaDidResolver>();
         services.AddSingleton<KeyDidResolver>();
         services.AddHttpClient<WebDidResolver>();
-        services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
+        services.AddScoped<IDidResolver>(sp => sp.GetRequiredService<SorchaDidResolver>());
         services.AddSingleton<IDidResolver>(sp => sp.GetRequiredService<KeyDidResolver>());
 
-        services.AddSingleton<IDidResolverRegistry>(sp =>
+        // Registry must be Scoped to resolve the Scoped SorchaDidResolver
+        services.AddScoped<IDidResolverRegistry>(sp =>
         {
             var registry = new DidResolverRegistry(
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DidResolverRegistry>>());
