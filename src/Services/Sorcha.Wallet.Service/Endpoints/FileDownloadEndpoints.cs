@@ -165,19 +165,22 @@ public static class FileDownloadEndpoints
             });
         }
 
-        // Stream the decrypted file to the client
+        // Verify integrity by writing to a temporary buffer first, then stream to the client.
+        // The integrity check (SHA-256 comparison) must complete before we commit the response
+        // headers, so we cannot stream directly to the response body. However, we avoid holding
+        // a second copy of the bytes by passing the verified buffer as a stream to Results.Stream.
         logger.LogInformation(
-            "Streaming {FileName} ({ContentType}, {Size} bytes) to wallet {Address}",
+            "Preparing {FileName} ({ContentType}, {Size} bytes) for wallet {Address}",
             downloadResult.FileName, downloadResult.ContentType, downloadResult.Size, address);
 
-        // Buffer the decrypted file and verify integrity before sending
-        using var buffer = new MemoryStream();
+        var buffer = new MemoryStream();
         try
         {
             await downloadResult.WriteToStreamAsync(buffer, cancellationToken);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("integrity check failed"))
         {
+            await buffer.DisposeAsync();
             logger.LogError(ex,
                 "Integrity check FAILED for {FileName}, wallet {Address}",
                 downloadResult.FileName, address);
@@ -190,14 +193,15 @@ public static class FileDownloadEndpoints
             });
         }
 
-        var fileBytes = buffer.ToArray();
         logger.LogInformation(
-            "Sending {FileName} ({ContentType}, {Size} bytes) to wallet {Address}",
-            downloadResult.FileName, downloadResult.ContentType, fileBytes.Length, address);
+            "Streaming {FileName} ({ContentType}, {Size} bytes) to wallet {Address}",
+            downloadResult.FileName, downloadResult.ContentType, buffer.Length, address);
 
-        return Results.File(
-            fileBytes,
+        buffer.Position = 0;
+        return Results.Stream(
+            buffer,
             contentType: downloadResult.ContentType,
-            fileDownloadName: downloadResult.FileName);
+            fileDownloadName: downloadResult.FileName,
+            enableRangeProcessing: false);
     }
 }

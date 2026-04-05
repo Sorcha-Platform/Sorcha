@@ -33,7 +33,12 @@ public static class FileChunkValidationRule
     /// <summary>A chunk's <c>contentType</c> does not match the MIME types permitted by the schema extension.</summary>
     public const string MimeTypeMismatch = "FC_006";
 
-    /// <summary>A chunk transaction has already been sealed into a docket and cannot be reused.</summary>
+    /// <summary>
+    /// Reserved for future use: a chunk transaction has already been sealed into a docket and cannot be reused.
+    /// FC_007 is not currently emitted by <see cref="ValidateFileChunks"/> because sealed-status information
+    /// is unavailable to the stateless validator at the time of validation. It is defined here so that
+    /// tooling and documentation remain consistent when sealed-status becomes queryable.
+    /// </summary>
     public const string ChunkAlreadySealed = "FC_007";
 
     /// <summary>The number of chunks exceeds the maximum allowed by the schema extension or platform limit.</summary>

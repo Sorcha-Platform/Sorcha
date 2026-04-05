@@ -66,7 +66,11 @@ public static class HkdfKeyDerivation
         if (output.Length != KeySizeBytes)
             throw new ArgumentException($"Output span must be exactly {KeySizeBytes} bytes.", nameof(output));
 
-        var info = Encoding.UTF8.GetBytes($"{InfoPrefix}{chunkIndex}");
+        // "sorcha-chunk-" is 13 chars; chunk index is at most 2 decimal digits (max 10 chunks) = 15 max.
+        // stackalloc avoids a heap allocation on every per-chunk key derivation in hot paths.
+        Span<byte> info = stackalloc byte[32];
+        int written = Encoding.UTF8.GetBytes($"{InfoPrefix}{chunkIndex}", info);
+        info = info[..written];
 
         HKDF.DeriveKey(HashAlgorithmName.SHA256, masterFileKey, output, salt, info);
     }

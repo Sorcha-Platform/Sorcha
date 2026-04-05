@@ -52,6 +52,12 @@ public class FileMetadataEntity
     public DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
+    /// Optional JSON-encoded supplementary metadata (e.g. chunk descriptor JSON).
+    /// Stored as-is for validator inspection; not interpreted by the Blueprint Service.
+    /// </summary>
+    public string? CustomMetadata { get; set; }
+
+    /// <summary>
     /// Navigation property to the parent action.
     /// </summary>
     public ActionEntity? Action { get; set; }

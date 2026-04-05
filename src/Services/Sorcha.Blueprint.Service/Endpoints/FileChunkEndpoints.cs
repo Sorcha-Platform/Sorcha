@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Security.Cryptography;
-using System.Text;
+using System.Security.Claims;
 
 using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Service.Models.Responses;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage;
+using Sorcha.ServiceDefaults;
 using Sorcha.TransactionHandler.Chunking;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
@@ -25,29 +26,43 @@ public static class FileChunkEndpoints
     {
         var group = app.MapGroup("/api/file-chunks")
             .WithTags("FileChunks")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapPost("/", SubmitFileChunk)
             .WithName("SubmitFileChunk")
             .WithSummary("Submit an encrypted file chunk")
             .WithDescription(
-                "Accepts a single Base64-encoded encrypted file chunk and stages it for inclusion in a " +
-                "blueprint action transaction. Chunks are submitted individually and assembled by the " +
-                "validator once all chunks for a file have been received. The caller must submit all " +
-                "chunks (0 to totalChunks-1) before the parent action can be finalised. " +
-                "Each chunk must not exceed 4 MB and the total chunk count must not exceed 10.")
+                "Accepts a single Base64-encoded file chunk, encrypts it server-side using an " +
+                "HKDF-derived XChaCha20-Poly1305 key, and stages it for inclusion in a blueprint " +
+                "action transaction. Chunks are submitted individually and assembled by the validator " +
+                "once all chunks for a file have been received. The caller must submit all chunks " +
+                "(0 to totalChunks-1) before the parent action can be finalised. " +
+                "Each chunk must not exceed 4 MB and the total chunk count must not exceed 10. " +
+                "On the first chunk (chunkIndex 0), the server generates a master key and salt " +
+                "and returns them in the response. Subsequent chunks must supply the same values.")
             .Produces<FileChunkSubmissionResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status413RequestEntityTooLarge);
     }
 
     private static async Task<IResult> SubmitFileChunk(
         [FromBody] FileChunkSubmissionRequest request,
         IActionStore actionStore,
+        ITransactionBuilderService txBuilder,
+        HttpContext httpContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.Endpoints.FileChunkEndpoints");
+        var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.FileChunks");
+
+        // Require authenticated JWT subject for audit trail
+        var jwtSubject = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                      ?? httpContext.User.FindFirstValue("sub");
+
+        if (string.IsNullOrEmpty(jwtSubject))
+            return Results.Unauthorized();
 
         // Validate TotalChunks
         if (request.TotalChunks < 1 || request.TotalChunks > 10)
@@ -65,6 +80,10 @@ public static class FileChunkEndpoints
         if (string.IsNullOrWhiteSpace(request.ContentType))
             return Results.BadRequest(new { error = "ContentType is required." });
 
+        // Validate SenderWallet
+        if (string.IsNullOrWhiteSpace(request.SenderWallet))
+            return Results.BadRequest(new { error = "SenderWallet is required." });
+
         // Decode and validate content
         byte[] decodedBytes;
         try
@@ -80,42 +99,70 @@ public static class FileChunkEndpoints
         if (decodedBytes.Length > FileSchemaExtension.DefaultChunkSizeBytes)
         {
             logger.LogWarning(
-                "Chunk {ChunkIndex}/{TotalChunks} for file {FileHash} exceeds size limit: {ActualBytes} bytes",
-                request.ChunkIndex, request.TotalChunks, request.FileHash, decodedBytes.Length);
+                "Chunk {ChunkIndex}/{TotalChunks} for file {FileHash} from JWT {Subject} (wallet {Wallet}) exceeds size limit: {ActualBytes} bytes",
+                request.ChunkIndex, request.TotalChunks, request.FileHash, jwtSubject, request.SenderWallet, decodedBytes.Length);
 
             return Results.StatusCode(StatusCodes.Status413RequestEntityTooLarge);
         }
 
-        // Generate chunk transaction ID: SHA-256(fileHash + chunkIndex + timestamp)
-        var timestamp = DateTimeOffset.UtcNow;
-        var hashInput = $"{request.FileHash}{request.ChunkIndex}{timestamp:O}";
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(hashInput));
-        var chunkTxId = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        // Resolve or generate the upload session (master key + salt).
+        // First chunk (or absent session fields): server generates a fresh session.
+        // Subsequent chunks: caller supplies the master key and salt from the first chunk response.
+        byte[] masterFileKey;
+        byte[] salt;
 
-        // Build chunk metadata
-        var fileMetadata = new FileChunkMetadata
+        if (request.MasterKeyBase64 is not null && request.SaltBase64 is not null)
+        {
+            try
+            {
+                masterFileKey = Convert.FromBase64String(request.MasterKeyBase64);
+                salt = Convert.FromBase64String(request.SaltBase64);
+            }
+            catch (FormatException)
+            {
+                return Results.BadRequest(new { error = "MasterKeyBase64 or SaltBase64 is not valid Base64." });
+            }
+        }
+        else
+        {
+            var session = txBuilder.CreateFileUploadSession();
+            masterFileKey = session.MasterFileKey;
+            salt = session.Salt;
+        }
+
+        // Encrypt the chunk server-side using a per-chunk HKDF-derived key
+        var encrypted = await txBuilder.EncryptFileChunkAsync(
+            decodedBytes, masterFileKey, salt, request.ChunkIndex, request.SenderWallet, cancellationToken);
+
+        // Generate chunk transaction ID using CSPRNG to avoid hash-based collisions
+        var chunkTxId = Guid.NewGuid().ToString("N");
+        var timestamp = DateTimeOffset.UtcNow;
+
+        // Build chunk metadata for validator access
+        var chunkMetadata = new FileChunkMetadata
         {
             Type = FileChunkMetadata.MetadataType,
             ChunkIndex = request.ChunkIndex,
             TotalChunks = request.TotalChunks,
             FileHash = request.FileHash,
             ContentType = request.ContentType,
-            ChunkSize = decodedBytes.Length
+            ChunkSize = encrypted.EncryptedContent.Length
         };
 
-        // Store chunk content and metadata
-        await actionStore.StoreFileContentAsync(chunkTxId, decodedBytes);
+        // Store encrypted chunk content and metadata
+        await actionStore.StoreFileContentAsync(chunkTxId, encrypted.EncryptedContent);
         await actionStore.StoreFileMetadataAsync("pending", chunkTxId, new FileMetadata
         {
             FileId = chunkTxId,
             FileName = $"{request.FileHash}-chunk{request.ChunkIndex}",
             ContentType = request.ContentType,
-            Size = decodedBytes.Length
+            Size = encrypted.EncryptedContent.Length,
+            CustomMetadata = chunkMetadata.ToJson()
         });
 
         logger.LogInformation(
-            "Stored file chunk {ChunkIndex}/{TotalChunks} for file {FileHash} as transaction {ChunkTxId} ({Bytes} bytes)",
-            request.ChunkIndex, request.TotalChunks, request.FileHash, chunkTxId, decodedBytes.Length);
+            "Stored encrypted file chunk {ChunkIndex}/{TotalChunks} for file {FileHash} as transaction {ChunkTxId} ({Bytes} bytes encrypted) — JWT {Subject} wallet {Wallet}",
+            request.ChunkIndex, request.TotalChunks, request.FileHash, chunkTxId, encrypted.EncryptedContent.Length, jwtSubject, request.SenderWallet);
 
         return Results.Created(
             $"/api/file-chunks/{chunkTxId}",
@@ -123,18 +170,20 @@ public static class FileChunkEndpoints
             {
                 ChunkTransactionId = chunkTxId,
                 ChunkIndex = request.ChunkIndex,
-                Timestamp = timestamp
+                Timestamp = timestamp,
+                MasterKeyBase64 = Convert.ToBase64String(masterFileKey),
+                SaltBase64 = Convert.ToBase64String(salt)
             });
     }
 }
 
 /// <summary>
-/// Request to submit a single encrypted file chunk.
+/// Request to submit a single file chunk for server-side encryption and staging.
 /// </summary>
 public record FileChunkSubmissionRequest
 {
     /// <summary>
-    /// Wallet address of the submitting participant.
+    /// Wallet address of the submitting participant. Required for audit logging.
     /// </summary>
     public required string SenderWallet { get; init; }
 
@@ -155,7 +204,7 @@ public record FileChunkSubmissionRequest
     public required int TotalChunks { get; init; }
 
     /// <summary>
-    /// SHA-256 hash of the complete original file (before chunking).
+    /// SHA-256 hash of the complete original file (before chunking), prefixed with "sha256:".
     /// </summary>
     public required string FileHash { get; init; }
 
@@ -165,18 +214,33 @@ public record FileChunkSubmissionRequest
     public required string ContentType { get; init; }
 
     /// <summary>
-    /// Base64-encoded raw chunk bytes (encrypted payload). Must decode to at most 4 MB.
+    /// Base64-encoded raw chunk bytes. Must decode to at most 4 MB.
+    /// The server encrypts these bytes before storage.
     /// </summary>
     public required string ContentBase64 { get; init; }
+
+    /// <summary>
+    /// Base64-encoded 32-byte master file key from a previous chunk response.
+    /// Omit on the first chunk — the server generates a new session.
+    /// Required on chunks 1+ to maintain a consistent encryption session across all chunks.
+    /// </summary>
+    public string? MasterKeyBase64 { get; init; }
+
+    /// <summary>
+    /// Base64-encoded 32-byte salt from a previous chunk response.
+    /// Omit on the first chunk — the server generates a new session.
+    /// Required on chunks 1+ to maintain a consistent encryption session across all chunks.
+    /// </summary>
+    public string? SaltBase64 { get; init; }
 }
 
 /// <summary>
-/// Response returned after a file chunk has been successfully staged.
+/// Response returned after a file chunk has been successfully encrypted and staged.
 /// </summary>
 public record FileChunkSubmissionResponse
 {
     /// <summary>
-    /// Unique transaction ID assigned to this chunk, derived from SHA-256(fileHash + chunkIndex + timestamp).
+    /// Unique transaction ID assigned to this chunk (CSPRNG UUID, 32 hex chars).
     /// </summary>
     public required string ChunkTransactionId { get; init; }
 
@@ -189,4 +253,16 @@ public record FileChunkSubmissionResponse
     /// UTC timestamp at which the chunk was accepted and staged.
     /// </summary>
     public required DateTimeOffset Timestamp { get; init; }
+
+    /// <summary>
+    /// Base64-encoded 32-byte master file key for this upload session.
+    /// Must be supplied unchanged in all subsequent chunk requests for the same file.
+    /// </summary>
+    public required string MasterKeyBase64 { get; init; }
+
+    /// <summary>
+    /// Base64-encoded 32-byte salt for this upload session.
+    /// Must be supplied unchanged in all subsequent chunk requests for the same file.
+    /// </summary>
+    public required string SaltBase64 { get; init; }
 }

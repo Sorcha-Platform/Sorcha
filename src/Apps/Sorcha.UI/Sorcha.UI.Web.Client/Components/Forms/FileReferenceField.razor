@@ -151,6 +151,12 @@
     /// <summary>Raised whenever the file list changes (add, remove, upload complete).</summary>
     [Parameter] public EventCallback<List<FileReferenceInfo>> OnFilesChanged { get; set; }
 
+    /// <summary>Wallet address of the submitting participant. Passed to the chunk endpoint as <c>SenderWallet</c>.</summary>
+    [Parameter] public string SenderWallet { get; set; } = string.Empty;
+
+    /// <summary>Register address associated with the upload. Passed to the chunk endpoint as <c>RegisterAddress</c>.</summary>
+    [Parameter] public string RegisterAddress { get; set; } = string.Empty;
+
     /// <summary>Disables all interaction when true.</summary>
     [Parameter] public bool Disabled { get; set; }
 
@@ -321,8 +327,8 @@
     }
 
     /// <summary>
-    /// POST a single chunk to the Blueprint Service chunk endpoint.
-    /// Returns the transaction/chunk ID assigned by the server.
+    /// POST a single chunk to the Blueprint Service chunk endpoint as JSON.
+    /// Returns the chunk transaction ID assigned by the server.
     /// </summary>
     private async Task<string> PostChunkAsync(
         FileReferenceInfo info,
@@ -330,20 +336,24 @@
         int totalChunks,
         byte[] data)
     {
-        using var content = new MultipartFormDataContent();
-        content.Add(new StringContent(FieldName), "fieldName");
-        content.Add(new StringContent(info.FileName), "fileName");
-        content.Add(new StringContent(info.ContentType), "contentType");
-        content.Add(new StringContent(info.Hash), "fileHash");
-        content.Add(new StringContent(chunkIndex.ToString()), "chunkIndex");
-        content.Add(new StringContent(totalChunks.ToString()), "totalChunks");
-        content.Add(new ByteArrayContent(data), "chunk", info.FileName);
+        var request = new
+        {
+            senderWallet = SenderWallet,
+            registerAddress = RegisterAddress,
+            chunkIndex,
+            totalChunks,
+            fileHash = $"sha256:{info.Hash}",
+            contentType = info.ContentType,
+            contentBase64 = Convert.ToBase64String(data)
+        };
 
-        var response = await Http.PostAsync("/api/file-chunks", content);
+        var response = await Http.PostAsJsonAsync("/api/file-chunks", request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<ChunkUploadResponse>();
-        return result?.TransactionId ?? Guid.NewGuid().ToString();
+        if (result?.ChunkTransactionId is null)
+            throw new InvalidOperationException("Server did not return a chunk transaction ID.");
+        return result.ChunkTransactionId;
     }
 
     /// <summary>
@@ -397,5 +407,5 @@
 
     // ── Nested response DTO ───────────────────────────────────────────────────
 
-    private sealed record ChunkUploadResponse(string TransactionId);
+    private sealed record ChunkUploadResponse(string ChunkTransactionId);
 }

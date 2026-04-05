@@ -83,4 +83,10 @@ public record FileMetadata
     /// File size in bytes
     /// </summary>
     public long Size { get; init; }
+
+    /// <summary>
+    /// Optional JSON-encoded chunk metadata (e.g. <c>FileChunkMetadata.ToJson()</c>).
+    /// Stored alongside the file record so validators can inspect chunk context.
+    /// </summary>
+    public string? CustomMetadata { get; init; }
 }

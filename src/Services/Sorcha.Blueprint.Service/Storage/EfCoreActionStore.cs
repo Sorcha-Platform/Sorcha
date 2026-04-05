@@ -133,7 +133,8 @@ public class EfCoreActionStore : IActionStore
             ContentType = metadata.ContentType,
             Size = metadata.Size,
             Content = [], // Content stored separately via StoreFileContentAsync
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            CustomMetadata = metadata.CustomMetadata
         };
 
         context.FileMetadata.Add(entity);
@@ -161,7 +162,8 @@ public class EfCoreActionStore : IActionStore
             FileId = entity.Id,
             FileName = entity.FileName,
             ContentType = entity.ContentType,
-            Size = entity.Size
+            Size = entity.Size,
+            CustomMetadata = entity.CustomMetadata
         };
     }
 
