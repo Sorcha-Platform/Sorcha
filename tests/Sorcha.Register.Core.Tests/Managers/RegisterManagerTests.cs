@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Sorcha.Register.Core.Events;
 using Sorcha.Register.Core.Managers;
+using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Storage.InMemory;
 using Xunit;
@@ -269,5 +270,69 @@ public class RegisterManagerTests
 
         // Assert
         register.Status.Should().Be(RegisterStatus.Offline);
+    }
+
+    [Fact]
+    public async Task DeleteRegisterAsync_WithAuthorizedOwner_ShouldDeleteRegister()
+    {
+        // Arrange
+        var register = await _manager.CreateRegisterAsync("Test");
+        var attestations = new List<RegisterAttestation>
+        {
+            new() { Role = RegisterRole.Owner, Subject = "ws11qowner123" }
+        };
+
+        // Act
+        await _manager.DeleteRegisterAsync(register.Id, "ws11qowner123", attestations);
+
+        // Assert
+        var result = await _manager.GetRegisterAsync(register.Id);
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteRegisterAsync_ShouldPublishRegisterDeletedEvent()
+    {
+        // Arrange
+        var register = await _manager.CreateRegisterAsync("Test");
+        var attestations = new List<RegisterAttestation>
+        {
+            new() { Role = RegisterRole.Owner, Subject = "ws11qowner123" }
+        };
+
+        // Act
+        await _manager.DeleteRegisterAsync(register.Id, "ws11qowner123", attestations);
+
+        // Assert
+        _eventPublisher.GetPublishedEvents().Should().Contain(e => e.Topic == "register:deleted");
+    }
+
+    [Fact]
+    public async Task DeleteRegisterAsync_WithUnauthorizedCaller_ShouldThrowUnauthorizedAccessException()
+    {
+        // Arrange
+        var register = await _manager.CreateRegisterAsync("Test");
+        var attestations = new List<RegisterAttestation>
+        {
+            new() { Role = RegisterRole.Owner, Subject = "ws11qowner123" }
+        };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            async () => await _manager.DeleteRegisterAsync(register.Id, "ws11qunauthorized", attestations));
+    }
+
+    [Fact]
+    public async Task DeleteRegisterAsync_WithNonExistentId_ShouldThrowInvalidOperationException()
+    {
+        // Arrange
+        var attestations = new List<RegisterAttestation>
+        {
+            new() { Role = RegisterRole.Owner, Subject = "ws11qowner123" }
+        };
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await _manager.DeleteRegisterAsync("nonexistent", "ws11qowner123", attestations));
     }
 }

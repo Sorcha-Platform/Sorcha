@@ -167,7 +167,6 @@ public class AcceptanceFlowTests
         result.RegisterId.Should().Be(roster.ControlRecord.RegisterId);
         result.Name.Should().Be(roster.ControlRecord.Name);
         result.CreatedAt.Should().Be(roster.ControlRecord.CreatedAt);
-        result.CreatedAt.Should().Be(roster.ControlRecord.CreatedAt);
     }
 
     // --- Sequential Add Operations ---
