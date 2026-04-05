@@ -208,7 +208,6 @@ public class GovernanceQuorumFormulaTests
         {
             RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
             Name = "Test Register",
-            TenantId = "tenant-001",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations = attestations
         };

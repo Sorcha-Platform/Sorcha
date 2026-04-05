@@ -94,15 +94,17 @@ public class SystemWalletSigningService : ISystemWalletSigningService
 
     private async Task<string> EnsureWalletAsync(CancellationToken ct)
     {
-        if (_walletAddress is not null)
-            return _walletAddress;
+        var cached = Volatile.Read(ref _walletAddress);
+        if (cached is not null)
+            return cached;
 
         await _walletLock.WaitAsync(ct);
         try
         {
             // Double-check after acquiring lock
-            if (_walletAddress is not null)
-                return _walletAddress;
+            cached = Volatile.Read(ref _walletAddress);
+            if (cached is not null)
+                return cached;
 
             using var scope = _scopeFactory.CreateScope();
             var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();

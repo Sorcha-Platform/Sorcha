@@ -28,17 +28,15 @@ public class RegisterManagerTests
     {
         // Arrange
         var name = "Test Register";
-        var tenantId = "tenant123";
 
         // Act
-        var result = await _manager.CreateRegisterAsync(name, tenantId);
+        var result = await _manager.CreateRegisterAsync(name);
 
         // Assert
         result.Should().NotBeNull();
         result.Id.Should().NotBeNullOrWhiteSpace();
         result.Id.Length.Should().Be(32); // GUID without hyphens
         result.Name.Should().Be(name);
-        result.TenantId.Should().Be(tenantId);
         result.Height.Should().Be(0);
         result.Status.Should().Be(RegisterStatus.Offline);
         result.Advertise.Should().BeFalse();
@@ -51,10 +49,9 @@ public class RegisterManagerTests
     {
         // Arrange
         var name = "Test Register";
-        var tenantId = "tenant123";
 
         // Act
-        var result = await _manager.CreateRegisterAsync(name, tenantId);
+        var result = await _manager.CreateRegisterAsync(name);
 
         // Assert
         var events = _eventPublisher.GetPublishedEvents<RegisterCreatedEvent>();
@@ -63,7 +60,6 @@ public class RegisterManagerTests
         var evt = events.First();
         evt.RegisterId.Should().Be(result.Id);
         evt.Name.Should().Be(name);
-        evt.TenantId.Should().Be(tenantId);
     }
 
     [Theory]
@@ -73,7 +69,7 @@ public class RegisterManagerTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _manager.CreateRegisterAsync(invalidName, "tenant123"));
+            async () => await _manager.CreateRegisterAsync(invalidName));
     }
 
     [Fact]
@@ -81,7 +77,7 @@ public class RegisterManagerTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            async () => await _manager.CreateRegisterAsync(null!, "tenant123"));
+            async () => await _manager.CreateRegisterAsync(null!));
     }
 
     [Fact]
@@ -92,7 +88,7 @@ public class RegisterManagerTests
 
         // Act & Assert
         var exception = await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _manager.CreateRegisterAsync(tooLongName, "tenant123"));
+            async () => await _manager.CreateRegisterAsync(tooLongName));
 
         exception.Message.Should().Contain("between 1 and 38 characters");
     }
@@ -101,7 +97,7 @@ public class RegisterManagerTests
     public async Task CreateRegisterAsync_WithAdvertiseTrue_ShouldSetAdvertise()
     {
         // Act
-        var result = await _manager.CreateRegisterAsync("Test", "tenant123", advertise: true);
+        var result = await _manager.CreateRegisterAsync("Test", advertise: true);
 
         // Assert
         result.Advertise.Should().BeTrue();
@@ -111,7 +107,7 @@ public class RegisterManagerTests
     public async Task CreateRegisterAsync_WithPartialReplica_ShouldSetIsFullReplicaFalse()
     {
         // Act
-        var result = await _manager.CreateRegisterAsync("Test", "tenant123", isFullReplica: false);
+        var result = await _manager.CreateRegisterAsync("Test", isFullReplica: false);
 
         // Assert
         result.IsFullReplica.Should().BeFalse();
@@ -121,7 +117,7 @@ public class RegisterManagerTests
     public async Task GetRegisterAsync_WithExistingId_ShouldReturnRegister()
     {
         // Arrange
-        var created = await _manager.CreateRegisterAsync("Test", "tenant123");
+        var created = await _manager.CreateRegisterAsync("Test");
 
         // Act
         var result = await _manager.GetRegisterAsync(created.Id);
@@ -146,9 +142,9 @@ public class RegisterManagerTests
     public async Task GetAllRegistersAsync_ShouldReturnAllRegisters()
     {
         // Arrange
-        await _manager.CreateRegisterAsync("Register 1", "tenant123");
-        await _manager.CreateRegisterAsync("Register 2", "tenant456");
-        await _manager.CreateRegisterAsync("Register 3", "tenant123");
+        await _manager.CreateRegisterAsync("Register 1");
+        await _manager.CreateRegisterAsync("Register 2");
+        await _manager.CreateRegisterAsync("Register 3");
 
         // Act
         var result = await _manager.GetAllRegistersAsync();
@@ -158,26 +154,10 @@ public class RegisterManagerTests
     }
 
     [Fact]
-    public async Task GetRegistersByTenantAsync_ShouldReturnOnlyTenantRegisters()
-    {
-        // Arrange
-        await _manager.CreateRegisterAsync("Tenant1 Register 1", "tenant123");
-        await _manager.CreateRegisterAsync("Tenant2 Register", "tenant456");
-        await _manager.CreateRegisterAsync("Tenant1 Register 2", "tenant123");
-
-        // Act
-        var result = await _manager.GetRegistersByTenantAsync("tenant123");
-
-        // Assert
-        result.Should().HaveCount(2);
-        result.Should().OnlyContain(r => r.TenantId == "tenant123");
-    }
-
-    [Fact]
     public async Task UpdateRegisterAsync_ShouldUpdateRegister()
     {
         // Arrange
-        var register = await _manager.CreateRegisterAsync("Original Name", "tenant123");
+        var register = await _manager.CreateRegisterAsync("Original Name");
         register.Name = "Updated Name";
         register.Status = RegisterStatus.Online;
         register.Advertise = true;
@@ -197,7 +177,7 @@ public class RegisterManagerTests
     public async Task UpdateRegisterAsync_ShouldPersistChanges()
     {
         // Arrange
-        var register = await _manager.CreateRegisterAsync("Original", "tenant123");
+        var register = await _manager.CreateRegisterAsync("Original");
         register.Name = "Updated";
 
         // Act
@@ -209,62 +189,10 @@ public class RegisterManagerTests
     }
 
     [Fact]
-    public async Task DeleteRegisterAsync_WithValidTenant_ShouldDeleteRegister()
-    {
-        // Arrange
-        var register = await _manager.CreateRegisterAsync("Test", "tenant123");
-
-        // Act
-        await _manager.DeleteRegisterAsync(register.Id, "tenant123");
-
-        // Assert
-        var retrieved = await _manager.GetRegisterAsync(register.Id);
-        retrieved.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task DeleteRegisterAsync_ShouldPublishRegisterDeletedEvent()
-    {
-        // Arrange
-        var register = await _manager.CreateRegisterAsync("Test", "tenant123");
-        _eventPublisher.Clear();
-
-        // Act
-        await _manager.DeleteRegisterAsync(register.Id, "tenant123");
-
-        // Assert
-        var events = _eventPublisher.GetPublishedEvents<RegisterDeletedEvent>();
-        events.Should().HaveCount(1);
-
-        var evt = events.First();
-        evt.RegisterId.Should().Be(register.Id);
-        evt.TenantId.Should().Be("tenant123");
-    }
-
-    [Fact]
-    public async Task DeleteRegisterAsync_WithWrongTenant_ShouldThrowUnauthorizedAccessException()
-    {
-        // Arrange
-        var register = await _manager.CreateRegisterAsync("Test", "tenant123");
-
-        // Act & Assert
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(
-            async () => await _manager.DeleteRegisterAsync(register.Id, "wrongTenant"));
-    }
-
-    [Fact]
-    public async Task DeleteRegisterAsync_WithNonExistentId_ShouldThrowInvalidOperationException()
-    {
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            async () => await _manager.DeleteRegisterAsync("nonexistent", "tenant123"));
-    }
-
-    [Fact]
     public async Task ExistsAsync_WithExistingRegister_ShouldReturnTrue()
     {
         // Arrange
-        var register = await _manager.CreateRegisterAsync("Test", "tenant123");
+        var register = await _manager.CreateRegisterAsync("Test");
 
         // Act
         var result = await _manager.RegisterExistsAsync(register.Id);
@@ -287,9 +215,9 @@ public class RegisterManagerTests
     public async Task GetRegisterCountAsync_ShouldReturnCorrectCount()
     {
         // Arrange
-        await _manager.CreateRegisterAsync("Register 1", "tenant123");
-        await _manager.CreateRegisterAsync("Register 2", "tenant456");
-        await _manager.CreateRegisterAsync("Register 3", "tenant123");
+        await _manager.CreateRegisterAsync("Register 1");
+        await _manager.CreateRegisterAsync("Register 2");
+        await _manager.CreateRegisterAsync("Register 3");
 
         // Act
         var result = await _manager.GetRegisterCountAsync();
@@ -312,9 +240,9 @@ public class RegisterManagerTests
     public async Task CreateRegisterAsync_ShouldGenerateUniqueIds()
     {
         // Arrange & Act
-        var register1 = await _manager.CreateRegisterAsync("Register 1", "tenant123");
-        var register2 = await _manager.CreateRegisterAsync("Register 2", "tenant123");
-        var register3 = await _manager.CreateRegisterAsync("Register 3", "tenant123");
+        var register1 = await _manager.CreateRegisterAsync("Register 1");
+        var register2 = await _manager.CreateRegisterAsync("Register 2");
+        var register3 = await _manager.CreateRegisterAsync("Register 3");
 
         // Assert
         var ids = new[] { register1.Id, register2.Id, register3.Id };
@@ -337,7 +265,7 @@ public class RegisterManagerTests
     public async Task CreateRegisterAsync_ShouldDefaultToOfflineStatus(RegisterStatus expectedStatus)
     {
         // Act
-        var register = await _manager.CreateRegisterAsync("Test", "tenant123");
+        var register = await _manager.CreateRegisterAsync("Test");
 
         // Assert
         register.Status.Should().Be(RegisterStatus.Offline);

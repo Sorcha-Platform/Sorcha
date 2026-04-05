@@ -27,6 +27,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Sorcha.Register.Core\Sorcha.Register.Core.csproj" />
     <ProjectReference Include="..\..\src\Core\Sorcha.Register.Storage.InMemory\Sorcha.Register.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
+    <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients.Http\Sorcha.ServiceClients.Http.csproj" />
   </ItemGroup>
 
 </Project>

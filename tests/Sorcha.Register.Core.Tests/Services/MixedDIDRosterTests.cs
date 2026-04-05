@@ -65,7 +65,6 @@ public class MixedDIDRosterTests
             {
                 RegisterId = registerId,
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations =
                 [
@@ -126,7 +125,6 @@ public class MixedDIDRosterTests
             {
                 RegisterId = registerId,
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations =
                 [
@@ -182,7 +180,6 @@ public class MixedDIDRosterTests
             {
                 RegisterId = registerId,
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations =
                 [

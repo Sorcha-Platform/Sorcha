@@ -1,7 +1,7 @@
 # Sorcha Platform - API Documentation
 
-**Version:** 2.2.0
-**Last Updated:** 2026-03-16
+**Version:** 2.3.0
+**Last Updated:** 2026-04-04
 **Status:** MVD Complete
 
 ---
@@ -1409,6 +1409,106 @@ Content-Type: application/json
 ```
 
 **Response:** `200 OK` — `changeType`, `currentVersion`, `proposedVersion`, `structuralHashCurrent`, `structuralHashNew`, `structuralFieldsChanged`.
+
+#### 8. Disable Dev Mode (Feature 078)
+
+Irreversibly disables dev mode on a register. Once disabled, field-level encryption becomes mandatory for all new transactions. This operation cannot be undone.
+
+```http
+POST /api/registers/{registerId}/disable-dev-mode
+```
+
+**Authorization:** Requires `CanManageRegisters` policy.
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "register-101",
+  "devMode": false,
+  "message": "Dev mode disabled. Field-level encryption is now required for new transactions."
+}
+```
+
+**Error:** `409 Conflict` — Dev mode is already disabled on this register.
+
+#### 9. Toggle Dev Mode
+
+Enables or disables dev mode on a register. When enabled, payloads are stored as plaintext with disclosure filtering at read time. When disabled, new payloads use envelope encryption.
+
+> **Note:** For production registers, prefer the one-way `POST /{registerId}/disable-dev-mode` endpoint above.
+
+```http
+PUT /api/registers/{registerId}/devmode
+```
+
+**Authorization:** Requires `CanManageRegisters` policy.
+
+**Request Body:**
+```json
+{
+  "enabled": false
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "registerId": "register-101",
+  "devMode": false,
+  "effectiveFrom": "2026-03-16T12:00:00Z"
+}
+```
+
+**Error:** `404 Not Found` — Register not found.
+
+#### 10. Recovery Sync Status (Feature 078)
+
+Returns the current recovery/sync status for all local registers. Used for health monitoring of register replication.
+
+```http
+GET /health/sync
+```
+
+**Authorization:** None (health endpoint).
+
+**Response:** `200 OK`
+```json
+{
+  "status": "synced",
+  "registers": [
+    {
+      "registerId": "register-101",
+      "status": "synced",
+      "currentDocket": 42,
+      "targetDocket": 42,
+      "progressPercent": 100,
+      "docketsProcessed": 0,
+      "lastError": null,
+      "isStale": false
+    },
+    {
+      "registerId": "register-102",
+      "status": "recovering",
+      "currentDocket": 30,
+      "targetDocket": 42,
+      "progressPercent": 58,
+      "docketsProcessed": 7,
+      "lastError": null,
+      "isStale": false
+    }
+  ],
+  "checkedAt": "2026-03-16T12:00:00Z"
+}
+```
+
+**Status values:**
+- `synced` — Register is fully up-to-date with the network
+- `recovering` — Register is catching up with missed dockets
+- `stalled` — Recovery has stopped due to errors
+
+**Top-level `status`** reflects the aggregate: `synced` if all registers are synced, `stalled` if any are stalled, otherwise `recovering`.
+
+**Staleness detection:** A register in `recovering` status is flagged as `isStale: true` if no progress has been made in the last 10 seconds.
 
 ---
 

@@ -262,7 +262,6 @@ public class GovernanceRosterServiceTests
         {
             RegisterId = TestRegisterId,
             Name = "Test Register",
-            TenantId = "tenant-1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations = members.Select(m => new RegisterAttestation
             {

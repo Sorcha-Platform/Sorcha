@@ -44,6 +44,7 @@ This document now tracks **remaining work for the first production release**, or
 | SEC-010 | Peer replication participant record re-validation | P2 | 8h | 📋 | Re-validate participant records during peer sync (verify signatures, check conflicts with existing records). Currently accepted verbatim. |
 | SEC-011 | Service-to-service authentication for internal endpoints | P1 | 8h | ✅ | Closed: RequireService policy on all 5 internal endpoints. Service clients attach JWT headers. |
 | SEC-011b | Defence-in-depth: per-service identity policies | P2 | 8h | 📋 | Check `service_name` claim per endpoint, scope enforcement, API Gateway internal route blocking, audit logging. Deferred from SEC-011. |
+| SEC-012 | CodeQL alert remediation — log injection, info exposure, resource leaks | P1 | 4h | ✅ | Fixed: AcsEmailSender private info exposure, HttpRequestMessage/FormUrlEncodedContent dispose, SystemWalletSigningService double-check-locking. Log injection alerts (19) confirmed already resolved in master. |
 
 ---
 
@@ -220,7 +221,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | Theme | Priority | Tasks | Effort | Focus |
 |-------|----------|-------|--------|-------|
-| 1. Security Hardening | P0 | 7 (2 ✅, 5 remaining) | 80-100h | Release blocker |
+| 1. Security Hardening | P0 | 8 (3 ✅, 5 remaining) | 80-100h | Release blocker — SEC-012 CodeQL fixes done |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
 | 3. Deferred Feature Gaps | P1-P2 | 16 (3 ✅, 13 remaining) | 58-78h | Close MVD gaps — GAP-005/018/019 done (075, 077) |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |

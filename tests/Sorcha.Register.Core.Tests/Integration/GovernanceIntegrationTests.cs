@@ -52,7 +52,6 @@ public class GovernanceIntegrationTests
         {
             RegisterId = RegisterId,
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = DateTimeOffset.UtcNow,
             Attestations = members.Select(m => MakeAttestation(m.did, m.role)).ToList()
         };
