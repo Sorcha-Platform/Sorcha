@@ -173,7 +173,7 @@ public static class FileDownloadEndpoints
             "Preparing {FileName} ({ContentType}, {Size} bytes) for wallet {Address}",
             downloadResult.FileName, downloadResult.ContentType, downloadResult.Size, address);
 
-        var buffer = new MemoryStream();
+        using var buffer = new MemoryStream();
         try
         {
             await downloadResult.WriteToStreamAsync(buffer, cancellationToken);

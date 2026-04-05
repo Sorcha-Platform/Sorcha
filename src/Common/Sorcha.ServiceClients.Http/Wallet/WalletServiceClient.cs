@@ -698,7 +698,7 @@ public class WalletServiceClient : IWalletServiceClient
 
             await SetAuthHeaderAsync(cancellationToken);
 
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
