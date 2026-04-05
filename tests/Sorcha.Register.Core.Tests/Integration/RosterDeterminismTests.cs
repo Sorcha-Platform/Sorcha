@@ -26,7 +26,6 @@ public class RosterDeterminismTests
         {
             RegisterId = RegisterId,
             Name = "Test",
-            TenantId = "t1",
             CreatedAt = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
             Attestations = members.Select(m => new RegisterAttestation
             {

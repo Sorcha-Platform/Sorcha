@@ -95,7 +95,6 @@ public class DIDResolverTests
             {
                 RegisterId = registerId,
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations =
                 [

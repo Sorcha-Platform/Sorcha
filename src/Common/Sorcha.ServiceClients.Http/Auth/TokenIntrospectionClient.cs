@@ -44,7 +44,7 @@ public class TokenIntrospectionClient : ITokenIntrospectionClient
                 return null;
             }
 
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/token/introspect")
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/token/introspect")
             {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string>
                 {

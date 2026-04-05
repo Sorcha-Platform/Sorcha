@@ -45,7 +45,7 @@ public class AcsEmailSender : IEmailSender
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email to {Recipient}: {Subject}", to, subject);
+            _logger.LogError(ex, "Failed to send email: {Subject}", subject);
             throw;
         }
     }

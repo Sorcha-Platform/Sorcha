@@ -26,7 +26,6 @@ public class QueryManagerTests
         {
             Id = Guid.NewGuid().ToString("N"),
             Name = "Test Register",
-            TenantId = "tenant123",
             Height = 0,
             Status = RegisterStatus.Offline
         };
@@ -566,7 +565,6 @@ public class QueryManagerTests
         {
             Id = Guid.NewGuid().ToString("N"),
             Name = "Second Register",
-            TenantId = "tenant123",
             Height = 0,
             Status = RegisterStatus.Offline
         };
@@ -605,7 +603,6 @@ public class QueryManagerTests
         {
             Id = Guid.NewGuid().ToString("N"),
             Name = "Second Register",
-            TenantId = "tenant123",
             Height = 0,
             Status = RegisterStatus.Offline
         };

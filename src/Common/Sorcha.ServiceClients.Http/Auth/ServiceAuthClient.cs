@@ -96,7 +96,7 @@ public class ServiceAuthClient : IServiceAuthClient, IDisposable
                 "Service token refresh triggered for {ClientId} with scopes [{Scopes}]",
                 _clientId, _scopes);
 
-            var formData = new FormUrlEncodedContent(new Dictionary<string, string>
+            using var formData = new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["grant_type"] = "client_credentials",
                 ["client_id"] = _clientId,
