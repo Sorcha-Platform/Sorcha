@@ -1,0 +1,437 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Security.Cryptography
+@using Sorcha.UI.Core.Models.Forms
+@inject HttpClient Http
+
+<MudStack Spacing="2">
+
+    @* Drop zone / picker row.
+       The <label for="..."> trick lets a styled MudButton act as the file-picker trigger
+       without requiring JS interop — clicking the label activates the hidden InputFile. *@
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+
+        @* Hidden InputFile rendered first so its id is available to the label *@
+        <InputFile id="@_inputId"
+                   @ref="_inputFile"
+                   OnChange="OnFileSelected"
+                   accept="@AcceptAttribute"
+                   multiple="@IsArray"
+                   disabled="@IsAddDisabled"
+                   style="display:none;" />
+
+        <label for="@_inputId" style="display:contents;">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.AttachFile"
+                       Size="Size.Small"
+                       Disabled="@IsAddDisabled"
+                       HtmlTag="span"
+                       data-testid="file-upload-btn">
+                @(IsArray ? "Add file" : "Choose file")
+            </MudButton>
+        </label>
+
+        @* Camera capture — only shown when the field accepts image types *@
+        @if (ShowCameraButton)
+        {
+            <InputFile id="@_cameraInputId"
+                       OnChange="OnFileSelected"
+                       accept="image/*"
+                       capture="environment"
+                       disabled="@IsAddDisabled"
+                       style="display:none;" />
+
+            <label for="@_cameraInputId" style="display:contents;">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.PhotoCamera"
+                           Size="Size.Small"
+                           Disabled="@IsAddDisabled"
+                           HtmlTag="span"
+                           data-testid="camera-capture-btn">
+                    Take Photo
+                </MudButton>
+            </label>
+        }
+
+        @if (_files.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @BuildAcceptHint()
+            </MudText>
+        }
+    </MudStack>
+
+    @* File list *@
+    @if (_files.Count > 0)
+    {
+        <MudList T="FileReferenceInfo" Dense="true" DisablePadding="true">
+            @for (var i = 0; i < _files.Count; i++)
+            {
+                var index = i;
+                var file = _files[index];
+
+                <MudListItem T="FileReferenceInfo" data-testid="@($"file-item-{index}")">
+                    <MudStack Spacing="1">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+
+                            @* Status icon *@
+                            @switch (file.Status)
+                            {
+                                case UploadStatus.Complete:
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                             Color="Color.Success" Size="Size.Small" />
+                                    break;
+                                case UploadStatus.Failed:
+                                    <MudIcon Icon="@Icons.Material.Filled.Error"
+                                             Color="Color.Error" Size="Size.Small" />
+                                    break;
+                                case UploadStatus.Uploading:
+                                    <MudProgressCircular Indeterminate="true"
+                                                         Size="Size.Small"
+                                                         Color="Color.Primary" />
+                                    break;
+                                default:
+                                    <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty"
+                                             Color="Color.Default" Size="Size.Small" />
+                                    break;
+                            }
+
+                            @* Name + size *@
+                            <MudText Typo="Typo.body2" Style="flex:1; word-break:break-all;">
+                                @file.FileName
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @FormatSize(file.Size)
+                            </MudText>
+
+                            @* Remove button — only when not actively uploading *@
+                            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                           Size="Size.Small"
+                                           Disabled="@(file.Status == UploadStatus.Uploading || Disabled)"
+                                           OnClick="@(() => RemoveFile(index))"
+                                           aria-label="@($"Remove {file.FileName}")" />
+                        </MudStack>
+
+                        @* Progress bar — visible while uploading *@
+                        @if (file.Status == UploadStatus.Uploading)
+                        {
+                            <MudProgressLinear Value="@file.Progress"
+                                               Min="0" Max="100"
+                                               Rounded="true"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               data-testid="@($"file-progress-{index}")" />
+                        }
+
+                        @* Error message *@
+                        @if (file.Status == UploadStatus.Failed && file.ErrorMessage is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error">
+                                @file.ErrorMessage
+                            </MudText>
+                        }
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+    }
+
+    @* Validation hints *@
+    @if (_validationError is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-1">@_validationError</MudAlert>
+    }
+
+</MudStack>
+
+@code {
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>The field name / JSON Pointer for this field.</summary>
+    [Parameter] public string FieldName { get; set; } = string.Empty;
+
+    /// <summary>Accepted MIME types (from x-file extension). Empty = any.</summary>
+    [Parameter] public string[] Accept { get; set; } = [];
+
+    /// <summary>Maximum file size in bytes (from x-file extension). 0 = no limit.</summary>
+    [Parameter] public long MaxSizePerFile { get; set; }
+
+    /// <summary>Maximum number of upload chunks per file.</summary>
+    [Parameter] public int MaxChunks { get; set; } = 10;
+
+    /// <summary>Whether multiple files are accepted (array field).</summary>
+    [Parameter] public bool IsArray { get; set; }
+
+    /// <summary>Minimum number of files required when IsArray is true.</summary>
+    [Parameter] public int MinItems { get; set; }
+
+    /// <summary>Maximum number of files allowed when IsArray is true.</summary>
+    [Parameter] public int MaxItems { get; set; } = 5;
+
+    /// <summary>Raised whenever the file list changes (add, remove, upload complete).</summary>
+    [Parameter] public EventCallback<List<FileReferenceInfo>> OnFilesChanged { get; set; }
+
+    /// <summary>Wallet address of the submitting participant. Passed to the chunk endpoint as <c>SenderWallet</c>.</summary>
+    [Parameter] public string SenderWallet { get; set; } = string.Empty;
+
+    /// <summary>Register address associated with the upload. Passed to the chunk endpoint as <c>RegisterAddress</c>.</summary>
+    [Parameter] public string RegisterAddress { get; set; } = string.Empty;
+
+    /// <summary>Disables all interaction when true.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    // ── Private state ─────────────────────────────────────────────────────────
+
+    private InputFile? _inputFile;
+    private readonly string _inputId = $"file-input-{Guid.NewGuid():N}";
+    private readonly string _cameraInputId = $"camera-input-{Guid.NewGuid():N}";
+    private readonly List<FileReferenceInfo> _files = [];
+    private string? _validationError;
+
+    private const int ChunkSize = 4 * 1024 * 1024; // 4 MB
+
+    // ── Computed helpers ──────────────────────────────────────────────────────
+
+    private bool IsAddDisabled =>
+        Disabled || (IsArray && _files.Count >= MaxItems) || HasAnyUploading;
+
+    private bool HasAnyUploading =>
+        _files.Any(f => f.Status == UploadStatus.Uploading);
+
+    private string AcceptAttribute =>
+        Accept.Length > 0 ? string.Join(",", Accept) : string.Empty;
+
+    private bool ShowCameraButton =>
+        Accept.Length == 0 || Accept.Any(a => a.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+
+    private string BuildAcceptHint()
+    {
+        var parts = new List<string>();
+        if (Accept.Length > 0)
+            parts.Add(string.Join(", ", Accept));
+        if (MaxSizePerFile > 0)
+            parts.Add($"max {FormatSize(MaxSizePerFile)}");
+        return parts.Count > 0 ? string.Join(" · ", parts) : "Any file type";
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1024L * 1024 * 1024)
+            return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+        if (bytes >= 1024 * 1024)
+            return $"{bytes / (1024.0 * 1024):F1} MB";
+        if (bytes >= 1024)
+            return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes} B";
+    }
+
+    // ── File selection & validation ───────────────────────────────────────────
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _validationError = null;
+
+        var incoming = IsArray
+            ? e.GetMultipleFiles(MaxItems - _files.Count)
+            : [e.File];
+
+        foreach (var browserFile in incoming)
+        {
+            // MIME type check
+            if (Accept.Length > 0 && !Accept.Contains(browserFile.ContentType))
+            {
+                _validationError = $"{browserFile.Name}: unsupported type '{browserFile.ContentType}'.";
+                continue;
+            }
+
+            // Size check
+            long effectiveMax = MaxSizePerFile > 0 ? MaxSizePerFile : long.MaxValue;
+            if (browserFile.Size > effectiveMax)
+            {
+                _validationError = $"{browserFile.Name}: exceeds maximum size of {FormatSize(MaxSizePerFile)}.";
+                continue;
+            }
+
+            // Array item cap
+            if (IsArray && _files.Count >= MaxItems)
+            {
+                _validationError = $"Maximum of {MaxItems} files allowed.";
+                break;
+            }
+
+            var info = new FileReferenceInfo
+            {
+                FileName = browserFile.Name,
+                ContentType = browserFile.ContentType,
+                Size = browserFile.Size,
+                Status = UploadStatus.Pending
+            };
+
+            _files.Add(info);
+            StateHasChanged();
+
+            // Upload off the synchronous rendering path
+            _ = UploadFileAsync(info, browserFile);
+        }
+
+        await NotifyChanged();
+    }
+
+    // ── Upload flow ────────────────────────────────────────────────────────────
+
+    private async Task UploadFileAsync(FileReferenceInfo info, IBrowserFile browserFile)
+    {
+        try
+        {
+            info.Status = UploadStatus.Uploading;
+            info.Progress = 0;
+            StateHasChanged();
+
+            // 1. Hash the entire file first (stream it once for SHA-256)
+            long effectiveMax = MaxSizePerFile > 0 ? MaxSizePerFile : 512L * 1024 * 1024; // 512 MB safety cap
+            byte[] hashBytes;
+
+            using (var hashStream = browserFile.OpenReadStream(effectiveMax))
+            using (var sha256 = SHA256.Create())
+            {
+                hashBytes = await sha256.ComputeHashAsync(hashStream);
+            }
+
+            info.Hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+            // 2. Stream again in chunks and POST each chunk
+            long totalBytes = browserFile.Size;
+            long bytesUploaded = 0;
+            int chunkIndex = 0;
+
+            // Calculate number of chunks; enforce MaxChunks cap
+            int totalChunks = (int)Math.Ceiling((double)totalBytes / ChunkSize);
+            if (totalChunks > MaxChunks)
+            {
+                info.Status = UploadStatus.Failed;
+                info.ErrorMessage = $"File requires {totalChunks} chunks, which exceeds the maximum of {MaxChunks}.";
+                StateHasChanged();
+                await NotifyChanged();
+                return;
+            }
+
+            using var uploadStream = browserFile.OpenReadStream(effectiveMax);
+            var buffer = new byte[ChunkSize];
+
+            while (bytesUploaded < totalBytes)
+            {
+                int bytesRead = await ReadExactAsync(uploadStream, buffer, ChunkSize);
+                if (bytesRead == 0) break;
+
+                var chunkData = buffer[..bytesRead];
+                var txId = await PostChunkAsync(info, chunkIndex, totalChunks, chunkData);
+                info.ChunkTransactionIds.Add(txId);
+
+                bytesUploaded += bytesRead;
+                info.Progress = totalBytes > 0 ? (double)bytesUploaded / totalBytes * 100.0 : 100.0;
+                chunkIndex++;
+                StateHasChanged();
+            }
+
+            info.Status = UploadStatus.Complete;
+            info.Progress = 100;
+        }
+        catch (Exception ex)
+        {
+            info.Status = UploadStatus.Failed;
+            info.ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            StateHasChanged();
+            await NotifyChanged();
+        }
+    }
+
+    /// <summary>
+    /// POST a single chunk to the Blueprint Service chunk endpoint as JSON.
+    /// Returns the chunk transaction ID assigned by the server.
+    /// </summary>
+    private async Task<string> PostChunkAsync(
+        FileReferenceInfo info,
+        int chunkIndex,
+        int totalChunks,
+        byte[] data)
+    {
+        var request = new
+        {
+            senderWallet = SenderWallet,
+            registerAddress = RegisterAddress,
+            chunkIndex,
+            totalChunks,
+            fileHash = $"sha256:{info.Hash}",
+            contentType = info.ContentType,
+            contentBase64 = Convert.ToBase64String(data)
+        };
+
+        var response = await Http.PostAsJsonAsync("/api/file-chunks", request);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ChunkUploadResponse>();
+        if (result?.ChunkTransactionId is null)
+            throw new InvalidOperationException("Server did not return a chunk transaction ID.");
+        return result.ChunkTransactionId;
+    }
+
+    /// <summary>
+    /// Reads up to <paramref name="count"/> bytes from <paramref name="stream"/>,
+    /// handling partial reads from async streams.
+    /// </summary>
+    private static async Task<int> ReadExactAsync(Stream stream, byte[] buffer, int count)
+    {
+        int totalRead = 0;
+        while (totalRead < count)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(totalRead, count - totalRead));
+            if (read == 0) break;
+            totalRead += read;
+        }
+        return totalRead;
+    }
+
+    // ── File removal ──────────────────────────────────────────────────────────
+
+    private async Task RemoveFile(int index)
+    {
+        if (index < 0 || index >= _files.Count) return;
+        _files.RemoveAt(index);
+        await NotifyChanged();
+    }
+
+    // ── Change notification ───────────────────────────────────────────────────
+
+    private async Task NotifyChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+        await OnFilesChanged.InvokeAsync(new List<FileReferenceInfo>(_files));
+    }
+
+    // ── Public query helpers (for parent form submit guard) ───────────────────
+
+    /// <summary>
+    /// Returns true when all added files have completed uploading (or none were added).
+    /// Use this to block form submission while uploads are in progress.
+    /// </summary>
+    public bool IsReady =>
+        _files.Count == 0 || _files.All(f => f.Status is UploadStatus.Complete or UploadStatus.Failed);
+
+    /// <summary>
+    /// Returns true when validation rules are satisfied (min/max item counts and no failed uploads).
+    /// </summary>
+    public bool IsValid =>
+        _files.Count(f => f.Status == UploadStatus.Complete) >= (IsArray ? MinItems : (MinItems > 0 ? 1 : 0))
+        && !_files.Any(f => f.Status == UploadStatus.Failed);
+
+    // ── Nested response DTO ───────────────────────────────────────────────────
+
+    private sealed record ChunkUploadResponse(string ChunkTransactionId);
+}

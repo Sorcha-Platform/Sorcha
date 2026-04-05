@@ -1,0 +1,41 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+@* FileReferenceDisplay.razor — renders file attachment metadata with download link from action payload *@
+
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Utilities
+
+<MudList T="FileReferenceInfo" Dense="true">
+    @for (int i = 0; i < Files.Count; i++)
+    {
+        var file = Files[i];
+        var index = i;
+        <MudListItem data-testid="@($"file-display-{index}")">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@MimeTypeIconHelper.GetIcon(file.ContentType)" Size="Size.Small" />
+                <MudText Typo="Typo.body2">@file.FileName</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatSize(file.Size)</MudText>
+                <span data-testid="@($"file-download-{index}")">
+                    <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                   Size="Size.Small"
+                                   OnClick="@(() => OnDownload.InvokeAsync(index))" />
+                </span>
+            </MudStack>
+        </MudListItem>
+    }
+</MudList>
+
+@code {
+    /// <summary>List of file references to display. Populated from the action payload — no API calls made on render.</summary>
+    [Parameter] public List<FileReferenceInfo> Files { get; set; } = [];
+
+    /// <summary>Raised with the zero-based file index when the user clicks the download button for that file.</summary>
+    [Parameter] public EventCallback<int> OnDownload { get; set; }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):F1} MB"
+    };
+}

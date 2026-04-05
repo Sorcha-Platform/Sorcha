@@ -68,4 +68,29 @@ public interface IActionStore
     /// <param name="transactionHash">The associated transaction hash</param>
     /// <param name="ttl">Time-to-live for the key</param>
     Task StoreIdempotencyKeyAsync(string idempotencyKey, string transactionHash, TimeSpan ttl);
+
+    /// <summary>
+    /// Returns file IDs for file metadata records whose parent action transaction hash
+    /// does not correspond to any stored action and whose associated transaction hash
+    /// was stored before <paramref name="olderThan"/>.
+    /// </summary>
+    /// <remarks>
+    /// These are "orphan" chunks — file data uploaded speculatively before the parent
+    /// action transaction was submitted (or whose submission failed), leaving the binary
+    /// content with no confirmed on-chain anchor.
+    /// </remarks>
+    /// <param name="olderThan">Only include orphans created before this point in time.</param>
+    /// <returns>
+    /// A collection of (fileId, transactionHash) pairs representing orphaned records.
+    /// </returns>
+    Task<IReadOnlyList<(string FileId, string TransactionHash)>> GetOrphanedFileMetadataAsync(
+        DateTimeOffset olderThan);
+
+    /// <summary>
+    /// Deletes the file metadata record and associated content for the given file ID
+    /// and transaction hash pair.
+    /// </summary>
+    /// <param name="fileId">The file ID returned by <see cref="GetOrphanedFileMetadataAsync"/>.</param>
+    /// <param name="transactionHash">The transaction hash the file was associated with.</param>
+    Task DeleteFileMetadataAsync(string fileId, string transactionHash);
 }

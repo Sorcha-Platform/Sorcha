@@ -157,6 +157,11 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransac
 // Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
 
+// Orphan chunk cleanup — removes file metadata records with no confirmed parent transaction
+builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions>(
+    builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.OrphanChunkCleanupService>();
+
 // Add SignalR (Sprint 5)
 // TODO: Add Redis backplane when Microsoft.AspNetCore.SignalR.StackExchangeRedis package is added
 builder.Services.AddSignalR(options =>
@@ -570,6 +575,9 @@ app.MapStatusListEndpoints();
 
 // Map pending action endpoints (Feature 062)
 app.MapActionEndpoints();
+
+// Map file chunk submission endpoints (Feature 085 — Stored Data Transactions)
+app.MapFileChunkEndpoints();
 
 // ===========================
 // Template Endpoints

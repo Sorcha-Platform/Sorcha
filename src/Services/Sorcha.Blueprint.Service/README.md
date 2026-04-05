@@ -264,6 +264,31 @@ OPENTELEMETRY__ZIPKINENDPOINT="https://zipkin.yourcompany.com"
 
 **EventsHubNotificationBridge Enhancements:** The bridge now enriches inbound action notifications with summary text, urgency level, and deadline information before delivery. It also persists `ActivityEvent` records for notification history tracking.
 
+### File Chunk Submission (Feature 085)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/file-chunks` | Submit an encrypted file chunk (staged upload) |
+
+**Purpose:** Supports large encrypted file attachments by accepting chunks individually before they are assembled and committed as part of a blueprint action transaction.
+
+**Request Body:**
+```json
+{
+  "uploadId": "string",
+  "chunkIndex": 0,
+  "totalChunks": 5,
+  "encryptedData": "base64-encoded-chunk",
+  "checksum": "sha256-hex"
+}
+```
+
+**Response:** `202 Accepted` — chunk acknowledged and staged. Final assembly occurs when all `totalChunks` chunks are received.
+
+**Rate Limiting:** `RateLimitPolicies.Strict` (wallet operations policy).
+
+**Auth:** JWT Bearer required.
+
 For full API documentation with request/response schemas, open **Scalar UI** at `https://localhost:7081/scalar`.
 
 ---

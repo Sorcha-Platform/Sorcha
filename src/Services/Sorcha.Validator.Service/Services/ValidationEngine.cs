@@ -136,6 +136,16 @@ public class ValidationEngine : IValidationEngine
                 }
             }
 
+            // 4b-ii. Validate file reference fields (structural checks only)
+            if (_config.EnableFileReferenceValidation)
+            {
+                var fileRefResult = ValidateFileReferences(transaction);
+                if (!fileRefResult.IsValid)
+                {
+                    errors.AddRange(fileRefResult.Errors);
+                }
+            }
+
             // 4c. Validate governance rights for Control transactions (if enabled)
             if (_config.EnableGovernanceValidation)
             {
@@ -1486,6 +1496,220 @@ public class ValidationEngine : IValidationEngine
             sw.Elapsed);
     }
 
+
+    /// <summary>
+    /// Validates the structural integrity of any <c>file-reference</c> fields present in
+    /// the transaction payload.
+    /// </summary>
+    /// <remarks>
+    /// This method performs <em>structural</em> validation only: required fields, hash
+    /// format (<c>sha256:&lt;hex&gt;</c>), chunk-count and size constraints from the
+    /// platform limits and any <c>x-file</c> schema extension.  It does NOT fetch or
+    /// verify individual chunk transactions — that full per-chunk integrity check is
+    /// deferred to docket-sealing time where all referenced chunk transactions are
+    /// available locally without additional network round-trips.
+    ///
+    /// Encrypted transactions are skipped because the payload ciphertext is opaque and
+    /// the Blueprint Service already validated it before encryption.
+    /// </remarks>
+    private ValidationEngineResult ValidateFileReferences(Transaction transaction)
+    {
+        var sw = Stopwatch.StartNew();
+        var errors = new List<ValidationEngineError>();
+
+        try
+        {
+            var payload = transaction.Payload;
+
+            // Skip opaque encrypted payloads — Blueprint Service validates before encryption.
+            if (payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("contentEncoding", out var enc) &&
+                enc.ValueKind == JsonValueKind.String &&
+                enc.GetString() == "encrypted")
+            {
+                return ValidationEngineResult.Success(
+                    transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+            }
+
+            // Work on the user data envelope (same extraction logic as ValidateSchemaAsync).
+            var payloadToScan = payload;
+            if (payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("payloads", out var payloadsEl) &&
+                payloadsEl.ValueKind == JsonValueKind.Object)
+            {
+                using var en = payloadsEl.EnumerateObject();
+                if (en.MoveNext())
+                    payloadToScan = en.Current.Value;
+            }
+
+            if (payloadToScan.ValueKind != JsonValueKind.Object)
+                return ValidationEngineResult.Success(
+                    transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+
+            // Walk every property and validate those that look like file references
+            // (contain a "chunkTransactionIds" array) or explicit null/object markers.
+            // Supports both scalar file-reference objects and array-typed file fields.
+            foreach (var property in payloadToScan.EnumerateObject())
+            {
+                var value = property.Value;
+
+                if (value.ValueKind == JsonValueKind.Null ||
+                    value.ValueKind == JsonValueKind.Undefined)
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.Object)
+                {
+                    // Heuristic: a file reference object always has "chunkTransactionIds".
+                    if (!value.TryGetProperty("chunkTransactionIds", out _))
+                        continue;
+
+                    var fieldPath = $"/{property.Name}";
+                    ValidateFileReferenceObject(value, fieldPath, errors);
+                }
+                else if (value.ValueKind == JsonValueKind.Array)
+                {
+                    // Array file fields: validate each item that looks like a file reference.
+                    int index = 0;
+                    foreach (var item in value.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object &&
+                            item.TryGetProperty("chunkTransactionIds", out _))
+                        {
+                            var itemPath = $"/{property.Name}/{index}";
+                            ValidateFileReferenceObject(item, itemPath, errors);
+                        }
+                        index++;
+                    }
+                }
+            }
+
+            _logger.LogDebug(
+                "File reference validation for transaction {TransactionId}: {ErrorCount} error(s)",
+                transaction.TransactionId, errors.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during file reference validation for transaction {TransactionId}",
+                transaction.TransactionId);
+            errors.Add(CreateError("VAL_FILE_ERR",
+                $"File reference validation error: {ex.Message}",
+                ValidationErrorCategory.Schema));
+        }
+
+        return errors.Count > 0
+            ? CreateFailureResult(transaction, sw.Elapsed, errors)
+            : ValidationEngineResult.Success(transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+    }
+
+    /// <summary>
+    /// Validates the structural integrity of a single file-reference JSON object, accumulating
+    /// any errors into <paramref name="errors"/>. Called for both scalar and array-item file fields.
+    /// </summary>
+    /// <param name="value">The <see cref="JsonElement"/> expected to be a file-reference object.</param>
+    /// <param name="fieldPath">JSON Pointer path used in error messages (e.g. <c>/attachment</c> or <c>/attachments/0</c>).</param>
+    /// <param name="errors">Accumulator for validation errors.</param>
+    private void ValidateFileReferenceObject(
+        JsonElement value,
+        string fieldPath,
+        List<ValidationEngineError> errors)
+    {
+        // --- Required fields ---
+        foreach (var required in FileReferenceRequiredFields)
+        {
+            if (!value.TryGetProperty(required, out _))
+            {
+                errors.Add(CreateError("VAL_FILE_001",
+                    $"File reference at '{fieldPath}' is missing required field \"{required}\".",
+                    ValidationErrorCategory.Schema, fieldPath));
+            }
+        }
+
+        // --- Hash format: "sha256:" + 64 lowercase hex chars ---
+        if (value.TryGetProperty("hash", out var hashEl) &&
+            hashEl.ValueKind == JsonValueKind.String)
+        {
+            var hash = hashEl.GetString() ?? string.Empty;
+            if (!IsValidFileReferenceHash(hash))
+            {
+                errors.Add(CreateError("VAL_FILE_002",
+                    $"File reference at '{fieldPath}' has an invalid hash format. " +
+                    "Expected \"sha256:\" followed by 64 lowercase hexadecimal characters.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/hash"));
+            }
+        }
+
+        // --- chunkTransactionIds bounds (1–10 platform limit) ---
+        long fileSize = 0;
+        if (value.TryGetProperty("chunkTransactionIds", out var chunksEl) &&
+            chunksEl.ValueKind == JsonValueKind.Array)
+        {
+            var chunkCount = chunksEl.GetArrayLength();
+            if (chunkCount < 1 || chunkCount > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks)
+            {
+                errors.Add(CreateError("VAL_FILE_003",
+                    $"File reference at '{fieldPath}' has {chunkCount} chunk transaction ID(s); " +
+                    $"must be between 1 and {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks}.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/chunkTransactionIds"));
+            }
+        }
+
+        // --- Size > 0 and within platform limit ---
+        if (value.TryGetProperty("size", out var sizeEl) &&
+            sizeEl.TryGetInt64(out fileSize))
+        {
+            if (fileSize <= 0)
+            {
+                errors.Add(CreateError("VAL_FILE_004",
+                    $"File reference at '{fieldPath}' has an invalid size ({fileSize}); must be > 0.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/size"));
+            }
+            else if (fileSize > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes)
+            {
+                errors.Add(CreateError("VAL_FILE_005",
+                    $"File reference at '{fieldPath}' declares size {fileSize} bytes which exceeds " +
+                    $"the platform maximum of {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes / (1024 * 1024)} MB.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/size"));
+            }
+        }
+    }
+
+    /// <summary>Required top-level fields on a file-reference JSON object.</summary>
+    private static readonly string[] FileReferenceRequiredFields =
+    [
+        "fileName",
+        "contentType",
+        "size",
+        "hash",
+        "salt",
+        "chunkTransactionIds"
+    ];
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="value"/> matches the
+    /// <c>sha256:</c> prefix followed by exactly 64 lowercase hexadecimal characters.
+    /// </summary>
+    private static bool IsValidFileReferenceHash(string value)
+    {
+        const string Prefix = "sha256:";
+        const int HexLength = 64;
+
+        if (!value.StartsWith(Prefix, StringComparison.Ordinal))
+            return false;
+
+        var hex = value.AsSpan(Prefix.Length);
+        if (hex.Length != HexLength)
+            return false;
+
+        foreach (var ch in hex)
+        {
+            if (!Uri.IsHexDigit(ch))
+                return false;
+        }
+
+        return true;
+    }
 
     private static ValidationEngineError CreateError(
         string code,

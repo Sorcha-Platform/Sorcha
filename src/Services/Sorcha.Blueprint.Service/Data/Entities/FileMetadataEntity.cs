@@ -46,6 +46,18 @@ public class FileMetadataEntity
     public byte[] Content { get; set; } = default!;
 
     /// <summary>
+    /// UTC timestamp when this file metadata record was created.
+    /// Used by the orphan cleanup service to apply an age threshold.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Optional JSON-encoded supplementary metadata (e.g. chunk descriptor JSON).
+    /// Stored as-is for validator inspection; not interpreted by the Blueprint Service.
+    /// </summary>
+    public string? CustomMetadata { get; set; }
+
+    /// <summary>
     /// Navigation property to the parent action.
     /// </summary>
     public ActionEntity? Action { get; set; }

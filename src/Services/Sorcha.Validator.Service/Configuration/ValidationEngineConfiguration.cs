@@ -97,4 +97,17 @@ public class ValidationEngineConfiguration
     /// and required algorithms defined in the register's crypto policy.
     /// </summary>
     public bool EnableCryptoPolicyValidation { get; set; } = true;
+
+    /// <summary>
+    /// Enable structural file reference validation for transactions whose payload
+    /// contains <c>file-reference</c> fields.
+    /// </summary>
+    /// <remarks>
+    /// At transaction-submission time this enforces structural constraints only
+    /// (required fields, hash format, chunk count limits, size caps, content-type
+    /// allowlist).  Full per-chunk integrity verification (<c>FileChunkValidationRule</c>)
+    /// is deferred to docket-sealing time where all referenced chunk transactions are
+    /// locally available without additional network round-trips.
+    /// </remarks>
+    public bool EnableFileReferenceValidation { get; set; } = true;
 }

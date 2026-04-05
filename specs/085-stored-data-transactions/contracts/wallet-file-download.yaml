@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Wallet Service - File Download API
+  version: 1.0.0
+  description: File retrieval endpoint for stored data transactions. The Wallet Service fetches encrypted chunk transactions from the Register Service, derives per-chunk decryption keys via HKDF, decrypts and reassembles the file, verifies integrity, and streams the plaintext file to the requesting client.
+
+paths:
+  /api/wallets/{walletAddress}/files/download:
+    get:
+      operationId: downloadFile
+      summary: Download a decrypted file attachment
+      description: |
+        Fetches chunk transactions referenced by a file field in a sealed action,
+        unwraps the master file key using the wallet's private key, derives per-chunk
+        keys via HKDF-SHA256, decrypts each chunk, reassembles the file, verifies
+        the SHA-256 integrity hash, and streams the plaintext file to the client.
+
+        The response uses chunked transfer encoding. If the file size is known,
+        Content-Length is set to enable download progress in the browser.
+      tags:
+        - Files
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Wallet address of the requesting participant (must be an authorised recipient)
+        - name: actionTxId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Transaction ID of the parent action containing the file reference
+        - name: fieldName
+          in: query
+          required: true
+          schema:
+            type: string
+          description: JSON field name in the action payload (e.g. "sitePhoto", "sitePhotos")
+        - name: fileIndex
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Index within an array file field (0-based). Defaults to 0 for single file fields.
+      responses:
+        '200':
+          description: File streamed successfully
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="original-filename.ext"'
+            Content-Type:
+              schema:
+                type: string
+              description: Original MIME type of the file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid parameters (missing actionTxId, fieldName, or invalid fileIndex)
+        '403':
+          description: Wallet address does not belong to the authenticated user, or user is not an authorised recipient
+        '404':
+          description: Action transaction not found, field not found, or file index out of range
+        '422':
+          description: File integrity check failed (SHA-256 hash mismatch after reassembly)
+
+  /api/file-chunks:
+    post:
+      operationId: submitFileChunk
+      summary: Submit an encrypted file chunk transaction
+      description: |
+        Submits a single encrypted file chunk as a transaction. The chunk is encrypted
+        client-side with an HKDF-derived key before submission. The transaction flows
+        through the validator to the register and remains pending until the parent
+        action is submitted.
+      tags:
+        - Files
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileChunkSubmissionRequest'
+      responses:
+        '201':
+          description: Chunk transaction submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileChunkSubmissionResponse'
+        '400':
+          description: Invalid chunk data (exceeds 4MB, invalid metadata)
+        '413':
+          description: Chunk payload exceeds maximum allowed size
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    FileChunkSubmissionRequest:
+      type: object
+      required:
+        - senderWallet
+        - registerAddress
+        - chunkIndex
+        - totalChunks
+        - fileHash
+        - contentType
+        - encryptedPayload
+      properties:
+        senderWallet:
+          type: string
+          description: Wallet address of the submitting participant
+        registerAddress:
+          type: string
+          description: Register to submit the chunk transaction to
+        chunkIndex:
+          type: integer
+          minimum: 0
+          maximum: 9
+          description: Zero-based position in the chunk sequence
+        totalChunks:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Total number of chunks in this file
+        fileHash:
+          type: string
+          description: 'SHA-256 hash of the complete original file (format: "sha256:abcdef...")'
+        contentType:
+          type: string
+          description: MIME type of the original file
+        encryptedPayload:
+          type: string
+          format: byte
+          description: Base64-encoded encrypted chunk data (XChaCha20-Poly1305 ciphertext + nonce)
+
+    FileChunkSubmissionResponse:
+      type: object
+      properties:
+        chunkTransactionId:
+          type: string
+          description: Transaction ID assigned to this chunk
+        chunkIndex:
+          type: integer
+          description: Confirmed chunk index
+        timestamp:
+          type: string
+          format: date-time
+          description: Submission timestamp
+
+    FileReference:
+      type: object
+      description: Runtime value stored in an action payload for a file field
+      required:
+        - fileName
+        - contentType
+        - size
+        - hash
+        - salt
+        - chunkTransactionIds
+        - masterKeyId
+      properties:
+        fileName:
+          type: string
+          maxLength: 255
+          description: Original filename
+        contentType:
+          type: string
+          description: MIME type
+        size:
+          type: integer
+          format: int64
+          maximum: 41943040
+          description: Total file size in bytes (pre-encryption)
+        hash:
+          type: string
+          pattern: '^sha256:[a-f0-9]{64}$'
+          description: SHA-256 hash of the complete original file
+        salt:
+          type: string
+          format: byte
+          description: Base64-encoded random salt for HKDF key derivation
+        chunkTransactionIds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 10
+          description: Ordered array of chunk transaction IDs
+        masterKeyId:
+          type: string
+          description: Transaction ID of the parent action (where wrapped master key lives)

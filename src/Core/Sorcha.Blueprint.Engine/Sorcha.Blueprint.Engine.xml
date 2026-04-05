@@ -1982,6 +1982,73 @@
             Fluent builder for test cases
             </summary>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Validation.FileReferenceValidator">
+             <summary>
+             Validates <c>format: "file-reference"</c> fields in blueprint action data schemas.
+             </summary>
+             <remarks>
+             Used during schema evaluation to verify that file field declarations are well-formed
+             and that runtime file reference values conform to their schema constraints.
+            
+             All methods are stateless and thread-safe.
+             </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Validation.FileReferenceValidator.ValidateFileFieldSchema(System.Text.Json.JsonElement,System.String)">
+            <summary>
+            Validates the schema definition of a single file field.
+            </summary>
+            <param name="fieldSchema">
+            The <see cref="T:System.Text.Json.JsonElement"/> representing the JSON Schema property definition for the field.
+            Must be an object with <c>"format": "file-reference"</c>.
+            </param>
+            <param name="fieldPath">
+            The JSON Pointer path to the field (e.g. <c>"/properties/attachment"</c>).
+            Used as the instance location in returned <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> objects.
+            </param>
+            <returns>
+            <see cref="M:Sorcha.Blueprint.Engine.Models.ValidationResult.Valid"/> when the field declaration is well-formed;
+            otherwise a failed result containing one or more <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> entries.
+            </returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Validation.FileReferenceValidator.ValidateFileReferenceValue(System.Text.Json.JsonElement,Sorcha.Blueprint.Models.FileSchemaExtension,System.String)">
+            <summary>
+            Validates a runtime file reference value contained in an action payload.
+            </summary>
+            <param name="value">
+            The <see cref="T:System.Text.Json.JsonElement"/> representing the <c>FileReference</c> object in the action payload.
+            </param>
+            <param name="schemaExtension">
+            The parsed <c>x-file</c> extension from the field schema, or <see langword="null"/> if
+            no extension is present. When supplied, additional content-type, size, and chunk
+            constraints are enforced.
+            </param>
+            <param name="fieldPath">
+            The JSON Pointer path to the field in the payload (e.g. <c>"/attachment"</c>).
+            Used as the instance location in returned <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> objects.
+            </param>
+            <returns>
+            <see cref="M:Sorcha.Blueprint.Engine.Models.ValidationResult.Valid"/> when the value conforms to all constraints;
+            otherwise a failed result containing one or more <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> entries.
+            </returns>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Validation.FileReferenceValidator.ValidateArrayFileField(System.Text.Json.JsonElement,System.String)">
+            <summary>
+            Validates the schema definition of an array-type file field whose items have
+            <c>"format": "file-reference"</c>.
+            </summary>
+            <param name="arraySchema">
+            The <see cref="T:System.Text.Json.JsonElement"/> representing the JSON Schema property definition for the array field.
+            Must be an object with <c>"type": "array"</c> and an <c>"items"</c> sub-schema.
+            </param>
+            <param name="fieldPath">
+            The JSON Pointer path to the array field (e.g. <c>"/properties/attachments"</c>).
+            Used as the instance location in returned <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> objects.
+            </param>
+            <returns>
+            <see cref="M:Sorcha.Blueprint.Engine.Models.ValidationResult.Valid"/> when the array field declaration is well-formed;
+            otherwise a failed result containing one or more <see cref="T:Sorcha.Blueprint.Engine.Models.ValidationError"/> entries.
+            </returns>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Validation.JsonLogicValidator">
             <summary>
             Validator for JSON Logic expressions

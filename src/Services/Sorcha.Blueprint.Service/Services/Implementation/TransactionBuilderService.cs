@@ -3,12 +3,14 @@
 
 using System.Text.Json;
 using Sorcha.Blueprint.Service.Services.Interfaces;
+using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Interfaces;
 using Sorcha.TransactionHandler;
 using Sorcha.TransactionHandler.Core;
+using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Enums;
 using Sorcha.TransactionHandler.Interfaces;
 using Sorcha.TransactionHandler.Payload;
-using Sorcha.Cryptography.Interfaces;
 
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
@@ -266,5 +268,63 @@ public class TransactionBuilderService : ITransactionBuilderService
         }
 
         return fileTransactions;
+    }
+
+    /// <inheritdoc/>
+    public async Task<EncryptedChunkResult> EncryptFileChunkAsync(
+        byte[] chunkContent,
+        byte[] masterFileKey,
+        byte[] salt,
+        int chunkIndex,
+        string senderWallet,
+        CancellationToken cancellationToken = default)
+    {
+        if (chunkContent == null || chunkContent.Length == 0)
+            throw new ArgumentException("Chunk content cannot be null or empty.", nameof(chunkContent));
+
+        if (masterFileKey == null)
+            throw new ArgumentNullException(nameof(masterFileKey));
+
+        if (salt == null)
+            throw new ArgumentNullException(nameof(salt));
+
+        if (chunkIndex < 0)
+            throw new ArgumentException("Chunk index must be non-negative.", nameof(chunkIndex));
+
+        if (string.IsNullOrWhiteSpace(senderWallet))
+            throw new ArgumentException("Sender wallet cannot be null or empty.", nameof(senderWallet));
+
+        var chunkKey = HkdfKeyDerivation.DeriveChunkKey(masterFileKey, salt, chunkIndex);
+
+        var result = await _symmetricCrypto.EncryptAsync(
+            chunkContent,
+            EncryptionType.XCHACHA20_POLY1305,
+            chunkKey,
+            cancellationToken);
+
+        if (!result.IsSuccess || result.Value is null)
+        {
+            _logger.LogError(
+                "Failed to encrypt chunk {ChunkIndex} for sender {SenderWallet}: {Error}",
+                chunkIndex, senderWallet, result.ErrorMessage);
+            throw new InvalidOperationException($"Chunk encryption failed for index {chunkIndex}: {result.ErrorMessage}");
+        }
+
+        _logger.LogDebug(
+            "Encrypted chunk {ChunkIndex} ({Size} bytes) for sender {SenderWallet}",
+            chunkIndex, chunkContent.Length, senderWallet);
+
+        return new EncryptedChunkResult(result.Value.Data, result.Value.IV);
+    }
+
+    /// <inheritdoc/>
+    public FileUploadSession CreateFileUploadSession()
+    {
+        var masterFileKey = HkdfKeyDerivation.GenerateMasterFileKey();
+        var salt = HkdfKeyDerivation.GenerateSalt();
+
+        _logger.LogDebug("Created new file upload session");
+
+        return new FileUploadSession(masterFileKey, salt);
     }
 }

@@ -842,6 +842,16 @@ POST /api/blueprints/{id}/publish
 }
 ```
 
+### File Chunks (Feature 085)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/file-chunks` | Submit encrypted file chunk (staged submission) |
+
+**Query Parameters (POST /api/file-chunks):** None — all parameters are in the request body (uploadId, chunkIndex, totalChunks, encryptedData, checksum).
+
+**Auth:** JWT Bearer required. Rate limiting: `RateLimitPolicies.Strict`.
+
 ---
 
 ## Wallet Service API
@@ -1029,6 +1039,24 @@ Revokes a derived key. The wallet is locked and a DID revocation event is publis
   "revokedAt": "2026-04-04T12:00:00Z"
 }
 ```
+
+#### 9. Download Decrypted File Attachment (Feature 085)
+
+```http
+GET /api/v1/wallets/{address}/files/download
+```
+
+Downloads a decrypted file attachment from a stored data transaction. The wallet at `{address}` must have access to the encrypted field.
+
+**Query Parameters:**
+- `registerId` (string, **required**): The register containing the transaction
+- `actionTxId` (string, **required**): Transaction ID of the action that holds the file
+- `fieldName` (string, **required**): JSON field name of the file attachment in the action payload
+- `fileIndex` (integer, optional, default `0`): Index within a multi-file field
+
+**Response:** `200 OK` — binary file stream with appropriate `Content-Type` and `Content-Disposition` headers.
+
+**Auth:** JWT Bearer required. The caller's wallet must be able to decrypt the field (owner or delegated ReadOnly+).
 
 ---
 

@@ -679,6 +679,50 @@ public class WalletServiceClient : IWalletServiceClient
         public bool IsValid { get; set; }
     }
 
+    /// <inheritdoc/>
+    public async Task<FileDownloadStreamResult?> DownloadFileAsync(
+        string walletAddress,
+        string registerId,
+        string actionTxId,
+        string fieldName,
+        int fileIndex = 0,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_serviceAddress}/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/files/download" +
+                      $"?registerId={Uri.EscapeDataString(registerId)}" +
+                      $"&actionTxId={Uri.EscapeDataString(actionTxId)}" +
+                      $"&fieldName={Uri.EscapeDataString(fieldName)}" +
+                      $"&fileIndex={fileIndex}";
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("File download failed for wallet {Address}, action {TxId}: {Status}",
+                    walletAddress, actionTxId, response.StatusCode);
+                return null;
+            }
+
+            var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                        ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                        ?? "download";
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+            return new FileDownloadStreamResult(fileName, contentType, contentStream);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading file for wallet {Address}, action {TxId}",
+                walletAddress, actionTxId);
+            return null;
+        }
+    }
+
     private sealed class EncryptResponse
     {
         [JsonPropertyName("encryptedPayload")]
