@@ -1438,24 +1438,26 @@ public class TenantServiceClient
 
 ### 5. Rate Limiting
 
-**Per-IP rate limits:**
-- Token endpoint: 10 requests/minute
-- Introspection: 100 requests/minute
-- Other endpoints: 60 requests/minute
+Uses the centralised `RateLimitSettings` from ServiceDefaults via `builder.AddRateLimiting()`. All limits are configurable via the `"RateLimiting"` section of `appsettings.json`.
 
-**Implemented via:**
+**Tenant-specific policies applied to endpoints:**
+- TOTP/2FA validation: `totp-validate` policy (per IP)
+- Platform auth (login, registration, social, passkeys): `platform-auth` policy (per IP)
+- All other endpoints: `api` default policy (per IP)
+
 ```csharp
-builder.Services.AddRateLimiter(options =>
+// Single call registers all standard policies from RateLimitSettings
+builder.AddRateLimiting();
+```
+
+Override limits in `appsettings.json`:
+```json
 {
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 60,
-                Window = TimeSpan.FromMinutes(1)
-            }));
-});
+  "RateLimiting": {
+    "TotpPermitLimit": 5,
+    "PlatformAuthPermitLimit": 5
+  }
+}
 ```
 
 ### 6. Audit Logging

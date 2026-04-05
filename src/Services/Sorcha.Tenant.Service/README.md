@@ -414,7 +414,7 @@ OidcSettings__CallbackBaseUrl="https://api.sorcha.example.com"
 | `/api/totp` | DELETE | Disable TOTP 2FA |
 | `/api/totp/status` | GET | Get TOTP 2FA status |
 
-**Rate limiting:** 5 attempts per minute per user/IP on validation endpoints.
+**Rate limiting:** TOTP validation endpoints use the `totp-validate` policy. Limit configurable via `RateLimiting:TotpPermitLimit` in `appsettings.json` (production recommendation: 5/min per IP).
 
 ### Organization Settings API (`/api/organizations/{orgId}/settings`)
 

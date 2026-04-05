@@ -3,9 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.RateLimiting;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
@@ -55,45 +53,8 @@ builder.Services.AddTenantAuthorization();
 // Add input validation (SEC-003)
 builder.AddInputValidation();
 
-// Add rate limiting
-builder.Services.AddRateLimiter(options =>
-{
-    var rateLimitingEnabled = builder.Configuration.GetValue<bool>("RateLimiting:EnableRateLimiting");
-    if (rateLimitingEnabled)
-    {
-        var permitLimit = builder.Configuration.GetValue<int>("RateLimiting:PermitLimit");
-        var window = builder.Configuration.GetValue<int>("RateLimiting:Window");
-
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = permitLimit,
-                    Window = TimeSpan.FromSeconds(window),
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = builder.Configuration.GetValue<int>("RateLimiting:QueueLimit")
-                }));
-    }
-
-    // TOTP validation rate limiting: 5 attempts per minute per IP
-    options.AddFixedWindowLimiter(TotpEndpoints.TotpRateLimitPolicy, config =>
-    {
-        config.PermitLimit = 5;
-        config.Window = TimeSpan.FromMinutes(1);
-        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
-    });
-
-    // Platform auth rate limiting: 5 attempts per minute per IP (social + registration endpoints)
-    options.AddFixedWindowLimiter("platform-auth", config =>
-    {
-        config.PermitLimit = 5;
-        config.Window = TimeSpan.FromMinutes(1);
-        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
-    });
-});
+// Add rate limiting (shared policies from ServiceDefaults, configured via RateLimiting appsettings section)
+builder.AddRateLimiting();
 
 // Configure ForwardedHeaders for Docker/reverse proxy support
 // The API Gateway terminates TLS and forwards HTTP internally — the tenant service

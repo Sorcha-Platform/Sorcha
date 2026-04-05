@@ -446,11 +446,12 @@ Combined with previously archived work (Features 031-043, Sprints 3-10, Wallet A
   - `/api/metrics/caches` - Blueprint cache stats
   - `/api/metrics/config` - Current configuration (redacted)
 - ✅ SEC-002 COMPLETE: API rate limiting and throttling for all services
-  - Added RateLimiter extension methods to ServiceDefaults
-  - 5 policy types: API (100/min), Authentication (10/min), Strict (5/min), Heavy (10 concurrent), Relaxed (1000/min)
-  - Applied to all 7 services: API Gateway, Blueprint, Register, Validator, Wallet, Tenant, Peer
+  - Centralised `RateLimitSettings` class in ServiceDefaults — all limits driven by `"RateLimiting"` appsettings section
+  - 7 policy types: API, Authentication, Strict, Heavy, Relaxed, TOTP Validation, Platform Auth
+  - Applied to all 7 services + MCP Server + Wallet notification limiter — single `builder.AddRateLimiting()` call
   - IP-based partitioning with X-Forwarded-For proxy support
   - Rate limit headers (Retry-After, X-RateLimit-Policy) on 429 responses
+  - Default values very relaxed for pre-release development; tighten via `appsettings.Production.json`
 - ✅ SEC-003 COMPLETE: Input validation hardening (OWASP compliance)
   - Created InputValidationMiddleware with attack pattern detection
   - SQL injection protection with comprehensive regex patterns

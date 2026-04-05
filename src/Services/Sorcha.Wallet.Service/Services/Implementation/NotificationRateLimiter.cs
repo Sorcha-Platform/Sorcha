@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Sorcha.Wallet.Service.Services.Interfaces;
 using StackExchange.Redis;
 
@@ -10,7 +11,7 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 
 /// <summary>
 /// Sliding window rate limiter for notification delivery using Redis INCR with TTL.
-/// Caps at a configurable rate per user per minute (default: 10/min).
+/// Limit is driven by <see cref="RateLimitSettings.NotificationRealTimePerMinute"/>.
 /// Rate-limited notifications overflow to digest delivery.
 /// </summary>
 public sealed class NotificationRateLimiter : INotificationRateLimiter
@@ -24,12 +25,12 @@ public sealed class NotificationRateLimiter : INotificationRateLimiter
 
     public NotificationRateLimiter(
         IConnectionMultiplexer redis,
-        IConfiguration configuration,
+        IOptions<RateLimitSettings> settings,
         ILogger<NotificationRateLimiter> logger)
     {
         _redis = redis;
         _logger = logger;
-        _maxPerMinute = configuration.GetValue("Notifications:RealTimeRateLimitPerMinute", 10);
+        _maxPerMinute = settings.Value.NotificationRealTimePerMinute;
     }
 
     /// <inheritdoc />

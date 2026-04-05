@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -301,16 +302,26 @@ public static class Extensions
     }
 
     /// <summary>
-    /// Adds rate limiting services with configurable policies.
+    /// Adds rate limiting services with all standard policies driven by <see cref="RateLimitSettings"/>.
+    /// Bind the "RateLimiting" section of appsettings.json to override defaults.
+    /// Default values are very relaxed for pre-release development; tighten in production config.
     /// Implements SEC-002 API rate limiting requirements.
     /// </summary>
     /// <param name="builder">The host application builder</param>
-    /// <param name="configure">Optional configuration action</param>
+    /// <param name="configure">Optional configuration action applied after standard policies</param>
     /// <returns>The builder for chaining</returns>
     public static TBuilder AddRateLimiting<TBuilder>(
         this TBuilder builder,
         Action<RateLimiterOptions>? configure = null) where TBuilder : IHostApplicationBuilder
     {
+        // Bind settings from configuration — falls back to coded defaults if section is absent
+        var settings = new RateLimitSettings();
+        builder.Configuration.GetSection(RateLimitSettings.SectionName).Bind(settings);
+
+        // Register so other services (MCP, Wallet notifications) can inject IOptions<RateLimitSettings>
+        builder.Services.Configure<RateLimitSettings>(
+            builder.Configuration.GetSection(RateLimitSettings.SectionName));
+
         builder.Services.AddRateLimiter(options =>
         {
             // Default rejection status code
@@ -333,68 +344,94 @@ public static class Extensions
                     cancellationToken);
             };
 
-            // Default API policy: Fixed window - 100 requests per minute per IP
+            // Default API policy: Fixed window per IP
             options.AddPolicy(RateLimitPolicies.Api, context =>
             {
                 var clientIp = GetClientIdentifier(context);
                 return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 100,
+                    PermitLimit = settings.ApiPermitLimit,
                     Window = TimeSpan.FromMinutes(1),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 10
+                    QueueLimit = settings.ApiQueueLimit
                 });
             });
 
-            // Authentication policy: Sliding window - 10 requests per minute (stricter for auth endpoints)
+            // Authentication policy: Sliding window per IP
             options.AddPolicy(RateLimitPolicies.Authentication, context =>
             {
                 var clientIp = GetClientIdentifier(context);
                 return RateLimitPartition.GetSlidingWindowLimiter(clientIp, _ => new SlidingWindowRateLimiterOptions
                 {
-                    PermitLimit = 10,
+                    PermitLimit = settings.AuthenticationPermitLimit,
                     Window = TimeSpan.FromMinutes(1),
                     SegmentsPerWindow = 6, // 10-second segments
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 2
+                    QueueLimit = settings.AuthenticationQueueLimit
                 });
             });
 
-            // Strict policy: Token bucket - 5 requests per minute with burst of 2
+            // Strict policy: Token bucket per IP
             options.AddPolicy(RateLimitPolicies.Strict, context =>
             {
                 var clientIp = GetClientIdentifier(context);
                 return RateLimitPartition.GetTokenBucketLimiter(clientIp, _ => new TokenBucketRateLimiterOptions
                 {
-                    TokenLimit = 5,
-                    ReplenishmentPeriod = TimeSpan.FromSeconds(12), // 5 tokens per minute
-                    TokensPerPeriod = 1,
+                    TokenLimit = settings.StrictTokenLimit,
+                    ReplenishmentPeriod = TimeSpan.FromSeconds(settings.StrictReplenishmentPeriodSeconds),
+                    TokensPerPeriod = settings.StrictTokensPerPeriod,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 1
+                    QueueLimit = settings.StrictQueueLimit
                 });
             });
 
-            // Heavy operations policy: Concurrency limiter - max 10 concurrent requests globally
+            // Heavy operations policy: Concurrency limiter (global)
             options.AddPolicy(RateLimitPolicies.HeavyOperations, _ =>
             {
                 return RateLimitPartition.GetConcurrencyLimiter("global", _ => new ConcurrencyLimiterOptions
                 {
-                    PermitLimit = 10,
+                    PermitLimit = settings.HeavyPermitLimit,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 20
+                    QueueLimit = settings.HeavyQueueLimit
                 });
             });
 
-            // Relaxed policy: Fixed window - 1000 requests per minute (for health checks, etc.)
+            // Relaxed policy: Fixed window per IP (health checks, metrics)
             options.AddPolicy(RateLimitPolicies.Relaxed, context =>
             {
                 var clientIp = GetClientIdentifier(context);
                 return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 1000,
+                    PermitLimit = settings.RelaxedPermitLimit,
                     Window = TimeSpan.FromMinutes(1),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 50
+                    QueueLimit = settings.RelaxedQueueLimit
+                });
+            });
+
+            // TOTP validation policy: Fixed window per IP
+            options.AddPolicy(RateLimitPolicies.TotpValidation, context =>
+            {
+                var clientIp = GetClientIdentifier(context);
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = settings.TotpPermitLimit,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = settings.TotpQueueLimit
+                });
+            });
+
+            // Platform auth policy: Fixed window per IP (social login, registration, passkeys)
+            options.AddPolicy(RateLimitPolicies.PlatformAuth, context =>
+            {
+                var clientIp = GetClientIdentifier(context);
+                return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = settings.PlatformAuthPermitLimit,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = settings.PlatformAuthQueueLimit
                 });
             });
 
@@ -457,34 +494,29 @@ public static class Extensions
 }
 
 /// <summary>
-/// Well-known rate limiting policy names (SEC-002)
+/// Well-known rate limiting policy names (SEC-002).
+/// All limits are driven by <see cref="RateLimitSettings"/> — override via appsettings.json.
 /// </summary>
 public static class RateLimitPolicies
 {
-    /// <summary>
-    /// Default API policy: 100 requests per minute per IP (fixed window)
-    /// </summary>
+    /// <summary>Default API policy: fixed window per IP.</summary>
     public const string Api = "api";
 
-    /// <summary>
-    /// Authentication policy: 10 requests per minute per IP (sliding window)
-    /// Use for login, token, and password reset endpoints
-    /// </summary>
+    /// <summary>Authentication policy: sliding window per IP (login, token, password reset).</summary>
     public const string Authentication = "authentication";
 
-    /// <summary>
-    /// Strict policy: 5 requests per minute with token bucket (for sensitive operations)
-    /// </summary>
+    /// <summary>Strict policy: token bucket per IP (wallet operations, sensitive endpoints).</summary>
     public const string Strict = "strict";
 
-    /// <summary>
-    /// Heavy operations policy: 10 concurrent requests globally (concurrency limiter)
-    /// Use for resource-intensive operations like file processing, bulk imports
-    /// </summary>
+    /// <summary>Heavy operations policy: concurrency limiter (bulk imports, file processing).</summary>
     public const string HeavyOperations = "heavy";
 
-    /// <summary>
-    /// Relaxed policy: 1000 requests per minute (for health checks, metrics)
-    /// </summary>
+    /// <summary>Relaxed policy: fixed window per IP (health checks, metrics).</summary>
     public const string Relaxed = "relaxed";
+
+    /// <summary>TOTP/2FA validation policy: fixed window per IP.</summary>
+    public const string TotpValidation = "totp-validate";
+
+    /// <summary>Platform auth policy: fixed window per IP (social login, registration, passkeys).</summary>
+    public const string PlatformAuth = "platform-auth";
 }

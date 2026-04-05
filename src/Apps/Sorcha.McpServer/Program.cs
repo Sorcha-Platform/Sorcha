@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.Hosting;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.ServiceClients.Extensions;
@@ -36,7 +37,7 @@ if (string.IsNullOrEmpty(jwtToken))
 
 // Register configuration options
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
-builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"));
+builder.Services.Configure<RateLimitSettings>(builder.Configuration.GetSection(RateLimitSettings.SectionName));
 
 // Register JWT validation handler
 builder.Services.AddSingleton<IJwtValidationHandler, JwtValidationHandler>();

@@ -663,17 +663,18 @@ policy.WithOrigins("https://app.sorcha.io", "https://sorcha.io")
 
 ### Rate Limiting
 
-Rate limiting is applied to 7 write-heavy routes to protect backend services from abuse. Auth policies are enforced on all 48 API routes.
+Rate limiting is applied to write-heavy routes to protect backend services from abuse. Auth policies are enforced on all 48 API routes. All rate limit policies are configured centrally via the `RateLimiting` section of `appsettings.json` and shared across all services through `RateLimitSettings` in ServiceDefaults.
 
-```json
-{
-  "RateLimiting": {
-    "Enabled": true,
-    "PermitLimit": 100,
-    "Window": "00:01:00"
-  }
-}
-```
+The API Gateway applies the following policies to its routes:
+
+| Route | Policy | Description |
+|-------|--------|-------------|
+| `/api/auth/**`, `/auth/**`, `/api/totp/**` | `authentication` | Sliding window per IP |
+| `/api/v1/wallets/**` | `strict` | Token bucket per IP |
+| `/api/registers/{id}/subscribe`, `/api/registers/{id}/advertise` | `api` | Fixed window per IP |
+| `/api/admin/registers/**`, `/api/admin/validators/**` | `heavy` | Concurrency limiter (global) |
+
+See the centralised rate limiting configuration in `Sorcha.ServiceDefaults/RateLimitSettings.cs` for the full list of policies and their default values.
 
 ---
 

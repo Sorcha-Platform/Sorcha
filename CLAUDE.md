@@ -446,6 +446,22 @@ Blueprints should define an `instanceReference` to generate human-readable ident
 // Copyright (c) 2026 Sorcha Contributors
 ```
 
+### 8. Centralised Rate Limiting (SEC-002)
+All services use `builder.AddRateLimiting()` from ServiceDefaults. Limits are driven by `RateLimitSettings` bound from `"RateLimiting"` in `appsettings.json`. **Do NOT add custom `AddRateLimiter` calls in individual services.**
+
+```csharp
+// All services — registers all standard policies
+builder.AddRateLimiting();
+
+// Endpoints reference shared policy names
+.RequireRateLimiting(RateLimitPolicies.Api)           // default
+.RequireRateLimiting(RateLimitPolicies.PlatformAuth)   // login/register
+.RequireRateLimiting(RateLimitPolicies.TotpValidation) // 2FA
+.RequireRateLimiting(RateLimitPolicies.Strict)         // wallet ops
+```
+
+Default values are very relaxed (100k/min) for pre-release development. Tighten in `appsettings.Production.json`. Inject `IOptions<RateLimitSettings>` for non-HTTP rate limiting (e.g. wallet notifications, MCP server).
+
 ---
 
 ## Key Documentation

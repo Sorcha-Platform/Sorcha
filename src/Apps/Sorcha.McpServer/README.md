@@ -94,14 +94,19 @@ The MCP server uses standard .NET configuration with the following sources (in o
 
 #### Rate Limiting
 
+MCP rate limits use the centralised `RateLimiting` section from `RateLimitSettings` in ServiceDefaults:
+
 ```json
 {
   "RateLimiting": {
-    "PermitLimit": 100,
-    "WindowSeconds": 60
+    "McpPerUserRequestsPerMinute": 100,
+    "McpPerTenantRequestsPerMinute": 1000,
+    "McpAdminToolsRequestsPerMinute": 50
   }
 }
 ```
+
+Default values are very relaxed for development. Tighten these in production `appsettings.Production.json`.
 
 ## Getting a JWT Token
 

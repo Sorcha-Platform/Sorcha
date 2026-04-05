@@ -15,9 +15,9 @@ public static class TotpEndpoints
 {
     /// <summary>
     /// Rate limiter policy name for TOTP validation endpoints.
-    /// Limits to 5 attempts per minute per user/IP to prevent brute-force attacks.
+    /// Configured centrally via <see cref="RateLimitPolicies.TotpValidation"/> in ServiceDefaults.
     /// </summary>
-    internal const string TotpRateLimitPolicy = "totp-validate";
+    internal const string TotpRateLimitPolicy = RateLimitPolicies.TotpValidation;
 
     /// <summary>
     /// Maps TOTP 2FA endpoints to the application.
