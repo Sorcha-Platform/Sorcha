@@ -319,9 +319,25 @@ public static class Extensions
         var settings = new RateLimitSettings();
         builder.Configuration.GetSection(RateLimitSettings.SectionName).Bind(settings);
 
-        // Register so other services (MCP, Wallet notifications) can inject IOptions<RateLimitSettings>
-        builder.Services.Configure<RateLimitSettings>(
-            builder.Configuration.GetSection(RateLimitSettings.SectionName));
+        // Register with startup validation so misconfiguration fails fast
+        builder.Services.AddOptions<RateLimitSettings>()
+            .BindConfiguration(RateLimitSettings.SectionName)
+            .Validate(s =>
+                s.ApiPermitLimit > 0
+                && s.AuthenticationPermitLimit > 0
+                && s.StrictTokenLimit > 0
+                && s.StrictTokensPerPeriod > 0
+                && s.StrictReplenishmentPeriodSeconds > 0
+                && s.HeavyPermitLimit > 0
+                && s.RelaxedPermitLimit > 0
+                && s.TotpPermitLimit > 0
+                && s.PlatformAuthPermitLimit > 0
+                && s.McpPerUserRequestsPerMinute > 0
+                && s.McpPerTenantRequestsPerMinute > 0
+                && s.McpAdminToolsRequestsPerMinute > 0
+                && s.NotificationRealTimePerMinute > 0,
+                "All RateLimiting permit/token limits must be positive")
+            .ValidateOnStart();
 
         builder.Services.AddRateLimiter(options =>
         {

@@ -57,15 +57,15 @@ public sealed class RateLimitSettings
     public int RelaxedQueueLimit { get; set; } = 10_000;
 
     // ── TOTP validation policy (fixed window, per IP) ──────────────────────
-    /// <summary>Requests per minute for TOTP/2FA validation endpoints.</summary>
-    public int TotpPermitLimit { get; set; } = 100_000;
+    /// <summary>Requests per minute for TOTP/2FA validation endpoints. Defaults to 10 (brute-force safe).</summary>
+    public int TotpPermitLimit { get; set; } = 10;
 
     /// <summary>Queue depth for TOTP validation. Zero = immediate rejection (brute-force protection).</summary>
     public int TotpQueueLimit { get; set; } = 0;
 
     // ── Platform auth policy (fixed window, per IP) ────────────────────────
-    /// <summary>Requests per minute for platform auth endpoints (social login, registration, passkeys).</summary>
-    public int PlatformAuthPermitLimit { get; set; } = 100_000;
+    /// <summary>Requests per minute for platform auth endpoints (social login, registration, passkeys). Defaults to 10 (brute-force safe).</summary>
+    public int PlatformAuthPermitLimit { get; set; } = 10;
 
     /// <summary>Queue depth for platform auth. Zero = immediate rejection (brute-force protection).</summary>
     public int PlatformAuthQueueLimit { get; set; } = 0;
