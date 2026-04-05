@@ -8,20 +8,39 @@ namespace Sorcha.UI.E2E.Tests.Infrastructure;
 /// </summary>
 public static class TestConstants
 {
-    // Docker environment URLs
+    // Docker environment URLs (overridable via environment variables)
     // UI must be accessed through the API Gateway so that relative /api/* calls
     // route to backend services. Direct access at :5400 has no API proxy.
-    public const string UiWebUrl = "http://localhost:80";
-    public const string UiDirectUrl = "http://localhost:5400";
-    public const string ApiGatewayUrl = "http://localhost:80";
+    public const string DefaultUiWebUrl = "http://localhost:80";
+    public const string DefaultUiDirectUrl = "http://localhost:5400";
+    public const string DefaultApiGatewayUrl = "http://localhost:80";
+
+    public static string UiWebUrl =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_BASE_URL") ?? DefaultUiWebUrl;
+
+    public static string UiDirectUrl =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_DIRECT_URL") ?? DefaultUiDirectUrl;
+
+    public static string ApiGatewayUrl =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_API_URL")
+        ?? Environment.GetEnvironmentVariable("SORCHA_E2E_BASE_URL") ?? DefaultApiGatewayUrl;
 
     // All UI pages are served under /app
     public const string AppBase = "/app";
 
-    // Test credentials (from bootstrap)
-    public const string TestEmail = "admin@sorcha.local";
-    public const string TestPassword = "Dev_Pass_2025!";
-    public const string TestProfileName = "docker";
+    // Test credentials (overridable via environment variables)
+    public const string DefaultTestEmail = "admin@sorcha.local";
+    public const string DefaultTestPassword = "Dev_Pass_2025!";
+    public const string DefaultTestProfileName = "docker";
+
+    public static string TestEmail =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_EMAIL") ?? DefaultTestEmail;
+
+    public static string TestPassword =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_PASSWORD") ?? DefaultTestPassword;
+
+    public static string TestProfileName =>
+        Environment.GetEnvironmentVariable("SORCHA_E2E_PROFILE") ?? DefaultTestProfileName;
 
     // Timeouts (ms)
     public const int BlazorHydrationTimeout = 8000;
@@ -35,19 +54,26 @@ public static class TestConstants
     public const int ActionProcessingTimeout = 60_000;    // 1 minute for validator pipeline
     public const int MultiUserLoginTimeout = 30_000;      // 30 seconds per user login
 
-    // Council E2E test credentials
+    // Council E2E test credentials (overridable via environment variables)
     public static class CouncilTestUsers
     {
+        public const string DefaultStaffPassword = "Council_Staff_2026!";
+        public const string DefaultCitizenPassword = "Citizen_Pass_2026!";
+
         public const string CouncilAdminEmail = "council.admin@ashwick.test";
         public const string IdDeptEmail = "id.dept@ashwick.test";
         public const string ServiceDeptEmail = "service.dept@ashwick.test";
         public const string ReturnDeptEmail = "return.dept@ashwick.test";
-        public const string StaffPassword = "Council_Staff_2026!";
         public const string CitizenEmail = "jane.citizen@email.test";
-        public const string CitizenPassword = "Citizen_Pass_2026!";
         public const string CitizenDisplayName = "Jane Citizen";
         public const string CouncilOrgName = "Ashwick Council";
         public const string CouncilSubdomain = "ashwick";
+
+        public static string StaffPassword =>
+            Environment.GetEnvironmentVariable("SORCHA_E2E_COUNCIL_STAFF_PASSWORD") ?? DefaultStaffPassword;
+
+        public static string CitizenPassword =>
+            Environment.GetEnvironmentVariable("SORCHA_E2E_COUNCIL_CITIZEN_PASSWORD") ?? DefaultCitizenPassword;
     }
 
     /// <summary>
