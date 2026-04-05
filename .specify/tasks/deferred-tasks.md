@@ -165,9 +165,25 @@
 
 ---
 
+## Wallet UI — Derived Address Purpose Wizard (Backlog)
+
+> **Context:** The current "Register Address" dialog in WalletDetail.razor requires users to manually enter BIP44 derivation paths — too technical for end users. Derived addresses are used as separate wallets for different purposes (privacy compartments for individuals, service inboxes for organisations). The UX should be intent-driven ("What is this address for?") not crypto-driven ("Enter derivation path").
+>
+> **Two personas:** (1) Individual users wanting separate addresses per activity (council tax, healthcare) for privacy. (2) Org service leaders setting up inboxes for new services/benefits.
+>
+> **Decision (2026-04-05):** Deferred — derived addresses are still seen as wallets by consumers (used for transactions, events bubble up). The admin flow is more task/workflow oriented. These are likely separate UI patterns that need their own brainstorm. Record here for future work.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| UX-WALLET-1 | Purpose-driven address creation wizard (individual) | P2 | 12h | 🔬 Research | Replace manual derivation path entry with "Create address for..." picker. Auto-generate path from purpose selection. |
+| UX-WALLET-2 | Service inbox setup flow (organisational) | P2 | 12h | 🔬 Research | Admin flow: "Set up service inbox" with department/service picker. Maps to org key derivation (Feature 083). |
+| UX-WALLET-3 | Transaction event bubbling for derived addresses | P2 | 8h | 🔬 Research | How transactions on derived addresses surface in the parent wallet UI. Notification grouping, activity feed. |
+
+---
+
 ## Summary
 
-**Total Deferred Tasks:** 66 (11 now completed/implemented)
+**Total Deferred Tasks:** 69 (11 now completed/implemented)
 **Total Deferred Effort:** 588+ hours (~15 weeks, excluding research items)
 
 These tasks represent features that enhance the platform but are not critical for the Minimum Viable Deliverable (MVD). They can be prioritized for post-MVD development based on user feedback and business requirements.
