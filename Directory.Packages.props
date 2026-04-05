@@ -6,6 +6,7 @@
   <ItemGroup>
     <!-- AI / MCP -->
     <PackageVersion Include="Anthropic.SDK" Version="5.10.0" />
+    <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="10.0.5" />
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
     <!-- .NET Aspire -->

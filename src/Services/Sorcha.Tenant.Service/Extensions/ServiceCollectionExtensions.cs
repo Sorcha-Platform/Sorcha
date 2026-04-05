@@ -240,7 +240,16 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.Configure<EmailSettings>(configuration.GetSection("Email"));
-        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+
+        var acsConnectionString = configuration["Email:AcsConnectionString"];
+        if (!string.IsNullOrEmpty(acsConnectionString))
+        {
+            services.AddSingleton<IEmailSender, AcsEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
 
         return services;
     }

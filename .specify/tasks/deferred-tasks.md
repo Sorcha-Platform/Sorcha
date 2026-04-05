@@ -181,6 +181,26 @@
 
 ---
 
+## Messaging Gateway — Multi-Channel Notification Platform (Backlog)
+
+> **Context:** The current email sending is split between `SmtpEmailSender` (SMTP/MailKit) and `AcsEmailSender` (Azure REST API). Both implement `IEmailSender` directly. As the platform grows, notifications need to go beyond email — SMS for verification codes, WhatsApp/push for action notifications, configurable per-org/per-user.
+>
+> **Vision:** A pluggable messaging gateway that abstracts delivery channels behind a unified `INotificationChannel` interface. Providers are registered as plugins — ACS (email + SMS), Twilio (SMS + WhatsApp), Firebase (push), SendGrid (email). Org admins configure which channels are active and which providers back them. Users set preferences per channel.
+>
+> **Decision (2026-04-05):** Deferred — current ACS email sender works. Record the full messaging gateway vision for when we need SMS/WhatsApp/push.
+
+| ID | Task | Priority | Effort | Status | Notes |
+|----|------|----------|--------|--------|-------|
+| MSG-001 | Design `INotificationChannel` abstraction (email, SMS, push, WhatsApp) | P2 | 8h | 🔬 Research | Unified send interface with channel-specific payload types. Message templates with variable substitution. |
+| MSG-002 | Provider plugin architecture (ACS, Twilio, SendGrid, Firebase) | P2 | 16h | 🔬 Research | Each provider implements one or more channels. Config-driven registration. Health checks per provider. |
+| MSG-003 | Org-level channel configuration (Tenant Service) | P2 | 12h | 🔬 Research | Admin UI to enable/disable channels per org, configure provider credentials, set sender identities. |
+| MSG-004 | User notification preferences (Tenant Service) | P2 | 8h | 🔬 Research | Per-user channel preferences: email always, SMS for urgent, push for actions. Opt-in/opt-out per channel. |
+| MSG-005 | SMS verification codes (ACS or Twilio) | P2 | 8h | 🔬 Research | 2FA codes, email verification fallback to SMS. ACS SMS is same connection string as email. |
+| MSG-006 | Push notifications (Firebase Cloud Messaging) | P3 | 12h | 🔬 Research | Mobile push for pending actions, transaction receipts. FCM for Android, APNs for iOS via FCM. |
+| MSG-007 | WhatsApp Business API integration | P3 | 16h | 🔬 Research | Action notifications, receipt confirmations via WhatsApp. Twilio or Meta Cloud API. Template-based messages. |
+
+---
+
 ## Summary
 
 **Total Deferred Tasks:** 69 (11 now completed/implemented)

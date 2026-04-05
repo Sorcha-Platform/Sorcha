@@ -250,7 +250,7 @@ function Initialize-SorchaEnvironment {
         Hashtable with keys: GatewayUrl, TenantUrl, BlueprintUrl, RegisterUrl, WalletUrl, Profile.
     #>
     param(
-        [ValidateSet('gateway', 'direct', 'aspire')]
+        [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
         [string]$Profile = 'gateway',
         [switch]$SkipHealthCheck
     )
@@ -278,6 +278,13 @@ function Initialize-SorchaEnvironment {
             $env.BlueprintUrl = "https://localhost:7000/api"
             $env.RegisterUrl  = "https://localhost:7290/api"
             $env.WalletUrl    = "https://localhost:7082/api"
+        }
+        'n1' {
+            $env.GatewayUrl   = "https://n1.sorcha.dev"
+            $env.TenantUrl    = "https://n1.sorcha.dev/api"
+            $env.BlueprintUrl = "https://n1.sorcha.dev/api"
+            $env.RegisterUrl  = "https://n1.sorcha.dev/api"
+            $env.WalletUrl    = "https://n1.sorcha.dev/api"
         }
     }
 
