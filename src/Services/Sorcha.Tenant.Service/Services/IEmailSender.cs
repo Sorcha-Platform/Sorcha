@@ -67,4 +67,10 @@ public class EmailSettings
 
     /// <summary>Base URL for constructing verification and invitation links.</summary>
     public string BaseUrl { get; set; } = "https://sorcha.io";
+
+    /// <summary>
+    /// Azure Communication Services connection string for REST API email sending.
+    /// When set, the ACS sender is used instead of SMTP. Takes precedence over SMTP settings.
+    /// </summary>
+    public string? AcsConnectionString { get; set; }
 }

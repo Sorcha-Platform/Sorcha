@@ -9,7 +9,7 @@
 # Idempotent — re-running skips existing resources via state.json.
 
 param(
-    [ValidateSet('gateway', 'direct', 'aspire')]
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [string]$Organizations = '',
     [switch]$SkipHealthCheck

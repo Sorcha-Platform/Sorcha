@@ -301,6 +301,11 @@ services:
       Security__Lockout__Tier2Threshold: "100"
       Security__Lockout__Tier2Duration: "00:05:00"
       Security__Lockout__PermanentLockThreshold: "1000"
+      # Azure Communication Services email (sorcha.dev domain, DKIM+SPF verified)
+      Email__AcsConnectionString: ${ACS_EMAIL_CONNECTION_STRING:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@sorcha.dev}
+      Email__FromName: ${EMAIL_FROM_NAME:-Sorcha Platform}
+      Email__BaseUrl: ${EMAIL_BASE_URL:-http://localhost}
     volumes:
       - dataprotection-keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
