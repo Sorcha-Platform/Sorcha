@@ -65,6 +65,10 @@ builder.Services.AddSingleton<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProt
 builder.Services.AddScoped<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyDerivationService,
     Sorcha.Wallet.Service.Services.Implementation.OrgKeyDerivationService>();
 
+// File reassembly service (US2 — File Download)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
+    Sorcha.Wallet.Service.Services.Implementation.FileReassemblyService>();
+
 // Add Redis for notification rate limiting and pub/sub
 builder.AddRedisClient("redis");
 
@@ -132,6 +136,7 @@ app.MapDelegationEndpoints();
 app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
+app.MapFileDownloadEndpoints();
 
 // ===========================
 // Statistics Endpoint (public, no auth)

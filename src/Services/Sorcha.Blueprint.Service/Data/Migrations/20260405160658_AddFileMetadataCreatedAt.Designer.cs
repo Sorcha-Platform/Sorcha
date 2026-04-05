@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sorcha.Blueprint.Service.Data;
@@ -11,9 +12,11 @@ using Sorcha.Blueprint.Service.Data;
 namespace Sorcha.Blueprint.Service.Data.Migrations
 {
     [DbContext(typeof(BlueprintDbContext))]
-    partial class BlueprintDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260405160658_AddFileMetadataCreatedAt")]
+    partial class AddFileMetadataCreatedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

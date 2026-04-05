@@ -201,6 +201,29 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     // =========================================================================
+    // File Download (Feature 085 — Stored Data Transactions)
+    // =========================================================================
+
+    /// <summary>
+    /// Downloads a decrypted file attachment from a sealed action transaction.
+    /// The Wallet Service fetches chunks, decrypts, reassembles, and streams the file.
+    /// </summary>
+    /// <param name="walletAddress">Wallet address of the requesting participant</param>
+    /// <param name="registerId">Register containing the action and chunk transactions</param>
+    /// <param name="actionTxId">Transaction ID of the parent action</param>
+    /// <param name="fieldName">JSON field name in the action payload</param>
+    /// <param name="fileIndex">Index within an array file field (0 for single file fields)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>File download stream result, or null if not found</returns>
+    Task<FileDownloadStreamResult?> DownloadFileAsync(
+        string walletAddress,
+        string registerId,
+        string actionTxId,
+        string fieldName,
+        int fileIndex = 0,
+        CancellationToken cancellationToken = default);
+
+    // =========================================================================
     // Wallet Management (All Services)
     // =========================================================================
 
@@ -478,3 +501,19 @@ public record RevokeKeyResponse(
     DateTime RevokedAt,
     bool WalletLocked,
     bool DidRevocationPublished);
+
+// =========================================================================
+// File Download (Feature 085 — Stored Data Transactions)
+// =========================================================================
+
+/// <summary>
+/// Result of a file download request containing the file stream and metadata
+/// </summary>
+/// <param name="FileName">Original filename</param>
+/// <param name="ContentType">MIME type of the file</param>
+/// <param name="ContentStream">Stream containing the decrypted file content</param>
+public record FileDownloadStreamResult(string FileName, string ContentType, Stream ContentStream) : IDisposable
+{
+    /// <inheritdoc/>
+    public void Dispose() => ContentStream.Dispose();
+}

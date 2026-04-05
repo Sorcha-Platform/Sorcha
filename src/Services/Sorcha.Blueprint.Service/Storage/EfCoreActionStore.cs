@@ -132,7 +132,8 @@ public class EfCoreActionStore : IActionStore
             FileName = metadata.FileName,
             ContentType = metadata.ContentType,
             Size = metadata.Size,
-            Content = [] // Content stored separately via StoreFileContentAsync
+            Content = [], // Content stored separately via StoreFileContentAsync
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         context.FileMetadata.Add(entity);
@@ -240,6 +241,50 @@ public class EfCoreActionStore : IActionStore
 
         _logger.LogInformation("Stored idempotency key for transaction {TransactionHash} (TTL: {TTL})",
             transactionHash, ttl);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<(string FileId, string TransactionHash)>> GetOrphanedFileMetadataAsync(
+        DateTimeOffset olderThan)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        // An orphan is a FileMetadata row whose TransactionHash has no matching Action row
+        // and whose CreatedAt is before the supplied threshold.
+        var orphans = await context.FileMetadata
+            .AsNoTracking()
+            .Where(f => f.CreatedAt < olderThan &&
+                        !context.Actions.Any(a => a.TransactionHash == f.TransactionHash))
+            .Select(f => new { f.Id, f.TransactionHash })
+            .ToListAsync();
+
+        return orphans
+            .Select(o => (o.Id, o.TransactionHash))
+            .ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteFileMetadataAsync(string fileId, string transactionHash)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var entity = await context.FileMetadata
+            .FirstOrDefaultAsync(f => f.Id == fileId && f.TransactionHash == transactionHash);
+
+        if (entity is null)
+        {
+            _logger.LogDebug(
+                "DeleteFileMetadataAsync: file {FileId} / tx {TransactionHash} not found — already removed",
+                fileId, transactionHash);
+            return;
+        }
+
+        context.FileMetadata.Remove(entity);
+        await context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Deleted orphan file metadata {FileId} associated with transaction {TransactionHash}",
+            fileId, transactionHash);
     }
 
     private ActionDetailsResponse? DeserializeAction(ActionEntity entity)
