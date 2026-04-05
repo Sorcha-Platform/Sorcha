@@ -1435,7 +1435,7 @@ POST /api/registers/{registerId}/disable-dev-mode
 
 Enables or disables dev mode on a register. When enabled, payloads are stored as plaintext with disclosure filtering at read time. When disabled, new payloads use envelope encryption.
 
-> **Note:** For production registers, prefer the one-way `POST /{registerId}/disable-dev-mode` endpoint above.
+> **Security Warning:** This endpoint allows re-enabling dev mode, bypassing the one-way constraint. It is intended for development and testing only. For production registers, use the irreversible `POST /{registerId}/disable-dev-mode` endpoint above. Consider restricting this endpoint via API Gateway routing rules in production deployments.
 
 ```http
 PUT /api/registers/{registerId}/devmode
@@ -1469,7 +1469,7 @@ Returns the current recovery/sync status for all local registers. Used for healt
 GET /health/sync
 ```
 
-**Authorization:** None (health endpoint).
+**Authorization:** None (health endpoint). This endpoint exposes register IDs and sync state but no payload data. In production, restrict access via API Gateway routing rules to prevent external enumeration of private register IDs.
 
 **Response:** `200 OK`
 ```json
