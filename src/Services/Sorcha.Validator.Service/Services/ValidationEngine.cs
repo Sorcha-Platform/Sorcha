@@ -1548,6 +1548,7 @@ public class ValidationEngine : IValidationEngine
 
             // Walk every property and validate those that look like file references
             // (contain a "chunkTransactionIds" array) or explicit null/object markers.
+            // Supports both scalar file-reference objects and array-typed file fields.
             foreach (var property in payloadToScan.EnumerateObject())
             {
                 var value = property.Value;
@@ -1558,71 +1559,28 @@ public class ValidationEngine : IValidationEngine
                     continue;
                 }
 
-                if (value.ValueKind != JsonValueKind.Object)
-                    continue;
-
-                // Heuristic: a file reference object always has "chunkTransactionIds".
-                if (!value.TryGetProperty("chunkTransactionIds", out _))
-                    continue;
-
-                var fieldPath = $"/{property.Name}";
-
-                // --- Required fields ---
-                foreach (var required in FileReferenceRequiredFields)
+                if (value.ValueKind == JsonValueKind.Object)
                 {
-                    if (!value.TryGetProperty(required, out _))
-                    {
-                        errors.Add(CreateError("VAL_FILE_001",
-                            $"File reference at '{fieldPath}' is missing required field \"{required}\".",
-                            ValidationErrorCategory.Schema, fieldPath));
-                    }
+                    // Heuristic: a file reference object always has "chunkTransactionIds".
+                    if (!value.TryGetProperty("chunkTransactionIds", out _))
+                        continue;
+
+                    var fieldPath = $"/{property.Name}";
+                    ValidateFileReferenceObject(value, fieldPath, errors);
                 }
-
-                // --- Hash format: "sha256:" + 64 lowercase hex chars ---
-                if (value.TryGetProperty("hash", out var hashEl) &&
-                    hashEl.ValueKind == JsonValueKind.String)
+                else if (value.ValueKind == JsonValueKind.Array)
                 {
-                    var hash = hashEl.GetString() ?? string.Empty;
-                    if (!IsValidFileReferenceHash(hash))
+                    // Array file fields: validate each item that looks like a file reference.
+                    int index = 0;
+                    foreach (var item in value.EnumerateArray())
                     {
-                        errors.Add(CreateError("VAL_FILE_002",
-                            $"File reference at '{fieldPath}' has an invalid hash format. " +
-                            "Expected \"sha256:\" followed by 64 lowercase hexadecimal characters.",
-                            ValidationErrorCategory.Schema, $"{fieldPath}/hash"));
-                    }
-                }
-
-                // --- chunkTransactionIds bounds (1–10 platform limit) ---
-                long fileSize = 0;
-                if (value.TryGetProperty("chunkTransactionIds", out var chunksEl) &&
-                    chunksEl.ValueKind == JsonValueKind.Array)
-                {
-                    var chunkCount = chunksEl.GetArrayLength();
-                    if (chunkCount < 1 || chunkCount > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks)
-                    {
-                        errors.Add(CreateError("VAL_FILE_003",
-                            $"File reference at '{fieldPath}' has {chunkCount} chunk transaction ID(s); " +
-                            $"must be between 1 and {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks}.",
-                            ValidationErrorCategory.Schema, $"{fieldPath}/chunkTransactionIds"));
-                    }
-                }
-
-                // --- Size > 0 and within platform limit ---
-                if (value.TryGetProperty("size", out var sizeEl) &&
-                    sizeEl.TryGetInt64(out fileSize))
-                {
-                    if (fileSize <= 0)
-                    {
-                        errors.Add(CreateError("VAL_FILE_004",
-                            $"File reference at '{fieldPath}' has an invalid size ({fileSize}); must be > 0.",
-                            ValidationErrorCategory.Schema, $"{fieldPath}/size"));
-                    }
-                    else if (fileSize > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes)
-                    {
-                        errors.Add(CreateError("VAL_FILE_005",
-                            $"File reference at '{fieldPath}' declares size {fileSize} bytes which exceeds " +
-                            $"the platform maximum of {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes / (1024 * 1024)} MB.",
-                            ValidationErrorCategory.Schema, $"{fieldPath}/size"));
+                        if (item.ValueKind == JsonValueKind.Object &&
+                            item.TryGetProperty("chunkTransactionIds", out _))
+                        {
+                            var itemPath = $"/{property.Name}/{index}";
+                            ValidateFileReferenceObject(item, itemPath, errors);
+                        }
+                        index++;
                     }
                 }
             }
@@ -1643,6 +1601,78 @@ public class ValidationEngine : IValidationEngine
         return errors.Count > 0
             ? CreateFailureResult(transaction, sw.Elapsed, errors)
             : ValidationEngineResult.Success(transaction.TransactionId, transaction.RegisterId, sw.Elapsed);
+    }
+
+    /// <summary>
+    /// Validates the structural integrity of a single file-reference JSON object, accumulating
+    /// any errors into <paramref name="errors"/>. Called for both scalar and array-item file fields.
+    /// </summary>
+    /// <param name="value">The <see cref="JsonElement"/> expected to be a file-reference object.</param>
+    /// <param name="fieldPath">JSON Pointer path used in error messages (e.g. <c>/attachment</c> or <c>/attachments/0</c>).</param>
+    /// <param name="errors">Accumulator for validation errors.</param>
+    private void ValidateFileReferenceObject(
+        JsonElement value,
+        string fieldPath,
+        List<ValidationEngineError> errors)
+    {
+        // --- Required fields ---
+        foreach (var required in FileReferenceRequiredFields)
+        {
+            if (!value.TryGetProperty(required, out _))
+            {
+                errors.Add(CreateError("VAL_FILE_001",
+                    $"File reference at '{fieldPath}' is missing required field \"{required}\".",
+                    ValidationErrorCategory.Schema, fieldPath));
+            }
+        }
+
+        // --- Hash format: "sha256:" + 64 lowercase hex chars ---
+        if (value.TryGetProperty("hash", out var hashEl) &&
+            hashEl.ValueKind == JsonValueKind.String)
+        {
+            var hash = hashEl.GetString() ?? string.Empty;
+            if (!IsValidFileReferenceHash(hash))
+            {
+                errors.Add(CreateError("VAL_FILE_002",
+                    $"File reference at '{fieldPath}' has an invalid hash format. " +
+                    "Expected \"sha256:\" followed by 64 lowercase hexadecimal characters.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/hash"));
+            }
+        }
+
+        // --- chunkTransactionIds bounds (1–10 platform limit) ---
+        long fileSize = 0;
+        if (value.TryGetProperty("chunkTransactionIds", out var chunksEl) &&
+            chunksEl.ValueKind == JsonValueKind.Array)
+        {
+            var chunkCount = chunksEl.GetArrayLength();
+            if (chunkCount < 1 || chunkCount > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks)
+            {
+                errors.Add(CreateError("VAL_FILE_003",
+                    $"File reference at '{fieldPath}' has {chunkCount} chunk transaction ID(s); " +
+                    $"must be between 1 and {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxChunks}.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/chunkTransactionIds"));
+            }
+        }
+
+        // --- Size > 0 and within platform limit ---
+        if (value.TryGetProperty("size", out var sizeEl) &&
+            sizeEl.TryGetInt64(out fileSize))
+        {
+            if (fileSize <= 0)
+            {
+                errors.Add(CreateError("VAL_FILE_004",
+                    $"File reference at '{fieldPath}' has an invalid size ({fileSize}); must be > 0.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/size"));
+            }
+            else if (fileSize > Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes)
+            {
+                errors.Add(CreateError("VAL_FILE_005",
+                    $"File reference at '{fieldPath}' declares size {fileSize} bytes which exceeds " +
+                    $"the platform maximum of {Sorcha.Blueprint.Models.FileSchemaExtension.PlatformMaxSizeBytes / (1024 * 1024)} MB.",
+                    ValidationErrorCategory.Schema, $"{fieldPath}/size"));
+            }
+        }
     }
 
     /// <summary>Required top-level fields on a file-reference JSON object.</summary>

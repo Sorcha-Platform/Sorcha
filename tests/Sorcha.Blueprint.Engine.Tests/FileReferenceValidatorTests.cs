@@ -377,4 +377,24 @@ public class FileReferenceValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.Message.Contains("maxItems"));
     }
+
+    [Fact]
+    public void ValidateArrayFileField_MissingItems_ReturnsInvalid()
+    {
+        // Arrange — array schema without an "items" sub-schema is not a valid file array field
+        var schema = ParseElement("""
+            {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 5
+            }
+            """);
+
+        // Act
+        var result = FileReferenceValidator.ValidateArrayFileField(schema, "/properties/attachments");
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Message.Contains("items"));
+    }
 }

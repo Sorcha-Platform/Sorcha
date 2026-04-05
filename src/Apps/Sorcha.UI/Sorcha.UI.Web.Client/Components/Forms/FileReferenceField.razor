@@ -33,6 +33,28 @@
             </MudButton>
         </label>
 
+        @* Camera capture — only shown when the field accepts image types *@
+        @if (ShowCameraButton)
+        {
+            <InputFile id="@_cameraInputId"
+                       OnChange="OnFileSelected"
+                       accept="image/*"
+                       capture="environment"
+                       disabled="@IsAddDisabled"
+                       style="display:none;" />
+
+            <label for="@_cameraInputId" style="display:contents;">
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.PhotoCamera"
+                           Size="Size.Small"
+                           Disabled="@IsAddDisabled"
+                           HtmlTag="span"
+                           data-testid="camera-capture-btn">
+                    Take Photo
+                </MudButton>
+            </label>
+        }
+
         @if (_files.Count == 0)
         {
             <MudText Typo="Typo.body2" Color="Color.Secondary">
@@ -164,6 +186,7 @@
 
     private InputFile? _inputFile;
     private readonly string _inputId = $"file-input-{Guid.NewGuid():N}";
+    private readonly string _cameraInputId = $"camera-input-{Guid.NewGuid():N}";
     private readonly List<FileReferenceInfo> _files = [];
     private string? _validationError;
 
@@ -179,6 +202,9 @@
 
     private string AcceptAttribute =>
         Accept.Length > 0 ? string.Join(",", Accept) : string.Empty;
+
+    private bool ShowCameraButton =>
+        Accept.Length == 0 || Accept.Any(a => a.StartsWith("image/", StringComparison.OrdinalIgnoreCase));
 
     // ── UI helpers ────────────────────────────────────────────────────────────
 

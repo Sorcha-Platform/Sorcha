@@ -211,6 +211,53 @@ WhatsApp-style delivery indicators tracked per-wallet:
 
 ---
 
+## Stored Data Transactions API (Feature 085)
+
+File attachments as first-class fields in blueprint action schemas. Files are transparently chunked (≤4MB), encrypted with HKDF-SHA256 derived per-chunk keys (XChaCha20-Poly1305), and submitted as staged transactions. The Wallet Service mediates file retrieval.
+
+### File Chunk Submission (Blueprint Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/file-chunks` | Submit encrypted file chunk (staged, pre-action) |
+
+### File Download (Wallet Service)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/v1/wallets/{address}/files/download` | Fetch, decrypt, reassemble, stream file |
+
+Query params: `registerId`, `actionTxId`, `fieldName`, `fileIndex` (default 0)
+
+### Blueprint Schema Extension
+
+File fields use `format: "file-reference"` with `x-file` extension:
+```json
+{
+  "sitePhoto": {
+    "type": "string",
+    "format": "file-reference",
+    "x-file": { "accept": ["image/jpeg"], "maxSizePerFile": "16MB", "maxChunks": 10 }
+  }
+}
+```
+
+### Key Models
+
+- **FileReference**: Runtime value in action payload (fileName, contentType, size, hash, salt, chunkTransactionIds, masterKeyId)
+- **FileChunkMetadata**: Per-chunk transaction metadata (type="file-chunk", chunkIndex, totalChunks, fileHash)
+- **FileSchemaExtension**: Blueprint schema x-file extension (accept, maxSizePerFile, maxChunks)
+- **Limits**: 4MB chunks, 10 max per file, 40MB ceiling, 30-min orphan timeout
+
+### Encryption Flow
+
+1. Server generates random `MasterFileKey` + `salt` per file upload session
+2. Each chunk encrypted with `HKDF-SHA256(MasterFileKey, salt, "sorcha-chunk-{n}")` → XChaCha20-Poly1305
+3. `MasterFileKey` wrapped per recipient in action payload Challenges
+4. Download: Wallet Service unwraps key, derives chunk keys, decrypts, reassembles, verifies SHA-256
+
+---
+
 ## Org Key Derivation API (Feature 083)
 
 Organisation-level HD key derivation using Sorcha-specific BIP32 paths (`m/0x534F52'/org'/dept'/user'/usage/index`). Custodial mode with pluggable seed protection.

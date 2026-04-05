@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.8
-**Last Updated:** 2026-04-04
+**Version:** 7.9
+**Last Updated:** 2026-04-05
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -234,6 +234,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 | Feature | Status | Description |
 |---------|--------|-------------|
+| Feature 085 | 🚧 | **Stored Data Transactions** — Chunked encrypted file upload via Blueprint Service (`POST /api/file-chunks`), decrypted file download via Wallet Service (`GET /api/v1/wallets/{address}/files/download`), FLE-compatible file field type in blueprint schemas, validator enforcement of file field encryption rules. E2E validation and some integration tests pending. |
 | Feature 060 | 🚧 | **Wallet Recovery** — RecoveryKeyWrap, RecoveryAuditLog entities, RecoveryPathType enum, IRecoveryKeyService/RecoveryKeyService (AES-256-GCM key gen, asymmetric wrap/unwrap), PasskeyRecoveryService, OrgRecoveryService with delegation revocation, PasskeyServiceClient, OrgRecoveryConfig in Tenant Service with POST/GET endpoints, recovery endpoints (recover/passkey, recover/org, delegations/preserve, recovery-status), automatic recovery key generation on wallet creation, API Gateway routes for /api/organizations. 28 unit tests. |
 | Feature 062 | ✅ | **Pending Action Notifications** — NotificationConfig on Action model, SummaryTemplateRenderer, UrgencyCalculator, EventsHubNotificationBridge enrichment with ActivityEvent persistence, PendingActionToast/PendingActionInbox UI components, GET /api/actions/pending + /count endpoints, PendingActionService HTTP client, TenantNotificationPreferenceProvider (Wallet Service), notification delivery preferences UI, notification history inbox. Unit tests for SummaryTemplateRenderer, UrgencyCalculator, TenantNotificationPreferenceProvider. |
 | Feature 064 | ✅ | **Transaction Explorer UX Overhaul** — DAG visualization with lightweight graph endpoint (GET /api/registers/{registerId}/transactions/graph), TransactionGraphResponse model (nodes with TxId, PrevTxId, SenderWallet, TimeStamp, DocketNumber, BlueprintId, InstanceId, TransactionType), cursor-based pagination (limit/before), totalCount and hasMore support. |
@@ -255,6 +256,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.8
-**Last Updated:** 2026-04-04
+**Version:** 7.9
+**Last Updated:** 2026-04-05
 **Document Owner:** Sorcha Architecture Team

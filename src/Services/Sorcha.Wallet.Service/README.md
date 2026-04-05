@@ -934,6 +934,35 @@ When a wallet is created via `WalletManager.CreateWalletAsync`, a recovery key i
 
 ---
 
+## File Download (Feature 085)
+
+Allows wallet holders to download decrypted file attachments stored in blueprint action transactions.
+
+### Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/wallets/{address}/files/download` | Download a decrypted file attachment |
+
+### Query Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `registerId` | Yes | — | Register containing the source transaction |
+| `actionTxId` | Yes | — | Transaction ID of the action holding the file |
+| `fieldName` | Yes | — | JSON field name of the file attachment |
+| `fileIndex` | No | `0` | Index within a multi-file field |
+
+### Auth
+
+JWT Bearer required. The calling wallet must be the owner or hold a delegated access grant with at least `ReadOnly` permission for the encrypted field.
+
+### Response
+
+`200 OK` — binary file stream. `Content-Type` and `Content-Disposition` headers reflect the original file MIME type and name.
+
+---
+
 ## Resources
 
 - **Specification**: [.specify/specs/sorcha-wallet-service.md](../../../.specify/specs/sorcha-wallet-service.md)
