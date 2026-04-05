@@ -8,7 +8,7 @@ Configure public user authentication and guide users through self-registration o
 
 Sorcha includes built-in passkey (WebAuthn/FIDO2) authentication for public users. No external identity provider is required. Users register with a passkey (biometric, security key, or platform authenticator) and receive a JWT token on successful authentication.
 
-Public authentication endpoints are rate-limited to 5 attempts per minute per IP address to prevent brute-force attacks.
+Public authentication endpoints are rate-limited per IP address to prevent brute-force attacks. The limit is configured via `RateLimiting:PlatformAuthPermitLimit` in `appsettings.json` (production recommendation: 5 attempts per minute).
 
 ### Configuration
 
@@ -285,7 +285,7 @@ curl -X DELETE https://sorcha.example.com/api/passkey/credentials/{credentialId}
 | Registration fails | Check if self-registration is enabled for the target organization |
 | Wallet link challenge timeout | Challenges expire after 5 minutes. Initiate a new challenge and retry |
 | Cannot revoke passkey | You must have at least one other authentication method (another passkey or TOTP 2FA) |
-| Rate limit exceeded (429) | Public auth endpoints are limited to 5 attempts per minute. Wait and retry |
+| Rate limit exceeded (429) | Public auth endpoints are rate-limited per IP. Wait and retry, or check `RateLimiting:PlatformAuthPermitLimit` configuration |
 | Token expired (401) | Use the refresh token at `POST /api/auth/token/refresh` to get a new access token |
 
 ## Next Steps

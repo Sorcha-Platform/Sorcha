@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults;
 using Moq;
 using Sorcha.Wallet.Service.Services.Implementation;
 using StackExchange.Redis;
@@ -34,19 +35,20 @@ public class NotificationRateLimiterTests
 
     private NotificationRateLimiter CreateService(int? maxPerMinute = null)
     {
-        var configData = new Dictionary<string, string?>();
+        var settings = new RateLimitSettings();
         if (maxPerMinute.HasValue)
         {
-            configData["Notifications:RealTimeRateLimitPerMinute"] = maxPerMinute.Value.ToString();
+            settings.NotificationRealTimePerMinute = maxPerMinute.Value;
         }
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
+        else
+        {
+            // Use a low default for testing (production default is 100_000)
+            settings.NotificationRealTimePerMinute = 10;
+        }
 
         return new NotificationRateLimiter(
             _mockRedis.Object,
-            configuration,
+            Options.Create(settings),
             _mockLogger.Object);
     }
 
@@ -250,7 +252,7 @@ public class NotificationRateLimiterTests
     [Fact]
     public async Task TryAcquireAsync_DefaultRateLimit_AllowsTenPerMinute()
     {
-        // Arrange — no custom config, count at 10 (default limit)
+        // Arrange — test default of 10, count at 10
         _mockDatabase
             .Setup(db => db.StringIncrementAsync(
                 (RedisKey)$"{KeyPrefix}{TestUserId}", 1, CommandFlags.None))
@@ -261,14 +263,14 @@ public class NotificationRateLimiterTests
         // Act
         var result = await service.TryAcquireAsync(TestUserId);
 
-        // Assert — allowed at default limit of 10
+        // Assert — allowed at test default limit of 10
         result.Should().BeTrue();
     }
 
     [Fact]
     public async Task TryAcquireAsync_DefaultRateLimit_BlocksEleventhPerMinute()
     {
-        // Arrange — no custom config, count at 11 (exceeds default limit)
+        // Arrange — test default of 10, count at 11 (exceeds limit)
         _mockDatabase
             .Setup(db => db.StringIncrementAsync(
                 (RedisKey)$"{KeyPrefix}{TestUserId}", 1, CommandFlags.None))
@@ -279,7 +281,7 @@ public class NotificationRateLimiterTests
         // Act
         var result = await service.TryAcquireAsync(TestUserId);
 
-        // Assert — blocked beyond default limit of 10
+        // Assert — blocked beyond test default limit of 10
         result.Should().BeFalse();
     }
 

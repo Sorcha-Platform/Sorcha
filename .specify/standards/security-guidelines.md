@@ -347,31 +347,51 @@ public async Task<string> FetchExternalDataAsync(string url)
 
 ---
 
-## 2. Rate Limiting (Future Implementation)
+## 2. Rate Limiting (SEC-002 — Implemented)
+
+All services share a centralised rate limiting configuration via `RateLimitSettings` in `Sorcha.ServiceDefaults`. Limits are driven by the `"RateLimiting"` section of `appsettings.json` — defaults are very relaxed for pre-release development; tighten in production config.
 
 ```csharp
-builder.Services.AddRateLimiter(options =>
-{
-    options.AddFixedWindowLimiter("fixed", options =>
-    {
-        options.PermitLimit = 100;
-        options.Window = TimeSpan.FromMinutes(1);
-        options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        options.QueueLimit = 10;
-    });
+// All services: single call registers all standard policies
+builder.AddRateLimiting();
 
-    options.AddConcurrencyLimiter("concurrency", options =>
-    {
-        options.PermitLimit = 10;
-        options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        options.QueueLimit = 5;
-    });
-});
-
-app.UseRateLimiter();
-
+// Endpoints reference policies by name
 app.MapPost("/api/blueprints", CreateBlueprint)
-    .RequireRateLimiting("fixed");
+    .RequireRateLimiting(RateLimitPolicies.Api);
+
+// Auth-sensitive endpoints use stricter policies
+app.MapPost("/api/auth/login", Login)
+    .RequireRateLimiting(RateLimitPolicies.PlatformAuth);
+```
+
+**Standard policies** (see `RateLimitPolicies` constants):
+
+| Policy | Algorithm | Default (dev) | Production recommendation |
+|--------|-----------|--------------|--------------------------|
+| `api` | Fixed window / IP | 100,000/min | 100/min |
+| `authentication` | Sliding window / IP | 100,000/min | 10/min |
+| `strict` | Token bucket / IP | 100,000 tokens | 5/min |
+| `heavy` | Concurrency / global | 10,000 concurrent | 10 concurrent |
+| `relaxed` | Fixed window / IP | 100,000/min | 1,000/min |
+| `totp-validate` | Fixed window / IP | 100,000/min | 5/min |
+| `platform-auth` | Fixed window / IP | 100,000/min | 5/min |
+
+Override any limit via `appsettings.Production.json`:
+
+```json
+{
+  "RateLimiting": {
+    "ApiPermitLimit": 100,
+    "AuthenticationPermitLimit": 10,
+    "StrictTokenLimit": 5,
+    "StrictTokensPerPeriod": 1,
+    "StrictReplenishmentPeriodSeconds": 12,
+    "TotpPermitLimit": 5,
+    "PlatformAuthPermitLimit": 5,
+    "HeavyPermitLimit": 10,
+    "RelaxedPermitLimit": 1000
+  }
+}
 ```
 
 ---

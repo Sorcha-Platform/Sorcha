@@ -840,11 +840,13 @@ When an inbound transaction is detected, the notification pipeline:
 
 ### Rate Limiting
 
-A sliding window rate limiter prevents notification flooding. When the rate limit is exceeded, events are queued to the digest for later consolidated delivery.
+A sliding window rate limiter (Redis-backed) prevents notification flooding. When the rate limit is exceeded, events are queued to the digest for later consolidated delivery. The notification rate limit is configured via the centralised `RateLimiting` section:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Notifications:RealTimeRateLimitPerMinute` | `10` | Max real-time notifications per user per minute |
+| `RateLimiting:NotificationRealTimePerMinute` | `100000` (dev) | Max real-time notifications per user per minute |
+
+Production deployments should tighten this value (e.g. `10`) in `appsettings.Production.json`.
 
 ### Digest Batching
 
@@ -861,8 +863,10 @@ A `BackgroundService` processes accumulated notification events, groups them by 
 
 ```json
 {
+  "RateLimiting": {
+    "NotificationRealTimePerMinute": 10
+  },
   "Notifications": {
-    "RealTimeRateLimitPerMinute": 10,
     "DigestCheckIntervalMinutes": 5,
     "DigestHourlyMinute": 0,
     "DigestDailyHour": 8,

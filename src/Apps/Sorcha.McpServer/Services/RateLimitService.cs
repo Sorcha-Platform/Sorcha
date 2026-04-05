@@ -5,26 +5,27 @@ using System.Collections.Concurrent;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Sorcha.McpServer.Infrastructure;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.McpServer.Services;
 
 /// <summary>
 /// In-memory rate limiting using sliding window algorithm.
+/// Limits are driven by <see cref="RateLimitSettings"/> (shared "RateLimiting" config section).
 /// </summary>
 public sealed class RateLimitService : IRateLimitService, IDisposable
 {
     private readonly ILogger<RateLimitService> _logger;
-    private readonly RateLimitOptions _options;
+    private readonly RateLimitSettings _settings;
     private readonly ConcurrentDictionary<string, RateLimiter> _userLimiters = new();
     private readonly ConcurrentDictionary<string, RateLimiter> _tenantLimiters = new();
     private readonly ConcurrentDictionary<string, RateLimiter> _adminToolLimiters = new();
 
     public RateLimitService(
-        IOptions<RateLimitOptions> options,
+        IOptions<RateLimitSettings> settings,
         ILogger<RateLimitService> logger)
     {
-        _options = options.Value;
+        _settings = settings.Value;
         _logger = logger;
     }
 
@@ -32,7 +33,7 @@ public sealed class RateLimitService : IRateLimitService, IDisposable
     public RateLimitResult CheckRateLimit(string userId, string tenantId, string toolCategory)
     {
         // Check user limit
-        var userLimiter = _userLimiters.GetOrAdd(userId, _ => CreateSlidingWindowLimiter(_options.PerUserRequestsPerMinute));
+        var userLimiter = _userLimiters.GetOrAdd(userId, _ => CreateSlidingWindowLimiter(_settings.McpPerUserRequestsPerMinute));
         using var userLease = userLimiter.AttemptAcquire();
         if (!userLease.IsAcquired)
         {
@@ -41,7 +42,7 @@ public sealed class RateLimitService : IRateLimitService, IDisposable
         }
 
         // Check tenant limit
-        var tenantLimiter = _tenantLimiters.GetOrAdd(tenantId, _ => CreateSlidingWindowLimiter(_options.PerTenantRequestsPerMinute));
+        var tenantLimiter = _tenantLimiters.GetOrAdd(tenantId, _ => CreateSlidingWindowLimiter(_settings.McpPerTenantRequestsPerMinute));
         using var tenantLease = tenantLimiter.AttemptAcquire();
         if (!tenantLease.IsAcquired)
         {
@@ -53,7 +54,7 @@ public sealed class RateLimitService : IRateLimitService, IDisposable
         if (toolCategory == "admin")
         {
             var adminKey = $"{userId}:admin";
-            var adminLimiter = _adminToolLimiters.GetOrAdd(adminKey, _ => CreateSlidingWindowLimiter(_options.AdminToolsRequestsPerMinute));
+            var adminLimiter = _adminToolLimiters.GetOrAdd(adminKey, _ => CreateSlidingWindowLimiter(_settings.McpAdminToolsRequestsPerMinute));
             using var adminLease = adminLimiter.AttemptAcquire();
             if (!adminLease.IsAcquired)
             {

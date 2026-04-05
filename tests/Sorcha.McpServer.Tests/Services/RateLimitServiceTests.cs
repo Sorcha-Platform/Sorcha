@@ -3,25 +3,25 @@
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.McpServer.Tests.Services;
 
 public class RateLimitServiceTests : IDisposable
 {
     private readonly Mock<ILogger<RateLimitService>> _loggerMock;
-    private readonly RateLimitOptions _options;
+    private readonly RateLimitSettings _settings;
     private RateLimitService _service;
 
     public RateLimitServiceTests()
     {
         _loggerMock = new Mock<ILogger<RateLimitService>>();
-        _options = new RateLimitOptions
+        _settings = new RateLimitSettings
         {
-            PerUserRequestsPerMinute = 10, // Low limit for testing
-            PerTenantRequestsPerMinute = 20,
-            AdminToolsRequestsPerMinute = 5
+            McpPerUserRequestsPerMinute = 10, // Low limit for testing
+            McpPerTenantRequestsPerMinute = 20,
+            McpAdminToolsRequestsPerMinute = 5
         };
         _service = CreateService();
     }
@@ -29,7 +29,7 @@ public class RateLimitServiceTests : IDisposable
     private RateLimitService CreateService()
     {
         return new RateLimitService(
-            Options.Create(_options),
+            Options.Create(_settings),
             _loggerMock.Object);
     }
 
@@ -53,7 +53,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_UnderUserLimit_IsAllowed()
     {
         // Act - make requests under the limit
-        for (var i = 0; i < _options.PerUserRequestsPerMinute - 1; i++)
+        for (var i = 0; i < _settings.McpPerUserRequestsPerMinute - 1; i++)
         {
             var result = _service.CheckRateLimit("user-1", "tenant-1", "designer");
             result.IsAllowed.Should().BeTrue($"Request {i + 1} should be allowed");
@@ -64,7 +64,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_ExceedsUserLimit_IsRateLimited()
     {
         // Act - exhaust the limit
-        for (var i = 0; i < _options.PerUserRequestsPerMinute; i++)
+        for (var i = 0; i < _settings.McpPerUserRequestsPerMinute; i++)
         {
             _service.CheckRateLimit("user-1", "tenant-1", "designer");
         }
@@ -82,7 +82,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_DifferentUsers_IndependentLimits()
     {
         // Exhaust user-1's limit
-        for (var i = 0; i < _options.PerUserRequestsPerMinute; i++)
+        for (var i = 0; i < _settings.McpPerUserRequestsPerMinute; i++)
         {
             _service.CheckRateLimit("user-1", "tenant-1", "designer");
         }
@@ -98,7 +98,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_ExceedsTenantLimit_IsRateLimited()
     {
         // Use multiple users to exhaust tenant limit
-        for (var i = 0; i < _options.PerTenantRequestsPerMinute; i++)
+        for (var i = 0; i < _settings.McpPerTenantRequestsPerMinute; i++)
         {
             var userId = $"user-{i % 5}"; // Cycle through 5 users
             _service.CheckRateLimit(userId, "tenant-1", "designer");
@@ -116,7 +116,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_AdminTool_HasSeparateLimit()
     {
         // Exhaust admin tool limit (lower than user limit)
-        for (var i = 0; i < _options.AdminToolsRequestsPerMinute; i++)
+        for (var i = 0; i < _settings.McpAdminToolsRequestsPerMinute; i++)
         {
             _service.CheckRateLimit("user-1", "tenant-1", "admin");
         }
@@ -135,7 +135,7 @@ public class RateLimitServiceTests : IDisposable
     public void CheckRateLimit_DifferentTenants_IndependentLimits()
     {
         // Exhaust tenant-1's limit
-        for (var i = 0; i < _options.PerTenantRequestsPerMinute; i++)
+        for (var i = 0; i < _settings.McpPerTenantRequestsPerMinute; i++)
         {
             _service.CheckRateLimit($"user-{i}", "tenant-1", "designer");
         }
