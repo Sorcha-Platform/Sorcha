@@ -251,12 +251,14 @@ public class EfCoreActionStore : IActionStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        // An orphan is a FileMetadata row whose TransactionHash has no matching Action row
-        // and whose CreatedAt is before the supplied threshold.
+        // Chunks are stored with TransactionHash = "pending" until an action claims them.
+        // A chunk is an orphan when it is still unclaimed ("pending") AND old enough that
+        // no in-flight upload could still be completing.
+        // Claimed chunks (TransactionHash != "pending") are never orphans — they belong to
+        // a finalised action regardless of whether the action row exists yet.
         var orphans = await context.FileMetadata
             .AsNoTracking()
-            .Where(f => f.CreatedAt < olderThan &&
-                        !context.Actions.Any(a => a.TransactionHash == f.TransactionHash))
+            .Where(f => f.TransactionHash == "pending" && f.CreatedAt < olderThan)
             .Select(f => new { f.Id, f.TransactionHash })
             .ToListAsync();
 
