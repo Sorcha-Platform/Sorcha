@@ -4,6 +4,9 @@
 @namespace Sorcha.UI.Core.Components.Wallet
 
 @using MudBlazor
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
 
 @if (!string.IsNullOrEmpty(ReceiptId))
 {
@@ -26,6 +29,13 @@
             {
                 <MudAlert Severity="@(_verificationResult.Value ? Severity.Success : Severity.Error)" Class="mb-2" Dense="true">
                     @(_verificationResult.Value ? "Receipt verified successfully." : "Receipt verification failed.")
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-2" Dense="true">
+                    @_errorMessage
                 </MudAlert>
             }
 
@@ -77,18 +87,36 @@
     private bool _isVerifying;
     private bool _isDownloading;
     private bool? _verificationResult;
+    private string? _errorMessage;
 
-    // TODO: Wire to /registers/{registerId}/receipts/verify endpoint via service client
+    /// <summary>
+    /// Verifies the receipt by calling the Register Service receipts/verify endpoint.
+    /// </summary>
     private async Task VerifyReceiptAsync()
     {
         _isVerifying = true;
         _verificationResult = null;
+        _errorMessage = null;
 
         try
         {
-            // Placeholder: actual API call to POST /registers/{RegisterId}/receipts/verify
-            await Task.Delay(500);
-            _verificationResult = true;
+            var url = $"/api/register/registers/{Uri.EscapeDataString(RegisterId!)}/receipts/verify";
+            var payload = new { receiptId = ReceiptId };
+            var response = await Http.PostAsJsonAsync(url, payload);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<ReceiptVerifyResult>();
+                _verificationResult = result?.Valid ?? false;
+            }
+            else
+            {
+                _errorMessage = $"Verification request failed (HTTP {(int)response.StatusCode}). The Register Service may be unavailable.";
+            }
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Unable to reach the Register Service for receipt verification.";
         }
         finally
         {
@@ -96,19 +124,45 @@
         }
     }
 
-    // TODO: Wire to /registers/{registerId}/transactions/{txId}/verification-bundle endpoint
+    /// <summary>
+    /// Downloads the verification bundle as a JSON file via browser download.
+    /// </summary>
     private async Task DownloadBundleAsync()
     {
         _isDownloading = true;
+        _errorMessage = null;
 
         try
         {
-            // Placeholder: actual API call to GET /registers/{RegisterId}/transactions/{TransactionId}/verification-bundle
-            await Task.Delay(500);
+            var url = $"/api/register/registers/{Uri.EscapeDataString(RegisterId!)}/transactions/{Uri.EscapeDataString(TransactionId!)}/verification-bundle";
+            var response = await Http.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                var fileName = $"verification-bundle-{TransactionId![..8]}.json";
+                await JS.InvokeVoidAsync("downloadFile", fileName, "application/json", content);
+            }
+            else
+            {
+                _errorMessage = $"Bundle download failed (HTTP {(int)response.StatusCode}). The Register Service may be unavailable.";
+            }
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Unable to reach the Register Service for bundle download.";
         }
         finally
         {
             _isDownloading = false;
         }
+    }
+
+    /// <summary>
+    /// Response model for receipt verification.
+    /// </summary>
+    private record ReceiptVerifyResult
+    {
+        public bool Valid { get; init; }
     }
 }

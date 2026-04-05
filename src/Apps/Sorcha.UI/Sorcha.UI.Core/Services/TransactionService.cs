@@ -62,7 +62,7 @@ public class TransactionService : ITransactionService
                 Page = apiResponse.Page,
                 PageSize = apiResponse.PageSize,
                 Total = apiResponse.Total,
-                Transactions = apiResponse.Transactions?.Select(MapToViewModel).ToList() ?? []
+                Transactions = apiResponse.Transactions?.Select(t => MapToViewModel(t)).ToList() ?? []
             };
         }
         catch (Exception ex)
@@ -143,7 +143,7 @@ public class TransactionService : ITransactionService
                 TotalCount = apiResponse.TotalCount,
                 Items = apiResponse.Items?.Select(item => new TransactionQueryResultItem
                 {
-                    Transaction = MapToViewModel(item.Transaction),
+                    Transaction = MapToViewModel(item.Transaction, walletAddress),
                     RegisterId = item.RegisterId,
                     RegisterName = item.RegisterName
                 }).ToList() ?? []
@@ -229,8 +229,27 @@ public class TransactionService : ITransactionService
         };
     }
 
-    private static TransactionViewModel MapToViewModel(TransactionModel transaction)
+    private static TransactionViewModel MapToViewModel(TransactionModel transaction, string? currentWalletAddress = null)
     {
+        // Derive lifecycle fields heuristically from available register data.
+        // The Register Service does not store wallet-specific lifecycle state (State, ReceiptId, etc.),
+        // so we infer what we can from the transaction's structural properties.
+        var isConfirmed = transaction.DocketNumber.HasValue;
+        var state = isConfirmed ? "Confirmed" : "Pending";
+        var confirmedAt = isConfirmed ? transaction.TimeStamp : (DateTime?)null;
+
+        // Direction: compare sender to the wallet address being queried
+        string? direction = null;
+        string? counterparty = null;
+        if (!string.IsNullOrEmpty(currentWalletAddress))
+        {
+            var isSender = string.Equals(transaction.SenderWallet, currentWalletAddress, StringComparison.OrdinalIgnoreCase);
+            direction = isSender ? "Outbound" : "Inbound";
+            counterparty = isSender
+                ? transaction.RecipientsWallets?.FirstOrDefault()
+                : transaction.SenderWallet;
+        }
+
         return new TransactionViewModel
         {
             TxId = transaction.TxId,
@@ -247,7 +266,12 @@ public class TransactionService : ITransactionService
             BlueprintId = transaction.MetaData?.BlueprintId,
             InstanceId = transaction.MetaData?.InstanceId,
             ActionId = transaction.MetaData?.ActionId,
-            MetadataTransactionType = transaction.MetaData != null ? (int?)transaction.MetaData.TransactionType : null
+            MetadataTransactionType = transaction.MetaData != null ? (int?)transaction.MetaData.TransactionType : null,
+            State = state,
+            ConfirmedAt = confirmedAt,
+            BlockHeight = transaction.DocketNumber,
+            Direction = direction,
+            CounterpartyAddress = counterparty
         };
     }
 
