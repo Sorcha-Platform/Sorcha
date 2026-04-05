@@ -124,6 +124,9 @@ builder.Services.AddSingleton<Sorcha.Cryptography.SdJwt.ISdJwtService, Sorcha.Cr
 // Add JsonLogic expression cache (singleton - shared across scoped evaluators)
 builder.Services.AddSingleton<Sorcha.Blueprint.Engine.Caching.JsonLogicCache>();
 
+// Add IMemoryCache for server-side upload session management (file chunk encryption keys)
+builder.Services.AddMemoryCache(options => options.SizeLimit = 10_000);
+
 // Add Action service layer (Sprint 3)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionResolverService, Sorcha.Blueprint.Service.Services.Implementation.ActionResolverService>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPayloadResolverService, Sorcha.Blueprint.Service.Services.Implementation.PayloadResolverService>();

@@ -114,19 +114,20 @@ public class InMemoryActionStore : IActionStore
     {
         var orphans = new List<(string FileId, string TransactionHash)>();
 
-        foreach (var (txHash, files) in _fileMetadata)
-        {
-            // An orphan is a file whose parent action transaction does not exist in the store.
-            if (_actions.ContainsKey(txHash))
-                continue;
+        // Chunks are stored with TransactionHash = "pending" until an action claims them.
+        // A chunk is an orphan when it is still unclaimed ("pending") AND old enough that
+        // no in-flight upload could still be completing.
+        // Claimed chunks (TransactionHash != "pending") are never orphans — they belong to
+        // a finalised action regardless of whether the action record exists yet.
+        if (!_fileMetadata.TryGetValue("pending", out var pendingFiles))
+            return Task.FromResult<IReadOnlyList<(string, string)>>(orphans);
 
-            foreach (var fileId in files.Keys)
+        foreach (var fileId in pendingFiles.Keys)
+        {
+            var key = $"pending:{fileId}";
+            if (_fileStoredAt.TryGetValue(key, out var storedAt) && storedAt < olderThan)
             {
-                var key = $"{txHash}:{fileId}";
-                if (_fileStoredAt.TryGetValue(key, out var storedAt) && storedAt < olderThan)
-                {
-                    orphans.Add((fileId, txHash));
-                }
+                orphans.Add((fileId, "pending"));
             }
         }
 

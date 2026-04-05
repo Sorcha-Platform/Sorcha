@@ -52,7 +52,7 @@ public static class FileDownloadEndpoints
         [FromQuery] string? registerId,
         [FromQuery] string? actionTxId,
         [FromQuery] string? fieldName,
-        [FromQuery] int fileIndex,
+        [FromQuery] int? fileIndex,
         IFileReassemblyService reassemblyService,
         IWalletRepository walletRepository,
         HttpContext context,
@@ -90,7 +90,9 @@ public static class FileDownloadEndpoints
             });
         }
 
-        if (fileIndex < 0)
+        // fileIndex defaults to 0 when not supplied (nullable int with no value = first file)
+        var resolvedFileIndex = fileIndex ?? 0;
+        if (resolvedFileIndex < 0)
         {
             return Results.BadRequest(new ProblemDetails
             {
@@ -139,14 +141,14 @@ public static class FileDownloadEndpoints
                 registerId,
                 actionTxId,
                 fieldName,
-                fileIndex,
+                resolvedFileIndex,
                 cancellationToken);
         }
         catch (Exception ex)
         {
             logger.LogError(ex,
                 "Failed to prepare download for wallet {Address}, action {ActionTxId}, field {FieldName}[{FileIndex}]",
-                address, actionTxId, fieldName, fileIndex);
+                address, actionTxId, fieldName, resolvedFileIndex);
             return Results.Problem(
                 title: "Download Preparation Failed",
                 detail: "An error occurred while fetching or decrypting the file. " +
@@ -159,7 +161,7 @@ public static class FileDownloadEndpoints
             return Results.NotFound(new ProblemDetails
             {
                 Title = "File Not Found",
-                Detail = $"No file found at field '{fieldName}' (index {fileIndex}) " +
+                Detail = $"No file found at field '{fieldName}' (index {resolvedFileIndex}) " +
                          $"in transaction '{actionTxId}', or wallet '{address}' is not an authorised recipient.",
                 Status = StatusCodes.Status404NotFound
             });
@@ -180,7 +182,6 @@ public static class FileDownloadEndpoints
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("integrity check failed"))
         {
-            await buffer.DisposeAsync();
             logger.LogError(ex,
                 "Integrity check FAILED for {FileName}, wallet {Address}",
                 downloadResult.FileName, address);

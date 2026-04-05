@@ -322,14 +322,27 @@
             using var uploadStream = browserFile.OpenReadStream(effectiveMax);
             var buffer = new byte[ChunkSize];
 
+            // Upload session ID returned by the server on the first chunk.
+            // Sent back on all subsequent chunks so the server reuses the same
+            // encryption session (and master key).
+            string? uploadSessionId = null;
+
             while (bytesUploaded < totalBytes)
             {
                 int bytesRead = await ReadExactAsync(uploadStream, buffer, ChunkSize);
                 if (bytesRead == 0) break;
 
                 var chunkData = buffer[..bytesRead];
-                var txId = await PostChunkAsync(info, chunkIndex, totalChunks, chunkData);
-                info.ChunkTransactionIds.Add(txId);
+                var chunkResult = await PostChunkAsync(info, chunkIndex, totalChunks, chunkData, uploadSessionId);
+                info.ChunkTransactionIds.Add(chunkResult.ChunkTransactionId);
+
+                // Capture session ID from the first response; use on all subsequent chunks
+                if (chunkIndex == 0)
+                {
+                    uploadSessionId = chunkResult.UploadSessionId;
+                    // Salt returned by the server — not secret, needed for FileReference
+                    info.Salt = chunkResult.SaltBase64 ?? string.Empty;
+                }
 
                 bytesUploaded += bytesRead;
                 info.Progress = totalBytes > 0 ? (double)bytesUploaded / totalBytes * 100.0 : 100.0;
@@ -354,13 +367,15 @@
 
     /// <summary>
     /// POST a single chunk to the Blueprint Service chunk endpoint as JSON.
-    /// Returns the chunk transaction ID assigned by the server.
+    /// Returns the full server response including the chunk transaction ID,
+    /// upload session ID, and salt.
     /// </summary>
-    private async Task<string> PostChunkAsync(
+    private async Task<ChunkUploadResponse> PostChunkAsync(
         FileReferenceInfo info,
         int chunkIndex,
         int totalChunks,
-        byte[] data)
+        byte[] data,
+        string? uploadSessionId)
     {
         var request = new
         {
@@ -370,7 +385,8 @@
             totalChunks,
             fileHash = $"sha256:{info.Hash}",
             contentType = info.ContentType,
-            contentBase64 = Convert.ToBase64String(data)
+            contentBase64 = Convert.ToBase64String(data),
+            uploadSessionId  // null on first chunk; server-assigned ID on subsequent chunks
         };
 
         var response = await Http.PostAsJsonAsync("/api/file-chunks", request);
@@ -379,7 +395,7 @@
         var result = await response.Content.ReadFromJsonAsync<ChunkUploadResponse>();
         if (result?.ChunkTransactionId is null)
             throw new InvalidOperationException("Server did not return a chunk transaction ID.");
-        return result.ChunkTransactionId;
+        return result;
     }
 
     /// <summary>
@@ -433,5 +449,11 @@
 
     // ── Nested response DTO ───────────────────────────────────────────────────
 
-    private sealed record ChunkUploadResponse(string ChunkTransactionId);
+    /// <summary>
+    /// Subset of FileChunkSubmissionResponse used by the Blazor client.
+    /// </summary>
+    private sealed record ChunkUploadResponse(
+        string ChunkTransactionId,
+        string? UploadSessionId,
+        string? SaltBase64);
 }

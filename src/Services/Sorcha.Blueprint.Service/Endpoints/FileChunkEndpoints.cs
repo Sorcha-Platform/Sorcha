@@ -4,6 +4,7 @@
 using System.Security.Claims;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Service.Models.Responses;
@@ -39,8 +40,10 @@ public static class FileChunkEndpoints
                 "once all chunks for a file have been received. The caller must submit all chunks " +
                 "(0 to totalChunks-1) before the parent action can be finalised. " +
                 "Each chunk must not exceed 4 MB and the total chunk count must not exceed 10. " +
-                "On the first chunk (chunkIndex 0), the server generates a master key and salt " +
-                "and returns them in the response. Subsequent chunks must supply the same values.")
+                "On the first chunk (no uploadSessionId), the server creates an upload session, " +
+                "stores the master key server-side, and returns an opaque uploadSessionId plus the " +
+                "salt. Subsequent chunks must supply the uploadSessionId to reuse the same encryption " +
+                "session. The salt (not the master key) is returned so the client can build a FileReference.")
             .Produces<FileChunkSubmissionResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
@@ -51,6 +54,7 @@ public static class FileChunkEndpoints
         [FromBody] FileChunkSubmissionRequest request,
         IActionStore actionStore,
         ITransactionBuilderService txBuilder,
+        IMemoryCache memoryCache,
         HttpContext httpContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -105,29 +109,45 @@ public static class FileChunkEndpoints
             return Results.StatusCode(StatusCodes.Status413RequestEntityTooLarge);
         }
 
-        // Resolve or generate the upload session (master key + salt).
-        // First chunk (or absent session fields): server generates a fresh session.
-        // Subsequent chunks: caller supplies the master key and salt from the first chunk response.
+        // Resolve or create the server-side upload session (master key + salt).
+        // The master key never leaves the server — only the opaque session ID and the
+        // non-secret salt are returned to the client.
         byte[] masterFileKey;
         byte[] salt;
+        string uploadSessionId;
 
-        if (request.MasterKeyBase64 is not null && request.SaltBase64 is not null)
+        if (!string.IsNullOrEmpty(request.UploadSessionId))
         {
-            try
+            // Subsequent chunk: look up the existing session from cache
+            var cacheKey = $"file-upload-session:{request.UploadSessionId}";
+            if (!memoryCache.TryGetValue(cacheKey, out FileUploadSessionCache? sessionCache) || sessionCache is null)
             {
-                masterFileKey = Convert.FromBase64String(request.MasterKeyBase64);
-                salt = Convert.FromBase64String(request.SaltBase64);
+                return Results.BadRequest(new
+                {
+                    error = "Upload session not found or expired. Upload sessions last 30 minutes. " +
+                            "Please restart the upload from the first chunk."
+                });
             }
-            catch (FormatException)
-            {
-                return Results.BadRequest(new { error = "MasterKeyBase64 or SaltBase64 is not valid Base64." });
-            }
+
+            masterFileKey = sessionCache.MasterFileKey;
+            salt = sessionCache.Salt;
+            uploadSessionId = request.UploadSessionId;
         }
         else
         {
+            // First chunk: create a new session and cache it with a 30-minute TTL
             var session = txBuilder.CreateFileUploadSession();
             masterFileKey = session.MasterFileKey;
             salt = session.Salt;
+            uploadSessionId = Guid.NewGuid().ToString("N");
+
+            var cacheKey = $"file-upload-session:{uploadSessionId}";
+            memoryCache.Set(cacheKey, new FileUploadSessionCache(masterFileKey, salt),
+                new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30),
+                    Size = 1
+                });
         }
 
         // Encrypt the chunk server-side using a per-chunk HKDF-derived key
@@ -171,11 +191,19 @@ public static class FileChunkEndpoints
                 ChunkTransactionId = chunkTxId,
                 ChunkIndex = request.ChunkIndex,
                 Timestamp = timestamp,
-                MasterKeyBase64 = Convert.ToBase64String(masterFileKey),
+                UploadSessionId = uploadSessionId,
                 SaltBase64 = Convert.ToBase64String(salt)
             });
     }
 }
+
+/// <summary>
+/// Server-side state for an in-progress multi-chunk file upload session.
+/// Stored in <see cref="IMemoryCache"/> for the lifetime of the upload (30 minutes).
+/// The master key is held exclusively on the server; only the opaque session ID and
+/// the non-secret salt are returned to the client.
+/// </summary>
+internal sealed record FileUploadSessionCache(byte[] MasterFileKey, byte[] Salt);
 
 /// <summary>
 /// Request to submit a single file chunk for server-side encryption and staging.
@@ -220,18 +248,11 @@ public record FileChunkSubmissionRequest
     public required string ContentBase64 { get; init; }
 
     /// <summary>
-    /// Base64-encoded 32-byte master file key from a previous chunk response.
-    /// Omit on the first chunk — the server generates a new session.
-    /// Required on chunks 1+ to maintain a consistent encryption session across all chunks.
+    /// Opaque upload session identifier returned by the server on the first chunk response.
+    /// Omit on the first chunk — the server creates a new session and returns the ID.
+    /// Required on chunks 1+ so the server can retrieve the shared encryption session.
     /// </summary>
-    public string? MasterKeyBase64 { get; init; }
-
-    /// <summary>
-    /// Base64-encoded 32-byte salt from a previous chunk response.
-    /// Omit on the first chunk — the server generates a new session.
-    /// Required on chunks 1+ to maintain a consistent encryption session across all chunks.
-    /// </summary>
-    public string? SaltBase64 { get; init; }
+    public string? UploadSessionId { get; init; }
 }
 
 /// <summary>
@@ -255,14 +276,15 @@ public record FileChunkSubmissionResponse
     public required DateTimeOffset Timestamp { get; init; }
 
     /// <summary>
-    /// Base64-encoded 32-byte master file key for this upload session.
-    /// Must be supplied unchanged in all subsequent chunk requests for the same file.
+    /// Opaque upload session identifier. Must be included in all subsequent chunk requests
+    /// for the same file so the server can retrieve the shared encryption session.
+    /// The master key is held exclusively on the server and is never returned to the client.
     /// </summary>
-    public required string MasterKeyBase64 { get; init; }
+    public required string UploadSessionId { get; init; }
 
     /// <summary>
     /// Base64-encoded 32-byte salt for this upload session.
-    /// Must be supplied unchanged in all subsequent chunk requests for the same file.
+    /// Not secret — store this in the FileReference so the validator can derive per-chunk keys.
     /// </summary>
     public required string SaltBase64 { get; init; }
 }
