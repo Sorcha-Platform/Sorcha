@@ -4,7 +4,6 @@
 using System.Security.Claims;
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 
 using Sorcha.Blueprint.Models;
 using Sorcha.Blueprint.Service.Models.Responses;
@@ -54,7 +53,7 @@ public static class FileChunkEndpoints
         [FromBody] FileChunkSubmissionRequest request,
         IActionStore actionStore,
         ITransactionBuilderService txBuilder,
-        IMemoryCache memoryCache,
+        FileUploadSessionStore sessionStore,
         HttpContext httpContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -118,9 +117,8 @@ public static class FileChunkEndpoints
 
         if (!string.IsNullOrEmpty(request.UploadSessionId))
         {
-            // Subsequent chunk: look up the existing session from cache
-            var cacheKey = $"file-upload-session:{request.UploadSessionId}";
-            if (!memoryCache.TryGetValue(cacheKey, out FileUploadSessionCache? sessionCache) || sessionCache is null)
+            // Subsequent chunk: look up the existing session
+            if (!sessionStore.TryGetSession(request.UploadSessionId, out masterFileKey, out salt))
             {
                 return Results.BadRequest(new
                 {
@@ -129,25 +127,15 @@ public static class FileChunkEndpoints
                 });
             }
 
-            masterFileKey = sessionCache.MasterFileKey;
-            salt = sessionCache.Salt;
             uploadSessionId = request.UploadSessionId;
         }
         else
         {
-            // First chunk: create a new session and cache it with a 30-minute TTL
+            // First chunk: create a new session (master key stays server-side)
             var session = txBuilder.CreateFileUploadSession();
             masterFileKey = session.MasterFileKey;
             salt = session.Salt;
-            uploadSessionId = Guid.NewGuid().ToString("N");
-
-            var cacheKey = $"file-upload-session:{uploadSessionId}";
-            memoryCache.Set(cacheKey, new FileUploadSessionCache(masterFileKey, salt),
-                new MemoryCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30),
-                    Size = 1
-                });
+            uploadSessionId = sessionStore.CreateSession(masterFileKey, salt);
         }
 
         // Encrypt the chunk server-side using a per-chunk HKDF-derived key
@@ -196,14 +184,6 @@ public static class FileChunkEndpoints
             });
     }
 }
-
-/// <summary>
-/// Server-side state for an in-progress multi-chunk file upload session.
-/// Stored in <see cref="IMemoryCache"/> for the lifetime of the upload (30 minutes).
-/// The master key is held exclusively on the server; only the opaque session ID and
-/// the non-secret salt are returned to the client.
-/// </summary>
-internal sealed record FileUploadSessionCache(byte[] MasterFileKey, byte[] Salt);
 
 /// <summary>
 /// Request to submit a single file chunk for server-side encryption and staging.
