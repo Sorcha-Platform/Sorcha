@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
+    <ProjectReference Include="..\Sorcha.TransactionHandler\Sorcha.TransactionHandler.csproj" />
   </ItemGroup>
 
   <ItemGroup>

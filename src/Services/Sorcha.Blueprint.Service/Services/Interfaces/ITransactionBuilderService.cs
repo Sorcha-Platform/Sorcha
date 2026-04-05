@@ -10,6 +10,7 @@ using Sorcha.TransactionHandler.Core;
 using Sorcha.TransactionHandler.Encryption.Models;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
+using Sorcha.TransactionHandler.Encryption;
 
 namespace Sorcha.Blueprint.Service.Services.Interfaces;
 
@@ -71,6 +72,34 @@ public interface ITransactionBuilderService
         string senderWallet,
         string registerAddress,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Encrypts a file chunk using an HKDF-derived key from the master file key.
+    /// The chunk key is derived via <see cref="HkdfKeyDerivation.DeriveChunkKey"/> binding the
+    /// master key, salt, and chunk index so that each chunk is encrypted with a unique key.
+    /// </summary>
+    /// <param name="chunkContent">The raw bytes of the chunk to encrypt.</param>
+    /// <param name="masterFileKey">The 32-byte master file key for this upload session.</param>
+    /// <param name="salt">The random salt generated for this upload session.</param>
+    /// <param name="chunkIndex">The zero-based index of this chunk within the file.</param>
+    /// <param name="senderWallet">The sender's wallet address (used for audit context).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An <see cref="EncryptedChunkResult"/> containing the ciphertext and nonce.</returns>
+    Task<EncryptedChunkResult> EncryptFileChunkAsync(
+        byte[] chunkContent,
+        byte[] masterFileKey,
+        byte[] salt,
+        int chunkIndex,
+        string senderWallet,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates a new master file key and random salt for a file upload session.
+    /// The returned values must be retained by the caller for the lifetime of the upload;
+    /// the master key is later wrapped per recipient at action submission time.
+    /// </summary>
+    /// <returns>A <see cref="FileUploadSession"/> containing the master key and salt.</returns>
+    FileUploadSession CreateFileUploadSession();
 }
 
 /// <summary>
@@ -81,6 +110,17 @@ public record FileAttachment(
     string ContentType,
     byte[] Content
 );
+
+/// <summary>
+/// The result of encrypting a single file chunk: the ciphertext bytes and the nonce used.
+/// </summary>
+public record EncryptedChunkResult(byte[] EncryptedContent, byte[] Nonce);
+
+/// <summary>
+/// Session context for a chunked file upload: the 32-byte master key and its associated salt.
+/// The master key is wrapped per recipient at action submission time; the salt is stored in the FileReference.
+/// </summary>
+public record FileUploadSession(byte[] MasterFileKey, byte[] Salt);
 
 /// <summary>
 /// Extended transaction builder service for orchestration

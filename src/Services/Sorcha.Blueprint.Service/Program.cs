@@ -571,6 +571,9 @@ app.MapStatusListEndpoints();
 // Map pending action endpoints (Feature 062)
 app.MapActionEndpoints();
 
+// Map file chunk submission endpoints (Feature 085 — Stored Data Transactions)
+app.MapFileChunkEndpoints();
+
 // ===========================
 // Template Endpoints
 // ===========================

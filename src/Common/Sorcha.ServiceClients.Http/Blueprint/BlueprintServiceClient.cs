@@ -159,6 +159,82 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         }
     }
 
+    public async Task<FileChunkSubmissionResult?> SubmitFileChunkAsync(
+        string senderWallet,
+        string registerAddress,
+        int chunkIndex,
+        int totalChunks,
+        string fileHash,
+        string contentType,
+        byte[] chunkContent,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug(
+                "Submitting file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}",
+                chunkIndex, totalChunks, registerAddress);
+
+            var request = new FileChunkSubmissionRequest
+            {
+                SenderWallet = senderWallet,
+                RegisterAddress = registerAddress,
+                ChunkIndex = chunkIndex,
+                TotalChunks = totalChunks,
+                FileHash = fileHash,
+                ContentType = contentType,
+                ContentBase64 = Convert.ToBase64String(chunkContent)
+            };
+
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(
+                "api/file-chunks",
+                request,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to submit file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}: {StatusCode}",
+                    chunkIndex, totalChunks, registerAddress, response.StatusCode);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<FileChunkSubmissionResponse>(JsonOptions, cancellationToken);
+
+            if (result is null)
+            {
+                _logger.LogWarning(
+                    "Empty response submitting file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}",
+                    chunkIndex, totalChunks, registerAddress);
+                return null;
+            }
+
+            _logger.LogDebug(
+                "Submitted file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}, txId={TransactionId}",
+                chunkIndex, totalChunks, registerAddress, result.ChunkTransactionId);
+
+            return new FileChunkSubmissionResult(result.ChunkTransactionId, result.ChunkIndex, result.Timestamp);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(
+                ex,
+                "HTTP error submitting file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}",
+                chunkIndex, totalChunks, registerAddress);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to submit file chunk {ChunkIndex}/{TotalChunks} for register {RegisterAddress}",
+                chunkIndex, totalChunks, registerAddress);
+            return null;
+        }
+    }
+
     private Task SetAuthHeaderAsync(CancellationToken cancellationToken) =>
         ServiceClientAuthHelper.SetAuthHeaderAsync(
             _httpClient, _serviceAuth, _logger, "BlueprintService", cancellationToken);
@@ -180,5 +256,29 @@ public class BlueprintServiceClient : IBlueprintServiceClient
     {
         public bool IsValid { get; init; }
         public List<string> Errors { get; init; } = [];
+    }
+
+    /// <summary>
+    /// Request DTO for file chunk submission endpoint
+    /// </summary>
+    private record FileChunkSubmissionRequest
+    {
+        public required string SenderWallet { get; init; }
+        public required string RegisterAddress { get; init; }
+        public required int ChunkIndex { get; init; }
+        public required int TotalChunks { get; init; }
+        public required string FileHash { get; init; }
+        public required string ContentType { get; init; }
+        public required string ContentBase64 { get; init; }
+    }
+
+    /// <summary>
+    /// Response DTO from file chunk submission endpoint
+    /// </summary>
+    private record FileChunkSubmissionResponse
+    {
+        public required string ChunkTransactionId { get; init; }
+        public required int ChunkIndex { get; init; }
+        public required DateTimeOffset Timestamp { get; init; }
     }
 }
