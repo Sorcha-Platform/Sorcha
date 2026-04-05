@@ -276,20 +276,24 @@ function Invoke-DisputedProcurement {
         }
     }
 
-    # Action 6: Dispute (rejection back to action 5)
+    # Action 6: Dispute (send as normal action with decision=dispute in payload)
     $sender = $procurementSenderMap[6]
     $senderWallet = $wallets[$sender]
     $senderToken = $participantTokens[$sender]
     try {
         $disputeData = $ActionData."6_dispute"
-        $disputeReason = if ($disputeData -and $disputeData.disputeReason) { $disputeData.disputeReason } else { "Invoice disputed" }
+        $payloadData = @{}
+        if ($disputeData) {
+            foreach ($prop in $disputeData.PSObject.Properties) {
+                $payloadData[$prop.Name] = $prop.Value
+            }
+        }
 
         $null = Invoke-SorchaAction `
             -BlueprintUrl $blueprintUrl -InstanceId $instanceId `
             -ActionId "6" -BlueprintId $BlueprintId `
             -SenderWallet $senderWallet -RegisterId $RegisterId `
-            -Token $senderToken `
-            -Reject -RejectionReason $disputeReason
+            -Token $senderToken -PayloadData $payloadData
         Write-WtWarn "    Action 6 ($sender) -> DISPUTED"
         $actionsOk++
     } catch {
@@ -467,8 +471,8 @@ foreach ($sid in $scenariosToRun) {
             -SenderMap $financeSenderMap `
             -ExpectedPath $financePath `
             -ActionData $scenarioData.finance `
-            -IsRejection $isRejection `
-            -RejectionReason $scenarioData.rejectionReason `
+            -IsRejection $false `
+            -RejectionReason "" `
             -CredentialPresentations $credPresentations
     }
 

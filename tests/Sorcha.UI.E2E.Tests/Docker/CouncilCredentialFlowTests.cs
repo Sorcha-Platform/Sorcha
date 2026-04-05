@@ -36,8 +36,8 @@ public class CouncilCredentialFlowTests : MultiUserTestBase
     #region Test State — shared across ordered tests
 
     // Admin credentials (from bootstrap)
-    private const string AdminEmail = TestConstants.TestEmail;
-    private const string AdminPassword = TestConstants.TestPassword;
+    private static string AdminEmail => TestConstants.TestEmail;
+    private static string AdminPassword => TestConstants.TestPassword;
 
     // Council org
     private string _councilOrgId = null!;
