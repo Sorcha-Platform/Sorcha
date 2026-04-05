@@ -3,8 +3,10 @@
 @attribute [Authorize]
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Components.Wallet
+@implements IAsyncDisposable
 @inject IWalletApiService WalletService
 @inject ITransactionService TransactionService
+@inject RegisterHubConnection HubConnection
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -417,11 +419,11 @@
 <TransactionDetailDrawer @bind-Open="_drawerOpen"
                          Transaction="@_selectedTransaction?.Transaction"
                          RegisterId="@_selectedTransaction?.RegisterId"
-                         Direction="Outbound"
-                         ConfirmedAt="@(_selectedTransaction?.Transaction.DocketNumber.HasValue == true ? _selectedTransaction.Transaction.TimeStamp : null)"
-                         ReceiptedAt="@null"
-                         ReceiptId="@null"
-                         BlockHeight="@null" />
+                         Direction="@(_selectedTransaction?.Transaction?.Direction ?? "Outbound")"
+                         ConfirmedAt="@_selectedTransaction?.Transaction?.ConfirmedAt"
+                         ReceiptedAt="@_selectedTransaction?.Transaction?.ReceiptedAt"
+                         ReceiptId="@_selectedTransaction?.Transaction?.ReceiptId"
+                         BlockHeight="@_selectedTransaction?.Transaction?.BlockHeight" />
 
 <!-- Register Address Dialog -->
 <MudDialog @bind-Visible="registerAddressDialogVisible" Options="dialogOptions">
@@ -521,6 +523,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe to real-time receipt updates before loading data
+        HubConnection.OnTransactionReceipted += HandleTransactionReceipted;
+        await StartRealtimeAsync();
+
         await LoadWalletAsync();
     }
 
@@ -764,19 +770,56 @@
     }
 
     /// <summary>
-    /// Derives tick status from the transaction data.
-    /// DocketNumber present = Sealed; otherwise Pending.
-    /// Receipted status requires backend WalletTransaction state (not yet available on TransactionViewModel).
+    /// Derives tick status from the transaction lifecycle fields.
+    /// ReceiptId present = Receipted; DocketNumber present = Sealed; otherwise Pending.
     /// </summary>
     private static TransactionTickStatus GetTickStatus(TransactionQueryResultItem item)
     {
-        // TODO: When TransactionViewModel gains State/ReceiptId fields from WalletTransaction,
-        // use those for accurate Receipted detection.
-        if (item.Transaction.DocketNumber.HasValue)
+        var tx = item.Transaction;
+        if (!string.IsNullOrEmpty(tx.ReceiptId))
+            return TransactionTickStatus.Receipted;
+        if (tx.DocketNumber.HasValue)
             return TransactionTickStatus.Sealed;
-
         return TransactionTickStatus.Pending;
     }
 
-    // TODO: Wire SignalR subscription for real-time tick updates (T035)
+    /// <summary>
+    /// Handles real-time receipt notifications via SignalR and updates the transaction list.
+    /// </summary>
+    private async Task HandleTransactionReceipted(string txId, string registerId, long docketNumber, string receiptId, DateTimeOffset sealedAt)
+    {
+        var match = transactions.FirstOrDefault(t => t.Transaction.TxId == txId);
+        if (match is not null)
+        {
+            var index = transactions.IndexOf(match);
+            var updatedTx = match.Transaction with
+            {
+                ReceiptId = receiptId,
+                ReceiptedAt = sealedAt.UtcDateTime,
+                State = "Receipted"
+            };
+            transactions[index] = match with { Transaction = updatedTx };
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Starts the SignalR connection for real-time transaction updates.
+    /// </summary>
+    private async Task StartRealtimeAsync()
+    {
+        try
+        {
+            await HubConnection.StartAsync();
+        }
+        catch (Exception)
+        {
+            // Real-time updates are optional — the page still works without them
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        HubConnection.OnTransactionReceipted -= HandleTransactionReceipted;
+    }
 }

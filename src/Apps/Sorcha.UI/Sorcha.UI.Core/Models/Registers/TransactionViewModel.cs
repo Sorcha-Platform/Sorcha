@@ -85,6 +85,27 @@ public record TransactionViewModel
     /// </summary>
     public int? MetadataTransactionType { get; init; }
 
+    /// <summary>Transaction lifecycle state (Pending, Submitted, Confirmed, Receipted).</summary>
+    public string? State { get; init; }
+
+    /// <summary>Receipt ID — set when cryptographic receipt is confirmed.</summary>
+    public string? ReceiptId { get; init; }
+
+    /// <summary>When the transaction was sealed in a docket.</summary>
+    public DateTime? ConfirmedAt { get; init; }
+
+    /// <summary>When the receipt was confirmed (cryptographic proof of finality).</summary>
+    public DateTime? ReceiptedAt { get; init; }
+
+    /// <summary>Transaction direction: Outbound or Inbound.</summary>
+    public string? Direction { get; init; }
+
+    /// <summary>Block/docket height when confirmed.</summary>
+    public ulong? BlockHeight { get; init; }
+
+    /// <summary>Counterparty wallet address (sender for inbound, recipient for outbound).</summary>
+    public string? CounterpartyAddress { get; init; }
+
     /// <summary>
     /// Computed: Formatted timestamp (relative or absolute)
     /// </summary>
