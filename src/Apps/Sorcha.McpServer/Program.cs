@@ -6,10 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.Hosting;
 using Sorcha.McpServer.Infrastructure;
 using Sorcha.McpServer.Services;
 using Sorcha.ServiceClients.Extensions;
+using Sorcha.ServiceDefaults;
 
 var builder = Host.CreateApplicationBuilder(args);
 

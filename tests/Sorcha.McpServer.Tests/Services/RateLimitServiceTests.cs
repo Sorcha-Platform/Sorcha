@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.McpServer.Services;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.McpServer.Tests.Services;
 

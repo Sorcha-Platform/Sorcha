@@ -3,9 +3,9 @@
 
 using System.Collections.Concurrent;
 using System.Threading.RateLimiting;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.McpServer.Services;
 

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-namespace Microsoft.Extensions.Hosting;
+namespace Sorcha.ServiceDefaults;
 
 /// <summary>
 /// Centralised rate limiting configuration bound from the "RateLimiting" section of appsettings.json.
 /// Default values are deliberately very relaxed for pre-release/development use.
 /// Tighten these in production appsettings before going live.
+///
+/// Security-sensitive policies (TOTP, PlatformAuth) default to QueueLimit = 0
+/// (immediate 429 rejection) to prevent brute-force queuing even in development.
 /// </summary>
 public sealed class RateLimitSettings
 {
@@ -57,17 +60,20 @@ public sealed class RateLimitSettings
     /// <summary>Requests per minute for TOTP/2FA validation endpoints.</summary>
     public int TotpPermitLimit { get; set; } = 100_000;
 
-    /// <summary>Queue depth for TOTP validation endpoints.</summary>
-    public int TotpQueueLimit { get; set; } = 1_000;
+    /// <summary>Queue depth for TOTP validation. Zero = immediate rejection (brute-force protection).</summary>
+    public int TotpQueueLimit { get; set; } = 0;
 
     // ── Platform auth policy (fixed window, per IP) ────────────────────────
     /// <summary>Requests per minute for platform auth endpoints (social login, registration, passkeys).</summary>
     public int PlatformAuthPermitLimit { get; set; } = 100_000;
 
-    /// <summary>Queue depth for platform auth endpoints.</summary>
-    public int PlatformAuthQueueLimit { get; set; } = 1_000;
+    /// <summary>Queue depth for platform auth. Zero = immediate rejection (brute-force protection).</summary>
+    public int PlatformAuthQueueLimit { get; set; } = 0;
 
     // ── MCP Server policies ────────────────────────────────────────────────
+    // MCP appsettings.json overrides these to meaningful production values (100/1000/50)
+    // because the MCP Server is user-facing even in development.
+
     /// <summary>Maximum requests per minute per MCP user.</summary>
     public int McpPerUserRequestsPerMinute { get; set; } = 100_000;
 

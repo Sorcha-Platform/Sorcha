@@ -13,6 +13,7 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Sorcha.ServiceDefaults;
 using Sorcha.ServiceDefaults.Helpers;
 
 namespace Microsoft.Extensions.Hosting;

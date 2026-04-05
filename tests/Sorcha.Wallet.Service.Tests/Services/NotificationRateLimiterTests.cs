@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using FluentAssertions;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Sorcha.ServiceDefaults;
 using Moq;
 using Sorcha.Wallet.Service.Services.Implementation;
 using StackExchange.Redis;
