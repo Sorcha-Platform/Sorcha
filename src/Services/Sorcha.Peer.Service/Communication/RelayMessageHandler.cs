@@ -279,7 +279,8 @@ public class RelayMessageHandler
                 MaxDocketsPerRelayResponse);
             var estimatedSize = 0;
 
-            for (var docketNum = fromVersion + 1; docketNum <= height && response.Dockets.Count < maxDockets; docketNum++)
+            // height is a COUNT (1 = one docket at index 0), so iterate from fromVersion+1 to height-1 inclusive
+            for (var docketNum = fromVersion + 1; docketNum < height && response.Dockets.Count < maxDockets; docketNum++)
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
