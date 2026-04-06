@@ -11,6 +11,7 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
 using Sorcha.Register.Models;
+using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Register;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.Wallet.Core.Encryption.Providers;
@@ -36,6 +37,7 @@ public class FileReassemblyServiceTests : IDisposable
     // -------------------------------------------------------------------------
 
     private readonly Mock<IRegisterServiceClient> _registerClientMock;
+    private readonly Mock<IBlueprintServiceClient> _blueprintClientMock;
     private readonly Mock<ISymmetricCrypto> _symmetricCryptoMock;
     private readonly Mock<ICryptoModule> _cryptoModuleMock;
     private readonly Mock<IHashProvider> _hashProviderMock;
@@ -55,6 +57,7 @@ public class FileReassemblyServiceTests : IDisposable
     public FileReassemblyServiceTests()
     {
         _registerClientMock = new Mock<IRegisterServiceClient>();
+        _blueprintClientMock = new Mock<IBlueprintServiceClient>();
         _symmetricCryptoMock = new Mock<ISymmetricCrypto>();
         _cryptoModuleMock = new Mock<ICryptoModule>();
         _hashProviderMock = new Mock<IHashProvider>();
@@ -90,6 +93,7 @@ public class FileReassemblyServiceTests : IDisposable
 
         _sut = new FileReassemblyService(
             _registerClientMock.Object,
+            _blueprintClientMock.Object,
             _walletManager,
             _symmetricCryptoMock.Object,
             Mock.Of<ILogger<FileReassemblyService>>());
@@ -106,6 +110,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         var act = () => new FileReassemblyService(
             null!,
+            _blueprintClientMock.Object,
             _walletManager,
             _symmetricCryptoMock.Object,
             Mock.Of<ILogger<FileReassemblyService>>());
@@ -115,10 +120,25 @@ public class FileReassemblyServiceTests : IDisposable
     }
 
     [Fact]
+    public void Constructor_NullBlueprintClient_ThrowsArgumentNullException()
+    {
+        var act = () => new FileReassemblyService(
+            _registerClientMock.Object,
+            null!,
+            _walletManager,
+            _symmetricCryptoMock.Object,
+            Mock.Of<ILogger<FileReassemblyService>>());
+
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("blueprintClient");
+    }
+
+    [Fact]
     public void Constructor_NullWalletManager_ThrowsArgumentNullException()
     {
         var act = () => new FileReassemblyService(
             _registerClientMock.Object,
+            _blueprintClientMock.Object,
             null!,
             _symmetricCryptoMock.Object,
             Mock.Of<ILogger<FileReassemblyService>>());
@@ -132,6 +152,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         var act = () => new FileReassemblyService(
             _registerClientMock.Object,
+            _blueprintClientMock.Object,
             _walletManager,
             null!,
             Mock.Of<ILogger<FileReassemblyService>>());
@@ -145,6 +166,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         var act = () => new FileReassemblyService(
             _registerClientMock.Object,
+            _blueprintClientMock.Object,
             _walletManager,
             _symmetricCryptoMock.Object,
             null!);
@@ -299,7 +321,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         // Arrange
         var fileContent = "Hello Sorcha!"u8.ToArray();
-        var (fileRef, chunkTx) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
+        var (fileRef, _) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
 
         var payloadObj = new { attachments = fileRef };
         var actionTx = BuildPlaintextActionTransaction(ActionTxId, payloadObj);
@@ -307,9 +329,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunkTx);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(ChunkTxId, fileContent, "application/octet-stream"));
 
         // Act
         var result = await _sut.PrepareDownloadAsync(
@@ -328,7 +350,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         // Arrange
         var fileContent = "Hello Sorcha!"u8.ToArray();
-        var (fileRef, chunkTx) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
+        var (fileRef, _) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
 
         var payloadObj = new { attachments = fileRef };
         var actionTx = BuildPlaintextActionTransaction(ActionTxId, payloadObj);
@@ -336,9 +358,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunkTx);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(ChunkTxId, fileContent, "application/octet-stream"));
 
         var result = await _sut.PrepareDownloadAsync(
             WalletAddress, RegisterId, ActionTxId, FieldName, fileIndex: 0);
@@ -384,15 +406,15 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, chunkTxId0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(BuildRawChunkTransaction(chunkTxId0, chunk0));
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, chunkTxId1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(BuildRawChunkTransaction(chunkTxId1, chunk1));
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, chunkTxId2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(BuildRawChunkTransaction(chunkTxId2, chunk2));
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(chunkTxId0, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(chunkTxId0, chunk0, "text/plain"));
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(chunkTxId1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(chunkTxId1, chunk1, "text/plain"));
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(chunkTxId2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(chunkTxId2, chunk2, "text/plain"));
 
         var result = await _sut.PrepareDownloadAsync(
             WalletAddress, RegisterId, ActionTxId, FieldName, fileIndex: 0);
@@ -419,9 +441,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TransactionModel?)null);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((FileChunkRetrievalResult?)null);
 
         var result = await _sut.PrepareDownloadAsync(
             WalletAddress, RegisterId, ActionTxId, FieldName, fileIndex: 0);
@@ -442,9 +464,6 @@ public class FileReassemblyServiceTests : IDisposable
         // Arrange: correct chunk data but deliberately wrong hash stored in FileReference
         var fileContent = "Original content"u8.ToArray();
         var tamperedHash = "sha256:" + new string('a', 64); // plausible but wrong
-
-        var chunkTx = BuildRawChunkTransaction(ChunkTxId, fileContent);
-
         var salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var fileRef = new
         {
@@ -463,9 +482,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunkTx);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(ChunkTxId, fileContent, "application/octet-stream"));
 
         var result = await _sut.PrepareDownloadAsync(
             WalletAddress, RegisterId, ActionTxId, FieldName, fileIndex: 0);
@@ -485,7 +504,7 @@ public class FileReassemblyServiceTests : IDisposable
     {
         // When the field is a single FileReference object (not an array), fileIndex 0 should succeed
         var fileContent = "Single object"u8.ToArray();
-        var (fileRef, chunkTx) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
+        var (fileRef, _) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
 
         // Use the object directly (not wrapped in an array)
         var payloadObj = new { attachments = (object)fileRef };
@@ -494,9 +513,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunkTx);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(ChunkTxId, fileContent, "application/octet-stream"));
 
         var result = await _sut.PrepareDownloadAsync(
             WalletAddress, RegisterId, ActionTxId, FieldName, fileIndex: 0);
@@ -532,7 +551,7 @@ public class FileReassemblyServiceTests : IDisposable
         // PrepareDownloadAsync is called with fieldName="attachments" (lower).
         // The service iterates payload properties case-insensitively, so it should match.
         var fileContent = "Case insensitive"u8.ToArray();
-        var (fileRef, chunkTx) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
+        var (fileRef, _) = BuildPlaintextChunkScenario(ChunkTxId, fileContent);
 
         // Build payload object with uppercase key (anonymous type serialises as-is)
         var payloadWithUppercaseKey = new Dictionary<string, object>
@@ -544,9 +563,9 @@ public class FileReassemblyServiceTests : IDisposable
         _registerClientMock
             .Setup(c => c.GetTransactionAsync(RegisterId, ActionTxId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(actionTx);
-        _registerClientMock
-            .Setup(c => c.GetTransactionAsync(RegisterId, ChunkTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunkTx);
+        _blueprintClientMock
+            .Setup(c => c.GetFileChunkAsync(ChunkTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FileChunkRetrievalResult(ChunkTxId, fileContent, "application/octet-stream"));
 
         // fieldName is lowercase "attachments" — service should still find "Attachments"
         var result = await _sut.PrepareDownloadAsync(

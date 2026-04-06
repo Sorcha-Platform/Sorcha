@@ -33,6 +33,16 @@ public interface IBlueprintServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Retrieves a stored file chunk by its chunk transaction ID
+    /// </summary>
+    /// <param name="chunkId">The chunk transaction ID returned at upload time</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The chunk retrieval result containing the encrypted bytes, or null if not found</returns>
+    Task<FileChunkRetrievalResult?> GetFileChunkAsync(
+        string chunkId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Submits a single chunk of a file upload to the Blueprint Service
     /// </summary>
     /// <param name="senderWallet">Wallet address of the sender</param>
@@ -62,3 +72,11 @@ public interface IBlueprintServiceClient
 /// <param name="ChunkIndex">Zero-based index of the submitted chunk</param>
 /// <param name="Timestamp">Server-side timestamp at which the chunk was accepted</param>
 public record FileChunkSubmissionResult(string ChunkTransactionId, int ChunkIndex, DateTimeOffset Timestamp);
+
+/// <summary>
+/// Result returned when retrieving a stored file chunk from the Blueprint Service
+/// </summary>
+/// <param name="ChunkId">The chunk transaction ID</param>
+/// <param name="EncryptedContent">The encrypted chunk bytes (as stored by the Blueprint Service)</param>
+/// <param name="ContentType">MIME type of the original file</param>
+public record FileChunkRetrievalResult(string ChunkId, byte[] EncryptedContent, string ContentType);

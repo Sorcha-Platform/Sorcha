@@ -393,7 +393,7 @@ public class DatabaseInitializer
                 "Wallet Service",
                 "service-wallet",
                 "wallet-service-secret",
-                new[] { "wallets:read", "wallets:write", "wallets:sign", "wallets:encrypt", "wallets:decrypt" }
+                new[] { "wallets:read", "wallets:write", "wallets:sign", "wallets:encrypt", "wallets:decrypt", "registers:read" }
             ),
             (
                 RegisterServicePrincipalId,

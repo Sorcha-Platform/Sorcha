@@ -47,6 +47,36 @@ public static class FileChunkEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status413RequestEntityTooLarge);
+
+        group.MapGet("/{chunkId}", GetFileChunk)
+            .WithName("GetFileChunk")
+            .WithSummary("Retrieve a stored file chunk by ID")
+            .WithDescription(
+                "Returns the encrypted content of a previously staged file chunk. " +
+                "Used by the Wallet Service during file download reassembly. " +
+                "The chunk content is returned as Base64-encoded bytes.")
+            .Produces<FileChunkResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+    }
+
+    private static async Task<IResult> GetFileChunk(
+        string chunkId,
+        IActionStore actionStore,
+        CancellationToken cancellationToken)
+    {
+        var content = await actionStore.GetFileContentAsync(chunkId);
+        if (content is null)
+            return Results.NotFound();
+
+        var metadata = await actionStore.GetFileMetadataAsync("pending", chunkId);
+
+        return Results.Ok(new FileChunkResponse
+        {
+            ChunkId = chunkId,
+            ContentBase64 = Convert.ToBase64String(content),
+            ContentType = metadata?.ContentType ?? "application/octet-stream",
+            Size = content.Length
+        });
     }
 
     private static async Task<IResult> SubmitFileChunk(
@@ -157,8 +187,11 @@ public static class FileChunkEndpoints
             ChunkSize = encrypted.EncryptedContent.Length
         };
 
-        // Store encrypted chunk content and metadata
-        await actionStore.StoreFileContentAsync(chunkTxId, encrypted.EncryptedContent);
+        // Store nonce-prepended encrypted content (24-byte XChaCha20 nonce + ciphertext)
+        var storedContent = new byte[encrypted.Nonce.Length + encrypted.EncryptedContent.Length];
+        encrypted.Nonce.CopyTo(storedContent, 0);
+        encrypted.EncryptedContent.CopyTo(storedContent, encrypted.Nonce.Length);
+        await actionStore.StoreFileContentAsync(chunkTxId, storedContent);
         await actionStore.StoreFileMetadataAsync("pending", chunkTxId, new FileMetadata
         {
             FileId = chunkTxId,
@@ -233,6 +266,32 @@ public record FileChunkSubmissionRequest
     /// Required on chunks 1+ so the server can retrieve the shared encryption session.
     /// </summary>
     public string? UploadSessionId { get; init; }
+}
+
+/// <summary>
+/// Response returned when retrieving a stored file chunk by ID.
+/// </summary>
+public record FileChunkResponse
+{
+    /// <summary>
+    /// The chunk ID that was requested.
+    /// </summary>
+    public required string ChunkId { get; init; }
+
+    /// <summary>
+    /// Base64-encoded encrypted chunk bytes as stored by the Blueprint Service.
+    /// </summary>
+    public required string ContentBase64 { get; init; }
+
+    /// <summary>
+    /// MIME type of the original file.
+    /// </summary>
+    public required string ContentType { get; init; }
+
+    /// <summary>
+    /// Size of the encrypted chunk in bytes.
+    /// </summary>
+    public required int Size { get; init; }
 }
 
 /// <summary>

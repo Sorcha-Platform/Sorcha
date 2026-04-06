@@ -9,6 +9,7 @@ using Sorcha.Blueprint.Models;
 using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Models;
+using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Register;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.Wallet.Core.Services.Implementation;
@@ -31,8 +32,8 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 ///   <item>Navigate to <c>payload[fieldName][fileIndex]</c> and deserialise as <see cref="FileReference"/>.</item>
 ///   <item>For each chunk transaction ID in <see cref="FileReference.ChunkTransactionIds"/>:
 ///     <list type="bullet">
-///       <item>Fetch the chunk transaction from the Register Service.</item>
-///       <item>Decode <c>Payloads[0].Data</c> to get the chunk envelope JSON (<c>{ ciphertext, nonce }</c>).</item>
+///       <item>Fetch the encrypted chunk bytes from the Blueprint Service (<c>GET /api/file-chunks/{chunkId}</c>).</item>
+///       <item>Parse the chunk envelope JSON (<c>{ ciphertext, nonce }</c>).</item>
 ///       <item>Derive the per-chunk key via <c>HKDF-SHA256(masterKey, salt, chunkIndex)</c>.</item>
 ///       <item>Decrypt the chunk with XChaCha20-Poly1305.</item>
 ///     </list>
@@ -48,6 +49,7 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 public sealed class FileReassemblyService : IFileReassemblyService
 {
     private readonly IRegisterServiceClient _registerClient;
+    private readonly IBlueprintServiceClient _blueprintClient;
     private readonly WalletManager _walletManager;
     private readonly ISymmetricCrypto _symmetricCrypto;
     private readonly ILogger<FileReassemblyService> _logger;
@@ -62,17 +64,20 @@ public sealed class FileReassemblyService : IFileReassemblyService
     /// <summary>
     /// Initialises a new instance of <see cref="FileReassemblyService"/>.
     /// </summary>
-    /// <param name="registerClient">Client for fetching transactions from the Register Service.</param>
+    /// <param name="registerClient">Client for fetching action transactions from the Register Service.</param>
+    /// <param name="blueprintClient">Client for fetching file chunk data from the Blueprint Service.</param>
     /// <param name="walletManager">Wallet manager for private-key decryption (key unwrapping).</param>
     /// <param name="symmetricCrypto">Symmetric decryption provider for XChaCha20-Poly1305.</param>
     /// <param name="logger">Logger instance.</param>
     public FileReassemblyService(
         IRegisterServiceClient registerClient,
+        IBlueprintServiceClient blueprintClient,
         WalletManager walletManager,
         ISymmetricCrypto symmetricCrypto,
         ILogger<FileReassemblyService> logger)
     {
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
+        _blueprintClient = blueprintClient ?? throw new ArgumentNullException(nameof(blueprintClient));
         _walletManager = walletManager ?? throw new ArgumentNullException(nameof(walletManager));
         _symmetricCrypto = symmetricCrypto ?? throw new ArgumentNullException(nameof(symmetricCrypto));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -216,24 +221,17 @@ public sealed class FileReassemblyService : IFileReassemblyService
                 var chunkTxId = chunkTxIds[i];
 
                 _logger.LogDebug(
-                    "Fetching chunk {ChunkIndex}/{Total}: transaction {ChunkTxId} from register {RegisterId}",
-                    i, chunkTxIds.Length, chunkTxId, registerId);
+                    "Fetching chunk {ChunkIndex}/{Total}: transaction {ChunkTxId} from Blueprint Service",
+                    i, chunkTxIds.Length, chunkTxId);
 
-                var chunkTx = await _registerClient.GetTransactionAsync(registerId, chunkTxId, ct);
-                if (chunkTx is null)
+                var chunkResult = await _blueprintClient.GetFileChunkAsync(chunkTxId, ct);
+                if (chunkResult is null)
                 {
                     throw new InvalidOperationException(
-                        $"Chunk transaction {chunkTxId} (index {i}) not found in register {registerId}.");
+                        $"Chunk transaction {chunkTxId} (index {i}) not found in Blueprint Service.");
                 }
 
-                var chunkRaw = chunkTx.Payloads?.FirstOrDefault()?.Data;
-                if (string.IsNullOrWhiteSpace(chunkRaw))
-                {
-                    throw new InvalidOperationException(
-                        $"Chunk transaction {chunkTxId} (index {i}) has no payload data.");
-                }
-
-                var chunkBytes = DecodePayloadData(chunkRaw);
+                var chunkBytes = chunkResult.EncryptedContent;
                 byte[] plaintextChunk;
 
                 if (capturedMasterKey.Length == HkdfKeyDerivation.KeySizeBytes)
@@ -523,41 +521,20 @@ public sealed class FileReassemblyService : IFileReassemblyService
         int chunkIndex,
         CancellationToken ct)
     {
-        // Parse the chunk envelope JSON
-        JsonElement chunkJson;
-        try
-        {
-            chunkJson = JsonSerializer.Deserialize<JsonElement>(chunkEnvelopeBytes, _jsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException(
-                $"Failed to parse chunk envelope JSON for chunk {chunkIndex}.", ex);
-        }
-
+        // Chunk content is stored as nonce-prepended bytes:
+        // [24-byte XChaCha20 nonce][ciphertext + Poly1305 tag]
         byte[] ciphertext;
         byte[] nonce;
 
-        if (chunkJson.TryGetProperty("ciphertext", out var ctEl) &&
-            chunkJson.TryGetProperty("nonce", out var nonceEl))
+        if (chunkEnvelopeBytes.Length <= 24)
         {
-            // Standard encrypted chunk format
-            ciphertext = Convert.FromBase64String(ctEl.GetString()!);
-            nonce = Convert.FromBase64String(nonceEl.GetString()!);
+            throw new InvalidOperationException(
+                $"Chunk {chunkIndex} payload is too short ({chunkEnvelopeBytes.Length} bytes) " +
+                "to contain an XChaCha20-Poly1305 nonce (24 bytes) + ciphertext.");
         }
-        else
-        {
-            // Legacy / raw format — treat the entire payload as ciphertext + prepended nonce
-            // XChaCha20-Poly1305: first 24 bytes are the nonce
-            if (chunkEnvelopeBytes.Length <= 24)
-            {
-                throw new InvalidOperationException(
-                    $"Chunk {chunkIndex} payload is too short to contain an XChaCha20-Poly1305 nonce (24 bytes).");
-            }
 
-            nonce = chunkEnvelopeBytes[..24];
-            ciphertext = chunkEnvelopeBytes[24..];
-        }
+        nonce = chunkEnvelopeBytes[..24];
+        ciphertext = chunkEnvelopeBytes[24..];
 
         // Derive per-chunk key from master file key + salt + index
         var chunkKey = HkdfKeyDerivation.DeriveChunkKey(masterFileKey, salt, chunkIndex);

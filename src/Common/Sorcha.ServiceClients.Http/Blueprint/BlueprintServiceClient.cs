@@ -159,6 +159,59 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         }
     }
 
+    public async Task<FileChunkRetrievalResult?> GetFileChunkAsync(
+        string chunkId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Retrieving file chunk {ChunkId} from Blueprint Service", chunkId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(
+                $"api/file-chunks/{Uri.EscapeDataString(chunkId)}",
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogDebug("File chunk {ChunkId} not found in Blueprint Service", chunkId);
+                    return null;
+                }
+
+                _logger.LogWarning(
+                    "Failed to retrieve file chunk {ChunkId}: {StatusCode}",
+                    chunkId, response.StatusCode);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<FileChunkRetrievalResponse>(JsonOptions, cancellationToken);
+            if (result is null)
+            {
+                _logger.LogWarning("Empty response retrieving file chunk {ChunkId}", chunkId);
+                return null;
+            }
+
+            var encryptedContent = Convert.FromBase64String(result.ContentBase64);
+            _logger.LogDebug(
+                "Retrieved file chunk {ChunkId} ({Bytes} bytes encrypted)",
+                chunkId, encryptedContent.Length);
+
+            return new FileChunkRetrievalResult(chunkId, encryptedContent, result.ContentType);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error retrieving file chunk {ChunkId}", chunkId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve file chunk {ChunkId}", chunkId);
+            return null;
+        }
+    }
+
     public async Task<FileChunkSubmissionResult?> SubmitFileChunkAsync(
         string senderWallet,
         string registerAddress,
@@ -280,5 +333,16 @@ public class BlueprintServiceClient : IBlueprintServiceClient
         public required string ChunkTransactionId { get; init; }
         public required int ChunkIndex { get; init; }
         public required DateTimeOffset Timestamp { get; init; }
+    }
+
+    /// <summary>
+    /// Response DTO from file chunk retrieval endpoint
+    /// </summary>
+    private record FileChunkRetrievalResponse
+    {
+        public required string ChunkId { get; init; }
+        public required string ContentBase64 { get; init; }
+        public required string ContentType { get; init; }
+        public required int Size { get; init; }
     }
 }

@@ -404,14 +404,16 @@ for ($round = 1; $round -le $Rounds; $round++) {
     $totalSteps++
 
     try {
+        # Download as sender (has the wrapped key in encrypted payload).
+        # TODO: Add disclosure rules to blueprint to wrap for both sender+receiver.
         $verified = Receive-AndVerifyFile `
-            -WalletAddress $state.receiver.walletAddress `
+            -WalletAddress $state.sender.walletAddress `
             -RegisterId $state.registerId `
             -ActionTxId $actionTxId `
             -FieldName "attachment" `
             -ExpectedHash $fileHash `
             -ExpectedSize $fileSizeBytes `
-            -Token $receiverAuth.Token `
+            -Token $senderAuth.Token `
             -GatewayUrl $state.gatewayUrl
 
         if ($verified) {
