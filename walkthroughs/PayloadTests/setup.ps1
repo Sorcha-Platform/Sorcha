@@ -11,7 +11,7 @@
 #   2. Receiver Corp — receiver participant (admin)
 
 param(
-    [ValidateSet('gateway', 'direct', 'aspire')]
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck,
     [switch]$Force

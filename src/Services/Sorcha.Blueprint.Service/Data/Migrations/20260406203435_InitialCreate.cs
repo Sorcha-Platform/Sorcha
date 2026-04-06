@@ -108,11 +108,13 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "text", nullable: false),
-                    TransactionHash = table.Column<string>(type: "text", nullable: false),
+                    TransactionHash = table.Column<string>(type: "text", nullable: true),
                     FileName = table.Column<string>(type: "text", nullable: false),
                     ContentType = table.Column<string>(type: "text", nullable: false),
                     Size = table.Column<long>(type: "bigint", nullable: false),
-                    Content = table.Column<byte[]>(type: "bytea", nullable: false)
+                    Content = table.Column<byte[]>(type: "bytea", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    CustomMetadata = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
