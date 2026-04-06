@@ -315,10 +315,16 @@ public class RelayMessageHandler
                 "Relay sync fallback served {Count} dockets from Register Service for {RegisterId} (height={Height})",
                 response.Dockets.Count, request.RegisterId, height);
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex,
-                "Failed to read docket data from Register Service for relay sync (register {RegisterId})",
+                "HTTP error reading docket data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Serialization error reading docket data from Register Service for relay sync (register {RegisterId})",
                 request.RegisterId);
         }
     }
@@ -362,10 +368,16 @@ public class RelayMessageHandler
                 "Relay transaction fallback served {Count}/{Requested} transactions from Register Service for {RegisterId}",
                 response.Transactions.Count, request.TransactionIds.Count, request.RegisterId);
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex,
-                "Failed to read transaction data from Register Service for relay sync (register {RegisterId})",
+                "HTTP error reading transaction data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Serialization error reading transaction data from Register Service for relay sync (register {RegisterId})",
                 request.RegisterId);
         }
     }
