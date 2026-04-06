@@ -50,9 +50,9 @@
 
 ### Tests for User Story 2
 
-- [ ] T010 [P] [US2] Write unit test: `RegisterCreationOrchestrator.FinalizeAsync` populates validator roster with one entry when no external roster provided, in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
-- [ ] T011 [P] [US2] Write unit test: `RegisterCreationOrchestrator.FinalizeAsync` uses externally-provided validator roster when supplied (FR-014), in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
-- [ ] T012 [P] [US2] Write unit test: register creation fails if validator roster is empty (FR-010), in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
+- [X] T010 [P] [US2] Write unit test: `RegisterCreationOrchestrator.FinalizeAsync` populates validator roster with one entry when no external roster provided, in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
+- [X] T011 [P] [US2] Write unit test: `RegisterCreationOrchestrator.FinalizeAsync` uses externally-provided validator roster when supplied (FR-014), in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
+- [X] T012 [P] [US2] Write unit test: register creation fails if validator roster is empty (FR-010), in `tests/Sorcha.Register.Service.Tests/RegisterCreationValidatorRosterTests.cs`
 
 ### Implementation for User Story 2
 
@@ -60,7 +60,7 @@
 - [X] T014 [US2] Add optional `validators` parameter to register creation finalize endpoint (FR-014) to accept external validator roster in `src/Services/Sorcha.Register.Service/Services/RegisterCreationOrchestrator.cs`
 - [X] T015 [US2] Add validation: reject register creation if Validators list is empty or null (FR-010) in `src/Services/Sorcha.Register.Service/Services/RegisterCreationOrchestrator.cs`
 - [X] T016 [US2] Modify `DocketBuilder.BuildDocketAsync` to sign with `SignTransactionAsync(systemWalletAddress, docketHash, "sorcha:docket-signing")` instead of `SignDataAsync` (FR-012) in `src/Services/Sorcha.Validator.Service/Services/DocketBuilder.cs`
-- [ ] T017 [P] [US2] Write unit test: `DocketBuilder` signs using derived key path, not root wallet key, in `tests/Sorcha.Validator.Service.Tests/DocketBuilderDerivedKeyTests.cs`
+- [X] T017 [P] [US2] Write unit test: `DocketBuilder` signs using derived key path, not root wallet key, in `tests/Sorcha.Validator.Service.Tests/DocketBuilderDerivedKeyTests.cs`
 
 **Checkpoint**: New registers have validator roster in genesis. Dockets signed with purpose-derived key.
 
@@ -76,7 +76,7 @@
 
 - [X] T018 [P] [US1] Write unit test: `ValidatorKeyCache.ExtractFromControlRecord` populates authorized key set from genesis validators list, in `tests/Sorcha.Peer.Service.Tests/Replication/ValidatorKeyCacheTests.cs`
 - [X] T019 [P] [US1] Write unit test: `ValidatorKeyCache.IsAuthorizedSigner` returns true for Active key, false for Revoked key, true for Rotated key, in `tests/Sorcha.Peer.Service.Tests/Replication/ValidatorKeyCacheTests.cs`
-- [ ] T020 [P] [US1] Write unit test: `DocketFinalizationService` accepts dockets signed by roster-authorized key, rejects unauthorized signers, in `tests/Sorcha.Peer.Service.Tests/DocketFinalizationRosterTests.cs`
+- [X] T020 [P] [US1] Write unit test: `DocketFinalizationService` accepts dockets signed by roster-authorized key, rejects unauthorized signers, in `tests/Sorcha.Peer.Service.Tests/DocketFinalizationRosterTests.cs`
 
 ### Implementation for User Story 1
 
@@ -98,9 +98,9 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Write unit test: governance `add-validator` operation creates control transaction with two validators, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
-- [ ] T027 [P] [US3] Write unit test: governance `remove-validator` operation sets validator status to Revoked, rejects if it would leave zero Active validators, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
-- [ ] T028 [P] [US3] Write unit test: governance `rotate-validator-key` operation marks old key Rotated and adds new Active key, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
+- [X] T026 [P] [US3] Write unit test: governance `add-validator` operation creates control transaction with two validators, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
+- [X] T027 [P] [US3] Write unit test: governance `remove-validator` operation sets validator status to Revoked, rejects if it would leave zero Active validators, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
+- [X] T028 [P] [US3] Write unit test: governance `rotate-validator-key` operation marks old key Rotated and adds new Active key, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
 
 ### Implementation for User Story 3
 
@@ -108,7 +108,7 @@
 - [X] T030 [US3] Add `remove-validator` governance operation handler with validation (at least one Active must remain) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
 - [X] T031 [US3] Add `rotate-validator-key` governance operation handler (mark old Rotated, add new Active, increment roster version) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
 - [X] T032 [US3] Modify `ValidatorKeyCache` to update authorized key set when a new control transaction is synced (replay all control transactions to rebuild roster) in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs`
-- [ ] T033 [P] [US3] Write unit test: `ValidatorKeyCache` rebuilds authorized keys from control transaction sequence (add then remove), in `tests/Sorcha.Peer.Service.Tests/ValidatorKeyCacheRosterTests.cs`
+- [X] T033 [P] [US3] Write unit test: `ValidatorKeyCache` rebuilds authorized keys from control transaction sequence (add then remove), in `tests/Sorcha.Peer.Service.Tests/ValidatorKeyCacheRosterTests.cs`
 
 **Checkpoint**: Governance operations for validator roster work. Remote peers accept dockets from newly-added validators.
 
@@ -125,7 +125,7 @@
 - [X] T034 [US4] Add validation in `ValidatorRoster` that `RequiredSignatures` must be >= 1 and <= count of Active validators in `src/Common/Sorcha.Register.Models/ValidatorRoster.cs`
 - [X] T035 [US4] Add validation in governance `add-validator` / `remove-validator` that roster changes maintain threshold invariant (requiredSignatures <= Active count) in `src/Services/Sorcha.Register.Service/Program.cs`
 - [X] T036 [P] [US4] Write unit test: `ValidatorRoster` rejects `RequiredSignatures > Active count`, accepts `RequiredSignatures = 1` with 1 Active, in `tests/Sorcha.Register.Models.Tests/ValidatorRosterTests.cs`
-- [ ] T037 [P] [US4] Write unit test: governance rejects removing a validator if it would violate threshold invariant, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
+- [X] T037 [P] [US4] Write unit test: governance rejects removing a validator if it would violate threshold invariant, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
 
 **Checkpoint**: Threshold schema validated. Single-signer mode enforced. Schema ready for future n-of-m enforcement.
 
@@ -133,11 +133,11 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T038 Add XML documentation to all public types (ValidatorRoster, ValidatorRosterEntry, ValidatorKeyStatus) in `src/Common/Sorcha.Register.Models/`
-- [ ] T039 Add structured logging for validator roster extraction and docket verification decisions in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs`
-- [ ] T040 Run `quickstart.md` Scenario 1 end-to-end: create register on local, subscribe on n1, verify sync completes with register height matching
-- [ ] T041 Update CLAUDE.md Validator Service section if signing flow changed materially
-- [ ] T042 [P] Update `docs/reference/development-status.md` with feature 086 completion
+- [X] T038 Add XML documentation to all public types (ValidatorRoster, ValidatorRosterEntry, ValidatorKeyStatus) in `src/Common/Sorcha.Register.Models/`
+- [X] T039 Add structured logging for validator roster extraction and docket verification decisions in `src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs`
+- [X] T040 Run `quickstart.md` Scenario 1 end-to-end: create register on local, subscribe on n1, verify sync completes with register height matching
+- [X] T041 Update CLAUDE.md Validator Service section if signing flow changed materially
+- [X] T042 [P] Update `docs/reference/development-status.md` with feature 086 completion
 
 ---
 
