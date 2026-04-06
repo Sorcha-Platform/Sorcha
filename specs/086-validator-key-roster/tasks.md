@@ -104,10 +104,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Add `add-validator` governance operation handler in the existing governance proposal endpoint in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
-- [ ] T030 [US3] Add `remove-validator` governance operation handler with validation (at least one Active must remain) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
-- [ ] T031 [US3] Add `rotate-validator-key` governance operation handler (mark old Rotated, add new Active, increment roster version) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
-- [ ] T032 [US3] Modify `ValidatorKeyCache` to update authorized key set when a new control transaction is synced (replay all control transactions to rebuild roster) in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs`
+- [X] T029 [US3] Add `add-validator` governance operation handler in the existing governance proposal endpoint in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
+- [X] T030 [US3] Add `remove-validator` governance operation handler with validation (at least one Active must remain) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
+- [X] T031 [US3] Add `rotate-validator-key` governance operation handler (mark old Rotated, add new Active, increment roster version) in `src/Services/Sorcha.Register.Service/Program.cs` (governance section)
+- [X] T032 [US3] Modify `ValidatorKeyCache` to update authorized key set when a new control transaction is synced (replay all control transactions to rebuild roster) in `src/Services/Sorcha.Peer.Service/Replication/ValidatorKeyCache.cs`
 - [ ] T033 [P] [US3] Write unit test: `ValidatorKeyCache` rebuilds authorized keys from control transaction sequence (add then remove), in `tests/Sorcha.Peer.Service.Tests/ValidatorKeyCacheRosterTests.cs`
 
 **Checkpoint**: Governance operations for validator roster work. Remote peers accept dockets from newly-added validators.
@@ -122,9 +122,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T034 [US4] Add validation in `ValidatorRoster` that `RequiredSignatures` must be >= 1 and <= count of Active validators in `src/Common/Sorcha.Register.Models/ValidatorRoster.cs`
-- [ ] T035 [US4] Add validation in governance `add-validator` / `remove-validator` that roster changes maintain threshold invariant (requiredSignatures <= Active count) in `src/Services/Sorcha.Register.Service/Program.cs`
-- [ ] T036 [P] [US4] Write unit test: `ValidatorRoster` rejects `RequiredSignatures > Active count`, accepts `RequiredSignatures = 1` with 1 Active, in `tests/Sorcha.Register.Models.Tests/ValidatorRosterTests.cs`
+- [X] T034 [US4] Add validation in `ValidatorRoster` that `RequiredSignatures` must be >= 1 and <= count of Active validators in `src/Common/Sorcha.Register.Models/ValidatorRoster.cs`
+- [X] T035 [US4] Add validation in governance `add-validator` / `remove-validator` that roster changes maintain threshold invariant (requiredSignatures <= Active count) in `src/Services/Sorcha.Register.Service/Program.cs`
+- [X] T036 [P] [US4] Write unit test: `ValidatorRoster` rejects `RequiredSignatures > Active count`, accepts `RequiredSignatures = 1` with 1 Active, in `tests/Sorcha.Register.Models.Tests/ValidatorRosterTests.cs`
 - [ ] T037 [P] [US4] Write unit test: governance rejects removing a validator if it would violate threshold invariant, in `tests/Sorcha.Register.Service.Tests/GovernanceValidatorRosterTests.cs`
 
 **Checkpoint**: Threshold schema validated. Single-signer mode enforced. Schema ready for future n-of-m enforcement.

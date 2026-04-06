@@ -1810,6 +1810,56 @@ governanceGroup.MapPost("/propose", async (
         };
     }
 
+    // Validator roster operations (AddValidator, RemoveValidator, RotateValidatorKey)
+    if (operation.OperationType is GovernanceOperationType.AddValidator
+        or GovernanceOperationType.RemoveValidator
+        or GovernanceOperationType.RotateValidatorKey)
+    {
+        var validatorRoster = roster.ControlRecord.Validators ?? new ValidatorRoster { Version = 0 };
+
+        switch (operation.OperationType)
+        {
+            case GovernanceOperationType.AddValidator:
+                if (operation.ValidatorEntry == null)
+                    return Results.BadRequest(new { error = "ValidatorEntry is required for AddValidator operation" });
+                operation.ValidatorEntry.AuthorizedAt = DateTimeOffset.UtcNow;
+                operation.ValidatorEntry.Status = ValidatorKeyStatus.Active;
+                validatorRoster.Validators.Add(operation.ValidatorEntry);
+                break;
+
+            case GovernanceOperationType.RemoveValidator:
+                var toRevoke = validatorRoster.Validators.FirstOrDefault(v => v.ValidatorId == operation.TargetDid);
+                if (toRevoke == null)
+                    return Results.BadRequest(new { error = $"Validator '{operation.TargetDid}' not found in roster" });
+                if (validatorRoster.ActiveValidators.Count() <= 1)
+                    return Results.BadRequest(new { error = "Cannot remove the last active validator" });
+                toRevoke.Status = ValidatorKeyStatus.Revoked;
+                toRevoke.RevokedAt = DateTimeOffset.UtcNow;
+                break;
+
+            case GovernanceOperationType.RotateValidatorKey:
+                if (operation.ValidatorEntry == null)
+                    return Results.BadRequest(new { error = "ValidatorEntry is required for RotateValidatorKey operation" });
+                var toRotate = validatorRoster.Validators.FirstOrDefault(v => v.ValidatorId == operation.TargetDid && v.Status == ValidatorKeyStatus.Active);
+                if (toRotate == null)
+                    return Results.BadRequest(new { error = $"Active validator '{operation.TargetDid}' not found in roster" });
+                toRotate.Status = ValidatorKeyStatus.Rotated;
+                toRotate.RevokedAt = DateTimeOffset.UtcNow;
+                operation.ValidatorEntry.AuthorizedAt = DateTimeOffset.UtcNow;
+                operation.ValidatorEntry.Status = ValidatorKeyStatus.Active;
+                validatorRoster.Validators.Add(operation.ValidatorEntry);
+                break;
+        }
+
+        validatorRoster.Version++;
+
+        var rosterErrors = validatorRoster.Validate();
+        if (rosterErrors.Count > 0)
+            return Results.BadRequest(new { error = "Validator roster validation failed", errors = rosterErrors });
+
+        roster.ControlRecord.Validators = validatorRoster;
+    }
+
     operation.Status = ProposalStatus.Approved;
     var updatedRoster = rosterService.ApplyOperation(
         roster.ControlRecord, operation, newAttestation);
@@ -2944,7 +2994,8 @@ record GovernanceProposalRequest(
     string TargetDid,
     RegisterRole? TargetRole = null,
     string? Justification = null,
-    List<ApprovalSignature>? ApprovalSignatures = null);
+    List<ApprovalSignature>? ApprovalSignatures = null,
+    ValidatorRosterEntry? ValidatorEntry = null);
 
 record WriteDocketRequest(
     string DocketId,
