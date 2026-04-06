@@ -32,7 +32,6 @@ public class AcceptanceFlowTests
             {
                 RegisterId = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
                 Name = "Test Register",
-                TenantId = "tenant-1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations = members.Select(m => new RegisterAttestation
                 {
@@ -167,7 +166,6 @@ public class AcceptanceFlowTests
 
         result.RegisterId.Should().Be(roster.ControlRecord.RegisterId);
         result.Name.Should().Be(roster.ControlRecord.Name);
-        result.TenantId.Should().Be(roster.ControlRecord.TenantId);
         result.CreatedAt.Should().Be(roster.ControlRecord.CreatedAt);
     }
 

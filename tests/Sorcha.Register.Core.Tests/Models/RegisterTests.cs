@@ -25,7 +25,6 @@ public class RegisterTests
         register.Status.Should().Be(RegisterStatus.Offline);
         register.Advertise.Should().BeFalse();
         register.IsFullReplica.Should().BeTrue();
-        register.TenantId.Should().BeEmpty();
         register.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
         register.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
         register.Votes.Should().BeNull();
@@ -37,7 +36,6 @@ public class RegisterTests
         // Arrange
         var id = Guid.NewGuid().ToString("N");
         var name = "TestRegister";
-        var tenantId = "tenant-123";
         var createdAt = DateTime.UtcNow.AddHours(-1);
 
         // Act
@@ -49,7 +47,6 @@ public class RegisterTests
             Status = RegisterStatus.Online,
             Advertise = true,
             IsFullReplica = false,
-            TenantId = tenantId,
             CreatedAt = createdAt,
             UpdatedAt = DateTime.UtcNow,
             Votes = "some-votes"
@@ -62,7 +59,6 @@ public class RegisterTests
         register.Status.Should().Be(RegisterStatus.Online);
         register.Advertise.Should().BeTrue();
         register.IsFullReplica.Should().BeFalse();
-        register.TenantId.Should().Be(tenantId);
         register.CreatedAt.Should().Be(createdAt);
         register.Votes.Should().Be("some-votes");
     }
@@ -76,8 +72,7 @@ public class RegisterTests
         var register = new RegisterModel
         {
             Id = invalidId!,
-            Name = "TestRegister",
-            TenantId = "tenant-123"
+            Name = "TestRegister"
         };
 
         // Act
@@ -94,8 +89,7 @@ public class RegisterTests
         var register = new RegisterModel
         {
             Id = "tooshort",
-            Name = "TestRegister",
-            TenantId = "tenant-123"
+            Name = "TestRegister"
         };
 
         // Act
@@ -114,8 +108,7 @@ public class RegisterTests
         var register = new RegisterModel
         {
             Id = Guid.NewGuid().ToString("N"),
-            Name = invalidName!,
-            TenantId = "tenant-123"
+            Name = invalidName!
         };
 
         // Act
@@ -132,8 +125,7 @@ public class RegisterTests
         var register = new RegisterModel
         {
             Id = Guid.NewGuid().ToString("N"),
-            Name = new string('a', 39), // Max is 38
-            TenantId = "tenant-123"
+            Name = new string('a', 39) // Max is 38
         };
 
         // Act
@@ -141,26 +133,6 @@ public class RegisterTests
 
         // Assert
         validationResults.Should().ContainSingle(v => v.MemberNames.Contains("Name"));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData(null)]
-    public void Register_WithInvalidTenantId_ShouldFailValidation(string? invalidTenantId)
-    {
-        // Arrange
-        var register = new RegisterModel
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Name = "TestRegister",
-            TenantId = invalidTenantId!
-        };
-
-        // Act
-        var validationResults = ValidateModel(register);
-
-        // Assert
-        validationResults.Should().ContainSingle(v => v.MemberNames.Contains("TenantId"));
     }
 
     [Theory]
@@ -175,7 +147,6 @@ public class RegisterTests
         {
             Id = Guid.NewGuid().ToString("N"),
             Name = "TestRegister",
-            TenantId = "tenant-123",
             Status = status
         };
 
@@ -193,8 +164,7 @@ public class RegisterTests
         var register = new RegisterModel
         {
             Id = Guid.NewGuid().ToString("N"),
-            Name = "TestRegister",
-            TenantId = "tenant-123"
+            Name = "TestRegister"
         };
 
         // Act
@@ -220,7 +190,6 @@ public class RegisterTests
             Status = RegisterStatus.Online,
             Advertise = true,
             IsFullReplica = true,
-            TenantId = "prod-tenant-001",
             CreatedAt = DateTime.UtcNow.AddDays(-30),
             UpdatedAt = DateTime.UtcNow,
             Votes = "{\"vote1\": true}"
