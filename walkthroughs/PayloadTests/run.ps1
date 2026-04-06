@@ -120,8 +120,8 @@ function Send-FileChunks {
         $body = @{
             senderWallet    = $SenderWallet
             registerAddress = $RegisterAddress
-            chunkIndex      = $i
-            totalChunks     = $totalChunks
+            chunkIndex      = [int]$i
+            totalChunks     = [int]$totalChunks
             fileHash        = "sha256:$FileHash"
             contentType     = $ContentType
             contentBase64   = [Convert]::ToBase64String($chunk)
@@ -133,11 +133,17 @@ function Send-FileChunks {
         }
 
         $chunkStart = Get-Date
-        $response = Invoke-SorchaApi -Method POST `
-            -Uri "$GatewayUrl/api/file-chunks" `
-            -Body $body `
-            -Headers $headers `
-            -ShowJson:$ShowJson
+        try {
+            $response = Invoke-SorchaApi -Method POST `
+                -Uri "$GatewayUrl/api/file-chunks/" `
+                -Body $body `
+                -Headers $headers
+        } catch {
+            Write-WtFail "  Chunk $i upload error: $($_.Exception.Message)"
+            $errorBody = Get-SorchaErrorBody $_
+            if ($errorBody) { Write-WtFail "  Server response: $errorBody" }
+            throw
+        }
         $chunkMs = ((Get-Date) - $chunkStart).TotalMilliseconds
 
         $chunkTxIds += $response.chunkTransactionId
@@ -268,19 +274,16 @@ $totalSteps++
 
 try {
     $instanceBody = @{
-        blueprintId     = $state.blueprintId
-        registerAddress = $state.registerId
-        senderWallet    = $state.sender.walletAddress
-    }
-    $senderHeaders = @{
-        Authorization        = "Bearer $($senderAuth.Token)"
-        "X-Delegation-Token" = $senderAuth.Token
+        blueprintId = $state.blueprintId
+        registerId  = $state.registerId
+        tenantId    = $state.sender.organizationId
+        metadata    = @{ source = "walkthrough"; test = "payload" }
     }
 
     $instance = Invoke-SorchaApi -Method POST `
-        -Uri "$($state.blueprintUrl)/instances" `
+        -Uri "$($state.blueprintUrl)/instances/" `
         -Body $instanceBody `
-        -Headers $senderHeaders `
+        -Headers @{ Authorization = "Bearer $($senderAuth.Token)" } `
         -ShowJson:$ShowJson
 
     $instanceId = $instance.id

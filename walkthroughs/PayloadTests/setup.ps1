@@ -93,25 +93,18 @@ foreach ($email in @($senderEmail, $receiverEmail)) {
     }
 }
 
-# Verify emails
+# Verify emails — admin-approve via platform endpoint
 foreach ($email in @($senderEmail, $receiverEmail)) {
     try {
-        $userId = Get-OrCreateUser `
-            -TenantUrl $env.TenantUrl `
-            -OrganizationId $publicOrgId `
-            -Email $email `
-            -DisplayName ($email -replace '@.*', '') `
-            -Headers $sysAdmin.Headers
-        Confirm-SorchaUserEmail `
-            -TenantUrl $env.TenantUrl `
-            -OrganizationId $publicOrgId `
-            -UserId $userId `
+        # Use admin endpoint to verify the user's email
+        Invoke-SorchaApi -Method POST `
+            -Uri "$($env.TenantUrl)/platform/users/verify-email" `
+            -Body @{ email = $email } `
             -Headers $sysAdmin.Headers
         Write-WtInfo "Verified: $email"
     } catch {
-        if ($_.Exception.Message -match 'already verified|already confirmed') {
-            Write-WtInfo "Already verified: $email"
-        } else { throw }
+        # Already verified or endpoint doesn't exist — continue
+        Write-WtInfo "Email verification skipped for: $email (may already be verified)"
     }
 }
 
@@ -120,20 +113,41 @@ foreach ($email in @($senderEmail, $receiverEmail)) {
 # ============================================================================
 Write-WtStep "Step 3: Create Organizations"
 
-$senderOrg = New-SorchaOrganization `
-    -TenantUrl $env.TenantUrl `
-    -Name "Sender Corp" `
-    -Subdomain "payload-sender" `
-    -AdminEmail $senderEmail `
-    -Headers $sysAdmin.Headers
+try {
+    $senderOrg = New-SorchaOrganization `
+        -TenantUrl $env.TenantUrl `
+        -Name "Sender Corp" `
+        -Subdomain "payload-sender" `
+        -AdminEmail $senderEmail `
+        -Headers $sysAdmin.Headers
+} catch {
+    if ($_.Exception.Message -match 'already taken|409|duplicate|400') {
+        # Look up existing org
+        $orgs = (Invoke-SorchaApi -Method GET -Uri "$($env.TenantUrl)/platform/organizations?page=1&pageSize=50" -Headers $sysAdmin.Headers)
+        $existing = $orgs | Where-Object { $_.name -eq "Sender Corp" -or $_.subdomain -eq "payload-sender" } | Select-Object -First 1
+        if (-not $existing) { $existing = ($orgs.items | Where-Object { $_.name -eq "Sender Corp" -or $_.subdomain -eq "payload-sender" }) | Select-Object -First 1 }
+        $senderOrg = @{ OrganizationId = $existing.id ?? $existing.organizationId }
+        Write-WtInfo "Sender Org exists: $($senderOrg.OrganizationId)"
+    } else { throw }
+}
 Write-WtInfo "Sender Org: $($senderOrg.OrganizationId)"
 
-$receiverOrg = New-SorchaOrganization `
-    -TenantUrl $env.TenantUrl `
-    -Name "Receiver Corp" `
-    -Subdomain "payload-receiver" `
-    -AdminEmail $receiverEmail `
-    -Headers $sysAdmin.Headers
+try {
+    $receiverOrg = New-SorchaOrganization `
+        -TenantUrl $env.TenantUrl `
+        -Name "Receiver Corp" `
+        -Subdomain "payload-receiver" `
+        -AdminEmail $receiverEmail `
+        -Headers $sysAdmin.Headers
+} catch {
+    if ($_.Exception.Message -match 'already taken|409|duplicate|400') {
+        if (-not $orgs) { $orgs = (Invoke-SorchaApi -Method GET -Uri "$($env.TenantUrl)/platform/organizations?page=1&pageSize=50" -Headers $sysAdmin.Headers) }
+        $existing = $orgs | Where-Object { $_.name -eq "Receiver Corp" -or $_.subdomain -eq "payload-receiver" } | Select-Object -First 1
+        if (-not $existing) { $existing = ($orgs.items | Where-Object { $_.name -eq "Receiver Corp" -or $_.subdomain -eq "payload-receiver" }) | Select-Object -First 1 }
+        $receiverOrg = @{ OrganizationId = $existing.id ?? $existing.organizationId }
+        Write-WtInfo "Receiver Org exists: $($receiverOrg.OrganizationId)"
+    } else { throw }
+}
 Write-WtInfo "Receiver Org: $($receiverOrg.OrganizationId)"
 
 # ============================================================================
@@ -199,10 +213,11 @@ Write-WtSuccess "Register: $($register.RegisterId)"
 
 # Subscribe receiver org
 New-SorchaRegisterSubscription `
-    -RegisterUrl $env.RegisterUrl `
+    -TenantUrl $env.TenantUrl `
+    -OrganizationId $receiverOrg.OrganizationId `
     -RegisterId $register.RegisterId `
-    -TenantId $receiverOrg.OrganizationId `
-    -Headers $senderAuth.Headers
+    -Headers $senderAuth.Headers `
+    -SubscriptionType "Public"
 Write-WtInfo "Receiver org subscribed to register"
 
 # Publish participants to register

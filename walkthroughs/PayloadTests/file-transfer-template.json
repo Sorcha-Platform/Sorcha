@@ -1,68 +1,70 @@
 {
-  "id": "payload-test-file-transfer",
-  "title": "File Transfer Test",
-  "description": "Two-participant file transfer for payload size and integrity testing",
-  "version": 1,
-  "metadata": { "category": "test", "hasCycles": "true" },
-  "participants": [
-    { "id": "sender", "name": "Sender", "description": "Sends files to the receiver" },
-    { "id": "receiver", "name": "Receiver", "description": "Receives files and acknowledges" }
-  ],
-  "actions": [
-    {
-      "id": 0,
-      "title": "Send File",
-      "sender": "sender",
-      "isStartingAction": true,
-      "dataSchemas": [
-        {
-          "type": "object",
-          "properties": {
-            "message": { "type": "string", "title": "Message" },
-            "attachment": {
-              "type": "string",
-              "format": "file-reference",
-              "title": "File Attachment",
-              "x-file": {
-                "accept": ["*/*"],
-                "maxSizePerFile": "40MB",
-                "maxChunks": 10
+  "template": {
+    "id": "payload-test-file-transfer",
+    "title": "File Transfer Test",
+    "description": "Two-participant file transfer for payload size and integrity testing",
+    "version": 1,
+    "metadata": { "category": "test", "hasCycles": "true" },
+    "participants": [
+      { "id": "sender", "name": "Sender", "description": "Sends files to the receiver" },
+      { "id": "receiver", "name": "Receiver", "description": "Receives files and acknowledges" }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Send File",
+        "sender": "sender",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string", "title": "Message" },
+              "attachment": {
+                "type": "string",
+                "format": "file-reference",
+                "title": "File Attachment",
+                "x-file": {
+                  "accept": ["*/*"],
+                  "maxSizePerFile": "40MB",
+                  "maxChunks": 10
+                }
               }
-            }
-          },
-          "required": ["attachment"]
-        }
-      ],
-      "routes": [
-        { "id": "to-receive", "nextActionIds": [1], "isDefault": true }
-      ]
-    },
-    {
-      "id": 1,
-      "title": "Acknowledge Receipt",
-      "sender": "receiver",
-      "dataSchemas": [
-        {
-          "type": "object",
-          "properties": {
-            "acknowledged": { "type": "boolean", "title": "Acknowledged" },
-            "responseFile": {
-              "type": "string",
-              "format": "file-reference",
-              "title": "Response File (optional)",
-              "x-file": {
-                "accept": ["*/*"],
-                "maxSizePerFile": "40MB",
-                "maxChunks": 10
+            },
+            "required": ["attachment"]
+          }
+        ],
+        "routes": [
+          { "id": "to-receive", "nextActionIds": [1], "isDefault": true }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Acknowledge Receipt",
+        "sender": "receiver",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "acknowledged": { "type": "boolean", "title": "Acknowledged" },
+              "responseFile": {
+                "type": "string",
+                "format": "file-reference",
+                "title": "Response File (optional)",
+                "x-file": {
+                  "accept": ["*/*"],
+                  "maxSizePerFile": "40MB",
+                  "maxChunks": 10
+                }
               }
-            }
-          },
-          "required": ["acknowledged"]
-        }
-      ],
-      "routes": [
-        { "id": "back-to-sender", "nextActionIds": [0], "isDefault": true }
-      ]
-    }
-  ]
+            },
+            "required": ["acknowledged"]
+          }
+        ],
+        "routes": [
+          { "id": "back-to-sender", "nextActionIds": [0], "isDefault": true }
+        ]
+      }
+    ]
+  }
 }
