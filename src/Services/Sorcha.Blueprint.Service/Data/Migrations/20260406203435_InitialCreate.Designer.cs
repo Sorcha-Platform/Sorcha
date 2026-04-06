@@ -12,7 +12,7 @@ using Sorcha.Blueprint.Service.Data;
 namespace Sorcha.Blueprint.Service.Data.Migrations
 {
     [DbContext(typeof(BlueprintDbContext))]
-    [Migration("20260331083033_InitialCreate")]
+    [Migration("20260406203435_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -203,6 +203,12 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomMetadata")
+                        .HasColumnType("text");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -211,7 +217,6 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("TransactionHash")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -307,8 +312,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.HasOne("Sorcha.Blueprint.Service.Data.Entities.ActionEntity", "Action")
                         .WithMany("Files")
                         .HasForeignKey("TransactionHash")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Action");
                 });
