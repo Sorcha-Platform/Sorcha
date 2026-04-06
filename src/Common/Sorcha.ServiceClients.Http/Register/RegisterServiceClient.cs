@@ -321,6 +321,13 @@ public class RegisterServiceClient : IRegisterServiceClient
 
     private static DocketModel MapToDocketModel(DocketResponse docket, string registerId)
     {
+        // Build minimal TransactionModel stubs with TxId so callers can enumerate
+        // transaction IDs without a separate fetch. Full transaction data is fetched
+        // via GetTransactionAsync when needed.
+        var txStubs = docket.TransactionIds
+            .Select(txId => new TransactionModel { RegisterId = registerId, TxId = txId })
+            .ToList();
+
         return new DocketModel
         {
             DocketId = docket.Id.ToString(),
@@ -329,7 +336,7 @@ public class RegisterServiceClient : IRegisterServiceClient
             PreviousHash = docket.PreviousHash,
             DocketHash = docket.Hash,
             CreatedAt = docket.TimeStamp,
-            Transactions = [], // Transactions need to be fetched separately if needed
+            Transactions = txStubs,
             ProposerValidatorId = docket.Votes ?? string.Empty,
             MerkleRoot = string.Empty // Not stored in Register.Models.Docket
         };

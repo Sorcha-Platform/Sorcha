@@ -354,7 +354,8 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var maxDockets = request.MaxDockets > 0 ? request.MaxDockets : 100;
         var streamed = 0L;
 
-        for (var docketNum = fromVersion + 1; docketNum <= height && streamed < maxDockets; docketNum++)
+        // height is a COUNT (1 = one docket at index 0), so iterate to height-1 inclusive
+        for (var docketNum = fromVersion + 1; docketNum < height && streamed < maxDockets; docketNum++)
         {
             if (cancellationToken.IsCancellationRequested)
                 break;

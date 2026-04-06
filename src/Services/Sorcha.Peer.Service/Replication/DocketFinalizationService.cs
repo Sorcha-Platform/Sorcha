@@ -226,40 +226,144 @@ public class DocketFinalizationService
         if (_validatorKeyCache.HasKey(registerId))
             return;
 
-        // Try to extract from the genesis docket in cache
+        // Strategy 1: Extract validator roster from genesis control transaction payload in cache.
+        // The genesis docket's transactions contain a Control transaction whose payload
+        // is a Base64Url-encoded RegisterControlRecord with a validators field.
         var cacheEntry = _registerCache.Get(registerId);
         var genesisDocket = cacheEntry?.GetDocket(0);
 
         if (genesisDocket != null)
         {
+            if (TryExtractValidatorRosterFromDocket(registerId, genesisDocket))
+                return;
+
+            // Fall back to legacy ProposerSignature extraction for pre-086 registers
             _validatorKeyCache.ExtractFromGenesisDocket(registerId, genesisDocket.Data);
-            return;
+            if (_validatorKeyCache.HasKey(registerId))
+                return;
         }
 
-        // Fall back to reading genesis docket from Register Service
+        // Strategy 2: Read genesis transaction from Register Service (for locally-owned registers).
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+            // Get the genesis transaction directly — it contains the control record payload
             var genesis = await registerClient.ReadDocketAsync(registerId, 0, cancellationToken);
-            if (genesis != null)
+            if (genesis?.Transactions.Count > 0)
             {
-                _logger.LogDebug(
-                    "Retrieved genesis docket from Register Service for key extraction (register {RegisterId})",
-                    registerId);
-                // The DocketModel from Register Service doesn't contain raw signature bytes,
-                // so we cannot extract the key this way. Log and continue without key.
-                _logger.LogWarning(
-                    "Cannot extract validator key from DocketModel for register {RegisterId} — " +
-                    "key extraction requires raw docket data from genesis docket in cache",
-                    registerId);
+                // Find the Control transaction in the genesis docket (don't assume index 0)
+                foreach (var txStub in genesis.Transactions)
+                {
+                    var tx = await registerClient.GetTransactionAsync(
+                        registerId, txStub.TxId, cancellationToken);
+
+                    // Only process Control transactions (MetaData.TransactionType == 0)
+                    if (tx?.MetaData?.TransactionType != 0) continue;
+                    if (tx.Payloads?.Length == 0) continue;
+
+                    var payloadData = tx.Payloads[0].Data;
+                    if (string.IsNullOrEmpty(payloadData)) continue;
+
+                    var controlRecordBytes = DecodeBase64Url(payloadData);
+                    if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
+                    {
+                        _logger.LogInformation(
+                            "Extracted validator roster from Register Service genesis transaction for register {RegisterId}",
+                            registerId);
+                        return;
+                    }
+                }
             }
+
+            _logger.LogWarning(
+                "Could not extract validator roster from Register Service for register {RegisterId}",
+                registerId);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Failed to retrieve genesis docket from Register Service for register {RegisterId}",
+                "Failed to retrieve genesis transaction from Register Service for register {RegisterId}",
                 registerId);
+        }
+    }
+
+    /// <summary>
+    /// Attempts to extract the validator roster from a cached genesis docket's transaction data.
+    /// Parses the genesis transactions to find the Control transaction and its RegisterControlRecord payload.
+    /// </summary>
+    private bool TryExtractValidatorRosterFromDocket(string registerId, CachedDocket genesisDocket)
+    {
+        try
+        {
+            // The genesis docket data is serialized DocketModel JSON containing transactions.
+            // Each transaction may have Base64Url-encoded payloads with RegisterControlRecord.
+            using var doc = JsonDocument.Parse(genesisDocket.Data);
+            var root = doc.RootElement;
+
+            // Look for transactions array in the docket data
+            JsonElement txArray;
+            if (!root.TryGetProperty("Transactions", out txArray) &&
+                !root.TryGetProperty("transactions", out txArray))
+            {
+                return false;
+            }
+
+            foreach (var tx in txArray.EnumerateArray())
+            {
+                // Only process Control transactions (TransactionType == 0)
+                if (tx.TryGetProperty("MetaData", out var meta) || tx.TryGetProperty("metaData", out meta))
+                {
+                    if (meta.TryGetProperty("TransactionType", out var txType) ||
+                        meta.TryGetProperty("transactionType", out txType))
+                    {
+                        if (txType.ValueKind == JsonValueKind.Number && txType.GetInt32() != 0)
+                            continue;
+                    }
+                }
+
+                // Look for payloads
+                JsonElement payloads;
+                if (!tx.TryGetProperty("Payloads", out payloads) &&
+                    !tx.TryGetProperty("payloads", out payloads))
+                    continue;
+
+                foreach (var payload in payloads.EnumerateArray())
+                {
+                    JsonElement dataElement;
+                    if (!payload.TryGetProperty("Data", out dataElement) &&
+                        !payload.TryGetProperty("data", out dataElement))
+                        continue;
+
+                    var payloadData = dataElement.GetString();
+                    if (string.IsNullOrEmpty(payloadData)) continue;
+
+                    try
+                    {
+                        var controlRecordBytes = DecodeBase64Url(payloadData);
+                        if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
+                        {
+                            _logger.LogInformation(
+                                "Extracted validator roster from cached genesis docket for register {RegisterId}",
+                                registerId);
+                            return true;
+                        }
+                    }
+                    catch (FormatException)
+                    {
+                        // Not valid Base64Url — try next payload
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogDebug(ex,
+                "Failed to parse genesis docket transactions for register {RegisterId}", registerId);
+            return false;
         }
     }
 
@@ -413,16 +517,14 @@ public class DocketFinalizationService
                 return false;
             }
 
-            // Use the cached validator key if available for public key cross-check
-            if (_validatorKeyCache.TryGetKey(registerId, out var cachedKey) && cachedKey != null)
+            // Verify the signer is in the authorized validator roster (FR-008)
+            if (_validatorKeyCache.HasKey(registerId) &&
+                !_validatorKeyCache.IsAuthorizedSigner(registerId, publicKeyBytes))
             {
-                if (!publicKeyBytes.SequenceEqual(cachedKey.PublicKey))
-                {
-                    _logger.LogWarning(
-                        "Docket {DocketNumber} for register {RegisterId}: proposer public key does not match cached validator key",
-                        docket.Version, registerId);
-                    return false;
-                }
+                _logger.LogWarning(
+                    "Docket {DocketNumber} for register {RegisterId}: proposer public key is not in the authorized validator roster",
+                    docket.Version, registerId);
+                return false;
             }
 
             // Recompute the docket hash bytes for verification
@@ -558,5 +660,20 @@ public class DocketFinalizationService
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Decodes a Base64Url-encoded string to bytes.
+    /// Handles the URL-safe alphabet (- instead of +, _ instead of /) and missing padding.
+    /// </summary>
+    private static byte[] DecodeBase64Url(string base64Url)
+    {
+        var s = base64Url.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4)
+        {
+            case 2: s += "=="; break;
+            case 3: s += "="; break;
+        }
+        return Convert.FromBase64String(s);
     }
 }

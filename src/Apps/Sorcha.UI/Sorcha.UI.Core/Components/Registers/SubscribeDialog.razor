@@ -61,9 +61,16 @@
                                     <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="font-family: monospace;">
                                         @TruncateId(register.RegisterId)
                                     </MudText>
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                             Color="@(register.PeerCount > 1 ? Color.Info : Color.Warning)">
                                         @register.PeerCount peer(s)
                                     </MudChip>
+                                    @if (register.LatestVersion > 0)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Default">
+                                            @register.LatestVersion tx
+                                        </MudChip>
+                                    }
                                 </MudStack>
                             </MudStack>
                             @if (isAlreadySubscribed)

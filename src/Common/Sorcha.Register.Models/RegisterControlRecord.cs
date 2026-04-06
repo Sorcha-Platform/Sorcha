@@ -75,6 +75,15 @@ public class RegisterControlRecord
     public RegisterPolicy? RegisterPolicy { get; set; }
 
     /// <summary>
+    /// Authorized validator signing keys and threshold parameters.
+    /// Declares which validators are authorized to sign dockets for this register.
+    /// Null for backward compatibility with pre-086 registers only (preproduction, clean break).
+    /// </summary>
+    [JsonPropertyName("validators")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ValidatorRoster? Validators { get; set; }
+
+    /// <summary>
     /// Additional register metadata (tags, category, etc.)
     /// </summary>
     [JsonPropertyName("metadata")]

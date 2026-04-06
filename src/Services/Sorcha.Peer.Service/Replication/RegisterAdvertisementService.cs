@@ -262,7 +262,7 @@ public class RegisterAdvertisementService
         var healthyPeers = _peerListManager.GetAllHealthyPeers();
         var registerMap = new Dictionary<string, AvailableRegisterInfo>();
 
-        // Include local public advertisements first
+        // Include local public advertisements first — this node IS a peer (count = 1)
         foreach (var localAd in _localAdvertisements.Values)
         {
             if (!localAd.IsPublic) continue;
@@ -275,8 +275,8 @@ public class RegisterAdvertisementService
                 IsPublic = true,
                 LatestVersion = localAd.LatestVersion,
                 LatestDocketVersion = localAd.LatestDocketVersion,
-                PeerCount = 0, // Local node doesn't count as a "peer"
-                FullReplicaPeerCount = 0
+                PeerCount = 1, // This node hosts the register — inclusive count
+                FullReplicaPeerCount = localAd.SyncState == RegisterSyncState.FullyReplicated ? 1 : 0
             };
         }
 
@@ -320,7 +320,12 @@ public class RegisterAdvertisementService
                 info.LatestDocketVersion = localAd.LatestDocketVersion;
         }
 
-        return registerMap.Values.ToList().AsReadOnly();
+        // Filter out ghost registers — if PeerCount is 0 after aggregation,
+        // no node (including this one) hosts the register. It's a stale advertisement.
+        return registerMap.Values
+            .Where(r => r.PeerCount > 0)
+            .ToList()
+            .AsReadOnly();
     }
 
     /// <summary>

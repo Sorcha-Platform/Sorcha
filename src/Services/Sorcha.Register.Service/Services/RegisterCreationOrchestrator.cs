@@ -289,6 +289,54 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             }).ToList()
         };
 
+        // Populate validator roster (FR-001, FR-014)
+        // If an external roster is provided (future System Register, FR-014), use it.
+        // Otherwise, derive the local validator's docket-signing key from the system wallet.
+        if (controlRecord.Validators == null)
+        {
+            // TODO: Replace with IWalletServiceClient.GetDerivedPublicKeyAsync() when available.
+            // Currently we sign a zeroed hash to obtain the derived public key as a side-effect.
+            // The signature itself is discarded — only the PublicKey from the result is used.
+            var docketSignResult = await _signingService.SignAsync(
+                registerId: pending.RegisterId,
+                txId: "validator-roster-key-derivation",
+                payloadHash: "0000000000000000000000000000000000000000000000000000000000000000",
+                derivationPath: "sorcha:docket-signing",
+                transactionType: "ValidatorKeyDerivation",
+                cancellationToken);
+
+            controlRecord.Validators = new ValidatorRoster
+            {
+                Validators =
+                [
+                    new ValidatorRosterEntry
+                    {
+                        ValidatorId = docketSignResult.WalletAddress,
+                        PublicKey = Convert.ToBase64String(docketSignResult.PublicKey),
+                        Algorithm = Enum.TryParse<SignatureAlgorithm>(docketSignResult.Algorithm, true, out var alg)
+                            ? alg : SignatureAlgorithm.ED25519,
+                        DerivationContext = "sorcha:docket-signing",
+                        Status = ValidatorKeyStatus.Active,
+                        AuthorizedAt = controlRecord.CreatedAt
+                    }
+                ],
+                RequiredSignatures = 1,
+                Version = 1
+            };
+
+            _logger.LogInformation(
+                "Populated validator roster for register {RegisterId} with local validator {ValidatorId}",
+                pending.RegisterId, docketSignResult.WalletAddress);
+        }
+
+        // Validate validator roster (FR-010)
+        var rosterErrors = controlRecord.Validators.Validate();
+        if (rosterErrors.Count > 0)
+        {
+            throw new ArgumentException(
+                $"Validator roster validation failed: {string.Join(", ", rosterErrors)}");
+        }
+
         // Validate constructed control record
         var validationErrors = ValidateControlRecord(controlRecord);
         if (validationErrors.Any())

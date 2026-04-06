@@ -145,7 +145,14 @@ public class DocketBuilder : IDocketBuilder
                 _validatorConfig.SystemWalletAddress = systemWalletAddress;
             }
 
-            var signResult = await _walletClient.SignDataAsync(systemWalletAddress, docketHash, cancellationToken);
+            // Sign with purpose-derived key (FR-012) — uses "sorcha:docket-signing" derivation
+            // context so the signing key matches the key declared in the validator roster.
+            var docketHashBytes = Convert.FromHexString(docketHash);
+            var signResult = await _walletClient.SignTransactionAsync(
+                systemWalletAddress, docketHashBytes,
+                derivationPath: "sorcha:docket-signing",
+                isPreHashed: true,
+                cancellationToken);
 
             // Create docket with real cryptographic signature
             var docket = new Docket

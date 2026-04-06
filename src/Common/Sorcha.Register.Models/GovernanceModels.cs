@@ -24,7 +24,22 @@ public enum GovernanceOperationType
     /// <summary>
     /// Transfer ownership to an existing admin
     /// </summary>
-    Transfer = 2
+    Transfer = 2,
+
+    /// <summary>
+    /// Add a validator's signing key to the validator roster
+    /// </summary>
+    AddValidator = 3,
+
+    /// <summary>
+    /// Revoke a validator's signing key from the validator roster
+    /// </summary>
+    RemoveValidator = 4,
+
+    /// <summary>
+    /// Rotate a validator's signing key (mark old as Rotated, add new Active key)
+    /// </summary>
+    RotateValidatorKey = 5
 }
 
 /// <summary>
@@ -127,6 +142,14 @@ public class GovernanceOperation
     [StringLength(500)]
     [JsonPropertyName("justification")]
     public string? Justification { get; set; }
+
+    /// <summary>
+    /// Validator roster entry for AddValidator/RotateValidatorKey operations.
+    /// Contains the new validator's public key, algorithm, and derivation context.
+    /// </summary>
+    [JsonPropertyName("validatorEntry")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ValidatorRosterEntry? ValidatorEntry { get; set; }
 }
 
 /// <summary>

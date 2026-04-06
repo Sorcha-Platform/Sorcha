@@ -2,9 +2,11 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Register;
 using RelayModels = Sorcha.Peer.Service.Communication.Models;
 
 namespace Sorcha.Peer.Service.Communication;
@@ -21,23 +23,38 @@ public class RelayMessageHandler
     private readonly RegisterCache _registerCache;
     private readonly RegisterSyncBackgroundService _syncBackgroundService;
     private readonly DocketFinalizationService? _docketFinalizationService;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// Maximum response payload size in bytes (3MB to leave headroom within 4MB/16MB proto limits)
     /// </summary>
     private const int MaxResponseSizeBytes = 3 * 1024 * 1024;
 
+    /// <summary>
+    /// Maximum dockets per relay response. Relay messages traverse the PeerRouter as a single
+    /// proto payload, so batches must be small enough to fit within gRPC message limits.
+    /// </summary>
+    private const int MaxDocketsPerRelayResponse = 50;
+
+    /// <summary>
+    /// Maximum transactions per relay response. Higher than dockets because individual
+    /// transactions are typically smaller than dockets (which contain Merkle roots, signatures, etc.).
+    /// </summary>
+    private const int MaxTransactionsPerRelayResponse = 500;
+
     public RelayMessageHandler(
         ILogger<RelayMessageHandler> logger,
         RelayCommunicationService relayCommunication,
         RegisterCache registerCache,
         RegisterSyncBackgroundService syncBackgroundService,
+        IServiceScopeFactory scopeFactory,
         DocketFinalizationService? docketFinalizationService = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _syncBackgroundService = syncBackgroundService ?? throw new ArgumentNullException(nameof(syncBackgroundService));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _docketFinalizationService = docketFinalizationService;
     }
 
@@ -102,7 +119,7 @@ public class RelayMessageHandler
         if (cacheEntry != null)
         {
             var dockets = cacheEntry.GetDocketsFromVersion(request.FromDocketVersion);
-            var maxDockets = Math.Min(request.MaxDockets, 500);
+            var maxDockets = Math.Min(request.MaxDockets, MaxDocketsPerRelayResponse);
             var estimatedSize = 0;
 
             foreach (var docket in dockets)
@@ -132,6 +149,12 @@ public class RelayMessageHandler
 
                 response.Dockets.Add(entry);
             }
+        }
+        else
+        {
+            // Register not in cache — fall back to the co-located Register Service
+            // for locally owned registers (same pattern as RegisterSyncGrpcService)
+            await PopulateResponseFromRegisterServiceAsync(request, response, cancellationToken);
         }
 
         await _relayCommunication.SendViaRelayAsync(
@@ -168,8 +191,8 @@ public class RelayMessageHandler
         if (cacheEntry != null)
         {
             // Cap transaction IDs to prevent unbounded response payloads
-            var txIds = request.TransactionIds.Count > 500
-                ? request.TransactionIds.Take(500)
+            var txIds = request.TransactionIds.Count > MaxTransactionsPerRelayResponse
+                ? request.TransactionIds.Take(MaxTransactionsPerRelayResponse)
                 : request.TransactionIds;
 
             foreach (var txId in txIds)
@@ -186,6 +209,11 @@ public class RelayMessageHandler
                     });
                 }
             }
+        }
+        else
+        {
+            // Register not in cache — fall back to Register Service for transaction data
+            await PopulateTransactionResponseFromRegisterServiceAsync(request, response, cancellationToken);
         }
 
         await _relayCommunication.SendViaRelayAsync(
@@ -226,6 +254,138 @@ public class RelayMessageHandler
         }
 
         _relayCommunication.CompleteCorrelation(correlationId, message);
+    }
+
+    /// <summary>
+    /// Reads docket data from the co-located Register Service when the peer cache is empty.
+    /// Mirrors the fallback logic in RegisterSyncGrpcService.PullDocketChainFromRegisterServiceAsync.
+    /// </summary>
+    private async Task PopulateResponseFromRegisterServiceAsync(
+        RelayModels.RegisterSyncRequest request,
+        RelayModels.RegisterSyncResponse response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+            var height = await registerClient.GetRegisterHeightAsync(request.RegisterId, cancellationToken);
+            if (height < 0)
+            {
+                _logger.LogDebug(
+                    "Register {RegisterId} not found in Register Service (relay fallback)",
+                    request.RegisterId);
+                return;
+            }
+
+            var fromVersion = request.FromDocketVersion;
+            var maxDockets = Math.Min(
+                request.MaxDockets > 0 ? request.MaxDockets : MaxDocketsPerRelayResponse,
+                MaxDocketsPerRelayResponse);
+            var estimatedSize = 0;
+
+            // height is a COUNT (1 = one docket at index 0), so iterate from fromVersion+1 to height-1 inclusive
+            for (var docketNum = fromVersion + 1; docketNum < height && response.Dockets.Count < maxDockets; docketNum++)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+
+                var docket = await registerClient.ReadDocketAsync(request.RegisterId, docketNum, cancellationToken);
+                if (docket == null) break;
+
+                var docketData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(docket);
+                var entry = new RelayModels.DocketEntry
+                {
+                    Version = docket.DocketNumber,
+                    Data = docketData,
+                    DocketHash = docket.DocketHash,
+                    PreviousHash = docket.PreviousHash ?? string.Empty,
+                    TransactionIds = docket.Transactions.Select(t => t.TxId).ToList(),
+                    CreatedAt = docket.CreatedAt.ToUnixTimeMilliseconds()
+                };
+
+                estimatedSize += entry.Data.Length + 200;
+                if (estimatedSize > MaxResponseSizeBytes)
+                {
+                    response.HasMore = true;
+                    break;
+                }
+
+                response.Dockets.Add(entry);
+            }
+
+            if (response.Dockets.Count < maxDockets && height > fromVersion + 1 + response.Dockets.Count)
+                response.HasMore = true;
+
+            _logger.LogInformation(
+                "Relay sync fallback served {Count} dockets from Register Service for {RegisterId} (height={Height})",
+                response.Dockets.Count, request.RegisterId, height);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex,
+                "HTTP error reading docket data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Serialization error reading docket data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
+    }
+
+    /// <summary>
+    /// Reads transaction data from the co-located Register Service when the peer cache is empty.
+    /// </summary>
+    private async Task PopulateTransactionResponseFromRegisterServiceAsync(
+        RelayModels.TransactionDataRequest request,
+        RelayModels.TransactionDataResponse response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+            var txIds = request.TransactionIds.Count > MaxTransactionsPerRelayResponse
+                ? request.TransactionIds.Take(MaxTransactionsPerRelayResponse)
+                : request.TransactionIds;
+
+            foreach (var txId in txIds)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+
+                var tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
+                if (tx != null)
+                {
+                    var txData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(tx);
+                    response.Transactions.Add(new RelayModels.TransactionEntry
+                    {
+                        TransactionId = tx.TxId,
+                        Data = txData,
+                        Checksum = string.Empty,
+                        CreatedAt = new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero).ToUnixTimeMilliseconds()
+                    });
+                }
+            }
+
+            _logger.LogInformation(
+                "Relay transaction fallback served {Count}/{Requested} transactions from Register Service for {RegisterId}",
+                response.Transactions.Count, request.TransactionIds.Count, request.RegisterId);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex,
+                "HTTP error reading transaction data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Serialization error reading transaction data from Register Service for relay sync (register {RegisterId})",
+                request.RegisterId);
+        }
     }
 
     /// <summary>

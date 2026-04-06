@@ -1,0 +1,78 @@
+# Validator Roster Governance Contracts
+# These extend the existing governance endpoints in Register Service
+
+# No new REST endpoints needed — validator roster changes flow through
+# the existing governance proposal/approve pipeline:
+#   POST /api/registers/{registerId}/governance/propose
+#   (with operation type: "add-validator" | "remove-validator" | "rotate-validator-key")
+
+# New governance operation types for the proposal endpoint:
+
+operations:
+  add-validator:
+    description: Add a new validator to the register's authorized signer roster
+    payload:
+      validatorId:
+        type: string
+        required: true
+        description: Wallet address or DID of the new validator
+      publicKey:
+        type: string
+        format: base64
+        required: true
+        description: Purpose-derived public key for docket signing
+      algorithm:
+        type: string
+        enum: [ED25519, NISTP256, RSA4096, ML_DSA_65, SLH_DSA_128s]
+        required: true
+      derivationContext:
+        type: string
+        required: true
+        description: Key derivation path (e.g., "sorcha:docket-signing")
+    result: Control transaction with updated ValidatorRoster (version incremented)
+
+  remove-validator:
+    description: Revoke a validator's signing authority
+    payload:
+      validatorId:
+        type: string
+        required: true
+        description: Validator to revoke
+    validation:
+      - At least one Active validator must remain after removal
+      - RequiredSignatures must not exceed remaining Active count
+    result: Control transaction with validator status set to Revoked
+
+  rotate-validator-key:
+    description: Replace a validator's signing key with a new derived key
+    payload:
+      validatorId:
+        type: string
+        required: true
+      newPublicKey:
+        type: string
+        format: base64
+        required: true
+      newDerivationContext:
+        type: string
+        required: true
+    result: Control transaction with old key marked Rotated, new key added as Active
+
+# Register creation contract change:
+
+register-creation:
+  finalize:
+    description: Extended to populate validator roster in genesis
+    new-optional-field:
+      validators:
+        type: array
+        items:
+          type: object
+          properties:
+            validatorId: { type: string }
+            publicKey: { type: string, format: base64 }
+            algorithm: { type: string }
+            derivationContext: { type: string }
+        description: |
+          Optional externally-provided validator roster (FR-014).
+          When omitted, auto-populated with local validator's derived key.

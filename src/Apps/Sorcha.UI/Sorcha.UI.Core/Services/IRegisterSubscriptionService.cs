@@ -56,9 +56,21 @@ public class AvailableRegisterDto
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
-    /// <summary>Number of peers replicating this register.</summary>
+    /// <summary>Number of peers replicating this register (inclusive of self).</summary>
     [JsonPropertyName("peerCount")]
     public int PeerCount { get; set; }
+
+    /// <summary>Latest transaction version across all peers.</summary>
+    [JsonPropertyName("latestVersion")]
+    public long LatestVersion { get; set; }
+
+    /// <summary>Latest docket version across all peers.</summary>
+    [JsonPropertyName("latestDocketVersion")]
+    public long LatestDocketVersion { get; set; }
+
+    /// <summary>Number of peers with full replica capability.</summary>
+    [JsonPropertyName("fullReplicaPeerCount")]
+    public int FullReplicaPeerCount { get; set; }
 
     /// <summary>Whether the register is publicly advertised.</summary>
     [JsonPropertyName("isPublic")]
