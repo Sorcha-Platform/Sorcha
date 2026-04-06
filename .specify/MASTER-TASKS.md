@@ -110,6 +110,18 @@ This document now tracks **remaining work for the first production release**, or
 | GAP-019 | Tenant org user admin — PlatformUser provisioning with admin overrides | P1 | 16h | ✅ | Feature 077 — POST /api/platform/users + PUT /api/platform/users/{id}/password, SystemAdmin only |
 | GAP-020 | Multi-org ConstructionPermit walkthrough — complete run.ps1 | P2 | 8h | 🚧 | Setup passes (4 orgs, 5 users, register, subscriptions, blueprint). Run blocked on GAP-019 (per-org users can't login without PlatformUser). Branch: `feature/multi-org-construction-permit`. Also needs: rejection scenario fix, New Submission page visibility test. |
 
+### From Feature 085 (Stored Data Transactions)
+
+| # | Task | Priority | Effort | Status | Notes |
+|---|------|----------|--------|--------|-------|
+| GAP-021 | Consolidate duplicate action submission endpoints in Blueprint Service Program.cs | P1 | 8h | 📋 | Two action submission paths: legacy `actionsGroup.MapPost("/")` (line ~849) and `instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute")` (line ~1724). The file key injection (Feature 085) had to be duplicated in the execute endpoint. Consolidate into a single service method and deprecate/remove the legacy endpoint. |
+| GAP-022 | Blueprint disclosure rules for file recipient access | P2 | 8h | 📋 | Currently only the sender's wallet gets a wrapped key in the encrypted payload. Blueprint disclosure rules need to include all participants who should access file attachments. PayloadTests walkthrough downloads as sender only — receiver access requires disclosure config. |
+| GAP-023 | Move file chunks from Blueprint Service DB to register transactions | P2 | 16h | 📋 | Chunks are currently stored in Blueprint Service PostgreSQL (IActionStore). Design intended chunks as register transactions flowing through the validator pipeline. Requires: chunk submission to validator, same-docket sealing logic, FileReassemblyService reads from register instead of Blueprint Service. |
+| GAP-024 | EF Core migration for FileMetadata nullable TransactionHash + CreatedAt | P1 | 2h | 📋 | Manual SQL applied to Docker; entity/snapshot updated but no clean migration generated. Need proper migration to avoid PendingModelChangesWarning on startup. |
+| GAP-025 | PayloadTests walkthrough: multi-chunk pressure testing (4MB, 10MB, 40MB) | P2 | 4h | 📋 | 1KB smoke test passes. Larger file sizes need testing to verify chunking, multi-session continuity, and download reassembly at scale. |
+| GAP-026 | FileReferenceField.razor: wire into actual blueprint action form renderer | P2 | 8h | 📋 | Component exists standalone but not integrated into the Sorcha.UI action form rendering pipeline (needs to detect `format: "file-reference"` fields and render FileReferenceField). |
+| GAP-027 | Remove diagnostic logging from Program.cs file key injection | P3 | 1h | 📋 | `[085]` prefixed LogInformation calls added during debugging — clean up or reduce to LogDebug. |
+
 ---
 
 ## Theme 4: Trust & Verification — P2
