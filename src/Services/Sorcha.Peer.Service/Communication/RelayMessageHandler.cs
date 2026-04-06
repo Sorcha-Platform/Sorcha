@@ -314,7 +314,7 @@ public class RelayMessageHandler
                 response.Dockets.Add(entry);
             }
 
-            if (response.Dockets.Count < maxDockets && height > fromVersion + response.Dockets.Count)
+            if (response.Dockets.Count < maxDockets && height > fromVersion + 1 + response.Dockets.Count)
                 response.HasMore = true;
 
             _logger.LogInformation(
@@ -365,7 +365,7 @@ public class RelayMessageHandler
                         TransactionId = tx.TxId,
                         Data = txData,
                         Checksum = string.Empty,
-                        CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        CreatedAt = new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero).ToUnixTimeMilliseconds()
                     });
                 }
             }
