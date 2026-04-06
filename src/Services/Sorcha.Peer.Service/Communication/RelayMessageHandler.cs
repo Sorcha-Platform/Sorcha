@@ -36,6 +36,12 @@ public class RelayMessageHandler
     /// </summary>
     private const int MaxDocketsPerRelayResponse = 50;
 
+    /// <summary>
+    /// Maximum transactions per relay response. Higher than dockets because individual
+    /// transactions are typically smaller than dockets (which contain Merkle roots, signatures, etc.).
+    /// </summary>
+    private const int MaxTransactionsPerRelayResponse = 500;
+
     public RelayMessageHandler(
         ILogger<RelayMessageHandler> logger,
         RelayCommunicationService relayCommunication,
@@ -185,8 +191,8 @@ public class RelayMessageHandler
         if (cacheEntry != null)
         {
             // Cap transaction IDs to prevent unbounded response payloads
-            var txIds = request.TransactionIds.Count > 500
-                ? request.TransactionIds.Take(500)
+            var txIds = request.TransactionIds.Count > MaxTransactionsPerRelayResponse
+                ? request.TransactionIds.Take(MaxTransactionsPerRelayResponse)
                 : request.TransactionIds;
 
             foreach (var txId in txIds)
@@ -342,8 +348,8 @@ public class RelayMessageHandler
             using var scope = _scopeFactory.CreateScope();
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
 
-            var txIds = request.TransactionIds.Count > 500
-                ? request.TransactionIds.Take(500)
+            var txIds = request.TransactionIds.Count > MaxTransactionsPerRelayResponse
+                ? request.TransactionIds.Take(MaxTransactionsPerRelayResponse)
                 : request.TransactionIds;
 
             foreach (var txId in txIds)

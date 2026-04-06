@@ -294,6 +294,9 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // Otherwise, derive the local validator's docket-signing key from the system wallet.
         if (controlRecord.Validators == null)
         {
+            // TODO: Replace with IWalletServiceClient.GetDerivedPublicKeyAsync() when available.
+            // Currently we sign a zeroed hash to obtain the derived public key as a side-effect.
+            // The signature itself is discarded — only the PublicKey from the result is used.
             var docketSignResult = await _signingService.SignAsync(
                 registerId: pending.RegisterId,
                 txId: "validator-roster-key-derivation",

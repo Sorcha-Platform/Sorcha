@@ -253,25 +253,26 @@ public class DocketFinalizationService
             var genesis = await registerClient.ReadDocketAsync(registerId, 0, cancellationToken);
             if (genesis?.Transactions.Count > 0)
             {
-                // The DocketModel now carries transaction stubs with TxIds.
-                // Fetch the actual genesis transaction to get its payload.
-                var genesisTx = await registerClient.GetTransactionAsync(
-                    registerId, genesis.Transactions[0].TxId, cancellationToken);
-
-                if (genesisTx?.Payloads?.Length > 0)
+                // Find the Control transaction in the genesis docket (don't assume index 0)
+                foreach (var txStub in genesis.Transactions)
                 {
-                    var payloadData = genesisTx.Payloads[0].Data;
-                    if (!string.IsNullOrEmpty(payloadData))
+                    var tx = await registerClient.GetTransactionAsync(
+                        registerId, txStub.TxId, cancellationToken);
+
+                    // Only process Control transactions (MetaData.TransactionType == 0)
+                    if (tx?.MetaData?.TransactionType != 0) continue;
+                    if (tx.Payloads?.Length == 0) continue;
+
+                    var payloadData = tx.Payloads[0].Data;
+                    if (string.IsNullOrEmpty(payloadData)) continue;
+
+                    var controlRecordBytes = DecodeBase64Url(payloadData);
+                    if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
                     {
-                        // Payload is Base64Url-encoded RegisterControlRecord JSON
-                        var controlRecordBytes = DecodeBase64Url(payloadData);
-                        if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
-                        {
-                            _logger.LogInformation(
-                                "Extracted validator roster from Register Service genesis transaction for register {RegisterId}",
-                                registerId);
-                            return;
-                        }
+                        _logger.LogInformation(
+                            "Extracted validator roster from Register Service genesis transaction for register {RegisterId}",
+                            registerId);
+                        return;
                     }
                 }
             }
@@ -311,6 +312,17 @@ public class DocketFinalizationService
 
             foreach (var tx in txArray.EnumerateArray())
             {
+                // Only process Control transactions (TransactionType == 0)
+                if (tx.TryGetProperty("MetaData", out var meta) || tx.TryGetProperty("metaData", out meta))
+                {
+                    if (meta.TryGetProperty("TransactionType", out var txType) ||
+                        meta.TryGetProperty("transactionType", out txType))
+                    {
+                        if (txType.ValueKind == JsonValueKind.Number && txType.GetInt32() != 0)
+                            continue;
+                    }
+                }
+
                 // Look for payloads
                 JsonElement payloads;
                 if (!tx.TryGetProperty("Payloads", out payloads) &&

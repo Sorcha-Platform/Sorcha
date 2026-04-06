@@ -16,9 +16,12 @@ public class ValidatorRoster
     /// <summary>
     /// Authorized validator entries. Must contain at least 1 and at most 10 entries.
     /// </summary>
+    /// <remarks>
+    /// Bounds enforced by <see cref="Validate"/>: min 1, max 10 entries.
+    /// DataAnnotations [MinLength]/[MaxLength] are not used on List&lt;T&gt; as they
+    /// operate on string/array length, not collection count.
+    /// </remarks>
     [Required]
-    [MinLength(1, ErrorMessage = "At least one validator is required")]
-    [MaxLength(10, ErrorMessage = "Maximum 10 validators allowed per register")]
     [JsonPropertyName("validators")]
     public List<ValidatorRosterEntry> Validators { get; set; } = [];
 
