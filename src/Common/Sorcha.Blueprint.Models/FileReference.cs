@@ -60,9 +60,19 @@ public class FileReference
 
     /// <summary>
     /// Transaction ID of the parent action whose payload carries the wrapped master key
-    /// for this file's encryption envelope.
+    /// for this file's encryption envelope. Set to "embedded" when the key is included
+    /// in the masterKeyBase64 property.
     /// </summary>
     [DataAnnotations.Required]
     [JsonPropertyName("masterKeyId")]
     public string MasterKeyId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Base64-encoded 32-byte master file key, embedded in the encrypted action payload.
+    /// Present only in decrypted payloads — never transmitted in plaintext.
+    /// Used with HKDF-SHA256 to derive per-chunk decryption keys.
+    /// </summary>
+    [JsonPropertyName("masterKeyBase64")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MasterKeyBase64 { get; set; }
 }

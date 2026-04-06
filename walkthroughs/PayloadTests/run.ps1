@@ -167,6 +167,7 @@ function Send-FileChunks {
         salt                = $saltBase64
         chunkTransactionIds = $chunkTxIds
         masterKeyId         = "server-managed"
+        uploadSessionId     = $uploadSessionId
     }
 }
 

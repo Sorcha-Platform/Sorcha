@@ -203,7 +203,27 @@ public sealed class FileReassemblyService : IFileReassemblyService
         var salt = Convert.FromBase64String(fileRef.Salt);
         var expectedHash = fileRef.Hash; // "sha256:<hex>" format
         var chunkTxIds = fileRef.ChunkTransactionIds;
-        var capturedMasterKey = masterFileKey;
+
+        // The master file key is embedded in the file reference (injected by Blueprint Service
+        // during action submission). It was encrypted per-recipient as part of the action payload.
+        byte[] capturedMasterKey;
+        _logger.LogInformation(
+            "FileRef for {FileName}: masterKeyId={MasterKeyId}, masterKeyBase64={HasKey}, salt={Salt}",
+            fileRef.FileName, fileRef.MasterKeyId,
+            !string.IsNullOrEmpty(fileRef.MasterKeyBase64) ? $"present ({fileRef.MasterKeyBase64.Length} chars)" : "MISSING",
+            fileRef.Salt);
+
+        if (!string.IsNullOrEmpty(fileRef.MasterKeyBase64))
+        {
+            capturedMasterKey = Convert.FromBase64String(fileRef.MasterKeyBase64);
+            _logger.LogInformation("Using EMBEDDED master file key ({Length} bytes) for {FileName}", capturedMasterKey.Length, fileRef.FileName);
+        }
+        else
+        {
+            // Fallback: use the action's decrypted symmetric key (legacy / pre-085 transactions)
+            capturedMasterKey = masterFileKey;
+            _logger.LogDebug("No embedded master key in FileReference — using action symmetric key for {FileName}", fileRef.FileName);
+        }
 
         _logger.LogInformation(
             "File {FileName} ({ContentType}, {Size} bytes) has {ChunkCount} chunk(s) to reassemble",

@@ -175,13 +175,15 @@ public static class FileDownloadEndpoints
             "Preparing {FileName} ({ContentType}, {Size} bytes) for wallet {Address}",
             downloadResult.FileName, downloadResult.ContentType, downloadResult.Size, address);
 
-        using var buffer = new MemoryStream();
+        // Do NOT use 'using' — Results.Stream needs the stream alive after handler returns
+        var buffer = new MemoryStream();
         try
         {
             await downloadResult.WriteToStreamAsync(buffer, cancellationToken);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("integrity check failed"))
         {
+            buffer.Dispose();
             logger.LogError(ex,
                 "Integrity check FAILED for {FileName}, wallet {Address}",
                 downloadResult.FileName, address);

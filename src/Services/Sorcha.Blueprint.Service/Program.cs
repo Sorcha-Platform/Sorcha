@@ -856,11 +856,58 @@ actionsGroup.MapPost("/", async (
     Sorcha.ServiceClients.Register.IRegisterServiceClient registerClient,
     Sorcha.Blueprint.Service.Storage.IActionStore actionStore,
     Sorcha.Cryptography.Interfaces.IHashProvider hashProvider,
-    Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor disclosureProcessor) =>
+    Sorcha.Blueprint.Engine.Interfaces.IDisclosureProcessor disclosureProcessor,
+    Sorcha.Blueprint.Service.Endpoints.FileUploadSessionStore fileSessionStore) =>
 {
     try
     {
-        // 0. Replay protection — check idempotency key
+        // 0a. Inject file upload master keys into payload before encryption.
+        // File references contain an uploadSessionId pointing to the server-side session
+        // that holds the master encryption key. We inject the key (base64) into the payload
+        // so it gets encrypted per-recipient by the encryption pipeline.
+        if (request.PayloadData != null)
+        {
+            logger.LogInformation("[085] PayloadData has {Count} fields. Types: {Types}",
+                request.PayloadData.Count,
+                string.Join(", ", request.PayloadData.Select(kv => $"{kv.Key}:{kv.Value?.GetType().Name ?? "null"}")));
+            foreach (var kvp in request.PayloadData.ToList())
+            {
+                if (kvp.Value is System.Text.Json.JsonElement el && el.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    // Check if this is a file reference with chunkTransactionIds
+                    var hasChunks = el.TryGetProperty("chunkTransactionIds", out _);
+                    var hasMkId = el.TryGetProperty("masterKeyId", out var mkId);
+                    var mkIdVal = hasMkId ? mkId.GetString() : "N/A";
+                    logger.LogInformation("[085] Field '{Field}': hasChunks={HasChunks}, masterKeyId={MkId}", kvp.Key, hasChunks, mkIdVal);
+
+                    if (hasChunks && hasMkId && mkIdVal == "server-managed")
+                    {
+                        string? sessionId = null;
+                        if (el.TryGetProperty("uploadSessionId", out var sid))
+                            sessionId = sid.GetString();
+                        logger.LogInformation("[085] Field '{Field}': uploadSessionId={SessionId}", kvp.Key, sessionId ?? "NULL");
+
+                        if (sessionId != null && fileSessionStore.TryGetSession(sessionId, out var masterKey, out _))
+                        {
+                            // Inject masterKeyBase64 into the raw JSON string, then re-parse.
+                            // This avoids Dictionary<string,object> serialization issues with JsonElement values.
+                            var rawJson = el.GetRawText();
+                            var keyB64 = Convert.ToBase64String(masterKey);
+                            // Append masterKeyBase64, update masterKeyId, remove uploadSessionId
+                            var injected = rawJson.TrimEnd('}') +
+                                ",\"masterKeyBase64\":\"" + keyB64 + "\"}";
+                            injected = injected.Replace("\"server-managed\"", "\"embedded\"");
+                            injected = System.Text.RegularExpressions.Regex.Replace(
+                                injected, ",?\"uploadSessionId\":\"[^\"]*\"", "");
+                            using var doc = System.Text.Json.JsonDocument.Parse(injected);
+                            request.PayloadData[kvp.Key] = doc.RootElement.Clone();
+                        }
+                    }
+                }
+            }
+        }
+
+        // 0b. Replay protection — check idempotency key
         var idempotencyKey = context.Request.Headers["Idempotency-Key"].FirstOrDefault();
         if (string.IsNullOrEmpty(idempotencyKey))
         {
@@ -1679,10 +1726,48 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
     string instanceId,
     int actionId,
     Sorcha.Blueprint.Service.Models.Requests.ActionSubmissionRequest request,
-    Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService actionExecutionService) =>
+    Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService actionExecutionService,
+    Sorcha.Blueprint.Service.Endpoints.FileUploadSessionStore fileSessionStore) =>
 {
     try
     {
+        // [085] Inject file upload master keys into payload before execution
+        if (request.PayloadData != null)
+        {
+            foreach (var kvp in request.PayloadData.ToList())
+            {
+                if (kvp.Value is System.Text.Json.JsonElement el && el.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (el.TryGetProperty("chunkTransactionIds", out _) &&
+                        el.TryGetProperty("masterKeyId", out var mkId) &&
+                        mkId.GetString() == "server-managed")
+                    {
+                        string? sessionId = null;
+                        if (el.TryGetProperty("uploadSessionId", out var sid))
+                            sessionId = sid.GetString();
+
+                        if (sessionId != null && fileSessionStore.TryGetSession(sessionId, out var masterKey, out _))
+                        {
+                            var rawJson = el.GetRawText();
+                            var keyB64 = Convert.ToBase64String(masterKey);
+                            var injected = rawJson.TrimEnd('}') +
+                                ",\"masterKeyBase64\":\"" + keyB64 + "\"}";
+                            injected = injected.Replace("\"server-managed\"", "\"embedded\"");
+                            injected = System.Text.RegularExpressions.Regex.Replace(
+                                injected, ",?\"uploadSessionId\":\"[^\"]*\"", "");
+                            using var doc = System.Text.Json.JsonDocument.Parse(injected);
+                            request.PayloadData[kvp.Key] = doc.RootElement.Clone();
+                            logger.LogInformation("[085] Injected master file key into field '{Field}' for action {ActionId}", kvp.Key, actionId);
+                        }
+                        else
+                        {
+                            logger.LogWarning("[085] Upload session {SessionId} not found for field '{Field}'", sessionId, kvp.Key);
+                        }
+                    }
+                }
+            }
+        }
+
         // Get delegation token from context (set by middleware)
         var delegationToken = context.Items["DelegationToken"] as string;
         if (string.IsNullOrEmpty(delegationToken))
