@@ -171,6 +171,32 @@ function Send-FileChunks {
 }
 
 # ============================================================================
+# Helper: Poll instance until a specific action ID becomes current
+# Returns the instance object (which includes lastTransactionId)
+# ============================================================================
+function Wait-ForActionReady {
+    param(
+        [string]$BlueprintUrl,
+        [string]$InstanceId,
+        [int]$ExpectedActionId,
+        [string]$Token,
+        [int]$MaxWaitSeconds = 30
+    )
+    $waited = 0
+    while ($waited -lt $MaxWaitSeconds) {
+        $inst = Invoke-SorchaApi -Method GET `
+            -Uri "$BlueprintUrl/instances/$InstanceId" `
+            -Headers @{ Authorization = "Bearer $Token" }
+        if ($inst.currentActionIds -contains $ExpectedActionId) {
+            return $inst
+        }
+        Start-Sleep -Seconds 1
+        $waited++
+    }
+    throw "Timeout waiting for action $ExpectedActionId to become current (${MaxWaitSeconds}s)"
+}
+
+# ============================================================================
 # Helper: Download file via Wallet Service and verify integrity
 # ============================================================================
 function Receive-AndVerifyFile {
@@ -188,7 +214,7 @@ function Receive-AndVerifyFile {
     $headers = @{ Authorization = "Bearer $Token" }
 
     $uri = "$GatewayUrl/api/v1/wallets/$WalletAddress/files/download" +
-           "?registerId=$RegisterId&actionTxId=$ActionTxId&fieldName=$FieldName&fileIndex=0"
+           "?registerId=$RegisterId&txId=$ActionTxId&fieldName=$FieldName&fileIndex=0"
 
     $downloadStart = Get-Date
     try {
@@ -351,8 +377,22 @@ for ($round = 1; $round -le $Rounds; $round++) {
                 attachment = $fileRef
             }
 
-        $actionTxId = $actionResult.transactionId
-        Write-WtSuccess "Action executed: $actionTxId"
+        # Action execution is async — the initial response may have an empty transactionId.
+        # Poll the instance until action 1 becomes current (action 0 has been sealed).
+        Write-WtInfo "  Polling for action 0 to seal..."
+        $inst = Wait-ForActionReady `
+            -BlueprintUrl $state.blueprintUrl `
+            -InstanceId $instanceId `
+            -ExpectedActionId 1 `
+            -Token $senderAuth.Token `
+            -MaxWaitSeconds 30
+
+        # Use lastTransactionId from the polled instance as the reliable transaction ID
+        $actionTxId = $inst.lastTransactionId
+        if (-not $actionTxId) {
+            $actionTxId = $actionResult.transactionId
+        }
+        Write-WtSuccess "Action sealed: $actionTxId"
         $stepsPassed++
     } catch {
         Write-WtFail "Action execution failed: $($_.Exception.Message)"
@@ -397,8 +437,20 @@ for ($round = 1; $round -le $Rounds; $round++) {
             -PayloadData @{
                 acknowledged = $true
             }
+
         Write-WtSuccess "Receiver acknowledged"
         $stepsPassed++
+
+        # If more rounds remain, wait for action 0 to become available again
+        if ($round -lt $Rounds) {
+            Write-WtInfo "  Polling for action 0 to become available for next round..."
+            $null = Wait-ForActionReady `
+                -BlueprintUrl $state.blueprintUrl `
+                -InstanceId $instanceId `
+                -ExpectedActionId 0 `
+                -Token $receiverAuth.Token `
+                -MaxWaitSeconds 30
+        }
     } catch {
         Write-WtFail "Acknowledge failed: $($_.Exception.Message)"
     }

@@ -114,21 +114,45 @@ public class EfCoreActionStore : IActionStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        // Check if file metadata already exists
+        // "pending" is the sentinel value used by FileChunkEndpoints when a chunk has been staged
+        // but not yet claimed by a finalised action.  Store null for the FK so that the database
+        // FK constraint (TransactionHash → Actions.TransactionHash) is not violated.
+        string? resolvedHash = transactionHash == "pending" ? null : transactionHash;
+
+        // Check if file metadata already exists (keyed by fileId only — transactionHash may be null)
         var existing = await context.FileMetadata
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.TransactionHash == transactionHash);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (existing is not null)
         {
-            _logger.LogDebug("File metadata {FileId} already exists for transaction {TransactionHash}",
-                fileId, transactionHash);
+            // If the row already exists with a real hash, do not overwrite it
+            if (existing.TransactionHash is not null)
+            {
+                _logger.LogDebug("File metadata {FileId} already claimed by transaction {TransactionHash}",
+                    fileId, existing.TransactionHash);
+                return;
+            }
+
+            // Update the pending row with the finalised transaction hash if provided
+            if (resolvedHash is not null)
+            {
+                existing.TransactionHash = resolvedHash;
+                await context.SaveChangesAsync();
+                _logger.LogInformation("Claimed file metadata {FileId} for transaction {TransactionHash}",
+                    fileId, resolvedHash);
+            }
+            else
+            {
+                _logger.LogDebug("File metadata {FileId} already staged as pending", fileId);
+            }
+
             return;
         }
 
         var entity = new FileMetadataEntity
         {
             Id = fileId,
-            TransactionHash = transactionHash,
+            TransactionHash = resolvedHash,
             FileName = metadata.FileName,
             ContentType = metadata.ContentType,
             Size = metadata.Size,
@@ -141,7 +165,7 @@ public class EfCoreActionStore : IActionStore
         await context.SaveChangesAsync();
 
         _logger.LogInformation("Stored file metadata {FileId} for transaction {TransactionHash}",
-            fileId, transactionHash);
+            fileId, resolvedHash ?? "pending");
     }
 
     /// <inheritdoc/>
@@ -149,8 +173,11 @@ public class EfCoreActionStore : IActionStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
+        // Look up by fileId only — the TransactionHash may be null for staged (pending) chunks.
+        // If a specific non-pending hash is requested, also verify the hash matches.
         var entity = await context.FileMetadata.AsNoTracking()
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.TransactionHash == transactionHash);
+            .FirstOrDefaultAsync(f => f.Id == fileId &&
+                (f.TransactionHash == transactionHash || f.TransactionHash == null));
 
         if (entity is null)
         {
@@ -175,11 +202,26 @@ public class EfCoreActionStore : IActionStore
         var entity = await context.FileMetadata.FirstOrDefaultAsync(f => f.Id == fileId);
         if (entity is null)
         {
-            _logger.LogWarning("Cannot store file content: file metadata {FileId} not found", fileId);
-            return;
+            // Chunk content arrives before metadata in the FileChunkEndpoints flow.
+            // Create a minimal placeholder row (TransactionHash = null = "pending") so
+            // the content is persisted.  StoreFileMetadataAsync will fill in the rest.
+            entity = new FileMetadataEntity
+            {
+                Id = fileId,
+                TransactionHash = null,
+                FileName = string.Empty,
+                ContentType = string.Empty,
+                Size = content.Length,
+                Content = content,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            context.FileMetadata.Add(entity);
+        }
+        else
+        {
+            entity.Content = content;
         }
 
-        entity.Content = content;
         await context.SaveChangesAsync();
 
         _logger.LogInformation("Stored file content for {FileId} ({Size} bytes)", fileId, content.Length);
@@ -251,19 +293,19 @@ public class EfCoreActionStore : IActionStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
-        // Chunks are stored with TransactionHash = "pending" until an action claims them.
-        // A chunk is an orphan when it is still unclaimed ("pending") AND old enough that
+        // Chunks are stored with TransactionHash = null until an action claims them ("pending" state).
+        // A chunk is an orphan when it is still unclaimed (null FK) AND old enough that
         // no in-flight upload could still be completing.
-        // Claimed chunks (TransactionHash != "pending") are never orphans — they belong to
+        // Claimed chunks (TransactionHash IS NOT NULL) are never orphans — they belong to
         // a finalised action regardless of whether the action row exists yet.
         var orphans = await context.FileMetadata
             .AsNoTracking()
-            .Where(f => f.TransactionHash == "pending" && f.CreatedAt < olderThan)
-            .Select(f => new { f.Id, f.TransactionHash })
+            .Where(f => f.TransactionHash == null && f.CreatedAt < olderThan)
+            .Select(f => new { f.Id })
             .ToListAsync();
 
         return orphans
-            .Select(o => (o.Id, o.TransactionHash))
+            .Select(o => (o.Id, (string)"pending"))
             .ToList();
     }
 
@@ -272,14 +314,26 @@ public class EfCoreActionStore : IActionStore
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
 
+        // Orphan rows have TransactionHash = null (the "pending" sentinel).
+        // Look up by fileId only — the caller passes "pending" as a logical sentinel
+        // but the DB stores null for unclaimed chunks.
         var entity = await context.FileMetadata
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.TransactionHash == transactionHash);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (entity is null)
         {
             _logger.LogDebug(
-                "DeleteFileMetadataAsync: file {FileId} / tx {TransactionHash} not found — already removed",
-                fileId, transactionHash);
+                "DeleteFileMetadataAsync: file {FileId} not found — already removed",
+                fileId);
+            return;
+        }
+
+        // Only delete truly unclaimed (null hash) rows to avoid removing claimed chunks
+        if (entity.TransactionHash is not null)
+        {
+            _logger.LogWarning(
+                "DeleteFileMetadataAsync: file {FileId} is claimed by transaction {TransactionHash} — skipping delete",
+                fileId, entity.TransactionHash);
             return;
         }
 
@@ -287,8 +341,8 @@ public class EfCoreActionStore : IActionStore
         await context.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Deleted orphan file metadata {FileId} associated with transaction {TransactionHash}",
-            fileId, transactionHash);
+            "Deleted orphan file metadata {FileId} (unclaimed pending chunk)",
+            fileId);
     }
 
     private ActionDetailsResponse? DeserializeAction(ActionEntity entity)

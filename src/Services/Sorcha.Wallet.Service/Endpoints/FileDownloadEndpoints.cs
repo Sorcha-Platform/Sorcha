@@ -50,7 +50,7 @@ public static class FileDownloadEndpoints
     private static async Task<IResult> DownloadFile(
         string address,
         [FromQuery] string? registerId,
-        [FromQuery] string? actionTxId,
+        [FromQuery] string? txId,
         [FromQuery] string? fieldName,
         [FromQuery] int? fileIndex,
         IFileReassemblyService reassemblyService,
@@ -70,12 +70,12 @@ public static class FileDownloadEndpoints
             });
         }
 
-        if (string.IsNullOrWhiteSpace(actionTxId))
+        if (string.IsNullOrWhiteSpace(txId))
         {
             return Results.BadRequest(new ProblemDetails
             {
                 Title = "Missing Parameter",
-                Detail = "Query parameter 'actionTxId' is required.",
+                Detail = "Query parameter 'txId' is required.",
                 Status = StatusCodes.Status400BadRequest
             });
         }
@@ -139,7 +139,7 @@ public static class FileDownloadEndpoints
             downloadResult = await reassemblyService.PrepareDownloadAsync(
                 address,
                 registerId,
-                actionTxId,
+                txId,
                 fieldName,
                 resolvedFileIndex,
                 cancellationToken);
@@ -148,7 +148,7 @@ public static class FileDownloadEndpoints
         {
             logger.LogError(ex,
                 "Failed to prepare download for wallet {Address}, action {ActionTxId}, field {FieldName}[{FileIndex}]",
-                address, actionTxId, fieldName, resolvedFileIndex);
+                address, txId, fieldName, resolvedFileIndex);
             return Results.Problem(
                 title: "Download Preparation Failed",
                 detail: "An error occurred while fetching or decrypting the file. " +
@@ -162,7 +162,7 @@ public static class FileDownloadEndpoints
             {
                 Title = "File Not Found",
                 Detail = $"No file found at field '{fieldName}' (index {resolvedFileIndex}) " +
-                         $"in transaction '{actionTxId}', or wallet '{address}' is not an authorised recipient.",
+                         $"in transaction '{txId}', or wallet '{address}' is not an authorised recipient.",
                 Status = StatusCodes.Status404NotFound
             });
         }

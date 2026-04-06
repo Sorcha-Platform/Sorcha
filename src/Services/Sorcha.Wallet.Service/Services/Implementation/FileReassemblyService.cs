@@ -82,14 +82,14 @@ public sealed class FileReassemblyService : IFileReassemblyService
     public async Task<FileDownloadResult?> PrepareDownloadAsync(
         string walletAddress,
         string registerId,
-        string actionTxId,
+        string txId,
         string fieldName,
         int fileIndex,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(actionTxId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(txId);
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldName);
 
         if (fileIndex < 0)
@@ -97,15 +97,15 @@ public sealed class FileReassemblyService : IFileReassemblyService
 
         _logger.LogInformation(
             "Preparing download for wallet {WalletAddress} from register {RegisterId}, action {ActionTxId}, field {FieldName}[{FileIndex}]",
-            walletAddress, registerId, actionTxId, fieldName, fileIndex);
+            walletAddress, registerId, txId, fieldName, fileIndex);
 
         // Step 1: Fetch the action transaction from the Register Service
-        var actionTx = await _registerClient.GetTransactionAsync(registerId, actionTxId, cancellationToken);
+        var actionTx = await _registerClient.GetTransactionAsync(registerId, txId, cancellationToken);
         if (actionTx is null)
         {
             _logger.LogWarning(
                 "Action transaction {ActionTxId} not found in register {RegisterId}",
-                actionTxId, registerId);
+                txId, registerId);
             return null;
         }
 
@@ -115,7 +115,7 @@ public sealed class FileReassemblyService : IFileReassemblyService
         {
             _logger.LogWarning(
                 "Action transaction {ActionTxId} has no payload data",
-                actionTxId);
+                txId);
             return null;
         }
 
@@ -129,7 +129,7 @@ public sealed class FileReassemblyService : IFileReassemblyService
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to parse canonical JSON for transaction {ActionTxId}", actionTxId);
+            _logger.LogError(ex, "Failed to parse canonical JSON for transaction {ActionTxId}", txId);
             return null;
         }
 
@@ -149,7 +149,7 @@ public sealed class FileReassemblyService : IFileReassemblyService
             {
                 _logger.LogWarning(
                     "Wallet {WalletAddress} is not an authorised recipient or decryption failed for transaction {ActionTxId}",
-                    walletAddress, actionTxId);
+                    walletAddress, txId);
                 return null;
             }
 
@@ -160,14 +160,14 @@ public sealed class FileReassemblyService : IFileReassemblyService
             // Plaintext / dev-mode transaction — no master file key wrapping
             _logger.LogDebug(
                 "Transaction {ActionTxId} is plaintext (dev mode). Master file key must be stored in-band.",
-                actionTxId);
+                txId);
 
             // For plaintext transactions the symmetric key is not separately wrapped;
             // retrieve the payload JSON directly.
             if (!txJson.TryGetProperty("payloads", out var plaintextPayloads) &&
                 !txJson.TryGetProperty("payload", out plaintextPayloads))
             {
-                _logger.LogWarning("Cannot locate payload section in plaintext transaction {ActionTxId}", actionTxId);
+                _logger.LogWarning("Cannot locate payload section in plaintext transaction {ActionTxId}", txId);
                 return null;
             }
 

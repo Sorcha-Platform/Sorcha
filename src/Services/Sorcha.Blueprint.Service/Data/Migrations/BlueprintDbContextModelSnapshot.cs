@@ -211,7 +211,6 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("TransactionHash")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -307,8 +306,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.HasOne("Sorcha.Blueprint.Service.Data.Entities.ActionEntity", "Action")
                         .WithMany("Files")
                         .HasForeignKey("TransactionHash")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Action");
                 });

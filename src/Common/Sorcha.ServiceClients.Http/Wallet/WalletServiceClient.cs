@@ -683,7 +683,7 @@ public class WalletServiceClient : IWalletServiceClient
     public async Task<FileDownloadStreamResult?> DownloadFileAsync(
         string walletAddress,
         string registerId,
-        string actionTxId,
+        string txId,
         string fieldName,
         int fileIndex = 0,
         CancellationToken cancellationToken = default)
@@ -692,7 +692,7 @@ public class WalletServiceClient : IWalletServiceClient
         {
             var url = $"{_serviceAddress}/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/files/download" +
                       $"?registerId={Uri.EscapeDataString(registerId)}" +
-                      $"&actionTxId={Uri.EscapeDataString(actionTxId)}" +
+                      $"&txId={Uri.EscapeDataString(txId)}" +
                       $"&fieldName={Uri.EscapeDataString(fieldName)}" +
                       $"&fileIndex={fileIndex}";
 
@@ -703,7 +703,7 @@ public class WalletServiceClient : IWalletServiceClient
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("File download failed for wallet {Address}, action {TxId}: {Status}",
-                    walletAddress, actionTxId, response.StatusCode);
+                    walletAddress, txId, response.StatusCode);
                 return null;
             }
 
@@ -718,7 +718,7 @@ public class WalletServiceClient : IWalletServiceClient
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error downloading file for wallet {Address}, action {TxId}",
-                walletAddress, actionTxId);
+                walletAddress, txId);
             return null;
         }
     }

@@ -210,7 +210,7 @@ public interface IWalletServiceClient
     /// </summary>
     /// <param name="walletAddress">Wallet address of the requesting participant</param>
     /// <param name="registerId">Register containing the action and chunk transactions</param>
-    /// <param name="actionTxId">Transaction ID of the parent action</param>
+    /// <param name="txId">Transaction ID of the parent action</param>
     /// <param name="fieldName">JSON field name in the action payload</param>
     /// <param name="fileIndex">Index within an array file field (0 for single file fields)</param>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -218,7 +218,7 @@ public interface IWalletServiceClient
     Task<FileDownloadStreamResult?> DownloadFileAsync(
         string walletAddress,
         string registerId,
-        string actionTxId,
+        string txId,
         string fieldName,
         int fileIndex = 0,
         CancellationToken cancellationToken = default);

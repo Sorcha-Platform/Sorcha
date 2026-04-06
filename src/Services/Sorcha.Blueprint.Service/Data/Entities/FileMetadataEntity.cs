@@ -18,9 +18,10 @@ public class FileMetadataEntity
 
     /// <summary>
     /// Foreign key to the parent action entity.
+    /// Null while the chunk is staged but not yet claimed by a finalised action ("pending" state).
+    /// Set to the action's TransactionHash once the action is sealed.
     /// </summary>
-    [Required]
-    public string TransactionHash { get; set; } = default!;
+    public string? TransactionHash { get; set; }
 
     /// <summary>
     /// Original file name.

@@ -75,6 +75,7 @@ public class BlueprintDbContext : DbContext
             entity.HasMany(e => e.Files)
                 .WithOne(f => f.Action)
                 .HasForeignKey(f => f.TransactionHash)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

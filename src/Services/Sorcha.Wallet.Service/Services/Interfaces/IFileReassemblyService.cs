@@ -21,7 +21,7 @@ public interface IFileReassemblyService
     /// <param name="registerId">
     /// The register ID that holds the action and chunk transactions.
     /// </param>
-    /// <param name="actionTxId">
+    /// <param name="txId">
     /// The transaction ID of the action whose payload contains the <c>FileReference</c>.
     /// </param>
     /// <param name="fieldName">
@@ -39,7 +39,7 @@ public interface IFileReassemblyService
     Task<FileDownloadResult?> PrepareDownloadAsync(
         string walletAddress,
         string registerId,
-        string actionTxId,
+        string txId,
         string fieldName,
         int fileIndex,
         CancellationToken cancellationToken = default);
