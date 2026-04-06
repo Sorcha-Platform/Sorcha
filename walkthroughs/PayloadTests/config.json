@@ -1,0 +1,14 @@
+{
+  "name": "PayloadTests",
+  "description": "End-to-end file attachment transfer between two organisations with configurable file sizes for pressure testing",
+  "category": "multi-org",
+  "organizations": [
+    { "name": "Sender Corp", "subdomain": "payload-sender" },
+    { "name": "Receiver Corp", "subdomain": "payload-receiver" }
+  ],
+  "secretsKey": "payload-test",
+  "requiresRegister": true,
+  "requiresParticipants": true,
+  "template": "file-transfer-template.json",
+  "scenarios": ["data/scenario-smoke.json"]
+}
