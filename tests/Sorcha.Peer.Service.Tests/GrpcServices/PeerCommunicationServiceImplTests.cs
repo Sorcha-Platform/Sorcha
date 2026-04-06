@@ -65,7 +65,8 @@ public class PeerCommunicationServiceImplTests : IAsyncDisposable
 
         var relayMessageHandler = new RelayMessageHandler(
             new Mock<ILogger<RelayMessageHandler>>().Object,
-            relayCommunication, registerCache, syncBackgroundService);
+            relayCommunication, registerCache, syncBackgroundService,
+            Mock.Of<IServiceScopeFactory>());
 
         _service = new PeerCommunicationServiceImpl(
             new Mock<ILogger<PeerCommunicationServiceImpl>>().Object,

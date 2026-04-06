@@ -36,9 +36,10 @@ public class RegisterSubscription
     public RegisterSyncState SyncState { get; set; } = RegisterSyncState.Subscribing;
 
     /// <summary>
-    /// Last successfully synced docket version (for full replica: docket chain position)
+    /// Last successfully synced docket version (for full replica: docket chain position).
+    /// -1 means no dockets synced yet (genesis at version 0 will be included in first pull).
     /// </summary>
-    public long LastSyncedDocketVersion { get; set; } = 0;
+    public long LastSyncedDocketVersion { get; set; } = -1;
 
     /// <summary>
     /// Last successfully synced transaction version (incremental sync cursor)

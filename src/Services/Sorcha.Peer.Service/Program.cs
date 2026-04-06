@@ -634,13 +634,8 @@ app.MapPost("/api/registers/{registerId}/subscribe", async (
         return Results.Conflict(new { error = $"Already subscribed to register '{registerId}'." });
     }
 
-    // Check if register exists in network advertisements
-    var available = advertisementService.GetNetworkAdvertisedRegisters();
-    if (!available.Any(r => r.RegisterId == registerId))
-    {
-        return Results.NotFound(new { error = $"Register '{registerId}' not found in network advertisements." });
-    }
-
+    // No advertisement gate — this is a service-to-service call from Register Service
+    // which already validated the register. Advertisements may not have propagated yet.
     var subscription = await syncService.SubscribeToRegisterAsync(registerId, mode);
 
     return Results.Created($"/api/registers/{registerId}/subscribe", new SubscribeResponse

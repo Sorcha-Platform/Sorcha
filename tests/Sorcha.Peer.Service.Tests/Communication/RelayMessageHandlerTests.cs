@@ -89,7 +89,8 @@ public class RelayMessageHandlerTests : IAsyncDisposable
             new Mock<ILogger<RelayMessageHandler>>().Object,
             _relayCommunication,
             _registerCache,
-            _syncBackgroundService);
+            _syncBackgroundService,
+            Mock.Of<IServiceScopeFactory>());
     }
 
     [Fact]
@@ -99,7 +100,8 @@ public class RelayMessageHandlerTests : IAsyncDisposable
             null!,
             _relayCommunication,
             _registerCache,
-            _syncBackgroundService);
+            _syncBackgroundService,
+            Mock.Of<IServiceScopeFactory>());
 
         act.Should().Throw<ArgumentNullException>();
     }
