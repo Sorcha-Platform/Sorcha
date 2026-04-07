@@ -21,9 +21,9 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T001 [P] Define `SignalNotification` record (SignalType, InstanceId, CorrelationId, Timestamp) replacing `ActionNotification` in `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs`
-- [ ] T002 [P] Define `EncryptionSignal` record (OperationId, PercentComplete, Status, Timestamp) replacing all 4 encryption records in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs`
-- [ ] T003 Update `INotificationService` interface — simplify method signatures to use `SignalNotification` and `EncryptionSignal`, remove `NotifyRecipientProgressAsync` in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/INotificationService.cs`
+- [x] T001 [P] Define `SignalNotification` record (SignalType, InstanceId, CorrelationId, Timestamp) replacing `ActionNotification` in `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs`
+- [x] T002 [P] Define `EncryptionSignal` record (OperationId, PercentComplete, Status, Timestamp) replacing all 4 encryption records in `src/Services/Sorcha.Blueprint.Service/Models/EncryptionNotifications.cs`
+- [x] T003 Update `INotificationService` interface — simplify method signatures to use `SignalNotification` and `EncryptionSignal`, remove `NotifyRecipientProgressAsync` in `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/INotificationService.cs`
 
 **Checkpoint**: New types compile. Interface updated. No behavioral changes yet.
 
@@ -37,14 +37,14 @@
 
 ### Server-Side Implementation
 
-- [ ] T004 [US1,US2,US4] Update `NotificationService` — remove all `instance:{id}` group broadcasts, send thin `SignalNotification` to `wallet:{address}` only, add structured logging in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
-- [ ] T005 [US2] Update `EventsHubNotificationBridge` — change `SendAsync("InboundActionReceived", ...)` to send `SignalNotification` instead of rich `InboundActionNotification`, keep enrichment for Tenant persistence in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EventsHubNotificationBridge.cs`
-- [ ] T006 [US2] Update `EncryptionBackgroundService` — replace all encryption notification calls to use `EncryptionSignal`, remove `NotifyRecipientProgressAsync` calls in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
-- [ ] T007 [US1] Update `ActionExecutionService.NotifyParticipantsAsync` — use simplified interface, log warning when wallet address is null for a participant in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
+- [x] T004 [US1,US2,US4] Update `NotificationService` — remove all `instance:{id}` group broadcasts, send thin `SignalNotification` to `wallet:{address}` only, add structured logging in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/NotificationService.cs`
+- [x] T005 [US2] Update `EventsHubNotificationBridge` — change `SendAsync("InboundActionReceived", ...)` to send `SignalNotification` instead of rich `InboundActionNotification`, keep enrichment for Tenant persistence in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EventsHubNotificationBridge.cs`
+- [x] T006 [US2] Update `EncryptionBackgroundService` — replace all encryption notification calls to use `EncryptionSignal`, remove `NotifyRecipientProgressAsync` calls in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/EncryptionBackgroundService.cs`
+- [x] T007 [US1] Update `ActionExecutionService.NotifyParticipantsAsync` — use simplified interface, log warning when wallet address is null for a participant in `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`
 
 ### Agent Client Implementation
 
-- [ ] T008 [US1] Update `SignalRInboxListener` — handle `SignalNotification` instead of rich payload, extract `instanceId`, trigger immediate instance poll in `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs`
+- [x] T008 [US1] Update `SignalRInboxListener` — handle `SignalNotification` instead of rich payload, extract `instanceId`, trigger immediate instance poll in `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs`
 
 ### Tests
 
@@ -62,7 +62,7 @@
 
 **Independent Test**: Connect with a service token missing `org_id` and attempt wallet subscription. Verify rejection.
 
-- [ ] T012 [US3] Enforce `org_id` requirement on service tokens — change `LogWarning` + allow to `throw new HubException` in `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs` (SubscribeToWallet method, lines 98-117)
+- [x] T012 [US3] Enforce `org_id` requirement on service tokens — change `LogWarning` + allow to `throw new HubException` in `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs` (SubscribeToWallet method, lines 98-117)
 - [ ] T013 [US3] Verify all Sorcha service tokens include `org_id` — check Aspire service defaults token issuance in `src/Common/Sorcha.ServiceDefaults/`
 - [ ] T014 [US3] Create `ActionsHubAuthorizationTests` — test 4 scenarios: service token without org_id rejected, with org_id succeeds, user token with valid wallet succeeds, user token with unlinked wallet rejected in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionsHubAuthorizationTests.cs`
 
@@ -76,7 +76,7 @@
 
 **Independent Test**: Disconnect agent's SignalR mid-workflow. Verify polling continues. Reconnect and verify immediate poll fires.
 
-- [ ] T015 [US5] Add on-reconnect immediate poll to `SignalRInboxListener` — hook `Reconnected` event, trigger immediate poll of all subscribed wallets in `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs`
+- [x] T015 [US5] Add on-reconnect immediate poll to `SignalRInboxListener` — hook `Reconnected` event, trigger immediate poll of all subscribed wallets in `src/Apps/Sorcha.Agent/Inbox/SignalRInboxListener.cs`
 - [ ] T016 [US5] Add reconnection tests — verify reconnect triggers immediate poll, verify polling continues during disconnection in `tests/Sorcha.Agent.Tests/Inbox/SignalRInboxListenerTests.cs`
 
 **Checkpoint**: Agent resilience verified — no missed signals on reconnection.
@@ -91,24 +91,24 @@
 
 ### UI Model Updates
 
-- [ ] T017 [P] [US6] Replace action notification models with thin equivalents (`SignalNotification` shape) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Actions/ActionNotification.cs`
-- [ ] T018 [P] [US6] Replace encryption hub models with `EncryptionSignal` equivalent in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionHubModels.cs`
+- [x] T017 [P] [US6] Replace action notification models with thin equivalents (`SignalNotification` shape) in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Actions/ActionNotification.cs`
+- [x] T018 [P] [US6] Replace encryption hub models with `EncryptionSignal` equivalent in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Models/Admin/EncryptionHubModels.cs`
 
 ### UI Hub Connection Updates
 
-- [ ] T019 [US6] Update `ActionsHubConnection` — change event registrations to use thin types, remove `OnRecipientProgress` event in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs`
-- [ ] T020 [US6] Update `EventsHubConnection` — change `OnPendingActionReceived` to receive `SignalNotification`, `OnEncryptionOperationCompleted` to receive `EncryptionSignal`, add on-reconnect data refresh in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EventsHubConnection.cs`
+- [x] T019 [US6] Update `ActionsHubConnection` — change event registrations to use thin types, remove `OnRecipientProgress` event in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/ActionsHubConnection.cs`
+- [x] T020 [US6] Update `EventsHubConnection` — change `OnPendingActionReceived` to receive `SignalNotification`, `OnEncryptionOperationCompleted` to receive `EncryptionSignal`, add on-reconnect data refresh in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/EventsHubConnection.cs`
 
 ### UI Component Updates
 
-- [ ] T021 [P] [US6] Update `PendingActionToast.razor` — show generic "New action available" snackbar, navigate to instance on click in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor`
-- [ ] T022 [P] [US6] Update `PendingActionInbox.razor` — add placeholder on signal, pull enriched data from activity feed, maintain burst-throttle in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionInbox.razor`
-- [ ] T023 [P] [US6] Update `OperationNotificationListener.razor` — handle `EncryptionSignal`, show generic success/failure snackbar in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor`
+- [x] T021 [P] [US6] Update `PendingActionToast.razor` — show generic "New action available" snackbar, navigate to instance on click in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionToast.razor`
+- [x] T022 [P] [US6] Update `PendingActionInbox.razor` — add placeholder on signal, pull enriched data from activity feed, maintain burst-throttle in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Components/Layout/PendingActionInbox.razor`
+- [x] T023 [P] [US6] Update `OperationNotificationListener.razor` — handle `EncryptionSignal`, show generic success/failure snackbar in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Admin/OperationNotificationListener.razor`
 
 ### UI Tests
 
-- [ ] T024 [P] [US6] Update `ActionsHubConnectionTests` — thin type expectations in `tests/Sorcha.UI.Core.Tests/Services/ActionsHubConnectionTests.cs`
-- [ ] T025 [P] [US6] Update `EventsHubConnectionTests` — thin type expectations in `tests/Sorcha.UI.Core.Tests/Services/EventsHubConnectionTests.cs`
+- [x] T024 [P] [US6] Update `ActionsHubConnectionTests` — thin type expectations in `tests/Sorcha.UI.Core.Tests/Services/ActionsHubConnectionTests.cs`
+- [x] T025 [P] [US6] Update `EventsHubConnectionTests` — thin type expectations in `tests/Sorcha.UI.Core.Tests/Services/EventsHubConnectionTests.cs`
 
 **Checkpoint**: UI receives thin signals, shows generic toasts, pulls detail on demand. All existing UI tests updated.
 
