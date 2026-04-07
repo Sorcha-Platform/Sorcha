@@ -85,7 +85,30 @@ public record ActorRule
     public required string ActionName { get; init; }
     public JsonNode? Condition { get; init; }
     public required string Decision { get; init; } // "approve", "reject", "skip"
+    public PreAction[]? PreActions { get; init; }
     public JsonObject? Payload { get; init; }
+}
+
+/// <summary>
+/// A pre-action hook that runs before payload submission.
+/// </summary>
+public record PreAction
+{
+    public required string Type { get; init; } // "file-upload"
+    public required FileUploadConfig Config { get; init; }
+}
+
+/// <summary>
+/// Configuration for the file-upload pre-action.
+/// </summary>
+public record FileUploadConfig
+{
+    public required string FieldName { get; init; }
+    public string? FilePath { get; init; }
+    public int? SizeBytes { get; init; }
+    public int? Seed { get; init; }
+    public string? FileName { get; init; }
+    public string? ContentType { get; init; }
 }
 
 /// <summary>
