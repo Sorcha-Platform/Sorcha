@@ -119,17 +119,23 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
                 return;
             }
 
-            // Enrich with blueprint name, action description, sender display name
-            var enrichedPayload = await EnrichEventAsync(actionEvent);
+            // Enrich and persist to Tenant Service activity feed (for pull-back)
+            await EnrichAndPersistEventAsync(actionEvent);
 
-            // Push to user's SignalR group
+            // Send thin signal to user's SignalR group — client pulls detail from activity feed
             var userGroup = $"user:{actionEvent.UserId}";
+            var signal = new Hubs.SignalNotification
+            {
+                SignalType = "inbound-action",
+                InstanceId = actionEvent.InstanceId ?? string.Empty,
+                CorrelationId = actionEvent.Id
+            };
             await _hubContext.Clients.Group(userGroup)
-                .SendAsync("InboundActionReceived", enrichedPayload);
+                .SendAsync("InboundActionReceived", signal);
 
             _logger.LogDebug(
-                "Pushed InboundActionReceived to group {Group} for tx {TxId}",
-                userGroup, actionEvent.TransactionId);
+                "Sent inbound-action signal to group {Group} for instance {InstanceId}",
+                userGroup, actionEvent.InstanceId);
         }
         catch (Exception ex)
         {
@@ -137,7 +143,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         }
     }
 
-    private async Task<InboundActionNotification> EnrichEventAsync(InboundActionEvent actionEvent)
+    private async Task EnrichAndPersistEventAsync(InboundActionEvent actionEvent)
     {
         // Resolve blueprint name and notification config
         string? blueprintName = null;
@@ -253,10 +259,8 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             GroupKey = groupKey
         };
 
-        // Persist as ActivityEvent via Tenant Service (best-effort)
+        // Persist as ActivityEvent via Tenant Service (best-effort, for pull-back)
         await PersistActivityEventAsync(actionEvent, notification);
-
-        return notification;
     }
 
     private async Task PersistActivityEventAsync(InboundActionEvent actionEvent, InboundActionNotification notification)

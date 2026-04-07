@@ -1516,20 +1516,12 @@ notificationGroup.MapPost("/transaction-confirmed", async (
 {
     try
     {
-        // Broadcast notification via SignalR
-        var actionNotification = new Sorcha.Blueprint.Service.Hubs.ActionNotification
+        // Send thin signal via SignalR — transaction confirmed
+        if (!string.IsNullOrEmpty(notification.InstanceId) && !string.IsNullOrEmpty(notification.WalletAddress))
         {
-            TransactionHash = notification.TransactionHash,
-            WalletAddress = notification.WalletAddress,
-            RegisterAddress = notification.RegisterAddress,
-            BlueprintId = notification.BlueprintId,
-            ActionId = notification.ActionId,
-            InstanceId = notification.InstanceId,
-            Timestamp = notification.Timestamp,
-            Message = "Transaction confirmed"
-        };
-
-        await notificationService.NotifyActionConfirmedAsync(actionNotification);
+            await notificationService.NotifyActionAvailableAsync(
+                notification.InstanceId, notification.WalletAddress);
+        }
 
         return Results.Accepted();
     }

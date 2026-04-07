@@ -7,6 +7,7 @@
 @inject EventsHubConnection EventsHub
 @inject NavigationManager Navigation
 @using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Models.Actions
 @using Sorcha.UI.Core.Services
 @using MudBlazor
 
@@ -126,7 +127,7 @@
     private int _activeTab;
     private List<PendingActionSummaryDto> _items = [];
     private Dictionary<string, List<PendingActionSummaryDto>> _groups = new();
-    private readonly List<PendingActionNotificationDto> _realtimeBuffer = [];
+    private readonly List<SignalNotification> _realtimeBuffer = [];
     private DateTime _lastRender = DateTime.UtcNow;
     private System.Timers.Timer? _batchTimer;
 
@@ -222,14 +223,14 @@
             .ToDictionary(g => g.Key, g => g.ToList());
     }
 
-    private void HandleRealtimeNotification(PendingActionNotificationDto dto)
+    private void HandleRealtimeNotification(SignalNotification signal)
     {
         InvokeAsync(() =>
         {
             if (!IsOpen) return;
 
             // Burst throttling: batch updates when >10 arrive in 2 seconds
-            _realtimeBuffer.Add(dto);
+            _realtimeBuffer.Add(signal);
             var now = DateTime.UtcNow;
             if ((now - _lastRender).TotalSeconds < 2 && _realtimeBuffer.Count > 10)
             {
@@ -249,22 +250,20 @@
 
     private void FlushRealtimeBuffer()
     {
-        foreach (var dto in _realtimeBuffer)
+        foreach (var signal in _realtimeBuffer)
         {
             _items.Insert(0, new PendingActionSummaryDto
             {
-                InstanceId = string.Empty,
+                InstanceId = signal.InstanceId,
                 ActionId = 0,
-                ActionTitle = dto.ActionTitle,
-                BlueprintTitle = dto.BlueprintTitle,
-                SenderDisplayName = dto.SenderDisplayName,
-                Summary = dto.Summary,
-                Urgency = dto.Urgency,
-                Deadline = dto.Deadline,
-                NavigationPath = dto.NavigationPath,
-                ReceivedAt = dto.Timestamp,
-                TransactionId = dto.TransactionId,
-                RegisterId = dto.RegisterId
+                ActionTitle = "New action available",
+                BlueprintTitle = "Loading...",
+                SenderDisplayName = string.Empty,
+                Summary = string.Empty,
+                Urgency = "normal",
+                Deadline = null,
+                NavigationPath = string.Empty,
+                ReceivedAt = signal.Timestamp
             });
             _totalCount++;
         }

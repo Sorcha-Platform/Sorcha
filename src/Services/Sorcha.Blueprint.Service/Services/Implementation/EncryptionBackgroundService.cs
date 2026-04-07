@@ -104,14 +104,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.ResolvingKeys,
                 StepResolvingKeys, "Resolving recipient keys", 10);
             await notificationService.NotifyEncryptionProgressAsync(workItem.SenderWallet,
-                new EncryptionProgressNotification
-                {
-                    OperationId = operationId,
-                    Step = StepResolvingKeys,
-                    StepName = "Resolving recipient keys",
-                    TotalSteps = TotalSteps,
-                    PercentComplete = 10
-                }, ct);
+                new EncryptionSignal { OperationId = operationId, PercentComplete = 10, Status = "encrypting" }, ct);
 
             // Pre-flight size check (T051) — fail fast before expensive encryption
             var sizeCheck = encryptionPipeline.CheckSizeLimit(workItem.DisclosureGroups);
@@ -128,36 +121,13 @@ public sealed class EncryptionBackgroundService : BackgroundService
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Encrypting,
                 StepEncrypting, "Encrypting payloads", 30);
             await notificationService.NotifyEncryptionProgressAsync(workItem.SenderWallet,
-                new EncryptionProgressNotification
-                {
-                    OperationId = operationId,
-                    Step = StepEncrypting,
-                    StepName = "Encrypting payloads",
-                    TotalSteps = TotalSteps,
-                    PercentComplete = 30
-                }, ct);
+                new EncryptionSignal { OperationId = operationId, PercentComplete = 30, Status = "encrypting" }, ct);
 
             var encryptionResult = await encryptionPipeline.EncryptDisclosedPayloadsAsync(
                 workItem.DisclosureGroups, ct);
 
-            // T010: Emit per-recipient progress events from pipeline result
+            // Per-recipient detail stored in operation store for pull-back (no per-recipient signals)
             var totalRecipients = encryptionResult.RecipientProgressEntries.Length;
-            for (var i = 0; i < totalRecipients; i++)
-            {
-                var rp = encryptionResult.RecipientProgressEntries[i];
-                await notificationService.NotifyRecipientProgressAsync(workItem.SenderWallet,
-                    new RecipientEncryptionNotification
-                    {
-                        OperationId = operationId,
-                        RecipientName = rp.DisplayName ?? rp.WalletAddress,
-                        RecipientIndex = i + 1,
-                        TotalRecipients = totalRecipients,
-                        DisclosedFieldsSummary = rp.DisclosedFields,
-                        Status = rp.Status.ToString().ToLowerInvariant(),
-                        PipelineStep = StepEncrypting,
-                        ErrorMessage = rp.ErrorMessage
-                    }, ct);
-            }
 
             // Update operation store with per-recipient status
             var recipientStatuses = encryptionResult.RecipientProgressEntries
@@ -189,14 +159,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.BuildingTransaction,
                 StepBuildingTransaction, "Building transaction", 60);
             await notificationService.NotifyEncryptionProgressAsync(workItem.SenderWallet,
-                new EncryptionProgressNotification
-                {
-                    OperationId = operationId,
-                    Step = StepBuildingTransaction,
-                    StepName = "Building transaction",
-                    TotalSteps = TotalSteps,
-                    PercentComplete = 60
-                }, ct);
+                new EncryptionSignal { OperationId = operationId, PercentComplete = 60, Status = "encrypting" }, ct);
 
             // Resolve blueprint and instance for transaction building
             var actionResolver = scope.ServiceProvider.GetRequiredService<IActionResolverService>();
@@ -219,14 +182,7 @@ public sealed class EncryptionBackgroundService : BackgroundService
             await UpdateOperationStepAsync(operationId, EncryptionOpStatus.Submitting,
                 StepSubmitting, "Signing and submitting", 80);
             await notificationService.NotifyEncryptionProgressAsync(workItem.SenderWallet,
-                new EncryptionProgressNotification
-                {
-                    OperationId = operationId,
-                    Step = StepSubmitting,
-                    StepName = "Signing and submitting",
-                    TotalSteps = TotalSteps,
-                    PercentComplete = 80
-                }, ct);
+                new EncryptionSignal { OperationId = operationId, PercentComplete = 80, Status = "encrypting" }, ct);
 
             var signResult = await walletClient.SignTransactionAsync(
                 workItem.SenderWallet,
@@ -268,11 +224,8 @@ public sealed class EncryptionBackgroundService : BackgroundService
             }
 
             await notificationService.NotifyEncryptionCompleteAsync(workItem.SenderWallet,
-                new EncryptionCompleteNotification
-                {
-                    OperationId = operationId,
-                    TransactionHash = txHash
-                }, userId: workItem.UserId, ct: ct);
+                new EncryptionSignal { OperationId = operationId, PercentComplete = 100, Status = "complete" },
+                userId: workItem.UserId, ct: ct);
 
             // Store persistent activity event for disconnected users (T047)
             await StoreActivityEventAsync(scope.ServiceProvider, workItem, txHash, success: true, error: null);
@@ -343,13 +296,8 @@ public sealed class EncryptionBackgroundService : BackgroundService
         }
 
         await notificationService.NotifyEncryptionFailedAsync(senderWallet,
-            new EncryptionFailedNotification
-            {
-                OperationId = operationId,
-                Error = error,
-                FailedRecipient = failedRecipient,
-                Step = step
-            }, userId: workItem.UserId, ct: ct);
+            new EncryptionSignal { OperationId = operationId, PercentComplete = 0, Status = "failed" },
+            userId: workItem.UserId, ct: ct);
 
         await StoreActivityEventAsync(serviceProvider, workItem, null, success: false, error: error);
 

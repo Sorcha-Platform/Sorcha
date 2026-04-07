@@ -636,19 +636,7 @@ public class ActionExecutionService : IActionExecutionService
         // 15. Notify participants via SignalR
         await NotifyParticipantsAsync(instance, actionDef, routingResult, cancellationToken);
 
-        // 15a. Notify that action was confirmed (transaction landed on ledger)
-        await _notificationService.NotifyActionConfirmedAsync(
-            new Hubs.ActionNotification
-            {
-                TransactionHash = confirmedTxId,
-                WalletAddress = request.SenderWallet,
-                RegisterAddress = instance.RegisterId,
-                BlueprintId = instance.BlueprintId,
-                ActionId = actionId.ToString(),
-                InstanceId = instanceId,
-                Message = $"Action '{actionDef.Title}' confirmed"
-            },
-            cancellationToken);
+        // 15a. Action confirmed — participants already notified via thin signals in step 15
 
         // 15b. Update issued credential with confirmed transaction ID
         if (issuedCredential != null)
@@ -810,14 +798,13 @@ public class ActionExecutionService : IActionExecutionService
         instance.LastTransactionId = transaction.TxId;
         instance = await _instanceStore.UpdateAsync(instance, cancellationToken);
 
-        // 10. Notify participants
+        // 10. Notify target participant via thin signal
         var targetParticipantId = actionDef.RejectionConfig.TargetParticipantId ?? targetAction.Sender;
+        string? targetWalletAddress = null;
+        instance.ParticipantWallets?.TryGetValue(targetParticipantId, out targetWalletAddress);
         await _notificationService.NotifyActionRejectedAsync(
             instanceId,
-            actionId,
-            targetAction.Id,
-            targetParticipantId,
-            request.Reason,
+            targetWalletAddress,
             cancellationToken);
 
         return new ActionRejectionResponse
@@ -1108,17 +1095,21 @@ public class ActionExecutionService : IActionExecutionService
 
             await _notificationService.NotifyActionAvailableAsync(
                 instance.Id,
-                nextAction.ActionId,
-                nextAction.ActionTitle,
-                nextAction.ParticipantId,
                 walletAddress,
                 cancellationToken);
         }
 
         if (routingResult.NextActions.Count == 0)
         {
+            // Collect all participant wallet addresses for workflow completion signal
+            var walletAddresses = instance.ParticipantWallets?.Values
+                .Where(w => !string.IsNullOrEmpty(w))
+                .Distinct()
+                ?? [];
+
             await _notificationService.NotifyWorkflowCompletedAsync(
                 instance.Id,
+                walletAddresses!,
                 cancellationToken);
         }
     }

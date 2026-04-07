@@ -108,12 +108,10 @@ public class ActionsHub : Hub
 
             if (string.IsNullOrWhiteSpace(orgId))
             {
-                // Warn but allow — service tokens without org_id are allowed for backward compatibility
-                // but should be updated to include org_id for proper audit scoping
                 _logger.LogWarning(
-                    "Service token without org_id claim subscribed to wallet {Wallet}. ConnectionId: {ConnectionId}. " +
-                    "Service tokens should include org_id for audit scoping.",
+                    "Service token without org_id claim rejected for wallet {Wallet}. ConnectionId: {ConnectionId}",
                     walletAddress, Context.ConnectionId);
+                throw new HubException("Unauthorized: service tokens must include org_id claim");
             }
         }
         else
@@ -218,16 +216,30 @@ public class ActionsHub : Hub
 }
 
 /// <summary>
-/// Action notification sent to clients
+/// Thin signal notification sent to clients via SignalR.
+/// Contains only signal type and instance identifier — clients pull details
+/// through authenticated REST endpoints after receiving the signal.
+/// Replaces the rich ActionNotification to enforce minimal disclosure.
 /// </summary>
-public record ActionNotification
+public sealed record SignalNotification
 {
-    public required string TransactionHash { get; init; }
-    public required string WalletAddress { get; init; }
-    public required string RegisterAddress { get; init; }
-    public string? BlueprintId { get; init; }
-    public string? ActionId { get; init; }
-    public string? InstanceId { get; init; }
+    /// <summary>
+    /// Signal type: "action-available", "action-rejected", "workflow-completed", "inbound-action".
+    /// </summary>
+    public required string SignalType { get; init; }
+
+    /// <summary>
+    /// Blueprint instance identifier.
+    /// </summary>
+    public required string InstanceId { get; init; }
+
+    /// <summary>
+    /// Optional correlation identifier for pull-back requests.
+    /// </summary>
+    public Guid? CorrelationId { get; init; }
+
+    /// <summary>
+    /// UTC timestamp of signal creation.
+    /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    public string? Message { get; init; }
 }

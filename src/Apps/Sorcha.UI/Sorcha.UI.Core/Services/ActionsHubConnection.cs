@@ -23,9 +23,12 @@ namespace Sorcha.UI.Core.Services;
 /// - ActionConfirmed: Action has been confirmed/completed
 /// - ActionRejected: Action was rejected and routed elsewhere
 /// - WorkflowCompleted: Entire workflow has completed
-/// - EncryptionProgress: Encryption operation progress update
-/// - EncryptionComplete: Encryption operation completed successfully
-/// - EncryptionFailed: Encryption operation failed
+/// - EncryptionProgress: Encryption operation progress signal
+/// - EncryptionComplete: Encryption operation completed signal
+/// - EncryptionFailed: Encryption operation failed signal
+///
+/// All notifications use thin signal types (SignalNotification / EncryptionSignal)
+/// that carry only identifiers — UI pulls details through REST endpoints.
 ///
 /// Client can subscribe to:
 /// - Wallet-based notifications (SubscribeToWallet)
@@ -43,47 +46,42 @@ public class ActionsHubConnection : IAsyncDisposable
 
     /// <summary>
     /// Event raised when a new action is available.
-    /// Parameters: ActionAvailableNotification
+    /// Parameters: SignalNotification with SignalType "action-available"
     /// </summary>
-    public event Func<ActionAvailableNotification, Task>? OnActionAvailable;
+    public event Func<SignalNotification, Task>? OnActionAvailable;
 
     /// <summary>
     /// Event raised when an action is confirmed.
-    /// Parameters: ActionNotification
+    /// Parameters: SignalNotification with SignalType "action-confirmed"
     /// </summary>
-    public event Func<ActionNotification, Task>? OnActionConfirmed;
+    public event Func<SignalNotification, Task>? OnActionConfirmed;
 
     /// <summary>
     /// Event raised when an action is rejected.
-    /// Parameters: ActionRejectedNotification
+    /// Parameters: SignalNotification with SignalType "action-rejected"
     /// </summary>
-    public event Func<ActionRejectedNotification, Task>? OnActionRejected;
+    public event Func<SignalNotification, Task>? OnActionRejected;
 
     /// <summary>
     /// Event raised when a workflow is completed.
-    /// Parameters: WorkflowCompletedNotification
+    /// Parameters: SignalNotification with SignalType "workflow-completed"
     /// </summary>
-    public event Func<WorkflowCompletedNotification, Task>? OnWorkflowCompleted;
+    public event Func<SignalNotification, Task>? OnWorkflowCompleted;
 
     /// <summary>
     /// Event raised when encryption progress is updated.
     /// </summary>
-    public event Func<EncryptionProgressUpdate, Task>? OnEncryptionProgress;
+    public event Func<EncryptionSignal, Task>? OnEncryptionProgress;
 
     /// <summary>
     /// Event raised when encryption completes successfully.
     /// </summary>
-    public event Func<EncryptionCompleteUpdate, Task>? OnEncryptionComplete;
+    public event Func<EncryptionSignal, Task>? OnEncryptionComplete;
 
     /// <summary>
     /// Event raised when encryption fails.
     /// </summary>
-    public event Func<EncryptionFailedUpdate, Task>? OnEncryptionFailed;
-
-    /// <summary>
-    /// Event raised when per-recipient encryption progress is updated.
-    /// </summary>
-    public event Func<RecipientEncryptionProgressUpdate, Task>? OnRecipientProgress;
+    public event Func<EncryptionSignal, Task>? OnEncryptionFailed;
 
     /// <summary>
     /// Event raised when connection state changes.
@@ -289,114 +287,98 @@ public class ActionsHubConnection : IAsyncDisposable
     {
         if (_hubConnection == null) return;
 
-        // ActionAvailable - can come in two formats
-        _hubConnection.On<ActionAvailableNotification>("ActionAvailable", async notification =>
+        // ActionAvailable - thin signal, UI pulls details via REST
+        _hubConnection.On<SignalNotification>("ActionAvailable", async signal =>
         {
             _logger.LogDebug(
-                "Action available: Instance={InstanceId}, Action={ActionId}, Title={Title}, Participant={ParticipantId}",
-                notification.InstanceId,
-                notification.ActionId,
-                notification.ActionTitle,
-                notification.ParticipantId);
+                "Action available signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
+                signal.InstanceId,
+                signal.CorrelationId);
 
             if (OnActionAvailable != null)
             {
-                await OnActionAvailable(notification);
+                await OnActionAvailable(signal);
             }
         });
 
-        // ActionConfirmed
-        _hubConnection.On<ActionNotification>("ActionConfirmed", async notification =>
+        // ActionConfirmed - thin signal
+        _hubConnection.On<SignalNotification>("ActionConfirmed", async signal =>
         {
             _logger.LogDebug(
-                "Action confirmed: TxHash={TransactionHash}, Wallet={WalletAddress}",
-                notification.TransactionHash,
-                notification.WalletAddress);
+                "Action confirmed signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
+                signal.InstanceId,
+                signal.CorrelationId);
 
             if (OnActionConfirmed != null)
             {
-                await OnActionConfirmed(notification);
+                await OnActionConfirmed(signal);
             }
         });
 
-        // ActionRejected
-        _hubConnection.On<ActionRejectedNotification>("ActionRejected", async notification =>
+        // ActionRejected - thin signal
+        _hubConnection.On<SignalNotification>("ActionRejected", async signal =>
         {
             _logger.LogDebug(
-                "Action rejected: Instance={InstanceId}, RejectedAction={RejectedActionId}, TargetAction={TargetActionId}, Reason={Reason}",
-                notification.InstanceId,
-                notification.RejectedActionId,
-                notification.TargetActionId,
-                notification.Reason);
+                "Action rejected signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
+                signal.InstanceId,
+                signal.CorrelationId);
 
             if (OnActionRejected != null)
             {
-                await OnActionRejected(notification);
+                await OnActionRejected(signal);
             }
         });
 
-        // WorkflowCompleted
-        _hubConnection.On<WorkflowCompletedNotification>("WorkflowCompleted", async notification =>
+        // WorkflowCompleted - thin signal
+        _hubConnection.On<SignalNotification>("WorkflowCompleted", async signal =>
         {
             _logger.LogDebug(
-                "Workflow completed: Instance={InstanceId}",
-                notification.InstanceId);
+                "Workflow completed signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
+                signal.InstanceId,
+                signal.CorrelationId);
 
             if (OnWorkflowCompleted != null)
             {
-                await OnWorkflowCompleted(notification);
+                await OnWorkflowCompleted(signal);
             }
         });
 
-        // EncryptionProgress
-        _hubConnection.On<EncryptionProgressUpdate>("EncryptionProgress", async update =>
+        // EncryptionProgress - thin signal with progress percentage
+        _hubConnection.On<EncryptionSignal>("EncryptionProgress", async signal =>
         {
             _logger.LogDebug(
-                "Encryption progress: Operation={OperationId}, Step={Step}/{TotalSteps} ({Percent}%)",
-                update.OperationId, update.Step, update.TotalSteps, update.PercentComplete);
+                "Encryption progress signal: Operation={OperationId}, Progress={Percent}%, Status={Status}",
+                signal.OperationId, signal.PercentComplete, signal.Status);
 
             if (OnEncryptionProgress != null)
             {
-                await OnEncryptionProgress(update);
+                await OnEncryptionProgress(signal);
             }
         });
 
-        // EncryptionComplete
-        _hubConnection.On<EncryptionCompleteUpdate>("EncryptionComplete", async update =>
+        // EncryptionComplete - thin signal
+        _hubConnection.On<EncryptionSignal>("EncryptionComplete", async signal =>
         {
             _logger.LogDebug(
-                "Encryption complete: Operation={OperationId}, TxHash={TxHash}",
-                update.OperationId, update.TransactionHash);
+                "Encryption complete signal: Operation={OperationId}, Status={Status}",
+                signal.OperationId, signal.Status);
 
             if (OnEncryptionComplete != null)
             {
-                await OnEncryptionComplete(update);
+                await OnEncryptionComplete(signal);
             }
         });
 
-        // EncryptionFailed
-        _hubConnection.On<EncryptionFailedUpdate>("EncryptionFailed", async update =>
+        // EncryptionFailed - thin signal
+        _hubConnection.On<EncryptionSignal>("EncryptionFailed", async signal =>
         {
             _logger.LogDebug(
-                "Encryption failed: Operation={OperationId}, Error={Error}",
-                update.OperationId, update.Error);
+                "Encryption failed signal: Operation={OperationId}, Status={Status}",
+                signal.OperationId, signal.Status);
 
             if (OnEncryptionFailed != null)
             {
-                await OnEncryptionFailed(update);
-            }
-        });
-
-        // RecipientEncryptionProgress
-        _hubConnection.On<RecipientEncryptionProgressUpdate>("RecipientEncryptionProgress", async update =>
-        {
-            _logger.LogDebug(
-                "Recipient progress: Operation={OperationId}, Recipient={Recipient} ({Index}/{Total}), Status={Status}",
-                update.OperationId, update.RecipientName, update.RecipientIndex, update.TotalRecipients, update.Status);
-
-            if (OnRecipientProgress != null)
-            {
-                await OnRecipientProgress(update);
+                await OnEncryptionFailed(signal);
             }
         });
 

@@ -67,7 +67,6 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         _actionsHub.OnEncryptionProgress += HandleProgress;
         _actionsHub.OnEncryptionComplete += HandleComplete;
         _actionsHub.OnEncryptionFailed += HandleFailed;
-        _actionsHub.OnRecipientProgress += HandleRecipientProgress;
     }
 
     /// <inheritdoc />
@@ -102,58 +101,22 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         OnStateChanged?.Invoke();
     }
 
-    private Task HandleProgress(EncryptionProgressUpdate update)
+    private Task HandleProgress(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(update.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
 
         op.Status = OperationDisplayStatus.InProgress;
-        op.PercentComplete = update.PercentComplete;
+        op.PercentComplete = signal.PercentComplete;
         OnStateChanged?.Invoke();
         return Task.CompletedTask;
     }
 
-    private Task HandleRecipientProgress(RecipientEncryptionProgressUpdate update)
+    private Task HandleComplete(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(update.OperationId, out var op)) return Task.CompletedTask;
-
-        // Key on RecipientIndex (1-based) to avoid display name collisions
-        var targetIndex = update.RecipientIndex - 1;
-        if (targetIndex >= 0 && targetIndex < op.Recipients.Count)
-        {
-            op.Recipients[targetIndex].Status = update.Status;
-        }
-        else
-        {
-            // Ensure list is large enough, padding with waiting entries
-            while (op.Recipients.Count < update.RecipientIndex)
-            {
-                op.Recipients.Add(new RecipientDisplayState
-                {
-                    Name = update.RecipientName,
-                    FieldsSummary = FormatDisclosedFields(update.DisclosedFieldsSummary),
-                    Status = update.Status
-                });
-            }
-        }
-
-        // Update progress based on recipient completion
-        var secured = op.Recipients.Count(r => r.Status == "secured");
-        if (update.TotalRecipients > 0)
-        {
-            op.PercentComplete = (int)(secured * 100.0 / update.TotalRecipients);
-        }
-
-        OnStateChanged?.Invoke();
-        return Task.CompletedTask;
-    }
-
-    private Task HandleComplete(EncryptionCompleteUpdate update)
-    {
-        if (!_operations.TryGetValue(update.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
 
         op.Status = OperationDisplayStatus.Complete;
         op.PercentComplete = 100;
-        op.TransactionHash = update.TransactionHash;
 
         // Mark all remaining recipients as secured
         foreach (var r in op.Recipients.Where(r => r.Status == "waiting"))
@@ -161,26 +124,25 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
             r.Status = "secured";
         }
 
-        _logger.LogDebug("Encryption operation {OperationId} complete: {TxHash}", update.OperationId, update.TransactionHash);
+        _logger.LogDebug("Encryption operation {OperationId} complete", signal.OperationId);
         OnStateChanged?.Invoke();
 
         // Clean up completed operations after a delay (keep for 5 minutes for toast/review)
-        _ = CleanupAfterDelayAsync(update.OperationId);
+        _ = CleanupAfterDelayAsync(signal.OperationId);
         return Task.CompletedTask;
     }
 
-    private Task HandleFailed(EncryptionFailedUpdate update)
+    private Task HandleFailed(EncryptionSignal signal)
     {
-        if (!_operations.TryGetValue(update.OperationId, out var op)) return Task.CompletedTask;
+        if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
 
         op.Status = OperationDisplayStatus.Failed;
-        op.ErrorMessage = update.Error;
-        op.FailedRecipient = update.FailedRecipient;
+        op.ErrorMessage = signal.Status;
 
-        _logger.LogDebug("Encryption operation {OperationId} failed: {Error}", update.OperationId, update.Error);
+        _logger.LogDebug("Encryption operation {OperationId} failed: {Status}", signal.OperationId, signal.Status);
         OnStateChanged?.Invoke();
 
-        _ = CleanupAfterDelayAsync(update.OperationId);
+        _ = CleanupAfterDelayAsync(signal.OperationId);
         return Task.CompletedTask;
     }
 
@@ -230,6 +192,5 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         _actionsHub.OnEncryptionProgress -= HandleProgress;
         _actionsHub.OnEncryptionComplete -= HandleComplete;
         _actionsHub.OnEncryptionFailed -= HandleFailed;
-        _actionsHub.OnRecipientProgress -= HandleRecipientProgress;
     }
 }
