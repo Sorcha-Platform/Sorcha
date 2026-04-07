@@ -45,10 +45,8 @@ public class AuditLogger : IDisposable
                 if (!string.IsNullOrEmpty(directory))
                     Directory.CreateDirectory(directory);
 
-                _writer = new StreamWriter(_filePath, append: true)
-                {
-                    AutoFlush = true
-                };
+                var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                _writer = new StreamWriter(stream) { AutoFlush = true };
             }
 
             var json = JsonSerializer.Serialize(entry, JsonOptions);

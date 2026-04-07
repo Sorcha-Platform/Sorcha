@@ -54,16 +54,36 @@ public class SignalRInboxListener : IInboxListener, IAsyncDisposable
                 var doc = System.Text.Json.JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
+                // Resolve instance ID (present in both notification shapes)
+                var instanceId = root.TryGetProperty("InstanceId", out var instProp)
+                    ? instProp.GetString() ?? ""
+                    : root.TryGetProperty("instanceId", out var inst2) ? inst2.GetString() ?? "" : "";
+
+                // Resolve action index — new shape has ActionId (int), old shape has actionId (string)
+                uint actionIndex = 0;
+                if (root.TryGetProperty("ActionId", out var aidInt) && aidInt.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    actionIndex = aidInt.GetUInt32();
+                else if (root.TryGetProperty("actionId", out var aidStr) && aidStr.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    actionIndex = aidStr.GetUInt32();
+
+                // Resolve action title
+                var actionTitle = root.TryGetProperty("ActionTitle", out var titleProp)
+                    ? titleProp.GetString() ?? ""
+                    : root.TryGetProperty("actionTitle", out var title2) ? title2.GetString() ?? "" : "";
+
                 var action = new PendingAction
                 {
-                    ActionId = root.TryGetProperty("transactionHash", out var th) ? th.GetString() ?? "" : Guid.NewGuid().ToString(),
-                    ActionName = root.TryGetProperty("actionId", out var aid) ? aid.GetString() ?? "" : "",
-                    ActionIndex = 0,
+                    ActionId = $"{instanceId}-{actionIndex}",
+                    ActionName = actionTitle,
+                    ActionIndex = actionIndex,
                     BlueprintId = root.TryGetProperty("blueprintId", out var bp) ? bp.GetString() ?? "" : "",
-                    InstanceId = root.TryGetProperty("instanceId", out var inst) ? inst.GetString() ?? "" : "",
+                    InstanceId = instanceId,
                     RegisterId = root.TryGetProperty("registerAddress", out var reg) ? reg.GetString() ?? "" : "",
                     TransactionId = root.TryGetProperty("transactionHash", out var tx) ? tx.GetString() ?? "" : ""
                 };
+
+                _logger.LogInformation("SignalR: ActionAvailable {ActionName} (instance {InstanceId}, action {ActionIndex})",
+                    action.ActionName, instanceId, actionIndex);
 
                 _channel.Writer.TryWrite(action);
             }
