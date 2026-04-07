@@ -293,6 +293,31 @@ public class RelayMessageHandler
                 var docket = await registerClient.ReadDocketAsync(request.RegisterId, docketNum, cancellationToken);
                 if (docket == null) break;
 
+                // For genesis docket (0), hydrate transactions with full payload data
+                // so the receiver can extract the validator roster from the control record.
+                if (docketNum == 0 && docket.Transactions.Count > 0)
+                {
+                    var hydratedTxs = new List<Sorcha.Register.Models.TransactionModel>();
+                    foreach (var txStub in docket.Transactions)
+                    {
+                        var fullTx = await registerClient.GetTransactionAsync(
+                            request.RegisterId, txStub.TxId, cancellationToken);
+                        hydratedTxs.Add(fullTx ?? txStub);
+                    }
+                    docket = new DocketModel
+                    {
+                        DocketId = docket.DocketId,
+                        RegisterId = docket.RegisterId,
+                        DocketNumber = docket.DocketNumber,
+                        PreviousHash = docket.PreviousHash,
+                        DocketHash = docket.DocketHash,
+                        CreatedAt = docket.CreatedAt,
+                        Transactions = hydratedTxs,
+                        ProposerValidatorId = docket.ProposerValidatorId,
+                        MerkleRoot = docket.MerkleRoot
+                    };
+                }
+
                 var docketData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(docket);
                 var entry = new RelayModels.DocketEntry
                 {
