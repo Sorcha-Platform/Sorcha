@@ -37,8 +37,8 @@ if (-not (Test-Path $StatePath)) {
 $state = Get-Content $StatePath -Raw | ConvertFrom-Json
 
 # Resolve URLs
-$env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck
-$blueprintUrl = $env.BlueprintUrl
+$sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck
+$blueprintUrl = $sorchaEnv.BlueprintUrl
 
 Write-Host "`n=== TradeFinance Agent Launcher ===" -ForegroundColor Cyan
 Write-Host "Profile: $Profile"
@@ -51,7 +51,7 @@ Write-Host "--- Creating Blueprint Instances ---" -ForegroundColor Green
 
 # Use first org admin for instance creation
 $adminRole = $state.roles.'procurement-mgr'
-$loginResult = Connect-SorchaUser -TenantUrl $env.TenantUrl `
+$loginResult = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
     -Email $adminRole.email -Password $adminRole.password `
     -OrganizationId $adminRole.organizationId
 $headers = @{ Authorization = "Bearer $($loginResult.Token)" }
@@ -65,11 +65,15 @@ $procInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/" `
         tenantId     = $adminRole.organizationId
         metadata     = @{ source = "agent-walkthrough"; scenario = "golden-path" }
     }
+if (-not $procInstance?.id) {
+    Write-Error "Failed to create procurement instance."
+    exit 1
+}
 Write-Host "  Procurement instance: $($procInstance.id)" -ForegroundColor Cyan
 
-# Finance instance (use funder's admin)
-$funderRole = $state.roles.'credit-analyst'
-$funderLogin = Connect-SorchaUser -TenantUrl $env.TenantUrl `
+# Finance instance (use finance register owner's admin)
+$funderRole = $state.roles.'finance-director'
+$funderLogin = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
     -Email $funderRole.email -Password $funderRole.password `
     -OrganizationId $funderRole.organizationId
 $funderHeaders = @{ Authorization = "Bearer $($funderLogin.Token)" }
@@ -82,6 +86,10 @@ $financeInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/"
         tenantId     = $funderRole.organizationId
         metadata     = @{ source = "agent-walkthrough"; scenario = "golden-path" }
     }
+if (-not $financeInstance?.id) {
+    Write-Error "Failed to create finance instance."
+    exit 1
+}
 Write-Host "  Finance instance: $($financeInstance.id)" -ForegroundColor Cyan
 
 # --- Set Password Environment Variables ---
@@ -133,10 +141,10 @@ foreach ($file in $actorFiles) {
     }
 
     $logFile = Join-Path $logsDir "$($file -replace '\.json$', '.log')"
-    $args = @("run", "--project", (Resolve-Path $agentProject).Path, "--", "run", "--config", $configPath, "--state", $StatePath)
+    $agentArgs = @("run", "--project", (Resolve-Path $agentProject).Path, "--", "run", "--config", $configPath, "--state", $StatePath)
 
     Write-Host "  Starting $file..."
-    $proc = Start-Process -FilePath "dotnet" -ArgumentList $args `
+    $proc = Start-Process -FilePath "dotnet" -ArgumentList $agentArgs `
         -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" `
         -PassThru -NoNewWindow
 
