@@ -1,0 +1,53 @@
+{
+  "actor": {
+    "name": "procurement-mgr",
+    "description": "Raises purchase orders and approves invoices (Cairngorm Construction)"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registers.sme-trade-register.id}}",
+    "credentials": {
+      "email": "{{roles.procurement-mgr.email}}",
+      "password": "$env:PROCUREMENT_MGR_PASSWORD",
+      "organizationId": "{{roles.procurement-mgr.organizationId}}"
+    },
+    "walletAddress": "{{roles.procurement-mgr.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 20 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Raise Purchase Order",
+      "decision": "approve",
+      "payload": {
+        "poReference": "PO-CAIRN-2026-00142",
+        "projectName": "Aviemore Heights Phase 2",
+        "siteAddress": "Plot 7-12, Craig na Gower Avenue, Aviemore, PH22 1RW",
+        "lineItems": [
+          { "description": "Structural Timber C24 (47x200mm)", "quantity": 500, "unit": "linear metres", "unitPrice": 8.50 },
+          { "description": "OSB/3 Structural Board (18mm)", "quantity": 120, "unit": "sheets", "unitPrice": 32.00 },
+          { "description": "Joist Hangers & Connectors (mixed)", "quantity": 10, "unit": "boxes", "unitPrice": 45.00 }
+        ],
+        "deliveryAddress": "Aviemore Heights Phase 2, Craig na Gower Avenue, Aviemore PH22 1RW",
+        "paymentTerms": "Net 30",
+        "requiredDeliveryDate": "2026-04-15"
+      }
+    },
+    {
+      "actionName": "Approve/Dispute Invoice",
+      "decision": "approve",
+      "payload": {
+        "decision": "approve",
+        "approvalNotes": "Invoice matches PO and GRN. All quantities and prices verified. Approved for payment.",
+        "approvedAmount": 10248
+      }
+    }
+  ],
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/procurement-mgr-actions.jsonl"
+  }
+}

@@ -729,3 +729,4 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | sorcha-cli | Builds and maintains the Sorcha CLI tool using System.CommandLine 2.0.2, Refit HTTP clients, and Spectre.Console. Use when creating CLI commands, adding options/arguments, implementing Refit service clients, writing CLI tests, or fixing command structure issues |
 | sorcha-ui | Builds Sorcha.UI Blazor WASM pages with accompanying Playwright E2E tests using the Docker test infrastructure |
 | blueprint-builder | Creates blueprint JSON templates, defines participants/actions/routes/schemas, configures cycle detection, troubleshoots blueprint publishing |
+| walkthrough-builder | Architects, builds, and runs walkthroughs using the autonomous actor agent framework. Creates actor definitions, launcher scripts, and cross-register credential flows |
