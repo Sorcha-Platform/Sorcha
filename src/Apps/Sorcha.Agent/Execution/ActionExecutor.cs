@@ -17,17 +17,23 @@ public class ActionExecutor : IActionExecutor
 {
     private readonly HttpClient _httpClient;
     private readonly AgentAuthService _authService;
+    private readonly string _walletAddress;
+    private readonly string _registerId;
     private readonly ILogger<ActionExecutor> _logger;
     private readonly AuditLogger _auditLogger;
 
     public ActionExecutor(
         HttpClient httpClient,
         AgentAuthService authService,
+        string walletAddress,
+        string registerId,
         ILogger<ActionExecutor> logger,
         AuditLogger auditLogger)
     {
         _httpClient = httpClient;
         _authService = authService;
+        _walletAddress = walletAddress;
+        _registerId = registerId;
         _logger = logger;
         _auditLogger = auditLogger;
     }
@@ -57,16 +63,23 @@ public class ActionExecutor : IActionExecutor
             var token = await _authService.GetTokenAsync(cancellationToken);
 
             var endpoint = decision.Decision == "reject"
-                ? $"/api/instances/{action.InstanceId}/actions/{action.ActionName}/reject"
-                : $"/api/instances/{action.InstanceId}/actions/{action.ActionName}/execute";
+                ? $"/api/instances/{action.InstanceId}/actions/{action.ActionIndex}/reject"
+                : $"/api/instances/{action.InstanceId}/actions/{action.ActionIndex}/execute";
 
             var body = decision.Decision == "reject"
-                ? new { reason = decision.Payload?.GetValueOrDefault("reason")?.ToString() ?? "Rejected by agent rule" }
-                : (object)new
+                ? (object)new
+                {
+                    reason = decision.Payload?.GetValueOrDefault("reason")?.ToString() ?? "Rejected by agent rule",
+                    senderWallet = _walletAddress,
+                    registerAddress = _registerId
+                }
+                : new
                 {
                     blueprintId = action.BlueprintId,
-                    actionId = action.ActionName,
+                    actionId = action.ActionIndex.ToString(),
                     instanceId = action.InstanceId,
+                    senderWallet = _walletAddress,
+                    registerAddress = _registerId,
                     payloadData = decision.Payload
                 };
 

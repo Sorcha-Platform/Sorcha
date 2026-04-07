@@ -46,7 +46,7 @@ public class ActionExecutorTests
         };
         var authService = new Sorcha.Agent.Auth.AgentAuthService(httpClient, config, authLogger.Object);
 
-        var executor = new ActionExecutor(httpClient, authService, logger.Object, auditLogger);
+        var executor = new ActionExecutor(httpClient, authService, "wallet-1", "reg-1", logger.Object, auditLogger);
         executor.Should().NotBeNull();
     }
 

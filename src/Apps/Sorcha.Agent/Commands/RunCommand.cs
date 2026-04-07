@@ -129,6 +129,8 @@ public class RunCommand : Command
             // Create action executor
             var actionExecutor = new ActionExecutor(
                 httpClient, authService,
+                definition.Connection.WalletAddress,
+                definition.Connection.RegisterId,
                 loggerFactory.CreateLogger<ActionExecutor>(), auditLogger);
 
             // Create inbox listeners

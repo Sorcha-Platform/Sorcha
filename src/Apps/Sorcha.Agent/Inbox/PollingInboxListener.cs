@@ -100,16 +100,26 @@ public class PollingInboxListener : IInboxListener
     {
         return new PendingAction
         {
-            ActionId = item.GetProperty("actionId").GetString() ?? item.GetProperty("id").GetString() ?? "",
-            ActionName = item.TryGetProperty("actionName", out var name) ? name.GetString() ?? "" : "",
-            ActionIndex = item.TryGetProperty("actionIndex", out var idx) ? idx.GetUInt32() : 0,
-            BlueprintId = item.TryGetProperty("blueprintId", out var bp) ? bp.GetString() ?? "" : "",
-            InstanceId = item.TryGetProperty("instanceId", out var inst) ? inst.GetString() ?? "" : "",
-            RegisterId = item.TryGetProperty("registerId", out var reg) ? reg.GetString() ?? "" : "",
-            TransactionId = item.TryGetProperty("transactionId", out var tx) ? tx.GetString() ?? "" : "",
-            SenderAddress = item.TryGetProperty("senderAddress", out var sender) ? sender.GetString() : null,
+            ActionId = $"{GetStringOrToString(item, "instanceId") ?? ""}-{GetStringOrToString(item, "actionId") ?? GetStringOrToString(item, "id") ?? ""}",
+            ActionName = GetStringOrToString(item, "actionTitle") ?? GetStringOrToString(item, "actionName") ?? "",
+            ActionIndex = item.TryGetProperty("actionIndex", out var idx) && idx.ValueKind == JsonValueKind.Number
+                ? idx.GetUInt32()
+                : item.TryGetProperty("actionId", out var aid) && aid.ValueKind == JsonValueKind.Number
+                    ? aid.GetUInt32()
+                    : 0,
+            BlueprintId = GetStringOrToString(item, "blueprintId") ?? "",
+            InstanceId = GetStringOrToString(item, "instanceId") ?? "",
+            RegisterId = GetStringOrToString(item, "registerId") ?? "",
+            TransactionId = GetStringOrToString(item, "transactionId") ?? "",
+            SenderAddress = GetStringOrToString(item, "senderAddress"),
             PreviousPayload = item.TryGetProperty("payload", out var payload) ? payload.Clone() : null,
             Schema = item.TryGetProperty("schema", out var schema) ? schema.Clone() : null
         };
+    }
+
+    private static string? GetStringOrToString(JsonElement item, string propertyName)
+    {
+        if (!item.TryGetProperty(propertyName, out var prop)) return null;
+        return prop.ValueKind == JsonValueKind.String ? prop.GetString() : prop.ToString();
     }
 }

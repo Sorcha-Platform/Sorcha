@@ -102,6 +102,27 @@ $secrets = [ordered]@{
         inspectorPassword     = "Dev_Pass_2025!"
         inspectorName         = "Building Control Inspector"
     }
+    "payload-test" = @{
+        adminEmail    = $platformEmail
+        adminPassword = $platformPassword
+        adminName     = $platformName
+        senderEmail   = "sender@payload-sender.local"
+        senderPassword = "Dev_Pass_2025!"
+        senderName    = "Sender"
+        receiverEmail  = "receiver@payload-receiver.local"
+        receiverPassword = "Dev_Pass_2025!"
+        receiverName   = "Receiver"
+    }
+    "self-build-house" = @{
+        adminEmail    = $platformEmail
+        adminPassword = $platformPassword
+        adminName     = $platformName
+    }
+    "trade-finance" = @{
+        adminEmail    = $platformEmail
+        adminPassword = $platformPassword
+        adminName     = $platformName
+    }
     "dist-register" = @{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword
