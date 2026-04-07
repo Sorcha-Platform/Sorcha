@@ -63,7 +63,7 @@
 **Independent Test**: Connect with a service token missing `org_id` and attempt wallet subscription. Verify rejection.
 
 - [x] T012 [US3] Enforce `org_id` requirement on service tokens — change `LogWarning` + allow to `throw new HubException` in `src/Services/Sorcha.Blueprint.Service/Hubs/ActionsHub.cs` (SubscribeToWallet method, lines 98-117)
-- [ ] T013 [US3] Verify all Sorcha service tokens include `org_id` — check Aspire service defaults token issuance in `src/Common/Sorcha.ServiceDefaults/`
+- [x] T013 [US3] Verify all Sorcha service tokens include `org_id` — check Aspire service defaults token issuance in `src/Common/Sorcha.ServiceDefaults/`
 - [ ] T014 [US3] Create `ActionsHubAuthorizationTests` — test 4 scenarios: service token without org_id rejected, with org_id succeeds, user token with valid wallet succeeds, user token with unlinked wallet rejected in `tests/Sorcha.Blueprint.Service.Tests/Services/ActionsHubAuthorizationTests.cs`
 
 **Checkpoint**: Unauthorized wallet subscriptions are rejected 100% of the time.
@@ -119,8 +119,8 @@
 **Purpose**: Integration verification and documentation
 
 - [ ] T026 Update `SignalRIntegrationTests` — update payload shape expectations in `tests/Sorcha.Blueprint.Service.Tests/Integration/SignalRIntegrationTests.cs`
-- [ ] T027 Run full test suite (`dotnet test`) and fix any compilation errors from deprecated type references
-- [ ] T028 Update Blueprint Service README if it documents SignalR notification payloads in `src/Services/Sorcha.Blueprint.Service/README.md`
+- [x] T027 Run full test suite (`dotnet test`) and fix any compilation errors from deprecated type references
+- [x] T028 Update Blueprint Service README if it documents SignalR notification payloads in `src/Services/Sorcha.Blueprint.Service/README.md`
 - [ ] T029 Run quickstart.md validation — Docker integration test with two agents verifying sub-2-second signal delivery
 
 ---
