@@ -343,6 +343,7 @@ src/
 │   ├── Sorcha.AppHost/              # .NET Aspire orchestrator
 │   ├── Sorcha.Admin/                # Blazor WASM admin UI (host)
 │   │   └── Sorcha.Admin.Client/     # Admin UI client components
+│   ├── Sorcha.Agent/                # Autonomous actor agent CLI
 │   ├── Sorcha.Cli/                  # Administrative CLI tool
 │   ├── Sorcha.Demo/                 # Demo application
 │   ├── Sorcha.McpServer/            # MCP Server for AI assistants (Claude Desktop, etc.)
@@ -393,7 +394,7 @@ tests/                               # 30 test projects
 └── Sorcha.UI.E2E.Tests/             # End-to-end Playwright tests
 ```
 
-**Project Count:** 41 source projects, 30 test projects
+**Project Count:** 42 source projects, 31 test projects
 
 ---
 

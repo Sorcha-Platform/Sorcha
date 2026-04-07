@@ -1,0 +1,45 @@
+{
+  "actor": {
+    "name": "planning-officer",
+    "description": "Zoning review, conditional routing, and final approval (remote machine)"
+  },
+  "connection": {
+    "gatewayUrl": "https://n1.sorcha.dev",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "{{roles.planning-officer.email}}",
+      "password": "$env:PLANNING_PASSWORD",
+      "organizationId": "{{roles.planning-officer.organizationId}}"
+    },
+    "walletAddress": "{{roles.planning-officer.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 30 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Planning Review",
+      "decision": "approve",
+      "payload": {
+        "zoningCompliant": true,
+        "planningNotes": "Site is within residential zoning area. Proposed development complies with local planning guidelines."
+      }
+    },
+    {
+      "actionName": "Final Approval",
+      "decision": "approve",
+      "payload": {
+        "approved": true,
+        "permitNumber": "RBC-2026-00142",
+        "validUntil": "2029-04-07",
+        "conditions": "Standard conditions apply. Construction must commence within 12 months."
+      }
+    }
+  ],
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/planning-officer-actions.jsonl"
+  }
+}

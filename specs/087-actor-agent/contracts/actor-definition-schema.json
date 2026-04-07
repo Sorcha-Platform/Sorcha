@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActorDefinition",
+  "description": "Configuration for a Sorcha autonomous actor agent",
+  "type": "object",
+  "required": ["actor", "connection", "inbox", "mode"],
+  "properties": {
+    "actor": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Actor identifier"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Human-readable description"
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "required": ["gatewayUrl", "registerId", "credentials", "walletAddress"],
+      "properties": {
+        "gatewayUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Sorcha gateway base URL"
+        },
+        "registerId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target register ID (supports {{placeholder}})"
+        },
+        "credentials": {
+          "type": "object",
+          "required": ["email", "password", "organizationId"],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "password": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Password or $env:VAR_NAME reference"
+            },
+            "organizationId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Organization ID (supports {{placeholder}})"
+            }
+          }
+        },
+        "walletAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Actor's wallet address (supports {{placeholder}})"
+        }
+      }
+    },
+    "inbox": {
+      "type": "object",
+      "properties": {
+        "signalR": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true }
+          }
+        },
+        "polling": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "intervalSeconds": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 300,
+              "default": 60
+            }
+          }
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["rules", "ai"],
+      "description": "Decision engine mode"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actionName", "decision"],
+        "properties": {
+          "actionName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Action name to match"
+          },
+          "condition": {
+            "description": "JSON Logic expression (default: always true)"
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["approve", "reject", "skip"]
+          },
+          "payload": {
+            "type": "object",
+            "description": "Payload template to submit"
+          }
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "promptFile": {
+          "type": "string",
+          "description": "Path to persona markdown file"
+        },
+        "model": {
+          "type": "string",
+          "default": "claude-sonnet-4-6"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.3
+        }
+      },
+      "required": ["promptFile"]
+    },
+    "resilience": {
+      "type": "object",
+      "properties": {
+        "retryCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 3
+        },
+        "retryDelaySeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "default": 2
+        },
+        "circuitBreakerThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5
+        },
+        "circuitBreakerDurationSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300,
+          "default": 30
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["Trace", "Debug", "Information", "Warning", "Error"],
+          "default": "Information"
+        },
+        "actionLog": {
+          "type": "string",
+          "description": "Path to JSONL audit file"
+        }
+      }
+    }
+  }
+}

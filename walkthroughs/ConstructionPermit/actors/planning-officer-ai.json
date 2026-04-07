@@ -1,0 +1,30 @@
+{
+  "actor": {
+    "name": "planning-officer-ai",
+    "description": "AI-powered planning officer using Claude to generate contextual responses"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "{{roles.planning-officer.email}}",
+      "password": "$env:PLANNING_PASSWORD",
+      "organizationId": "{{roles.planning-officer.organizationId}}"
+    },
+    "walletAddress": "{{roles.planning-officer.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 30 }
+  },
+  "mode": "ai",
+  "ai": {
+    "promptFile": "./prompts/planning-officer-ai.md",
+    "model": "claude-sonnet-4-6",
+    "temperature": 0.3
+  },
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/planning-officer-ai-actions.jsonl"
+  }
+}
