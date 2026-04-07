@@ -313,7 +313,8 @@ public class DocketFinalizationService
             foreach (var tx in txArray.EnumerateArray())
             {
                 // Only process Control transactions (TransactionType == 0)
-                if (tx.TryGetProperty("MetaData", out var meta) || tx.TryGetProperty("metaData", out meta))
+                if ((tx.TryGetProperty("MetaData", out var meta) || tx.TryGetProperty("metaData", out meta))
+                    && meta.ValueKind == JsonValueKind.Object)
                 {
                     if (meta.TryGetProperty("TransactionType", out var txType) ||
                         meta.TryGetProperty("transactionType", out txType))
