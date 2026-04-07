@@ -4,12 +4,29 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>sorcha-agent</AssemblyName>
     <RootNamespace>Sorcha.Agent</RootNamespace>
+
+    <!-- Global Tool Configuration -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>sorcha-agent</ToolCommandName>
+    <PackageId>Sorcha.Agent</PackageId>
+
+    <!-- Stable version for development -->
     <Version>1.0.0</Version>
-    <Description>Autonomous actor agent for Sorcha walkthrough execution</Description>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <Description>Autonomous actor agent for executing Sorcha decentralised register workflows</Description>
+    <PackageTags>sorcha;agent;automation;workflow;actor;decentralised</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Sorcha.Agent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Package README -->
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
