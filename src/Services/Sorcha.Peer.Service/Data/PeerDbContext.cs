@@ -183,7 +183,7 @@ public class RegisterSubscriptionEntity
     public string RegisterId { get; set; } = string.Empty;
     public ReplicationMode Mode { get; set; } = ReplicationMode.ForwardOnly;
     public RegisterSyncState SyncState { get; set; } = RegisterSyncState.Subscribing;
-    public long LastSyncedDocketVersion { get; set; } = 0;
+    public long LastSyncedDocketVersion { get; set; } = -1;
     public long LastSyncedTransactionVersion { get; set; } = 0;
     public long TotalDocketsInChain { get; set; } = 0;
     public string SourcePeerIds { get; set; } = string.Empty;

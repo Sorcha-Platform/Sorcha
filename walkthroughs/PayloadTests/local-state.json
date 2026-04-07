@@ -1,0 +1,24 @@
+{
+  "registerId": "f370bb3dbd72422494773ba5f5287246",
+  "gatewayUrl": "http://127.0.0.1",
+  "walletUrl": "http://127.0.0.1/api",
+  "profile": "gateway",
+  "registerUrl": "http://127.0.0.1/api",
+  "receiver": {
+    "walletAddress": "ws11qr5kfsuygemkdkusvdsw0kek4ecznjjef4hc9y7xr6gst4dfn6g7zngqsuy",
+    "email": "receiver@payload-test.local",
+    "publicKey": "6WTDhEZ3ZtuQY2Dn2zaucCnKWU1vgpPGHpEF1amekeE=",
+    "organizationId": "0fcf83ae-f6b8-4354-b91e-5f69d28602cd",
+    "password": "Dev_Pass_2025!"
+  },
+  "blueprintId": "pt-20260407083033",
+  "tenantUrl": "http://127.0.0.1/api",
+  "sender": {
+    "walletAddress": "ws11qr7a4e5nlrr6z6q39g75y73fxpwm97fms7t6gkjaefwjwt8ehldns0fw4af",
+    "email": "sender@payload-test.local",
+    "publicKey": "/drmk/jHoWgRKj1CeikwXbL5O4eXpFpdyl0nLPm/2zg=",
+    "organizationId": "c674be2f-303a-42f6-ab88-988a45dbf01c",
+    "password": "Dev_Pass_2025!"
+  },
+  "blueprintUrl": "http://127.0.0.1/api"
+}
