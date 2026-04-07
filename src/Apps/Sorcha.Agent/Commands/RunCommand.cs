@@ -85,12 +85,8 @@ public class RunCommand : Command
 
             if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Actor \"{actorName}\" starting...");
 
-            // Create HTTP client
-            // Polly resilience (retry + circuit breaker) is configured via ResilienceConfig
-            // and applied through the ActionExecutor for action submissions.
-            // SignalR has built-in reconnection via SorchaHubConnectionBuilder.
-            // AgentAuthService handles 401 re-authentication.
-            var httpClient = new HttpClient
+            // Create HTTP client (disposed at end of scope)
+            using var httpClient = new HttpClient
             {
                 BaseAddress = new Uri(definition.Connection.GatewayUrl.TrimEnd('/')),
                 Timeout = TimeSpan.FromSeconds(30)
@@ -113,6 +109,8 @@ public class RunCommand : Command
             if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Authenticated");
 
             // Create decision engine
+            // AI HttpClient is separate (calls Anthropic API, not Sorcha gateway)
+            using var aiHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
             IDecisionEngine decisionEngine = definition.Mode switch
             {
                 "rules" => new RulesDecisionEngine(
@@ -120,7 +118,7 @@ public class RunCommand : Command
                     loggerFactory.CreateLogger<RulesDecisionEngine>()),
                 "ai" => new AiDecisionEngine(
                     definition.Ai!,
-                    new HttpClient(),
+                    aiHttpClient,
                     loggerFactory.CreateLogger<AiDecisionEngine>()),
                 _ => throw new NotSupportedException($"Mode '{definition.Mode}' not supported")
             };
@@ -130,8 +128,8 @@ public class RunCommand : Command
 
             // Create action executor
             var actionExecutor = new ActionExecutor(
+                httpClient, authService,
                 loggerFactory.CreateLogger<ActionExecutor>(), auditLogger);
-            actionExecutor.Configure(httpClient, authService);
 
             // Create inbox listeners
             var listeners = new List<IInboxListener>();

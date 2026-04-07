@@ -15,24 +15,21 @@ namespace Sorcha.Agent.Execution;
 /// </summary>
 public class ActionExecutor : IActionExecutor
 {
+    private readonly HttpClient _httpClient;
+    private readonly AgentAuthService _authService;
     private readonly ILogger<ActionExecutor> _logger;
     private readonly AuditLogger _auditLogger;
-    private HttpClient? _httpClient;
-    private AgentAuthService? _authService;
 
-    public ActionExecutor(ILogger<ActionExecutor> logger, AuditLogger auditLogger)
-    {
-        _logger = logger;
-        _auditLogger = auditLogger;
-    }
-
-    /// <summary>
-    /// Configures the executor with HTTP client and auth service. Called during startup.
-    /// </summary>
-    public void Configure(HttpClient httpClient, AgentAuthService authService)
+    public ActionExecutor(
+        HttpClient httpClient,
+        AgentAuthService authService,
+        ILogger<ActionExecutor> logger,
+        AuditLogger auditLogger)
     {
         _httpClient = httpClient;
         _authService = authService;
+        _logger = logger;
+        _auditLogger = auditLogger;
     }
 
     public async Task<bool> ExecuteAsync(PendingAction action, ActionDecision decision, CancellationToken cancellationToken = default)
@@ -57,12 +54,8 @@ public class ActionExecutor : IActionExecutor
                 return true;
             }
 
-            if (_httpClient is null || _authService is null)
-                throw new InvalidOperationException("ActionExecutor not configured. Call Configure() first.");
-
             var token = await _authService.GetTokenAsync(cancellationToken);
 
-            // Determine endpoint based on decision
             var endpoint = decision.Decision == "reject"
                 ? $"/api/instances/{action.InstanceId}/actions/{action.ActionName}/reject"
                 : $"/api/instances/{action.InstanceId}/actions/{action.ActionName}/execute";

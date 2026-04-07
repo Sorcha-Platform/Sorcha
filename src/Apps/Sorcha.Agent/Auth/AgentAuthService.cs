@@ -118,7 +118,7 @@ public class AgentAuthService
     /// <summary>
     /// Token provider func for SignalR hub connections.
     /// </summary>
-    public Task<string?> TokenProviderAsync() => GetTokenAsync().ContinueWith(t => (string?)t.Result);
+    public async Task<string?> TokenProviderAsync() => await GetTokenAsync();
 
     private async Task RefreshTokenAsync(CancellationToken cancellationToken)
     {

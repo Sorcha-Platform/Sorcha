@@ -50,7 +50,7 @@ public class CompositeInboxListener : IInboxListener
         }, cancellationToken)).ToArray();
 
         // Complete channel when all listeners finish
-        _ = Task.WhenAll(tasks).ContinueWith(_ => channel.Writer.TryComplete(), cancellationToken);
+        _ = Task.WhenAll(tasks).ContinueWith(_ => channel.Writer.TryComplete(), CancellationToken.None);
 
         // Yield deduplicated actions
         await foreach (var action in channel.Reader.ReadAllAsync(cancellationToken))

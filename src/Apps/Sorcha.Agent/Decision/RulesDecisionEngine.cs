@@ -60,7 +60,7 @@ public class RulesDecisionEngine : IDecisionEngine
         return Task.FromResult(new ActionDecision("skip", null, "No matching rule"));
     }
 
-    private static bool EvaluateCondition(JsonNode condition, JsonNode data)
+    private bool EvaluateCondition(JsonNode condition, JsonNode data)
     {
         try
         {
@@ -70,8 +70,9 @@ public class RulesDecisionEngine : IDecisionEngine
             var result = rule.Apply(data);
             return IsTruthy(result);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.LogWarning(ex, "JSON Logic condition evaluation failed");
             return false;
         }
     }

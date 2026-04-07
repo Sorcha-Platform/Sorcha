@@ -20,11 +20,15 @@ public partial class AiDecisionEngine : IDecisionEngine
     private readonly ILogger<AiDecisionEngine> _logger;
     private string? _personaPrompt;
 
+    private readonly string _apiKey;
+
     public AiDecisionEngine(AiConfig config, HttpClient httpClient, ILogger<AiDecisionEngine> logger)
     {
         _config = config;
         _httpClient = httpClient;
         _logger = logger;
+        _apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY")
+            ?? throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set");
     }
 
     public async Task<ActionDecision> DecideAsync(PendingAction action, CancellationToken cancellationToken = default)
@@ -130,10 +134,6 @@ public partial class AiDecisionEngine : IDecisionEngine
 
     private async Task<string> CallClaudeAsync(string message, CancellationToken cancellationToken)
     {
-        var apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-        if (string.IsNullOrEmpty(apiKey))
-            throw new InvalidOperationException("ANTHROPIC_API_KEY environment variable is not set");
-
         var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
         {
             Content = JsonContent.Create(new
@@ -148,7 +148,7 @@ public partial class AiDecisionEngine : IDecisionEngine
             })
         };
 
-        request.Headers.Add("x-api-key", apiKey);
+        request.Headers.Add("x-api-key", _apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
 
         var response = await _httpClient.SendAsync(request, cancellationToken);

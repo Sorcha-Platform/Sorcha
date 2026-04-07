@@ -28,12 +28,25 @@ public class ActionExecutorTests
     [Fact]
     public void ActionExecutor_CanBeConstructed()
     {
-        // Verify the ActionExecutor can be instantiated with its dependencies
-        // Full integration testing requires running services
         var logger = new Mock<ILogger<ActionExecutor>>();
         var auditLogger = new AuditLogger(null);
+        var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost") };
+        var authLogger = new Mock<ILogger<Sorcha.Agent.Auth.AgentAuthService>>();
+        var config = new Sorcha.Agent.Configuration.ConnectionConfig
+        {
+            GatewayUrl = "http://localhost",
+            RegisterId = "reg-1",
+            Credentials = new Sorcha.Agent.Configuration.CredentialsConfig
+            {
+                Email = "test@test.com",
+                Password = "pass",
+                OrganizationId = "org-1"
+            },
+            WalletAddress = "wallet-1"
+        };
+        var authService = new Sorcha.Agent.Auth.AgentAuthService(httpClient, config, authLogger.Object);
 
-        var executor = new ActionExecutor(logger.Object, auditLogger);
+        var executor = new ActionExecutor(httpClient, authService, logger.Object, auditLogger);
         executor.Should().NotBeNull();
     }
 

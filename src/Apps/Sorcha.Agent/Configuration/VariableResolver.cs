@@ -20,7 +20,7 @@ public static partial class VariableResolver
     {
         var unresolved = new List<string>();
 
-        // Resolve $env:VAR_NAME
+        // Resolve $env:VAR_NAME (JSON-escape values to prevent injection)
         var result = EnvVarPattern.Replace(json, match =>
         {
             var varName = match.Groups[1].Value;
@@ -30,7 +30,8 @@ public static partial class VariableResolver
                 unresolved.Add($"$env:{varName}");
                 return match.Value;
             }
-            return value;
+            // JSON-escape the value to handle quotes, backslashes, etc.
+            return JsonSerializer.Serialize(value)[1..^1];
         });
 
         // Resolve {{placeholder}}

@@ -33,19 +33,38 @@ public class AiDecisionEngineTests
     };
 
     [Fact]
-    public void AiDecisionEngine_CanBeConstructed()
+    public void AiDecisionEngine_CanBeConstructed_WithApiKey()
     {
-        var config = new AiConfig
+        Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-test-key");
+        try
         {
-            PromptFile = "test-prompt.md",
-            Model = "claude-sonnet-4-6",
-            Temperature = 0.3
-        };
-        var logger = new Mock<ILogger<AiDecisionEngine>>();
-        var httpClient = new HttpClient();
+            var config = new AiConfig
+            {
+                PromptFile = "test-prompt.md",
+                Model = "claude-sonnet-4-6",
+                Temperature = 0.3
+            };
+            var logger = new Mock<ILogger<AiDecisionEngine>>();
+            var httpClient = new HttpClient();
 
-        var engine = new AiDecisionEngine(config, httpClient, logger.Object);
-        engine.Should().NotBeNull();
+            var engine = new AiDecisionEngine(config, httpClient, logger.Object);
+            engine.Should().NotBeNull();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", null);
+        }
+    }
+
+    [Fact]
+    public void AiDecisionEngine_ThrowsWithoutApiKey()
+    {
+        Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", null);
+        var config = new AiConfig { PromptFile = "test.md" };
+        var logger = new Mock<ILogger<AiDecisionEngine>>();
+
+        var act = () => new AiDecisionEngine(config, new HttpClient(), logger.Object);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*ANTHROPIC_API_KEY*");
     }
 
     [Fact]
