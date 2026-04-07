@@ -97,6 +97,28 @@ Foundation walkthroughs use one standalone script (no `state.json`):
 - `McpServerBasics/test-mcp-server.ps1`
 - `RegisterMongoDB/test-mongodb-integration.ps1`
 
+### Actor-Based Execution (sorcha-agent)
+
+An alternative to the single-threaded `run.ps1` pattern. Each participant runs as an independent `sorcha-agent` process that autonomously discovers and responds to pending actions.
+
+```powershell
+# Setup is the same
+pwsh walkthroughs/ConstructionPermit/setup.ps1
+
+# Run with autonomous actors instead of run.ps1
+pwsh walkthroughs/ConstructionPermit/run-agents.ps1
+```
+
+**How it works:**
+- Each actor is defined by a JSON file (`actors/*.json`) specifying identity, connection, and decision rules
+- The actor process authenticates, connects via SignalR (with polling fallback), and responds to pending actions
+- Two decision modes: **rules** (JSON Logic conditions) and **ai** (Claude API with persona prompts)
+- Actors can run on different machines — copy the actor JSON + `state.json` to deploy remotely
+
+**Actor files for ConstructionPermit:** `walkthroughs/ConstructionPermit/actors/`
+
+See `src/Apps/Sorcha.Agent/` for the agent CLI tool and `walkthroughs/ConstructionPermit/actors/README.md` for usage details.
+
 ---
 
 ## run-all.ps1
