@@ -54,20 +54,20 @@ public class OperationNotificationListenerTests : BunitContext
     {
         // Arrange
         var cut = Render<OperationNotificationListener>();
-        var dto = new EncryptionOperationCompletedDto
+        var signal = new EncryptionSignal
         {
             OperationId = "op-success",
-            IsSuccess = true,
-            TransactionHash = "abc123def456",
+            PercentComplete = 100,
+            Status = "complete",
             Timestamp = DateTimeOffset.UtcNow
         };
 
         // Act
-        _eventsHub.RaiseEncryptionOperationCompleted(dto);
+        _eventsHub.RaiseEncryptionOperationCompleted(signal);
 
         // Assert
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption completed") && msg.Contains("abc123def456")),
+            It.Is<string>(msg => msg.Contains("Encryption complete")),
             Severity.Success,
             It.IsAny<Action<SnackbarOptions>>(),
             It.IsAny<string>()), Times.Once);
@@ -78,20 +78,20 @@ public class OperationNotificationListenerTests : BunitContext
     {
         // Arrange
         var cut = Render<OperationNotificationListener>();
-        var dto = new EncryptionOperationCompletedDto
+        var signal = new EncryptionSignal
         {
             OperationId = "op-fail",
-            IsSuccess = false,
-            ErrorMessage = "P-256 key not available",
+            PercentComplete = 30,
+            Status = "failed",
             Timestamp = DateTimeOffset.UtcNow
         };
 
         // Act
-        _eventsHub.RaiseEncryptionOperationCompleted(dto);
+        _eventsHub.RaiseEncryptionOperationCompleted(signal);
 
         // Assert
         _snackbarMock.Verify(s => s.Add(
-            It.Is<string>(msg => msg.Contains("Encryption failed") && msg.Contains("P-256 key not available")),
+            It.Is<string>(msg => msg.Contains("Encryption failed")),
             Severity.Error,
             It.IsAny<Action<SnackbarOptions>>(),
             It.IsAny<string>()), Times.Once);
@@ -151,7 +151,7 @@ public class OperationNotificationListenerTests : BunitContext
         {
             var eventField = typeof(EventsHubConnection)
                 .GetField(nameof(OnEncryptionOperationCompleted), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            var handler = eventField?.GetValue(this) as Action<EncryptionOperationCompletedDto>;
+            var handler = eventField?.GetValue(this) as Action<EncryptionSignal>;
             if (handler == null) return 0;
             return handler.GetInvocationList().Length;
         }
@@ -159,12 +159,12 @@ public class OperationNotificationListenerTests : BunitContext
         /// <summary>
         /// Raises the OnEncryptionOperationCompleted event on the base class via reflection.
         /// </summary>
-        public void RaiseEncryptionOperationCompleted(EncryptionOperationCompletedDto dto)
+        public void RaiseEncryptionOperationCompleted(EncryptionSignal signal)
         {
             var field = typeof(EventsHubConnection)
                 .GetField(nameof(OnEncryptionOperationCompleted), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            var handler = field?.GetValue(this) as Action<EncryptionOperationCompletedDto>;
-            handler?.Invoke(dto);
+            var handler = field?.GetValue(this) as Action<EncryptionSignal>;
+            handler?.Invoke(signal);
         }
     }
 }

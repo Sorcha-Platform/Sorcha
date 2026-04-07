@@ -387,7 +387,7 @@
         }
     }
 
-    private void OnPendingActionReceived(Sorcha.UI.Core.Models.PendingActionNotificationDto _)
+    private void OnPendingActionReceived(Sorcha.UI.Core.Models.Actions.SignalNotification _)
     {
         _pendingActionCount++;
         InvokeAsync(StateHasChanged);

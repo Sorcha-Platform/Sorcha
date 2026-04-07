@@ -5,12 +5,12 @@
 @inject EventsHubConnection EventsHub
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
-@using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Models.Actions
 @using Sorcha.UI.Core.Services
 @using MudBlazor
 
 @code {
-    private readonly Queue<PendingActionNotificationDto> _queue = new();
+    private readonly Queue<SignalNotification> _queue = new();
     private bool _processing;
 
     /// <inheritdoc />
@@ -19,11 +19,11 @@
         EventsHub.OnPendingActionReceived += HandlePendingAction;
     }
 
-    private void HandlePendingAction(PendingActionNotificationDto dto)
+    private void HandlePendingAction(SignalNotification signal)
     {
         InvokeAsync(async () =>
         {
-            _queue.Enqueue(dto);
+            _queue.Enqueue(signal);
             if (_processing) return;
             _processing = true;
 
@@ -39,20 +39,13 @@
         });
     }
 
-    private void ShowToast(PendingActionNotificationDto dto)
+    private void ShowToast(SignalNotification signal)
     {
-        var severity = dto.Urgency switch
-        {
-            "urgent" => Severity.Error,
-            "warning" => Severity.Warning,
-            _ => Severity.Info
-        };
+        var message = "New action available";
 
-        var message = $"{dto.SenderDisplayName} — {dto.ActionTitle}: {dto.Summary}";
-
-        Snackbar.Add(message, severity, config =>
+        Snackbar.Add(message, Severity.Info, config =>
         {
-            config.VisibleStateDuration = dto.Urgency == "urgent" ? 10000 : 5000;
+            config.VisibleStateDuration = 5000;
             config.ShowCloseIcon = true;
         });
     }

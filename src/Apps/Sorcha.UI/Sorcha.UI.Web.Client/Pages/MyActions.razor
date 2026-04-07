@@ -234,7 +234,7 @@
 
 @code {
     private List<PendingActionViewModel> _actions = [];
-    private List<ActionAvailableNotification> _recentNotifications = [];
+    private List<SignalNotification> _recentNotifications = [];
     private List<KeyValuePair<string, List<PendingActionViewModel>>> _groupedActions = [];
     private ConnectionState _connectionState = new();
     private ActionsHubConnection? _actionsHub = null;
@@ -295,7 +295,6 @@
         // Subscribe to events
         _actionsHub.OnConnectionStateChanged += HandleConnectionStateChanged;
         _actionsHub.OnActionAvailable += HandleActionAvailable;
-        _actionsHub.OnActionConfirmed += HandleActionConfirmed;
         _actionsHub.OnActionRejected += HandleActionRejected;
         _actionsHub.OnWorkflowCompleted += HandleWorkflowCompleted;
 
@@ -467,29 +466,23 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleActionAvailable(ActionAvailableNotification notification)
+    private async Task HandleActionAvailable(SignalNotification signal)
     {
-        _recentNotifications.Add(notification);
-        // Real-time event delivered to ActivityLogPanel via EventsHub
+        _recentNotifications.Add(signal);
+        // Real-time signal — reload actions from REST to get full details
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    private Task HandleActionConfirmed(ActionNotification notification)
+    private Task HandleActionRejected(SignalNotification signal)
     {
-        // Real-time event delivered to ActivityLogPanel via EventsHub
+        // Real-time signal delivered to ActivityLogPanel via EventsHub
         return InvokeAsync(StateHasChanged);
     }
 
-    private Task HandleActionRejected(ActionRejectedNotification notification)
+    private async Task HandleWorkflowCompleted(SignalNotification signal)
     {
-        // Real-time event delivered to ActivityLogPanel via EventsHub
-        return InvokeAsync(StateHasChanged);
-    }
-
-    private async Task HandleWorkflowCompleted(WorkflowCompletedNotification notification)
-    {
-        // Real-time event delivered to ActivityLogPanel via EventsHub
+        // Real-time signal — reload actions from REST to get full details
         await LoadActionsAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -524,7 +517,6 @@
         {
             _actionsHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
             _actionsHub.OnActionAvailable -= HandleActionAvailable;
-            _actionsHub.OnActionConfirmed -= HandleActionConfirmed;
             _actionsHub.OnActionRejected -= HandleActionRejected;
             _actionsHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
         }

@@ -4,6 +4,7 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models;
+using Sorcha.UI.Core.Models.Actions;
 using Sorcha.UI.Core.Models.Admin;
 using Sorcha.UI.Core.Models.Registers;
 using Sorcha.UI.Core.Services.Authentication;
@@ -47,12 +48,12 @@ public class EventsHubConnection : IAsyncDisposable
     /// <summary>
     /// Event raised when an encryption operation completes (success or failure).
     /// </summary>
-    public event Action<EncryptionOperationCompletedDto>? OnEncryptionOperationCompleted;
+    public event Action<EncryptionSignal>? OnEncryptionOperationCompleted;
 
     /// <summary>
-    /// Event raised when a pending action notification is received (real-time).
+    /// Event raised when a pending action signal is received (real-time).
     /// </summary>
-    public event Action<PendingActionNotificationDto>? OnPendingActionReceived;
+    public event Action<SignalNotification>? OnPendingActionReceived;
 
     /// <summary>
     /// Event raised when a digest notification is received.
@@ -247,27 +248,27 @@ public class EventsHubConnection : IAsyncDisposable
             OnUnreadCountUpdated?.Invoke(count);
         });
 
-        // EncryptionOperationCompleted - encryption operation finished (success or failure)
-        _hubConnection.On<EncryptionOperationCompletedDto>("EncryptionOperationCompleted", dto =>
+        // EncryptionOperationCompleted - thin encryption signal (success or failure)
+        _hubConnection.On<EncryptionSignal>("EncryptionOperationCompleted", signal =>
         {
             _logger.LogDebug(
-                "Encryption operation completed: Id={OperationId}, Success={IsSuccess}",
-                dto.OperationId,
-                dto.IsSuccess);
+                "Encryption operation signal: OperationId={OperationId}, Status={Status}",
+                signal.OperationId,
+                signal.Status);
 
-            OnEncryptionOperationCompleted?.Invoke(dto);
+            OnEncryptionOperationCompleted?.Invoke(signal);
         });
 
-        // InboundActionReceived - pending action notification from EventsHubNotificationBridge
-        _hubConnection.On<PendingActionNotificationDto>("InboundActionReceived", dto =>
+        // InboundActionReceived - thin signal from EventsHubNotificationBridge
+        _hubConnection.On<SignalNotification>("InboundActionReceived", signal =>
         {
             _logger.LogDebug(
-                "Pending action received: EventId={EventId}, Summary={Summary}, Urgency={Urgency}",
-                dto.EventId,
-                dto.Summary,
-                dto.Urgency);
+                "Pending action signal: Instance={InstanceId}, SignalType={SignalType}, CorrelationId={CorrelationId}",
+                signal.InstanceId,
+                signal.SignalType,
+                signal.CorrelationId);
 
-            OnPendingActionReceived?.Invoke(dto);
+            OnPendingActionReceived?.Invoke(signal);
         });
 
         // DigestNotificationReceived - batched digest notification
