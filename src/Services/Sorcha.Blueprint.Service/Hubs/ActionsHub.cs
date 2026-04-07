@@ -216,6 +216,27 @@ public class ActionsHub : Hub
 }
 
 /// <summary>
+/// Well-known signal type constants for <see cref="SignalNotification.SignalType"/>.
+/// </summary>
+public static class SignalTypes
+{
+    public const string ActionAvailable = "action-available";
+    public const string ActionRejected = "action-rejected";
+    public const string WorkflowCompleted = "workflow-completed";
+    public const string InboundAction = "inbound-action";
+}
+
+/// <summary>
+/// Well-known status constants for <see cref="EncryptionSignal.Status"/>.
+/// </summary>
+public static class EncryptionStatuses
+{
+    public const string Encrypting = "encrypting";
+    public const string Complete = "complete";
+    public const string Failed = "failed";
+}
+
+/// <summary>
 /// Thin signal notification sent to clients via SignalR.
 /// Contains only signal type and instance identifier — clients pull details
 /// through authenticated REST endpoints after receiving the signal.

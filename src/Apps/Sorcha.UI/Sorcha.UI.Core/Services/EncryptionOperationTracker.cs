@@ -137,7 +137,7 @@ public sealed class EncryptionOperationTracker : IEncryptionOperationTracker
         if (!_operations.TryGetValue(signal.OperationId, out var op)) return Task.CompletedTask;
 
         op.Status = OperationDisplayStatus.Failed;
-        op.ErrorMessage = signal.Status;
+        op.ErrorMessage = null; // Detail available via pull-back from operations endpoint
 
         _logger.LogDebug("Encryption operation {OperationId} failed: {Status}", signal.OperationId, signal.Status);
         OnStateChanged?.Invoke();

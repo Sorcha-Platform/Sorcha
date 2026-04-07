@@ -51,12 +51,6 @@ public class ActionsHubConnection : IAsyncDisposable
     public event Func<SignalNotification, Task>? OnActionAvailable;
 
     /// <summary>
-    /// Event raised when an action is confirmed.
-    /// Parameters: SignalNotification with SignalType "action-confirmed"
-    /// </summary>
-    public event Func<SignalNotification, Task>? OnActionConfirmed;
-
-    /// <summary>
     /// Event raised when an action is rejected.
     /// Parameters: SignalNotification with SignalType "action-rejected"
     /// </summary>
@@ -298,20 +292,6 @@ public class ActionsHubConnection : IAsyncDisposable
             if (OnActionAvailable != null)
             {
                 await OnActionAvailable(signal);
-            }
-        });
-
-        // ActionConfirmed - thin signal
-        _hubConnection.On<SignalNotification>("ActionConfirmed", async signal =>
-        {
-            _logger.LogDebug(
-                "Action confirmed signal: Instance={InstanceId}, CorrelationId={CorrelationId}",
-                signal.InstanceId,
-                signal.CorrelationId);
-
-            if (OnActionConfirmed != null)
-            {
-                await OnActionConfirmed(signal);
             }
         });
 

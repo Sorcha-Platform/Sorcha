@@ -295,7 +295,6 @@
         // Subscribe to events
         _actionsHub.OnConnectionStateChanged += HandleConnectionStateChanged;
         _actionsHub.OnActionAvailable += HandleActionAvailable;
-        _actionsHub.OnActionConfirmed += HandleActionConfirmed;
         _actionsHub.OnActionRejected += HandleActionRejected;
         _actionsHub.OnWorkflowCompleted += HandleWorkflowCompleted;
 
@@ -475,12 +474,6 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private Task HandleActionConfirmed(SignalNotification signal)
-    {
-        // Real-time signal delivered to ActivityLogPanel via EventsHub
-        return InvokeAsync(StateHasChanged);
-    }
-
     private Task HandleActionRejected(SignalNotification signal)
     {
         // Real-time signal delivered to ActivityLogPanel via EventsHub
@@ -524,7 +517,6 @@
         {
             _actionsHub.OnConnectionStateChanged -= HandleConnectionStateChanged;
             _actionsHub.OnActionAvailable -= HandleActionAvailable;
-            _actionsHub.OnActionConfirmed -= HandleActionConfirmed;
             _actionsHub.OnActionRejected -= HandleActionRejected;
             _actionsHub.OnWorkflowCompleted -= HandleWorkflowCompleted;
         }

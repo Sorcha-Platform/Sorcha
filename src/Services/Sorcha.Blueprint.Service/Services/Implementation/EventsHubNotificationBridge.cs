@@ -126,7 +126,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             var userGroup = $"user:{actionEvent.UserId}";
             var signal = new Hubs.SignalNotification
             {
-                SignalType = "inbound-action",
+                SignalType = SignalTypes.InboundAction,
                 InstanceId = actionEvent.InstanceId ?? string.Empty,
                 CorrelationId = actionEvent.Id
             };

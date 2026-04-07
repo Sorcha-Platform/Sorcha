@@ -41,9 +41,7 @@
 
     private void ShowToast(SignalNotification signal)
     {
-        var message = string.IsNullOrEmpty(signal.InstanceId)
-            ? "New action available"
-            : $"New action available — {signal.InstanceId}";
+        var message = "New action available";
 
         Snackbar.Add(message, Severity.Info, config =>
         {

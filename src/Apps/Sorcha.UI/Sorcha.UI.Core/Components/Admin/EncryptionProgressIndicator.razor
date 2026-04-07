@@ -280,7 +280,7 @@
         _operation = _operation with
         {
             Stage = OperationStage.Failed,
-            ErrorMessage = signal.Status
+            ErrorMessage = null // Detail available via pull-back from operations endpoint
         };
         _isLoading = false;
 

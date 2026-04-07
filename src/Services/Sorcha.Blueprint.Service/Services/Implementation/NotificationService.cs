@@ -43,7 +43,7 @@ public class NotificationService : INotificationService
 
         var signal = new SignalNotification
         {
-            SignalType = "action-available",
+            SignalType = SignalTypes.ActionAvailable,
             InstanceId = instanceId,
             CorrelationId = Guid.NewGuid()
         };
@@ -68,7 +68,7 @@ public class NotificationService : INotificationService
 
         var signal = new SignalNotification
         {
-            SignalType = "action-rejected",
+            SignalType = SignalTypes.ActionRejected,
             InstanceId = instanceId,
             CorrelationId = Guid.NewGuid()
         };
@@ -85,7 +85,7 @@ public class NotificationService : INotificationService
     {
         var signal = new SignalNotification
         {
-            SignalType = "workflow-completed",
+            SignalType = SignalTypes.WorkflowCompleted,
             InstanceId = instanceId,
             CorrelationId = Guid.NewGuid()
         };
