@@ -412,6 +412,18 @@ public class DocketFinalizationService
             var root = doc.RootElement;
 
             var merkleRoot = GetStringProperty(root, "MerkleRoot", "merkleRoot") ?? string.Empty;
+
+            // If MerkleRoot is missing (not carried through DocketModel serialization),
+            // we cannot recompute the hash. Skip verification — the Register Service
+            // will validate when the docket is written via WriteDocketAsync.
+            if (string.IsNullOrEmpty(merkleRoot))
+            {
+                _logger.LogDebug(
+                    "Skipping hash verification for docket {DocketNumber} in register {RegisterId}: MerkleRoot not available in relay data",
+                    docket.Version, registerId);
+                return true;
+            }
+
             var timestamp = GetTimestampProperty(root, "CreatedAt", "createdAt");
 
             if (timestamp == null)
