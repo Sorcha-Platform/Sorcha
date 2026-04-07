@@ -32,26 +32,38 @@ jobs:
       - name: Detect changed libraries
         id: detect
         run: |
+          ALL_LIBS='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
+
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all libraries"
-            CHANGED='["Sorcha.Register.Models","Sorcha.Tenant.Models","Sorcha.Blueprint.Models","Sorcha.Storage.Abstractions","Sorcha.Cryptography","Sorcha.Blueprint.Schemas","Sorcha.Blueprint.Schemas.Client","Sorcha.Storage.InMemory","Sorcha.Storage.EFCore","Sorcha.Storage.MongoDB","Sorcha.Storage.Redis","Sorcha.TransactionHandler","Sorcha.Validator.Core","Sorcha.Wallet.Core","Sorcha.Wallet.Portable","Sorcha.ServiceClients","Sorcha.ServiceClients.Http","Sorcha.ServiceDefaults","Sorcha.Blueprint.Engine","Sorcha.Blueprint.Fluent","Sorcha.Register.Core","Sorcha.Register.Storage","Sorcha.Register.Storage.InMemory","Sorcha.Register.Storage.MongoDB","Sorcha.Register.Storage.Redis"]'
+            CHANGED="$ALL_LIBS"
           else
+            # Compare each library against its last version-bump commit.
+            # This catches accumulated drift — not just the latest commit.
             CHANGED="["
             FIRST=true
-            for dir in src/Common/*/; do
+            for dir in src/Common/*/ src/Core/*/; do
+              [ ! -d "$dir" ] && continue
               LIB=$(basename "$dir")
-              if git diff --name-only HEAD~1 HEAD | grep -q "src/Common/$LIB/"; then
-                if [ "$FIRST" = true ]; then
-                  FIRST=false
+              CSPROJ="$dir$LIB.csproj"
+              [ ! -f "$CSPROJ" ] && continue
+
+              # Find the commit that last bumped the version (CI version commits)
+              LAST_BUMP=$(git log --oneline --all -1 --grep="chore: bump $LIB to" --format="%H" 2>/dev/null || true)
+
+              if [ -z "$LAST_BUMP" ]; then
+                # No version-bump commit found — library was never published via CI
+                HAS_CHANGES=true
+              else
+                # Check if any source files changed since the last version bump
+                if git diff --name-only "$LAST_BUMP" HEAD -- "$dir" | grep -qv '\.csproj$'; then
+                  HAS_CHANGES=true
                 else
-                  CHANGED="$CHANGED,"
+                  HAS_CHANGES=false
                 fi
-                CHANGED="$CHANGED\"$LIB\""
               fi
-            done
-            for dir in src/Core/*/; do
-              LIB=$(basename "$dir")
-              if git diff --name-only HEAD~1 HEAD | grep -q "src/Core/$LIB/"; then
+
+              if [ "$HAS_CHANGES" = true ]; then
                 if [ "$FIRST" = true ]; then
                   FIRST=false
                 else
