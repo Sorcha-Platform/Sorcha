@@ -1102,11 +1102,16 @@ public class ActionExecutionService : IActionExecutionService
     {
         foreach (var nextAction in routingResult.NextActions)
         {
+            // Resolve participant wallet address for direct notification
+            string? walletAddress = null;
+            instance.ParticipantWallets?.TryGetValue(nextAction.ParticipantId, out walletAddress);
+
             await _notificationService.NotifyActionAvailableAsync(
                 instance.Id,
                 nextAction.ActionId,
                 nextAction.ActionTitle,
                 nextAction.ParticipantId,
+                walletAddress,
                 cancellationToken);
         }
 

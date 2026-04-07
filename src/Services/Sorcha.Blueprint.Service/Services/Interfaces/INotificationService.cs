@@ -45,6 +45,7 @@ public interface INotificationService
         int actionId,
         string actionTitle,
         string participantId,
+        string? participantWalletAddress = null,
         CancellationToken ct = default);
 
     /// <summary>

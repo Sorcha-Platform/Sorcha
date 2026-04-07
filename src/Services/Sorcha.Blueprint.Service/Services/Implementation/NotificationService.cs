@@ -120,22 +120,38 @@ public class NotificationService : INotificationService
         int actionId,
         string actionTitle,
         string participantId,
+        string? participantWalletAddress = null,
         CancellationToken ct = default)
     {
         try
         {
-            var groupName = GetInstanceGroupName(instanceId);
+            var notification = new
+            {
+                InstanceId = instanceId,
+                ActionId = actionId,
+                ActionTitle = actionTitle,
+                ParticipantId = participantId,
+                Timestamp = DateTimeOffset.UtcNow
+            };
 
+            // Send to instance group (for UI subscribers watching the instance)
+            var instanceGroup = GetInstanceGroupName(instanceId);
             await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("ActionAvailable", new
-                {
-                    InstanceId = instanceId,
-                    ActionId = actionId,
-                    ActionTitle = actionTitle,
-                    ParticipantId = participantId,
-                    Timestamp = DateTimeOffset.UtcNow
-                }, ct);
+                .Group(instanceGroup)
+                .SendAsync("ActionAvailable", notification, ct);
+
+            // Also send to the participant's wallet group (for agent actors)
+            if (!string.IsNullOrEmpty(participantWalletAddress))
+            {
+                var walletGroup = GetWalletGroupName(participantWalletAddress);
+                await _hubContext.Clients
+                    .Group(walletGroup)
+                    .SendAsync("ActionAvailable", notification, ct);
+
+                _logger.LogInformation(
+                    "Sent ActionAvailable to wallet {WalletAddress} for instance {InstanceId}, action {ActionId}",
+                    participantWalletAddress, instanceId, actionId);
+            }
 
             _logger.LogInformation(
                 "Sent ActionAvailable notification for instance {InstanceId}, action {ActionId} to participant {ParticipantId}",
