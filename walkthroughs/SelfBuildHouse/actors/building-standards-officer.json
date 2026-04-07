@@ -1,0 +1,58 @@
+{
+  "actor": {
+    "name": "building-standards-officer",
+    "description": "Building standards review and warrant issuance"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{buildingRegisterId}}",
+    "credentials": {
+      "email": "$env:ADMIN_EMAIL",
+      "password": "$env:ADMIN_PASSWORD",
+      "organizationId": "{{organizationId}}"
+    },
+    "walletAddress": "{{wallets.building-standards-officer}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 20 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Building Standards Review",
+      "decision": "approve",
+      "payload": {
+        "standard1Structure": "pass",
+        "standard2Fire": "pass",
+        "standard3Environment": "pass",
+        "standard4Safety": "pass",
+        "standard5Noise": "pass",
+        "standard6Energy": "pass",
+        "standard7Sustainability": "pass",
+        "overallDecision": "approve",
+        "reviewNotes": "All 7 Scottish Building Standards met. Timber-frame engineering adequate. Fire detection LD2 standard. ASHP + solar PV achieves SAP 86. Warrant recommended."
+      }
+    },
+    {
+      "actionName": "Issue Building Warrant",
+      "decision": "approve",
+      "payload": {
+        "warrantReference": "26/00142/BW",
+        "grantDate": "2026-05-20",
+        "expiryDate": "2029-05-20",
+        "approvedPlansReference": "DWG-001-A through DWG-012-A",
+        "stagedInspections": ["Foundation", "Structure & Weathertight", "Final Completion"],
+        "conditions": [
+          "Notify Building Standards 48 hours before each inspection stage",
+          "Do not backfill foundations until inspected and approved",
+          "Submit electrical installation certificate before final inspection"
+        ]
+      }
+    }
+  ],
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/building-standards-officer-actions.jsonl"
+  }
+}
