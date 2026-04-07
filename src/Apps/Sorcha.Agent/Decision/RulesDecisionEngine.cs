@@ -52,7 +52,8 @@ public class RulesDecisionEngine : IDecisionEngine
             return Task.FromResult(new ActionDecision(
                 rule.Decision,
                 payload,
-                $"Rule matched: {rule.ActionName} → {rule.Decision}"));
+                $"Rule matched: {rule.ActionName} → {rule.Decision}",
+                rule.PreActions));
         }
 
         // No match

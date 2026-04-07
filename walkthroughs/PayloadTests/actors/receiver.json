@@ -1,0 +1,34 @@
+{
+  "actor": {
+    "name": "receiver",
+    "description": "Acknowledges receipt of file transfer"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "{{receiver.email}}",
+      "password": "$env:RECEIVER_PASSWORD",
+      "organizationId": "{{receiver.organizationId}}"
+    },
+    "walletAddress": "{{receiver.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 30 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Acknowledge Receipt",
+      "decision": "approve",
+      "payload": {
+        "acknowledged": true
+      }
+    }
+  ],
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/receiver-actions.jsonl"
+  }
+}

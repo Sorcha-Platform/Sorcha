@@ -174,6 +174,29 @@ public class RunCommand : Command
 
                 if (decision.Decision != "skip")
                 {
+                    // Execute preActions (e.g., file uploads) and merge results into payload
+                    if (decision.PreActions is { Length: > 0 })
+                    {
+                        var fileUploadHandler = new FileUploadHandler(
+                            httpClient, authService,
+                            definition.Connection.WalletAddress,
+                            definition.Connection.RegisterId,
+                            loggerFactory.CreateLogger<FileUploadHandler>());
+
+                        var mergedPayload = decision.Payload ?? new Dictionary<string, object>();
+                        foreach (var preAction in decision.PreActions)
+                        {
+                            if (preAction.Type == "file-upload")
+                            {
+                                if (!quiet)
+                                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Uploading file for field \"{preAction.Config.FieldName}\"...");
+                                var fileRef = await fileUploadHandler.ExecuteAsync(preAction.Config, cancellationToken);
+                                mergedPayload[preAction.Config.FieldName] = fileRef;
+                            }
+                        }
+                        decision = decision with { Payload = mergedPayload };
+                    }
+
                     var success = await actionExecutor.ExecuteAsync(action, decision, cancellationToken);
                     if (success)
                     {
