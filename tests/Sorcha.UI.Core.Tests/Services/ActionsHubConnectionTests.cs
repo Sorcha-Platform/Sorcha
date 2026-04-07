@@ -102,7 +102,7 @@ public class ActionsHubConnectionTests
     public void OnEncryptionProgress_CanSubscribeAndUnsubscribe()
     {
         var connection = CreateConnection();
-        Func<EncryptionProgressUpdate, Task> handler = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
 
         connection.OnEncryptionProgress += handler;
         connection.OnEncryptionProgress -= handler;
@@ -114,7 +114,7 @@ public class ActionsHubConnectionTests
     public void OnEncryptionComplete_CanSubscribeAndUnsubscribe()
     {
         var connection = CreateConnection();
-        Func<EncryptionCompleteUpdate, Task> handler = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
 
         connection.OnEncryptionComplete += handler;
         connection.OnEncryptionComplete -= handler;
@@ -124,7 +124,7 @@ public class ActionsHubConnectionTests
     public void OnEncryptionFailed_CanSubscribeAndUnsubscribe()
     {
         var connection = CreateConnection();
-        Func<EncryptionFailedUpdate, Task> handler = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler = _ => Task.CompletedTask;
 
         connection.OnEncryptionFailed += handler;
         connection.OnEncryptionFailed -= handler;
@@ -144,8 +144,8 @@ public class ActionsHubConnectionTests
     public void OnEncryptionProgress_CanSubscribeMultipleHandlers()
     {
         var connection = CreateConnection();
-        Func<EncryptionProgressUpdate, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionProgressUpdate, Task> handler2 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
 
         connection.OnEncryptionProgress += handler1;
         connection.OnEncryptionProgress += handler2;
@@ -159,8 +159,8 @@ public class ActionsHubConnectionTests
     public void OnEncryptionComplete_CanSubscribeMultipleHandlers()
     {
         var connection = CreateConnection();
-        Func<EncryptionCompleteUpdate, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionCompleteUpdate, Task> handler2 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
 
         connection.OnEncryptionComplete += handler1;
         connection.OnEncryptionComplete += handler2;
@@ -173,8 +173,8 @@ public class ActionsHubConnectionTests
     public void OnEncryptionFailed_CanSubscribeMultipleHandlers()
     {
         var connection = CreateConnection();
-        Func<EncryptionFailedUpdate, Task> handler1 = _ => Task.CompletedTask;
-        Func<EncryptionFailedUpdate, Task> handler2 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler1 = _ => Task.CompletedTask;
+        Func<EncryptionSignal, Task> handler2 = _ => Task.CompletedTask;
 
         connection.OnEncryptionFailed += handler1;
         connection.OnEncryptionFailed += handler2;

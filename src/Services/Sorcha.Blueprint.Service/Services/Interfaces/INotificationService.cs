@@ -7,104 +7,60 @@ using Sorcha.Blueprint.Service.Models;
 namespace Sorcha.Blueprint.Service.Services.Interfaces;
 
 /// <summary>
-/// Service for broadcasting real-time notifications via SignalR.
+/// Service for broadcasting thin signal notifications via SignalR.
+/// Signals contain minimal metadata — clients pull details through authenticated endpoints.
 /// </summary>
 public interface INotificationService
 {
     /// <summary>
-    /// Notify a wallet that a new action is available.
-    /// </summary>
-    /// <param name="notification">The action notification</param>
-    /// <param name="ct">Cancellation token</param>
-    Task NotifyActionAvailableAsync(ActionNotification notification, CancellationToken ct = default);
-
-    /// <summary>
-    /// Notify a wallet that an action has been confirmed.
-    /// </summary>
-    /// <param name="notification">The action notification</param>
-    /// <param name="ct">Cancellation token</param>
-    Task NotifyActionConfirmedAsync(ActionNotification notification, CancellationToken ct = default);
-
-    /// <summary>
-    /// Notify a wallet that an action has been rejected.
-    /// </summary>
-    /// <param name="notification">The action notification</param>
-    /// <param name="ct">Cancellation token</param>
-    Task NotifyActionRejectedAsync(ActionNotification notification, CancellationToken ct = default);
-
-    /// <summary>
-    /// Notify a participant that a new action is available for them.
+    /// Signal a wallet that a new action is available.
     /// </summary>
     /// <param name="instanceId">The workflow instance ID</param>
-    /// <param name="actionId">The action ID</param>
-    /// <param name="actionTitle">The action title</param>
-    /// <param name="participantId">The participant who should execute the action</param>
+    /// <param name="walletAddress">The participant's wallet address (null if not linked)</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyActionAvailableAsync(
-        string instanceId,
-        int actionId,
-        string actionTitle,
-        string participantId,
-        string? participantWalletAddress = null,
-        CancellationToken ct = default);
+    Task NotifyActionAvailableAsync(string instanceId, string? walletAddress, CancellationToken ct = default);
 
     /// <summary>
-    /// Notify a participant that an action was rejected and routed to a target action.
+    /// Signal a wallet that an action was rejected.
     /// </summary>
     /// <param name="instanceId">The workflow instance ID</param>
-    /// <param name="rejectedActionId">The action that was rejected</param>
-    /// <param name="targetActionId">The action the workflow routes to</param>
-    /// <param name="targetParticipantId">The participant who receives the rejection</param>
-    /// <param name="reason">The rejection reason</param>
+    /// <param name="walletAddress">The participant's wallet address (null if not linked)</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyActionRejectedAsync(
-        string instanceId,
-        int rejectedActionId,
-        int targetActionId,
-        string targetParticipantId,
-        string reason,
-        CancellationToken ct = default);
+    Task NotifyActionRejectedAsync(string instanceId, string? walletAddress, CancellationToken ct = default);
 
     /// <summary>
-    /// Notify all participants that a workflow has completed.
+    /// Signal all participants that a workflow has completed.
     /// </summary>
     /// <param name="instanceId">The workflow instance ID</param>
+    /// <param name="participantWalletAddresses">Wallet addresses of all participants</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyWorkflowCompletedAsync(string instanceId, CancellationToken ct = default);
+    Task NotifyWorkflowCompletedAsync(string instanceId, IEnumerable<string> participantWalletAddresses, CancellationToken ct = default);
 
     /// <summary>
-    /// Notify a wallet about encryption progress.
+    /// Signal encryption progress to the submitting wallet.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
-    /// <param name="notification">The progress notification</param>
+    /// <param name="signal">The encryption signal</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionProgressNotification notification, CancellationToken ct = default);
+    Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionSignal signal, CancellationToken ct = default);
 
     /// <summary>
-    /// Notify a wallet that encryption completed successfully.
-    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
+    /// Signal encryption completion to the submitting wallet.
+    /// Also sends to EventsHub for the user if userId is provided.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
-    /// <param name="notification">The completion notification</param>
+    /// <param name="signal">The encryption signal</param>
     /// <param name="userId">Optional user ID for EventsHub notification</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionCompleteNotification notification, string? userId = null, CancellationToken ct = default);
+    Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Notify a wallet that encryption failed.
-    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
+    /// Signal encryption failure to the submitting wallet.
+    /// Also sends to EventsHub for the user if userId is provided.
     /// </summary>
     /// <param name="walletAddress">The submitting wallet address</param>
-    /// <param name="notification">The failure notification</param>
+    /// <param name="signal">The encryption signal</param>
     /// <param name="userId">Optional user ID for EventsHub notification</param>
     /// <param name="ct">Cancellation token</param>
-    Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionFailedNotification notification, string? userId = null, CancellationToken ct = default);
-
-    /// <summary>
-    /// Sends a per-recipient encryption progress event to the submitting wallet's SignalR group.
-    /// </summary>
-    /// <param name="walletAddress">The submitting wallet address</param>
-    /// <param name="notification">The per-recipient progress notification</param>
-    /// <param name="ct">Cancellation token</param>
-    Task NotifyRecipientProgressAsync(string walletAddress, RecipientEncryptionNotification notification, CancellationToken ct = default);
+    Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default);
 }

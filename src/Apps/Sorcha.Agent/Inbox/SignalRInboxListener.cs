@@ -46,6 +46,9 @@ public class SignalRInboxListener : IInboxListener, IAsyncDisposable
             _hubUrl,
             _authService.TokenProviderAsync);
 
+        // Thin signal handler — signal contains only type + instanceId.
+        // Write a trigger action to the channel so the polling mechanism
+        // immediately refreshes the instance to discover pending actions.
         _connection.On<object>("ActionAvailable", notification =>
         {
             try
@@ -54,42 +57,36 @@ public class SignalRInboxListener : IInboxListener, IAsyncDisposable
                 var doc = System.Text.Json.JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                // Resolve instance ID (present in both notification shapes)
-                var instanceId = root.TryGetProperty("InstanceId", out var instProp)
+                // Extract instanceId from thin signal
+                var instanceId = root.TryGetProperty("instanceId", out var instProp)
                     ? instProp.GetString() ?? ""
-                    : root.TryGetProperty("instanceId", out var inst2) ? inst2.GetString() ?? "" : "";
+                    : root.TryGetProperty("InstanceId", out var inst2) ? inst2.GetString() ?? "" : "";
 
-                // Resolve action index — new shape has ActionId (int), old shape has actionId (string)
-                uint actionIndex = 0;
-                if (root.TryGetProperty("ActionId", out var aidInt) && aidInt.ValueKind == System.Text.Json.JsonValueKind.Number)
-                    actionIndex = aidInt.GetUInt32();
-                else if (root.TryGetProperty("actionId", out var aidStr) && aidStr.ValueKind == System.Text.Json.JsonValueKind.Number)
-                    actionIndex = aidStr.GetUInt32();
+                var signalType = root.TryGetProperty("signalType", out var stProp)
+                    ? stProp.GetString() ?? "action-available"
+                    : root.TryGetProperty("SignalType", out var st2) ? st2.GetString() ?? "action-available" : "action-available";
 
-                // Resolve action title
-                var actionTitle = root.TryGetProperty("ActionTitle", out var titleProp)
-                    ? titleProp.GetString() ?? ""
-                    : root.TryGetProperty("actionTitle", out var title2) ? title2.GetString() ?? "" : "";
+                _logger.LogInformation(
+                    "Received signal {SignalType} for instance {InstanceId}, triggering poll",
+                    signalType, instanceId);
 
-                var action = new PendingAction
+                // Write a trigger with instanceId — the polling mechanism will
+                // fetch full details from the instance endpoint
+                var trigger = new PendingAction
                 {
-                    ActionId = $"{instanceId}-{actionIndex}",
-                    ActionName = actionTitle,
-                    ActionIndex = actionIndex,
-                    BlueprintId = root.TryGetProperty("blueprintId", out var bp) ? bp.GetString() ?? "" : "",
+                    ActionId = $"signal-{instanceId}",
+                    ActionName = signalType,
                     InstanceId = instanceId,
-                    RegisterId = root.TryGetProperty("registerAddress", out var reg) ? reg.GetString() ?? "" : "",
-                    TransactionId = root.TryGetProperty("transactionHash", out var tx) ? tx.GetString() ?? "" : ""
+                    BlueprintId = string.Empty,
+                    RegisterId = string.Empty,
+                    TransactionId = string.Empty
                 };
 
-                _logger.LogInformation("SignalR: ActionAvailable {ActionName} (instance {InstanceId}, action {ActionIndex})",
-                    action.ActionName, instanceId, actionIndex);
-
-                _channel.Writer.TryWrite(action);
+                _channel.Writer.TryWrite(trigger);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to parse SignalR notification");
+                _logger.LogWarning(ex, "Failed to parse SignalR signal");
             }
         });
 

@@ -9,7 +9,9 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 namespace Sorcha.Blueprint.Service.Services.Implementation;
 
 /// <summary>
-/// Service for broadcasting real-time notifications via SignalR.
+/// Service for broadcasting thin signal notifications via SignalR.
+/// All signals are delivered exclusively through wallet-scoped groups.
+/// Clients pull detailed data through authenticated REST endpoints.
 /// </summary>
 public class NotificationService : INotificationService
 {
@@ -28,336 +30,161 @@ public class NotificationService : INotificationService
         _logger = logger;
     }
 
-    /// <summary>
-    /// Notify a wallet that a new action is available.
-    /// </summary>
-    public async Task NotifyActionAvailableAsync(ActionNotification notification, CancellationToken ct = default)
+    /// <inheritdoc />
+    public async Task NotifyActionAvailableAsync(string instanceId, string? walletAddress, CancellationToken ct = default)
     {
-        try
+        if (string.IsNullOrEmpty(walletAddress))
         {
-            var groupName = GetWalletGroupName(notification.WalletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("ActionAvailable", notification, ct);
-
-            _logger.LogInformation(
-                "Sent ActionAvailable notification to wallet {Wallet}. Transaction: {TxHash}",
-                notification.WalletAddress,
-                notification.TransactionHash);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to send ActionAvailable notification to wallet {Wallet}",
-                notification.WalletAddress);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Notify a wallet that an action has been confirmed.
-    /// </summary>
-    public async Task NotifyActionConfirmedAsync(ActionNotification notification, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetWalletGroupName(notification.WalletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("ActionConfirmed", notification, ct);
-
-            _logger.LogInformation(
-                "Sent ActionConfirmed notification to wallet {Wallet}. Transaction: {TxHash}",
-                notification.WalletAddress,
-                notification.TransactionHash);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to send ActionConfirmed notification to wallet {Wallet}",
-                notification.WalletAddress);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Notify a wallet that an action has been rejected.
-    /// </summary>
-    public async Task NotifyActionRejectedAsync(ActionNotification notification, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetWalletGroupName(notification.WalletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("ActionRejected", notification, ct);
-
-            _logger.LogInformation(
-                "Sent ActionRejected notification to wallet {Wallet}. Transaction: {TxHash}",
-                notification.WalletAddress,
-                notification.TransactionHash);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to send ActionRejected notification to wallet {Wallet}",
-                notification.WalletAddress);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Notify a participant that a new action is available for them.
-    /// </summary>
-    public async Task NotifyActionAvailableAsync(
-        string instanceId,
-        int actionId,
-        string actionTitle,
-        string participantId,
-        string? participantWalletAddress = null,
-        CancellationToken ct = default)
-    {
-        try
-        {
-            var notification = new
-            {
-                InstanceId = instanceId,
-                ActionId = actionId,
-                ActionTitle = actionTitle,
-                ParticipantId = participantId,
-                Timestamp = DateTimeOffset.UtcNow
-            };
-
-            // Send to instance group (for UI subscribers watching the instance)
-            var instanceGroup = GetInstanceGroupName(instanceId);
-            await _hubContext.Clients
-                .Group(instanceGroup)
-                .SendAsync("ActionAvailable", notification, ct);
-
-            // Also send to the participant's wallet group (for agent actors)
-            if (!string.IsNullOrEmpty(participantWalletAddress))
-            {
-                var walletGroup = GetWalletGroupName(participantWalletAddress);
-                await _hubContext.Clients
-                    .Group(walletGroup)
-                    .SendAsync("ActionAvailable", notification, ct);
-
-                _logger.LogInformation(
-                    "Sent ActionAvailable to wallet {WalletAddress} for instance {InstanceId}, action {ActionId}",
-                    participantWalletAddress, instanceId, actionId);
-            }
-
-            _logger.LogInformation(
-                "Sent ActionAvailable notification for instance {InstanceId}, action {ActionId} to participant {ParticipantId}",
-                instanceId, actionId, participantId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send ActionAvailable notification for instance {InstanceId}, action {ActionId}",
-                instanceId, actionId);
-        }
-    }
-
-    /// <summary>
-    /// Notify a participant that an action was rejected and routed to a target action.
-    /// </summary>
-    public async Task NotifyActionRejectedAsync(
-        string instanceId,
-        int rejectedActionId,
-        int targetActionId,
-        string targetParticipantId,
-        string reason,
-        CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetInstanceGroupName(instanceId);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("ActionRejected", new
-                {
-                    InstanceId = instanceId,
-                    RejectedActionId = rejectedActionId,
-                    TargetActionId = targetActionId,
-                    TargetParticipantId = targetParticipantId,
-                    Reason = reason,
-                    Timestamp = DateTimeOffset.UtcNow
-                }, ct);
-
-            _logger.LogInformation(
-                "Sent ActionRejected notification for instance {InstanceId}, action {ActionId} rejected, routing to {TargetActionId}",
-                instanceId, rejectedActionId, targetActionId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send ActionRejected notification for instance {InstanceId}",
-                instanceId);
-        }
-    }
-
-    /// <summary>
-    /// Notify all participants that a workflow has completed.
-    /// </summary>
-    public async Task NotifyWorkflowCompletedAsync(string instanceId, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetInstanceGroupName(instanceId);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("WorkflowCompleted", new
-                {
-                    InstanceId = instanceId,
-                    Timestamp = DateTimeOffset.UtcNow
-                }, ct);
-
-            _logger.LogInformation(
-                "Sent WorkflowCompleted notification for instance {InstanceId}",
-                instanceId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send WorkflowCompleted notification for instance {InstanceId}",
-                instanceId);
-        }
-    }
-
-    /// <summary>
-    /// Notify a wallet about encryption progress.
-    /// </summary>
-    public async Task NotifyEncryptionProgressAsync(
-        string walletAddress, EncryptionProgressNotification notification, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetWalletGroupName(walletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("EncryptionProgress", notification, ct);
-
-            _logger.LogDebug(
-                "Sent EncryptionProgress to wallet {Wallet}. Step: {Step}/{Total} ({Percent}%)",
-                walletAddress, notification.Step, notification.TotalSteps, notification.PercentComplete);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionProgress notification to wallet {Wallet}",
-                walletAddress);
-        }
-    }
-
-    /// <summary>
-    /// Notify a wallet that encryption completed successfully.
-    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
-    /// </summary>
-    public async Task NotifyEncryptionCompleteAsync(
-        string walletAddress, EncryptionCompleteNotification notification, string? userId = null, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetWalletGroupName(walletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("EncryptionComplete", notification, ct);
-
-            _logger.LogInformation(
-                "Sent EncryptionComplete to wallet {Wallet}. Operation: {OperationId}, TxHash: {TxHash}",
-                walletAddress, notification.OperationId, notification.TransactionHash);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionComplete notification to wallet {Wallet}",
-                walletAddress);
-        }
-
-        // Send to EventsHub for UI toast notifications (separate try/catch to not affect ActionsHub delivery)
-        await SendEncryptionOperationCompletedToEventsHubAsync(
-            userId, notification.OperationId, isSuccess: true, notification.TransactionHash, errorMessage: null, ct);
-    }
-
-    /// <summary>
-    /// Notify a wallet that encryption failed.
-    /// Also sends an EncryptionOperationCompleted event to EventsHub for the user.
-    /// </summary>
-    public async Task NotifyEncryptionFailedAsync(
-        string walletAddress, EncryptionFailedNotification notification, string? userId = null, CancellationToken ct = default)
-    {
-        try
-        {
-            var groupName = GetWalletGroupName(walletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("EncryptionFailed", notification, ct);
-
             _logger.LogWarning(
-                "Sent EncryptionFailed to wallet {Wallet}. Operation: {OperationId}, Error: {Error}",
-                walletAddress, notification.OperationId, notification.Error);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Failed to send EncryptionFailed notification to wallet {Wallet}",
-                walletAddress);
+                "Cannot send action-available signal for instance {InstanceId}: no wallet address linked",
+                instanceId);
+            return;
         }
 
-        // Send to EventsHub for UI toast notifications (separate try/catch to not affect ActionsHub delivery)
-        await SendEncryptionOperationCompletedToEventsHubAsync(
-            userId, notification.OperationId, isSuccess: false, transactionHash: null, notification.Error, ct);
+        var signal = new SignalNotification
+        {
+            SignalType = SignalTypes.ActionAvailable,
+            InstanceId = instanceId,
+            CorrelationId = Guid.NewGuid()
+        };
+
+        await SendToWalletAsync(walletAddress, "ActionAvailable", signal, ct);
+
+        _logger.LogInformation(
+            "Sent signal {SignalType} to wallet {Wallet} for instance {InstanceId}",
+            signal.SignalType, walletAddress, instanceId);
     }
 
     /// <inheritdoc />
-    public async Task NotifyRecipientProgressAsync(
-        string walletAddress, RecipientEncryptionNotification notification, CancellationToken ct = default)
+    public async Task NotifyActionRejectedAsync(string instanceId, string? walletAddress, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(walletAddress))
+        {
+            _logger.LogWarning(
+                "Cannot send action-rejected signal for instance {InstanceId}: no wallet address linked",
+                instanceId);
+            return;
+        }
+
+        var signal = new SignalNotification
+        {
+            SignalType = SignalTypes.ActionRejected,
+            InstanceId = instanceId,
+            CorrelationId = Guid.NewGuid()
+        };
+
+        await SendToWalletAsync(walletAddress, "ActionRejected", signal, ct);
+
+        _logger.LogInformation(
+            "Sent signal {SignalType} to wallet {Wallet} for instance {InstanceId}",
+            signal.SignalType, walletAddress, instanceId);
+    }
+
+    /// <inheritdoc />
+    public async Task NotifyWorkflowCompletedAsync(string instanceId, IEnumerable<string> participantWalletAddresses, CancellationToken ct = default)
+    {
+        var signal = new SignalNotification
+        {
+            SignalType = SignalTypes.WorkflowCompleted,
+            InstanceId = instanceId,
+            CorrelationId = Guid.NewGuid()
+        };
+
+        foreach (var walletAddress in participantWalletAddresses)
+        {
+            if (string.IsNullOrEmpty(walletAddress))
+                continue;
+
+            try
+            {
+                await SendToWalletAsync(walletAddress, "WorkflowCompleted", signal, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to send workflow-completed signal to wallet {Wallet} for instance {InstanceId}",
+                    walletAddress, instanceId);
+            }
+        }
+
+        _logger.LogInformation(
+            "Sent signal {SignalType} for instance {InstanceId}",
+            signal.SignalType, instanceId);
+    }
+
+    /// <inheritdoc />
+    public async Task NotifyEncryptionProgressAsync(string walletAddress, EncryptionSignal signal, CancellationToken ct = default)
     {
         try
         {
-            var groupName = GetWalletGroupName(walletAddress);
-
-            await _hubContext.Clients
-                .Group(groupName)
-                .SendAsync("RecipientEncryptionProgress", notification, ct);
+            await SendToWalletAsync(walletAddress, "EncryptionProgress", signal, ct);
 
             _logger.LogDebug(
-                "Sent RecipientEncryptionProgress to wallet {Wallet}. Operation: {OperationId}, Recipient: {Recipient} ({Index}/{Total}), Status: {Status}",
-                walletAddress, notification.OperationId, notification.RecipientName,
-                notification.RecipientIndex, notification.TotalRecipients, notification.Status);
+                "Sent EncryptionProgress to wallet {Wallet}. Operation: {OperationId}, {Percent}%",
+                walletAddress, signal.OperationId, signal.PercentComplete);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to send RecipientEncryptionProgress notification to wallet {Wallet}",
+                "Failed to send EncryptionProgress to wallet {Wallet}",
                 walletAddress);
         }
     }
 
+    /// <inheritdoc />
+    public async Task NotifyEncryptionCompleteAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
+    {
+        try
+        {
+            await SendToWalletAsync(walletAddress, "EncryptionComplete", signal, ct);
+
+            _logger.LogInformation(
+                "Sent EncryptionComplete to wallet {Wallet}. Operation: {OperationId}",
+                walletAddress, signal.OperationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionComplete to wallet {Wallet}",
+                walletAddress);
+        }
+
+        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task NotifyEncryptionFailedAsync(string walletAddress, EncryptionSignal signal, string? userId = null, CancellationToken ct = default)
+    {
+        try
+        {
+            await SendToWalletAsync(walletAddress, "EncryptionFailed", signal, ct);
+
+            _logger.LogWarning(
+                "Sent EncryptionFailed to wallet {Wallet}. Operation: {OperationId}",
+                walletAddress, signal.OperationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to send EncryptionFailed to wallet {Wallet}",
+                walletAddress);
+        }
+
+        await SendEncryptionSignalToEventsHubAsync(userId, signal, ct);
+    }
+
     /// <summary>
-    /// Sends an EncryptionOperationCompleted event to the EventsHub for the specified user.
+    /// Sends an EncryptionSignal to the EventsHub for the specified user.
     /// Isolated in its own try/catch so ActionsHub delivery is never affected.
     /// </summary>
-    private async Task SendEncryptionOperationCompletedToEventsHubAsync(
-        string? userId, string operationId, bool isSuccess, string? transactionHash, string? errorMessage, CancellationToken ct)
+    private async Task SendEncryptionSignalToEventsHubAsync(
+        string? userId, EncryptionSignal signal, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(userId))
         {
             _logger.LogDebug(
-                "No userId provided for EventsHub EncryptionOperationCompleted notification. Operation: {OperationId}",
-                operationId);
+                "No userId provided for EventsHub encryption signal. Operation: {OperationId}",
+                signal.OperationId);
             return;
         }
 
@@ -366,40 +193,28 @@ public class NotificationService : INotificationService
             var userGroup = $"user:{userId}";
             await _eventsHubContext.Clients
                 .Group(userGroup)
-                .SendAsync("EncryptionOperationCompleted", new
-                {
-                    OperationId = operationId,
-                    IsSuccess = isSuccess,
-                    TransactionHash = transactionHash,
-                    ErrorMessage = errorMessage,
-                    Timestamp = DateTimeOffset.UtcNow
-                }, ct);
+                .SendAsync("EncryptionOperationCompleted", signal, ct);
 
             _logger.LogInformation(
-                "Sent EncryptionOperationCompleted to EventsHub user:{UserId}. Operation: {OperationId}, Success: {IsSuccess}",
-                userId, operationId, isSuccess);
+                "Sent EncryptionSignal to EventsHub user:{UserId}. Operation: {OperationId}, Status: {Status}",
+                userId, signal.OperationId, signal.Status);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to send EncryptionOperationCompleted to EventsHub for user {UserId}. Operation: {OperationId}",
-                userId, operationId);
+                "Failed to send EncryptionSignal to EventsHub for user {UserId}. Operation: {OperationId}",
+                userId, signal.OperationId);
         }
     }
 
     /// <summary>
-    /// Get the SignalR group name for a wallet address.
+    /// Send a signal to a wallet group via ActionsHub.
     /// </summary>
-    private static string GetWalletGroupName(string walletAddress)
+    private async Task SendToWalletAsync(string walletAddress, string method, object signal, CancellationToken ct)
     {
-        return $"wallet:{walletAddress}";
-    }
-
-    /// <summary>
-    /// Get the SignalR group name for a workflow instance.
-    /// </summary>
-    private static string GetInstanceGroupName(string instanceId)
-    {
-        return $"instance:{instanceId}";
+        var groupName = $"wallet:{walletAddress}";
+        await _hubContext.Clients
+            .Group(groupName)
+            .SendAsync(method, signal, ct);
     }
 }

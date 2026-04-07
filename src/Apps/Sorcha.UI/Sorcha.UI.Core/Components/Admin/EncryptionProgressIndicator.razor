@@ -241,31 +241,30 @@
         ActionsHub.OnConnectionStateChanged -= HandleHubConnectionChanged;
     }
 
-    private Task HandleSignalRProgress(EncryptionProgressUpdate update)
+    private Task HandleSignalRProgress(EncryptionSignal signal)
     {
-        if (update.OperationId != _currentOperationId) return Task.CompletedTask;
+        if (signal.OperationId != _currentOperationId) return Task.CompletedTask;
 
         if (_operation is null) return Task.CompletedTask;
 
         _operation = _operation with
         {
-            Stage = update.StepName,
-            PercentComplete = update.PercentComplete
+            Stage = signal.Status,
+            PercentComplete = signal.PercentComplete
         };
         _isLoading = false;
 
         return InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleSignalRComplete(EncryptionCompleteUpdate update)
+    private async Task HandleSignalRComplete(EncryptionSignal signal)
     {
-        if (update.OperationId != _currentOperationId || _operation is null) return;
+        if (signal.OperationId != _currentOperationId || _operation is null) return;
 
         _operation = _operation with
         {
             Stage = OperationStage.Complete,
-            PercentComplete = 100,
-            TransactionHash = update.TransactionHash
+            PercentComplete = 100
         };
         _isLoading = false;
 
@@ -274,14 +273,14 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleSignalRFailed(EncryptionFailedUpdate update)
+    private async Task HandleSignalRFailed(EncryptionSignal signal)
     {
-        if (update.OperationId != _currentOperationId || _operation is null) return;
+        if (signal.OperationId != _currentOperationId || _operation is null) return;
 
         _operation = _operation with
         {
             Stage = OperationStage.Failed,
-            ErrorMessage = update.Error
+            ErrorMessage = null // Detail available via pull-back from operations endpoint
         };
         _isLoading = false;
 
