@@ -310,6 +310,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Sorcha.UI.Core.Services.Persona.IPersonaService,
             Sorcha.UI.Core.Services.Persona.PersonaService>();
 
+        // Persona autofill resolver — pure function, singleton.
+        services.AddSingleton<Sorcha.UI.Core.Services.Forms.PersonaAutofillResolver>();
+
         // Pending Action Service (062)
         services.AddScoped<IPendingActionService>(sp =>
         {

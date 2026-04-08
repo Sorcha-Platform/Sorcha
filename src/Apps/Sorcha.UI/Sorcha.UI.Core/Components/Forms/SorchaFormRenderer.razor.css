@@ -137,3 +137,58 @@
 .sorcha-form-validation-summary {
     margin-top: 16px;
 }
+
+/* --- Persona autofill (Feature 092 / US1) ---
+ *
+ * When a field has been filled from the user's persona, its wrapper div
+ * carries the `.autofilled` modifier. The cream background + warm border
+ * are the visual honesty signal; the `.persona-tick` pill inside the field
+ * container announces the `self` provenance. Both disappear the moment the
+ * user edits the field (the renderer removes the class when the bound value
+ * changes). See research.md Decision 6.
+ */
+
+.sorcha-field.autofilled {
+    background-color: #fff8e1; /* cream — WCAG AA against dark text */
+    border-left: 3px solid #ffcc80; /* warm amber accent */
+    padding: 6px 8px 6px 10px;
+    border-radius: 4px;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+}
+
+.sorcha-field.autofilled .persona-tick {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 4px 0;
+    padding: 1px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #4e342e; /* deep warm brown — ≥4.5:1 on #fff8e1 */
+    background-color: #ffe0b2;
+    border: 1px solid #ffcc80;
+    border-radius: 999px;
+}
+
+.sorcha-field.autofilled .persona-tick::before {
+    content: "\2713"; /* check mark */
+    font-weight: 700;
+}
+
+/* Dark-mode palette. MudBlazor sets `data-mud-theme="dark"` on <html> when
+ * dark mode is active. The darker cream + brighter accent keeps the tinted
+ * state visible without blowing out contrast. */
+
+:global([data-mud-theme="dark"]) .sorcha-field.autofilled {
+    background-color: #3f3622; /* muted dark cream */
+    border-left-color: #ffb74d;
+}
+
+:global([data-mud-theme="dark"]) .sorcha-field.autofilled .persona-tick {
+    color: #fff3e0;
+    background-color: #5d4037;
+    border-color: #ffb74d;
+}
