@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Launches a distributed ConstructionPermit walkthrough with actors split across machines.
 .DESCRIPTION

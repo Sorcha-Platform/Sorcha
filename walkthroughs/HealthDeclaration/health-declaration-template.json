@@ -1,0 +1,297 @@
+{
+  "id": "health-declaration-v1",
+  "title": "Pre-Treatment Health Declaration",
+  "description": "Patient health declaration form demonstrating wizard pages, grouped sections, conditional field visibility, and contextual help — Feature 091 demo blueprint.",
+  "version": 1,
+  "category": "healthcare",
+  "tags": ["demo", "health", "wizard", "x-pages", "x-sections", "x-rule", "x-introduction"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "health-declaration-generated",
+    "title": "Pre-Treatment Health Declaration",
+    "description": "A patient must complete this declaration before any non-emergency procedure. The form is split into three pages: personal details, medical history, and consent.",
+    "version": 1,
+    "metadata": {
+      "category": "Healthcare",
+      "complexity": "Simple",
+      "actions": "1",
+      "features": "x-pages, x-sections, x-rule, x-introduction, x-width",
+      "sector": "Healthcare"
+    },
+    "instanceReference": {
+      "prefix": "HD",
+      "components": [
+        { "field": "/firstName", "transform": "FirstWord", "chars": 3 },
+        { "field": "/lastName", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "patient",
+        "name": "Patient",
+        "organisation": "Demo Clinic",
+        "description": "Patient completing the declaration"
+      },
+      {
+        "id": "clinician",
+        "name": "Clinician",
+        "organisation": "Demo Clinic",
+        "description": "Reviews the submitted declaration before treatment"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Complete Health Declaration",
+        "description": "Provide your personal details, medical history, and consent to treatment.",
+        "sender": "patient",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "This declaration helps your clinical team plan your treatment safely. All information is held in confidence and disclosed only to the staff treating you. Please answer every question as accurately as you can — if you are unsure, leave the field blank and discuss it with your clinician on the day.",
+            "x-pages": [
+              {
+                "title": "Your Details",
+                "description": "Personal and contact information",
+                "x-sections": [
+                  {
+                    "title": "Identity",
+                    "description": "Your name as it appears on your photo ID",
+                    "help": "We use this exactly as shown on your driving licence or passport. Mismatches can delay your appointment.",
+                    "layout": "horizontal",
+                    "fields": ["firstName", "lastName"]
+                  },
+                  {
+                    "title": "Date of Birth",
+                    "layout": "vertical",
+                    "fields": ["dateOfBirth"]
+                  },
+                  {
+                    "title": "Contact",
+                    "description": "How we'll reach you about your appointment",
+                    "help": "We will SMS the reminder 24 hours beforehand. Please use a phone you'll have with you on the day.",
+                    "layout": "grid",
+                    "fields": ["mobilePhone", "emailAddress", "preferredContactMethod"]
+                  }
+                ]
+              },
+              {
+                "title": "Medical History",
+                "description": "Conditions, medications and allergies relevant to your treatment",
+                "x-sections": [
+                  {
+                    "title": "Existing Conditions",
+                    "help": "If you have any ongoing condition treated by a GP or specialist, please tick yes and list them. Even minor conditions can affect anaesthesia.",
+                    "layout": "vertical",
+                    "fields": ["hasMedicalCondition", "medicalConditionsList"]
+                  },
+                  {
+                    "title": "Medication",
+                    "help": "Includes prescription, over-the-counter, and herbal supplements. Some interact with anaesthetics.",
+                    "layout": "vertical",
+                    "fields": ["takingMedication", "currentMedications"]
+                  },
+                  {
+                    "title": "Allergies",
+                    "help": "Especially latex, antibiotics, and anaesthetic agents. If you've ever had a reaction, list it here.",
+                    "layout": "vertical",
+                    "fields": ["hasAllergies", "allergyDetails"]
+                  }
+                ]
+              },
+              {
+                "title": "Consent",
+                "description": "Confirm you understand and agree before submitting",
+                "x-sections": [
+                  {
+                    "title": "Acknowledgement",
+                    "help": "By submitting this form you confirm the information is accurate to the best of your knowledge.",
+                    "layout": "vertical",
+                    "fields": ["consentConfirmed", "additionalNotes"]
+                  }
+                ]
+              }
+            ],
+            "properties": {
+              "firstName": {
+                "type": "string",
+                "title": "First Name",
+                "description": "Your given name as it appears on photo ID.",
+                "minLength": 1,
+                "maxLength": 100,
+                "x-width": "half"
+              },
+              "lastName": {
+                "type": "string",
+                "title": "Last Name",
+                "description": "Your family name as it appears on photo ID.",
+                "minLength": 1,
+                "maxLength": 100,
+                "x-width": "half"
+              },
+              "dateOfBirth": {
+                "type": "string",
+                "format": "date",
+                "title": "Date of Birth",
+                "description": "Used to calculate your age for dosage and to confirm your identity at check-in."
+              },
+              "mobilePhone": {
+                "type": "string",
+                "title": "Mobile Phone",
+                "description": "Include the country code, e.g. +44 7700 900123",
+                "pattern": "^\\+?[0-9 ]{7,20}$",
+                "x-width": "half"
+              },
+              "emailAddress": {
+                "type": "string",
+                "format": "email",
+                "title": "Email Address",
+                "description": "We'll send a confirmation and any pre-appointment instructions to this address.",
+                "x-width": "half"
+              },
+              "preferredContactMethod": {
+                "type": "string",
+                "title": "Preferred Contact Method",
+                "description": "How would you like to receive reminders?",
+                "enum": ["SMS", "Email", "Phone call"],
+                "x-width": "full"
+              },
+              "hasMedicalCondition": {
+                "type": "boolean",
+                "title": "Do you have any ongoing medical conditions?",
+                "description": "Tick yes if you currently see a doctor for any condition."
+              },
+              "medicalConditionsList": {
+                "type": "string",
+                "title": "Please list your conditions",
+                "description": "One per line. Include diagnosis date if known.",
+                "maxLength": 2000,
+                "x-rule": {
+                  "effect": "SHOW",
+                  "condition": {
+                    "scope": "/hasMedicalCondition",
+                    "schema": { "const": true }
+                  }
+                }
+              },
+              "takingMedication": {
+                "type": "boolean",
+                "title": "Are you currently taking any medication?",
+                "description": "Includes prescription, over-the-counter and herbal supplements."
+              },
+              "currentMedications": {
+                "type": "string",
+                "title": "List current medications",
+                "description": "Drug name, dose, and how often you take it. One per line.",
+                "maxLength": 2000,
+                "x-rule": {
+                  "effect": "SHOW",
+                  "condition": {
+                    "scope": "/takingMedication",
+                    "schema": { "const": true }
+                  }
+                }
+              },
+              "hasAllergies": {
+                "type": "boolean",
+                "title": "Do you have any known allergies?",
+                "description": "Especially to medicines, latex, or anaesthetics."
+              },
+              "allergyDetails": {
+                "type": "string",
+                "title": "Describe your allergies and reactions",
+                "description": "What you're allergic to and what happens (e.g. 'penicillin — rash and swelling').",
+                "maxLength": 2000,
+                "x-rule": {
+                  "effect": "SHOW",
+                  "condition": {
+                    "scope": "/hasAllergies",
+                    "schema": { "const": true }
+                  }
+                }
+              },
+              "consentConfirmed": {
+                "type": "boolean",
+                "title": "I confirm the above information is true and complete to the best of my knowledge",
+                "description": "Required to submit. By ticking this you authorise the clinical team to use this information to plan your treatment."
+              },
+              "additionalNotes": {
+                "type": "string",
+                "title": "Anything else you'd like us to know?",
+                "description": "Optional. For example: anxieties about treatment, mobility needs, language preferences.",
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "firstName",
+              "lastName",
+              "dateOfBirth",
+              "mobilePhone",
+              "preferredContactMethod",
+              "hasMedicalCondition",
+              "takingMedication",
+              "hasAllergies",
+              "consentConfirmed"
+            ]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "patient",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "clinician",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-clinician-review",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Forward declaration to clinician for review"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Clinician Acknowledgement",
+        "description": "Clinician confirms receipt of the patient's declaration before treatment.",
+        "sender": "clinician",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "reviewed": {
+                "type": "boolean",
+                "title": "I have reviewed the patient's declaration",
+                "description": "Tick to confirm you've read and understood the declaration."
+              },
+              "reviewerNotes": {
+                "type": "string",
+                "title": "Reviewer notes",
+                "description": "Any flags or follow-up actions for the clinical team.",
+                "maxLength": 2000
+              }
+            },
+            "required": ["reviewed"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "clinician",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "patient",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": []
+      }
+    ]
+  }
+}

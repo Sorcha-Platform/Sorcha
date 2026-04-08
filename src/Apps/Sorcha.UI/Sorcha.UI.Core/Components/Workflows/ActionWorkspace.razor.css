@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/* =============================================================================
+ * ActionWorkspace — base styles
+ *
+ * Class contract:
+ *   .sorcha-workspace               — root wrapper
+ *   .sorcha-workspace-header        — title + version chip + action subtitle
+ *   .sorcha-workspace-introduction  — x-introduction callout
+ *   .sorcha-workspace-wallet        — wallet selector card
+ *   .sorcha-workspace-help          — sticky help panel container
+ * ============================================================================= */
+
+.sorcha-workspace {
+    width: 100%;
+}
+
+.sorcha-workspace-header {
+    margin-bottom: 16px;
+}
+
+.sorcha-workspace-introduction {
+    margin-bottom: 16px;
+}
+
+.sorcha-workspace-wallet {
+    margin-bottom: 16px;
+}
+
+.sorcha-workspace-help {
+    position: sticky;
+    top: 88px;
+}

@@ -7,19 +7,21 @@
 
 @inject IFormSchemaService SchemaService
 
-<MudTextField T="string"
-              Label="@Control.Title"
-              Value="@_value"
-              ValueChanged="OnValueChanged"
-              Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
-              Required="@_isRequired"
-              ErrorText="@_errorText"
-              Error="@(!string.IsNullOrEmpty(_errorText))"
-              Immediate="false"
-              Variant="Variant.Outlined"
-              Margin="Margin.Dense"
-              DebounceInterval="300"
-              OnBlur="OnBlur" />
+<div @onfocusin="OnFocusIn" @onfocusout="OnFocusOut">
+    <MudTextField T="string"
+                  Label="@Control.Title"
+                  Value="@_value"
+                  ValueChanged="OnValueChanged"
+                  Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+                  Required="@_isRequired"
+                  ErrorText="@_errorText"
+                  Error="@(!string.IsNullOrEmpty(_errorText))"
+                  Immediate="false"
+                  Variant="Variant.Outlined"
+                  Margin="Margin.Dense"
+                  DebounceInterval="300"
+                  OnBlur="OnBlur" />
+</div>
 
 @code {
     [CascadingParameter] public FormContext? FormContext { get; set; }
@@ -55,5 +57,21 @@
     {
         var errors = FormContext?.GetErrors(Control.Scope) ?? [];
         _errorText = errors.Count > 0 ? string.Join("; ", errors) : string.Empty;
+    }
+
+    private void OnFocusIn()
+    {
+        FormContext?.SetFocusedField(Control.Scope);
+    }
+
+    private void OnFocusOut()
+    {
+        // Only clear if this field still owns focus — avoids flicker when
+        // focus moves between fields (OnFocusIn on the next field fires after
+        // OnFocusOut on this one in Blazor's event ordering).
+        if (FormContext?.FocusedFieldScope == Control.Scope)
+        {
+            FormContext.SetFocusedField(null);
+        }
     }
 }

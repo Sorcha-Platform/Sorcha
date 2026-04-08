@@ -3,13 +3,24 @@
 
 @using Sorcha.Blueprint.Models
 @using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Forms
 
-<MudSwitch T="bool"
-           Label="@Control.Title"
-           Value="@_value"
-           ValueChanged="OnValueChanged"
-           Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
-           Color="Color.Primary" />
+@inject IFormSchemaService SchemaService
+
+<div @onfocusin="OnFocusIn" @onfocusout="OnFocusOut" class="@(_hasError ? "sorcha-checkbox-error" : "")">
+    <MudSwitch T="bool"
+               Label="@_labelWithRequired"
+               Value="@_value"
+               ValueChanged="OnValueChanged"
+               Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+               Color="@(_hasError ? Color.Error : Color.Primary)" />
+    @if (_hasError)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Error" Class="ml-12 mt-n2">
+            @_errorText
+        </MudText>
+    }
+</div>
 
 @code {
     [CascadingParameter] public FormContext? FormContext { get; set; }
@@ -17,15 +28,59 @@
     [Parameter] public bool IsDisabled { get; set; }
 
     private bool _value;
+    private bool _isRequired;
+    private string _errorText = string.Empty;
+    private bool _hasError;
+    private string _labelWithRequired = string.Empty;
 
     protected override void OnParametersSet()
     {
-        _value = FormContext?.GetValue<bool>(Control.Scope) ?? false;
+        _isRequired = SchemaService.IsRequired(FormContext?.DataSchema, Control.Scope);
+        _labelWithRequired = _isRequired ? $"{Control.Title} *" : Control.Title;
+
+        // Read the existing FormData value if present.
+        // For required booleans, we deliberately leave FormData empty until the
+        // user interacts so that "is required" validation can fire — this
+        // forces an explicit answer rather than silently defaulting to false.
+        if (FormContext is not null && FormContext.FormData.TryGetValue(Control.Scope, out var existing) && existing is bool b)
+        {
+            _value = b;
+        }
+        else
+        {
+            _value = false;
+        }
+
+        UpdateErrors();
     }
 
     private void OnValueChanged(bool newValue)
     {
         _value = newValue;
+        // Always write to FormData on first interaction so the field is
+        // considered "answered" by the validator (FormData[scope] != null).
         FormContext?.SetValue(Control.Scope, newValue);
+
+        if (FormContext is not null)
+        {
+            // Clear any "required" error since the user has now answered
+            FormContext.SetErrors(Control.Scope, []);
+            UpdateErrors();
+        }
+    }
+
+    private void UpdateErrors()
+    {
+        var errors = FormContext?.GetErrors(Control.Scope) ?? [];
+        _errorText = errors.Count > 0 ? string.Join("; ", errors) : string.Empty;
+        _hasError = !string.IsNullOrEmpty(_errorText);
+    }
+
+    private void OnFocusIn() => FormContext?.SetFocusedField(Control.Scope);
+
+    private void OnFocusOut()
+    {
+        if (FormContext?.FocusedFieldScope == Control.Scope)
+            FormContext.SetFocusedField(null);
     }
 }

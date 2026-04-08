@@ -218,4 +218,24 @@ public class BlueprintApiService : IBlueprintApiService
             return null;
         }
     }
+
+    public async Task<Sorcha.Blueprint.Models.Blueprint?> GetPublishedBlueprintDetailAsync(string walletAddress, string registerId, string blueprintId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<Sorcha.Blueprint.Models.Blueprint>(
+                $"/api/actions/{Uri.EscapeDataString(walletAddress)}/{Uri.EscapeDataString(registerId)}/blueprints/{Uri.EscapeDataString(blueprintId)}",
+                cancellationToken);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning("Published blueprint {Blueprint} not found in register {Register}", blueprintId, registerId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching published blueprint {Blueprint} in register {Register}", blueprintId, registerId);
+            return null;
+        }
+    }
 }

@@ -1,0 +1,218 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/new-submission/{RegisterId}/{BlueprintId}"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Logging
+@using Sorcha.UI.Core.Components.Workflows
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Models.Wallet
+@using Sorcha.UI.Core.Models.Workflows
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Wallet
+@inject NavigationStateService NavState
+@inject IBlueprintApiService BlueprintApiService
+@inject IWorkflowService WorkflowService
+@inject IWalletApiService WalletService
+@inject IWalletPreferenceService WalletPreferenceService
+@inject IEncryptionOperationTracker EncryptionTracker
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ILogger<NewSubmissionWorkspace> Logger
+
+<PageTitle>@(_blueprint?.Title ?? "New Submission") - Sorcha Platform</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    @* Back link — uses Blazor NavigationManager so the path resolves against
+       the app base href instead of being treated as relative to the current
+       URL (which would produce /app/new-submission/{r}/new-submissions). *@
+    <MudButton Variant="Variant.Text" Color="Color.Default"
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Navigation.NavigateTo("new-submissions"))"
+               Class="mb-3">
+        Back to New Submissions
+    </MudButton>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-4 mb-4" />
+        <MudText Typo="Typo.body2">Loading blueprint...</MudText>
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">
+            @_loadError
+            <MudButton Variant="Variant.Text" Color="Color.Primary" Class="ml-2"
+                       OnClick="@(() => Navigation.NavigateTo("new-submissions"))">
+                Back to New Submissions
+            </MudButton>
+        </MudAlert>
+    }
+    else if (_blueprint is not null && _startingAction is not null)
+    {
+        @* The renderer (inside ActionWorkspace) owns the form action bar
+           with Cancel/Next/Submit buttons. We don't render our own here. *@
+        <ActionWorkspace @ref="_workspace"
+                         Blueprint="_blueprint"
+                         Action="_startingAction"
+                         RegisterId="@RegisterId"
+                         Wallets="_wallets"
+                         SelectedWallet="@_selectedWallet"
+                         SelectedWalletChanged="HandleWalletChanged"
+                         OnSubmit="HandleSubmit"
+                         OnCancel="HandleCancel"
+                         ShowIntroduction="true" />
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string RegisterId { get; set; } = string.Empty;
+    [Parameter] public string BlueprintId { get; set; } = string.Empty;
+
+    private Sorcha.Blueprint.Models.Blueprint? _blueprint;
+    private Sorcha.Blueprint.Models.Action? _startingAction;
+    private List<WalletDto> _wallets = [];
+    private string _selectedWallet = string.Empty;
+    private bool _loading = true;
+    private string? _loadError;
+    private ActionWorkspace? _workspace;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            // Drain any stashed listing-page state for this blueprint so the
+            // one-shot NavigationStateService entry doesn't leak. The actual
+            // blueprint data is always fetched fresh from the published
+            // endpoint below — using the listing snapshot would skip the
+            // server roundtrip but require dedicated cache-invalidation
+            // hooks for correctness; deferred as a future optimisation.
+            NavState.Get<StartableBlueprintViewModel>($"blueprint:{RegisterId}:{BlueprintId}");
+
+            // Load wallets and resolve default
+            _wallets = await WalletService.GetWalletsAsync();
+            if (_wallets.Count == 0)
+            {
+                _loadError = "You need at least one wallet to start a submission. Create or import a wallet first.";
+                return;
+            }
+
+            _selectedWallet = await WalletPreferenceService.GetSmartDefaultAsync(_wallets) ?? _wallets[0].Address;
+
+            // Fetch the full published blueprint (with action schemas) from the
+            // PUBLISHED endpoint — never the draft store. This is the fix for
+            // the 404 bug on non-authoring nodes.
+            _blueprint = await BlueprintApiService.GetPublishedBlueprintDetailAsync(
+                _selectedWallet, RegisterId, BlueprintId);
+
+            if (_blueprint is null)
+            {
+                _loadError = "This blueprint is no longer available in the register. It may have been unpublished.";
+                return;
+            }
+
+            // Starting action is the first action (by Id)
+            _startingAction = _blueprint.Actions?
+                .OrderBy(a => a.Id)
+                .FirstOrDefault();
+
+            if (_startingAction is null)
+            {
+                _loadError = "This blueprint has no actions to start.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading published blueprint {BlueprintId} in register {RegisterId}",
+                BlueprintId, RegisterId);
+            _loadError = "Failed to load the blueprint. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void HandleWalletChanged(string walletAddress)
+    {
+        _selectedWallet = walletAddress;
+    }
+
+    private async Task HandleSubmit(FormSubmission submission)
+    {
+        if (_blueprint is null || _startingAction is null) return;
+
+        try
+        {
+            // Step 1: Create instance
+            var instance = await WorkflowService.CreateInstanceAsync(BlueprintId, RegisterId);
+            if (instance is null)
+            {
+                _workspace?.SetError("Failed to create workflow instance. Please try again.");
+                return;
+            }
+
+            // Step 2: Execute starting action
+            var payloadData = submission.Data.ToDictionary(
+                kvp => kvp.Key.TrimStart('/'),
+                kvp => kvp.Value ?? (object)string.Empty);
+
+            var request = new ActionExecuteRequest
+            {
+                BlueprintId = BlueprintId,
+                ActionId = _startingAction.Id.ToString(),
+                InstanceId = instance.InstanceId,
+                SenderWallet = _selectedWallet,
+                RegisterAddress = RegisterId,
+                PayloadData = payloadData
+            };
+
+            var result = await WorkflowService.SubmitActionExecuteAsync(request);
+            if (result is null)
+            {
+                _workspace?.SetError(
+                    $"Instance created ({instance.InstanceId[..Math.Min(8, instance.InstanceId.Length)]}...) " +
+                    "but action execution failed. The action will appear in your Pending Actions.");
+                return;
+            }
+
+            // Track async encryption operations in the global popover
+            if (result.HasAsyncOperation && !string.IsNullOrEmpty(result.OperationId))
+            {
+                EncryptionTracker.TrackOperation(result.OperationId);
+            }
+
+            var message = result.IsComplete
+                ? "Submission completed successfully!"
+                : $"Submission started — instance {result.InstanceId[..Math.Min(8, result.InstanceId.Length)]}...";
+            Snackbar.Add(message, Severity.Success);
+
+            Navigation.NavigateTo("my-actions");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error submitting workflow instance");
+            _workspace?.SetError("An error occurred during submission. Please try again.");
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Discard submission?",
+            "Any entered form data will be lost.",
+            yesText: "Discard",
+            cancelText: "Keep editing");
+
+        if (confirmed == true)
+        {
+            Navigation.NavigateTo("new-submissions");
+        }
+    }
+}

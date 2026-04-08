@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -101,6 +101,14 @@ $secrets = [ordered]@{
         inspectorEmail        = "inspector@riverside.local"
         inspectorPassword     = "Dev_Pass_2025!"
         inspectorName         = "Building Control Inspector"
+    }
+    "health-declaration" = @{
+        adminEmail     = $platformEmail
+        adminPassword  = $platformPassword
+        adminName      = $platformName
+        patientEmail   = "patient@health-demo.local"
+        patientPassword = "Dev_Pass_2025!"
+        patientName    = "Demo Patient"
     }
     "payload-test" = @{
         adminEmail    = $platformEmail

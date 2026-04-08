@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Cross-Node File Transfer Setup
 # Sender on LOCAL (Phaethon), Receiver on N1 (n1.sorcha.dev)
 # Register created on LOCAL, subscribed by N1

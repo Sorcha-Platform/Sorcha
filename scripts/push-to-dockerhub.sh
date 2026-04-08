@@ -19,7 +19,7 @@ SKIP_BUILD=false
 DRY_RUN=false
 DOCKERHUB_USER=""
 
-# Service definitions
+# Service definitions (key = CLI name, value = image name on DockerHub)
 declare -A SERVICE_MAP=(
     ["blueprint"]="blueprint-service"
     ["wallet"]="wallet-service"
@@ -28,6 +28,12 @@ declare -A SERVICE_MAP=(
     ["peer"]="peer-service"
     ["validator"]="validator-service"
     ["gateway"]="api-gateway"
+    ["ui"]="ui-web"
+)
+
+# Compose service names (when different from image name)
+declare -A COMPOSE_NAME_MAP=(
+    ["ui"]="sorcha-ui-web"
 )
 
 # Usage function
@@ -43,7 +49,7 @@ Required:
 Options:
     -t, --tag <tag>            Version tag for images (default: latest)
     -s, --services <list>      Comma-separated list of services to push
-                               Valid: blueprint,wallet,register,tenant,peer,validator,gateway
+                               Valid: blueprint,wallet,register,tenant,peer,validator,gateway,ui
                                Default: all services
     --skip-build               Skip building images, only tag and push existing local images
     --dry-run                  Show what would be done without actually pushing
@@ -158,6 +164,8 @@ echo ""
 push_service() {
     local service_key=$1
     local service_name=${SERVICE_MAP[$service_key]}
+    # Resolve compose service name (may differ from image name)
+    local compose_name=${COMPOSE_NAME_MAP[$service_key]:-$service_name}
 
     if [[ -z "$service_name" ]]; then
         echo -e "${RED}❌ Unknown service: $service_key${NC}"
@@ -165,10 +173,10 @@ push_service() {
     fi
 
     echo -e "${CYAN}========================================"
-    echo "Processing: $service_name"
+    echo "Processing: $service_name (compose: $compose_name)"
     echo -e "========================================${NC}"
 
-    local local_image="sorcha/${service_name}:latest"
+    local local_image="sorchadev/${service_name}:latest"
     local remote_image="${DOCKERHUB_USER}/${service_name}:${TAG}"
 
     # Build the image
@@ -176,9 +184,9 @@ push_service() {
         echo -e "${YELLOW}🔨 Building image: $local_image${NC}"
 
         if [[ "$DRY_RUN" == "true" ]]; then
-            echo -e "${GRAY}   [DRY RUN] Would execute: docker compose build $service_name${NC}"
+            echo -e "${GRAY}   [DRY RUN] Would execute: docker compose build $compose_name${NC}"
         else
-            if ! docker compose build "$service_name"; then
+            if ! docker compose build "$compose_name"; then
                 echo -e "${RED}❌ Failed to build $service_name${NC}"
                 return 1
             fi

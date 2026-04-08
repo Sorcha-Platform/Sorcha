@@ -2,78 +2,224 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using System.Text.Json
+@using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
 @using Sorcha.Blueprint.Models.Credentials
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
+@implements IDisposable
 
 @inject IFormSchemaService SchemaService
+@inject ILogger<SorchaFormRenderer> Logger
 
 <CascadingValue Value="_formContext">
-    <MudStack Spacing="4">
-        @* Previous Data Panel *@
-        @if (PreviousData is not null)
-        {
-            <PreviousDataPanel PreviousData="PreviousData" />
-            <MudDivider />
-        }
+    <div class="sorcha-form">
+        <MudStack Spacing="4">
+            @* Previous Data Panel *@
+            @if (PreviousData is not null)
+            {
+                <PreviousDataPanel PreviousData="PreviousData" />
+                <MudDivider />
+            }
 
-        @* Credential Gate Panel *@
-        @if (_credentialRequirements.Any())
-        {
-            <CredentialGatePanel Requirements="_credentialRequirements"
-                                        WalletAddress="@SigningWalletAddress" />
-            <MudDivider />
-        }
+            @* Credential Gate Panel *@
+            @if (_credentialRequirements.Any())
+            {
+                <CredentialGatePanel Requirements="_credentialRequirements"
+                                            WalletAddress="@SigningWalletAddress" />
+                <MudDivider />
+            }
 
-        @* Form Controls *@
-        @if (_formControl is not null)
-        {
-            <ControlDispatcher Control="_formControl" Depth="0" />
-        }
+            @* Wizard stepper — rendered above the form when x-pages is defined *@
+            @if (_hasWizard && Layout?.Pages is not null)
+            {
+                <WizardStepper Pages="Layout.Pages"
+                               CurrentPage="_currentPage"
+                               OnPageSelected="HandleStepperClick" />
+            }
 
-        @* Calculated Fields Panel *@
-        @if (_hasCalculations)
-        {
-            <MudDivider />
-            <CalculatedFieldsPanel Calculations="Action?.Calculations"
-                                           FormContext="_formContext" />
-        }
-
-        @* Validation Summary *@
-        @if (_showValidationSummary && _formContext.HasErrors)
-        {
-            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
-                <MudText Typo="Typo.body2">Please fix the errors above before submitting.</MudText>
-            </MudAlert>
-        }
-
-        @* Form Actions *@
-        @if (!IsReadOnly)
-        {
-            <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd" Class="mt-4">
-                @if (OnCancel.HasDelegate)
-                {
-                    <MudButton OnClick="HandleCancel" Variant="Variant.Text">Cancel</MudButton>
-                }
-                @if (OnReject.HasDelegate && Action?.RejectionConfig is not null)
-                {
-                    <MudButton OnClick="HandleReject" Color="Color.Error" Variant="Variant.Text">Reject</MudButton>
-                }
-                <MudButton OnClick="HandleSubmit"
-                           Color="Color.Primary"
-                           Variant="Variant.Filled"
-                           Disabled="_isSubmitting">
-                    @if (_isSubmitting)
+            @* Form Controls — rendered in one of three modes *@
+            @if (_formControl is null)
+            {
+                @* Action has no renderable form *@
+            }
+            else if (_hasWizard && Layout?.Pages is not null && _currentPage < Layout.Pages.Count)
+            {
+                @* Wizard mode: render current page's sections only *@
+                var wizardPage = Layout.Pages[_currentPage];
+                <div class="sorcha-form-page">
+                    <MudText Typo="Typo.h6" Class="sorcha-form-page-title mb-2">@wizardPage.Title</MudText>
+                    @if (!string.IsNullOrWhiteSpace(wizardPage.Description))
                     {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                            @wizardPage.Description
+                        </MudText>
                     }
-                    Submit
-                </MudButton>
-            </MudStack>
-        }
-    </MudStack>
+
+                    @if (wizardPage.Sections is { Count: > 0 })
+                    {
+                        @foreach (var sec in wizardPage.Sections)
+                        {
+                            @RenderSection(sec)
+                        }
+                    }
+
+                    @* Catch-all on the last wizard page *@
+                    @if (_currentPage == Layout.Pages.Count - 1 && _orphanFieldControls.Count > 0)
+                    {
+                        @RenderCatchAll()
+                    }
+                </div>
+            }
+            else if (_hasSectionsFlat && Layout?.Sections is not null)
+            {
+                @* Sections mode (no wizard): render each section with header *@
+                <div class="sorcha-form-sections">
+                    @foreach (var sec in Layout.Sections)
+                    {
+                        @RenderSection(sec)
+                    }
+
+                    @if (_orphanFieldControls.Count > 0)
+                    {
+                        @RenderCatchAll()
+                    }
+                </div>
+            }
+            else
+            {
+                @* Flat mode: render the full auto-generated control tree as-is *@
+                <div class="sorcha-form-flat">
+                    <ControlDispatcher Control="_formControl" Depth="0" />
+                </div>
+            }
+
+            @* Calculated Fields Panel *@
+            @if (_hasCalculations)
+            {
+                <MudDivider />
+                <CalculatedFieldsPanel Calculations="Action?.Calculations"
+                                               FormContext="_formContext" />
+            }
+
+            @* Validation Summary — lists each failing field by its friendly label
+               so the user knows exactly what to fix, even when the failing
+               control doesn't render an inline error (e.g. switches). *@
+            @if (_showValidationSummary && _formContext.HasErrors)
+            {
+                <MudAlert Severity="Severity.Error" Dense="false" Class="mt-2 sorcha-form-validation-summary">
+                    <MudText Typo="Typo.body2" Class="mb-1">Please fix the following before continuing:</MudText>
+                    <ul style="margin: 0 0 0 1.25rem; padding: 0;">
+                        @foreach (var (scope, errors) in _formContext.ValidationErrors)
+                        {
+                            var label = ResolveFieldLabelForScope(scope);
+                            <li>
+                                <MudText Typo="Typo.body2">
+                                    <strong>@label:</strong> @string.Join("; ", errors)
+                                </MudText>
+                            </li>
+                        }
+                    </ul>
+                </MudAlert>
+            }
+
+            @* Form Actions *@
+            @if (!IsReadOnly)
+            {
+                <MudStack Row="true" Spacing="2" Justify="Justify.SpaceBetween" Class="mt-4 sorcha-form-actions">
+                    <div>
+                        @if (_hasWizard && _currentPage > 0)
+                        {
+                            <MudButton StartIcon="@Icons.Material.Filled.ArrowBack"
+                                       Variant="Variant.Outlined"
+                                       OnClick="HandleBack">
+                                Back
+                            </MudButton>
+                        }
+                    </div>
+                    <MudStack Row="true" Spacing="2">
+                        @if (OnCancel.HasDelegate)
+                        {
+                            <MudButton OnClick="HandleCancel" Variant="Variant.Text">Cancel</MudButton>
+                        }
+                        @if (OnReject.HasDelegate && Action?.RejectionConfig is not null)
+                        {
+                            <MudButton OnClick="HandleReject" Color="Color.Error" Variant="Variant.Text">Reject</MudButton>
+                        }
+                        @if (_hasWizard && Layout?.Pages is not null && _currentPage < Layout.Pages.Count - 1)
+                        {
+                            <MudButton OnClick="HandleNext"
+                                       EndIcon="@Icons.Material.Filled.ArrowForward"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled">
+                                Next: @Layout.Pages[_currentPage + 1].Title
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton OnClick="HandleSubmit"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       Disabled="_isSubmitting">
+                                @if (_isSubmitting)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Submit
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudStack>
+            }
+        </MudStack>
+    </div>
 </CascadingValue>
+
+@* Local render fragments used by the modes above *@
+@{
+    RenderFragment RenderSection(BlueprintSectionDefinition sec) =>
+    @<div class="sorcha-form-section sorcha-form-section-@(sec.Layout?.ToLowerInvariant() ?? "vertical") mb-3">
+        <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+            @if (!string.IsNullOrWhiteSpace(sec.Title))
+            {
+                <MudText Typo="Typo.h6" Class="sorcha-form-section-title">@sec.Title</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(sec.Description))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="sorcha-form-section-description mb-2">
+                    @sec.Description
+                </MudText>
+            }
+            <div class="sorcha-form-section-fields">
+                @foreach (var fieldName in sec.Fields)
+                {
+                    var fieldControl = LookupFieldControl(fieldName);
+                    if (fieldControl is not null)
+                    {
+                        <div class="sorcha-field sorcha-field-@(fieldControl.ControlType.ToString().ToLowerInvariant()) sorcha-field-width-@(GetWidthForField(fieldName))">
+                            <ControlDispatcher Control="fieldControl" Depth="0" />
+                        </div>
+                    }
+                }
+            </div>
+        </MudPaper>
+    </div>;
+
+    RenderFragment RenderCatchAll() =>
+    @<div class="sorcha-form-catchall mb-3">
+        <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+            <MudText Typo="Typo.overline" Color="Color.Secondary" Class="mb-2">Additional information</MudText>
+            <div class="sorcha-form-catchall-fields">
+                @foreach (var (orphanName, orphanControl) in _orphanFieldControls)
+                {
+                    <div class="sorcha-field sorcha-field-@(orphanControl.ControlType.ToString().ToLowerInvariant()) sorcha-field-width-@(GetWidthForField(orphanName))">
+                        <ControlDispatcher Control="orphanControl" Depth="0" />
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    </div>;
+}
 
 @code {
     [Parameter] public Sorcha.Blueprint.Models.Action? Action { get; set; }
@@ -86,48 +232,154 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsSenderAction { get; set; }
 
+    /// <summary>
+    /// Fires when a form field gains focus with the field's JSON Pointer scope,
+    /// or null on blur. Used by <c>ActionWorkspace</c> to drive the contextual
+    /// help panel. Added in Feature 091 (US2).
+    /// </summary>
+    [Parameter] public EventCallback<string?> OnFieldFocused { get; set; }
+
+    /// <summary>
+    /// Optional layout metadata parsed from the action's x-pages / x-sections /
+    /// x-introduction / x-width extensions. When provided, the renderer:
+    /// - Renders sections with titles and descriptions (x-sections)
+    /// - Renders a wizard with stepper and Next/Back navigation (x-pages)
+    /// - Applies per-field width hints (x-width)
+    /// - Renders any orphan fields (not referenced by any section) in a
+    ///   catch-all panel at the bottom (or on the last wizard page)
+    /// When null or empty, the renderer falls back to the flat control tree —
+    /// fully backwards compatible with existing forms. Feature 091.
+    /// </summary>
+    [Parameter] public SchemaLayoutInfo? Layout { get; set; }
+
+    /// <summary>
+    /// Fires when the wizard advances to the next page, retreats, or jumps via
+    /// the stepper. Useful for host pages that want to update URL state or
+    /// analytics. The renderer owns the canonical current-page state.
+    /// </summary>
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
     private FormContext _formContext = new();
     private Control? _formControl;
     private List<CredentialRequirement> _credentialRequirements = [];
     private bool _hasCalculations;
     private bool _isSubmitting;
     private bool _showValidationSummary;
+    private int _currentPage;
+    private bool _hasWizard;
+    private bool _hasSectionsFlat;
+    private readonly Dictionary<string, Control> _fieldIndex = new(StringComparer.Ordinal);
+    private readonly List<(string Name, Control Control)> _orphanFieldControls = new();
+
+    // Identity tracking — only rebuild the FormContext when Action / Layout
+    // identity actually changes. Without this, every parent re-render (e.g.
+    // from focus events) would wipe FormData mid-typing. Reference equality
+    // is the right check because Sorcha.Blueprint.Models.Action is a class
+    // and the same instance flows down on every render unless the parent
+    // page genuinely loaded a different action.
+    private Sorcha.Blueprint.Models.Action? _lastAction;
+    private SchemaLayoutInfo? _lastLayout;
+    private string? _lastSigningWalletAddress;
+    private bool _lastIsReadOnly;
+    private bool _lastIsSenderAction;
 
     protected override void OnParametersSet()
     {
         if (Action is null) return;
 
-        // Initialize FormContext
-        _formContext = new FormContext
-        {
-            DataSchema = SchemaService.MergeSchemas(Action.DataSchemas),
-            IsReadOnly = IsReadOnly,
-            SigningWalletAddress = SigningWalletAddress
-        };
+        // Identity check — Blazor calls OnParametersSet on every parent render,
+        // even when our parameters are unchanged. Without this guard, every
+        // focus event from a child input would re-run the heavy initialisation
+        // below and wipe FormData mid-typing (Feature 091 wizard regression).
+        // Reference equality is correct because the parent passes the same
+        // Action / Layout instance unless it genuinely loaded a new one.
+        var actionChanged = !ReferenceEquals(_lastAction, Action);
+        var layoutChanged = !ReferenceEquals(_lastLayout, Layout);
+        var walletChanged = !string.Equals(_lastSigningWalletAddress, SigningWalletAddress, StringComparison.Ordinal);
+        var modeChanged = _lastIsReadOnly != IsReadOnly || _lastIsSenderAction != IsSenderAction;
 
-        // Build disclosure filter
+        if (!actionChanged && !layoutChanged && !walletChanged && !modeChanged)
+        {
+            return;
+        }
+
+        _lastAction = Action;
+        _lastLayout = Layout;
+        _lastSigningWalletAddress = SigningWalletAddress;
+        _lastIsReadOnly = IsReadOnly;
+        _lastIsSenderAction = IsSenderAction;
+
+        // Detach any prior subscription so we don't leak to a stale context.
+        if (_formContext is not null)
+        {
+            _formContext.OnFocusedFieldChanged -= HandleFocusedFieldChanged;
+        }
+
+        if (actionChanged)
+        {
+            // New action → fresh FormContext
+            _formContext = new FormContext
+            {
+                DataSchema = SchemaService.MergeSchemas(Action.DataSchemas),
+                IsReadOnly = IsReadOnly,
+                SigningWalletAddress = SigningWalletAddress
+            };
+        }
+        else if (_formContext is not null)
+        {
+            // Same action — keep existing FormContext (and FormData) but
+            // refresh the mutable bits in case wallet / read-only changed.
+            _formContext.IsReadOnly = IsReadOnly;
+            _formContext.SigningWalletAddress = SigningWalletAddress;
+        }
+
+        // Re-attach focus event subscription. _formContext is non-null after the
+        // branches above (either freshly created or pre-existing with field updates).
+        _formContext!.OnFocusedFieldChanged += HandleFocusedFieldChanged;
+
+        // Build disclosure filter (depends on Action + IsSenderAction)
         BuildDisclosureFilter();
 
-        // Parse previous data
-        if (PreviousData is not null)
+        // Parse previous data only on action change (otherwise we'd reset values)
+        if (actionChanged && PreviousData is not null)
         {
             ParsePreviousData();
         }
 
-        // Determine form control — use Action.Form if it has elements, otherwise auto-generate
-        // Note: Action.Form defaults to an empty Layout (non-null) even when JSON has no "form" key,
-        // so we must check for elements rather than null.
-        var explicitForm = Action.Form;
-        var hasExplicitFormElements = explicitForm?.Elements is { Count: > 0 };
-        _formControl = hasExplicitFormElements ? explicitForm! : SchemaService.AutoGenerateForm(Action.DataSchemas);
+        if (actionChanged)
+        {
+            // Determine form control — use Action.Form if it has elements, otherwise auto-generate.
+            // Action.Form defaults to an empty Layout (non-null) even when JSON has no "form" key,
+            // so we must check for elements rather than null.
+            var explicitForm = Action.Form;
+            var hasExplicitFormElements = explicitForm?.Elements is { Count: > 0 };
+            _formControl = hasExplicitFormElements ? explicitForm! : SchemaService.AutoGenerateForm(Action.DataSchemas);
 
-        // Credential requirements
-        _credentialRequirements = Action.CredentialRequirements?.ToList() ?? [];
-        _formContext.CredentialGateSatisfied = !_credentialRequirements.Any();
+            // Build the leaf field index (scope → Control) so sections and wizard
+            // pages can look up individual controls by field name.
+            BuildFieldIndex(_formControl);
+        }
 
-        // Calculations
-        _hasCalculations = Action.Calculations?.Count > 0;
+        // Compute layout mode flags from the (optional) Layout parameter
+        _hasWizard = Layout is { HasWizard: true };
+        _hasSectionsFlat = !_hasWizard && Layout is { HasSections: true };
+        if (_currentPage < 0 || (Layout?.Pages is not null && _currentPage >= Layout.Pages.Count))
+        {
+            _currentPage = 0;
+        }
 
+        // Compute orphan fields (in schema but not referenced by any section)
+        BuildOrphanFieldList();
+
+        if (actionChanged)
+        {
+            // Credential requirements
+            _credentialRequirements = Action.CredentialRequirements?.ToList() ?? [];
+            _formContext.CredentialGateSatisfied = !_credentialRequirements.Any();
+
+            // Calculations
+            _hasCalculations = Action.Calculations?.Count > 0;
+        }
     }
 
     private void BuildDisclosureFilter()
@@ -193,6 +445,218 @@
         catch
         {
             // Gracefully handle malformed previous data
+        }
+    }
+
+    /// <summary>
+    /// Walks the Control tree and populates <see cref="_fieldIndex"/> with a
+    /// (stripped scope → Control) mapping for every leaf control that has a
+    /// scope. Layout / group controls are not indexed.
+    /// </summary>
+    private void BuildFieldIndex(Control root)
+    {
+        _fieldIndex.Clear();
+        if (root is null) return;
+
+        void Walk(Control node)
+        {
+            if (!string.IsNullOrEmpty(node.Scope))
+            {
+                var key = node.Scope.StartsWith('/') ? node.Scope[1..] : node.Scope;
+                _fieldIndex[key] = node;
+            }
+            if (node.Elements is { Count: > 0 })
+            {
+                foreach (var child in node.Elements)
+                {
+                    Walk(child);
+                }
+            }
+        }
+
+        Walk(root);
+    }
+
+    /// <summary>
+    /// Builds the list of "orphan" field controls — leaf fields that exist in
+    /// the schema but are not referenced by any section (standalone or inside
+    /// a wizard page). These render in a catch-all panel so no data is lost.
+    /// </summary>
+    private void BuildOrphanFieldList()
+    {
+        _orphanFieldControls.Clear();
+        if (Layout is null) return;
+
+        var referenced = new HashSet<string>(StringComparer.Ordinal);
+        if (Layout.Sections is not null)
+        {
+            foreach (var section in Layout.Sections)
+                foreach (var f in section.Fields)
+                    referenced.Add(f);
+        }
+        if (Layout.Pages is not null)
+        {
+            foreach (var page in Layout.Pages)
+            {
+                if (page.Sections is null) continue;
+                foreach (var section in page.Sections)
+                    foreach (var f in section.Fields)
+                        referenced.Add(f);
+            }
+        }
+
+        // If no section referenced anything, there are no orphans — every field
+        // will be rendered via the flat mode fallback in the markup.
+        if (referenced.Count == 0) return;
+
+        foreach (var (name, control) in _fieldIndex)
+        {
+            if (!referenced.Contains(name))
+            {
+                _orphanFieldControls.Add((name, control));
+            }
+        }
+    }
+
+    private Control? LookupFieldControl(string fieldName)
+    {
+        var key = fieldName.StartsWith('/') ? fieldName[1..] : fieldName;
+        return _fieldIndex.TryGetValue(key, out var control) ? control : null;
+    }
+
+    /// <summary>
+    /// Returns the human-readable label for a field scope ("/firstName" → "First Name").
+    /// Prefers the auto-generated Control.Title (which is sourced from the schema's
+    /// "title" property), then falls back to a humanised version of the field name.
+    /// Used by the validation summary so users know exactly which field failed.
+    /// </summary>
+    private string ResolveFieldLabelForScope(string scope)
+    {
+        var control = LookupFieldControl(scope);
+        if (control is not null && !string.IsNullOrWhiteSpace(control.Title))
+            return control.Title;
+
+        var key = scope.StartsWith('/') ? scope[1..] : scope;
+        if (string.IsNullOrEmpty(key)) return scope;
+
+        // camelCase → "Camel Case"
+        var sb = new System.Text.StringBuilder();
+        sb.Append(char.ToUpperInvariant(key[0]));
+        for (int i = 1; i < key.Length; i++)
+        {
+            if (char.IsUpper(key[i]) && !char.IsUpper(key[i - 1]))
+                sb.Append(' ');
+            sb.Append(key[i]);
+        }
+        return sb.ToString();
+    }
+
+    private string GetWidthForField(string fieldName)
+    {
+        var key = fieldName.StartsWith('/') ? fieldName[1..] : fieldName;
+        if (Layout?.FieldWidths is not null && Layout.FieldWidths.TryGetValue(key, out var width))
+            return width;
+        return "full";
+    }
+
+    private async Task HandleStepperClick(int pageIndex)
+    {
+        if (Layout?.Pages is null) return;
+        if (pageIndex < 0 || pageIndex > _currentPage) return; // only allow visited pages
+
+        _currentPage = pageIndex;
+        _showValidationSummary = false;
+        if (OnPageChanged.HasDelegate)
+            await OnPageChanged.InvokeAsync(_currentPage);
+    }
+
+    private async Task HandleBack()
+    {
+        if (_currentPage <= 0) return;
+        _currentPage--;
+        _showValidationSummary = false;
+        if (OnPageChanged.HasDelegate)
+            await OnPageChanged.InvokeAsync(_currentPage);
+    }
+
+    private async Task HandleNext()
+    {
+        if (Layout?.Pages is null || _currentPage >= Layout.Pages.Count - 1) return;
+
+        // Per-page validation: only enforce required fields on the current page.
+        // The full-schema validation still runs at final submit, catching any
+        // cross-page validity issues (e.g., wizardfinale must match first page).
+        if (_formContext.DataSchema is not null)
+        {
+            var pageFields = GetCurrentPageFields();
+            if (pageFields.Count > 0)
+            {
+                var errors = SchemaService.ValidateData(_formContext.DataSchema, _formContext.FormData);
+                _formContext.ClearErrors();
+                bool hasPageErrors = false;
+                foreach (var (scope, fieldErrors) in errors)
+                {
+                    var fieldName = scope.StartsWith('/') ? scope[1..] : scope;
+                    if (pageFields.Contains(fieldName))
+                    {
+                        _formContext.SetErrors(scope, fieldErrors);
+                        hasPageErrors = true;
+                    }
+                }
+                if (hasPageErrors)
+                {
+                    _showValidationSummary = true;
+                    return;
+                }
+            }
+        }
+
+        _currentPage++;
+        _showValidationSummary = false;
+        if (OnPageChanged.HasDelegate)
+            await OnPageChanged.InvokeAsync(_currentPage);
+    }
+
+    private HashSet<string> GetCurrentPageFields()
+    {
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        if (Layout?.Pages is null || _currentPage >= Layout.Pages.Count)
+            return fields;
+
+        var page = Layout.Pages[_currentPage];
+        if (page.Sections is not null)
+        {
+            foreach (var section in page.Sections)
+                foreach (var f in section.Fields)
+                    fields.Add(f);
+        }
+        // Catch-all fields are part of the last wizard page
+        if (_currentPage == Layout.Pages.Count - 1)
+        {
+            foreach (var (name, _) in _orphanFieldControls)
+                fields.Add(name);
+        }
+        return fields;
+    }
+
+    // async void is required because the FormContext.OnFocusedFieldChanged
+    // event is `Action<string?>`. Wrap in try/catch so a thrown exception
+    // can't escape into the synchronisation context (which would crash the
+    // circuit on Blazor Server and silently disappear on WASM).
+    private async void HandleFocusedFieldChanged(string? scope)
+    {
+        try
+        {
+            if (!OnFieldFocused.HasDelegate) return;
+            await InvokeAsync(async () =>
+            {
+                await OnFieldFocused.InvokeAsync(scope);
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error propagating focused-field change for scope {Scope}", scope);
         }
     }
 
@@ -268,5 +732,13 @@
     private async Task HandleCancel()
     {
         await OnCancel.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_formContext is not null)
+        {
+            _formContext.OnFocusedFieldChanged -= HandleFocusedFieldChanged;
+        }
     }
 }

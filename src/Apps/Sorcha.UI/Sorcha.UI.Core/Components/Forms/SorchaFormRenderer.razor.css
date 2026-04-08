@@ -1,0 +1,139 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/* =============================================================================
+ * SorchaFormRenderer — base styles
+ *
+ * These styles are component-scoped (Blazor emits a `b-xxx` attribute on every
+ * element) so they will NOT leak into pages that embed the renderer. If you
+ * want to theme the form from a host page, target the `.sorcha-form` class
+ * directly in your own stylesheet with `::deep` or a higher-specificity
+ * selector.
+ *
+ * Class contract (Feature 091):
+ *   .sorcha-form                   — root wrapper
+ *   .sorcha-form-flat              — no layout extensions, single control tree
+ *   .sorcha-form-sections          — x-sections mode (no wizard)
+ *   .sorcha-form-page              — current wizard page container
+ *   .sorcha-form-page-title        — wizard page header
+ *   .sorcha-form-section           — individual section wrapper
+ *   .sorcha-form-section-{mode}    — vertical | horizontal | grid
+ *   .sorcha-form-section-title     — section heading
+ *   .sorcha-form-section-description — section subtitle
+ *   .sorcha-form-section-fields    — section field grid container
+ *   .sorcha-form-catchall          — orphan fields panel
+ *   .sorcha-form-catchall-fields   — catch-all field grid
+ *   .sorcha-form-actions           — bottom button bar
+ *   .sorcha-form-validation-summary — end-of-form error banner
+ *   .sorcha-field                  — wrapper around any input control
+ *   .sorcha-field-{controltype}    — specific control type (textline, numeric, ...)
+ *   .sorcha-field-width-{hint}     — full | half | third width hint from x-width
+ * ============================================================================= */
+
+.sorcha-form {
+    width: 100%;
+}
+
+/* --- Sections --- */
+
+.sorcha-form-section {
+    margin-bottom: 12px;
+}
+
+.sorcha-form-section-title {
+    margin-bottom: 4px;
+}
+
+.sorcha-form-section-description {
+    margin-bottom: 8px;
+}
+
+/* Section layout modes */
+
+.sorcha-form-section-vertical .sorcha-form-section-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sorcha-form-section-horizontal .sorcha-form-section-fields {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.sorcha-form-section-horizontal .sorcha-field {
+    flex: 1 1 0;
+    min-width: 200px;
+}
+
+.sorcha-form-section-grid .sorcha-form-section-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+/* --- Field width hints (x-width) --- */
+
+.sorcha-field-width-full {
+    flex-basis: 100%;
+    grid-column: span 2;
+}
+
+.sorcha-field-width-half {
+    flex-basis: calc(50% - 6px);
+    grid-column: span 1;
+}
+
+.sorcha-field-width-third {
+    flex-basis: calc(33.333% - 8px);
+    grid-column: span 1;
+}
+
+/* Responsive: on narrow viewports collapse to single column */
+@media (max-width: 600px) {
+    .sorcha-form-section-horizontal .sorcha-form-section-fields,
+    .sorcha-form-section-grid .sorcha-form-section-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .sorcha-field-width-half,
+    .sorcha-field-width-third {
+        flex-basis: 100%;
+    }
+}
+
+/* --- Catch-all (orphan fields) --- */
+
+.sorcha-form-catchall {
+    opacity: 0.95;
+}
+
+.sorcha-form-catchall-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* --- Form actions --- */
+
+.sorcha-form-actions {
+    padding-top: 12px;
+    border-top: 1px solid var(--mud-palette-lines-default, #e0e0e0);
+}
+
+/* --- Wizard page --- */
+
+.sorcha-form-page-title {
+    color: var(--mud-palette-primary, #667eea);
+}
+
+/* --- Validation summary --- */
+
+.sorcha-form-validation-summary {
+    margin-top: 16px;
+}

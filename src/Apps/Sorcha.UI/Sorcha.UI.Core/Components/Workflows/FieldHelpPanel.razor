@@ -1,0 +1,255 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using Sorcha.Blueprint.Models
+
+<MudPaper Class="pa-4 field-help-panel" Elevation="0" Outlined="true"
+          Style="@($"position: sticky; top: 88px; {_borderStyle}")">
+    <MudStack Spacing="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudIcon Icon="@_headerIcon" Color="@_headerColor" Size="Size.Small" />
+            <MudText Typo="Typo.overline" Color="@_headerColor">@_headerLabel</MudText>
+        </MudStack>
+
+        @if (_fieldHelp is not null)
+        {
+            @* Field-level help *@
+            <MudText Typo="Typo.subtitle2">@_fieldHelp.Title</MudText>
+
+            @if (!string.IsNullOrWhiteSpace(_fieldHelp.Description))
+            {
+                <MudText Typo="Typo.body2">@_fieldHelp.Description</MudText>
+            }
+
+            @if (_fieldHelp.Constraints.Count > 0)
+            {
+                <MudDivider Class="my-1" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Requirements</MudText>
+                <MudList T="string" Dense="true" Class="pa-0">
+                    @foreach (var constraint in _fieldHelp.Constraints)
+                    {
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.FiberManualRecord" IconSize="Size.Small">
+                            <MudText Typo="Typo.body2">@constraint</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        }
+        else if (_sectionHelp is not null)
+        {
+            @* Section-level help *@
+            @if (!string.IsNullOrWhiteSpace(_sectionHelp.Title))
+            {
+                <MudText Typo="Typo.subtitle2">@_sectionHelp.Title</MudText>
+            }
+            <MudText Typo="Typo.body2">@_sectionHelp.Body</MudText>
+        }
+        else if (!string.IsNullOrWhiteSpace(Layout?.Introduction))
+        {
+            <MudText Typo="Typo.body2">@Layout.Introduction</MudText>
+        }
+        else if (!string.IsNullOrWhiteSpace(BlueprintDescription))
+        {
+            <MudText Typo="Typo.body2">@BlueprintDescription</MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Select any field to see contextual help and requirements.
+            </MudText>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    /// <summary>
+    /// Name (or JSON Pointer scope, starting with "/") of the currently focused
+    /// field. When set, the panel renders field-level help from the schema.
+    /// </summary>
+    [Parameter] public string? FocusedField { get; set; }
+
+    /// <summary>
+    /// Title of the active section, if any. When <see cref="FocusedField"/> is
+    /// null, the panel renders section-level help as a fallback.
+    /// </summary>
+    [Parameter] public string? ActiveSection { get; set; }
+
+    /// <summary>
+    /// The action's JSON Schema root element, used to look up field descriptions
+    /// and constraints.
+    /// </summary>
+    [Parameter] public JsonElement? Schema { get; set; }
+
+    /// <summary>
+    /// Parsed layout info containing introduction, sections, and field widths.
+    /// </summary>
+    [Parameter] public SchemaLayoutInfo? Layout { get; set; }
+
+    /// <summary>
+    /// Blueprint description used as the ultimate fallback when no field or
+    /// section help is available.
+    /// </summary>
+    [Parameter] public string? BlueprintDescription { get; set; }
+
+    private FieldHelp? _fieldHelp;
+    private SectionHelp? _sectionHelp;
+    private string _headerLabel = "About this workflow";
+    private string _headerIcon = Icons.Material.Filled.Info;
+    private Color _headerColor = Color.Primary;
+    private string _borderStyle = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        _fieldHelp = TryResolveFieldHelp();
+        _sectionHelp = _fieldHelp is null ? TryResolveSectionHelp() : null;
+
+        if (_fieldHelp is not null)
+        {
+            _headerLabel = "Field help";
+            _headerIcon = Icons.Material.Filled.HelpOutline;
+            _headerColor = Color.Secondary;
+            _borderStyle = "border-left: 4px solid var(--mud-palette-secondary);";
+        }
+        else if (_sectionHelp is not null)
+        {
+            _headerLabel = "Section overview";
+            _headerIcon = Icons.Material.Filled.ViewStream;
+            _headerColor = Color.Tertiary;
+            _borderStyle = "border-left: 4px solid var(--mud-palette-tertiary);";
+        }
+        else
+        {
+            _headerLabel = "About this workflow";
+            _headerIcon = Icons.Material.Filled.Info;
+            _headerColor = Color.Primary;
+            _borderStyle = string.Empty;
+        }
+    }
+
+    private FieldHelp? TryResolveFieldHelp()
+    {
+        if (string.IsNullOrWhiteSpace(FocusedField) || Schema is null)
+            return null;
+
+        if (Schema.Value.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (!Schema.Value.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        // Accept both "field" and "/field" (JSON Pointer) — strip leading slash
+        var fieldName = FocusedField.TrimStart('/');
+        if (!properties.TryGetProperty(fieldName, out var field) ||
+            field.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var title = field.TryGetProperty("title", out var titleEl) && titleEl.ValueKind == JsonValueKind.String
+            ? titleEl.GetString() ?? Humanize(fieldName)
+            : Humanize(fieldName);
+
+        var description = field.TryGetProperty("description", out var descEl) && descEl.ValueKind == JsonValueKind.String
+            ? descEl.GetString()
+            : null;
+
+        var constraints = new List<string>();
+
+        // Required?
+        if (Schema.Value.TryGetProperty("required", out var requiredEl) &&
+            requiredEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var req in requiredEl.EnumerateArray())
+            {
+                if (req.ValueKind == JsonValueKind.String && req.GetString() == fieldName)
+                {
+                    constraints.Add("Required");
+                    break;
+                }
+            }
+        }
+
+        // Type
+        if (field.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
+        {
+            constraints.Add($"Type: {typeEl.GetString()}");
+        }
+
+        // String constraints
+        if (field.TryGetProperty("minLength", out var minLenEl) && minLenEl.TryGetInt32(out var minLen))
+            constraints.Add($"Minimum length: {minLen}");
+        if (field.TryGetProperty("maxLength", out var maxLenEl) && maxLenEl.TryGetInt32(out var maxLen))
+            constraints.Add($"Maximum length: {maxLen}");
+        if (field.TryGetProperty("pattern", out var patternEl) && patternEl.ValueKind == JsonValueKind.String)
+            constraints.Add($"Pattern: {patternEl.GetString()}");
+
+        // Numeric constraints
+        if (field.TryGetProperty("minimum", out var minEl) && minEl.TryGetDecimal(out var min))
+            constraints.Add($"Minimum: {min}");
+        if (field.TryGetProperty("maximum", out var maxEl) && maxEl.TryGetDecimal(out var max))
+            constraints.Add($"Maximum: {max}");
+
+        // Enum
+        if (field.TryGetProperty("enum", out var enumEl) && enumEl.ValueKind == JsonValueKind.Array)
+        {
+            var values = enumEl.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList();
+            if (values.Count > 0)
+                constraints.Add($"Allowed values: {string.Join(", ", values)}");
+        }
+
+        return new FieldHelp(title, description, constraints);
+    }
+
+    private SectionHelp? TryResolveSectionHelp()
+    {
+        if (string.IsNullOrWhiteSpace(ActiveSection) || Layout is null)
+            return null;
+
+        // Look in standalone sections first, then inside wizard pages
+        var section = Layout.Sections?.FirstOrDefault(s => s.Title == ActiveSection);
+
+        if (section is null && Layout.Pages is not null)
+        {
+            foreach (var page in Layout.Pages)
+            {
+                section = page.Sections?.FirstOrDefault(s => s.Title == ActiveSection);
+                if (section is not null) break;
+            }
+        }
+
+        if (section is null) return null;
+
+        var body = !string.IsNullOrWhiteSpace(section.Help) ? section.Help! :
+                   !string.IsNullOrWhiteSpace(section.Description) ? section.Description! : null;
+
+        return body is null ? null : new SectionHelp(section.Title, body);
+    }
+
+    private static string Humanize(string fieldName)
+    {
+        if (string.IsNullOrEmpty(fieldName)) return string.Empty;
+
+        // Insert a space before each uppercase letter (camelCase → Camel Case)
+        var sb = new System.Text.StringBuilder();
+        sb.Append(char.ToUpperInvariant(fieldName[0]));
+        for (int i = 1; i < fieldName.Length; i++)
+        {
+            if (char.IsUpper(fieldName[i]) && !char.IsUpper(fieldName[i - 1]))
+                sb.Append(' ');
+            sb.Append(fieldName[i]);
+        }
+        return sb.ToString();
+    }
+
+    private sealed record FieldHelp(string Title, string? Description, List<string> Constraints);
+
+    private sealed record SectionHelp(string Title, string Body);
+}

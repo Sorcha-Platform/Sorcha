@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Launches autonomous actor agents for the TradeFinance walkthrough.
 .DESCRIPTION
