@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+﻿# SPDX-License-Identifier: MIT
 # Copyright (c) 2025 Sorcha Contributors
 
 <#
@@ -51,7 +51,7 @@ param(
     [string]$Tag = "latest",
 
     [Parameter(Mandatory=$false)]
-    [ValidateSet("blueprint", "wallet", "register", "tenant", "peer", "validator", "gateway", "all")]
+    [ValidateSet("blueprint", "wallet", "register", "tenant", "peer", "validator", "gateway", "ui", "all")]
     [string[]]$Services = @("all"),
 
     [Parameter(Mandatory=$false)]
@@ -61,7 +61,7 @@ param(
     [switch]$DryRun
 )
 
-# Service definitions
+# Service definitions (key = CLI name, value = image name on DockerHub)
 $serviceMap = @{
     "blueprint" = "blueprint-service"
     "wallet" = "wallet-service"
@@ -70,6 +70,12 @@ $serviceMap = @{
     "peer" = "peer-service"
     "validator" = "validator-service"
     "gateway" = "api-gateway"
+    "ui" = "ui-web"
+}
+
+# Compose service names (when different from image name)
+$composeNameMap = @{
+    "ui" = "sorcha-ui-web"
 }
 
 # Determine which services to process
@@ -134,11 +140,14 @@ function Push-Service {
         [string]$ServiceName
     )
 
+    # Resolve compose service name (may differ from image name)
+    $composeName = if ($composeNameMap.ContainsKey($ServiceKey)) { $composeNameMap[$ServiceKey] } else { $ServiceName }
+
     Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "Processing: $ServiceName" -ForegroundColor Cyan
+    Write-Host "Processing: $ServiceName (compose: $composeName)" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
 
-    $localImage = "sorcha/${ServiceName}:latest"
+    $localImage = "sorchadev/${ServiceName}:latest"
     $remoteImage = "${DockerHubUser}/${ServiceName}:${Tag}"
 
     # Build the image
@@ -146,9 +155,9 @@ function Push-Service {
         Write-Host "🔨 Building image: $localImage" -ForegroundColor Yellow
 
         if ($DryRun) {
-            Write-Host "   [DRY RUN] Would execute: docker compose build $ServiceName" -ForegroundColor Gray
+            Write-Host "   [DRY RUN] Would execute: docker compose build $composeName" -ForegroundColor Gray
         } else {
-            docker compose build $ServiceName
+            docker compose build $composeName
 
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "❌ Failed to build $ServiceName" -ForegroundColor Red

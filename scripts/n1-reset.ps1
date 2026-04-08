@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+﻿# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
 # Reset n1.sorcha.dev - tears down all containers and volumes, pulls fresh images,

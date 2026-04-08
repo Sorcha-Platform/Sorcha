@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Stress test: 100 random-sized file transfers over ~20 minutes on n1
 param(
     [int]$TotalRuns = 100,

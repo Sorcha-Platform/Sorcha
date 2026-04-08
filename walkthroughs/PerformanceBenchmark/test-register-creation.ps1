@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Quick test to verify register creation flow
 
 $ErrorActionPreference = "Stop"
