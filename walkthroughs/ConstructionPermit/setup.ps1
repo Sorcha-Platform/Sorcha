@@ -324,6 +324,7 @@ $meridianSession = $sessionCache["$($secrets.contractorEmail)|$($orgs.meridian)"
 $register = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl `
     -WalletUrl $env.WalletUrl `
+    -TenantUrl $env.TenantUrl `
     -Name "Construction Permit Register" `
     -Description "Multi-org construction permit approval register" `
     -TenantId $orgs.meridian `
