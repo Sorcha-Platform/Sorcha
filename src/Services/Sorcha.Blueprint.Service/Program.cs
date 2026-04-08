@@ -786,13 +786,12 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
 .WithDescription("Retrieve blueprints and actions available to a specific wallet/register combination")
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
 
-// <summary>
-// Get a single published blueprint (with full action schemas) for a wallet/register/blueprintId.
-// Returns the latest version published to this specific register. Used by the
-// New Submissions workspace to render forms from published blueprints on any
-// node — NOT from the draft store. Fixes the 404 bug where non-authoring nodes
-// could not start submissions.
-// </summary>
+// Get a single published blueprint (with full action schemas) for a wallet /
+// register / blueprintId. Returns the latest version published to this
+// specific register. Used by the New Submissions workspace to render forms
+// from published blueprints on any node — NOT from the draft store. Fixes
+// the 404 bug where non-authoring nodes could not start submissions.
+// (.WithSummary / .WithDescription on the endpoint provide the OpenAPI doc.)
 actionsGroup.MapGet("/{wallet}/{register}/blueprints/{blueprintId}", async (
     string wallet, // TODO: Filter by wallet access permissions
     string register,

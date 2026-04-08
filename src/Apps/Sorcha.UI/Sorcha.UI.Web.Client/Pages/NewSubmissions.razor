@@ -5,6 +5,7 @@
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Logging
 @using Microsoft.JSInterop
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Registers
@@ -20,6 +21,7 @@
 @inject NavigationStateService NavState
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject ILogger<NewSubmissions> Logger
 
 <PageTitle>New Submissions - Sorcha Platform</PageTitle>
 
@@ -278,52 +280,73 @@
                 .Where(r => r.IsOnline && subscribedRegisterIds.Contains(r.Id))
                 .ToList();
 
-            foreach (var register in onlineRegisters)
+            // Fetch available blueprints for all registers in parallel.
+            // The previous implementation serialised one HTTP roundtrip per
+            // register; with 10 subscribed registers that meant 10 sequential
+            // calls. Task.WhenAll cuts wall-clock time to roughly the slowest
+            // single fetch, which is what SC-006 (3-second target) requires.
+            var fetchTasks = onlineRegisters.Select(async register =>
             {
                 try
                 {
-                    var available = await BlueprintApiService.GetAvailableBlueprintsAsync(_defaultWallet, register.Id);
-                    if (available?.Blueprints is { Count: > 0 })
-                    {
-                        var startables = available.Blueprints
-                            .Where(bp => bp.AvailableActions.Any(a => a.IsAvailable))
-                            .Select(bp =>
-                            {
-                                var startingAction = bp.AvailableActions.FirstOrDefault(a => a.IsAvailable);
-                                return new StartableBlueprintViewModel
-                                {
-                                    BlueprintId = bp.BlueprintId,
-                                    Title = bp.Title,
-                                    Description = bp.Description,
-                                    Version = bp.Version,
-                                    RegisterId = register.Id,
-                                    StartingActionTitle = startingAction?.Title ?? "Start",
-                                    StartingActionDescription = startingAction?.Description
-                                };
-                            })
-                            .ToList();
-
-                        if (startables.Count > 0)
-                        {
-                            _registerGroups.Add(new RegisterBlueprintGroup
-                            {
-                                Register = register,
-                                Blueprints = startables
-                            });
-
-                            _allBlueprints.AddRange(startables.Select(s => new BlueprintRowViewModel(s, register.Name)));
-                        }
-                    }
+                    var available = await BlueprintApiService
+                        .GetAvailableBlueprintsAsync(_defaultWallet, register.Id);
+                    return (Register: register, Available: available, Error: (string?)null);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    _failedRegisters.Add(register.Name);
+                    Logger.LogWarning(ex,
+                        "Failed to load blueprints for register {RegisterId} ({RegisterName})",
+                        register.Id, register.Name);
+                    return (Register: register, Available: null, Error: register.Name);
+                }
+            });
+
+            var fetchResults = await Task.WhenAll(fetchTasks);
+
+            foreach (var result in fetchResults)
+            {
+                if (result.Error is not null)
+                {
+                    _failedRegisters.Add(result.Error);
                     _hasLoadErrors = true;
+                    continue;
+                }
+
+                if (result.Available?.Blueprints is not { Count: > 0 }) continue;
+
+                var startables = result.Available.Blueprints
+                    .Where(bp => bp.AvailableActions.Any(a => a.IsAvailable))
+                    .Select(bp =>
+                    {
+                        var startingAction = bp.AvailableActions.FirstOrDefault(a => a.IsAvailable);
+                        return new StartableBlueprintViewModel
+                        {
+                            BlueprintId = bp.BlueprintId,
+                            Title = bp.Title,
+                            Description = bp.Description,
+                            Version = bp.Version,
+                            RegisterId = result.Register.Id,
+                            StartingActionTitle = startingAction?.Title ?? "Start",
+                            StartingActionDescription = startingAction?.Description
+                        };
+                    })
+                    .ToList();
+
+                if (startables.Count > 0)
+                {
+                    _registerGroups.Add(new RegisterBlueprintGroup
+                    {
+                        Register = result.Register,
+                        Blueprints = startables
+                    });
+                    _allBlueprints.AddRange(startables.Select(s => new BlueprintRowViewModel(s, result.Register.Name)));
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load New Submissions catalogue");
             _hasLoadErrors = true;
         }
         finally
@@ -398,10 +421,13 @@
 
     private void HandleStart(StartableBlueprintViewModel blueprint)
     {
-        // Stash the selected blueprint in navigation state so the workspace page
-        // can skip an API roundtrip on hot navigation. On direct navigation
-        // (bookmark/refresh), the state will be empty and the workspace falls
-        // back to fetching from the published endpoint.
+        // Pass the listing-page summary (id, title, version, register, starting
+        // action title) into navigation state so the workspace can render
+        // immediate context while it loads the full Blueprint with action
+        // schemas via the published endpoint. The full blueprint fetch is
+        // unconditional — this metadata is for instant chrome only, not a
+        // roundtrip skip. NavigationStateService.Get is one-shot, so the
+        // entry is consumed by the workspace on init.
         var key = $"blueprint:{blueprint.RegisterId}:{blueprint.BlueprintId}";
         NavState.Set(key, blueprint);
         // Relative path so it resolves against the Blazor app base href (/app/)
