@@ -629,6 +629,31 @@ namespace Sorcha.Tenant.Service.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "PlatformUserPersonas",
+                schema: "public",
+                columns: table => new
+                {
+                    PlatformUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CiphertextBlob = table.Column<byte[]>(type: "bytea", nullable: false),
+                    Nonce = table.Column<byte[]>(type: "bytea", maxLength: 24, nullable: false),
+                    WrappedKeyRef = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
+                    SchemaVersion = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PlatformUserPersonas", x => x.PlatformUserId);
+                    table.ForeignKey(
+                        name: "FK_PlatformUserPersonas_PlatformUsers_PlatformUserId",
+                        column: x => x.PlatformUserId,
+                        principalSchema: "public",
+                        principalTable: "PlatformUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_ActivityEvent_ExpiresAt",
                 schema: "public",
@@ -1049,6 +1074,10 @@ namespace Sorcha.Tenant.Service.Migrations
 
             migrationBuilder.DropTable(
                 name: "PlatformUserOrgMemberships",
+                schema: "public");
+
+            migrationBuilder.DropTable(
+                name: "PlatformUserPersonas",
                 schema: "public");
 
             migrationBuilder.DropTable(

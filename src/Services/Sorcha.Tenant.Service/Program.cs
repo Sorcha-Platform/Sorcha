@@ -93,6 +93,21 @@ builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventServi
     Sorcha.Tenant.Service.Services.EventService>();
 builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
 
+// Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
+builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
+    Sorcha.Tenant.Service.Services.PersonaService>();
+builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClient,
+    Sorcha.Tenant.Service.Services.PersonaCryptoClient>(client =>
+{
+    // Wallet Service base URL — resolved from configuration via Aspire service
+    // discovery. In Docker Compose this is "http://wallet"; in Aspire/dev it
+    // resolves via the service discovery address.
+    var walletBase = builder.Configuration["ServiceClients:WalletService:Address"]
+        ?? builder.Configuration["Services:wallet:http:0"]
+        ?? "http://wallet";
+    client.BaseAddress = new Uri(walletBase);
+});
+
 var app = builder.Build();
 
 // Run database migrations and seeding BEFORE app.Run() to prevent race conditions
@@ -150,6 +165,7 @@ app.MapPasskeyEndpoints();
 app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
+app.MapPersonaEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();

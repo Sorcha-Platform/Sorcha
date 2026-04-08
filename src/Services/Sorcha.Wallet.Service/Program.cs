@@ -65,6 +65,10 @@ builder.Services.AddSingleton<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyProt
 builder.Services.AddScoped<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyDerivationService,
     Sorcha.Wallet.Service.Services.Implementation.OrgKeyDerivationService>();
 
+// Feature 092: Consumer persona crypto (per-user persona vault encryption)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPersonaCryptoService,
+    Sorcha.Wallet.Service.Services.Implementation.PersonaCryptoService>();
+
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
     Sorcha.Wallet.Service.Services.Implementation.FileReassemblyService>();
@@ -137,6 +141,7 @@ app.MapCredentialEndpoints();
 app.MapPresentationEndpoints();
 app.MapOrgKeyEndpoints();
 app.MapFileDownloadEndpoints();
+app.MapPersonaCryptoEndpoints();
 
 // ===========================
 // Statistics Endpoint (public, no auth)

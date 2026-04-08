@@ -1,16 +1,22 @@
 @page "/settings"
+@page "/settings/notifications"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
+@using System.Web
 @using Microsoft.AspNetCore.Authorization
 @using MudBlazor
 @using Sorcha.UI.Core.Models
+@using Sorcha.UI.Core.Models.Admin
 @using Sorcha.UI.Core.Models.Configuration
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Admin
 @using Sorcha.UI.Core.Services.Configuration
 @using Sorcha.UI.Core.Components.Configuration
 @inject IUserPreferencesService PreferencesService
 @inject IConfigurationService ConfigService
 @inject ITotpClientService TotpService
+@inject IPushNotificationService PushService
+@inject IJSRuntime JSRuntime
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -30,7 +36,8 @@
     </MudText>
 
     <MudPaper Class="pa-4" Elevation="2">
-        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4"
+                 @bind-ActivePanelIndex="_activeTabIndex">
 
             <!-- Appearance Tab -->
             <MudTabPanel Text="@Loc.T("settings.appearance")" Icon="@Icons.Material.Filled.Palette">
@@ -294,6 +301,36 @@
                                  Label="@Loc.T("settings.notifications.workflowChanges")" />
                     <MudCheckBox T="bool" Value="true" Disabled="true" Color="Color.Primary"
                                  Label="@Loc.T("settings.notifications.validatorAlerts")" />
+
+                    <MudDivider Class="my-4" />
+
+                    @* Feature 092 / US4 — push notifications merged in from
+                       the former standalone /settings/notifications page. *@
+                    <MudText Typo="Typo.h6" Class="mb-3">Browser push notifications</MudText>
+                    <MudStack Spacing="3">
+                        <MudSwitch T="bool"
+                                   Label="Enable push notifications"
+                                   Color="Color.Primary"
+                                   Value="_pushEnabled"
+                                   ValueChanged="OnPushToggleChanged" />
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Status:</MudText>
+                            @if (_pushEnabled)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Check">Active</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.NotificationsOff">Inactive</MudChip>
+                            }
+                        </MudStack>
+                        @if (_pushPermissionDenied)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                Push notifications are blocked by your browser. To enable them, click the lock icon in the address bar and allow notifications.
+                            </MudAlert>
+                        }
+                    </MudStack>
                 }
             </MudTabPanel>
 
@@ -509,6 +546,17 @@
     private bool _loading = true;
     private string _buildNumber = $"{DateTime.Now:yyyyMMdd}.{DateTime.Now:HHmm}";
 
+    // Feature 092 / US4 — Notifications tab index (Appearance=0, Language=1,
+    // Security=2, Notifications=3) so the /settings/notifications deep link
+    // and avatar-menu shortcut both land on the right tab.
+    private const int NotificationsTabIndex = 3;
+    private int _activeTabIndex;
+
+    // Feature 092 / US4 — push notification state migrated from the former
+    // /settings/notifications standalone page.
+    private bool _pushEnabled;
+    private bool _pushPermissionDenied;
+
     // TOTP setup state
     private bool _showTotpSetup;
     private string _totpSecret = string.Empty;
@@ -528,7 +576,85 @@
     protected override async Task OnInitializedAsync()
     {
         Loc.OnLanguageChanged += OnLocLanguageChanged;
-        await Task.WhenAll(LoadPreferencesAsync(), LoadProfilesAsync());
+
+        // Feature 092 / US4 — the /settings/notifications deep link and the
+        // ?tab=notifications query string both open the Notifications tab.
+        var uri = new Uri(Navigation.Uri);
+        if (uri.AbsolutePath.EndsWith("/settings/notifications", StringComparison.OrdinalIgnoreCase))
+        {
+            _activeTabIndex = NotificationsTabIndex;
+        }
+        else
+        {
+            var query = HttpUtility.ParseQueryString(uri.Query);
+            if (string.Equals(query["tab"], "notifications", StringComparison.OrdinalIgnoreCase))
+            {
+                _activeTabIndex = NotificationsTabIndex;
+            }
+        }
+
+        await Task.WhenAll(LoadPreferencesAsync(), LoadProfilesAsync(), LoadPushStatusAsync());
+    }
+
+    private async Task LoadPushStatusAsync()
+    {
+        try
+        {
+            var status = await PushService.GetStatusAsync();
+            _pushEnabled = status.HasActiveSubscription;
+        }
+        catch
+        {
+            // Non-critical — leave as default (disabled).
+        }
+    }
+
+    private async Task OnPushToggleChanged(bool value)
+    {
+        if (value)
+        {
+            try
+            {
+                var permission = await JSRuntime.InvokeAsync<string>("Notification.requestPermission");
+                if (permission != "granted")
+                {
+                    _pushPermissionDenied = true;
+                    _pushEnabled = false;
+                    Snackbar.Add("Browser notifications permission denied", Severity.Warning);
+                    return;
+                }
+                _pushPermissionDenied = false;
+
+                var request = new PushSubscriptionRequest
+                {
+                    Endpoint = "browser-push-endpoint",
+                    P256dh = "browser-p256dh-key",
+                    Auth = "browser-auth-key"
+                };
+                var success = await PushService.SubscribeAsync(request);
+                _pushEnabled = success;
+                Snackbar.Add(success ? "Push notifications enabled" : "Failed to enable push notifications",
+                    success ? Severity.Success : Severity.Error);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+            }
+        }
+        else
+        {
+            try
+            {
+                var success = await PushService.UnsubscribeAsync("browser-push-endpoint");
+                _pushEnabled = !success ? _pushEnabled : false;
+                Snackbar.Add(success ? "Push notifications disabled" : "Failed to disable push notifications",
+                    success ? Severity.Success : Severity.Error);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Push error: {ex.Message}", Severity.Error);
+            }
+        }
     }
 
     private void OnLocLanguageChanged()

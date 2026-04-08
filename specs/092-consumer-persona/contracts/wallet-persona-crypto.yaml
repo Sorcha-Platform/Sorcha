@@ -1,0 +1,141 @@
+openapi: 3.1.0
+info:
+  title: Wallet Service — Persona Crypto API (Internal)
+  version: 1.0.0
+  summary: Service-to-service endpoints for encrypting and decrypting a user's persona blob.
+  description: |
+    **Internal only.** These endpoints are not exposed through the API Gateway.
+    A gateway-config test asserts that `/api/v1/wallets/{address}/persona/*` is
+    not reachable from outside the service mesh.
+
+    Callers must present an S2S JWT carrying the `persona:crypto` scope. In v1
+    the only authorised caller is the Tenant Service `PersonaService`.
+
+    The Wallet Service derives a per-user `PersonaContentKey` from the user's
+    system wallet seed under the `sorcha:persona-vault` derivation purpose and
+    uses XChaCha20-Poly1305 AEAD (same primitive as Feature 085 file chunks).
+
+servers:
+  - url: /api/v1
+    description: Wallet Service internal network endpoint (not API Gateway)
+
+security:
+  - s2sJwtPersonaCrypto: []
+
+paths:
+  /wallets/{address}/persona/encrypt:
+    post:
+      operationId: encryptPersona
+      summary: Encrypt a persona plaintext blob for the wallet owner.
+      description: |
+        Derives the `PersonaContentKey` for this wallet, encrypts the supplied
+        plaintext with XChaCha20-Poly1305, and returns the ciphertext, nonce,
+        and an opaque `wrappedKeyRef` that the Tenant Service stores alongside
+        the ciphertext. In v1 `wrappedKeyRef` is equal to the wallet address;
+        the column exists for forward compatibility with per-recipient key
+        wrapping (delegation).
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: Wallet address of the user who owns the persona being encrypted.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plaintext]
+              properties:
+                plaintext:
+                  type: string
+                  format: byte
+                  description: UTF-8 JSON bytes of the `PersonaAttributesV1` document, base64url-encoded.
+      responses:
+        '200':
+          description: Encryption succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ciphertext, nonce, wrappedKeyRef]
+                properties:
+                  ciphertext:
+                    type: string
+                    format: byte
+                    description: XChaCha20-Poly1305 ciphertext (with auth tag), base64url-encoded.
+                  nonce:
+                    type: string
+                    format: byte
+                    description: 24-byte nonce, base64url-encoded.
+                  wrappedKeyRef:
+                    type: string
+                    description: Opaque handle for the Tenant Service to store. v1 — equal to the wallet address.
+        '401':
+          description: Missing or invalid S2S JWT.
+        '403':
+          description: JWT does not carry the `persona:crypto` scope.
+        '404':
+          description: Wallet not found for the given address.
+        '500':
+          description: Crypto failure (should not happen with correctly formed input).
+
+  /wallets/{address}/persona/decrypt:
+    post:
+      operationId: decryptPersona
+      summary: Decrypt a stored persona blob.
+      description: |
+        Derives the `PersonaContentKey` for this wallet and decrypts the supplied
+        ciphertext. Returns the plaintext bytes to the Tenant Service for DTO
+        wrapping.
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, nonce, wrappedKeyRef]
+              properties:
+                ciphertext:    { type: string, format: byte }
+                nonce:         { type: string, format: byte }
+                wrappedKeyRef: { type: string }
+      responses:
+        '200':
+          description: Decryption succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plaintext]
+                properties:
+                  plaintext:
+                    type: string
+                    format: byte
+                    description: UTF-8 JSON bytes of the decrypted persona, base64url-encoded.
+        '401':
+          description: Missing or invalid S2S JWT.
+        '403':
+          description: JWT does not carry the `persona:crypto` scope.
+        '404':
+          description: Wallet not found for the given address.
+        '500':
+          description: |
+            Decryption failure — either the ciphertext/nonce are corrupt, the
+            authentication tag does not verify, or the `wrappedKeyRef` is stale.
+            Response body contains a sanitized error with no key material.
+
+components:
+  securitySchemes:
+    s2sJwtPersonaCrypto:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Service-to-service JWT (Tenant Service → Wallet Service) carrying the
+        `persona:crypto` scope. Issued by the existing S2S auth flow.

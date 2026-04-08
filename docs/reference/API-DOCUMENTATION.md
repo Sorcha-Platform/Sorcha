@@ -694,6 +694,74 @@ GET /api/peers/health
 
 ---
 
+## Consumer Persona API (Feature 092)
+
+Per-user identity attributes stored as ciphertext in Tenant Service, with the
+content key derived by Wallet Service under `sorcha:persona-vault`. Used by
+`SorchaFormRenderer` to autofill recognised form fields with a visible `self`
+provenance tick.
+
+### Tenant Service endpoints — `/me/persona`
+
+All routes require a platform-user JWT and are rate-limited under
+`RateLimitPolicies.Api`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/me/persona` | Read the signed-in user's persona. Returns an empty `PersonaReadModelV1` for new users (never 404). Optional `actingAs=self` query parameter reserved for future delegation. |
+| PUT | `/me/persona` | Replace the persona with a full `PersonaAttributesV1` payload. Validates the 5-entry cap, exactly-one-default invariant, RFC 5322 email, E.164 phone, and ISO 3166-1 alpha-2 country codes. Returns the canonical read model. |
+| DELETE | `/me/persona` | Hard-delete the persona row. Idempotent. |
+
+PATCH is intentionally deferred in v1 — full-replace PUT covers every
+consumer use case.
+
+### Wallet Service endpoints — internal S2S only
+
+These endpoints are **not** routed through the API Gateway. Tenant Service
+calls them with a service-to-service JWT carrying the `persona:crypto`
+scope; the `RequirePersonaCrypto` authorization policy enforces the scope.
+Rate-limited under `RateLimitPolicies.Strict`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/wallets/{address}/persona/encrypt` | Derive the persona content key, encrypt the plaintext with XChaCha20-Poly1305, return the ciphertext, nonce, and opaque `wrappedKeyRef`. |
+| POST | `/api/v1/wallets/{address}/persona/decrypt` | Derive the persona content key and decrypt the supplied ciphertext. Returns 400 on `wrappedKeyRef ≠ walletAddress` (v1 invariant) via a typed `PersonaKeyRefMismatchException`. |
+
+### Key Models
+
+- **PersonaAttributesV1** — Plaintext write-side shape: `GivenName`, `FamilyName`, `FullName`, `DateOfBirth`, `Emails[]`, `Phones[]`, `Addresses[]`, `Nationalities[]`. Each multi-value list capped at 5 with exactly one default.
+- **PersonaReadModelV1** — Wire shape returned by GET. Scalar attributes wrapped in `PersonaAttribute<T>` carrying `Source` (`SelfAsserted` / `VerifiedCredential`), `VerifiedBy` (issuer DID, null in v1), and `LastUpdated` (`DateTimeOffset`).
+- **PlatformUserPersona** — EF entity: one row per `PlatformUser`, hard-delete cascade, XChaCha20-Poly1305 ciphertext with 24-byte nonce, `WrappedKeyRef == walletAddress` in v1.
+
+### Schema Extension — `x-persona`
+
+Form authors pin fields to specific persona attributes via a JSON-Schema extension:
+
+```json
+{
+  "applicantEmail": { "type": "string", "format": "email", "x-persona": "defaultEmail" },
+  "nextOfKinEmail": { "type": "string", "format": "email", "x-persona": false }
+}
+```
+
+`x-persona: false` blocks persona autofill on a field. Without an explicit
+tag, the conservative inference allowlist applies (`format: email` → default
+email, `format: tel` → default phone, field name `dateOfBirth`/`dob`/`birthDate`
+→ date of birth, postal-address object shape → default address).
+
+### Cryptography
+
+- **Derivation purpose**: `sorcha:persona-vault` (registered under
+  `SorchaDerivationPaths.PersonaVault`; BIP44 index 104 reserved for a
+  future HD refactor)
+- **AEAD**: XChaCha20-Poly1305 via `ISymmetricCrypto`, 24-byte nonce
+- **HKDF**: HKDF-SHA256 derives per-request content key from the wallet
+  private key
+- **Ciphertext location**: Tenant database only. Content key never leaves
+  Wallet Service.
+
+---
+
 ## Blueprint Service API
 
 ### Base Path: `/api/blueprints`

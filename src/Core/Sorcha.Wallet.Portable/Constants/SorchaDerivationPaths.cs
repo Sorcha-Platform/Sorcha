@@ -84,6 +84,28 @@ public static class SorchaDerivationPaths
     public const string BlueprintPublishPath = "m/44'/0'/0'/0/103";
 
     /// <summary>
+    /// Derivation path for per-user persona vault encryption
+    /// </summary>
+    /// <remarks>
+    /// Used by the Wallet Service to derive a symmetric key that encrypts a
+    /// PlatformUser's self-asserted identity attributes ("persona") at rest.
+    /// The ciphertext lives in the Tenant Service; the key material is derived
+    /// on demand under this purpose and never stored alongside the ciphertext.
+    /// Maps to: m/44'/0'/0'/0/104
+    /// </remarks>
+    public const string PersonaVault = "sorcha:persona-vault";
+
+    /// <summary>
+    /// BIP44 path reserved for persona vault encryption. <b>Not exercised
+    /// in v1.</b> The current <c>PersonaCryptoService</c> uses HKDF-SHA256
+    /// with <see cref="PersonaVault"/> as the <c>info</c> parameter rather
+    /// than hierarchical BIP44 derivation; this constant is registered in
+    /// <see cref="ResolvePath"/> so a future HD-derivation refactor can
+    /// switch over without having to allocate a new reserved index.
+    /// </summary>
+    public const string PersonaVaultPath = "m/44'/0'/0'/0/104";
+
+    /// <summary>
     /// Resolves a Sorcha system path to its corresponding BIP44 path
     /// </summary>
     /// <param name="systemPath">Sorcha system path (e.g., "sorcha:register-attestation")</param>
@@ -105,6 +127,7 @@ public static class SorchaDerivationPaths
             RegisterControl => RegisterControlPath,
             DocketSigning => DocketSigningPath,
             BlueprintPublish => BlueprintPublishPath,
+            PersonaVault => PersonaVaultPath,
             _ => throw new ArgumentException($"Unknown Sorcha system path: {systemPath}", nameof(systemPath))
         };
     }

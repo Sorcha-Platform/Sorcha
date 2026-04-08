@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: Tenant Service — Persona API
+  version: 1.0.0
+  summary: Per-user self-asserted identity persona used for consumer form autofill.
+  description: |
+    Public endpoints under the authenticated user's own scope. All routes require a
+    valid PlatformUser JWT issued by the Tenant Service. Rate-limited under
+    `RateLimitPolicies.Api`. Writes are audited via `IActivityLogService`.
+
+    Contracts are designed stable across future PoA delegation (the `actingAs`
+    query parameter exists today but accepts only `self`), future VC-backed
+    attributes (`PersonaAttribute.Source` / `VerifiedBy` fields), and a future move
+    of decryption from server-side to client-side (the wire shape does not depend
+    on where decryption happens).
+
+servers:
+  - url: /api
+    description: API Gateway (YARP) — routes `/me/persona/*` to Tenant Service
+
+security:
+  - platformUserJwt: []
+
+paths:
+  /me/persona:
+    get:
+      operationId: getMyPersona
+      summary: Get the signed-in user's persona.
+      description: |
+        Returns the decrypted persona in `PersonaReadModelV1` form with each scalar
+        attribute wrapped in `PersonaAttribute<T>`. A user who has never saved a
+        persona receives a 200 with all fields null / empty lists — never a 404.
+      parameters:
+        - name: actingAs
+          in: query
+          required: false
+          description: |
+            Reserved for future delegation. In v1 only the literal value `self` is
+            accepted. Omission is equivalent to `self`.
+          schema:
+            type: string
+            default: self
+      responses:
+        '200':
+          description: Persona retrieved (possibly empty for a new user).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonaReadModelV1'
+        '400':
+          description: Invalid `actingAs` value.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: 'https://sorcha.platform/errors/actingAs_not_supported'
+                title: 'actingAs not supported'
+                status: 400
+                detail: "Only 'self' is supported in this release."
+        '401':
+          description: Not authenticated.
+        '503':
+          description: Persona temporarily unavailable (DB or Wallet Service down).
+
+    put:
+      operationId: replaceMyPersona
+      summary: Replace the signed-in user's persona (full replace).
+      description: |
+        Full replacement semantics. Validates invariants, encrypts via the Wallet
+        Service, and upserts the row. Writes an activity log entry on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonaAttributesV1'
+      responses:
+        '200':
+          description: Persona saved. Returns the canonical read model.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonaReadModelV1'
+        '400':
+          description: Validation failure.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Not authenticated.
+        '409':
+          description: |
+            User has no provisioned wallet. A wallet is required before a persona
+            can be saved because the encryption key is derived from wallet material.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: 'https://sorcha.platform/errors/wallet_not_provisioned'
+                title: 'Wallet not provisioned'
+                status: 409
+                detail: 'Provision a wallet before saving a personal profile.'
+        '503':
+          description: Wallet Service or Tenant DB unavailable.
+
+    # NOTE: PATCH /me/persona is intentionally not implemented in v1. The
+    # design doc discussed a merge-patch operation for partial updates but
+    # the full-replace PUT covers every v1 use case and merge-patch adds
+    # non-trivial validation complexity (how to clear a list vs. leave
+    # untouched). Revisit if a real product need appears — tracked on
+    # tasks.md §T023 as the deferral note.
+
+    delete:
+      operationId: deleteMyPersona
+      summary: Wipe the signed-in user's persona.
+      description: |
+        Hard-deletes the persona row. Idempotent — returns 204 whether or not a
+        row existed. Writes an activity log entry when a row was present.
+      responses:
+        '204':
+          description: Persona wiped (or no row existed).
+        '401':
+          description: Not authenticated.
+
+components:
+  securitySchemes:
+    platformUserJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by Tenant Service for an authenticated PlatformUser.
+
+  schemas:
+    PersonaAttributesV1:
+      type: object
+      description: Plaintext write-side shape. Never stored or returned in this form.
+      properties:
+        givenName:    { type: string, nullable: true }
+        familyName:   { type: string, nullable: true }
+        fullName:     { type: string, nullable: true }
+        dateOfBirth:  { type: string, format: date, nullable: true }
+        emails:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/PersonaEmail' }
+        phones:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/PersonaPhone' }
+        addresses:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/PersonaAddress' }
+        nationalities:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            pattern: '^[A-Z]{2}$'
+            description: ISO 3166-1 alpha-2 country code.
+
+    PersonaEmail:
+      type: object
+      required: [value, isDefault]
+      properties:
+        value:     { type: string, format: email }
+        isDefault: { type: boolean }
+        label:     { type: string, nullable: true, example: 'Work' }
+
+    PersonaPhone:
+      type: object
+      required: [value, isDefault]
+      properties:
+        value:
+          type: string
+          description: E.164 format.
+          example: '+353871234567'
+        isDefault: { type: boolean }
+        label:     { type: string, nullable: true }
+        kind:
+          type: string
+          nullable: true
+          enum: [Mobile, Home, Work]
+
+    PersonaAddress:
+      type: object
+      required: [line1, city, postalCode, country, isDefault]
+      properties:
+        line1:      { type: string }
+        line2:      { type: string, nullable: true }
+        city:       { type: string }
+        region:     { type: string, nullable: true }
+        postalCode: { type: string }
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        isDefault:  { type: boolean }
+        label:      { type: string, nullable: true, example: 'Home' }
+
+    PersonaAttributeSource:
+      type: string
+      enum: [SelfAsserted, VerifiedCredential]
+
+    PersonaAttributeOfString:
+      type: object
+      required: [value, source, lastUpdated]
+      properties:
+        value:       { type: string }
+        source:      { $ref: '#/components/schemas/PersonaAttributeSource' }
+        verifiedBy:  { type: string, nullable: true, description: Issuer DID (v1 always null) }
+        lastUpdated: { type: string, format: date-time }
+
+    PersonaAttributeOfDate:
+      type: object
+      required: [value, source, lastUpdated]
+      properties:
+        value:       { type: string, format: date }
+        source:      { $ref: '#/components/schemas/PersonaAttributeSource' }
+        verifiedBy:  { type: string, nullable: true }
+        lastUpdated: { type: string, format: date-time }
+
+    PersonaAttributeOfEmail:
+      type: object
+      required: [value, source, lastUpdated]
+      properties:
+        value:       { $ref: '#/components/schemas/PersonaEmail' }
+        source:      { $ref: '#/components/schemas/PersonaAttributeSource' }
+        verifiedBy:  { type: string, nullable: true }
+        lastUpdated: { type: string, format: date-time }
+
+    PersonaAttributeOfPhone:
+      type: object
+      required: [value, source, lastUpdated]
+      properties:
+        value:       { $ref: '#/components/schemas/PersonaPhone' }
+        source:      { $ref: '#/components/schemas/PersonaAttributeSource' }
+        verifiedBy:  { type: string, nullable: true }
+        lastUpdated: { type: string, format: date-time }
+
+    PersonaAttributeOfAddress:
+      type: object
+      required: [value, source, lastUpdated]
+      properties:
+        value:       { $ref: '#/components/schemas/PersonaAddress' }
+        source:      { $ref: '#/components/schemas/PersonaAttributeSource' }
+        verifiedBy:  { type: string, nullable: true }
+        lastUpdated: { type: string, format: date-time }
+
+    PersonaReadModelV1:
+      type: object
+      description: Read-side wire shape. An empty persona has all scalars null and all lists empty.
+      properties:
+        givenName:           { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfString' }], nullable: true }
+        familyName:          { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfString' }], nullable: true }
+        fullName:            { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfString' }], nullable: true }
+        dateOfBirth:         { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfDate'   }], nullable: true }
+        defaultEmail:        { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfEmail'  }], nullable: true }
+        allEmails:
+          type: array
+          items: { $ref: '#/components/schemas/PersonaEmail' }
+        defaultPhone:        { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfPhone'  }], nullable: true }
+        allPhones:
+          type: array
+          items: { $ref: '#/components/schemas/PersonaPhone' }
+        defaultAddress:      { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfAddress' }], nullable: true }
+        allAddresses:
+          type: array
+          items: { $ref: '#/components/schemas/PersonaAddress' }
+        defaultNationality:  { allOf: [{ $ref: '#/components/schemas/PersonaAttributeOfString' }], nullable: true }
+        allNationalities:
+          type: array
+          items:
+            type: string
+            pattern: '^[A-Z]{2}$'
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:   { type: string, format: uri }
+        title:  { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        instance: { type: string, format: uri, nullable: true }

@@ -5,12 +5,15 @@
 @using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
 @using Sorcha.Blueprint.Models.Credentials
+@using Sorcha.Tenant.Models.Persona
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
+@using Sorcha.UI.Core.Services.Persona
 @implements IDisposable
 
 @inject IFormSchemaService SchemaService
 @inject ILogger<SorchaFormRenderer> Logger
+@inject IServiceProvider ServiceProvider
 
 <CascadingValue Value="_formContext">
     <div class="sorcha-form">
@@ -37,6 +40,17 @@
                                CurrentPage="_currentPage"
                                OnPageSelected="HandleStepperClick" />
             }
+
+            @* Persona fill summary — Feature 092 / US3. Only visible when the
+               resolver has filled at least one field. Renders nothing
+               otherwise so existing forms pick up zero visual change. *@
+            <PersonaFillSummary Count="@_personaFilledPaths.Count"
+                                Fills="@_personaFillsList"
+                                IsAutofillEnabled="@_autofillEnabled"
+                                PendingCount="@(_pendingPersonaFills?.Count ?? 0)"
+                                OnFillFromProfile="HandleFillFromProfile"
+                                OnClearAll="HandleClearAllPersonaFills"
+                                OnClearField="HandleClearPersonaField" />
 
             @* Form Controls — rendered in one of three modes *@
             @if (_formControl is null)
@@ -196,7 +210,14 @@
                     var fieldControl = LookupFieldControl(fieldName);
                     if (fieldControl is not null)
                     {
-                        <div class="sorcha-field sorcha-field-@(fieldControl.ControlType.ToString().ToLowerInvariant()) sorcha-field-width-@(GetWidthForField(fieldName))">
+                        var autofilled = IsPersonaFilled(fieldName);
+                        var fieldClass = $"sorcha-field sorcha-field-{fieldControl.ControlType.ToString().ToLowerInvariant()} sorcha-field-width-{GetWidthForField(fieldName)}{(autofilled ? " autofilled" : string.Empty)}";
+                        <div class="@fieldClass"
+                             aria-describedby="@(autofilled ? PersonaFilledAriaId(fieldName) : null)">
+                            @if (autofilled)
+                            {
+                                <span class="persona-tick" id="@PersonaFilledAriaId(fieldName)">self — filled from your profile</span>
+                            }
                             <ControlDispatcher Control="fieldControl" Depth="0" />
                         </div>
                     }
@@ -212,7 +233,14 @@
             <div class="sorcha-form-catchall-fields">
                 @foreach (var (orphanName, orphanControl) in _orphanFieldControls)
                 {
-                    <div class="sorcha-field sorcha-field-@(orphanControl.ControlType.ToString().ToLowerInvariant()) sorcha-field-width-@(GetWidthForField(orphanName))">
+                    var orphanAutofilled = IsPersonaFilled(orphanName);
+                    var orphanFieldClass = $"sorcha-field sorcha-field-{orphanControl.ControlType.ToString().ToLowerInvariant()} sorcha-field-width-{GetWidthForField(orphanName)}{(orphanAutofilled ? " autofilled" : string.Empty)}";
+                    <div class="@orphanFieldClass"
+                         aria-describedby="@(orphanAutofilled ? PersonaFilledAriaId(orphanName) : null)">
+                        @if (orphanAutofilled)
+                        {
+                            <span class="persona-tick" id="@PersonaFilledAriaId(orphanName)">self — filled from your profile</span>
+                        }
                         <ControlDispatcher Control="orphanControl" Depth="0" />
                     </div>
                 }
@@ -283,6 +311,32 @@
     private bool _lastIsReadOnly;
     private bool _lastIsSenderAction;
 
+    // --- Feature 092 — Persona autofill state ---
+    // Set of JSON Pointer scopes (leading slash, e.g. "/email") whose current
+    // FormData value came from the user's persona and has not been edited
+    // since. Used by the render path to apply the `.autofilled` class and the
+    // `self` tick. Cleared paths lose the tint immediately per FR-019.
+    private readonly HashSet<string> _personaFilledPaths = new(StringComparer.Ordinal);
+    // Original values we wrote so we can detect edits on OnDataChanged.
+    private readonly Dictionary<string, object?> _personaFilledOriginal = new(StringComparer.Ordinal);
+    // Per-path fill result (for the US3 review popover). Keyed by the same
+    // pointer we store in _personaFilledPaths so we can surface the attribute
+    // name, match mode, and value to the user.
+    private readonly Dictionary<string, PersonaFillResult> _personaFillsByPath = new(StringComparer.Ordinal);
+    // Projection of the above as a list, refreshed whenever paths change,
+    // so the summary component can iterate without mutating the dictionary.
+    private IReadOnlyList<PersonaFillResult> _personaFillsList = Array.Empty<PersonaFillResult>();
+    // Feature 092 / US5 — when the global autofill preference is OFF the
+    // resolver still runs but its decisions are held here instead of being
+    // applied. The summary banner renders in "Fill from profile" mode and
+    // the user can opt in with a single click.
+    private bool _autofillEnabled = true;
+    private IReadOnlyDictionary<string, PersonaFillResult>? _pendingPersonaFills;
+    // Whether we've kicked off the fire-and-forget persona load for the
+    // current Action — reset on action change.
+    private bool _personaLoadKicked;
+    private CancellationTokenSource? _personaLoadCts;
+
     protected override void OnParametersSet()
     {
         if (Action is null) return;
@@ -313,6 +367,21 @@
         if (_formContext is not null)
         {
             _formContext.OnFocusedFieldChanged -= HandleFocusedFieldChanged;
+            _formContext.OnDataChanged -= HandlePersonaDataChanged;
+        }
+
+        if (actionChanged)
+        {
+            // Reset persona autofill state whenever a new action loads.
+            _personaFilledPaths.Clear();
+            _personaFilledOriginal.Clear();
+            _personaFillsByPath.Clear();
+            _personaFillsList = Array.Empty<PersonaFillResult>();
+            _pendingPersonaFills = null;
+            _personaLoadKicked = false;
+            _personaLoadCts?.Cancel();
+            _personaLoadCts?.Dispose();
+            _personaLoadCts = null;
         }
 
         if (actionChanged)
@@ -336,6 +405,9 @@
         // Re-attach focus event subscription. _formContext is non-null after the
         // branches above (either freshly created or pre-existing with field updates).
         _formContext!.OnFocusedFieldChanged += HandleFocusedFieldChanged;
+        // Watch FormData so we can drop the autofill tint as soon as the user
+        // edits a field (FR-019).
+        _formContext.OnDataChanged += HandlePersonaDataChanged;
 
         // Build disclosure filter (depends on Action + IsSenderAction)
         BuildDisclosureFilter();
@@ -380,6 +452,250 @@
             // Calculations
             _hasCalculations = Action.Calculations?.Count > 0;
         }
+
+        // Kick off the persona autofill load — fire-and-forget so the form
+        // renders immediately and becomes interactive without waiting on the
+        // network round-trip. Only run once per Action identity. Read-only
+        // forms and the sender-action replay path skip autofill entirely.
+        if (actionChanged && !_personaLoadKicked && !IsReadOnly)
+        {
+            _personaLoadKicked = true;
+            _personaLoadCts = new CancellationTokenSource();
+            _ = LoadPersonaAndApplyAsync(_personaLoadCts.Token);
+        }
+    }
+
+    /// <summary>
+    /// Loads the signed-in user's persona and applies matching values to the
+    /// current form data bag. Runs fire-and-forget from
+    /// <see cref="OnParametersSet"/>. User-touched fields are never
+    /// overwritten (FR-009a / research.md Decision 9). Graceful on any
+    /// failure — persona autofill is optional and must never break the form.
+    /// </summary>
+    private async Task LoadPersonaAndApplyAsync(CancellationToken ct)
+    {
+        try
+        {
+            var personaService = ServiceProvider.GetService(typeof(IPersonaService)) as IPersonaService;
+            var resolver = ServiceProvider.GetService(typeof(PersonaAutofillResolver)) as PersonaAutofillResolver;
+            if (personaService is null || resolver is null)
+            {
+                // Host has not registered persona services (e.g. bUnit test
+                // context). Silently skip — autofill is an enhancement.
+                return;
+            }
+
+            // Honour the global autofill preference (FR-015). When disabled,
+            // we do NOT apply fills automatically but still resolve and stash
+            // them so the US5 "Fill from profile" button in the summary can
+            // apply them on demand.
+            _autofillEnabled = await personaService.GetAutofillEnabledAsync().ConfigureAwait(false);
+
+            var persona = await personaService.GetAsync(null, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+
+            var fills = resolver.Resolve(_formContext.DataSchema, persona);
+            if (fills.Count == 0) return;
+
+            // Marshal back to the renderer's sync context before mutating
+            // FormData so StateHasChanged re-renders safely.
+            await InvokeAsync(() =>
+            {
+                if (_autofillEnabled)
+                {
+                    ApplyPersonaFills(fills);
+                }
+                else
+                {
+                    // US5 off-state: hold the resolver decisions for the
+                    // "Fill from profile" button without touching FormData.
+                    _pendingPersonaFills = fills;
+                }
+                StateHasChanged();
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Action changed or component disposed — nothing to do.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Persona autofill failed for action {ActionTitle}", Action?.Title);
+        }
+    }
+
+    /// <summary>
+    /// Writes the resolver's decisions into the form data bag, skipping any
+    /// field the user has already touched. Populates
+    /// <see cref="_personaFilledPaths"/> and <see cref="_personaFilledOriginal"/>
+    /// so the render path can apply the cream tint and the change watcher
+    /// can release it on edit.
+    /// </summary>
+    private void ApplyPersonaFills(IReadOnlyDictionary<string, PersonaFillResult> fills)
+    {
+        foreach (var (pointer, fill) in fills)
+        {
+            if (fill.Value is PersonaAddress address)
+            {
+                // Address fields fan out to child pointers. Each child gets
+                // its own fill record so the review popover can list them
+                // individually instead of as one opaque "address" entry.
+                TryFillScalar(pointer + "/line1", address.Line1, "addressLine1", fill);
+                if (!string.IsNullOrEmpty(address.Line2)) TryFillScalar(pointer + "/line2", address.Line2, "addressLine2", fill);
+                TryFillScalar(pointer + "/city", address.City, "city", fill);
+                if (!string.IsNullOrEmpty(address.Region)) TryFillScalar(pointer + "/region", address.Region, "region", fill);
+                TryFillScalar(pointer + "/postalCode", address.PostalCode, "postalCode", fill);
+                TryFillScalar(pointer + "/country", address.Country, "country", fill);
+                continue;
+            }
+
+            TryFillScalar(pointer, UnwrapValue(fill.Value), fill.AttributeName, fill);
+        }
+
+        RefreshPersonaFillsList();
+    }
+
+    private void TryFillScalar(string pointer, object? value, string attributeName, PersonaFillResult parent)
+    {
+        if (value is null) return;
+
+        // User activity wins: skip fields the user is currently editing or
+        // has already populated with any non-empty value.
+        if (string.Equals(_formContext.FocusedFieldScope, pointer, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_formContext.FormData.TryGetValue(pointer, out var existing) && !IsEmpty(existing))
+        {
+            return;
+        }
+
+        _formContext.FormData[pointer] = value;
+        _personaFilledPaths.Add(pointer);
+        _personaFilledOriginal[pointer] = value;
+        _personaFillsByPath[pointer] = new PersonaFillResult(
+            FieldPath: pointer,
+            AttributeName: attributeName,
+            Value: value,
+            Source: parent.Source,
+            MatchedBy: parent.MatchedBy);
+    }
+
+    private void RefreshPersonaFillsList()
+    {
+        _personaFillsList = _personaFillsByPath.Values.ToList();
+    }
+
+    /// <summary>
+    /// US3 — handler for the summary banner's "Clear all" button. Removes
+    /// every persona-filled path from both the form data bag and the
+    /// tracking sets. User-edited fields are untouched — the change watcher
+    /// has already dropped them from the filled set before we reach here.
+    /// </summary>
+    private void HandleClearAllPersonaFills()
+    {
+        if (_personaFilledPaths.Count == 0) return;
+        foreach (var pointer in _personaFilledPaths.ToList())
+        {
+            _formContext.FormData.Remove(pointer);
+        }
+        _personaFilledPaths.Clear();
+        _personaFilledOriginal.Clear();
+        _personaFillsByPath.Clear();
+        RefreshPersonaFillsList();
+        _formContext.NotifyDataChanged();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// US5 — handler for the off-state "Fill from profile" button. Applies
+    /// the pending resolver decisions exactly as the on-state path would,
+    /// then clears the pending buffer so the summary flips into the
+    /// standard disclosure mode.
+    /// </summary>
+    private void HandleFillFromProfile()
+    {
+        if (_pendingPersonaFills is null || _pendingPersonaFills.Count == 0) return;
+        ApplyPersonaFills(_pendingPersonaFills);
+        _pendingPersonaFills = null;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// US3 — handler for the per-row clear buttons in the review popover.
+    /// Removes a single persona-filled field from the form data bag and the
+    /// tracking sets. No-op if the path is not currently persona-filled.
+    /// </summary>
+    private void HandleClearPersonaField(string pointer)
+    {
+        if (!_personaFilledPaths.Remove(pointer)) return;
+        _formContext.FormData.Remove(pointer);
+        _personaFilledOriginal.Remove(pointer);
+        _personaFillsByPath.Remove(pointer);
+        RefreshPersonaFillsList();
+        _formContext.NotifyDataChanged();
+        StateHasChanged();
+    }
+
+    private static bool IsEmpty(object? value) => value switch
+    {
+        null => true,
+        string s => string.IsNullOrEmpty(s),
+        _ => false,
+    };
+
+    private static object? UnwrapValue(object? value) => value switch
+    {
+        DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+        _ => value,
+    };
+
+    /// <summary>
+    /// Raised whenever FormData changes. Compares each persona-filled path to
+    /// the value we originally wrote; if the value has diverged, the user has
+    /// edited the field so the provenance claim must drop (FR-019).
+    /// </summary>
+    private void HandlePersonaDataChanged()
+    {
+        if (_personaFilledPaths.Count == 0) return;
+
+        List<string>? toRemove = null;
+        foreach (var pointer in _personaFilledPaths)
+        {
+            _formContext.FormData.TryGetValue(pointer, out var current);
+            _personaFilledOriginal.TryGetValue(pointer, out var original);
+            if (!Equals(current, original))
+            {
+                (toRemove ??= new()).Add(pointer);
+            }
+        }
+        if (toRemove is null) return;
+
+        foreach (var pointer in toRemove)
+        {
+            _personaFilledPaths.Remove(pointer);
+            _personaFilledOriginal.Remove(pointer);
+            _personaFillsByPath.Remove(pointer);
+        }
+        RefreshPersonaFillsList();
+
+        // StateHasChanged is safe here — OnDataChanged is raised by user
+        // interactions on the sync context.
+        InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsPersonaFilled(string fieldName)
+    {
+        if (_personaFilledPaths.Count == 0) return false;
+        var key = fieldName.StartsWith('/') ? fieldName : "/" + fieldName;
+        return _personaFilledPaths.Contains(key);
+    }
+
+    private static string PersonaFilledAriaId(string fieldName)
+    {
+        var slug = fieldName.Replace('/', '-').Trim('-');
+        return $"persona-fill-{slug}";
     }
 
     private void BuildDisclosureFilter()
@@ -739,6 +1055,9 @@
         if (_formContext is not null)
         {
             _formContext.OnFocusedFieldChanged -= HandleFocusedFieldChanged;
+            _formContext.OnDataChanged -= HandlePersonaDataChanged;
         }
+        _personaLoadCts?.Cancel();
+        _personaLoadCts?.Dispose();
     }
 }

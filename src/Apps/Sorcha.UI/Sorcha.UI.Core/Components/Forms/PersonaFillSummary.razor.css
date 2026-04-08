@@ -1,0 +1,92 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+
+/* Feature 092 / US3 — persona fill summary banner + review popover. */
+
+.persona-fill-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin: 0 0 12px 0;
+    background-color: #fff8e1;
+    border: 1px solid #ffcc80;
+    border-radius: 6px;
+    color: #4e342e;
+    font-size: 0.875rem;
+}
+
+.persona-fill-summary-icon {
+    color: #ef6c00;
+    flex-shrink: 0;
+}
+
+.persona-fill-summary-text {
+    flex: 1 1 auto;
+    font-weight: 500;
+}
+
+.persona-fill-summary-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* --- Review popover --- */
+
+.persona-fill-review {
+    margin: -6px 0 12px 0;
+    padding: 8px 12px 12px 12px;
+    background-color: #fffdf7;
+    border: 1px solid #ffe0b2;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 2px 4px rgba(78, 52, 46, 0.06);
+}
+
+.persona-fill-review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.persona-fill-review-list {
+    padding: 0 !important;
+}
+
+.persona-fill-review-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+}
+
+.persona-fill-review-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.persona-fill-review-field {
+    font-weight: 500;
+}
+
+/* --- Dark mode --- */
+
+:global([data-mud-theme="dark"]) .persona-fill-summary {
+    background-color: #3f3622;
+    border-color: #ffb74d;
+    color: #fff3e0;
+}
+
+:global([data-mud-theme="dark"]) .persona-fill-summary-icon {
+    color: #ffb74d;
+}
+
+:global([data-mud-theme="dark"]) .persona-fill-review {
+    background-color: #2a241a;
+    border-color: #5d4037;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}

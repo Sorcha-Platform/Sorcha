@@ -31,6 +31,7 @@ public class TenantDbContext : DbContext
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
     public DbSet<PlatformSocialLogin> PlatformSocialLogins => Set<PlatformSocialLogin>();
     public DbSet<PlatformUserOrgMembership> PlatformUserOrgMemberships => Set<PlatformUserOrgMembership>();
+    public DbSet<PlatformUserPersona> PlatformUserPersonas => Set<PlatformUserPersona>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ServicePrincipal> ServicePrincipals => Set<ServicePrincipal>();
@@ -152,6 +153,9 @@ public class TenantDbContext : DbContext
 
         // Configure PlatformSettings entity (public schema)
         ConfigurePlatformSettings(modelBuilder);
+
+        // Configure PlatformUserPersona entity (public schema) — Feature 092
+        ConfigurePlatformUserPersona(modelBuilder);
     }
 
     private void ConfigureOrganization(ModelBuilder modelBuilder)
@@ -924,6 +928,51 @@ public class TenantDbContext : DbContext
             entity.HasMany(e => e.OrgMemberships)
                 .WithOne(m => m.PlatformUser)
                 .HasForeignKey(m => m.PlatformUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    // Feature 092: Consumer persona — one-to-one with PlatformUser, cascade delete.
+    private void ConfigurePlatformUserPersona(ModelBuilder modelBuilder)
+    {
+        var isInMemory = Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory"
+                      || Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        modelBuilder.Entity<PlatformUserPersona>(entity =>
+        {
+            if (isInMemory)
+                entity.ToTable("PlatformUserPersonas");
+            else
+                entity.ToTable("PlatformUserPersonas", "public");
+
+            entity.HasKey(e => e.PlatformUserId);
+
+            entity.Property(e => e.CiphertextBlob)
+                .IsRequired();
+
+            entity.Property(e => e.Nonce)
+                .IsRequired()
+                .HasMaxLength(24);
+
+            entity.Property(e => e.WrappedKeyRef)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(e => e.SchemaVersion)
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .IsRequired();
+
+            entity.Property(e => e.UpdatedAt)
+                .IsRequired();
+
+            // One-to-one with PlatformUser. Cascade delete is load-bearing
+            // for FR-007a — the persona must be wiped atomically with the
+            // user account (GDPR right-to-erasure).
+            entity.HasOne(e => e.PlatformUser)
+                .WithOne()
+                .HasForeignKey<PlatformUserPersona>(e => e.PlatformUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
