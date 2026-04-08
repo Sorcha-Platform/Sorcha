@@ -9,6 +9,18 @@ Source design document: `docs/superpowers/specs/2026-04-08-consumer-persona-and-
 
 ---
 
+## Clarifications
+
+### Session 2026-04-08
+
+- Q: Should multi-value attribute lists (emails, phones, addresses, nationalities) have a hard cap per user? → A: 5 entries per list
+- Q: What happens to a user's persona when their platform user account is deleted? → A: Cascade delete — persona is hard-deleted atomically with the account
+- Q: How should a form render while the persona is still loading? → A: Render immediately; apply fills when persona arrives, but skip any field the user has already started typing in (user activity wins)
+- Q: How is persona provenance communicated to screen-reader users? → A: Each autofilled field carries an accessible label announcing "filled from your profile"; the visible summary has an equivalent accessible version
+- Q: What is the target latency for persona autofill to appear after a cold form load? → A: 500ms — cold-load target; warm cache hits are effectively instant
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Fill a healthcare disclosure form in seconds (Priority: P1)
@@ -125,16 +137,19 @@ A privacy-conscious user wants to keep their profile saved for convenience but p
 
 - **FR-001**: Each user MUST have at most one personal profile ("persona") containing self-asserted identity attributes: given name, family name, full name, date of birth, zero-or-more email addresses, zero-or-more phone numbers, zero-or-more postal addresses, zero-or-more nationalities.
 - **FR-002**: For each multi-value attribute list (emails, phones, addresses, nationalities), when the list is non-empty exactly one entry MUST be marked as the default.
+- **FR-002a**: Each multi-value attribute list MUST be capped at 5 entries per user. Write operations that would push any list above 5 entries MUST be rejected with a clear error naming the offending list.
 - **FR-003**: The persona MUST be stored as encrypted data, and the encryption key MUST NOT be co-located with the ciphertext in the same service.
 - **FR-004**: The encryption key MUST be derived per user from the user's existing wallet key material under a dedicated derivation purpose, distinct from all other derivation purposes in use on the platform.
 - **FR-005**: When a user has not yet provisioned a wallet, reading the persona MUST return an empty persona without error; writing the persona MUST fail with a clear, recoverable error message explaining that a wallet is required.
 - **FR-006**: The persona MUST be retrievable, replaceable as a whole, updatable one attribute at a time without affecting unchanged attributes, and deletable by the owning user. Delete MUST be idempotent.
 - **FR-007**: Every write operation on the persona MUST produce an entry in the user's activity log. Reads MUST NOT be logged.
+- **FR-007a**: When a platform user account is deleted, the user's persona MUST be hard-deleted atomically as part of the same operation. No orphaned persona data may remain after an account delete completes successfully.
 - **FR-008**: The read-side representation of every attribute MUST carry provenance metadata indicating whether the value is self-asserted or backed by a verified credential. In v1, all values are self-asserted, but the representation MUST support the future verified-credential case without any structural change.
 
 **Autofill behaviour**
 
 - **FR-009**: When a blueprint action form is rendered, the system MUST identify fields whose schema matches a persona attribute and offer those values for autofill.
+- **FR-009a**: The form MUST be rendered and interactive immediately on load without waiting for the persona to be fetched. When the persona arrives, autofill MUST be applied to eligible fields — except any field the user has already started typing in (including fields that currently have focus or that already contain any user-entered value), which MUST be left untouched.
 - **FR-010**: Matching MUST prefer an explicit per-field schema extension (`x-persona`) declared by the blueprint author over any inference.
 - **FR-011**: An explicit schema extension value of `false` MUST prevent a field from being autofilled by any mechanism, including inference.
 - **FR-012**: Where no explicit extension is present, the system MUST apply a conservative inference allowlist limited to unambiguous cases (e.g. email format, telephone format, standard field names for date of birth, and recognised postal-address types).
@@ -147,6 +162,7 @@ A privacy-conscious user wants to keep their profile saved for convenience but p
 
 - **FR-017**: Every field that was filled from the persona MUST be rendered with a visual style that is clearly distinguishable from user-entered fields, in both light and dark themes.
 - **FR-018**: Every autofilled field MUST carry a visible "self" provenance tick.
+- **FR-018a**: Every autofilled field MUST expose an accessible description announcing that the value was filled from the user's profile, so that screen-reader users learn the provenance of each field as they navigate to it. The summary line above the form MUST also be exposed to assistive technology with equivalent wording (count of fields filled, available actions).
 - **FR-019**: The visual style and provenance tick MUST be removed from a field the moment the user edits it, even if the edited value is identical to the persona value.
 - **FR-020**: When any fields in a form have been autofilled, a compact summary MUST be rendered above the form indicating the count of fields filled from the user's profile and offering Review and Clear all actions.
 - **FR-021**: The Review action MUST show a list of field name, attribute name, and current value for every field still marked as autofilled, with a per-row action to clear that single field.
@@ -194,8 +210,9 @@ A privacy-conscious user wants to keep their profile saved for convenience but p
 - **SC-002**: For a representative set of existing blueprint action forms (at least five drawn from active walkthroughs including healthcare, construction permit, and self-build house), the autofill identifies the correct target fields for every universally-applicable identity attribute the user has saved, with no false-positive matches into fields that do not belong to the user.
 - **SC-003**: A first-time user can locate and open their profile page from the top-bar profile menu in a single click, without referring to documentation. "My Profile" is discoverable.
 - **SC-004**: A user can complete a full profile setup (name, date of birth, one email, one phone, one address) in under 3 minutes on a first visit to the profile page.
-- **SC-005**: Every field that the system filled from the persona is visually distinguishable from user-entered fields in both light and dark themes, verifiable by observation with no specialised tooling. Users in informal testing can identify which fields were autofilled with 100% accuracy.
+- **SC-005**: Every field that the system filled from the persona is visually distinguishable from user-entered fields in both light and dark themes, verifiable by observation with no specialised tooling. Users in informal testing can identify which fields were autofilled with 100% accuracy. Screen-reader users can identify the same fields by navigating the form and hearing the per-field provenance announcement, with no visual inspection required.
 - **SC-006**: When a user edits an autofilled field, the visual style and provenance tick are removed immediately with no perceptible delay.
+- **SC-006a**: On a cold form load (no session cache), persona autofill MUST be applied to eligible fields within 500ms of the form becoming interactive, measured at the 95th percentile across representative consumer forms. On a warm load (persona already cached in the session), autofill MUST be applied before or within the first render frame, with no visible "fields getting filled" moment.
 - **SC-007**: Side navigation contains no "Navigation" header, no Settings link, and no Notifications link. Confirmed by inspection of the rendered UI.
 - **SC-008**: Notification preferences are reachable via Settings → Notifications tab, and the previous notifications settings URL still resolves to equivalent content.
 - **SC-009**: A user who turns off the global autofill preference sees no automatic fill on subsequent forms and, when a form contains matching fields, always has access to an explicit "Fill from profile" action that fills every matching field in one click.
