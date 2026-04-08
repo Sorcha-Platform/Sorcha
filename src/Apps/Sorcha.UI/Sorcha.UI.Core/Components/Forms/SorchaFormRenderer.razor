@@ -41,6 +41,14 @@
                                OnPageSelected="HandleStepperClick" />
             }
 
+            @* Persona fill summary — Feature 092 / US3. Only visible when the
+               resolver has filled at least one field. Renders nothing
+               otherwise so existing forms pick up zero visual change. *@
+            <PersonaFillSummary Count="@_personaFilledPaths.Count"
+                                Fills="@_personaFillsList"
+                                OnClearAll="HandleClearAllPersonaFills"
+                                OnClearField="HandleClearPersonaField" />
+
             @* Form Controls — rendered in one of three modes *@
             @if (_formControl is null)
             {
@@ -308,6 +316,13 @@
     private readonly HashSet<string> _personaFilledPaths = new(StringComparer.Ordinal);
     // Original values we wrote so we can detect edits on OnDataChanged.
     private readonly Dictionary<string, object?> _personaFilledOriginal = new(StringComparer.Ordinal);
+    // Per-path fill result (for the US3 review popover). Keyed by the same
+    // pointer we store in _personaFilledPaths so we can surface the attribute
+    // name, match mode, and value to the user.
+    private readonly Dictionary<string, PersonaFillResult> _personaFillsByPath = new(StringComparer.Ordinal);
+    // Projection of the above as a list, refreshed whenever paths change,
+    // so the summary component can iterate without mutating the dictionary.
+    private IReadOnlyList<PersonaFillResult> _personaFillsList = Array.Empty<PersonaFillResult>();
     // Whether we've kicked off the fire-and-forget persona load for the
     // current Action — reset on action change.
     private bool _personaLoadKicked;
@@ -351,6 +366,8 @@
             // Reset persona autofill state whenever a new action loads.
             _personaFilledPaths.Clear();
             _personaFilledOriginal.Clear();
+            _personaFillsByPath.Clear();
+            _personaFillsList = Array.Empty<PersonaFillResult>();
             _personaLoadKicked = false;
             _personaLoadCts?.Cancel();
             _personaLoadCts?.Dispose();
@@ -503,21 +520,25 @@
         {
             if (fill.Value is PersonaAddress address)
             {
-                // Address fields fan out to child pointers.
-                TryFillScalar(pointer + "/line1", address.Line1);
-                if (!string.IsNullOrEmpty(address.Line2)) TryFillScalar(pointer + "/line2", address.Line2);
-                TryFillScalar(pointer + "/city", address.City);
-                if (!string.IsNullOrEmpty(address.Region)) TryFillScalar(pointer + "/region", address.Region);
-                TryFillScalar(pointer + "/postalCode", address.PostalCode);
-                TryFillScalar(pointer + "/country", address.Country);
+                // Address fields fan out to child pointers. Each child gets
+                // its own fill record so the review popover can list them
+                // individually instead of as one opaque "address" entry.
+                TryFillScalar(pointer + "/line1", address.Line1, "addressLine1", fill);
+                if (!string.IsNullOrEmpty(address.Line2)) TryFillScalar(pointer + "/line2", address.Line2, "addressLine2", fill);
+                TryFillScalar(pointer + "/city", address.City, "city", fill);
+                if (!string.IsNullOrEmpty(address.Region)) TryFillScalar(pointer + "/region", address.Region, "region", fill);
+                TryFillScalar(pointer + "/postalCode", address.PostalCode, "postalCode", fill);
+                TryFillScalar(pointer + "/country", address.Country, "country", fill);
                 continue;
             }
 
-            TryFillScalar(pointer, UnwrapValue(fill.Value));
+            TryFillScalar(pointer, UnwrapValue(fill.Value), fill.AttributeName, fill);
         }
+
+        RefreshPersonaFillsList();
     }
 
-    private void TryFillScalar(string pointer, object? value)
+    private void TryFillScalar(string pointer, object? value, string attributeName, PersonaFillResult parent)
     {
         if (value is null) return;
 
@@ -536,6 +557,54 @@
         _formContext.FormData[pointer] = value;
         _personaFilledPaths.Add(pointer);
         _personaFilledOriginal[pointer] = value;
+        _personaFillsByPath[pointer] = new PersonaFillResult(
+            FieldPath: pointer,
+            AttributeName: attributeName,
+            Value: value,
+            Source: parent.Source,
+            MatchedBy: parent.MatchedBy);
+    }
+
+    private void RefreshPersonaFillsList()
+    {
+        _personaFillsList = _personaFillsByPath.Values.ToList();
+    }
+
+    /// <summary>
+    /// US3 — handler for the summary banner's "Clear all" button. Removes
+    /// every persona-filled path from both the form data bag and the
+    /// tracking sets. User-edited fields are untouched — the change watcher
+    /// has already dropped them from the filled set before we reach here.
+    /// </summary>
+    private void HandleClearAllPersonaFills()
+    {
+        if (_personaFilledPaths.Count == 0) return;
+        foreach (var pointer in _personaFilledPaths.ToList())
+        {
+            _formContext.FormData.Remove(pointer);
+        }
+        _personaFilledPaths.Clear();
+        _personaFilledOriginal.Clear();
+        _personaFillsByPath.Clear();
+        RefreshPersonaFillsList();
+        _formContext.NotifyDataChanged();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// US3 — handler for the per-row clear buttons in the review popover.
+    /// Removes a single persona-filled field from the form data bag and the
+    /// tracking sets. No-op if the path is not currently persona-filled.
+    /// </summary>
+    private void HandleClearPersonaField(string pointer)
+    {
+        if (!_personaFilledPaths.Remove(pointer)) return;
+        _formContext.FormData.Remove(pointer);
+        _personaFilledOriginal.Remove(pointer);
+        _personaFillsByPath.Remove(pointer);
+        RefreshPersonaFillsList();
+        _formContext.NotifyDataChanged();
+        StateHasChanged();
     }
 
     private static bool IsEmpty(object? value) => value switch
@@ -576,7 +645,9 @@
         {
             _personaFilledPaths.Remove(pointer);
             _personaFilledOriginal.Remove(pointer);
+            _personaFillsByPath.Remove(pointer);
         }
+        RefreshPersonaFillsList();
 
         // StateHasChanged is safe here — OnDataChanged is raised by user
         // interactions on the sync context.

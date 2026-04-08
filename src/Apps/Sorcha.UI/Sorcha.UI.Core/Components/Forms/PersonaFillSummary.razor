@@ -1,0 +1,128 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+@using Sorcha.Tenant.Models.Persona
+@using Sorcha.UI.Core.Models.Forms
+
+@* Feature 092 / US3 — one-line disclosure summary above the form body.
+   Renders nothing when there are no persona-filled fields. *@
+
+@if (Count > 0)
+{
+    <div class="persona-fill-summary" role="status" aria-live="polite">
+        <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="persona-fill-summary-icon" />
+        <span class="persona-fill-summary-text">
+            @Count field@(Count == 1 ? string.Empty : "s") filled from your profile
+        </span>
+        <div class="persona-fill-summary-actions">
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                       OnClick="ToggleReview"
+                       aria-haspopup="dialog"
+                       aria-expanded="@_reviewOpen.ToString().ToLowerInvariant()">
+                Review
+            </MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Default"
+                       OnClick="HandleClearAll">
+                Clear all
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_reviewOpen)
+    {
+        <div class="persona-fill-review" role="dialog" aria-label="Filled from profile — review">
+            <div class="persona-fill-review-header">
+                <MudText Typo="Typo.subtitle2">Filled from your profile</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                               Size="Size.Small"
+                               OnClick="CloseReview"
+                               aria-label="Close review panel" />
+            </div>
+            <MudList T="string" Dense="true" Class="persona-fill-review-list">
+                @foreach (var fill in Fills)
+                {
+                    var pointer = fill.FieldPath;
+                    <MudListItem T="string" Value="@pointer">
+                        <div class="persona-fill-review-row">
+                            <div class="persona-fill-review-label">
+                                <MudText Typo="Typo.body2" Class="persona-fill-review-field">
+                                    @FormatFieldLabel(pointer)
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @fill.AttributeName — @FormatValue(fill.Value)
+                                </MudText>
+                            </div>
+                            <MudIconButton Icon="@Icons.Material.Filled.Clear"
+                                           Size="Size.Small"
+                                           Color="Color.Default"
+                                           OnClick="@(() => HandleClearField(pointer))"
+                                           aria-label="@($"Clear {FormatFieldLabel(pointer)}")" />
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        </div>
+    }
+}
+
+@code {
+    /// <summary>Number of fields currently filled from the user's persona.</summary>
+    [Parameter] public int Count { get; set; }
+
+    /// <summary>Per-field fill decisions to render in the review popover.</summary>
+    [Parameter] public IReadOnlyList<PersonaFillResult> Fills { get; set; } = Array.Empty<PersonaFillResult>();
+
+    /// <summary>Invoked when the user clicks <b>Clear all</b>. Parent should
+    /// remove every persona-filled path from the form data bag.</summary>
+    [Parameter] public EventCallback OnClearAll { get; set; }
+
+    /// <summary>Invoked with the JSON pointer of a single field when the user
+    /// clicks its clear button in the review popover.</summary>
+    [Parameter] public EventCallback<string> OnClearField { get; set; }
+
+    private bool _reviewOpen;
+
+    private void ToggleReview() => _reviewOpen = !_reviewOpen;
+    private void CloseReview() => _reviewOpen = false;
+
+    private async Task HandleClearAll()
+    {
+        if (OnClearAll.HasDelegate)
+            await OnClearAll.InvokeAsync();
+        _reviewOpen = false;
+    }
+
+    private async Task HandleClearField(string fieldPath)
+    {
+        if (OnClearField.HasDelegate)
+            await OnClearField.InvokeAsync(fieldPath);
+    }
+
+    private static string FormatFieldLabel(string pointer)
+    {
+        var key = pointer.TrimStart('/');
+        if (string.IsNullOrEmpty(key)) return pointer;
+        // Use the last pointer segment as the field name, then humanise camelCase.
+        var last = key.Split('/').Last();
+        var sb = new System.Text.StringBuilder();
+        sb.Append(char.ToUpperInvariant(last[0]));
+        for (int i = 1; i < last.Length; i++)
+        {
+            if (char.IsUpper(last[i]) && !char.IsUpper(last[i - 1]))
+                sb.Append(' ');
+            sb.Append(last[i]);
+        }
+        return sb.ToString();
+    }
+
+    private static string FormatValue(object? value) => value switch
+    {
+        null => string.Empty,
+        DateOnly d => d.ToString("yyyy-MM-dd"),
+        DateTime dt => dt.ToString("yyyy-MM-dd"),
+        PersonaAddress a => $"{a.Line1}, {a.City} {a.PostalCode}",
+        _ => value.ToString() ?? string.Empty,
+    };
+}
