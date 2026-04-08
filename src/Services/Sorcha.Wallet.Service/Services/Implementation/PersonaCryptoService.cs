@@ -28,6 +28,7 @@ public sealed class PersonaCryptoService : IPersonaCryptoService
     private readonly ILogger<PersonaCryptoService> _logger;
 
     private const int ContentKeySizeBytes = 32; // XChaCha20-Poly1305 key size
+    private const int NonceSizeBytes = 24; // XChaCha20-Poly1305 nonce size
 
     /// <summary>
     /// Initialises a new instance of the <see cref="PersonaCryptoService"/> class.
@@ -99,6 +100,17 @@ public sealed class PersonaCryptoService : IPersonaCryptoService
         ArgumentNullException.ThrowIfNull(ciphertext);
         ArgumentNullException.ThrowIfNull(nonce);
         ArgumentException.ThrowIfNullOrWhiteSpace(wrappedKeyRef);
+
+        // Defence in depth — the endpoint also checks this, but validating
+        // here means any future code path that bypasses the endpoint
+        // (migrations, tests, internal callers) still gets a clear
+        // argument error instead of a cryptic crypto-library exception.
+        if (nonce.Length != NonceSizeBytes)
+        {
+            throw new ArgumentException(
+                $"Nonce must be exactly {NonceSizeBytes} bytes for XChaCha20-Poly1305.",
+                nameof(nonce));
+        }
 
         if (!string.Equals(wrappedKeyRef, walletAddress, StringComparison.Ordinal))
         {

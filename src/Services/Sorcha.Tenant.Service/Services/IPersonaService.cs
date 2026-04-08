@@ -52,13 +52,21 @@ public interface IPersonaService
 /// </summary>
 public sealed class PersonaValidationException : Exception
 {
-    public PersonaValidationException(Dictionary<string, string[]> errors)
+    /// <summary>
+    /// Creates the exception with a map of field path → error codes.
+    /// </summary>
+    public PersonaValidationException(IReadOnlyDictionary<string, string[]> errors)
         : base("Persona validation failed")
     {
         Errors = errors;
     }
 
-    public Dictionary<string, string[]> Errors { get; }
+    /// <summary>
+    /// Field-keyed error codes. Matches the client-side
+    /// <c>PersonaValidationException.Errors</c> shape so both sides can
+    /// handle the validation problem response consistently.
+    /// </summary>
+    public IReadOnlyDictionary<string, string[]> Errors { get; }
 }
 
 /// <summary>
