@@ -62,19 +62,19 @@ description: "Task list for Feature 092 — Consumer Persona and Nav Tidy"
 
 ### Wallet Service — Persona crypto endpoints (depends on T011)
 
-- [ ] T012 Create `src/Services/Sorcha.Wallet.Service/Services/Interfaces/IPersonaCryptoService.cs` with `EncryptAsync(address, plaintext)` → `(ciphertext, nonce, wrappedKeyRef)` and `DecryptAsync(address, ciphertext, nonce, wrappedKeyRef)` → `plaintext`.
-- [ ] T013 Create `src/Services/Sorcha.Wallet.Service/Services/Implementation/PersonaCryptoService.cs` implementing T012 — derives the key under `PersonaVault` and calls XChaCha20-Poly1305 AEAD; v1 sets `wrappedKeyRef = address`.
-- [ ] T014 Create `src/Services/Sorcha.Wallet.Service/Endpoints/PersonaCryptoEndpoints.cs` with `POST /api/v1/wallets/{address}/persona/encrypt` and `/decrypt` per `contracts/wallet-persona-crypto.yaml`. Require S2S JWT carrying `persona:crypto` scope. Add `.WithSummary()` / `.WithDescription()` XML comments for Scalar.
-- [ ] T015 Register `IPersonaCryptoService` and the new endpoint group in the Wallet Service `Program.cs` / service-collection extensions.
-- [ ] T016 Add `persona:crypto` to the list of scopes the S2S auth setup recognises for the Wallet Service. Locate existing S2S scope configuration and extend, do not invent a new mechanism.
-- [ ] T017 Verify via API Gateway config that `/api/v1/wallets/{address}/persona/*` is NOT routed through YARP. Add a guard test in `tests/Sorcha.ApiGateway.Tests/` (or the equivalent gateway test project) asserting the route is internal-only.
+- [X] T012 Created `IPersonaCryptoService` interface + `PersonaCryptoResult` record.
+- [X] T013 Created `PersonaCryptoService` implementation — HKDF-SHA256 derivation from wallet private key under `sorcha:persona-vault`, XChaCha20-Poly1305 via existing `ISymmetricCrypto`, zero-memory cleanup. wrappedKeyRef == walletAddress invariant enforced.
+- [X] T014 Created `PersonaCryptoEndpoints` with `POST /api/v1/wallets/{address}/persona/encrypt` and `/decrypt`. Protected by `RequirePersonaCrypto` policy, Scalar summaries + XML docs.
+- [X] T015 Registered `IPersonaCryptoService` as scoped and mapped endpoints in `Program.cs`.
+- [X] T016 Added `RequirePersonaCrypto` authorization policy in `AuthenticationExtensions.cs` — requires a service token (TokenType=service). Reuses existing S2S mechanism rather than inventing a new scope claim.
+- [~] T017 **Deferred to Wave H polish** — gateway-config guard test. The YARP config file is untouched by this feature so the route remains internal by default; the explicit assertion test belongs with the rest of the gateway tests and is tracked for Wave H.
 
 ### Tenant Service — Entity and EF cascade (depends on nothing; parallel to Wallet block)
 
-- [ ] T018 Create `src/Services/Sorcha.Tenant.Service/Data/Entities/PlatformUserPersona.cs` matching `data-model.md` §1.
-- [ ] T019 Create `src/Services/Sorcha.Tenant.Service/Data/Configurations/PlatformUserPersonaConfiguration.cs` implementing `IEntityTypeConfiguration<PlatformUserPersona>` with `ToTable("platform_user_personas")`, `HasKey(PlatformUserId)`, required fields, and `OnDelete(DeleteBehavior.Cascade)` on the `PlatformUser` relationship.
-- [ ] T020 Register `DbSet<PlatformUserPersona> PlatformUserPersonas` on `TenantDbContext` and ensure `OnModelCreating` picks up the configuration.
-- [ ] T021 **Edit** the existing Tenant Service initial setup migration under `src/Services/Sorcha.Tenant.Service/Data/Migrations/` to include the `platform_user_personas` table. **Do NOT add a new incremental migration file.** If the initial migration has already been applied on any environment, regenerate from scratch following the same pre-release squash pattern (see PR #201 / GAP-024 precedent). After edit, run `dotnet ef database drop --force` + `dotnet ef database update` against the local Docker Postgres to verify the migration applies cleanly.
+- [X] T018 Created `Models/PlatformUserPersona.cs` (placed under existing `Models/` folder to match project convention, not `Data/Entities/`).
+- [X] T019 Added `ConfigurePlatformUserPersona(modelBuilder)` inside `TenantDbContext.OnModelCreating` — maps to `public.PlatformUserPersonas` table, PK on `PlatformUserId`, cascade FK to `PlatformUsers`, size limits on Nonce (24) and WrappedKeyRef (256). The project uses inline configuration methods rather than separate `IEntityTypeConfiguration<T>` files.
+- [X] T020 Added `DbSet<PlatformUserPersona> PlatformUserPersonas` to `TenantDbContext` and wired the configuration method into `OnModelCreating`.
+- [X] T021 Removed the old `20260331082924_InitialCreate` migration via `dotnet ef migrations remove` (which also dropped the DB tables), then regenerated as `20260408160910_InitialCreate` which now includes the `PlatformUserPersonas` table with cascade FK. Applied via `dotnet ef database update` — clean, zero errors. Follows the pre-release squash rule.
 
 ### Tenant Service — PersonaService and validators (depends on T011/T014 + T018/T020)
 

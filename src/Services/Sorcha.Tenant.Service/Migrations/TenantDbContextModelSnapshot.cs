@@ -969,6 +969,39 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.ToTable("PlatformUserOrgMemberships", "public");
                 });
 
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserPersona", b =>
+                {
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("CiphertextBlob")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Nonce")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WrappedKeyRef")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("PlatformUserId");
+
+                    b.ToTable("PlatformUserPersonas", "public");
+                });
+
             modelBuilder.Entity("Sorcha.Tenant.Service.Models.PushSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1469,6 +1502,17 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsRequired();
 
                     b.Navigation("Organization");
+
+                    b.Navigation("PlatformUser");
+                });
+
+            modelBuilder.Entity("Sorcha.Tenant.Service.Models.PlatformUserPersona", b =>
+                {
+                    b.HasOne("Sorcha.Tenant.Service.Models.PlatformUser", "PlatformUser")
+                        .WithOne()
+                        .HasForeignKey("Sorcha.Tenant.Service.Models.PlatformUserPersona", "PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("PlatformUser");
                 });
