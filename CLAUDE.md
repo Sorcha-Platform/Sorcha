@@ -18,8 +18,9 @@ docker-compose up -d
 
 # Access points:
 # - API Gateway:      http://localhost:80
-# - Main UI:          http://localhost/app
-# - Aspire Dashboard: http://localhost:18888
+# - Main UI (direct): http://localhost:5400
+# - Main UI (gated):  http://localhost/app
+# - Aspire Dashboard: http://localhost:19888
 
 # CLI tool (after build):
 # dotnet run --project src/Apps/Sorcha.Cli -- --help
@@ -69,12 +70,15 @@ dotnet restore && dotnet build && dotnet test
 | Service | Status | Port (Docker/Aspire) | Purpose |
 |---------|--------|---------------------|---------|
 | Blueprint | 100% | 5000 / 7000 | Workflow management, SignalR |
-| Register | 100% | 5290 / 7290 | Distributed ledger, OData |
+| Register | 100% | 5380 / 7290 | Distributed ledger, OData |
 | Wallet | 98% | internal / 7001 | Crypto operations, HD wallets |
-| Tenant | 98% | 5110 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
-| Validator | 95% | internal / 7004 | Consensus, chain integrity |
-| Peer | 70% | 5002 / 7002 | P2P network, gRPC |
+| Tenant | 98% | 5450 / 7110 | Multi-tenant auth, JWT issuer, Participant Identity, Platform Identity, Register Invitations |
+| Validator | 95% | 5800 / 7004 | Consensus, chain integrity |
+| Peer | 70% | 50051 / 7002 | P2P network, gRPC |
+| UI Web | 100% | 5400 / — | Blazor WASM host (Sorcha.UI.Web) |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
+
+Docker exposes additional ports: Redis `16379`, Postgres `5432`, MongoDB `27017`, Aspire dashboard `19888`, OTLP gRPC `4317`, OTLP HTTP `4318`. All port values honour env-var overrides (see `docker-compose.yml`).
 
 ---
 
