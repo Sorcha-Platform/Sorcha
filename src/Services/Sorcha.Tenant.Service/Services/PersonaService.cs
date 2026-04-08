@@ -65,7 +65,13 @@ public sealed partial class PersonaService : IPersonaService
         if (!string.Equals(options.ActingAs, "self", StringComparison.Ordinal))
         {
             // v1 only supports self — delegation is a tracked follow-up.
-            throw new NotSupportedException($"actingAs='{options.ActingAs}' is not supported in this release.");
+            // Modelled as a validation failure so the endpoint maps it to
+            // HTTP 400 via the existing PersonaValidationException pipeline
+            // instead of relying on NotSupportedException semantics.
+            throw new PersonaValidationException(new Dictionary<string, string[]>
+            {
+                ["actingAs"] = ["actingAs_not_supported"]
+            });
         }
 
         var row = await _db.PlatformUserPersonas
@@ -106,8 +112,27 @@ public sealed partial class PersonaService : IPersonaService
             return new PersonaReadModelV1();
         }
 
-        var attributes = JsonSerializer.Deserialize<PersonaAttributesV1>(plaintext, JsonOptions)
-            ?? new PersonaAttributesV1();
+        PersonaAttributesV1? attributes;
+        try
+        {
+            attributes = JsonSerializer.Deserialize<PersonaAttributesV1>(plaintext, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Persona JSON deserialisation threw for user {PlatformUserId} — possible data corruption",
+                platformUserId);
+            return new PersonaReadModelV1();
+        }
+
+        if (attributes is null)
+        {
+            _logger.LogError(
+                "Persona JSON deserialisation returned null for user {PlatformUserId} — possible data corruption",
+                platformUserId);
+            return new PersonaReadModelV1();
+        }
 
         return Project(attributes, row.UpdatedAt);
     }

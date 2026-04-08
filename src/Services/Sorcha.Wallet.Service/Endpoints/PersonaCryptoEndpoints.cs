@@ -81,7 +81,7 @@ public static class PersonaCryptoEndpoints
         }
         catch (KeyNotFoundException)
         {
-            return Results.NotFound(new { error = $"Wallet not found: {address}" });
+            return Results.NotFound(new { error = "Wallet not found" });
         }
         catch (CryptographicException)
         {
@@ -106,6 +106,8 @@ public static class PersonaCryptoEndpoints
             return Results.BadRequest(new { error = "Ciphertext is required" });
         if (request.Nonce is null || request.Nonce.Length == 0)
             return Results.BadRequest(new { error = "Nonce is required" });
+        if (request.Nonce.Length != 24)
+            return Results.BadRequest(new { error = "Nonce must be exactly 24 bytes (XChaCha20-Poly1305)" });
         if (string.IsNullOrWhiteSpace(request.WrappedKeyRef))
             return Results.BadRequest(new { error = "WrappedKeyRef is required" });
 
@@ -122,7 +124,7 @@ public static class PersonaCryptoEndpoints
         }
         catch (KeyNotFoundException)
         {
-            return Results.NotFound(new { error = $"Wallet not found: {address}" });
+            return Results.NotFound(new { error = "Wallet not found" });
         }
         catch (PersonaKeyRefMismatchException ex)
         {

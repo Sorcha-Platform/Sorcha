@@ -60,10 +60,18 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
         var body = await response.Content.ReadFromJsonAsync<PersonaCryptoWireResponse>(ct)
             ?? throw new PersonaCryptoException("Persona encrypt returned empty body.");
 
-        return new PersonaCryptoRemoteResult(
-            body.Ciphertext ?? Array.Empty<byte>(),
-            body.Nonce ?? Array.Empty<byte>(),
-            body.WrappedKeyRef ?? string.Empty);
+        // A 200 response with null crypto fields is a protocol violation —
+        // failing here is strictly better than silently storing empty bytes
+        // which would break decrypt on the next read.
+        if (body.Ciphertext is null || body.Ciphertext.Length == 0
+            || body.Nonce is null || body.Nonce.Length == 0
+            || string.IsNullOrEmpty(body.WrappedKeyRef))
+        {
+            throw new PersonaCryptoException(
+                "Persona encrypt response is missing required fields (ciphertext, nonce, or wrappedKeyRef).");
+        }
+
+        return new PersonaCryptoRemoteResult(body.Ciphertext, body.Nonce, body.WrappedKeyRef);
     }
 
     /// <inheritdoc />
@@ -96,7 +104,12 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
         var body = await response.Content.ReadFromJsonAsync<PersonaDecryptWireResponse>(ct)
             ?? throw new PersonaCryptoException("Persona decrypt returned empty body.");
 
-        return body.Plaintext ?? Array.Empty<byte>();
+        if (body.Plaintext is null)
+        {
+            throw new PersonaCryptoException("Persona decrypt response is missing the plaintext field.");
+        }
+
+        return body.Plaintext;
     }
 
     /// <summary>
@@ -106,13 +119,21 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
     /// <c>persona:crypto</c> scope; the Wallet Service's
     /// <c>RequirePersonaCrypto</c> policy enforces that scope is present.
     /// </summary>
+    /// <summary>
+    /// Fails fast when no service token is available rather than sending an
+    /// unauthenticated request — the Wallet Service would reject it with a
+    /// 401/403 and the caller would see an opaque <see cref="PersonaCryptoException"/>
+    /// instead of a clear configuration-error message.
+    /// </summary>
     private async Task AttachServiceTokenAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var token = await _serviceAuth.GetTokenAsync(ct);
         if (string.IsNullOrEmpty(token))
         {
-            _logger.LogWarning("No service token available when calling Wallet persona crypto endpoints");
-            return;
+            _logger.LogError("No service token available when calling Wallet persona crypto endpoints");
+            throw new InvalidOperationException(
+                "Service token unavailable — cannot call persona crypto endpoint. " +
+                "Check the Tenant Service client credentials and that the persona:crypto scope is granted.");
         }
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }

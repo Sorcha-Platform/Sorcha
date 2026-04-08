@@ -82,13 +82,9 @@ public static class PersonaEndpoints
             var result = await personaService.GetAsync(userId, options, ct);
             return TypedResults.Ok(result);
         }
-        catch (NotSupportedException ex)
+        catch (PersonaValidationException ex)
         {
-            return TypedResults.Problem(
-                title: "actingAs not supported",
-                detail: ex.Message,
-                statusCode: StatusCodes.Status400BadRequest,
-                type: "https://sorcha.platform/errors/actingAs_not_supported");
+            return TypedResults.ValidationProblem(ex.Errors);
         }
     }
 

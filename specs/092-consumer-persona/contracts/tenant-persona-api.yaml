@@ -106,34 +106,12 @@ paths:
         '503':
           description: Wallet Service or Tenant DB unavailable.
 
-    patch:
-      operationId: updateMyPersona
-      summary: Partially update individual attributes of the signed-in user's persona.
-      description: |
-        Merge semantics at the attribute level: omitted fields are untouched; a
-        field explicitly set to null clears that attribute; empty arrays clear the
-        corresponding list. Validation and encryption happen the same way as PUT.
-      requestBody:
-        required: true
-        content:
-          application/merge-patch+json:
-            schema:
-              $ref: '#/components/schemas/PersonaAttributesV1'
-      responses:
-        '200':
-          description: Persona updated. Returns the canonical read model.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PersonaReadModelV1'
-        '400':
-          description: Validation failure.
-        '401':
-          description: Not authenticated.
-        '409':
-          description: User has no provisioned wallet.
-        '503':
-          description: Wallet Service or Tenant DB unavailable.
+    # NOTE: PATCH /me/persona is intentionally not implemented in v1. The
+    # design doc discussed a merge-patch operation for partial updates but
+    # the full-replace PUT covers every v1 use case and merge-patch adds
+    # non-trivial validation complexity (how to clear a list vs. leave
+    # untouched). Revisit if a real product need appears — tracked on
+    # tasks.md §T023 as the deferral note.
 
     delete:
       operationId: deleteMyPersona
