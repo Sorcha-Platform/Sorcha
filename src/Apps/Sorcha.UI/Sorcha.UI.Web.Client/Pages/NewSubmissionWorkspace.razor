@@ -26,11 +26,15 @@
 <PageTitle>@(_blueprint?.Title ?? "New Submission") - Sorcha Platform</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    @* Back link *@
-    <MudLink Href="new-submissions" Underline="Underline.None" Class="mb-3 d-inline-flex align-items-center">
-        <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="mr-1" />
-        <span>Back to New Submissions</span>
-    </MudLink>
+    @* Back link — uses Blazor NavigationManager so the path resolves against
+       the app base href instead of being treated as relative to the current
+       URL (which would produce /app/new-submission/{r}/new-submissions). *@
+    <MudButton Variant="Variant.Text" Color="Color.Default"
+               StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Navigation.NavigateTo("new-submissions"))"
+               Class="mb-3">
+        Back to New Submissions
+    </MudButton>
 
     @if (_loading)
     {

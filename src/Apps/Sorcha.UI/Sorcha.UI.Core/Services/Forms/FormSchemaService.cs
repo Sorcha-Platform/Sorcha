@@ -106,7 +106,15 @@ public class FormSchemaService : IFormSchemaService
         // Check required fields
         if (root.TryGetProperty("required", out var required))
         {
-            root.TryGetProperty("properties", out var propsForLabels);
+            // Defensive: a schema can declare `required` without a `properties`
+            // block (e.g. allOf-composed schemas). When that happens, fall back
+            // to the humanised field name for labels rather than passing an
+            // Undefined JsonElement around.
+            JsonElement? propsForLabels = root.TryGetProperty("properties", out var propsEl) &&
+                                          propsEl.ValueKind == JsonValueKind.Object
+                ? propsEl
+                : null;
+
             foreach (var item in required.EnumerateArray())
             {
                 var fieldName = item.GetString();
@@ -159,7 +167,10 @@ public class FormSchemaService : IFormSchemaService
         if (IsRequired(schema, scope) && IsEmptyValue(value))
         {
             var fieldName = scope.TrimStart('/').Split('/').Last();
-            schema.RootElement.TryGetProperty("properties", out var propsForLabel);
+            JsonElement? propsForLabel = schema.RootElement.TryGetProperty("properties", out var propsEl) &&
+                                         propsEl.ValueKind == JsonValueKind.Object
+                ? propsEl
+                : null;
             var label = ResolveFieldLabel(propsForLabel, fieldName);
             errors.Add($"{label} is required");
             return errors;
@@ -374,11 +385,14 @@ public class FormSchemaService : IFormSchemaService
     /// Returns the human-readable label for a field. Prefers the schema
     /// <c>title</c> property if defined; otherwise falls back to a humanised
     /// version of the field name (e.g., <c>firstName</c> → <c>First Name</c>).
+    /// Pass <see langword="null"/> for <paramref name="properties"/> when the
+    /// schema has no <c>properties</c> block (e.g. allOf-composed schemas) —
+    /// the method will fall back to humanising the field name.
     /// </summary>
-    private static string ResolveFieldLabel(JsonElement properties, string fieldName)
+    private static string ResolveFieldLabel(JsonElement? properties, string fieldName)
     {
-        if (properties.ValueKind == JsonValueKind.Object &&
-            properties.TryGetProperty(fieldName, out var fieldSchema) &&
+        if (properties is { ValueKind: JsonValueKind.Object } props &&
+            props.TryGetProperty(fieldName, out var fieldSchema) &&
             fieldSchema.ValueKind == JsonValueKind.Object &&
             fieldSchema.TryGetProperty("title", out var titleEl) &&
             titleEl.ValueKind == JsonValueKind.String)
