@@ -168,9 +168,21 @@
     private string? _focusedField;
     private string? _activeSection;
     private SorchaFormRenderer? _formRenderer;
+    // Identity tracking — only re-parse the schema layout when the Action
+    // reference actually changes. Without this guard, every parent re-render
+    // (e.g. focus events bubbling up from the renderer) would re-run
+    // SchemaLayoutParser. Cheap today, but we want consistency with the
+    // SorchaFormRenderer guard so this stays cheap as the workspace is
+    // reused for pending actions where re-renders are frequent.
+    private Sorcha.Blueprint.Models.Action? _lastAction;
 
     protected override void OnParametersSet()
     {
+        // Skip the re-parse when the Action reference is unchanged.
+        if (ReferenceEquals(_lastAction, Action))
+            return;
+        _lastAction = Action;
+
         // Parse layout info from the action's schema. SchemaLayoutParser returns
         // Empty on parse failure — the form gracefully degrades to flat rendering.
         var schemaDoc = Action?.DataSchemas?.FirstOrDefault();

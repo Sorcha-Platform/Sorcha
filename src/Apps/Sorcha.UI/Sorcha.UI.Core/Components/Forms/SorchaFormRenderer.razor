@@ -2,6 +2,7 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using System.Text.Json
+@using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
 @using Sorcha.Blueprint.Models.Credentials
 @using Sorcha.UI.Core.Models.Forms
@@ -9,6 +10,7 @@
 @implements IDisposable
 
 @inject IFormSchemaService SchemaService
+@inject ILogger<SorchaFormRenderer> Logger
 
 <CascadingValue Value="_formContext">
     <div class="sorcha-form">
@@ -637,14 +639,25 @@
         return fields;
     }
 
+    // async void is required because the FormContext.OnFocusedFieldChanged
+    // event is `Action<string?>`. Wrap in try/catch so a thrown exception
+    // can't escape into the synchronisation context (which would crash the
+    // circuit on Blazor Server and silently disappear on WASM).
     private async void HandleFocusedFieldChanged(string? scope)
     {
-        if (!OnFieldFocused.HasDelegate) return;
-        await InvokeAsync(async () =>
+        try
         {
-            await OnFieldFocused.InvokeAsync(scope);
-            StateHasChanged();
-        });
+            if (!OnFieldFocused.HasDelegate) return;
+            await InvokeAsync(async () =>
+            {
+                await OnFieldFocused.InvokeAsync(scope);
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error propagating focused-field change for scope {Scope}", scope);
+        }
     }
 
     private async Task HandleSubmit()

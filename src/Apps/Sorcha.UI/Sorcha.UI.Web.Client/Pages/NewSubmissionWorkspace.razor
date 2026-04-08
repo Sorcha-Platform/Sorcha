@@ -53,6 +53,8 @@
     }
     else if (_blueprint is not null && _startingAction is not null)
     {
+        @* The renderer (inside ActionWorkspace) owns the form action bar
+           with Cancel/Next/Submit buttons. We don't render our own here. *@
         <ActionWorkspace @ref="_workspace"
                          Blueprint="_blueprint"
                          Action="_startingAction"
@@ -63,12 +65,6 @@
                          OnSubmit="HandleSubmit"
                          OnCancel="HandleCancel"
                          ShowIntroduction="true" />
-
-        <MudStack Row="true" Class="mt-4" Justify="Justify.FlexEnd" Spacing="2">
-            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="HandleCancel">
-                Cancel
-            </MudButton>
-        </MudStack>
     }
 </MudContainer>
 
@@ -78,7 +74,6 @@
 
     private Sorcha.Blueprint.Models.Blueprint? _blueprint;
     private Sorcha.Blueprint.Models.Action? _startingAction;
-    private StartableBlueprintViewModel? _listingMetadata;
     private List<WalletDto> _wallets = [];
     private string _selectedWallet = string.Empty;
     private bool _loading = true;
@@ -91,9 +86,13 @@
 
         try
         {
-            // Try hot navigation state first (one-shot read)
-            _listingMetadata = NavState.Get<StartableBlueprintViewModel>(
-                $"blueprint:{RegisterId}:{BlueprintId}");
+            // Drain any stashed listing-page state for this blueprint so the
+            // one-shot NavigationStateService entry doesn't leak. The actual
+            // blueprint data is always fetched fresh from the published
+            // endpoint below — using the listing snapshot would skip the
+            // server roundtrip but require dedicated cache-invalidation
+            // hooks for correctness; deferred as a future optimisation.
+            NavState.Get<StartableBlueprintViewModel>($"blueprint:{RegisterId}:{BlueprintId}");
 
             // Load wallets and resolve default
             _wallets = await WalletService.GetWalletsAsync();

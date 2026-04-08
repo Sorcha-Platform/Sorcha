@@ -5,6 +5,7 @@
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
 @using Sorcha.UI.Core.Components.Shared
 @using Sorcha.UI.Core.Models.Registers
 @using Sorcha.UI.Core.Models.Wallet
@@ -241,7 +242,8 @@
                     StateHasChanged();
                 }
             }
-            catch { /* localStorage not available */ }
+            catch (JSException) { /* localStorage not available — fall back to default view */ }
+            catch (TaskCanceledException) { /* component disposed mid-call */ }
         }
     }
 
@@ -347,7 +349,8 @@
         {
             await JSRuntime.InvokeVoidAsync("localStorage.setItem", ViewModeStorageKey, _viewMode);
         }
-        catch { /* localStorage not available */ }
+        catch (JSException) { /* localStorage not available — view mode persists in memory only */ }
+        catch (TaskCanceledException) { /* component disposed mid-call */ }
     }
 
     private IEnumerable<BlueprintRowViewModel> FilterAndSort()
