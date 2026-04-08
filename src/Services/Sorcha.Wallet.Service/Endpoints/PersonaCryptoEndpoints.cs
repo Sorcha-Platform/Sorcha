@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Cryptography;
+using Sorcha.ServiceDefaults;
 using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.Endpoints;
@@ -19,8 +20,14 @@ public static class PersonaCryptoEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapPersonaCryptoEndpoints(this IEndpointRouteBuilder app)
     {
+        // Even though these endpoints are service-mesh only, the centralised
+        // rate limiting policy is still applied so a misconfigured gateway
+        // rule or a compromised internal caller cannot hammer the key
+        // derivation path. `Strict` is chosen because these are high-cost
+        // cryptographic operations invoked once per profile save.
         var group = app.MapGroup("/api/v1/wallets")
-            .WithTags("Persona Crypto (Internal)");
+            .WithTags("Persona Crypto (Internal)")
+            .RequireRateLimiting(RateLimitPolicies.Strict);
 
         group.MapPost("/{address}/persona/encrypt", EncryptPersona)
             .WithName("EncryptPersona")
@@ -76,11 +83,13 @@ public static class PersonaCryptoEndpoints
         {
             return Results.NotFound(new { error = $"Wallet not found: {address}" });
         }
-        catch (CryptographicException ex)
+        catch (CryptographicException)
         {
+            // Sanitised response — never echo the exception message to the
+            // caller, it may contain sensitive key material references.
             return Results.Problem(
                 title: "Persona encryption failed",
-                detail: ex.Message,
+                detail: "An internal cryptographic error occurred.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -115,21 +124,24 @@ public static class PersonaCryptoEndpoints
         {
             return Results.NotFound(new { error = $"Wallet not found: {address}" });
         }
-        catch (CryptographicException ex)
+        catch (PersonaKeyRefMismatchException ex)
         {
-            // Caller-side invariant violations (e.g. wrappedKeyRef does not
-            // match the wallet address) are a 400, not a 500. Any other
-            // cryptographic failure — corrupt ciphertext, auth tag mismatch
-            // — is a server-side 500 with a sanitised body that does not
-            // echo the ciphertext or key material.
-            var isInvariantViolation = ex.Message.Contains("wrappedKeyRef", StringComparison.OrdinalIgnoreCase)
-                || ex.Message.Contains("invariant", StringComparison.OrdinalIgnoreCase);
+            // Typed exception for the v1 wrappedKeyRef invariant — this is
+            // a caller-side bug, so 400 with the (caller-supplied) detail.
             return Results.Problem(
-                title: isInvariantViolation ? "Persona decrypt request invalid" : "Persona decryption failed",
+                title: "Persona decrypt request invalid",
                 detail: ex.Message,
-                statusCode: isInvariantViolation
-                    ? StatusCodes.Status400BadRequest
-                    : StatusCodes.Status500InternalServerError);
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        catch (CryptographicException)
+        {
+            // Generic cryptographic failure (corrupt ciphertext, auth tag
+            // mismatch, etc.) — sanitised 500. Never echo the exception
+            // message to avoid leaking ciphertext references or key IDs.
+            return Results.Problem(
+                title: "Persona decryption failed",
+                detail: "An internal cryptographic error occurred.",
+                statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 }

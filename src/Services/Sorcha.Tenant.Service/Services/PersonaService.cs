@@ -179,7 +179,13 @@ public sealed partial class PersonaService : IPersonaService
             {
                 // Another request won the insert race. Detach the new row
                 // we just added so the next iteration can load the existing
-                // row and perform an update instead.
+                // row and perform an update instead. A second collision on
+                // the retry (attempt > 1) is let through — concurrent PUTs
+                // from the same user on the same millisecond are unusual
+                // enough that surfacing the 500 is acceptable.
+                _logger.LogWarning(
+                    "Persona upsert race detected for user {PlatformUserId}; retrying as update",
+                    platformUserId);
                 _db.Entry(row).State = EntityState.Detached;
                 continue;
             }
@@ -280,6 +286,11 @@ public sealed partial class PersonaService : IPersonaService
             if (string.IsNullOrWhiteSpace(phone.Value) || !E164Regex().IsMatch(phone.Value))
                 errors[$"phones[{i}].value"] = ["invalid_phone"];
         }
+        // Normalise country codes to upper-case before regex matching so
+        // browser locale values like "gb" round-trip correctly. The
+        // normalised list is applied to the output below so callers never
+        // have to worry about casing.
+        var normalisedAddresses = new PersonaAddress[input.Addresses.Count];
         for (var i = 0; i < input.Addresses.Count; i++)
         {
             var addr = input.Addresses[i];
@@ -289,16 +300,24 @@ public sealed partial class PersonaService : IPersonaService
                 errors[$"addresses[{i}].city"] = ["required"];
             if (string.IsNullOrWhiteSpace(addr.PostalCode))
                 errors[$"addresses[{i}].postalCode"] = ["required"];
-            if (string.IsNullOrWhiteSpace(addr.Country) || !CountryCodeRegex().IsMatch(addr.Country))
+
+            var country = (addr.Country ?? string.Empty).Trim().ToUpperInvariant();
+            if (!CountryCodeRegex().IsMatch(country))
                 errors[$"addresses[{i}].country"] = ["invalid_country_code"];
+            normalisedAddresses[i] = addr with { Country = country };
         }
+        var normalisedNationalities = new string[input.Nationalities.Count];
         for (var i = 0; i < input.Nationalities.Count; i++)
         {
-            if (!CountryCodeRegex().IsMatch(input.Nationalities[i]))
+            var nat = (input.Nationalities[i] ?? string.Empty).Trim().ToUpperInvariant();
+            if (!CountryCodeRegex().IsMatch(nat))
                 errors[$"nationalities[{i}]"] = ["invalid_country_code"];
+            normalisedNationalities[i] = nat;
         }
 
-        // Multi-default detection (I-1 — reject)
+        // Multi-default detection (I-1 — reject). Nationalities is a plain
+        // string list with no IsDefault field — the first entry is treated
+        // as the default by `Project`, so no multi-default check is needed.
         if (input.Emails.Count(e => e.IsDefault) > 1) errors["emails"] = ["multiple_defaults"];
         if (input.Phones.Count(p => p.IsDefault) > 1) errors["phones"] = ["multiple_defaults"];
         if (input.Addresses.Count(a => a.IsDefault) > 1) errors["addresses"] = ["multiple_defaults"];
@@ -309,13 +328,14 @@ public sealed partial class PersonaService : IPersonaService
         // I-1 normalisation — promote first entry when none marked default.
         var emails = PromoteDefault(input.Emails, e => e.IsDefault, e => e with { IsDefault = true });
         var phones = PromoteDefault(input.Phones, p => p.IsDefault, p => p with { IsDefault = true });
-        var addresses = PromoteDefault(input.Addresses, a => a.IsDefault, a => a with { IsDefault = true });
+        var addresses = PromoteDefault(normalisedAddresses, a => a.IsDefault, a => a with { IsDefault = true });
 
         return input with
         {
             Emails = emails,
             Phones = phones,
-            Addresses = addresses
+            Addresses = addresses,
+            Nationalities = normalisedNationalities,
         };
     }
 

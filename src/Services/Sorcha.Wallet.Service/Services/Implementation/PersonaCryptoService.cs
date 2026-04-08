@@ -104,8 +104,11 @@ public sealed class PersonaCryptoService : IPersonaCryptoService
         {
             // v1 invariant: wrappedKeyRef == walletAddress. Any mismatch
             // means the caller handed us a ref for a different user, which
-            // would otherwise leak identity across wallets.
-            throw new CryptographicException(
+            // would otherwise leak identity across wallets. The typed
+            // PersonaKeyRefMismatchException lets the endpoint layer map
+            // this to a 400 (caller-side bug) without fragile string
+            // matching on the exception message.
+            throw new PersonaKeyRefMismatchException(
                 "wrappedKeyRef does not match walletAddress — v1 invariant violated.");
         }
 

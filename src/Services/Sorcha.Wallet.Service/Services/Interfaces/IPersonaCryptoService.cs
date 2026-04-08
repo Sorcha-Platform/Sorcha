@@ -82,3 +82,19 @@ public sealed record PersonaCryptoResult(
     byte[] Ciphertext,
     byte[] Nonce,
     string WrappedKeyRef);
+
+/// <summary>
+/// Thrown by <see cref="IPersonaCryptoService.DecryptAsync"/> when the
+/// supplied <c>wrappedKeyRef</c> does not match the wallet address — a
+/// caller-side invariant violation. The endpoint layer maps this to
+/// HTTP 400 instead of the generic 500 that other
+/// <see cref="System.Security.Cryptography.CryptographicException"/>s
+/// produce.
+/// </summary>
+public sealed class PersonaKeyRefMismatchException : System.Security.Cryptography.CryptographicException
+{
+    /// <summary>
+    /// Initialises a new instance of the <see cref="PersonaKeyRefMismatchException"/> class.
+    /// </summary>
+    public PersonaKeyRefMismatchException(string message) : base(message) { }
+}
