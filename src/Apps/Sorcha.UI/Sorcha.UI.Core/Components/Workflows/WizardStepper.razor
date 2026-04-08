@@ -1,0 +1,64 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.Blueprint.Models
+
+<div class="wizard-stepper mb-4">
+    <MudStack Row="true" Spacing="0" AlignItems="AlignItems.Center" Class="wizard-stepper-row">
+        @for (int i = 0; i < Pages.Count; i++)
+        {
+            var idx = i;
+            var isActive = idx == CurrentPage;
+            var isCompleted = idx < CurrentPage;
+            var isClickable = isCompleted || isActive;
+            var stepColor = isActive ? Color.Primary : isCompleted ? Color.Success : Color.Default;
+            var stepIcon = isCompleted
+                ? Icons.Material.Filled.CheckCircle
+                : isActive
+                    ? Icons.Material.Filled.RadioButtonChecked
+                    : Icons.Material.Filled.RadioButtonUnchecked;
+
+            <div class="wizard-step @(isActive ? "active" : "") @(isCompleted ? "completed" : "")"
+                 style="@(isClickable ? "cursor: pointer;" : "cursor: default; opacity: 0.6;")"
+                 @onclick="@(() => HandleStepClick(idx, isClickable))">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@stepIcon" Color="@stepColor" Size="Size.Medium" />
+                    <MudText Typo="Typo.body2" Color="@stepColor">
+                        @((idx + 1) + ". " + Pages[idx].Title)
+                    </MudText>
+                </MudStack>
+            </div>
+
+            @if (idx < Pages.Count - 1)
+            {
+                <div class="wizard-connector"
+                     style="flex: 1; height: 2px; margin: 0 12px; background-color: var(--mud-palette-lines-default);">
+                </div>
+            }
+        }
+    </MudStack>
+</div>
+
+@code {
+    /// <summary>
+    /// Pages in the wizard, in order. Each page contributes one step to the stepper.
+    /// </summary>
+    [Parameter, EditorRequired] public List<BlueprintPageDefinition> Pages { get; set; } = [];
+
+    /// <summary>
+    /// Zero-based index of the currently active page.
+    /// </summary>
+    [Parameter] public int CurrentPage { get; set; }
+
+    /// <summary>
+    /// Fires when the user clicks a step that is completed or the current page.
+    /// Future pages are not clickable.
+    /// </summary>
+    [Parameter] public EventCallback<int> OnPageSelected { get; set; }
+
+    private async Task HandleStepClick(int index, bool isClickable)
+    {
+        if (!isClickable || !OnPageSelected.HasDelegate) return;
+        await OnPageSelected.InvokeAsync(index);
+    }
+}

@@ -44,6 +44,9 @@ builder.Services.AddScoped<BlueprintLayoutService>();
 // Add passkey interop service for WebAuthn browser API calls
 builder.Services.AddScoped<PasskeyInteropService>();
 
+// Add navigation state service for passing objects between page navigations (Feature 091)
+builder.Services.AddScoped<NavigationStateService>();
+
 // Add schema library service with caching
 // All schemas (local defaults, external, remote) are served through the unified
 // schema index API — the client only needs the Blueprint Service repository.

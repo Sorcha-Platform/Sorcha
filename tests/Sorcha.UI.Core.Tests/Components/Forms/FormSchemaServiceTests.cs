@@ -171,4 +171,175 @@ public class FormSchemaServiceTests
 
         _sut.IsRequired(schema, "/notes").Should().BeFalse();
     }
+
+    // --- x-rule parsing (Feature 091) ---
+
+    [Fact]
+    public void AutoGenerateForm_PropertyWithXRule_PopulatesControlRule()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "hasMedicalCondition": { "type": "boolean" },
+                "medicalConditionsList": {
+                    "type": "string",
+                    "x-rule": {
+                        "effect": "SHOW",
+                        "condition": {
+                            "scope": "/hasMedicalCondition",
+                            "schema": { "const": true }
+                        }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var medicalControl = form.Elements.FirstOrDefault(e => e.Scope == "/medicalConditionsList");
+        medicalControl.Should().NotBeNull();
+        medicalControl!.Rule.Should().NotBeNull();
+        medicalControl.Rule!.Effect.Should().Be(Sorcha.Blueprint.Models.RuleEffect.SHOW);
+        medicalControl.Rule.Condition.Scope.Should().Be("/hasMedicalCondition");
+        medicalControl.Rule.Condition.Schema.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AutoGenerateForm_PropertyWithHideEffect_ParsesEffect()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string",
+                    "x-rule": {
+                        "effect": "HIDE",
+                        "condition": {
+                            "scope": "/toggle",
+                            "schema": { "const": false }
+                        }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        var control = form.Elements.First();
+
+        control.Rule.Should().NotBeNull();
+        control.Rule!.Effect.Should().Be(Sorcha.Blueprint.Models.RuleEffect.HIDE);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_PropertyWithEnumCondition_ParsesEnumCondition()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "type": "string",
+                    "x-rule": {
+                        "effect": "SHOW",
+                        "condition": {
+                            "scope": "/category",
+                            "schema": { "enum": ["A", "B"] }
+                        }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        var control = form.Elements.First();
+
+        control.Rule.Should().NotBeNull();
+        control.Rule!.Condition.Schema!.ToJsonString().Should().Contain("enum");
+    }
+
+    [Fact]
+    public void AutoGenerateForm_PropertyWithoutXRule_LeavesRuleNull()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": { "type": "string" }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.First().Rule.Should().BeNull();
+    }
+
+    [Fact]
+    public void AutoGenerateForm_MalformedXRule_ReturnsNullRuleWithoutThrowing()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string",
+                    "x-rule": "not an object"
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.First().Rule.Should().BeNull();
+    }
+
+    [Fact]
+    public void AutoGenerateForm_XRuleMissingCondition_ReturnsNullRule()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string",
+                    "x-rule": {
+                        "effect": "SHOW"
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.First().Rule.Should().BeNull();
+    }
+
+    [Fact]
+    public void AutoGenerateForm_XRuleCaseInsensitiveEffect_Parses()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string",
+                    "x-rule": {
+                        "effect": "show",
+                        "condition": {
+                            "scope": "/other",
+                            "schema": { "const": true }
+                        }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.First().Rule!.Effect.Should().Be(Sorcha.Blueprint.Models.RuleEffect.SHOW);
+    }
 }

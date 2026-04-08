@@ -1,260 +1,29 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
+@* Legacy route — redirects to /new-submissions. Feature 091 replaced this page
+   with the searchable blueprint catalogue. This stub preserves deep links from
+   bookmarks and external references. TODO: remove in a future cleanup PR once
+   analytics show no traffic on /my-workflows. *@
+
 @page "/my-workflows"
 @rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
-@using Sorcha.UI.Core.Components.Shared
-@using Sorcha.UI.Core.Components.Workflows
-@using Sorcha.UI.Core.Models.Registers
-@using Sorcha.UI.Core.Models.Wallet
-@using Sorcha.UI.Core.Models.Workflows
-@using Sorcha.UI.Core.Services
-@using Sorcha.UI.Core.Services.Wallet
-@inject IWorkflowService WorkflowService
-@inject IBlueprintApiService BlueprintApiService
-@inject IWalletApiService WalletService
-@inject IRegisterService RegisterService
-@inject IRegisterSubscriptionService SubscriptionService
-@inject IWalletPreferenceService WalletPreferenceService
-@inject IDialogService DialogService
-@inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
-<PageTitle>New Submission - Sorcha Platform</PageTitle>
+<PageTitle>Redirecting... - Sorcha Platform</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudStack Spacing="0" Class="mb-4">
-        <MudText Typo="Typo.h4">
-            <MudIcon Icon="@Icons.Material.Filled.PostAdd" Class="mr-2" />
-            New Submission
-        </MudText>
-        <MudText Typo="Typo.body1" Color="Color.Secondary">
-            Browse available services and start a new submission
-        </MudText>
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudStack AlignItems="AlignItems.Center" Spacing="2">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText Typo="Typo.body1">Redirecting to New Submissions...</MudText>
     </MudStack>
-
-    @if (_loading)
-    {
-        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
-        <MudGrid>
-            @for (var i = 0; i < 3; i++)
-            {
-                <MudItem xs="12">
-                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" Class="mb-2" />
-                </MudItem>
-            }
-        </MudGrid>
-    }
-    else if (_wallets.Count == 0)
-    {
-        @* No wallets — user needs to create one first *@
-        <EmptyState Icon="@Icons.Material.Filled.AccountBalanceWallet"
-                    Title="No Wallets Found"
-                    Description="You need at least one wallet to browse and start submissions." />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4"
-                   StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="@(() => Navigation.NavigateTo("wallets"))">
-            Go to My Wallet
-        </MudButton>
-    }
-    else if (_registerGroups.Count == 0 && !_hasLoadErrors)
-    {
-        @* No registers or no blueprints *@
-        <EmptyState Icon="@Icons.Material.Filled.SearchOff"
-                    Title="No Services Available"
-                    Description="No startable blueprints were found across your accessible registers." />
-        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4"
-                   StartIcon="@Icons.Material.Filled.Refresh"
-                   OnClick="LoadAsync">
-            Refresh
-        </MudButton>
-    }
-    else
-    {
-        @* Service directory grouped by register *@
-        @foreach (var group in _registerGroups)
-        {
-            <MudPaper Class="pa-4 mb-4" Elevation="2">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
-                    <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Primary" />
-                    <MudStack Spacing="0">
-                        <MudText Typo="Typo.h6">@group.Register.Name</MudText>
-                        @if (!string.IsNullOrEmpty(group.Register.Description))
-                        {
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@group.Register.Description</MudText>
-                        }
-                    </MudStack>
-                    <MudSpacer />
-                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
-                        @group.Blueprints.Count service(s)
-                    </MudChip>
-                </MudStack>
-
-                <MudGrid>
-                    @foreach (var bp in group.Blueprints)
-                    {
-                        <MudItem xs="12" sm="6" md="4">
-                            <MudCard Elevation="1" Class="h-100">
-                                <MudCardContent>
-                                    <MudText Typo="Typo.subtitle1">@bp.Title</MudText>
-                                    @if (!string.IsNullOrEmpty(bp.Description))
-                                    {
-                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                                            @bp.Description
-                                        </MudText>
-                                    }
-                                    <MudStack Row="true" Spacing="2" Class="mt-2">
-                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">v@(bp.Version)</MudChip>
-                                        @if (!string.IsNullOrEmpty(bp.StartingActionTitle))
-                                        {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Tertiary" Variant="Variant.Text">
-                                                @bp.StartingActionTitle
-                                            </MudChip>
-                                        }
-                                    </MudStack>
-                                </MudCardContent>
-                                <MudCardActions>
-                                    <MudButton Color="Color.Primary" Variant="Variant.Filled" FullWidth="true"
-                                               StartIcon="@Icons.Material.Filled.PlayArrow"
-                                               OnClick="@(() => HandleStart(bp))">
-                                        Start
-                                    </MudButton>
-                                </MudCardActions>
-                            </MudCard>
-                        </MudItem>
-                    }
-                </MudGrid>
-            </MudPaper>
-        }
-
-        @* Show errors for registers that failed to load *@
-        @if (_failedRegisters.Count > 0)
-        {
-            <MudAlert Severity="Severity.Warning" Class="mt-2">
-                Some registers could not be loaded: @string.Join(", ", _failedRegisters)
-            </MudAlert>
-        }
-    }
 </MudContainer>
 
 @code {
-    private List<WalletDto> _wallets = [];
-    private List<RegisterBlueprintGroup> _registerGroups = [];
-    private List<string> _failedRegisters = [];
-    private bool _loading = true;
-    private bool _hasLoadErrors;
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        _loading = true;
-        _registerGroups = [];
-        _failedRegisters = [];
-        _hasLoadErrors = false;
-        StateHasChanged();
-
-        try
-        {
-            // Fetch user wallets
-            _wallets = await WalletService.GetWalletsAsync();
-            if (_wallets.Count == 0)
-            {
-                _loading = false;
-                return;
-            }
-
-            // Get smart default wallet for discovery
-            var walletAddress = await WalletPreferenceService.GetSmartDefaultAsync(_wallets) ?? _wallets[0].Address;
-
-            // Fetch only subscribed registers (scoped by subscription)
-            var subscriptions = await SubscriptionService.GetMySubscribedRegistersAsync();
-            var subscribedRegisterIds = subscriptions
-                .Select(s => s.RegisterId)
-                .Where(id => !string.IsNullOrEmpty(id))
-                .ToHashSet();
-
-            var allRegisters = await RegisterService.GetRegistersAsync();
-            var onlineRegisters = allRegisters
-                .Where(r => r.IsOnline && subscribedRegisterIds.Contains(r.Id))
-                .ToList();
-
-            // For each register, fetch available blueprints
-            foreach (var register in onlineRegisters)
-            {
-                try
-                {
-                    var available = await BlueprintApiService.GetAvailableBlueprintsAsync(walletAddress, register.Id);
-                    if (available?.Blueprints is { Count: > 0 })
-                    {
-                        var startableBlueprints = available.Blueprints
-                            .Where(bp => bp.AvailableActions.Any(a => a.IsAvailable))
-                            .Select(bp =>
-                            {
-                                var startingAction = bp.AvailableActions.FirstOrDefault(a => a.IsAvailable);
-                                return new StartableBlueprintViewModel
-                                {
-                                    BlueprintId = bp.BlueprintId,
-                                    Title = bp.Title,
-                                    Description = bp.Description,
-                                    Version = bp.Version,
-                                    RegisterId = register.Id,
-                                    StartingActionTitle = startingAction?.Title ?? "Start",
-                                    StartingActionDescription = startingAction?.Description
-                                };
-                            })
-                            .ToList();
-
-                        if (startableBlueprints.Count > 0)
-                        {
-                            _registerGroups.Add(new RegisterBlueprintGroup
-                            {
-                                Register = register,
-                                Blueprints = startableBlueprints
-                            });
-                        }
-                    }
-                }
-                catch
-                {
-                    _failedRegisters.Add(register.Name);
-                    _hasLoadErrors = true;
-                }
-            }
-        }
-        catch (Exception)
-        {
-            _hasLoadErrors = true;
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private async Task HandleStart(StartableBlueprintViewModel blueprint)
-    {
-        var parameters = new DialogParameters
-        {
-            ["BlueprintId"] = blueprint.BlueprintId,
-            ["RegisterId"] = blueprint.RegisterId,
-            ["Wallets"] = _wallets
-        };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true };
-        var dialog = await DialogService.ShowAsync<NewSubmissionDialog>("New Submission", parameters, options);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false, Data: ActionSubmissionResultViewModel submissionResult })
-        {
-            var message = submissionResult.IsComplete
-                ? "Submission completed successfully!"
-                : $"Submission started — instance {submissionResult.InstanceId[..Math.Min(8, submissionResult.InstanceId.Length)]}...";
-            Snackbar.Add(message, Severity.Success);
-        }
+        Navigation.NavigateTo("new-submissions", replace: true);
     }
 }

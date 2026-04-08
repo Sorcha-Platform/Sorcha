@@ -29,9 +29,9 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 **Purpose**: Verify branch state and prepare workspace. No new project scaffolding required — feature uses existing projects.
 
-- [ ] T001 Verify branch `091-new-submissions-workspace` is checked out and clean (`git status`)
-- [ ] T002 Verify `dotnet build` succeeds on master baseline before adding new files
-- [ ] T003 Identify nav menu file path — locate `MainLayout.razor` containing the existing `my-workflows` MudNavLink
+- [X] T001 Verify branch `091-new-submissions-workspace` is checked out and clean (`git status`)
+- [X] T002 Verify `dotnet build` succeeds on master baseline before adding new files
+- [X] T003 Identify nav menu file path — locate `MainLayout.razor` containing the existing `my-workflows` MudNavLink
 
 ---
 
@@ -43,21 +43,21 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 ### Models
 
-- [ ] T004 [P] Create `BlueprintPageDefinition` record in `src/Common/Sorcha.Blueprint.Models/BlueprintPageDefinition.cs` with properties: `Title` (string, required), `Description` (string?), `Layout` (string?, default `single-column`), `Sections` (`List<BlueprintSectionDefinition>?`). Include XML doc comments and SPDX license header.
+- [X] T004 [P] Create `BlueprintPageDefinition` record in `src/Common/Sorcha.Blueprint.Models/BlueprintPageDefinition.cs` with properties: `Title` (string, required), `Description` (string?), `Layout` (string?, default `single-column`), `Sections` (`List<BlueprintSectionDefinition>?`). Include XML doc comments and SPDX license header.
 
-- [ ] T005 [P] Create `BlueprintSectionDefinition` record in `src/Common/Sorcha.Blueprint.Models/BlueprintSectionDefinition.cs` with properties: `Title` (string, required), `Description` (string?), `Help` (string?), `Layout` (string?, default `vertical`), `Fields` (`List<string>`, required). Include XML doc comments and JSON property name attributes.
+- [X] T005 [P] Create `BlueprintSectionDefinition` record in `src/Common/Sorcha.Blueprint.Models/BlueprintSectionDefinition.cs` with properties: `Title` (string, required), `Description` (string?), `Help` (string?), `Layout` (string?, default `vertical`), `Fields` (`List<string>`, required). Include XML doc comments and JSON property name attributes.
 
-- [ ] T006 [P] Create `SchemaLayoutInfo` record in `src/Common/Sorcha.Blueprint.Models/SchemaLayoutInfo.cs` with properties: `Pages` (`List<BlueprintPageDefinition>?`), `Sections` (`List<BlueprintSectionDefinition>?`), `Introduction` (string?), `FieldWidths` (`Dictionary<string, string>?`), computed `HasWizard => Pages?.Count > 0`, computed `HasSections => Sections?.Count > 0 || Pages?.Any(p => p.Sections?.Count > 0) == true`.
+- [X] T006 [P] Create `SchemaLayoutInfo` record in `src/Common/Sorcha.Blueprint.Models/SchemaLayoutInfo.cs` with properties: `Pages` (`List<BlueprintPageDefinition>?`), `Sections` (`List<BlueprintSectionDefinition>?`), `Introduction` (string?), `FieldWidths` (`Dictionary<string, string>?`), computed `HasWizard => Pages?.Count > 0`, computed `HasSections => Sections?.Count > 0 || Pages?.Any(p => p.Sections?.Count > 0) == true`.
 
 ### Parser
 
-- [ ] T007 Create `SchemaLayoutParser` static class in `src/Common/Sorcha.Blueprint.Models/SchemaLayoutParser.cs` with method `Parse(JsonElement actionSchema)` returning `SchemaLayoutInfo`. Follow the `FileSchemaExtension.TryParseFromSchema` pattern. Read `x-pages`, `x-sections`, `x-introduction` from the root element. Extract `x-width` from each property under `properties`. Catch `JsonException` and return empty `SchemaLayoutInfo` on parse failure. Depends on T004, T005, T006.
+- [X] T007 Create `SchemaLayoutParser` static class in `src/Common/Sorcha.Blueprint.Models/SchemaLayoutParser.cs` with method `Parse(JsonElement actionSchema)` returning `SchemaLayoutInfo`. Follow the `FileSchemaExtension.TryParseFromSchema` pattern. Read `x-pages`, `x-sections`, `x-introduction` from the root element. Extract `x-width` from each property under `properties`. Catch `JsonException` and return empty `SchemaLayoutInfo` on parse failure. Depends on T004, T005, T006.
 
-- [ ] T008 Add `TryGetFieldWidth(JsonElement propertySchema, out string? width)` static helper in `SchemaLayoutParser.cs`. Validates value is one of `full`, `half`, `third` (case-insensitive). Returns false for missing or invalid values.
+- [X] T008 Add `TryGetFieldWidth(JsonElement propertySchema, out string? width)` static helper in `SchemaLayoutParser.cs`. Validates value is one of `full`, `half`, `third` (case-insensitive). Returns false for missing or invalid values.
 
 ### Foundational Tests
 
-- [ ] T009 [P] Create `tests/Sorcha.Blueprint.Models.Tests/SchemaLayoutParserTests.cs` with the following test methods (xUnit + FluentAssertions, naming pattern `Method_Scenario_ExpectedBehavior`):
+- [X] T009 [P] Create `tests/Sorcha.Blueprint.Models.Tests/SchemaLayoutParserTests.cs` with the following test methods (xUnit + FluentAssertions, naming pattern `Method_Scenario_ExpectedBehavior`):
   - `Parse_SchemaWithXPagesAndXSections_ReturnsPopulatedLayout`
   - `Parse_SchemaWithXSectionsOnly_ReturnsLayoutWithoutWizard`
   - `Parse_SchemaWithoutExtensions_ReturnsEmptyLayout`
@@ -72,7 +72,7 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
   - `TryGetFieldWidth_InvalidValue_ReturnsFalse`
   - `TryGetFieldWidth_MissingProperty_ReturnsFalse`
 
-- [ ] T010 Verify `Sorcha.Blueprint.Models.Tests` project references `Sorcha.Blueprint.Models` and includes xUnit, FluentAssertions packages. Run `dotnet test tests/Sorcha.Blueprint.Models.Tests --filter "FullyQualifiedName~SchemaLayoutParserTests"` and confirm all tests pass with >85% coverage of `SchemaLayoutParser.cs`.
+- [X] T010 Verify `Sorcha.Blueprint.Models.Tests` project references `Sorcha.Blueprint.Models` and includes xUnit, FluentAssertions packages. Run `dotnet test tests/Sorcha.Blueprint.Models.Tests --filter "FullyQualifiedName~SchemaLayoutParserTests"` and confirm all tests pass with >85% coverage of `SchemaLayoutParser.cs`.
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
 
@@ -86,68 +86,68 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 ### NavigationStateService (US1 + US2 prerequisite)
 
-- [ ] T011 [US1] Create `NavigationStateService` class in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/NavigationStateService.cs` with `Set<T>(string key, T value)` and `Get<T>(string key)` methods. `Get` removes the entry on read. Backed by `Dictionary<string, object>`. Include SPDX header and XML doc comments.
+- [X] T011 [US1] Create `NavigationStateService` class in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/NavigationStateService.cs` with `Set<T>(string key, T value)` and `Get<T>(string key)` methods. `Get` removes the entry on read. Backed by `Dictionary<string, object>`. Include SPDX header and XML doc comments.
 
-- [ ] T012 [P] [US1] Create `tests/Sorcha.UI.Core.Tests/Services/NavigationStateServiceTests.cs` with tests:
+- [X] T012 [P] [US1] Create `tests/Sorcha.UI.Core.Tests/Services/NavigationStateServiceTests.cs` with tests:
   - `Set_ThenGet_ReturnsValueAndRemovesEntry`
   - `Get_WithoutSet_ReturnsNull`
   - `Get_WithWrongType_ReturnsNull`
   - `Set_OverwritesPreviousValueForSameKey`
   - `Get_AfterTwoConsecutiveCalls_FirstReturnsValueSecondReturnsNull`
 
-- [ ] T013 [US1] Register `NavigationStateService` as scoped in DI. Locate the existing `Program.cs` for `Sorcha.UI.Web.Client` and add `builder.Services.AddScoped<NavigationStateService>();`.
+- [X] T013 [US1] Register `NavigationStateService` as scoped in DI. Locate the existing `Program.cs` for `Sorcha.UI.Web.Client` and add `builder.Services.AddScoped<NavigationStateService>();`.
 
 ### Listing Page
 
-- [ ] T014 [US1] Create `NewSubmissions.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissions.razor` at route `/new-submissions`. Inject `IBlueprintApiService`, `IRegisterSubscriptionService`, `IWalletService`, `NavigationStateService`, `NavigationManager`, `IJSRuntime`. State: `_registerGroups` (`List<RegisterBlueprintGroup>`), `_viewMode` (`string`, default `cards`), `_searchQuery` (`string`), `_sortBy` (`string`, default `name`), `_isLoading` (`bool`).
+- [X] T014 [US1] Create `NewSubmissions.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissions.razor` at route `/new-submissions`. Inject `IBlueprintApiService`, `IRegisterSubscriptionService`, `IWalletService`, `NavigationStateService`, `NavigationManager`, `IJSRuntime`. State: `_registerGroups` (`List<RegisterBlueprintGroup>`), `_viewMode` (`string`, default `cards`), `_searchQuery` (`string`), `_sortBy` (`string`, default `name`), `_isLoading` (`bool`).
 
-- [ ] T015 [US1] Implement `OnInitializedAsync` in `NewSubmissions.razor` to: (1) load wallets via `WalletService`, (2) load subscribed registers, (3) for each register call `BlueprintApiService.GetAvailableBlueprintsAsync(wallet, registerId)`, (4) flatten and group by register into `_registerGroups`, (5) read view mode from localStorage key `sorcha:newSubmissions:viewMode`. Handle errors per-register with `MudAlert` warnings.
+- [X] T015 [US1] Implement `OnInitializedAsync` in `NewSubmissions.razor` to: (1) load wallets via `WalletService`, (2) load subscribed registers, (3) for each register call `BlueprintApiService.GetAvailableBlueprintsAsync(wallet, registerId)`, (4) flatten and group by register into `_registerGroups`, (5) read view mode from localStorage key `sorcha:newSubmissions:viewMode`. Handle errors per-register with `MudAlert` warnings.
 
-- [ ] T016 [US1] Implement card view markup in `NewSubmissions.razor`: Use `MudContainer MaxWidth.ExtraLarge`. Header with title "New Submissions" + subtitle. Controls bar: `MudTextField` search, `MudSelect` sort dropdown (Name/Register/Version), `MudToggleIconButton` view toggle. Below: filtered/sorted register groups, each containing `MudGrid` with `MudCard` items showing blueprint title, description (2-line clamp via inline style), version chip, starting action caption, and full-width "Start" `MudButton`.
+- [X] T016 [US1] Implement card view markup in `NewSubmissions.razor`: Use `MudContainer MaxWidth.ExtraLarge`. Header with title "New Submissions" + subtitle. Controls bar: `MudTextField` search, `MudSelect` sort dropdown (Name/Register/Version), `MudToggleIconButton` view toggle. Below: filtered/sorted register groups, each containing `MudGrid` with `MudCard` items showing blueprint title, description (2-line clamp via inline style), version chip, starting action caption, and full-width "Start" `MudButton`.
 
-- [ ] T017 [US1] Implement table view markup in `NewSubmissions.razor`: `MudTable` with columns Blueprint | Register | Version | Starting Action | Actions. Hover enabled, dense, elevation 2. "Start" button in actions column.
+- [X] T017 [US1] Implement table view markup in `NewSubmissions.razor`: `MudTable` with columns Blueprint | Register | Version | Starting Action | Actions. Hover enabled, dense, elevation 2. "Start" button in actions column.
 
-- [ ] T018 [US1] Implement skeleton loading (3 skeleton cards in `MudGrid`) and `EmptyState` component usage (icon `Inbox`, title "No blueprints available", description "Subscribe to a register to see available workflows", action "Manage Subscriptions" navigating to `/registers`).
+- [X] T018 [US1] Implement skeleton loading (3 skeleton cards in `MudGrid`) and `EmptyState` component usage (icon `Inbox`, title "No blueprints available", description "Subscribe to a register to see available workflows", action "Manage Subscriptions" navigating to `/registers`).
 
-- [ ] T019 [US1] Implement `HandleStart(StartableBlueprintViewModel blueprint)` in `NewSubmissions.razor`: Store the published blueprint via `NavigationStateService.Set("blueprint:{registerId}:{blueprintId}", blueprint)`, then `NavigationManager.NavigateTo($"/new-submission/{blueprint.RegisterId}/{blueprint.BlueprintId}")`.
+- [X] T019 [US1] Implement `HandleStart(StartableBlueprintViewModel blueprint)` in `NewSubmissions.razor`: Store the published blueprint via `NavigationStateService.Set("blueprint:{registerId}:{blueprintId}", blueprint)`, then `NavigationManager.NavigateTo($"/new-submission/{blueprint.RegisterId}/{blueprint.BlueprintId}")`.
 
-- [ ] T020 [US1] Implement `ToggleViewMode(bool isTable)` in `NewSubmissions.razor`: Set `_viewMode` and persist to localStorage via `JSRuntime.InvokeVoidAsync("localStorage.setItem", "sorcha:newSubmissions:viewMode", _viewMode)`.
+- [X] T020 [US1] Implement `ToggleViewMode(bool isTable)` in `NewSubmissions.razor`: Set `_viewMode` and persist to localStorage via `JSRuntime.InvokeVoidAsync("localStorage.setItem", "sorcha:newSubmissions:viewMode", _viewMode)`.
 
-- [ ] T021 [US1] Implement search and sort filtering as a computed property/method that filters `_registerGroups` by `_searchQuery` (matches blueprint title, description, register name) and sorts by `_sortBy`.
+- [X] T021 [US1] Implement search and sort filtering as a computed property/method that filters `_registerGroups` by `_searchQuery` (matches blueprint title, description, register name) and sorts by `_sortBy`.
 
 ### Workspace Host Page (Flat Form Path)
 
-- [ ] T022 [US1] Create `NewSubmissionWorkspace.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor` at route `/new-submission/{RegisterId}/{BlueprintId}`. Inject `NavigationStateService`, `IBlueprintApiService`, `IWorkflowService`, `IWalletService`, `WalletPreferenceService`, `NavigationManager`. Parameters: `[Parameter] string RegisterId`, `[Parameter] string BlueprintId`.
+- [X] T022 [US1] Create `NewSubmissionWorkspace.razor` page in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/NewSubmissionWorkspace.razor` at route `/new-submission/{RegisterId}/{BlueprintId}`. Inject `NavigationStateService`, `IBlueprintApiService`, `IWorkflowService`, `IWalletService`, `WalletPreferenceService`, `NavigationManager`. Parameters: `[Parameter] string RegisterId`, `[Parameter] string BlueprintId`.
 
-- [ ] T023 [US1] Implement `OnInitializedAsync` in `NewSubmissionWorkspace.razor`: (1) Try `NavigationStateService.Get<StartableBlueprintViewModel>("blueprint:{RegisterId}:{BlueprintId}")`. (2) If null (direct navigation): resolve default wallet via `WalletPreferenceService.GetSmartDefaultAsync(wallets)`, then call `BlueprintApiService.GetAvailableBlueprintsAsync(wallet, RegisterId)` and find the matching `BlueprintId`. (3) If still not found: show error `MudAlert` with link back to `/new-submissions`. (4) Once blueprint loaded, fetch the full blueprint detail (with action schemas) needed for form rendering — use the published blueprints endpoint, NEVER `GET /api/blueprints/{id}`.
+- [X] T023 [US1] Implement `OnInitializedAsync` in `NewSubmissionWorkspace.razor`: (1) Try `NavigationStateService.Get<StartableBlueprintViewModel>("blueprint:{RegisterId}:{BlueprintId}")`. (2) If null (direct navigation): resolve default wallet via `WalletPreferenceService.GetSmartDefaultAsync(wallets)`, then call `BlueprintApiService.GetAvailableBlueprintsAsync(wallet, RegisterId)` and find the matching `BlueprintId`. (3) If still not found: show error `MudAlert` with link back to `/new-submissions`. (4) Once blueprint loaded, fetch the full blueprint detail (with action schemas) needed for form rendering — use the published blueprints endpoint, NEVER `GET /api/blueprints/{id}`.
 
-- [ ] T024 [US1] Implement workspace markup in `NewSubmissionWorkspace.razor`: Render the new `ActionWorkspace` component with parameters: `Blueprint`, `Action` (action 0), `RegisterId`, `SelectedWallet`, `SelectedWalletChanged` callback, `OnSubmit` callback, `OnCancel` callback, `ShowIntroduction=true`.
+- [X] T024 [US1] Implement workspace markup in `NewSubmissionWorkspace.razor`: Render the new `ActionWorkspace` component with parameters: `Blueprint`, `Action` (action 0), `RegisterId`, `SelectedWallet`, `SelectedWalletChanged` callback, `OnSubmit` callback, `OnCancel` callback, `ShowIntroduction=true`.
 
-- [ ] T025 [US1] Implement `HandleSubmit(FormSubmission submission)` in `NewSubmissionWorkspace.razor`: (1) Call `WorkflowService.CreateInstanceAsync(BlueprintId, RegisterId)` to get instance. (2) Build `ActionExecuteRequest` with `BlueprintId`, `ActionId="0"` (or `_action.Id.ToString()`), `InstanceId`, `SenderWallet`, `RegisterAddress=RegisterId`, `PayloadData=submission.Data`. (3) Call `WorkflowService.SubmitActionExecuteAsync(request)`. (4) On success: navigate to `/my-actions` or show success message with instance reference. (5) On failure: show `MudAlert` error, retain form data.
+- [X] T025 [US1] Implement `HandleSubmit(FormSubmission submission)` in `NewSubmissionWorkspace.razor`: (1) Call `WorkflowService.CreateInstanceAsync(BlueprintId, RegisterId)` to get instance. (2) Build `ActionExecuteRequest` with `BlueprintId`, `ActionId="0"` (or `_action.Id.ToString()`), `InstanceId`, `SenderWallet`, `RegisterAddress=RegisterId`, `PayloadData=submission.Data`. (3) Call `WorkflowService.SubmitActionExecuteAsync(request)`. (4) On success: navigate to `/my-actions` or show success message with instance reference. (5) On failure: show `MudAlert` error, retain form data.
 
-- [ ] T026 [US1] Implement `HandleCancel` in `NewSubmissionWorkspace.razor` to confirm via `IDialogService` and navigate back to `/new-submissions`.
+- [X] T026 [US1] Implement `HandleCancel` in `NewSubmissionWorkspace.razor` to confirm via `IDialogService` and navigate back to `/new-submissions`.
 
 ### ActionWorkspace Component (Flat Form Mode Only for US1)
 
-- [ ] T027 [US1] Create `ActionWorkspace.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/ActionWorkspace.razor`. Parameters: `Blueprint`, `Action`, `RegisterId`, `SelectedWallet`, `SelectedWalletChanged`, `OnSubmit`, `OnCancel`, `ShowIntroduction` (default true), optional `HeaderContent` RenderFragment.
+- [X] T027 [US1] Create `ActionWorkspace.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/ActionWorkspace.razor`. Parameters: `Blueprint`, `Action`, `RegisterId`, `SelectedWallet`, `SelectedWalletChanged`, `OnSubmit`, `OnCancel`, `ShowIntroduction` (default true), optional `HeaderContent` RenderFragment.
 
-- [ ] T028 [US1] Implement workspace layout in `ActionWorkspace.razor`: Use `MudGrid` with `xs="12" md="8"` for form area and `xs="12" md="4"` for help panel. Form area contains: back link, context bar (blueprint name + version chip), wallet selector (compact display with change link), and `SorchaFormRenderer` with current Action. Help area uses sticky positioning with `FieldHelpPanel`. Bottom action bar with Cancel + Submit buttons.
+- [X] T028 [US1] Implement workspace layout in `ActionWorkspace.razor`: Use `MudGrid` with `xs="12" md="8"` for form area and `xs="12" md="4"` for help panel. Form area contains: back link, context bar (blueprint name + version chip), wallet selector (compact display with change link), and `SorchaFormRenderer` with current Action. Help area uses sticky positioning with `FieldHelpPanel`. Bottom action bar with Cancel + Submit buttons.
 
-- [ ] T029 [US1] Parse the action schema with `SchemaLayoutParser.Parse(...)` in `ActionWorkspace.razor` `OnInitializedAsync`. Store result in `_layout` field. For US1 (flat form), only consume `_layout.Introduction` if `ShowIntroduction=true`. Wizard and section logic deferred to Phase 4.
+- [X] T029 [US1] Parse the action schema with `SchemaLayoutParser.Parse(...)` in `ActionWorkspace.razor` `OnInitializedAsync`. Store result in `_layout` field. For US1 (flat form), only consume `_layout.Introduction` if `ShowIntroduction=true`. Wizard and section logic deferred to Phase 4.
 
-- [ ] T030 [US1] Implement form submission flow: Subscribe to `SorchaFormRenderer.OnSubmit`, forward `FormSubmission` to `OnSubmit` parameter. Show loading overlay (`MudOverlay`) during submission. On error, hide overlay and display `MudAlert`.
+- [X] T030 [US1] Implement form submission flow: Subscribe to `SorchaFormRenderer.OnSubmit`, forward `FormSubmission` to `OnSubmit` parameter. Show loading overlay (`MudOverlay`) during submission. On error, hide overlay and display `MudAlert`.
 
 ### Help Panel (Static Mode for US1)
 
-- [ ] T031 [US1] Create initial `FieldHelpPanel.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/FieldHelpPanel.razor`. Parameters: `FocusedField` (string?), `ActiveSection` (string?), `Schema` (JsonElement?), `Layout` (SchemaLayoutInfo?), `BlueprintDescription` (string?). For US1, render only the blueprint description fallback. Field-level help is deferred to US2.
+- [X] T031 [US1] Create initial `FieldHelpPanel.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/FieldHelpPanel.razor`. Parameters: `FocusedField` (string?), `ActiveSection` (string?), `Schema` (JsonElement?), `Layout` (SchemaLayoutInfo?), `BlueprintDescription` (string?). For US1, render only the blueprint description fallback. Field-level help is deferred to US2.
 
 ### Navigation Menu Update
 
-- [ ] T032 [US1] Modify `MainLayout.razor` (path identified in T003): Change the "My Workflows" / "New Submission" `MudNavLink` href from `my-workflows` to `new-submissions`. Verify localization key still resolves (`@Loc.T("nav.newSubmission")`).
+- [X] T032 [US1] Modify `MainLayout.razor` (path identified in T003): Change the "My Workflows" / "New Submission" `MudNavLink` href from `my-workflows` to `new-submissions`. Verify localization key still resolves (`@Loc.T("nav.newSubmission")`).
 
 ### MyWorkflows Cleanup
 
-- [ ] T033 [US1] Replace `MyWorkflows.razor` page contents with a redirect: On `OnInitializedAsync`, call `NavigationManager.NavigateTo("/new-submissions", replace: true)`. Keeps deep links working temporarily. Mark with TODO to remove in a future cleanup PR.
+- [X] T033 [US1] Replace `MyWorkflows.razor` page contents with a redirect: On `OnInitializedAsync`, call `NavigationManager.NavigateTo("/new-submissions", replace: true)`. Keeps deep links working temporarily. Mark with TODO to remove in a future cleanup PR.
 
 ### US1 Tests
 
@@ -177,27 +177,27 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 ### SorchaFormRenderer Field Focus Event
 
-- [ ] T036 [US2] Modify `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` to add a new `[Parameter] EventCallback<string?> OnFieldFocused` parameter. Wire focus/blur events on rendered controls (via the existing `FormContext` cascading value or a new event aggregator) so that field focus changes invoke the callback with the field name (or null on blur with no other focus).
+- [X] T036 [US2] Modify `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` to add a new `[Parameter] EventCallback<string?> OnFieldFocused` parameter. Wire focus/blur events on rendered controls (via the existing `FormContext` cascading value or a new event aggregator) so that field focus changes invoke the callback with the field name (or null on blur with no other focus).
 
 - [ ] T037 [US2] Add unit test `tests/Sorcha.UI.Core.Tests/Components/Forms/SorchaFormRendererFocusTests.cs` (bUnit) verifying `OnFieldFocused` fires with the correct field name when a child input gains focus, and fires with null when focus leaves the form.
 
 ### FieldHelpPanel Field-Level Help
 
-- [ ] T038 [US2] Extend `FieldHelpPanel.razor` to render field-level help when `FocusedField` is non-null. Look up the field in `Schema.GetProperty("properties").GetProperty(FocusedField)`. Display: field title (use `title` property or humanise the field name), `description`, type, constraints (`minLength`, `maxLength`, `minimum`, `maximum`, `pattern`, `enum`), and required status (check parent schema's `required` array).
+- [X] T038 [US2] Extend `FieldHelpPanel.razor` to render field-level help when `FocusedField` is non-null. Look up the field in `Schema.GetProperty("properties").GetProperty(FocusedField)`. Display: field title (use `title` property or humanise the field name), `description`, type, constraints (`minLength`, `maxLength`, `minimum`, `maximum`, `pattern`, `enum`), and required status (check parent schema's `required` array).
 
-- [ ] T039 [US2] Add section-level help fallback in `FieldHelpPanel.razor`: When `FocusedField` is null but `ActiveSection` is set, look up the section in `Layout.Sections` (or in the current page's sections if wizard is active) and display its `description`/`help` text.
+- [X] T039 [US2] Add section-level help fallback in `FieldHelpPanel.razor`: When `FocusedField` is null but `ActiveSection` is set, look up the section in `Layout.Sections` (or in the current page's sections if wizard is active) and display its `description`/`help` text.
 
-- [ ] T040 [US2] Add blueprint description fallback in `FieldHelpPanel.razor`: When neither field nor section help applies, display `BlueprintDescription` or `Layout.Introduction`.
+- [X] T040 [US2] Add blueprint description fallback in `FieldHelpPanel.razor`: When neither field nor section help applies, display `BlueprintDescription` or `Layout.Introduction`.
 
-- [ ] T041 [US2] Style `FieldHelpPanel.razor` with sticky positioning, purple left border for active help, muted text for fallback content. Use existing MudBlazor theming variables.
+- [X] T041 [US2] Style `FieldHelpPanel.razor` with sticky positioning, purple left border for active help, muted text for fallback content. Use existing MudBlazor theming variables.
 
 ### ActionWorkspace Wires Focus Events
 
-- [ ] T042 [US2] Modify `ActionWorkspace.razor` to track `_focusedField` state and pass it to `FieldHelpPanel`. Subscribe to `SorchaFormRenderer.OnFieldFocused` and update `_focusedField` on each invocation. Trigger `StateHasChanged` after updates.
+- [X] T042 [US2] Modify `ActionWorkspace.razor` to track `_focusedField` state and pass it to `FieldHelpPanel`. Subscribe to `SorchaFormRenderer.OnFieldFocused` and update `_focusedField` on each invocation. Trigger `StateHasChanged` after updates.
 
 ### Responsive Behaviour
 
-- [ ] T043 [US2] Modify `ActionWorkspace.razor` markup so that on narrow viewports (`xs="12"` for both panels with `MudBreakpoint.SmAndDown`), the help panel renders below the form as a `MudExpansionPanel` collapsed by default. Use MudBlazor's responsive grid breakpoints.
+- [X] T043 [US2] Modify `ActionWorkspace.razor` markup so that on narrow viewports (`xs="12"` for both panels with `MudBreakpoint.SmAndDown`), the help panel renders below the form as a `MudExpansionPanel` collapsed by default. Use MudBlazor's responsive grid breakpoints.
 
 ### US2 Tests
 
@@ -219,7 +219,7 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 ### WizardStepper Component
 
-- [ ] T045 [US3] Create `WizardStepper.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/WizardStepper.razor`. Parameters: `Pages` (`List<BlueprintPageDefinition>`), `CurrentPage` (int), `OnPageSelected` (`EventCallback<int>`). Render horizontal step indicator showing each page title with completed (check icon), active (filled circle), pending (outlined circle) states. Connecting lines between steps. Use MudBlazor `MudIcon` for step indicators.
+- [X] T045 [US3] Create `WizardStepper.razor` component in `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Workflows/WizardStepper.razor`. Parameters: `Pages` (`List<BlueprintPageDefinition>`), `CurrentPage` (int), `OnPageSelected` (`EventCallback<int>`). Render horizontal step indicator showing each page title with completed (check icon), active (filled circle), pending (outlined circle) states. Connecting lines between steps. Use MudBlazor `MudIcon` for step indicators.
 
 - [ ] T046 [P] [US3] Create `tests/Sorcha.UI.Core.Tests/Components/Workflows/WizardStepperTests.cs` (bUnit) with tests:
   - `Render_WithThreePages_ShowsThreeSteps`
@@ -228,21 +228,21 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 ### ActionWorkspace Wizard Mode
 
-- [ ] T047 [US3] Modify `ActionWorkspace.razor` to support wizard mode when `_layout.HasWizard == true`. State: `_currentPage` (int, default 0), `_formData` (Dictionary<string, object?> accumulated across pages). Render `WizardStepper` above the form area. Compute current page's fields from `_layout.Pages[_currentPage].Sections.SelectMany(s => s.Fields)` plus any catch-all fields on the last page.
+- [X] T047 [US3] Modify `ActionWorkspace.razor` to support wizard mode when `_layout.HasWizard == true`. State: `_currentPage` (int, default 0), `_formData` (Dictionary<string, object?> accumulated across pages). Render `WizardStepper` above the form area. Compute current page's fields from `_layout.Pages[_currentPage].Sections.SelectMany(s => s.Fields)` plus any catch-all fields on the last page.
 
-- [ ] T048 [US3] Implement per-page form rendering in `ActionWorkspace.razor`: Pass a filtered schema (only current page's properties) to `SorchaFormRenderer`. The renderer already validates against the schema it receives, so filtering the schema scopes validation to the current page.
+- [X] T048 [US3] Implement per-page form rendering in `ActionWorkspace.razor`: Pass a filtered schema (only current page's properties) to `SorchaFormRenderer`. The renderer already validates against the schema it receives, so filtering the schema scopes validation to the current page.
 
-- [ ] T049 [US3] Implement wizard navigation controls in `ActionWorkspace.razor`: Replace the bottom action bar with conditional buttons:
+- [X] T049 [US3] Implement wizard navigation controls in `ActionWorkspace.razor`: Replace the bottom action bar with conditional buttons:
   - Page 0: Cancel + Next
   - Middle pages: Back + Next
   - Last page: Back + Submit
   Next button text: `"Next: {Pages[currentPage+1].Title} →"`
 
-- [ ] T050 [US3] Implement `HandleNext()` in `ActionWorkspace.razor`: Trigger `SorchaFormRenderer` validation for current page. If valid, merge form data into `_formData`, increment `_currentPage`, scroll to top. If invalid, leave `_currentPage` unchanged so errors display.
+- [X] T050 [US3] Implement `HandleNext()` in `ActionWorkspace.razor`: Trigger `SorchaFormRenderer` validation for current page. If valid, merge form data into `_formData`, increment `_currentPage`, scroll to top. If invalid, leave `_currentPage` unchanged so errors display.
 
-- [ ] T051 [US3] Implement `HandleBack()` in `ActionWorkspace.razor`: Decrement `_currentPage`. Form data is already in `_formData` so re-rendering populates fields.
+- [X] T051 [US3] Implement `HandleBack()` in `ActionWorkspace.razor`: Decrement `_currentPage`. Form data is already in `_formData` so re-rendering populates fields.
 
-- [ ] T052 [US3] Implement final `HandleSubmit()` in `ActionWorkspace.razor` for wizard mode: Build a final `FormSubmission` from `_formData` and forward to the `OnSubmit` parameter callback.
+- [X] T052 [US3] Implement final `HandleSubmit()` in `ActionWorkspace.razor` for wizard mode: Build a final `FormSubmission` from `_formData` and forward to the `OnSubmit` parameter callback.
 
 ### US3 Tests
 
@@ -278,7 +278,7 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 - [ ] T057 [US4] Each field within `FormSection.razor` is rendered by delegating to a single-field variant of `SorchaFormRenderer` or a small dispatcher that builds a per-field schema and invokes the appropriate control. To avoid duplicating renderer logic, prefer extending `SorchaFormRenderer` to accept an optional `FieldFilter` parameter (`HashSet<string>?`) that limits which fields it renders.
 
-- [ ] T058 [US4] Modify `SorchaFormRenderer.razor` to accept `[Parameter] HashSet<string>? FieldFilter` and `[Parameter] Dictionary<string, string>? FieldWidths`. When `FieldFilter` is set, only render properties whose names are in the set. When `FieldWidths` is set, override the column width for matching fields. Default behaviour (both null) is unchanged — backwards compatible.
+- [X] T058 [US4] Modify `SorchaFormRenderer.razor` to accept `[Parameter] HashSet<string>? FieldFilter` and `[Parameter] Dictionary<string, string>? FieldWidths`. When `FieldFilter` is set, only render properties whose names are in the set. When `FieldWidths` is set, override the column width for matching fields. Default behaviour (both null) is unchanged — backwards compatible.
 
 ### ActionWorkspace Section Mode
 
@@ -311,7 +311,7 @@ description: "Task list for Feature 091 — New Submissions & Action Workspace"
 
 **Independent Test**: Publish a blueprint with `x-introduction` text on its starting action schema. Start a new submission and verify the callout appears above the form with the introduction text. Then test with a blueprint without `x-introduction` and verify the blueprint description is shown.
 
-- [ ] T064 [US5] Modify `ActionWorkspace.razor` to render an introduction callout when `ShowIntroduction == true`. Source priority: (1) `_layout.Introduction` from `x-introduction`, (2) `Blueprint.Description`, (3) hide if both empty. Use `MudPaper` with purple left border and "ABOUT THIS WORKFLOW" label. Place above wallet selector and wizard stepper.
+- [X] T064 [US5] Modify `ActionWorkspace.razor` to render an introduction callout when `ShowIntroduction == true`. Source priority: (1) `_layout.Introduction` from `x-introduction`, (2) `Blueprint.Description`, (3) hide if both empty. Use `MudPaper` with purple left border and "ABOUT THIS WORKFLOW" label. Place above wallet selector and wizard stepper.
 
 - [ ] T065 [P] [US5] Create `tests/Sorcha.UI.E2E.Tests/NewSubmissionIntroductionTests.cs` with Playwright tests:
   - `XIntroduction_DisplaysCalloutAboveForm`

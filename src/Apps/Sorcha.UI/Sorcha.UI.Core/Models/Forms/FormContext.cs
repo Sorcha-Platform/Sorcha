@@ -79,6 +79,13 @@ public class FormContext
     public string SigningWalletAddress { get; set; } = string.Empty;
 
     /// <summary>
+    /// JSON Pointer scope of the currently focused field, or null when no
+    /// field in the form has focus. Used by the contextual help panel
+    /// (Feature 091 US2) to show field-level guidance.
+    /// </summary>
+    public string? FocusedFieldScope { get; private set; }
+
+    /// <summary>
     /// Event invoked when any form value changes
     /// </summary>
     public event Action? OnDataChanged;
@@ -87,6 +94,26 @@ public class FormContext
     /// Event invoked when validation errors change
     /// </summary>
     public event Action? OnValidationChanged;
+
+    /// <summary>
+    /// Event invoked when the focused field changes. The string argument is
+    /// the new focused field's JSON Pointer scope, or null on blur.
+    /// </summary>
+    public event Action<string?>? OnFocusedFieldChanged;
+
+    /// <summary>
+    /// Updates the currently focused field scope and raises
+    /// <see cref="OnFocusedFieldChanged"/>. Call with null on blur. Control
+    /// renderers should invoke this from focus/blur handlers.
+    /// </summary>
+    public void SetFocusedField(string? scope)
+    {
+        if (FocusedFieldScope == scope)
+            return;
+
+        FocusedFieldScope = scope;
+        OnFocusedFieldChanged?.Invoke(scope);
+    }
 
     /// <summary>
     /// Sets a form value by scope and triggers data change

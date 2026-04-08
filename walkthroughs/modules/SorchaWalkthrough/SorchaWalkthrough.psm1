@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+﻿# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
 # SorchaWalkthrough.psm1 — Shared module for all Sorcha walkthrough scripts.
@@ -1294,6 +1294,58 @@ function New-SorchaOrganization {
 # ============================================================================
 
 # (Connect-SorchaUser defined earlier in this file — two-step login + select-org flow)
+
+# ============================================================================
+# Get-SorchaRegisterByName — Look up an existing register the user is
+# subscribed to by its display name. Used to make walkthrough setup scripts
+# idempotent so re-runs don't create orphan registers.
+# ============================================================================
+
+function Get-SorchaRegisterByName {
+    <#
+    .SYNOPSIS
+        Returns the register_id of an existing register the current user is
+        subscribed to that matches the given name, or $null if none found.
+    .PARAMETER TenantUrl
+        Tenant service base URL.
+    .PARAMETER Name
+        Register display name to match (case-insensitive).
+    .PARAMETER Headers
+        Authorization headers for the user whose subscriptions to query.
+    .RETURNS
+        The string register_id of the matching subscription, or $null.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][hashtable]$Headers
+    )
+
+    try {
+        $subscriptions = Invoke-SorchaApi -Method GET `
+            -Uri "$TenantUrl/me/subscribed-registers" `
+            -Headers $Headers
+    } catch {
+        return $null
+    }
+
+    if ($null -eq $subscriptions) { return $null }
+
+    # The endpoint returns an array; coerce single objects to arrays
+    if ($subscriptions -isnot [System.Collections.IEnumerable] -or $subscriptions -is [string]) {
+        $subscriptions = @($subscriptions)
+    }
+
+    foreach ($sub in $subscriptions) {
+        $subName = $sub.register_name
+        if ([string]::IsNullOrEmpty($subName)) { continue }
+        if ($subName -ieq $Name) {
+            return $sub.register_id
+        }
+    }
+
+    return $null
+}
 
 # ============================================================================
 # New-SorchaRegisterSubscription — Subscribe an org to a register

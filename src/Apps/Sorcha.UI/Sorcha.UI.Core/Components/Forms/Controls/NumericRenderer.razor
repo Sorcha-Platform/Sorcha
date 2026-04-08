@@ -7,19 +7,21 @@
 
 @inject IFormSchemaService SchemaService
 
-<MudNumericField T="decimal?"
-                 Label="@Control.Title"
-                 Value="@_value"
-                 ValueChanged="OnValueChanged"
-                 Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
-                 Required="@_isRequired"
-                 ErrorText="@_errorText"
-                 Error="@(!string.IsNullOrEmpty(_errorText))"
-                 Min="@_min"
-                 Max="@_max"
-                 Variant="Variant.Outlined"
-                 Margin="Margin.Dense"
-                 OnBlur="OnBlur" />
+<div @onfocusin="OnFocusIn" @onfocusout="OnFocusOut">
+    <MudNumericField T="decimal?"
+                     Label="@Control.Title"
+                     Value="@_value"
+                     ValueChanged="OnValueChanged"
+                     Disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+                     Required="@_isRequired"
+                     ErrorText="@_errorText"
+                     Error="@(!string.IsNullOrEmpty(_errorText))"
+                     Min="@_min"
+                     Max="@_max"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     OnBlur="OnBlur" />
+</div>
 
 @code {
     [CascadingParameter] public FormContext? FormContext { get; set; }
@@ -68,5 +70,13 @@
     {
         var errors = FormContext?.GetErrors(Control.Scope) ?? [];
         _errorText = errors.Count > 0 ? string.Join("; ", errors) : string.Empty;
+    }
+
+    private void OnFocusIn() => FormContext?.SetFocusedField(Control.Scope);
+
+    private void OnFocusOut()
+    {
+        if (FormContext?.FocusedFieldScope == Control.Scope)
+            FormContext.SetFocusedField(null);
     }
 }

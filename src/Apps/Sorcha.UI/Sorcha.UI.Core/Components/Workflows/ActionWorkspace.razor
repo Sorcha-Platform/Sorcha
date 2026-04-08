@@ -1,0 +1,288 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Text.Json
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Models.Wallet
+
+<div class="action-workspace sorcha-workspace">
+    @if (Blueprint is null || Action is null)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+        <MudText Typo="Typo.body2">Loading action workspace...</MudText>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+            @* Form area — 2/3 on desktop, full width on mobile *@
+            <MudItem xs="12" md="8">
+                @* Context bar *@
+                <MudStack Spacing="1" Class="mb-4 sorcha-workspace-header">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h5">@Blueprint.Title</MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">v@(Blueprint.Version)</MudChip>
+                    </MudStack>
+                    @if (!string.IsNullOrWhiteSpace(Action.Title))
+                    {
+                        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">
+                            @Action.Title
+                        </MudText>
+                    }
+                </MudStack>
+
+                @* Introduction callout (from x-introduction) *@
+                @if (ShowIntroduction && !string.IsNullOrWhiteSpace(_layout?.Introduction))
+                {
+                    <MudPaper Class="pa-3 mb-4 sorcha-workspace-introduction" Elevation="0" Outlined="true"
+                              Style="border-left: 4px solid var(--mud-palette-primary);">
+                        <MudText Typo="Typo.overline" Color="Color.Primary">About this workflow</MudText>
+                        <MudText Typo="Typo.body2">@_layout.Introduction</MudText>
+                    </MudPaper>
+                }
+
+                @* Wallet selector (compact) *@
+                @if (Wallets is { Count: > 0 })
+                {
+                    <MudPaper Class="pa-3 mb-4 sorcha-workspace-wallet" Elevation="0" Outlined="true">
+                        <WalletSelector Wallets="Wallets"
+                                        SelectedAddress="@SelectedWallet"
+                                        SelectedAddressChanged="HandleWalletChanged"
+                                        ShowSetDefault="@(Wallets.Count > 1)" />
+                    </MudPaper>
+                }
+
+                @* Error banner (submission failures) *@
+                @if (_errorMessage is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+                              CloseIconClicked="@(() => _errorMessage = null)">
+                        @_errorMessage
+                    </MudAlert>
+                }
+
+                @* The renderer owns wizard state, sections, catch-all, submit flow.
+                   Pass the parsed Layout and let the renderer decide how to render. *@
+                <MudPaper Class="pa-4" Elevation="1">
+                    <SorchaFormRenderer @ref="_formRenderer"
+                                        Action="@Action"
+                                        Layout="@_layout"
+                                        ParticipantAddress="@SelectedWallet"
+                                        SigningWalletAddress="@SelectedWallet"
+                                        IsSenderAction="true"
+                                        OnSubmit="HandleFormSubmit"
+                                        OnCancel="HandleFormCancel"
+                                        OnFieldFocused="HandleFieldFocused" />
+                </MudPaper>
+            </MudItem>
+
+            @* Help panel — 1/3 on desktop, collapses below form on mobile *@
+            <MudItem xs="12" md="4">
+                <div class="d-none d-md-block sorcha-workspace-help">
+                    <FieldHelpPanel FocusedField="@_focusedField"
+                                    ActiveSection="@_activeSection"
+                                    Schema="@_schemaRoot"
+                                    Layout="_layout"
+                                    BlueprintDescription="@(string.IsNullOrWhiteSpace(Blueprint.Description) ? null : Blueprint.Description)" />
+                </div>
+                <div class="d-md-none">
+                    <MudExpansionPanels Elevation="0">
+                        <MudExpansionPanel Text="Help & requirements" Expanded="false">
+                            <FieldHelpPanel FocusedField="@_focusedField"
+                                            ActiveSection="@_activeSection"
+                                            Schema="@_schemaRoot"
+                                            Layout="_layout"
+                                            BlueprintDescription="@(string.IsNullOrWhiteSpace(Blueprint.Description) ? null : Blueprint.Description)" />
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        @if (_submitting)
+        {
+            <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+                    <MudText Typo="Typo.body1" Style="color: white;">Submitting...</MudText>
+                </MudStack>
+            </MudOverlay>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Published blueprint (with full action schemas) being rendered. Must be
+    /// fetched from the published blueprints endpoint, NOT the draft store.
+    /// </summary>
+    [Parameter] public Sorcha.Blueprint.Models.Blueprint? Blueprint { get; set; }
+
+    /// <summary>
+    /// The action to render. For new submissions, this is the starting action
+    /// (typically <c>Blueprint.Actions[0]</c>).
+    /// </summary>
+    [Parameter] public Sorcha.Blueprint.Models.Action? Action { get; set; }
+
+    /// <summary>
+    /// Register the action will be submitted to.
+    /// </summary>
+    [Parameter] public string RegisterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Currently selected signing wallet address.
+    /// </summary>
+    [Parameter] public string SelectedWallet { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Fires when the user picks a different wallet.
+    /// </summary>
+    [Parameter] public EventCallback<string> SelectedWalletChanged { get; set; }
+
+    /// <summary>
+    /// Available wallets for the wallet selector.
+    /// </summary>
+    [Parameter] public List<WalletDto> Wallets { get; set; } = [];
+
+    /// <summary>
+    /// Invoked when the form is submitted successfully.
+    /// </summary>
+    [Parameter] public EventCallback<FormSubmission> OnSubmit { get; set; }
+
+    /// <summary>
+    /// Invoked when the user cancels the workspace.
+    /// </summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>
+    /// When true, render the introduction callout from <c>x-introduction</c> or
+    /// the blueprint description. Defaults to true.
+    /// </summary>
+    [Parameter] public bool ShowIntroduction { get; set; } = true;
+
+    private SchemaLayoutInfo? _layout;
+    private JsonElement? _schemaRoot;
+    private bool _submitting;
+    private string? _errorMessage;
+    private string? _focusedField;
+    private string? _activeSection;
+    private SorchaFormRenderer? _formRenderer;
+
+    protected override void OnParametersSet()
+    {
+        // Parse layout info from the action's schema. SchemaLayoutParser returns
+        // Empty on parse failure — the form gracefully degrades to flat rendering.
+        var schemaDoc = Action?.DataSchemas?.FirstOrDefault();
+        if (schemaDoc is not null)
+        {
+            _schemaRoot = schemaDoc.RootElement;
+            _layout = SchemaLayoutParser.Parse(schemaDoc.RootElement);
+        }
+        else
+        {
+            _schemaRoot = null;
+            _layout = SchemaLayoutInfo.Empty;
+        }
+    }
+
+    private void HandleFieldFocused(string? fieldScope)
+    {
+        _focusedField = fieldScope;
+
+        // Resolve the active section by finding which section contains the field.
+        if (!string.IsNullOrEmpty(fieldScope) && _layout is not null)
+        {
+            var fieldName = fieldScope.TrimStart('/');
+            _activeSection = FindSectionForField(fieldName);
+        }
+        else
+        {
+            _activeSection = null;
+        }
+
+        StateHasChanged();
+    }
+
+    private string? FindSectionForField(string fieldName)
+    {
+        if (_layout is null) return null;
+
+        if (_layout.Sections is not null)
+        {
+            foreach (var section in _layout.Sections)
+            {
+                if (section.Fields.Contains(fieldName))
+                    return section.Title;
+            }
+        }
+
+        if (_layout.Pages is not null)
+        {
+            foreach (var page in _layout.Pages)
+            {
+                if (page.Sections is null) continue;
+                foreach (var section in page.Sections)
+                {
+                    if (section.Fields.Contains(fieldName))
+                        return section.Title;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Exposes an error message to the parent page (e.g., submission failure).
+    /// Causes the alert to render above the form without losing form state.
+    /// </summary>
+    public void SetError(string? message)
+    {
+        _errorMessage = message;
+        _submitting = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Clears the submitting overlay. Call from the parent after a submission
+    /// completes (success or failure) if the parent also wants to hide it.
+    /// </summary>
+    public void ClearSubmitting()
+    {
+        _submitting = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSubmit(FormSubmission submission)
+    {
+        _errorMessage = null;
+        _submitting = true;
+        StateHasChanged();
+
+        try
+        {
+            await OnSubmit.InvokeAsync(submission);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Submission failed: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleFormCancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task HandleWalletChanged(string walletAddress)
+    {
+        SelectedWallet = walletAddress;
+        await SelectedWalletChanged.InvokeAsync(walletAddress);
+    }
+}

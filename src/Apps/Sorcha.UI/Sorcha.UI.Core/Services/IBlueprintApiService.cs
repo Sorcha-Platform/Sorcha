@@ -24,4 +24,12 @@ public interface IBlueprintApiService
     Task<List<BlueprintVersionViewModel>> GetVersionsAsync(string id, CancellationToken cancellationToken = default);
     Task<BlueprintListItemViewModel?> GetVersionAsync(string id, string version, CancellationToken cancellationToken = default);
     Task<AvailableBlueprintsViewModel?> GetAvailableBlueprintsAsync(string walletAddress, string registerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a single published blueprint (with full action schemas) from the
+    /// published blueprint store. Works on any node with the blueprint published
+    /// — unlike <see cref="GetBlueprintDetailAsync"/> which requires the authoring
+    /// node's draft store. Use this for the New Submissions workspace.
+    /// </summary>
+    Task<Sorcha.Blueprint.Models.Blueprint?> GetPublishedBlueprintDetailAsync(string walletAddress, string registerId, string blueprintId, CancellationToken cancellationToken = default);
 }

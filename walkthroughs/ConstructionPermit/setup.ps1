@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
@@ -22,7 +22,7 @@
 #   4. Green Valley Environmental — environmental-assessor (admin)
 
 param(
-    [ValidateSet('gateway', 'direct', 'aspire')]
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck,
     [switch]$Force

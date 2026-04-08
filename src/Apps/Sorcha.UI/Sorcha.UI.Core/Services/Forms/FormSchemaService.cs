@@ -106,6 +106,7 @@ public class FormSchemaService : IFormSchemaService
         // Check required fields
         if (root.TryGetProperty("required", out var required))
         {
+            root.TryGetProperty("properties", out var propsForLabels);
             foreach (var item in required.EnumerateArray())
             {
                 var fieldName = item.GetString();
@@ -114,7 +115,8 @@ public class FormSchemaService : IFormSchemaService
                 var scope = "/" + fieldName;
                 if (!data.TryGetValue(scope, out var value) || IsEmptyValue(value))
                 {
-                    errors[scope] = [$"{fieldName} is required"];
+                    var label = ResolveFieldLabel(propsForLabels, fieldName);
+                    errors[scope] = [$"{label} is required"];
                 }
             }
         }
@@ -157,7 +159,9 @@ public class FormSchemaService : IFormSchemaService
         if (IsRequired(schema, scope) && IsEmptyValue(value))
         {
             var fieldName = scope.TrimStart('/').Split('/').Last();
-            errors.Add($"{fieldName} is required");
+            schema.RootElement.TryGetProperty("properties", out var propsForLabel);
+            var label = ResolveFieldLabel(propsForLabel, fieldName);
+            errors.Add($"{label} is required");
             return errors;
         }
 
@@ -258,8 +262,93 @@ public class FormSchemaService : IFormSchemaService
         {
             ControlType = controlType,
             Title = title ?? propertyName,
-            Scope = "/" + propertyName
+            Scope = "/" + propertyName,
+            Rule = TryParseXRule(schema)
         };
+    }
+
+    /// <summary>
+    /// Parses an <c>x-rule</c> extension on a property schema into a
+    /// <see cref="FormRule"/>. Follows the JSON Forms rule spec — the rule has
+    /// an <c>effect</c> (SHOW / HIDE / ENABLE / DISABLE) and a schema-based
+    /// <c>condition</c> with a JSON Pointer <c>scope</c> and a <c>schema</c>
+    /// fragment to match against the scoped value.
+    /// </summary>
+    /// <remarks>
+    /// Example blueprint JSON:
+    /// <code>
+    /// {
+    ///   "medicalConditionsList": {
+    ///     "type": "string",
+    ///     "title": "Medical conditions",
+    ///     "x-rule": {
+    ///       "effect": "SHOW",
+    ///       "condition": {
+    ///         "scope": "/hasMedicalCondition",
+    ///         "schema": { "const": true }
+    ///       }
+    ///     }
+    ///   }
+    /// }
+    /// </code>
+    /// Returns null on any parse failure so the form falls back to
+    /// always-visible rendering rather than crashing.
+    /// </remarks>
+    private static FormRule? TryParseXRule(JsonElement propertySchema)
+    {
+        if (propertySchema.ValueKind != JsonValueKind.Object) return null;
+        if (!propertySchema.TryGetProperty("x-rule", out var ruleElement)) return null;
+        if (ruleElement.ValueKind != JsonValueKind.Object) return null;
+
+        try
+        {
+            // Parse effect (default to SHOW)
+            var effect = RuleEffect.SHOW;
+            if (ruleElement.TryGetProperty("effect", out var effectEl) &&
+                effectEl.ValueKind == JsonValueKind.String)
+            {
+                var effectStr = effectEl.GetString();
+                if (Enum.TryParse<RuleEffect>(effectStr, ignoreCase: true, out var parsed))
+                    effect = parsed;
+            }
+
+            // Parse condition
+            if (!ruleElement.TryGetProperty("condition", out var conditionEl) ||
+                conditionEl.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var scope = conditionEl.TryGetProperty("scope", out var scopeEl) &&
+                        scopeEl.ValueKind == JsonValueKind.String
+                ? scopeEl.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (string.IsNullOrEmpty(scope)) return null;
+
+            if (!conditionEl.TryGetProperty("schema", out var schemaEl) ||
+                schemaEl.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var schemaNode = System.Text.Json.Nodes.JsonNode.Parse(schemaEl.GetRawText());
+            if (schemaNode is null) return null;
+
+            return new FormRule
+            {
+                Effect = effect,
+                Condition = new SchemaBasedCondition
+                {
+                    Scope = scope,
+                    Schema = schemaNode
+                }
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static int GetMaxLength(JsonElement schema)
@@ -279,6 +368,26 @@ public class FormSchemaService : IFormSchemaService
             result.Append(i == 0 ? char.ToUpper(c) : c);
         }
         return result.ToString();
+    }
+
+    /// <summary>
+    /// Returns the human-readable label for a field. Prefers the schema
+    /// <c>title</c> property if defined; otherwise falls back to a humanised
+    /// version of the field name (e.g., <c>firstName</c> → <c>First Name</c>).
+    /// </summary>
+    private static string ResolveFieldLabel(JsonElement properties, string fieldName)
+    {
+        if (properties.ValueKind == JsonValueKind.Object &&
+            properties.TryGetProperty(fieldName, out var fieldSchema) &&
+            fieldSchema.ValueKind == JsonValueKind.Object &&
+            fieldSchema.TryGetProperty("title", out var titleEl) &&
+            titleEl.ValueKind == JsonValueKind.String)
+        {
+            var title = titleEl.GetString();
+            if (!string.IsNullOrWhiteSpace(title))
+                return title;
+        }
+        return HumanizeName(fieldName);
     }
 
     private static List<string> ValidateFieldValue(JsonElement fieldSchema, object? value)

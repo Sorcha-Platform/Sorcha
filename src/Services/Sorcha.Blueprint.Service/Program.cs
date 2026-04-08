@@ -787,6 +787,37 @@ actionsGroup.MapGet("/{wallet}/{register}/blueprints", async (
 .CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
 
 // <summary>
+// Get a single published blueprint (with full action schemas) for a wallet/register/blueprintId.
+// Returns the latest version published to this specific register. Used by the
+// New Submissions workspace to render forms from published blueprints on any
+// node — NOT from the draft store. Fixes the 404 bug where non-authoring nodes
+// could not start submissions.
+// </summary>
+actionsGroup.MapGet("/{wallet}/{register}/blueprints/{blueprintId}", async (
+    string wallet, // TODO: Filter by wallet access permissions
+    string register,
+    string blueprintId,
+    IPublishedBlueprintStore publishedStore) =>
+{
+    var publishedForRegister = await publishedStore.GetByRegisterAsync(register);
+    var match = publishedForRegister
+        .Where(pub => string.Equals(pub.BlueprintId, blueprintId, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(pub => pub.Version)
+        .FirstOrDefault();
+
+    if (match is null)
+    {
+        return Results.NotFound(new { error = $"Blueprint '{blueprintId}' is not published to register '{register}'." });
+    }
+
+    return Results.Ok(match.Blueprint);
+})
+.WithName("GetPublishedBlueprintDetail")
+.WithSummary("Get published blueprint detail")
+.WithDescription("Retrieve a single published blueprint including full action schemas. Sourced from the published blueprint store — works on any node, not just the authoring node.")
+.CacheOutput(policy => policy.Expire(TimeSpan.FromMinutes(5)).Tag("blueprints"));
+
+// <summary>
 // Get actions for a wallet/register (paginated)
 // </summary>
 actionsGroup.MapGet("/{wallet}/{register}", async (
