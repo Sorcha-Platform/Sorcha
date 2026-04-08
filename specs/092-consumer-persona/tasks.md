@@ -143,16 +143,16 @@ description: "Task list for Feature 092 — Consumer Persona and Nav Tidy"
 
 ### Implementation for User Story 2
 
-- [ ] T046 [P] [US2] In `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Shared/UserProfileMenu.razor`, add a new `<MudMenuItem Icon="@Icons.Material.Filled.Person" OnClick="@(() => Navigation.NavigateTo("profile"))">` labelled **"My Profile"**, positioned above the existing "View Token" item. Do not change other menu items.
-- [ ] T047 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Profile.razor` with `@page "/profile"`, authentication attribute, and page shell: title, Save button, `IPersonaService` injection, `_persona` state.
-- [ ] T048 [US2] Add Identity section to `Profile.razor`: MudTextFields for GivenName, FamilyName, optional FullName fallback, MudDatePicker for DateOfBirth. Wire two-way binding to `_persona.GivenName` etc.
-- [ ] T049 [US2] Add Nationalities multi-select to `Profile.razor` with ISO 3166-1 alpha-2 options, default selector, capped at 5 entries.
-- [ ] T050 [US2] Add Emails list component to `Profile.razor`: add/remove rows, value + optional label, radio-group for IsDefault, capped at 5 entries with an inline message when cap reached.
-- [ ] T051 [US2] Add Phones list component to `Profile.razor`: same pattern as emails plus the `Kind` enum dropdown. Capped at 5.
-- [ ] T052 [US2] Add Addresses list component to `Profile.razor`: full address fields (line1/line2/city/region/postalCode/country) with default selector and optional label. Capped at 5.
-- [ ] T053 [US2] Add the global **"Autofill forms from my profile"** `MudSwitch` at the top of `Profile.razor`, wired to `IPersonaService.GetAutofillEnabledAsync` / `SetAutofillEnabledAsync`. Defaults to on for users with no setting stored.
-- [ ] T054 [US2] Wire Save button to `IPersonaService.UpdateAsync(persona)` and show `MudSnackbar` success. On failure, display the field-level error messages returned by Tenant Service (`invalid_email`, `list_cap_exceeded`, etc.). Invalidate the client cache on success and re-fetch canonical state.
-- [ ] T055 [US2] Add empty-state handling: if `GetAsync` returns empty, render the form with all sections empty and no "Last updated" hints. Display the 409 `wallet_not_provisioned` error as a friendly inline message if the user has no wallet.
+- [X] T046 [P] [US2] In `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Shared/UserProfileMenu.razor`, add a new `<MudMenuItem Icon="@Icons.Material.Filled.Person" OnClick="@(() => Navigation.NavigateTo("profile"))">` labelled **"My Profile"**, positioned above the existing "View Token" item. Do not change other menu items.
+- [X] T047 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Profile.razor` with `@page "/profile"`, authentication attribute, and page shell: title, Save button, `IPersonaService` injection, `_persona` state.
+- [X] T048 [US2] Add Identity section to `Profile.razor`: MudTextFields for GivenName, FamilyName, optional FullName fallback, MudDatePicker for DateOfBirth. Wire two-way binding to `_persona.GivenName` etc.
+- [X] T049 [US2] Add Nationalities multi-select to `Profile.razor` with ISO 3166-1 alpha-2 options, default selector, capped at 5 entries.
+- [X] T050 [US2] Add Emails list component to `Profile.razor`: add/remove rows, value + optional label, radio-group for IsDefault, capped at 5 entries with an inline message when cap reached.
+- [X] T051 [US2] Add Phones list component to `Profile.razor`: same pattern as emails plus the `Kind` enum dropdown. Capped at 5.
+- [X] T052 [US2] Add Addresses list component to `Profile.razor`: full address fields (line1/line2/city/region/postalCode/country) with default selector and optional label. Capped at 5.
+- [X] T053 [US2] Add the global **"Autofill forms from my profile"** `MudSwitch` at the top of `Profile.razor`, wired to `IPersonaService.GetAutofillEnabledAsync` / `SetAutofillEnabledAsync`. Defaults to on for users with no setting stored.
+- [X] T054 [US2] Wire Save button to `IPersonaService.UpdateAsync(persona)` and show `MudSnackbar` success. On failure, display the field-level error messages returned by Tenant Service (`invalid_email`, `list_cap_exceeded`, etc.). Invalidate the client cache on success and re-fetch canonical state.
+- [X] T055 [US2] Add empty-state handling: if `GetAsync` returns empty, render the form with all sections empty and no "Last updated" hints. Display the 409 `wallet_not_provisioned` error as a friendly inline message if the user has no wallet.
 
 **Checkpoint**: US2 delivers the profile page end-to-end. US1 and US2 together now form a complete consumer MVP — a user can set up their profile and then open a form to see it autofill.
 
