@@ -67,27 +67,27 @@ public static class PersonaCryptoEndpoints
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(address))
-            return Results.BadRequest(new { error = "Wallet address is required" });
+            return TypedResults.BadRequest(new { error = "Wallet address is required" });
         if (request.Plaintext is null || request.Plaintext.Length == 0)
-            return Results.BadRequest(new { error = "Plaintext is required" });
+            return TypedResults.BadRequest(new { error = "Plaintext is required" });
 
         try
         {
             var result = await service.EncryptAsync(address, request.Plaintext, ct);
-            return Results.Ok(new PersonaEncryptResponse(
+            return TypedResults.Ok(new PersonaEncryptResponse(
                 Ciphertext: result.Ciphertext,
                 Nonce: result.Nonce,
                 WrappedKeyRef: result.WrappedKeyRef));
         }
         catch (KeyNotFoundException)
         {
-            return Results.NotFound(new { error = "Wallet not found" });
+            return TypedResults.NotFound(new { error = "Wallet not found" });
         }
         catch (CryptographicException)
         {
             // Sanitised response — never echo the exception message to the
             // caller, it may contain sensitive key material references.
-            return Results.Problem(
+            return TypedResults.Problem(
                 title: "Persona encryption failed",
                 detail: "An internal cryptographic error occurred.",
                 statusCode: StatusCodes.Status500InternalServerError);
@@ -101,15 +101,15 @@ public static class PersonaCryptoEndpoints
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(address))
-            return Results.BadRequest(new { error = "Wallet address is required" });
+            return TypedResults.BadRequest(new { error = "Wallet address is required" });
         if (request.Ciphertext is null || request.Ciphertext.Length == 0)
-            return Results.BadRequest(new { error = "Ciphertext is required" });
+            return TypedResults.BadRequest(new { error = "Ciphertext is required" });
         if (request.Nonce is null || request.Nonce.Length == 0)
-            return Results.BadRequest(new { error = "Nonce is required" });
+            return TypedResults.BadRequest(new { error = "Nonce is required" });
         if (request.Nonce.Length != 24)
-            return Results.BadRequest(new { error = "Nonce must be exactly 24 bytes (XChaCha20-Poly1305)" });
+            return TypedResults.BadRequest(new { error = "Nonce must be exactly 24 bytes (XChaCha20-Poly1305)" });
         if (string.IsNullOrWhiteSpace(request.WrappedKeyRef))
-            return Results.BadRequest(new { error = "WrappedKeyRef is required" });
+            return TypedResults.BadRequest(new { error = "WrappedKeyRef is required" });
 
         try
         {
@@ -120,17 +120,17 @@ public static class PersonaCryptoEndpoints
                 request.WrappedKeyRef,
                 ct);
 
-            return Results.Ok(new PersonaDecryptResponse(plaintext));
+            return TypedResults.Ok(new PersonaDecryptResponse(plaintext));
         }
         catch (KeyNotFoundException)
         {
-            return Results.NotFound(new { error = "Wallet not found" });
+            return TypedResults.NotFound(new { error = "Wallet not found" });
         }
         catch (PersonaKeyRefMismatchException ex)
         {
             // Typed exception for the v1 wrappedKeyRef invariant — this is
             // a caller-side bug, so 400 with the (caller-supplied) detail.
-            return Results.Problem(
+            return TypedResults.Problem(
                 title: "Persona decrypt request invalid",
                 detail: ex.Message,
                 statusCode: StatusCodes.Status400BadRequest);
@@ -140,7 +140,7 @@ public static class PersonaCryptoEndpoints
             // Generic cryptographic failure (corrupt ciphertext, auth tag
             // mismatch, etc.) — sanitised 500. Never echo the exception
             // message to avoid leaking ciphertext references or key IDs.
-            return Results.Problem(
+            return TypedResults.Problem(
                 title: "Persona decryption failed",
                 detail: "An internal cryptographic error occurred.",
                 statusCode: StatusCodes.Status500InternalServerError);

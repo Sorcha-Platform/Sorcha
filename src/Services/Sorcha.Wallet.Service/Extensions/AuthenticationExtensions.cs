@@ -56,7 +56,7 @@ public static class AuthenticationExtensions
                     var hasPersonaCryptoScope = context.User.Claims
                         .Where(c => c.Type == TokenClaimConstants.Scope || c.Type == "scp")
                         .SelectMany(c => (c.Value ?? string.Empty).Split(
-                            new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                            [' '], StringSplitOptions.RemoveEmptyEntries))
                         .Any(s => string.Equals(s, "persona:crypto", StringComparison.Ordinal));
 
                     return hasPersonaCryptoScope;
