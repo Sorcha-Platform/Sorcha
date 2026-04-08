@@ -298,6 +298,18 @@ public static class ServiceCollectionExtensions
             return new UserPreferencesService(httpClient, logger);
         });
 
+        // Consumer Persona Service (092) — HTTP client + cached service wrapper.
+        services.AddScoped<Sorcha.UI.Core.Services.Persona.IPersonaClient>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.Persona.PersonaHttpClient>>();
+            return new Sorcha.UI.Core.Services.Persona.PersonaHttpClient(httpClient, logger);
+        });
+        services.AddScoped<Sorcha.UI.Core.Services.Persona.IPersonaService,
+            Sorcha.UI.Core.Services.Persona.PersonaService>();
+
         // Pending Action Service (062)
         services.AddScoped<IPendingActionService>(sp =>
         {

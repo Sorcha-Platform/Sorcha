@@ -91,15 +91,15 @@ description: "Task list for Feature 092 — Consumer Persona and Nav Tidy"
 
 ### Client — IPersonaClient (HTTP) and client IPersonaService
 
-- [ ] T029 [P] Create `src/Common/Sorcha.ServiceClients.Http/IPersonaClient.cs` — public Refit-style HTTP client interface: `GetPersonaAsync(PersonaReadOptions?)`, `PutPersonaAsync(PersonaAttributesV1)`, `PatchPersonaAsync(...)`, `DeletePersonaAsync()`. Register in `AddServiceClients`.
-- [ ] T030 Create `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Persona/IPersonaService.cs` with the methods listed in plan.md §6.1: `GetAsync`, `UpdateAsync`, `DeleteAsync`, `GetAutofillEnabledAsync`, `SetAutofillEnabledAsync`, `InvalidateCache`.
-- [ ] T031 Create `src/Apps/Sorcha.UI/Sorcha.UI.Core/Services/Persona/PersonaServiceClient.cs` implementing T030. Wraps `IPersonaClient`. Holds a session-lifetime in-memory cache keyed by `ActingAs`. Clears on `InvalidateCache`, on logout event, and on org-switch event (subscribe to existing events if present).
-- [ ] T032 Wire autofill preference read/write to the existing user settings mechanism used by `Settings.razor`. Investigate `Settings.razor` first to locate the current storage path (browser local storage? Tenant Service user-settings endpoint?) and reuse it. Do not introduce a new settings store.
-- [ ] T033 Register `IPersonaService` (client) and its dependencies in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Program.cs` (or the equivalent service registration file).
+- [X] T029 Created `IPersonaClient` and `PersonaHttpClient` **inside `Sorcha.UI.Core/Services/Persona/`** (not in the shared `Sorcha.ServiceClients.Http` project — this matches the existing UI client pattern set by `IUserPreferencesService`/`UserPreferencesService`). Handles validation problem responses into `PersonaValidationException` with field-level errors, and 409 → `PersonaWalletNotProvisionedException`.
+- [X] T030 Created `IPersonaService` client interface with `GetAsync(PersonaReadOptions?)`, `UpdateAsync`, `DeleteAsync`, `GetAutofillEnabledAsync`, `SetAutofillEnabledAsync`, `InvalidateCache`.
+- [X] T031 Created `PersonaService` (client) implementing T030. Wraps `IPersonaClient`. Session-lifetime `Dictionary<string, PersonaReadModelV1>` cache keyed by `ActingAs`, `SemaphoreSlim`-guarded. `UpdateAsync` replaces the cache with the server-canonical response. `InvalidateCache` clears everything.
+- [X] T032 Wired autofill preference to `Blazored.LocalStorage` (already registered in `Sorcha.UI.Web.Client/Program.cs`). Key: `sorcha.persona.autofillEnabled`. Defaults to `true` when missing, matching FR-015. This is per-device persistence — consistent with the spec's framing of the toggle as a UX preference rather than a server-side user setting.
+- [X] T033 Registered `IPersonaClient` (with the same `AuthenticatedHttpMessageHandler` + base address pattern as `IUserPreferencesService`) and `IPersonaService` in `Sorcha.UI.Core/Extensions/ServiceCollectionExtensions.AddCoreServices`. Automatically picked up by `Sorcha.UI.Web.Client/Program.cs` via the existing `AddCoreServices(baseAddress)` call — no per-project registration needed.
 
 ### Contract guard (depends on T030)
 
-- [ ] T034 Create `tests/Sorcha.UI.Core.Tests/PersonaServiceContractTests.cs` using reflection to assert: `IPersonaService.GetAsync` signature accepts `PersonaReadOptions?`; `PersonaAttribute<T>` has `Value`, `Source`, `VerifiedBy`, `LastUpdated` properties in the expected types; `PersonaAttributeSource.SelfAsserted == 0`. These guard the A→C and delegation migration path.
+- [X] T034 Created `tests/Sorcha.UI.Core.Tests/Services/PersonaServiceContractTests.cs` with 6 reflection-backed guard tests covering: `IPersonaService.GetAsync` accepts optional `PersonaReadOptions`; `PersonaReadOptions.ActingAs` defaults to `"self"`; `PersonaAttribute<T>` exposes `Value`/`Source`/`VerifiedBy`/`LastUpdated` with expected types; `PersonaAttributeSource.SelfAsserted == 0` and `VerifiedCredential == 1`; `IPersonaService` has autofill toggle + `InvalidateCache`; `PersonaReadModelV1` exposes `Default*` and `All*` pairs for multi-value attributes. **All 6 tests pass.**
 
 **Checkpoint**: Foundation ready. Persona can be saved, read, decrypted, and the client service is available to every page. User story phases can now begin.
 
