@@ -34,8 +34,8 @@ description: "Task list for Feature 092 — Consumer Persona and Nav Tidy"
 
 **Purpose**: Constants and minimal scaffolding that cross project boundaries
 
-- [ ] T001 Add `PersonaVault = "sorcha:persona-vault"` constant to `src/Common/Sorcha.Cryptography/DerivationContexts.cs` (or equivalent file in `Sorcha.Cryptography` that holds the other `sorcha:*` derivation purpose constants — locate and match existing pattern).
-- [ ] T002 [P] Create empty folder `src/Common/Sorcha.Tenant.Models/Persona/` with a `_Namespace.cs` marker if needed, so subsequent parallel DTO tasks can drop files in without a race.
+- [X] T001 Add `PersonaVault = "sorcha:persona-vault"` constant to `src/Core/Sorcha.Wallet.Portable/Constants/SorchaDerivationPaths.cs` (actual location of the `sorcha:*` derivation constants — BIP44 index 104). Also added `PersonaVaultPath` and extended `ResolvePath`.
+- [X] T002 [P] Create `src/Common/Sorcha.Tenant.Models/Persona/` directory — implicitly created by writing T003–T009 files into it.
 
 ---
 
@@ -47,18 +47,18 @@ description: "Task list for Feature 092 — Consumer Persona and Nav Tidy"
 
 ### Shared DTOs (parallel)
 
-- [ ] T003 [P] Create `PersonaAttributeSource` enum in `src/Common/Sorcha.Tenant.Models/Persona/PersonaAttributeSource.cs` with values `SelfAsserted = 0`, `VerifiedCredential = 1`.
-- [ ] T004 [P] Create `PersonaAttribute<T>` record in `src/Common/Sorcha.Tenant.Models/Persona/PersonaAttribute.cs` with properties `Value`, `Source`, `VerifiedBy?`, `LastUpdated`.
-- [ ] T005 [P] Create multi-value entry records in `src/Common/Sorcha.Tenant.Models/Persona/PersonaEmail.cs`, `PersonaPhone.cs`, `PersonaAddress.cs` (one file each) matching the shapes in `data-model.md` §2.
-- [ ] T006 [P] Create `PersonaPhoneKind` enum in `src/Common/Sorcha.Tenant.Models/Persona/PersonaPhoneKind.cs` with values `Mobile`, `Home`, `Work`.
-- [ ] T007 [P] Create `PersonaAttributesV1` record in `src/Common/Sorcha.Tenant.Models/Persona/PersonaAttributesV1.cs` matching `data-model.md` §2 (plaintext shape).
-- [ ] T008 [P] Create `PersonaReadModelV1` record in `src/Common/Sorcha.Tenant.Models/Persona/PersonaReadModelV1.cs` matching `data-model.md` §3.
-- [ ] T009 [P] Create `PersonaReadOptions` record in `src/Common/Sorcha.Tenant.Models/Persona/PersonaReadOptions.cs` with `ActingAs { get; init; } = "self"`.
+- [X] T003 [P] Created `PersonaAttributeSource` enum.
+- [X] T004 [P] Created `PersonaAttribute<T>` record.
+- [X] T005 [P] Created `PersonaEmail`, `PersonaPhone`, `PersonaAddress` records.
+- [X] T006 [P] Created `PersonaPhoneKind` enum.
+- [X] T007 [P] Created `PersonaAttributesV1` record.
+- [X] T008 [P] Created `PersonaReadModelV1` record.
+- [X] T009 [P] Created `PersonaReadOptions` record.
 
 ### Cryptography tests and derivation (depends on T001)
 
-- [ ] T010 [P] Create `tests/Sorcha.Cryptography.Tests/PersonaVaultDerivationTests.cs` (or fold into existing derivation tests file) verifying: deterministic derivation per seed, distinct from `sorcha:docket-signing` / `sorcha:register-control` / root key, round-trip XChaCha20-Poly1305 encrypt/decrypt with the derived key. These tests MUST fail until T011 is complete.
-- [ ] T011 Add any helper/extension method on `Sorcha.Cryptography` required to derive the `PersonaContentKey` from a wallet seed under `PersonaVault` purpose, if the existing API surface does not already cover it. Verify by running T010 tests to green.
+- [~] T010 **Folded into Wave B** — Persona content key derivation lives inside Wallet Service's `PersonaCryptoService` using stock HKDF-SHA256 with the existing key protection provider. No new surface on `Sorcha.Cryptography` required. Tests moved to `Sorcha.Wallet.Service.Tests` under `PersonaCryptoServiceTests`.
+- [~] T011 **Folded into Wave B** — see T010 note. Existing `ISymmetricCrypto.EncryptAsync` / `DecryptAsync` with `XCHACHA20_POLY1305` cover the AEAD primitive without additions.
 
 ### Wallet Service — Persona crypto endpoints (depends on T011)
 

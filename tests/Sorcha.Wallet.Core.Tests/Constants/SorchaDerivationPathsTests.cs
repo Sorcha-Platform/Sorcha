@@ -33,6 +33,24 @@ public class SorchaDerivationPathsTests
     }
 
     [Fact]
+    public void ResolvePath_PersonaVault_ReturnsCorrectBip44Path()
+    {
+        var result = SorchaDerivationPaths.ResolvePath("sorcha:persona-vault");
+
+        result.Should().Be("m/44'/0'/0'/0/104");
+    }
+
+    [Fact]
+    public void PersonaVaultPath_IsDistinctFromOtherPurposes()
+    {
+        // Guard against accidental collision with existing derivation purposes.
+        SorchaDerivationPaths.PersonaVaultPath.Should().NotBe(SorchaDerivationPaths.RegisterAttestationPath);
+        SorchaDerivationPaths.PersonaVaultPath.Should().NotBe(SorchaDerivationPaths.RegisterControlPath);
+        SorchaDerivationPaths.PersonaVaultPath.Should().NotBe(SorchaDerivationPaths.DocketSigningPath);
+        SorchaDerivationPaths.PersonaVaultPath.Should().NotBe(SorchaDerivationPaths.BlueprintPublishPath);
+    }
+
+    [Fact]
     public void ResolvePath_AlreadyBip44Path_ReturnsAsIs()
     {
         var bip44Path = "m/44'/0'/0'/0/0";
