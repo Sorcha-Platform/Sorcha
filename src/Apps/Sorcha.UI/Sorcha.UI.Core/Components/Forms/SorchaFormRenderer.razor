@@ -46,6 +46,9 @@
                otherwise so existing forms pick up zero visual change. *@
             <PersonaFillSummary Count="@_personaFilledPaths.Count"
                                 Fills="@_personaFillsList"
+                                IsAutofillEnabled="@_autofillEnabled"
+                                PendingCount="@(_pendingPersonaFills?.Count ?? 0)"
+                                OnFillFromProfile="HandleFillFromProfile"
                                 OnClearAll="HandleClearAllPersonaFills"
                                 OnClearField="HandleClearPersonaField" />
 
@@ -323,6 +326,12 @@
     // Projection of the above as a list, refreshed whenever paths change,
     // so the summary component can iterate without mutating the dictionary.
     private IReadOnlyList<PersonaFillResult> _personaFillsList = Array.Empty<PersonaFillResult>();
+    // Feature 092 / US5 — when the global autofill preference is OFF the
+    // resolver still runs but its decisions are held here instead of being
+    // applied. The summary banner renders in "Fill from profile" mode and
+    // the user can opt in with a single click.
+    private bool _autofillEnabled = true;
+    private IReadOnlyDictionary<string, PersonaFillResult>? _pendingPersonaFills;
     // Whether we've kicked off the fire-and-forget persona load for the
     // current Action — reset on action change.
     private bool _personaLoadKicked;
@@ -368,6 +377,7 @@
             _personaFilledOriginal.Clear();
             _personaFillsByPath.Clear();
             _personaFillsList = Array.Empty<PersonaFillResult>();
+            _pendingPersonaFills = null;
             _personaLoadKicked = false;
             _personaLoadCts?.Cancel();
             _personaLoadCts?.Dispose();
@@ -476,12 +486,10 @@
             }
 
             // Honour the global autofill preference (FR-015). When disabled,
-            // we simply do nothing in v1; the US5 "Fill from profile" button
-            // comes in a later wave.
-            if (!await personaService.GetAutofillEnabledAsync().ConfigureAwait(false))
-            {
-                return;
-            }
+            // we do NOT apply fills automatically but still resolve and stash
+            // them so the US5 "Fill from profile" button in the summary can
+            // apply them on demand.
+            _autofillEnabled = await personaService.GetAutofillEnabledAsync().ConfigureAwait(false);
 
             var persona = await personaService.GetAsync(null, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
@@ -493,7 +501,16 @@
             // FormData so StateHasChanged re-renders safely.
             await InvokeAsync(() =>
             {
-                ApplyPersonaFills(fills);
+                if (_autofillEnabled)
+                {
+                    ApplyPersonaFills(fills);
+                }
+                else
+                {
+                    // US5 off-state: hold the resolver decisions for the
+                    // "Fill from profile" button without touching FormData.
+                    _pendingPersonaFills = fills;
+                }
                 StateHasChanged();
             }).ConfigureAwait(false);
         }
@@ -588,6 +605,20 @@
         _personaFillsByPath.Clear();
         RefreshPersonaFillsList();
         _formContext.NotifyDataChanged();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// US5 — handler for the off-state "Fill from profile" button. Applies
+    /// the pending resolver decisions exactly as the on-state path would,
+    /// then clears the pending buffer so the summary flips into the
+    /// standard disclosure mode.
+    /// </summary>
+    private void HandleFillFromProfile()
+    {
+        if (_pendingPersonaFills is null || _pendingPersonaFills.Count == 0) return;
+        ApplyPersonaFills(_pendingPersonaFills);
+        _pendingPersonaFills = null;
         StateHasChanged();
     }
 

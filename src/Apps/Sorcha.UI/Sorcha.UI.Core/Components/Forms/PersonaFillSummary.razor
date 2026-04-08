@@ -6,10 +6,30 @@
 @using Sorcha.Tenant.Models.Persona
 @using Sorcha.UI.Core.Models.Forms
 
-@* Feature 092 / US3 — one-line disclosure summary above the form body.
-   Renders nothing when there are no persona-filled fields. *@
+@* Feature 092 / US3 + US5 — one-line disclosure summary above the form.
+   Two modes:
+   • ON  (Count > 0)       — shows "{n} fields filled from your profile"
+                             with Review and Clear all actions.
+   • OFF (IsAutofillEnabled=false && PendingCount > 0)
+                             — shows "Your profile can fill {n} fields on
+                             this form" with a "Fill from profile" button. *@
 
-@if (Count > 0)
+@if (!IsAutofillEnabled && PendingCount > 0 && Count == 0)
+{
+    <div class="persona-fill-summary persona-fill-summary-offstate" role="status" aria-live="polite">
+        <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="persona-fill-summary-icon" />
+        <span class="persona-fill-summary-text">
+            Your profile can fill @PendingCount field@(PendingCount == 1 ? string.Empty : "s") on this form.
+        </span>
+        <div class="persona-fill-summary-actions">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="HandleFillFromProfile">
+                Fill from profile
+            </MudButton>
+        </div>
+    </div>
+}
+else if (Count > 0)
 {
     <div class="persona-fill-summary" role="status" aria-live="polite">
         <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" Class="persona-fill-summary-icon" />
@@ -82,7 +102,33 @@
     /// clicks its clear button in the review popover.</summary>
     [Parameter] public EventCallback<string> OnClearField { get; set; }
 
+    /// <summary>
+    /// US5 — global autofill preference. When false and <see cref="PendingCount"/>
+    /// is positive, the component renders the opt-in "Fill from profile" variant
+    /// instead of the standard disclosure summary.
+    /// </summary>
+    [Parameter] public bool IsAutofillEnabled { get; set; } = true;
+
+    /// <summary>
+    /// US5 — number of fields the resolver could fill if the user opts in.
+    /// Only used when <see cref="IsAutofillEnabled"/> is false.
+    /// </summary>
+    [Parameter] public int PendingCount { get; set; }
+
+    /// <summary>
+    /// US5 — invoked when the user clicks the off-state "Fill from profile"
+    /// button. The parent should apply the pending fills exactly as if
+    /// the global toggle had been on.
+    /// </summary>
+    [Parameter] public EventCallback OnFillFromProfile { get; set; }
+
     private bool _reviewOpen;
+
+    private async Task HandleFillFromProfile()
+    {
+        if (OnFillFromProfile.HasDelegate)
+            await OnFillFromProfile.InvokeAsync();
+    }
 
     private void ToggleReview() => _reviewOpen = !_reviewOpen;
     private void CloseReview() => _reviewOpen = false;

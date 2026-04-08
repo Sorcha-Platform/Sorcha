@@ -55,12 +55,10 @@
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true" ClipMode="DrawerClipMode.Always" Elevation="2">
-        <MudDrawerHeader>
-            @if (_drawerOpen)
-            {
-                <MudText Typo="Typo.h6">@Loc.T("nav.navigation")</MudText>
-            }
-        </MudDrawerHeader>
+        @* Feature 092 / US4 — the "Navigation" header was removed. The
+           MudDrawerHeader element stays in place so the drawer keeps its
+           expected vertical rhythm and top spacing. *@
+        <MudDrawerHeader></MudDrawerHeader>
         <AuthorizeView>
             <Authorized>
                 <MudNavMenu>
@@ -221,16 +219,14 @@
                             </MudNavGroup>
                         </Authorized>
                     </AuthorizeView>
+                    @* Feature 092 / US4 — Settings and Notifications nav
+                       links removed. Settings is reachable from the avatar
+                       menu; notification preferences are now a tab inside
+                       the Settings page. Help remains in the side nav. *@
                     @if (_drawerOpen)
                     {
                         <MudDivider Class="my-2" />
                     }
-                    <MudNavLink Href="settings" Icon="@Icons.Material.Filled.Settings">
-                        @Loc.T("nav.settings")
-                    </MudNavLink>
-                    <MudNavLink Href="settings/notifications" Icon="@Icons.Material.Filled.Notifications">
-                        Notifications
-                    </MudNavLink>
                     <MudNavLink Href="help" Icon="@Icons.Material.Filled.Help">
                         @Loc.T("nav.help")
                     </MudNavLink>

@@ -335,6 +335,71 @@ Three-tier org topology: system admin org, public org (social login + email/pass
 
 ---
 
+## Consumer Persona API (Feature 092)
+
+Per-user identity persona stored as ciphertext in Tenant Service with the content
+key derived by Wallet Service under `sorcha:persona-vault`. Read side returns
+attributes wrapped in `PersonaAttribute<T>` carrying provenance. `SorchaFormRenderer`
+consumes the persona to autofill recognised form fields with a cream tint and a
+visible `self` provenance tick. Edit releases the claim. A global toggle switches
+silent apply to a one-click "Fill from profile" button.
+
+### Endpoints (via API Gateway /api/*)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/me/persona` | Read the signed-in user's persona (returns empty for new users, never 404) |
+| PUT | `/me/persona` | Replace the persona with a full `PersonaAttributesV1` payload |
+| DELETE | `/me/persona` | Delete the persona row (idempotent) |
+
+Internal (not routed through gateway):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/wallets/{address}/persona/encrypt` | Derive content key, encrypt payload |
+| POST | `/api/v1/wallets/{address}/persona/decrypt` | Derive content key, decrypt ciphertext |
+
+### Key Models
+
+- **PersonaAttributesV1**: Plaintext write-side shape — givenName, familyName, fullName, dateOfBirth, emails, phones, addresses, nationalities. Each multi-value list capped at 5 with exactly one default.
+- **PersonaReadModelV1**: Wire shape with `Default*` + `All*` pairs for multi-value attributes, each wrapped in `PersonaAttribute<T>`.
+- **PersonaAttribute<T>**: `Value`, `Source` (`SelfAsserted`/`VerifiedCredential`), `VerifiedBy` (issuer DID, always null in v1), `LastUpdated`.
+- **PlatformUserPersona**: EF entity — 1:1 with `PlatformUser`, hard-delete cascade, XChaCha20-Poly1305 ciphertext with 24-byte nonce and `wrappedKeyRef == walletAddress`.
+- **PersonaFillResult**: Per-field autofill decision carried by the resolver (field path, attribute name, value, source, `PersonaMatchMode`).
+
+### Schema Extension
+
+Form authors can pin a field to a specific persona attribute via a JSON-Schema extension:
+
+```json
+{
+  "applicantEmail": { "type": "string", "format": "email", "x-persona": "defaultEmail" },
+  "nextOfKinEmail": { "type": "string", "format": "email", "x-persona": false }
+}
+```
+
+Without an explicit tag, the conservative inference allowlist applies: `format: "email"` → default email, `format: "tel"` → default phone, field names `dateOfBirth`/`dob`/`birthDate` → date of birth, postal-address object shape → default address.
+
+### Cryptography
+
+- **Derivation purpose**: `sorcha:persona-vault` (BIP44-style index 104 under the `SorchaDerivationPaths` constants).
+- **AEAD**: XChaCha20-Poly1305 via the existing `ISymmetricCrypto`, 24-byte nonce.
+- **HKDF**: Per-file chunk keys derived with HKDF-SHA256 in `PersonaCryptoService`.
+- **Ciphertext location**: Tenant DB only. Content key never leaves Wallet Service. Reading requires a service token carrying `RequirePersonaCrypto` policy.
+
+### Client surface
+
+```csharp
+// Sorcha.UI.Core.Services.Persona.IPersonaService — session-cached client facade
+var persona = await personaService.GetAsync();
+await personaService.UpdateAsync(newAttributes);
+await personaService.SetAutofillEnabledAsync(false);
+```
+
+`SorchaFormRenderer` resolves fills via `PersonaAutofillResolver` and renders a disclosure summary banner (`PersonaFillSummary`) above the form with Review and Clear all actions. When the global autofill toggle is off, the same banner renders a one-click "Fill from profile" button instead. See `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/MyProfile.razor` for the user-facing page.
+
+---
+
 ## Project Structure
 
 ```

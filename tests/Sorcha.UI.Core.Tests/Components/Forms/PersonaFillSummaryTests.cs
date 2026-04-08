@@ -86,6 +86,35 @@ public sealed class PersonaFillSummaryTests : Bunit.BunitContext
     }
 
     [Fact]
+    public void OffState_RendersFillFromProfileButton_WhenPendingCountPositive()
+    {
+        var cut = Render<PersonaFillSummary>(parameters => parameters
+            .Add(p => p.IsAutofillEnabled, false)
+            .Add(p => p.Count, 0)
+            .Add(p => p.PendingCount, 4)
+            .Add(p => p.Fills, Array.Empty<PersonaFillResult>()));
+
+        cut.FindAll(".persona-fill-summary-offstate").Should().NotBeEmpty();
+        cut.Find(".persona-fill-summary-offstate").TextContent.Should().Contain("Your profile can fill 4 fields");
+        cut.FindAll("button").Any(b => b.TextContent.Contains("Fill from profile")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task OffState_FillFromProfile_RaisesCallback()
+    {
+        var fired = false;
+        var cut = Render<PersonaFillSummary>(parameters => parameters
+            .Add(p => p.IsAutofillEnabled, false)
+            .Add(p => p.Count, 0)
+            .Add(p => p.PendingCount, 2)
+            .Add(p => p.OnFillFromProfile, () => { fired = true; }));
+
+        var btn = cut.FindAll("button").First(b => b.TextContent.Contains("Fill from profile"));
+        await cut.InvokeAsync(() => btn.Click());
+        fired.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Review_OpensPanelAndEmitsClearField()
     {
         string? clearedPath = null;
