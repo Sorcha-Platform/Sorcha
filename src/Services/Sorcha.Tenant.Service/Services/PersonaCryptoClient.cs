@@ -114,17 +114,18 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
 
     /// <summary>
     /// Fetches the current service token from <see cref="IServiceAuthClient"/>
-    /// and attaches it as a Bearer header on the outgoing request. The
-    /// Tenant Service client credentials must be configured to include the
-    /// <c>persona:crypto</c> scope; the Wallet Service's
-    /// <c>RequirePersonaCrypto</c> policy enforces that scope is present.
+    /// and attaches it as a Bearer header on the outgoing request.
     /// </summary>
-    /// <summary>
-    /// Fails fast when no service token is available rather than sending an
-    /// unauthenticated request — the Wallet Service would reject it with a
-    /// 401/403 and the caller would see an opaque <see cref="PersonaCryptoException"/>
-    /// instead of a clear configuration-error message.
-    /// </summary>
+    /// <remarks>
+    /// <para>The Tenant Service client credentials must be configured to
+    /// include the <c>persona:crypto</c> scope; the Wallet Service's
+    /// <c>RequirePersonaCrypto</c> policy enforces that scope is present.</para>
+    /// <para>Fails fast when no service token is available rather than
+    /// sending an unauthenticated request — the Wallet Service would reject
+    /// it with a 401/403 and the caller would see an opaque
+    /// <see cref="PersonaCryptoException"/> instead of a clear
+    /// configuration-error message.</para>
+    /// </remarks>
     private async Task AttachServiceTokenAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var token = await _serviceAuth.GetTokenAsync(ct);

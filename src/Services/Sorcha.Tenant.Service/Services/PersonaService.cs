@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Mail;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -109,6 +110,31 @@ public sealed partial class PersonaService : IPersonaService
             _logger.LogWarning(
                 "Wallet {WalletAddress} not found when decrypting persona for user {PlatformUserId}.",
                 walletAddress, platformUserId);
+            return new PersonaReadModelV1();
+        }
+        catch (CryptographicException ex)
+        {
+            // Decrypt failed — most commonly because the wallet signing
+            // key was rotated after the persona was last encrypted, so the
+            // deterministic content key derivation no longer produces the
+            // original key. Surface as an empty persona + high-severity log
+            // rather than a 500 so the UI can re-prompt. A recovery path
+            // (re-encrypt on key rotation) is tracked as a follow-up.
+            _logger.LogError(
+                ex,
+                "Persona ciphertext could not be decrypted for user {PlatformUserId} — possible wallet key rotation",
+                platformUserId);
+            return new PersonaReadModelV1();
+        }
+        catch (PersonaCryptoException ex)
+        {
+            // Wallet Service round-trip failure (non-404, non-key-related).
+            // Same fallback as above — return empty and surface the error
+            // as a high-severity log so operators can diagnose.
+            _logger.LogError(
+                ex,
+                "Persona crypto call failed for user {PlatformUserId}",
+                platformUserId);
             return new PersonaReadModelV1();
         }
 

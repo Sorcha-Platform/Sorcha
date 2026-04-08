@@ -177,6 +177,17 @@ public sealed class PersonaCryptoService : IPersonaCryptoService
             // HKDF-SHA256 with no salt, info = "sorcha:persona-vault".
             // Deterministic per-wallet content key, distinct from the wallet
             // signing key by construction.
+            //
+            // RFC 5869 permits omitting the salt when the IKM is already
+            // high-entropy (a wallet private key qualifies). The trade-off
+            // is that the content key is purely deterministic: if the user
+            // rotates their wallet signing key, the derivation produces a
+            // new content key that cannot decrypt previously stored
+            // ciphertext. The WrappedKeyRef column is reserved to record
+            // the derivation identity so a future re-encrypt-on-rotation
+            // path can detect and repair this mismatch. For v1, the Tenant
+            // PersonaService catches the resulting CryptographicException
+            // and surfaces an empty persona with a high-severity log.
             var contentKey = HKDF.DeriveKey(
                 HashAlgorithmName.SHA256,
                 ikm: privateKey,
