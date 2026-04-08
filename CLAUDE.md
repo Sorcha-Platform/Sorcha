@@ -45,7 +45,7 @@ dotnet restore && dotnet build && dotnet test
 | Databases | PostgreSQL / MongoDB / Redis | Relational, document, cache |
 | Auth | JWT Bearer | Service-to-service and user authentication |
 | Crypto | NBitcoin + Sorcha.Cryptography | HD wallets (BIP32/39/44), ED25519, P-256, RSA-4096 |
-| Testing | xUnit + FluentAssertions + Moq | 1,200+ tests across 30 projects |
+| Testing | xUnit + FluentAssertions + Moq | 8,500+ tests across 47 test projects |
 
 ---
 
@@ -404,7 +404,7 @@ await personaService.SetAutofillEnabledAsync(false);
 
 ```
 src/
-├── Apps/
+├── Apps/                            # 8 application projects
 │   ├── Sorcha.AppHost/              # .NET Aspire orchestrator
 │   ├── Sorcha.Admin/                # Blazor WASM admin UI (host)
 │   │   └── Sorcha.Admin.Client/     # Admin UI client components
@@ -412,10 +412,12 @@ src/
 │   ├── Sorcha.Cli/                  # Administrative CLI tool
 │   ├── Sorcha.Demo/                 # Demo application
 │   ├── Sorcha.McpServer/            # MCP Server for AI assistants (Claude Desktop, etc.)
+│   ├── Sorcha.PeerRouter/           # Standalone P2P relay router (not in docker-compose/Aspire)
 │   └── Sorcha.UI/                   # Main UI application
 │       ├── Sorcha.UI.Core/          # Shared UI components
 │       ├── Sorcha.UI.Web/           # Web host
-│       └── Sorcha.UI.Web.Client/    # Web client (Blazor WASM)
+│       ├── Sorcha.UI.Web.Client/    # Web client (Blazor WASM)
+│       └── tests/                   # UI-specific test projects (Core.Tests, Integration.Tests)
 ├── Common/
 │   ├── Sorcha.Blueprint.Models/     # Domain models with JSON-LD
 │   ├── Sorcha.Cryptography/         # Multi-algorithm crypto (ED25519, P-256, RSA)
@@ -438,11 +440,15 @@ src/
 │   ├── Sorcha.Blueprint.Engine/     # Portable execution (WASM-compatible)
 │   ├── Sorcha.Blueprint.Fluent/     # Fluent API for blueprint construction
 │   ├── Sorcha.Blueprint.Schemas/    # Schema management with caching
+│   ├── Sorcha.Blueprint.Schemas.Client/ # Client-side schema resolution
 │   ├── Sorcha.Register.Core/        # Ledger business logic
-│   └── Sorcha.Register.Storage.*/   # Register-specific storage (3 projects)
+│   └── Sorcha.Register.Storage.*/   # Register-specific storage (4 projects)
 │       ├── Sorcha.Register.Storage/ # Storage abstractions
 │       ├── InMemory/                # In-memory implementation
-│       └── MongoDB/                 # MongoDB implementation
+│       ├── MongoDB/                 # MongoDB implementation
+│       └── Redis/                   # Redis implementation
+├── Providers/                       # Pluggable provider implementations
+│   └── Sorcha.Wallet.Providers.Azure/ # Azure Key Vault seed protection provider
 └── Services/                        # 7 microservices
     ├── Sorcha.ApiGateway/           # YARP reverse proxy
     ├── Sorcha.Blueprint.Service/    # Workflow management
@@ -452,14 +458,15 @@ src/
     ├── Sorcha.Validator.Service/    # Blockchain validation
     └── Sorcha.Wallet.Service/       # Crypto wallet management
 
-tests/                               # 30 test projects
+tests/                               # 47 test projects
 ├── *.Tests/                         # Unit tests per component
 ├── *.IntegrationTests/              # Integration tests
-├── *.PerformanceTests/              # Performance/load tests
+├── *.Benchmarks/                    # BenchmarkDotNet performance projects
+├── Sorcha.Performance.Tests/        # Load/throughput tests
 └── Sorcha.UI.E2E.Tests/             # End-to-end Playwright tests
 ```
 
-**Project Count:** 42 source projects, 31 test projects
+**Project Count:** 42 source projects, 47 test projects (~8,500 test methods)
 
 ---
 
@@ -761,7 +768,7 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
 
 ---
 
-**Version:** 2.6 | **Updated:** 2026-03-16 | Built with .NET 10 and .NET Aspire
+**Version:** 2.7 | **Updated:** 2026-04-08 | Built with .NET 10 and .NET Aspire
 
 
 ## Skill Usage Guide
