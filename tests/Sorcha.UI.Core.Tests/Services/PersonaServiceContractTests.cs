@@ -75,7 +75,7 @@ public class PersonaServiceContractTests
         type.GetProperty("VerifiedBy")!.PropertyType.Should().Be(typeof(string),
             "VerifiedBy is a DID string when the verified-credential follow-up " +
             "ships. v1 sets it to null but the shape must be stable.");
-        type.GetProperty("LastUpdated")!.PropertyType.Should().Be(typeof(DateTime));
+        type.GetProperty("LastUpdated")!.PropertyType.Should().Be(typeof(DateTimeOffset));
     }
 
     [Fact]

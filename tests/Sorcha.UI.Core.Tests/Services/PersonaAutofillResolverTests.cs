@@ -15,7 +15,7 @@ namespace Sorcha.UI.Core.Tests.Services;
 /// </summary>
 public sealed class PersonaAutofillResolverTests
 {
-    private static readonly DateTime Now = DateTime.UtcNow;
+    private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
     private static PersonaReadModelV1 SeededPersona() => new()
     {

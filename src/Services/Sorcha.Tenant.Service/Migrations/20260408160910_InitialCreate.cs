@@ -639,8 +639,8 @@ namespace Sorcha.Tenant.Service.Migrations
                     Nonce = table.Column<byte[]>(type: "bytea", maxLength: 24, nullable: false),
                     WrappedKeyRef = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
                     SchemaVersion = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {

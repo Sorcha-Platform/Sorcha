@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
+using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Services;
 
@@ -20,9 +23,12 @@ public static class PersonaEndpoints
     /// </summary>
     public static IEndpointRouteBuilder MapPersonaEndpoints(this IEndpointRouteBuilder app)
     {
+        // Centralised rate limiting per CLAUDE.md §Critical Patterns #8 —
+        // the standard API policy protects persona reads/writes from abuse.
         var group = app.MapGroup("/me/persona")
             .WithTags("Persona")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireRateLimiting(RateLimitPolicies.Api);
 
         group.MapGet("/", GetMyPersona)
             .WithName("GetMyPersona")
@@ -32,7 +38,10 @@ public static class PersonaEndpoints
                 "wrapped in PersonaAttribute<T> carrying provenance (always SelfAsserted in v1). " +
                 "An empty persona (new user or no row) returns 200 with all fields null / empty " +
                 "lists — never 404. The optional 'actingAs' query parameter is reserved for future " +
-                "delegation; only the literal value 'self' is accepted in v1.");
+                "delegation; only the literal value 'self' is accepted in v1.")
+            .Produces<PersonaReadModelV1>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapPut("/", ReplaceMyPersona)
             .WithName("ReplaceMyPersona")
@@ -41,13 +50,19 @@ public static class PersonaEndpoints
                 "Validates the supplied PersonaAttributesV1 against the invariants in data-model.md " +
                 "§2 (list cap of 5, exactly one default per multi-value list, RFC 5322 email, E.164 " +
                 "phone, ISO 3166-1 alpha-2 country). Encrypts via the Wallet Service under the " +
-                "sorcha:persona-vault purpose and upserts the row. Returns the canonical read model.");
+                "sorcha:persona-vault purpose and upserts the row. Returns the canonical read model.")
+            .Produces<PersonaReadModelV1>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/", DeleteMyPersona)
             .WithName("DeleteMyPersona")
             .WithSummary("Wipe the signed-in user's persona")
             .WithDescription("Hard-deletes the persona row. Idempotent — returns 204 whether or not " +
-                "a row existed.");
+                "a row existed.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return app;
     }

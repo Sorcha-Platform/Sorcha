@@ -36,17 +36,30 @@ public static class AuthenticationExtensions
             options.AddPolicy("CanUseWallet", policy =>
                 policy.RequireAuthenticatedUser());
 
-            // Persona crypto (internal S2S only) - requires a service token.
-            // Used by Tenant Service to encrypt/decrypt a user's persona blob.
-            // Routes under this policy must NOT be exposed through the API
-            // Gateway — a gateway-config guard test asserts this.
+            // Persona crypto (internal S2S only) — requires a service token
+            // that additionally carries the `persona:crypto` scope. Only the
+            // Tenant Service is issued this scope, so a stray Blueprint /
+            // Register / Peer service token cannot reach these endpoints
+            // even if it leaked. Routes under this policy must NOT be
+            // exposed through the API Gateway.
             options.AddPolicy("RequirePersonaCrypto", policy =>
                 policy.RequireAssertion(context =>
                 {
                     var isService = context.User.Claims.Any(c =>
                         c.Type == TokenClaimConstants.TokenType &&
                         c.Value == TokenClaimConstants.TokenTypeService);
-                    return isService;
+                    if (!isService) return false;
+
+                    // Accept either a space-delimited `scope` claim or a
+                    // repeated `scp` claim, depending on how the service
+                    // token was issued.
+                    var hasPersonaCryptoScope = context.User.Claims
+                        .Where(c => c.Type == TokenClaimConstants.Scope || c.Type == "scp")
+                        .SelectMany(c => (c.Value ?? string.Empty).Split(
+                            new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                        .Any(s => string.Equals(s, "persona:crypto", StringComparison.Ordinal));
+
+                    return hasPersonaCryptoScope;
                 }));
         });
 

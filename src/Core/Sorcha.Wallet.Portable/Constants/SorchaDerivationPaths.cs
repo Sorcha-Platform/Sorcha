@@ -96,7 +96,12 @@ public static class SorchaDerivationPaths
     public const string PersonaVault = "sorcha:persona-vault";
 
     /// <summary>
-    /// BIP44 path for persona vault encryption
+    /// BIP44 path reserved for persona vault encryption. <b>Not exercised
+    /// in v1.</b> The current <c>PersonaCryptoService</c> uses HKDF-SHA256
+    /// with <see cref="PersonaVault"/> as the <c>info</c> parameter rather
+    /// than hierarchical BIP44 derivation; this constant is registered in
+    /// <see cref="ResolvePath"/> so a future HD-derivation refactor can
+    /// switch over without having to allocate a new reserved index.
     /// </summary>
     public const string PersonaVaultPath = "m/44'/0'/0'/0/104";
 

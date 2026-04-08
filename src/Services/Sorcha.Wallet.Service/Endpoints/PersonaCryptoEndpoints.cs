@@ -117,12 +117,19 @@ public static class PersonaCryptoEndpoints
         }
         catch (CryptographicException ex)
         {
-            // Do NOT echo the ciphertext or key material — just a sanitised
-            // failure. The caller logs its own context.
+            // Caller-side invariant violations (e.g. wrappedKeyRef does not
+            // match the wallet address) are a 400, not a 500. Any other
+            // cryptographic failure — corrupt ciphertext, auth tag mismatch
+            // — is a server-side 500 with a sanitised body that does not
+            // echo the ciphertext or key material.
+            var isInvariantViolation = ex.Message.Contains("wrappedKeyRef", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("invariant", StringComparison.OrdinalIgnoreCase);
             return Results.Problem(
-                title: "Persona decryption failed",
+                title: isInvariantViolation ? "Persona decrypt request invalid" : "Persona decryption failed",
                 detail: ex.Message,
-                statusCode: StatusCodes.Status500InternalServerError);
+                statusCode: isInvariantViolation
+                    ? StatusCodes.Status400BadRequest
+                    : StatusCodes.Status500InternalServerError);
         }
     }
 }

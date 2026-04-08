@@ -150,14 +150,14 @@ public sealed class PersonaService : IPersonaService
     /// <inheritdoc />
     public void InvalidateCache()
     {
-        _cacheLock.Wait();
-        try
-        {
-            _cache.Clear();
-        }
-        finally
-        {
-            _cacheLock.Release();
-        }
+        // Blazor WASM runs on a single JS thread, so no lock is needed to
+        // clear the dictionary safely. Callers (logout / org-switch) invoke
+        // this synchronously from UI event handlers — we intentionally do
+        // NOT take the SemaphoreSlim here because a blocking Wait() can
+        // deadlock if the lock is held by an in-flight awaited call on the
+        // same thread. On server-side Blazor or any multi-threaded host the
+        // scoped DI container should be rebuilt on logout, making this
+        // method unnecessary.
+        _cache.Clear();
     }
 }

@@ -2,22 +2,34 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Auth;
 
 namespace Sorcha.Tenant.Service.Services;
 
 /// <summary>
 /// Default implementation of <see cref="IPersonaCryptoClient"/>. Uses a
 /// typed <see cref="HttpClient"/> configured to target the Wallet Service
-/// base URL with an S2S JWT attached by the existing auth pipeline.
+/// base URL. Attaches a service-to-service JWT (carrying the
+/// <c>persona:crypto</c> scope) to every request so the Wallet Service's
+/// <c>RequirePersonaCrypto</c> authorization policy accepts the call.
 /// </summary>
 public sealed class PersonaCryptoClient : IPersonaCryptoClient
 {
     private readonly HttpClient _httpClient;
+    private readonly IServiceAuthClient _serviceAuth;
+    private readonly ILogger<PersonaCryptoClient> _logger;
 
-    public PersonaCryptoClient(HttpClient httpClient)
+    public PersonaCryptoClient(
+        HttpClient httpClient,
+        IServiceAuthClient serviceAuth,
+        ILogger<PersonaCryptoClient> logger)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _serviceAuth = serviceAuth ?? throw new ArgumentNullException(nameof(serviceAuth));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
@@ -26,10 +38,15 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
         byte[] plaintext,
         CancellationToken ct = default)
     {
-        var response = await _httpClient.PostAsJsonAsync(
-            $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/persona/encrypt",
-            new { plaintext },
-            ct);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/persona/encrypt")
+        {
+            Content = JsonContent.Create(new PersonaEncryptRequest(plaintext))
+        };
+        await AttachServiceTokenAsync(request, ct);
+
+        using var response = await _httpClient.SendAsync(request, ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             throw new PersonaWalletNotFoundException(walletAddress);
@@ -57,10 +74,15 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
         string wrappedKeyRef,
         CancellationToken ct = default)
     {
-        var response = await _httpClient.PostAsJsonAsync(
-            $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/persona/decrypt",
-            new { ciphertext, nonce, wrappedKeyRef },
-            ct);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/persona/decrypt")
+        {
+            Content = JsonContent.Create(new PersonaDecryptRequest(ciphertext, nonce, wrappedKeyRef))
+        };
+        await AttachServiceTokenAsync(request, ct);
+
+        using var response = await _httpClient.SendAsync(request, ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             throw new PersonaWalletNotFoundException(walletAddress);
@@ -77,7 +99,30 @@ public sealed class PersonaCryptoClient : IPersonaCryptoClient
         return body.Plaintext ?? Array.Empty<byte>();
     }
 
-    private sealed record PersonaCryptoWireResponse(byte[]? Ciphertext, byte[]? Nonce, string? WrappedKeyRef);
+    /// <summary>
+    /// Fetches the current service token from <see cref="IServiceAuthClient"/>
+    /// and attaches it as a Bearer header on the outgoing request. The
+    /// Tenant Service client credentials must be configured to include the
+    /// <c>persona:crypto</c> scope; the Wallet Service's
+    /// <c>RequirePersonaCrypto</c> policy enforces that scope is present.
+    /// </summary>
+    private async Task AttachServiceTokenAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        var token = await _serviceAuth.GetTokenAsync(ct);
+        if (string.IsNullOrEmpty(token))
+        {
+            _logger.LogWarning("No service token available when calling Wallet persona crypto endpoints");
+            return;
+        }
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
 
+    // Typed request DTOs — mirror the Wallet Service's request records
+    // (PersonaEncryptRequest / PersonaDecryptRequest). Using records rather
+    // than anonymous objects keeps the contract explicit on both sides.
+    private sealed record PersonaEncryptRequest(byte[] Plaintext);
+    private sealed record PersonaDecryptRequest(byte[] Ciphertext, byte[] Nonce, string WrappedKeyRef);
+
+    private sealed record PersonaCryptoWireResponse(byte[]? Ciphertext, byte[]? Nonce, string? WrappedKeyRef);
     private sealed record PersonaDecryptWireResponse(byte[]? Plaintext);
 }

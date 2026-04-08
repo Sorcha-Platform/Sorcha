@@ -981,7 +981,7 @@ namespace Sorcha.Tenant.Service.Migrations
                         .IsRequired()
                         .HasColumnType("bytea");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<byte[]>("Nonce")
@@ -992,7 +992,7 @@ namespace Sorcha.Tenant.Service.Migrations
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("WrappedKeyRef")

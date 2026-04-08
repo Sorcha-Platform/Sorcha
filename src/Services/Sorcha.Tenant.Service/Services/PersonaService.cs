@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Mail;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Sorcha.Tenant.Models.Persona;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Models;
+using Sorcha.Tenant.Service.Services.Interfaces;
 
 namespace Sorcha.Tenant.Service.Services;
 
@@ -37,15 +39,18 @@ public sealed partial class PersonaService : IPersonaService
 
     private readonly TenantDbContext _db;
     private readonly IPersonaCryptoClient _crypto;
+    private readonly IEventService _events;
     private readonly ILogger<PersonaService> _logger;
 
     public PersonaService(
         TenantDbContext db,
         IPersonaCryptoClient crypto,
+        IEventService events,
         ILogger<PersonaService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
+        _events = events ?? throw new ArgumentNullException(nameof(events));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -136,35 +141,63 @@ public sealed partial class PersonaService : IPersonaService
             throw new PersonaWalletNotProvisionedException();
         }
 
-        // 4. Upsert the row.
-        var now = DateTime.UtcNow;
-        var row = await _db.PlatformUserPersonas
-            .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct);
+        // 4. Upsert the row — with a race-safe retry on the insert path.
+        // Two concurrent PUTs can both observe `row is null`; the loser of
+        // the insert race catches the unique-key DbUpdateException and
+        // retries as an update.
+        var now = DateTimeOffset.UtcNow;
+        PlatformUserPersona row;
+        var attempt = 0;
+        while (true)
+        {
+            row = await _db.PlatformUserPersonas
+                .FirstOrDefaultAsync(p => p.PlatformUserId == platformUserId, ct)
+                ?? new PlatformUserPersona
+                {
+                    PlatformUserId = platformUserId,
+                    CreatedAt = now
+                };
 
-        if (row is null)
-        {
-            row = new PlatformUserPersona
-            {
-                PlatformUserId = platformUserId,
-                CiphertextBlob = encryptResult.Ciphertext,
-                Nonce = encryptResult.Nonce,
-                WrappedKeyRef = encryptResult.WrappedKeyRef,
-                SchemaVersion = CurrentSchemaVersion,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
-            _db.PlatformUserPersonas.Add(row);
-        }
-        else
-        {
+            var isInsert = _db.Entry(row).State == EntityState.Detached;
             row.CiphertextBlob = encryptResult.Ciphertext;
             row.Nonce = encryptResult.Nonce;
             row.WrappedKeyRef = encryptResult.WrappedKeyRef;
             row.SchemaVersion = CurrentSchemaVersion;
             row.UpdatedAt = now;
+
+            if (isInsert)
+            {
+                _db.PlatformUserPersonas.Add(row);
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateException) when (isInsert && attempt++ == 0)
+            {
+                // Another request won the insert race. Detach the new row
+                // we just added so the next iteration can load the existing
+                // row and perform an update instead.
+                _db.Entry(row).State = EntityState.Detached;
+                continue;
+            }
         }
 
-        await _db.SaveChangesAsync(ct);
+        await _events.CreateEventAsync(new ActivityEvent
+        {
+            UserId = platformUserId,
+            EventType = "persona.replaced",
+            Severity = EventSeverity.Info,
+            Title = "Profile saved",
+            Message = "Your personal profile was updated.",
+            SourceService = "TenantService",
+            EntityType = "PlatformUserPersona",
+            EntityId = platformUserId.ToString(),
+            CreatedAt = now.UtcDateTime,
+            ExpiresAt = now.UtcDateTime.AddYears(1)
+        }, ct);
 
         _logger.LogInformation("Persona saved for user {PlatformUserId}", platformUserId);
 
@@ -184,6 +217,21 @@ public sealed partial class PersonaService : IPersonaService
 
         _db.PlatformUserPersonas.Remove(row);
         await _db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        await _events.CreateEventAsync(new ActivityEvent
+        {
+            UserId = platformUserId,
+            EventType = "persona.deleted",
+            Severity = EventSeverity.Warning,
+            Title = "Profile deleted",
+            Message = "Your personal profile was deleted.",
+            SourceService = "TenantService",
+            EntityType = "PlatformUserPersona",
+            EntityId = platformUserId.ToString(),
+            CreatedAt = now.UtcDateTime,
+            ExpiresAt = now.UtcDateTime.AddYears(1)
+        }, ct);
 
         _logger.LogInformation("Persona deleted for user {PlatformUserId}", platformUserId);
     }
@@ -223,7 +271,7 @@ public sealed partial class PersonaService : IPersonaService
         for (var i = 0; i < input.Emails.Count; i++)
         {
             var email = input.Emails[i];
-            if (string.IsNullOrWhiteSpace(email.Value) || !email.Value.Contains('@') || email.Value.Length > 320)
+            if (!IsValidEmail(email.Value))
                 errors[$"emails[{i}].value"] = ["invalid_email"];
         }
         for (var i = 0; i < input.Phones.Count; i++)
@@ -271,6 +319,24 @@ public sealed partial class PersonaService : IPersonaService
         };
     }
 
+    /// <summary>
+    /// Validates an email address against RFC 5322 basic shape using
+    /// <see cref="MailAddress.TryCreate(string?, out MailAddress?)"/>. Also
+    /// requires a non-empty local part, a dot-bearing domain, and ≤ 320
+    /// characters total so obviously-malformed values like <c>@example.com</c>
+    /// or <c>a@</c> are rejected.
+    /// </summary>
+    private static bool IsValidEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        if (value.Length > 320) return false;
+        if (!MailAddress.TryCreate(value, out var parsed) || parsed is null) return false;
+        if (string.IsNullOrEmpty(parsed.User)) return false;
+        if (string.IsNullOrEmpty(parsed.Host)) return false;
+        if (!parsed.Host.Contains('.')) return false;
+        return true;
+    }
+
     private static void EnforceCap(Dictionary<string, string[]> errors, string field, int count)
     {
         if (count > ListCap)
@@ -294,7 +360,7 @@ public sealed partial class PersonaService : IPersonaService
     /// Projects a validated <see cref="PersonaAttributesV1"/> into the wire
     /// read shape with provenance wrappers.
     /// </summary>
-    private static PersonaReadModelV1 Project(PersonaAttributesV1 attrs, DateTime lastUpdated)
+    private static PersonaReadModelV1 Project(PersonaAttributesV1 attrs, DateTimeOffset lastUpdated)
     {
         PersonaAttribute<T>? Wrap<T>(T? value) where T : class =>
             value is null ? null : new PersonaAttribute<T>(value, PersonaAttributeSource.SelfAsserted, null, lastUpdated);

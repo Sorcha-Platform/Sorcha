@@ -13,9 +13,11 @@ namespace Sorcha.Tenant.Models.Persona;
 /// <param name="Source">Where the value came from — self-asserted in v1.</param>
 /// <param name="VerifiedBy">The DID of the issuer if the value is backed by a
 /// verifiable credential; always null in v1.</param>
-/// <param name="LastUpdated">When the attribute was last written.</param>
+/// <param name="LastUpdated">When the attribute was last written. Uses
+/// <see cref="DateTimeOffset"/> so the wire contract carries zone information
+/// and survives a PostgreSQL <c>timestamptz</c> round-trip without ambiguity.</param>
 public sealed record PersonaAttribute<T>(
     T Value,
     PersonaAttributeSource Source,
     string? VerifiedBy,
-    DateTime LastUpdated);
+    DateTimeOffset LastUpdated);

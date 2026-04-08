@@ -55,14 +55,17 @@ public class PlatformUserPersona
     public int SchemaVersion { get; set; } = 1;
 
     /// <summary>
-    /// When the persona row was first created.
+    /// When the persona row was first created. Stored as PostgreSQL
+    /// <c>timestamptz</c> via <see cref="DateTimeOffset"/> so the kind is
+    /// unambiguous across reads and writes.
     /// </summary>
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
-    /// When the persona row was last updated.
+    /// When the persona row was last updated. Stored as PostgreSQL
+    /// <c>timestamptz</c>.
     /// </summary>
-    public DateTime UpdatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 
     /// <summary>
     /// Navigation property to the owning <see cref="PlatformUser"/>.
