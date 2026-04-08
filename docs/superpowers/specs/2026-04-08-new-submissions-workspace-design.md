@@ -285,22 +285,38 @@ Fields listed in `properties` but not referenced in any section or page render a
 A lightweight scoped service for passing transient objects between page navigations without URL serialisation or re-fetching.
 
 ```csharp
-public class NavigationStateService
+public sealed class NavigationStateService
 {
-    private readonly Dictionary<string, object> _state = new();
+    private readonly Dictionary<string, object> _state = new(StringComparer.Ordinal);
 
-    public void Set<T>(string key, T value) where T : notnull
-        => _state[key] = value;
+    // Stores a value under the key. Passing null as `value` removes the entry.
+    public void Set<T>(string key, T value) where T : class
+    {
+        if (string.IsNullOrEmpty(key))
+            throw new ArgumentException("Key must not be null or empty.", nameof(key));
+        if (value is null) { _state.Remove(key); return; }
+        _state[key] = value;
+    }
 
+    // Retrieves the value and removes the entry on read (one-shot).
     public T? Get<T>(string key) where T : class
-        => _state.Remove(key, out var value) ? value as T : null;
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (!_state.TryGetValue(key, out var value)) return null;
+        _state.Remove(key);
+        return value as T;
+    }
+
+    // Test cleanup helper.
+    public void Clear() => _state.Clear();
 }
 ```
 
 - Registered as scoped (lives for the circuit/tab lifetime in Blazor WASM)
-- `Get` removes the entry on read (one-shot, prevents stale data)
-- Used by listing page to store published blueprint data before navigation
-- Used by workspace page to retrieve it on init
+- `Set<T>` constraint is `where T : class` so a null value can clear the entry
+- `Get<T>` removes the entry on read (one-shot, prevents stale data)
+- Used by the listing page to store published blueprint data before navigation
+- Used by the workspace page to retrieve it on init
 
 ---
 
