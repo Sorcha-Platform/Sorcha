@@ -115,10 +115,17 @@ No new backend API endpoints are required. All existing endpoints are used as-is
 
 **Interface**:
 ```csharp
-public class NavigationStateService
+public sealed class NavigationStateService
 {
-    public void Set<T>(string key, T value) where T : notnull;
-    public T? Get<T>(string key) where T : class;  // Removes on read
+    // Stores a value under the key. Passing null as `value` removes the entry.
+    public void Set<T>(string key, T value) where T : class;
+
+    // Retrieves the value and removes the entry on read (one-shot semantics).
+    // Returns null if the key is missing or the stored value is not assignable to T.
+    public T? Get<T>(string key) where T : class;
+
+    // Test cleanup helper — removes all stored entries.
+    public void Clear();
 }
 ```
 

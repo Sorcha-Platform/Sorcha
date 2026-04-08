@@ -403,4 +403,101 @@ public class SchemaLayoutParserTests
 
         result.Should().BeFalse();
     }
+
+    // --- Layout value normalisation (PR #210 review item 3) ---
+
+    [Theory]
+    [InlineData("single-column")]
+    [InlineData("two-column")]
+    [InlineData("Single-Column")]   // case-insensitive
+    [InlineData("TWO-COLUMN")]
+    public void Parse_PageWithValidLayout_KeepsValue(string layoutValue)
+    {
+        var schema = Parse($$"""
+        {
+            "type": "object",
+            "x-pages": [
+                {
+                    "title": "Page",
+                    "layout": "{{layoutValue}}",
+                    "x-sections": [
+                        { "title": "Section", "fields": ["a"] }
+                    ]
+                }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Pages.Should().NotBeNull().And.HaveCount(1);
+        result.Pages![0].Layout.Should().Be(layoutValue.ToLowerInvariant());
+    }
+
+    [Theory]
+    [InlineData("two_column")]      // typo: underscore not hyphen
+    [InlineData("three-column")]    // unsupported
+    [InlineData("")]                // empty
+    public void Parse_PageWithInvalidLayout_FallsBackToSingleColumn(string layoutValue)
+    {
+        var schema = Parse($$"""
+        {
+            "type": "object",
+            "x-pages": [
+                {
+                    "title": "Page",
+                    "layout": "{{layoutValue}}",
+                    "x-sections": [
+                        { "title": "Section", "fields": ["a"] }
+                    ]
+                }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Pages![0].Layout.Should().Be("single-column");
+    }
+
+    [Theory]
+    [InlineData("vertical")]
+    [InlineData("horizontal")]
+    [InlineData("grid")]
+    [InlineData("HORIZONTAL")]
+    public void Parse_SectionWithValidLayout_KeepsValue(string layoutValue)
+    {
+        var schema = Parse($$"""
+        {
+            "type": "object",
+            "x-sections": [
+                { "title": "S", "layout": "{{layoutValue}}", "fields": ["a"] }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Sections![0].Layout.Should().Be(layoutValue.ToLowerInvariant());
+    }
+
+    [Theory]
+    [InlineData("colmun")]    // typo
+    [InlineData("flex")]      // unsupported
+    [InlineData("inline")]    // unsupported
+    public void Parse_SectionWithInvalidLayout_FallsBackToVertical(string layoutValue)
+    {
+        var schema = Parse($$"""
+        {
+            "type": "object",
+            "x-sections": [
+                { "title": "S", "layout": "{{layoutValue}}", "fields": ["a"] }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Sections![0].Layout.Should().Be("vertical");
+    }
 }

@@ -22,6 +22,33 @@ public static class SchemaLayoutParser
         "full", "half", "third"
     };
 
+    private static readonly HashSet<string> ValidPageLayouts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "single-column", "two-column"
+    };
+
+    private static readonly HashSet<string> ValidSectionLayouts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "vertical", "horizontal", "grid"
+    };
+
+    private const string DefaultPageLayout = "single-column";
+    private const string DefaultSectionLayout = "vertical";
+
+    /// <summary>
+    /// Normalises a layout value against an allowed set. Returns the lowercased
+    /// value when it's in the set, or <paramref name="defaultValue"/> when the
+    /// value is null, empty, or not recognised. This catches typos in blueprint
+    /// JSON (e.g. <c>"two_column"</c> instead of <c>"two-column"</c>) so the
+    /// renderer always sees a known value rather than silently falling back to
+    /// the default mid-render.
+    /// </summary>
+    private static string NormaliseLayout(string? value, HashSet<string> allowed, string defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return defaultValue;
+        return allowed.Contains(value) ? value.ToLowerInvariant() : defaultValue;
+    }
+
     private static readonly JsonSerializerOptions DeserializeOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -129,10 +156,11 @@ public static class SchemaLayoutParser
                 ? descEl.GetString()
                 : null;
 
-            var layout = pageElement.TryGetProperty("layout", out var layoutEl) &&
-                         layoutEl.ValueKind == JsonValueKind.String
+            var rawLayout = pageElement.TryGetProperty("layout", out var layoutEl) &&
+                            layoutEl.ValueKind == JsonValueKind.String
                 ? layoutEl.GetString()
-                : "single-column";
+                : null;
+            var layout = NormaliseLayout(rawLayout, ValidPageLayouts, DefaultPageLayout);
 
             var pageSections = TryParseSections(pageElement);
 
@@ -202,10 +230,11 @@ public static class SchemaLayoutParser
                 ? helpEl.GetString()
                 : null;
 
-            var layout = sectionElement.TryGetProperty("layout", out var layoutEl) &&
-                         layoutEl.ValueKind == JsonValueKind.String
+            var rawLayout = sectionElement.TryGetProperty("layout", out var layoutEl) &&
+                            layoutEl.ValueKind == JsonValueKind.String
                 ? layoutEl.GetString()
-                : "vertical";
+                : null;
+            var layout = NormaliseLayout(rawLayout, ValidSectionLayouts, DefaultSectionLayout);
 
             sections.Add(new BlueprintSectionDefinition
             {
