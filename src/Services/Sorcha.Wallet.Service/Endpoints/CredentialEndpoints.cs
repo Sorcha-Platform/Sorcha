@@ -304,15 +304,35 @@ public static class CredentialEndpoints
         if (wallet.Status != Sorcha.Wallet.Core.Domain.WalletStatus.Active)
             return Results.BadRequest(new { error = "Wallet is not in a valid state for this operation" });
 
-        // Feature 093 US2: validate StatusListUrl as an absolute URI BEFORE signing.
-        // A malformed URL baked into a signed credential is unfixable — the signature
-        // covers it and the credential is permanently broken.
+        // Feature 093 US2: validate the status list embedding inputs BEFORE signing.
+        // Anything baked into a signed credential is unfixable — the signature covers
+        // it and the credential is permanently broken if a value is malformed.
         if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
             && !Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out _))
         {
             return Results.BadRequest(new
             {
                 error = "statusListUrl must be an absolute URI when supplied"
+            });
+        }
+
+        if (request.StatusListIndex.HasValue && request.StatusListIndex.Value < 0)
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListIndex must be non-negative when supplied"
+            });
+        }
+
+        // Round 3: only the W3C BitstringStatusListEntry status purposes are
+        // accepted. Other values would be embedded in the signed payload as a
+        // free-form string and silently confuse status consumers.
+        if (!string.IsNullOrWhiteSpace(request.StatusListPurpose)
+            && request.StatusListPurpose is not ("revocation" or "suspension"))
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListPurpose must be 'revocation' or 'suspension' when supplied"
             });
         }
 

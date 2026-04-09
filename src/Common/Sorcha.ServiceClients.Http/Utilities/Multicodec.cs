@@ -54,6 +54,7 @@ public static class Multicodec
     /// <returns>The multicodec-prefixed bytes, or <c>null</c> if the algorithm has no assigned multicodec identifier.</returns>
     public static byte[]? EncodePublicKey(string algorithmName, byte[] rawKeyBytes)
     {
+        ArgumentNullException.ThrowIfNull(algorithmName);
         ArgumentNullException.ThrowIfNull(rawKeyBytes);
 
         var codec = ResolveMulticodec(algorithmName);

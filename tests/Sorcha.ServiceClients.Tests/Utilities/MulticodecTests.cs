@@ -152,6 +152,14 @@ public class MulticodecTests
         act.Should().Throw<ArgumentNullException>();
     }
 
+    [Fact]
+    public void EncodePublicKey_NullAlgorithmName_Throws()
+    {
+        var act = () => Multicodec.EncodePublicKey(null!, new byte[32]);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
     // --- DecodePublicKeyBytes helper tests ---
 
     [Fact]

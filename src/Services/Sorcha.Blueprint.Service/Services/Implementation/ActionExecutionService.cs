@@ -1196,11 +1196,12 @@ public class ActionExecutionService : IActionExecutionService
         // generates the final credential ID at signing time. The bit position is unique per
         // allocation regardless of the log identifier.
         //
-        // KNOWN FOLLOW-UP: if a future IStatusListManager implementation starts keying
-        // lookups by the credential ID passed here (rather than by listId + index), the
-        // "pending-{GUID}" placeholder will cause revocation lookups to fail. The current
-        // in-memory StatusListManager uses (listId, index) as its only key so this is
-        // non-issue today, but tracked for when a persistent backing store lands.
+        // KNOWN FOLLOW-UP: tracked as Sorcha-Platform/Sorcha#220. If a future
+        // IStatusListManager implementation starts keying lookups by the credential ID
+        // passed here (rather than by listId + index), the "pending-{GUID}" placeholder
+        // will cause revocation lookups to fail. The current in-memory StatusListManager
+        // uses (listId, index) as its only key so this is a non-issue today, but should
+        // be reconciled when spec 095 lands a persistent backing store.
         //
         // The CredentialStatus:EnableEmbedding flag (default true) lets pure-internal dev
         // environments disable the allocation step — useful when the Blueprint Service is
@@ -1224,11 +1225,22 @@ public class ActionExecutionService : IActionExecutionService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "Failed to pre-allocate status list index for Blueprint action {ActionId} — credential will be issued without embedded credentialStatus claim",
+                // Round 3 fix: when EnableEmbedding is true (default), allocation
+                // failure now fails the action rather than silently issuing a credential
+                // without the embedded claim. The previous non-fatal fallback produced
+                // HAIP-non-compliant credentials that *appeared* compliant — exactly
+                // the silent-degradation pattern this spec is meant to close. Operators
+                // who do not want fail-closed behaviour can set
+                // CredentialStatus:EnableEmbedding=false in Blueprint Service config to
+                // skip allocation entirely (dev-environment escape hatch).
+                _logger.LogError(ex,
+                    "Failed to pre-allocate status list index for Blueprint action {ActionId} — failing the action because CredentialStatus:EnableEmbedding=true",
                     actionDef.Id);
-                // Non-fatal: fall through to issuance without embedding. The verifier
-                // will treat this as a pre-fix credential via the spec 093 FR-010 fallback.
+                throw new InvalidOperationException(
+                    "Status list allocation failed during credential issuance. " +
+                    "Set CredentialStatus:EnableEmbedding=false in Blueprint Service config " +
+                    "to issue credentials without embedded status claims (dev environments only).",
+                    ex);
             }
         }
 

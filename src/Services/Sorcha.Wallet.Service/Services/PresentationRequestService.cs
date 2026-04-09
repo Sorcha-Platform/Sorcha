@@ -259,12 +259,34 @@ public class PresentationRequestService : IPresentationRequestService
         }
 
         // 2. Cryptographic signature verification of the presented vpToken (Feature 093 FR-001 to FR-005).
-        //    Claim values from this point on MUST come from the verified token, not from the
-        //    server-side credential row. _sdJwtService and _scopeFactory are required
-        //    dependencies (see constructor); the only branch that skips verification is when
-        //    the caller submitted no token at all — treated as a pre-fix legacy call.
-        Dictionary<string, object>? verifiedTokenClaims = null;
-        if (!string.IsNullOrEmpty(request.VpToken))
+        //    Round 3 fix: a missing or empty vpToken now fails closed. Previously the
+        //    empty-token path silently fell through to claim/type/status checks against
+        //    the server-side credential row — the same bypass class spec 093 was meant
+        //    to close. Post-093 every submission MUST carry a vpToken.
+        if (string.IsNullOrEmpty(request.VpToken))
+        {
+            errors.Add(new VerificationError
+            {
+                RequirementType = request.CredentialType,
+                FailureReason = "MissingVpToken",
+                Message = "Submission must include a vpToken — empty or missing tokens are rejected post-093"
+            });
+
+            _logger.LogWarning(
+                "Presentation submission for credential {CredentialId} arrived with no vpToken — rejecting",
+                credentialId);
+
+            return new VerificationResult
+            {
+                IsValid = false,
+                Errors = errors,
+                CredentialType = credential.Type,
+                IssuerDid = credential.IssuerDid,
+                StatusListCheck = "NotChecked"
+            };
+        }
+
+        Dictionary<string, object>? verifiedTokenClaims;
         {
             var verifyOutcome = await VerifyVpTokenSignatureAsync(
                 request.VpToken, credential, ct);
@@ -535,15 +557,35 @@ public class PresentationRequestService : IPresentationRequestService
 
         if (!verification.IsValid)
         {
-            var errorMessage = verification.Errors.Count > 0
-                ? string.Join("; ", verification.Errors)
-                : "vpToken failed SD-JWT verification";
+            // Map verifier errors to a coarse failure reason. The substring is matched
+            // against an exact phrase that the current SdJwtService implementation emits
+            // (see Sorcha.Cryptography.SdJwt.SdJwtService.VerifyTokenAsync, the
+            // "Failed to parse disclosure" branch). This is brittle: a future SdJwt
+            // library wording change will silently re-bucket disclosure errors as
+            // SignatureInvalid. Tracked as a follow-up — proper fix is to add a typed
+            // ErrorKind enum or sentinel to SdJwtVerificationResult so this mapping
+            // does not depend on internal phrasing.
+            const string DisclosureErrorPhrase = "Failed to parse disclosure";
 
-            var failureReason = errorMessage.Contains("disclosure", StringComparison.OrdinalIgnoreCase)
+            var hasDisclosureError = verification.Errors
+                .Any(e => e?.StartsWith(DisclosureErrorPhrase, StringComparison.Ordinal) == true);
+
+            var failureReason = hasDisclosureError
                 ? "DisclosureIntegrityFailure"
                 : "SignatureInvalid";
 
-            return VpTokenVerifyOutcome.Fail(failureReason, errorMessage);
+            // Don't return verifier internal error strings to the caller — log them
+            // for diagnostics and return a stable, high-level message.
+            _logger.LogWarning(
+                "SdJwt verification failed for credential {CredentialId}: {ErrorDetails}",
+                credential.Id,
+                string.Join("; ", verification.Errors));
+
+            return VpTokenVerifyOutcome.Fail(
+                failureReason,
+                hasDisclosureError
+                    ? "vpToken contains a malformed disclosure"
+                    : "vpToken failed cryptographic verification");
         }
 
         return VpTokenVerifyOutcome.Ok(verification.Claims, verification.Issuer);
