@@ -102,46 +102,43 @@ public sealed record PresentationClaimRequest(
     bool Optional);
 ```
 
-### Building the presentation (holder)
+### Server-side orchestration (the real shape)
+
+`PresentationRequestService` in `Sorcha.Wallet.Service` is the canonical orchestrator. Its real surface is:
+
+| Method | Purpose |
+|--------|---------|
+| `CreateRequestAsync(...)` | Verifier creates a presentation request (nonce, audience, required credentials) |
+| `GetRequestAsync(requestId, ct)` | Fetch a pending request |
+| `FindMatchingCredentialsAsync(requestId, walletAddress, ct)` | Match wallet's stored credentials against request requirements |
+| `SubmitPresentationAsync(requestId, ..., ct)` | Holder submits a presentation; service verifies nonce/audience and records the result |
+| `DenyRequestAsync(requestId, ct)` | Holder declines |
+
+There is **no** `BuildPresentationAsync` helper. The holder assembles the compact SD-JWT directly by calling `ISdJwtService.CreatePresentationAsync`:
 
 ```csharp
-public async Task<string> BuildPresentationAsync(
-    PresentationRequest request,
-    IReadOnlyList<StoredCredential> selected,
+public async Task<string> BuildCompactPresentationAsync(
+    string rawToken,              // The stored SD-JWT credential token
+    IEnumerable<string> claimsToDisclose,
+    string audience,
+    string nonce,
+    byte[] holderKey,
+    ISdJwtService sdJwt,
     CancellationToken ct)
 {
-    // Current implementation: Sorcha.Wallet.Service.Services.PresentationRequestService
-    //
-    // 1. For each selected credential, determine which claims to reveal.
-    // 2. Call SdJwtService.PresentAsync with those claim names + the verifier's nonce.
-    // 3. Return the compact string directly — no VP wrapping envelope.
+    var presentation = await sdJwt.CreatePresentationAsync(
+        rawToken,
+        claimsToDisclose,
+        holderKey: holderKey,
+        audience: audience,
+        nonce: nonce,
+        cancellationToken: ct);
 
-    if (selected.Count == 1)
-    {
-        var credential = selected[0];
-        var reveal = request.RequestedClaims
-            .First(c => c.CredentialType == credential.CredentialType)
-            .ClaimPaths
-            .ToHashSet();
-
-        var presentation = await _sdJwt.PresentAsync(
-            credential.Token,
-            claimsToReveal: reveal,
-            audience: request.VerifierDid,
-            nonce: request.Nonce,
-            holderSigningKey: _holder.SigningKey,
-            ct);
-
-        return presentation.Compact;
-    }
-
-    // Multi-credential case uses a JSON envelope holding multiple compact forms.
-    // See PresentationRequestService for the current shape.
-    throw new NotImplementedException("Multi-credential path lives in PresentationRequestService.");
+    return presentation.RawPresentation;  // Compact form: <jwt>~<d>~<d>~<kb-jwt>
 }
 ```
 
-The nonce from the request is embedded in the holder's key-binding JWT — the verifier rejects any presentation whose KB-JWT does not bind the same nonce. Feature 093 hardened this (`PresentationRequestVerificationTests.cs`).
+The nonce is embedded in the holder's key-binding JWT — the verifier rejects any presentation whose KB-JWT does not bind the same nonce. Feature 093 hardened this (`PresentationRequestVerificationTests.cs`).
 
 ## 3. Verify a presentation
 
@@ -277,12 +274,12 @@ public async Task IssueThenVerify_RoundTrip_Succeeds()
         .ReadFromJsonAsync<IssuedCredentialInfo>(JsonDefaults.Api);
 
     // Present — build the compact form via SdJwtService directly in the test
-    var presentation = await _sdJwt.PresentAsync(
-        SdJwtToken.FromCompact(issued!.CompactToken),
-        claimsToReveal: new HashSet<string> { "name", "graduationDate" },
+    var presentation = await _sdJwt.CreatePresentationAsync(
+        rawToken: issued!.CompactToken,
+        claimsToDisclose: new[] { "name", "graduationDate" },
+        holderKey: TestData.HolderKey,
         audience: "did:sorcha:org:verifier-wallet",
-        nonce: TestData.Nonce,
-        holderSigningKey: TestData.HolderKey);
+        nonce: TestData.Nonce);
 
     // Verify
     var verifyResponse = await client.PostAsJsonAsync(
@@ -295,7 +292,7 @@ public async Task IssueThenVerify_RoundTrip_Succeeds()
                 new CredentialPresentation
                 {
                     CredentialId = issued.CredentialId,
-                    RawPresentation = presentation.Compact,
+                    RawPresentation = presentation.RawPresentation,
                     DisclosedClaims = presentation.DisclosedClaims,
                 }
             }

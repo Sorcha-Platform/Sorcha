@@ -47,12 +47,17 @@ public interface IQrScanner
     ValueTask<string?> ScanOnceAsync(CancellationToken ct = default);
 }
 
+// UI-side wrapper. Holds the compact SD-JWT string plus just enough metadata for list rendering.
+// Mirrors the server-side CredentialEntity shape but stays render-mode agnostic.
 public sealed record StoredCredential
 {
-    public required string Id { get; init; }
-    public required VerifiableCredential Credential { get; init; }
-    public required DateTimeOffset StoredAt { get; init; }
-    public required IReadOnlyList<string> Tags { get; init; }
+    public required string Id { get; init; }             // DID URI
+    public required string CredentialType { get; init; } // e.g. "GraduationCredential"
+    public required string IssuerDid { get; init; }
+    public required string CompactToken { get; init; }   // The SD-JWT compact form: <jwt>~<d>~...
+    public required DateTimeOffset IssuedAt { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+    public required IReadOnlyDictionary<string, object> DisplayClaims { get; init; }
 }
 ```
 
@@ -176,11 +181,11 @@ public sealed class NoOpBiometricGate : IBiometricGate
 
     private Task Select(StoredCredential credential) => OnSelected.InvokeAsync(credential);
 
-    private static string DisplayName(VerifiableCredential vc)
-        => vc.Type.FirstOrDefault(t => t != "VerifiableCredential") ?? "Credential";
+    private static string DisplayName(StoredCredential item)
+        => item.CredentialType;
 
-    private static bool IsExpired(VerifiableCredential vc)
-        => vc.ValidUntil is { } until && until < DateTimeOffset.UtcNow;
+    private static bool IsExpired(StoredCredential item)
+        => item.ExpiresAt is { } until && until < DateTimeOffset.UtcNow;
 }
 ```
 
@@ -195,9 +200,9 @@ Shows the full `credentialSubject` tree, verification status badge, and per-clai
         <VerificationBadge Result="@_verificationResult" />
     </MudCardHeader>
     <MudCardContent>
-        <ClaimTree Claims="@Credential.CredentialSubject.Claims"
+        <ClaimTree Claims="@Credential.DisplayClaims"
                    Selectable="@AllowSelection"
-                   SelectedPointers="@_selectedPointers" />
+                   SelectedClaimNames="@_selectedClaimNames" />
     </MudCardContent>
     <MudCardActions>
         <MudButton OnClick="HandlePresent" Color="Color.Primary">Present</MudButton>
@@ -206,11 +211,11 @@ Shows the full `credentialSubject` tree, verification status badge, and per-clai
 </MudCard>
 
 @code {
-    [Parameter] public required VerifiableCredential Credential { get; set; }
+    [Parameter] public required StoredCredential Credential { get; set; }
     [Parameter] public bool AllowSelection { get; set; }
 
     private CredentialVerificationResult? _verificationResult;
-    private HashSet<string> _selectedPointers = new();
+    private HashSet<string> _selectedClaimNames = new();
 
     protected override async Task OnInitializedAsync()
         => _verificationResult = await Verifier.VerifyAsync(Credential, new VerificationOptions(), default);
@@ -270,7 +275,7 @@ Same scheme, different path — `openid4vc://verify?request_uri=...`. The holder
     {
         _request = await Verifier.FetchRequestAsync(RequestId);
         var all = await Store.ListAsync();
-        _candidates = all.Where(c => _request.Matches(c.Credential)).ToList();
+        _candidates = all.Where(c => _request.Matches(c)).ToList();
     }
 
     private async Task HandleConfirmAsync(PresentationSelection selection)
@@ -278,8 +283,15 @@ Same scheme, different path — `openid4vc://verify?request_uri=...`. The holder
         if (!await Biometric.UnlockAsync("Confirm credential presentation"))
             return;
 
-        var vp = await Store.BuildPresentationAsync(_request!, selection.SelectedCredentials);
-        await Verifier.SubmitPresentationAsync(_request!.Id, vp);
+        // Build the compact SD-JWT directly via ISdJwtService — there is no
+        // Store.BuildPresentationAsync helper.
+        var compact = await SdJwt.CreatePresentationAsync(
+            rawToken: selection.SelectedCredentials[0].CompactToken,
+            claimsToDisclose: selection.ClaimsToDisclose,
+            holderKey: selection.HolderKey,
+            audience: _request!.VerifierDid,
+            nonce: _request.Nonce);
+        await Verifier.SubmitPresentationAsync(_request!.Id, compact);
     }
 }
 ```

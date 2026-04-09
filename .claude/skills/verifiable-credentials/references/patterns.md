@@ -27,18 +27,22 @@ public class CredentialIssuanceConfig
     public string CredentialType { get; set; } = string.Empty;
     public IEnumerable<ClaimMapping> ClaimMappings { get; set; } = [];
     public string RecipientParticipantId { get; set; } = string.Empty;
-    public CredentialDisplayConfig? Display { get; set; }
-    public TimeSpan? Validity { get; set; }
-    // ... plus status list binding
+    public string? ExpiryDuration { get; set; }              // ISO 8601 duration, e.g. "P10Y"
+    public string? RegisterId { get; set; }
+    public IEnumerable<string>? Disclosable { get; set; }    // Claim names that are selectively disclosable
+    public UsagePolicy UsagePolicy { get; set; } = UsagePolicy.Reusable;
+    public int? MaxPresentations { get; set; }
+    public CredentialDisplayConfig? DisplayConfig { get; set; }
 }
 
 public class ClaimMapping
 {
-    public string Source { get; set; } = string.Empty;  // JSON pointer into processed action data
-    public string Target { get; set; } = string.Empty;  // Dot path in VC credentialSubject
-    public bool Selective { get; set; } = true;         // Whether this claim is SD
+    public string ClaimName { get; set; } = string.Empty;   // Target key in the issued credential
+    public string SourceField { get; set; } = string.Empty; // JSON pointer into processed action data
 }
 ```
+
+**Selective disclosure is a config-level list, not a per-mapping flag.** The `Disclosable` collection names which `ClaimName` values participate in selective disclosure. Claims not in `Disclosable` are always revealed.
 
 ### CredentialRequirement
 
@@ -73,42 +77,50 @@ public class CredentialPresentation
     public string CredentialId { get; set; } = string.Empty;    // DID URI
     public Dictionary<string, object> DisclosedClaims { get; set; } = new();
     public string RawPresentation { get; set; } = string.Empty; // <jwt>~<d>~<d>~<kb-jwt>
-    public string? KeyBindingJwt { get; set; }
+    public string? KeyBindingProof { get; set; }                // Holder key-binding JWT
 }
 ```
 
 ## SD-JWT Service Usage
 
-`Sorcha.Cryptography.SdJwt.ISdJwtService` is the one API surface for SD-JWT operations. Do not import a second SD-JWT library.
+`Sorcha.Cryptography.SdJwt.ISdJwtService` is the one API surface for SD-JWT operations. Do not import a second SD-JWT library. The real method names are `CreateTokenAsync` / `VerifyTokenAsync` / `CreatePresentationAsync` / `VerifyPresentationAsync` — not the bare `CreateAsync` / `PresentAsync` / `VerifyAsync` verbs.
 
 ```csharp
 public interface ISdJwtService
 {
-    Task<SdJwtToken> CreateAsync(
-        IReadOnlyDictionary<string, object> claims,
-        IReadOnlySet<string> selectivelyDisclosableClaims,
-        string issuerDid,
-        string subjectDid,
+    Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
         byte[] signingKey,
+        string algorithm,                       // "EdDSA", "ES256", "RS256"
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default);
+
+    Task<SdJwtVerificationResult> VerifyTokenAsync(
+        string rawToken,
+        byte[] issuerPublicKey,
         string algorithm,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 
-    Task<SdJwtPresentation> PresentAsync(
-        SdJwtToken token,
-        IReadOnlySet<string> claimsToReveal,
-        string audience,
-        string nonce,
-        byte[] holderSigningKey,
-        CancellationToken ct = default);
+    Task<SdJwtPresentation> CreatePresentationAsync(
+        string rawToken,
+        IEnumerable<string> claimsToDisclose,
+        byte[]? holderKey = null,
+        string? audience = null,
+        string? nonce = null,
+        CancellationToken cancellationToken = default);
 
-    Task<SdJwtVerificationResult> VerifyAsync(
-        string compactPresentation,
-        string expectedAudience,
-        string expectedNonce,
-        IDidResolverRegistry didResolver,
-        CancellationToken ct = default);
+    Task<SdJwtVerificationResult> VerifyPresentationAsync(
+        string rawPresentation,
+        byte[] issuerPublicKey,                 // NOT IDidResolverRegistry — caller must resolve first
+        string algorithm,
+        CancellationToken cancellationToken = default);
 }
 ```
+
+**Key implication:** `ISdJwtService` does **not** resolve DIDs itself. The caller is responsible for resolving the issuer DID via `IDidResolverRegistry`, extracting the matching verification method's public key bytes, and passing them in. `CredentialVerifier` is the orchestrator that wires those steps together.
 
 ### Issuer side
 
@@ -124,26 +136,31 @@ public sealed class CredentialIssuer(ISdJwtService sdJwt) : ICredentialIssuer
         string algorithm,
         CancellationToken ct = default)
     {
-        // 1. Apply claim mappings → flat dictionary
-        var claims = ApplyMappings(config.ClaimMappings, processedData);
+        // 1. Apply claim mappings → flat dictionary keyed by ClaimName
+        var claims = config.ClaimMappings.ToDictionary(
+            mapping => mapping.ClaimName,
+            mapping => ResolveJsonPointer(processedData, mapping.SourceField));
 
-        // 2. Identify selectively disclosable claims from the mapping flags
-        var sdClaims = config.ClaimMappings
-            .Where(m => m.Selective)
-            .Select(m => m.Target)
-            .ToHashSet();
+        // 2. Disclosable claims come straight from config.Disclosable — not per-mapping flags.
+        //    Pass null to make everything disclosable; pass an empty list to disclose nothing selectively.
+        var disclosable = config.Disclosable;
 
-        // 3. Create the SD-JWT — SdJwtService handles the _sd hashes + canonicalisation
-        var token = await sdJwt.CreateAsync(
-            claims, sdClaims, issuerDid, recipientDid, signingKey, algorithm, ct);
+        // 3. Compute expiry from the ISO 8601 duration string, if any.
+        DateTimeOffset? expiresAt = config.ExpiryDuration is { } iso
+            ? DateTimeOffset.UtcNow + XmlConvert.ToTimeSpan(iso)
+            : null;
+
+        // 4. Create the SD-JWT — SdJwtService handles the _sd hashes + canonicalisation
+        var token = await sdJwt.CreateTokenAsync(
+            claims, disclosable, issuerDid, recipientDid, signingKey, algorithm, expiresAt, ct);
 
         return new IssuedCredentialInfo
         {
             CredentialId = token.CredentialId,
             CredentialType = config.CredentialType,
-            CompactToken = token.Compact,
+            CompactToken = token.RawToken,
             IssuedAt = token.IssuedAt,
-            ExpiresAt = token.ExpiresAt,
+            ExpiresAt = expiresAt,
         };
     }
 }
@@ -180,6 +197,7 @@ private async Task<DidDocument> BuildOrgDidDocumentAsync(string walletAddress, C
     var methods = new List<VerificationMethod>();
     foreach (var key in keys)
     {
+        // key.Algorithm is a wallet algorithm string ("ED25519", "NIST-P256", "RSA-4096").
         var multibase = Multicodec.ToMultibasePublicKey(key.Algorithm, key.PublicKey);
         if (multibase is null)
         {
@@ -226,23 +244,26 @@ Feature 093 introduced `Multicodec` in `Sorcha.ServiceClients.Http.Utilities` af
 publicKeyMultibase = "z" || Base58Btc( multicodec_varint || rawKeyBytes )
 ```
 
-| Algorithm | Multicodec | Varint bytes |
-|-----------|------------|--------------|
-| Ed25519   | `0xed`    | `ed 01`      |
-| P-256     | `0x1200`  | `80 24`      |
-| secp256k1 | `0xe7`    | `e7 01`      |
+| Algorithm string (pass to Multicodec) | Multicodec | Varint bytes |
+|---------------------------------------|------------|--------------|
+| `ED25519`                             | `0xed`    | `ed 01`      |
+| `NIST-P256` / `P-256` / `P256` / `ECDSA-P256` | `0x1200` | `80 24` |
+| `RSA` / `RSA-4096`                    | `0x1205`  | `85 24`      |
+
+secp256k1 is **not** currently supported by `Multicodec` — do not add an entry for it unless you also extend the switch in `Multicodec.ResolveMulticodec`.
 
 ### API
 
 ```csharp
-// Returns null for PQC (ML-DSA, SLH-DSA, ML-KEM) — no assigned multicodec.
-string? multibase = Multicodec.ToMultibasePublicKey("EdDSA", ed25519PublicKey);
+// Algorithm names match Sorcha wallet algorithm strings — NOT JOSE "alg" values.
+// "EdDSA" and "ES256" both return null and fall through to the PQC-style fallback path.
+string? multibase = Multicodec.ToMultibasePublicKey("ED25519", ed25519PublicKey);
 
 // Decode the other direction — strips the "z" prefix and varint.
 byte[]? raw = Multicodec.DecodePublicKeyBytes(multibase);
 
 // Build just the varint + key (without the "z" + base58btc wrapper).
-byte[]? prefixed = Multicodec.EncodePublicKey("ES256", p256PublicKey);
+byte[]? prefixed = Multicodec.EncodePublicKey("NIST-P256", p256PublicKey);
 ```
 
 ### When `ToMultibasePublicKey` returns null
@@ -256,18 +277,29 @@ Never fall back to a hand-rolled multibase encoding — that is exactly the bug 
 
 ## Verification Result
 
-The real type:
+The real type lives in `Sorcha.Blueprint.Engine.Credentials` (not `Blueprint.Models.Credentials` — it references `Blueprint.Models` types but it is defined in the engine):
 
 ```csharp
 public class CredentialValidationResult
 {
     public bool IsValid { get; set; }
-    public IReadOnlyList<CredentialValidationError> Errors { get; set; } = [];
-    public IReadOnlyList<CredentialValidationWarning>? Warnings { get; set; }
+    public List<CredentialValidationError> Errors { get; set; } = new();
+    public List<VerifiedCredentialDetail> VerifiedCredentials { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+}
+
+public class VerifiedCredentialDetail
+{
+    public string CredentialId { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string IssuerDid { get; set; } = string.Empty;
+    public Dictionary<string, object> VerifiedClaims { get; set; } = new();
+    public bool SignatureValid { get; set; }
+    public string RevocationStatus { get; set; } = "Active";  // "Active" | "Revoked" | "Unknown"
 }
 ```
 
-Accumulate errors — do not short-circuit on the first one. `CredentialValidationError` carries a `Code` + `Message` + optional `ClaimPath`. The SelfBuildHouse walkthrough asserts against multiple simultaneous errors.
+`CredentialValidationError` (in `Sorcha.Blueprint.Models.Credentials`) carries `RequirementType` + `FailureReason` (enum) + `Message`. Accumulate errors — do not short-circuit on the first one. The SelfBuildHouse walkthrough asserts against multiple simultaneous errors. `Warnings` is a plain `List<string>` for non-fatal notes like "revocation check unavailable with fail-open policy".
 
 ## Test Fixtures
 

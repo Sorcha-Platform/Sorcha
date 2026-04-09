@@ -159,12 +159,15 @@ public class MyVerifier(IDidResolverRegistry dids)
 **`Multicodec` is the canonical `publicKeyMultibase` encoder.** Feature 093 introduced it after the original DID resolver was emitting literal `"z" + hex/base64` — which is malformed. Always use:
 
 ```csharp
-string? multibase = Multicodec.ToMultibasePublicKey("EdDSA", rawPublicKeyBytes);
+// Algorithm names match Sorcha.Cryptography's wallet algorithm strings — NOT JOSE "alg" values.
+// Accepted: "ED25519", "NIST-P256" / "P-256" / "P256" / "ECDSA-P256", "RSA" / "RSA-4096".
+// Passing "EdDSA" or "ES256" silently returns null — that is the feature 093 bug class.
+string? multibase = Multicodec.ToMultibasePublicKey("ED25519", rawPublicKeyBytes);
 // Returns null for PQC algorithms (ML-DSA, SLH-DSA, ML-KEM) that have no assigned codec —
 // callers must fall back to publicKeyJwk or fail closed per FR-014 in spec 093.
 ```
 
-Never hand-roll `"z" + Base58.Encode(publicKey)` — that was the bug.
+Never hand-roll `"z" + Base58.Encode(publicKey)` — that was the original bug.
 
 ## Selective Disclosure (SD-JWT)
 
@@ -178,7 +181,7 @@ SD-JWT compact form: `<issuer JWT>~<disclosure1>~<disclosure2>~...~<key binding 
 
 ## Blueprint Integration
 
-Actions carry credential configs as first-class fields (not an `x-*` schema extension):
+Actions carry credential configs as first-class fields (not an `x-*` schema extension). The real JSON shape uses `claimName` + `sourceField` on each mapping, and the set of selectively-disclosable claims is declared **once** on the config via the `disclosable` array:
 
 ```json
 {
@@ -187,9 +190,12 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
     "credentialType": "GraduationCredential",
     "recipientParticipantId": "student",
     "claimMappings": [
-      { "source": "/student/name",      "target": "name" },
-      { "source": "/student/graduationDate", "target": "graduationDate" }
-    ]
+      { "claimName": "name",           "sourceField": "/student/name" },
+      { "claimName": "graduationDate", "sourceField": "/student/graduationDate" }
+    ],
+    "disclosable": ["graduationDate"],
+    "expiryDuration": "P10Y",
+    "usagePolicy": "Reusable"
   },
   "credentialRequirements": [
     {
@@ -201,6 +207,8 @@ Actions carry credential configs as first-class fields (not an `x-*` schema exte
 }
 ```
 
+`expiryDuration` is an ISO 8601 duration string (`P10Y`, `P90D`), not a `TimeSpan`.
+
 `ActionExecutionService` reads `CredentialRequirements` before the action runs and `CredentialIssuance` after. No custom per-blueprint credential code.
 
 ## MAUI Blazor UI
@@ -211,7 +219,7 @@ The **server** already has `Sorcha.Wallet.Service.Credentials.ICredentialStore`.
 // Razor shell (render-mode agnostic — works in InteractiveServer and InteractiveWebAssembly)
 @inject ICredentialUiStore Store
 @inject IBiometricGate Biometric
-@inject IPresentationRequestServiceClient Presentations
+@inject ISdJwtService SdJwt
 
 <CredentialList Credentials="_credentials" OnPresent="HandlePresentAsync" />
 
@@ -221,13 +229,23 @@ The **server** already has `Sorcha.Wallet.Service.Credentials.ICredentialStore`.
     protected override async Task OnInitializedAsync()
         => _credentials = await Store.ListAsync();
 
-    private async Task HandlePresentAsync(PresentationRequest request)
+    private async Task HandlePresentAsync(StoredCredentialSummary selected, PresentationRequest request)
     {
         if (!await Biometric.UnlockAsync("Confirm to present credential"))
             return;
 
-        var compact = await Presentations.BuildPresentationAsync(request);
-        Navigation.NavigateTo($"/present/qr?token={compact}");
+        // Build the SD-JWT presentation directly via ISdJwtService — there is no
+        // server-side "build" endpoint; the server exposes CreateRequestAsync /
+        // FindMatchingCredentialsAsync / SubmitPresentationAsync on PresentationRequestService.
+        var compactToken = await Store.GetRawTokenAsync(selected.Id);
+        var presentation = await SdJwt.CreatePresentationAsync(
+            rawToken: compactToken,
+            claimsToDisclose: request.RequestedClaimNames,
+            holderKey: await Store.GetHolderKeyAsync(selected.Id),
+            audience: request.VerifierDid,
+            nonce: request.Nonce);
+
+        Navigation.NavigateTo($"/present/qr?token={Uri.EscapeDataString(presentation.Compact)}");
     }
 }
 ```
