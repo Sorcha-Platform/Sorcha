@@ -23,6 +23,7 @@ using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Cryptography.Enums;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Encryption.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -54,6 +55,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
+    private readonly bool _credentialStatusEmbeddingEnabled;
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
@@ -76,6 +78,7 @@ public class ActionExecutionService : IActionExecutionService
         IActionStore actionStore,
         IExecutionEngine executionEngine,
         ILogger<ActionExecutionService> logger,
+        IConfiguration configuration,
         ICredentialVerifier? credentialVerifier = null,
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
         IStatusListManager? statusListManager = null,
@@ -103,6 +106,13 @@ public class ActionExecutionService : IActionExecutionService
         _disclosureGroupBuilder = disclosureGroupBuilder;
         _encryptionChannel = encryptionChannel;
         _encryptionOperationStore = encryptionOperationStore;
+
+        // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
+        // ActionExecutionService skips the pre-signing status list allocation and
+        // credentials are issued without the credentialStatus claim — matching pre-fix
+        // behaviour for dev environments that do not run a status list manager.
+        _credentialStatusEmbeddingEnabled =
+            configuration?.GetValue<bool?>("CredentialStatus:EnableEmbedding") ?? true;
     }
 
     /// <inheritdoc/>
@@ -1180,6 +1190,60 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
+        // Feature 093 US2: allocate the status list index BEFORE signing so the signed
+        // credential payload can carry a valid credentialStatus pointer. Allocation uses a
+        // synthetic credential identifier for the in-memory list position; the Wallet Service
+        // generates the final credential ID at signing time. The bit position is unique per
+        // allocation regardless of the log identifier.
+        //
+        // KNOWN FOLLOW-UP: tracked as Sorcha-Platform/Sorcha#220. If a future
+        // IStatusListManager implementation starts keying lookups by the credential ID
+        // passed here (rather than by listId + index), the "pending-{GUID}" placeholder
+        // will cause revocation lookups to fail. The current in-memory StatusListManager
+        // uses (listId, index) as its only key so this is a non-issue today, but should
+        // be reconciled when spec 095 lands a persistent backing store.
+        //
+        // The CredentialStatus:EnableEmbedding flag (default true) lets pure-internal dev
+        // environments disable the allocation step — useful when the Blueprint Service is
+        // running without a status list manager wired up.
+        string? preAllocatedStatusListUrl = null;
+        int? preAllocatedStatusListIndex = null;
+
+        if (_statusListManager != null && _credentialStatusEmbeddingEnabled)
+        {
+            try
+            {
+                var preAllocationId = $"pending-{Guid.NewGuid()}";
+                var allocation = await _statusListManager.AllocateIndexAsync(
+                    senderWallet, instance.RegisterId, preAllocationId, cancellationToken);
+                preAllocatedStatusListUrl = allocation.StatusListUrl;
+                preAllocatedStatusListIndex = allocation.Index;
+
+                _logger.LogInformation(
+                    "Pre-allocated status list index {Index} in list {ListId} for upcoming credential issuance",
+                    allocation.Index, allocation.ListId);
+            }
+            catch (Exception ex)
+            {
+                // Round 3 fix: when EnableEmbedding is true (default), allocation
+                // failure now fails the action rather than silently issuing a credential
+                // without the embedded claim. The previous non-fatal fallback produced
+                // HAIP-non-compliant credentials that *appeared* compliant — exactly
+                // the silent-degradation pattern this spec is meant to close. Operators
+                // who do not want fail-closed behaviour can set
+                // CredentialStatus:EnableEmbedding=false in Blueprint Service config to
+                // skip allocation entirely (dev-environment escape hatch).
+                _logger.LogError(ex,
+                    "Failed to pre-allocate status list index for Blueprint action {ActionId} — failing the action because CredentialStatus:EnableEmbedding=true",
+                    actionDef.Id);
+                throw new InvalidOperationException(
+                    "Status list allocation failed during credential issuance. " +
+                    "Set CredentialStatus:EnableEmbedding=false in Blueprint Service config " +
+                    "to issue credentials without embedded status claims (dev environments only).",
+                    ex);
+            }
+        }
+
         try
         {
             var result = await _walletClient.IssueCredentialAsync(
@@ -1190,43 +1254,10 @@ public class ActionExecutionService : IActionExecutionService
                 expiryDuration: config.ExpiryDuration,
                 disclosableClaims: config.Disclosable?.ToList(),
                 issuanceBlueprintId: instance.BlueprintId,
+                statusListUrl: preAllocatedStatusListUrl,
+                statusListIndex: preAllocatedStatusListIndex,
+                statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
                 cancellationToken: cancellationToken);
-
-            // Allocate status list index for revocation tracking
-            if (result != null && _statusListManager != null)
-            {
-                try
-                {
-                    var allocation = await _statusListManager.AllocateIndexAsync(
-                        senderWallet, instance.RegisterId, result.CredentialId, cancellationToken);
-
-                    // Return a new result with status list info populated
-                    result = new CredentialIssuanceResult
-                    {
-                        CredentialId = result.CredentialId,
-                        Type = result.Type,
-                        IssuerDid = result.IssuerDid,
-                        SubjectDid = result.SubjectDid,
-                        Claims = result.Claims,
-                        IssuedAt = result.IssuedAt,
-                        ExpiresAt = result.ExpiresAt,
-                        RawToken = result.RawToken,
-                        Status = result.Status,
-                        StatusListUrl = allocation.StatusListUrl,
-                        StatusListIndex = allocation.Index
-                    };
-
-                    _logger.LogInformation(
-                        "Allocated status list index {Index} in list {ListId} for credential {CredentialId}",
-                        allocation.Index, allocation.ListId, result.CredentialId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to allocate status list index for credential {CredentialId} — credential issued without revocation tracking",
-                        result.CredentialId);
-                }
-            }
 
             return result;
         }

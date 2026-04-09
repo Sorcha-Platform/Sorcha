@@ -304,6 +304,38 @@ public static class CredentialEndpoints
         if (wallet.Status != Sorcha.Wallet.Core.Domain.WalletStatus.Active)
             return Results.BadRequest(new { error = "Wallet is not in a valid state for this operation" });
 
+        // Feature 093 US2: validate the status list embedding inputs BEFORE signing.
+        // Anything baked into a signed credential is unfixable — the signature covers
+        // it and the credential is permanently broken if a value is malformed.
+        if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
+            && !Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out _))
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListUrl must be an absolute URI when supplied"
+            });
+        }
+
+        if (request.StatusListIndex.HasValue && request.StatusListIndex.Value < 0)
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListIndex must be non-negative when supplied"
+            });
+        }
+
+        // Round 3: only the W3C BitstringStatusListEntry status purposes are
+        // accepted. Other values would be embedded in the signed payload as a
+        // free-form string and silently confuse status consumers.
+        if (!string.IsNullOrWhiteSpace(request.StatusListPurpose)
+            && request.StatusListPurpose is not ("revocation" or "suspension"))
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListPurpose must be 'revocation' or 'suspension' when supplied"
+            });
+        }
+
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.CredentialEndpoints");
 
         // 2. Decrypt the wallet's private key
@@ -325,12 +357,31 @@ public static class CredentialEndpoints
             }
         }
 
-        // 4. Create SD-JWT VC token
+        // 4. Create SD-JWT VC token.
+        //    Feature 093 US2: if the caller supplied a pre-allocated status list URL + index,
+        //    embed a W3C BitstringStatusListEntry credentialStatus claim BEFORE signing so
+        //    external verifiers can determine lifecycle state from the token alone.
         var claims = new Dictionary<string, object>(request.Claims)
         {
             ["type"] = request.CredentialType,
             ["vct"] = request.CredentialType
         };
+
+        if (!string.IsNullOrEmpty(request.StatusListUrl) && request.StatusListIndex.HasValue)
+        {
+            var purpose = string.IsNullOrWhiteSpace(request.StatusListPurpose)
+                ? "revocation"
+                : request.StatusListPurpose!;
+
+            claims["credentialStatus"] = new Dictionary<string, object>
+            {
+                ["id"] = $"{request.StatusListUrl}#{request.StatusListIndex.Value}",
+                ["type"] = "BitstringStatusListEntry",
+                ["statusPurpose"] = purpose,
+                ["statusListIndex"] = request.StatusListIndex.Value.ToString(),
+                ["statusListCredential"] = request.StatusListUrl!
+            };
+        }
 
         var token = await sdJwtService.CreateTokenAsync(
             claims,
@@ -345,7 +396,10 @@ public static class CredentialEndpoints
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
 
-        // 6. Build and store credential in issuer's wallet
+        // 6. Build and store credential in issuer's wallet.
+        //    Feature 093 US2: when a status list allocation was supplied, populate the
+        //    CredentialEntity row fields in lockstep with the embedded claim so the server
+        //    side and the signed payload stay consistent.
         var claimsJson = JsonSerializer.Serialize(claims);
         var issuerEntity = new CredentialEntity
         {
@@ -360,7 +414,9 @@ public static class CredentialEndpoints
             Status = "Active",
             IssuanceBlueprintId = request.IssuanceBlueprintId,
             WalletAddress = walletAddress,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            StatusListUrl = request.StatusListUrl,
+            StatusListIndex = request.StatusListIndex
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
 
@@ -384,7 +440,9 @@ public static class CredentialEndpoints
                     Status = "Active",
                     IssuanceBlueprintId = request.IssuanceBlueprintId,
                     WalletAddress = request.RecipientWallet,
-                    CreatedAt = DateTimeOffset.UtcNow
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    StatusListUrl = request.StatusListUrl,
+                    StatusListIndex = request.StatusListIndex
                 };
                 await store.StoreAsync(recipientEntity, cancellationToken);
 
@@ -446,6 +504,25 @@ public class IssueCredentialRequest
     public string? ExpiryDuration { get; init; }
     public List<string>? DisclosableClaims { get; init; }
     public string? IssuanceBlueprintId { get; init; }
+
+    /// <summary>
+    /// Optional pre-allocated status list URL. When provided together with
+    /// <see cref="StatusListIndex"/>, the issuer embeds a W3C BitstringStatusListEntry
+    /// credentialStatus claim in the signed SD-JWT payload (Feature 093 US2).
+    /// </summary>
+    public string? StatusListUrl { get; init; }
+
+    /// <summary>
+    /// Optional pre-allocated status list index. See <see cref="StatusListUrl"/>.
+    /// </summary>
+    public int? StatusListIndex { get; init; }
+
+    /// <summary>
+    /// Optional status purpose identifier (for example "revocation" or "suspension").
+    /// Defaults to "revocation" when <see cref="StatusListUrl"/> and <see cref="StatusListIndex"/>
+    /// are provided and this field is left null.
+    /// </summary>
+    public string? StatusListPurpose { get; init; }
 }
 
 /// <summary>

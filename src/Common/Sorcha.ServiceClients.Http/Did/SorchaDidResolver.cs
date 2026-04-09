@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System;
 using Microsoft.Extensions.Logging;
+using Sorcha.ServiceClients.Http.Utilities;
 using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.ServiceClients.Did;
@@ -77,25 +79,7 @@ public class SorchaDidResolver : IDidResolver
             return null;
         }
 
-        var keyId = $"{did}#key-1";
-        var keyType = MapAlgorithmToKeyType(wallet.Algorithm);
-
-        return new DidDocument
-        {
-            Id = did,
-            VerificationMethod =
-            [
-                new VerificationMethod
-                {
-                    Id = keyId,
-                    Type = keyType,
-                    Controller = did,
-                    PublicKeyMultibase = $"z{wallet.PublicKey}"
-                }
-            ],
-            Authentication = [keyId],
-            AssertionMethod = [keyId]
-        };
+        return BuildDidDocument(did, wallet);
     }
 
     private async Task<DidDocument?> ResolveWalletDidAsync(string did, CancellationToken ct)
@@ -124,22 +108,69 @@ public class SorchaDidResolver : IDidResolver
             return null;
         }
 
+        return BuildDidDocument(did, wallet);
+    }
+
+    /// <summary>
+    /// Builds a W3C DID Document for a resolved Sorcha wallet. Feature 093 US3 fixes
+    /// the previously malformed multibase emission (was <c>"z" + hex</c>, now
+    /// <c>"z" + Base58btc(multicodec || rawKey)</c>). Algorithms without an assigned
+    /// multicodec identifier fail closed — per FR-014 the resolver MUST NOT emit
+    /// malformed multibase OR an incorrectly-shaped publicKeyJwk. Callers receive
+    /// a verification method with neither key material field populated and a clear
+    /// warning in logs.
+    /// </summary>
+    private DidDocument BuildDidDocument(string did, WalletInfo wallet)
+    {
         var keyId = $"{did}#key-1";
         var keyType = MapAlgorithmToKeyType(wallet.Algorithm);
+
+        var verificationMethod = new VerificationMethod
+        {
+            Id = keyId,
+            Type = keyType,
+            Controller = did
+        };
+
+        var rawKey = Multicodec.DecodePublicKeyBytes(wallet.PublicKey);
+        if (rawKey is null)
+        {
+            _logger.LogWarning(
+                "DID {Did} wallet public key could not be decoded as base64 or hex — emitting DID document with no key material",
+                did);
+        }
+        else
+        {
+            var multibase = Multicodec.ToMultibasePublicKey(wallet.Algorithm, rawKey);
+            if (multibase is not null)
+            {
+                verificationMethod.PublicKeyMultibase = multibase;
+            }
+            else
+            {
+                // Algorithm not in the multicodec table (for example PQC): fail closed.
+                // Emitting a synthesised publicKeyJwk here would require per-algorithm
+                // JWK construction (OKP x, EC x+y, RSA n+e) that the current resolver
+                // cannot do safely from just the raw key bytes without knowing the
+                // algorithm's specific encoding rules. Per FR-014, fail-closed is the
+                // correct behaviour for unsupported algorithms.
+                //
+                // LogError (not LogWarning) because a resolved DID document with no key
+                // material is unusable for any downstream verification — callers will see
+                // "resolution succeeded" but be unable to verify anything. Operators need
+                // to know when this happens, not just see it buried in warning noise.
+                _logger.LogError(
+                    "DID {Did} uses algorithm {Algorithm} which has no multicodec prefix — " +
+                    "emitting DID document with no key material. Callers that need the public " +
+                    "key for this algorithm should look it up via IWalletServiceClient directly.",
+                    did, wallet.Algorithm);
+            }
+        }
 
         return new DidDocument
         {
             Id = did,
-            VerificationMethod =
-            [
-                new VerificationMethod
-                {
-                    Id = keyId,
-                    Type = keyType,
-                    Controller = did,
-                    PublicKeyMultibase = $"z{wallet.PublicKey}"
-                }
-            ],
+            VerificationMethod = [verificationMethod],
             Authentication = [keyId],
             AssertionMethod = [keyId]
         };

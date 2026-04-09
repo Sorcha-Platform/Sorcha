@@ -142,6 +142,11 @@ public interface IWalletServiceClient
     /// <param name="expiryDuration">Optional ISO 8601 expiry duration (e.g., "P365D")</param>
     /// <param name="disclosableClaims">Optional list of claims supporting selective disclosure</param>
     /// <param name="issuanceBlueprintId">Optional blueprint ID that triggered issuance</param>
+    /// <param name="statusListUrl">Optional pre-allocated status list URL. When provided together with
+    /// <paramref name="statusListIndex"/>, the issuer embeds a W3C BitstringStatusListEntry
+    /// credentialStatus claim in the signed SD-JWT payload (Feature 093 US2).</param>
+    /// <param name="statusListIndex">Optional pre-allocated status list index. See <paramref name="statusListUrl"/>.</param>
+    /// <param name="statusListPurpose">Optional status purpose identifier. Defaults to "revocation" when the pair is provided.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Issued credential information including the signed SD-JWT VC token</returns>
     Task<CredentialIssuanceResult> IssueCredentialAsync(
@@ -152,6 +157,9 @@ public interface IWalletServiceClient
         string? expiryDuration = null,
         List<string>? disclosableClaims = null,
         string? issuanceBlueprintId = null,
+        string? statusListUrl = null,
+        int? statusListIndex = null,
+        string? statusListPurpose = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

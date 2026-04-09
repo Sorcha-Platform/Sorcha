@@ -2,9 +2,13 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Sorcha.Cryptography.SdJwt;
+using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
 using Sorcha.Wallet.Service.Services;
+using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 
 namespace Sorcha.Wallet.Service.Tests.Presentations;
 
@@ -12,11 +16,84 @@ public class PresentationRequestServiceTests
 {
     private readonly Mock<ICredentialStore> _storeMock = new();
     private readonly Mock<ILogger<PresentationRequestService>> _loggerMock = new();
+    private readonly Mock<ISdJwtService> _sdJwtMock = new();
+    private readonly Mock<IWalletRepository> _walletRepoMock = new();
     private readonly PresentationRequestService _service;
 
     public PresentationRequestServiceTests()
     {
-        _service = new PresentationRequestService(_storeMock.Object, _loggerMock.Object);
+        // Feature 093 round 2: ISdJwtService and IServiceScopeFactory are now REQUIRED
+        // dependencies of PresentationRequestService — the previous nullable fallback
+        // silently bypassed crypto verification, which was the bug spec 093 closes.
+        // These legacy tests supply default mocks that pass-through every verification
+        // so the existing test scenarios (type mismatch, expiry, status, claim-value
+        // matching against the server-side row) continue to exercise the same logic.
+        var services = new ServiceCollection();
+        services.AddScoped(_ => _walletRepoMock.Object);
+        var scopeFactory = services.BuildServiceProvider()
+            .GetRequiredService<IServiceScopeFactory>();
+
+        // Default ISdJwtService mock: every verification succeeds with empty claims
+        // and a null Issuer. Returning null Issuer skips the iss-vs-credential.IssuerDid
+        // check (verifier only enforces it when the verified token has an iss claim) so
+        // legacy tests that exercise type/status/expiry/issuer-list/claim-value branches
+        // continue to work without per-test mock plumbing. Tests that need claim content
+        // or specific iss values use the SetupVerifierClaims helper below.
+        _sdJwtMock
+            .Setup(s => s.VerifyPresentationAsync(
+                It.IsAny<string>(),
+                It.IsAny<byte[]>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SdJwtVerificationResult
+            {
+                IsValid = true,
+                Issuer = null,
+                Claims = new Dictionary<string, object>()
+            });
+
+        // Default IWalletRepository mock: any address resolves to a wallet with a
+        // valid base64-encoded public key so the verifier's wallet lookup succeeds.
+        _walletRepoMock
+            .Setup(r => r.GetByAddressAsync(
+                It.IsAny<string>(), false, false, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WalletEntity
+            {
+                Address = "default-address",
+                EncryptedPrivateKey = "not-used",
+                EncryptionKeyId = "dev-key",
+                Algorithm = "ED25519",
+                Owner = "test-owner",
+                Tenant = "test-tenant",
+                Name = "Test Wallet",
+                PublicKey = Convert.ToBase64String(new byte[32])
+            });
+
+        _service = new PresentationRequestService(
+            _storeMock.Object,
+            _loggerMock.Object,
+            _sdJwtMock.Object,
+            scopeFactory);
+    }
+
+    /// <summary>
+    /// Helper for tests that need the verifier mock to surface specific claims.
+    /// Resets the default no-claims setup with a per-test claims dict.
+    /// </summary>
+    private void SetupVerifierClaims(Dictionary<string, object> claims, string issuer = "did:sorcha:w:hse")
+    {
+        _sdJwtMock
+            .Setup(s => s.VerifyPresentationAsync(
+                It.IsAny<string>(),
+                It.IsAny<byte[]>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SdJwtVerificationResult
+            {
+                IsValid = true,
+                Issuer = issuer,
+                Claims = claims
+            });
     }
 
     // --- CreateRequestAsync ---
@@ -457,6 +534,14 @@ public class PresentationRequestServiceTests
     [Fact]
     public async Task SubmitPresentationAsync_ClaimValueMismatch_DeniedWithMismatchError()
     {
+        // Round 2: claim values come from the verified token. The mock surfaces
+        // the same value the credential row would have produced (CategoryB),
+        // which mismatches the requested CategoryA.
+        SetupVerifierClaims(new Dictionary<string, object>
+        {
+            ["class"] = "CategoryB"
+        });
+
         var dto = new CreatePresentationRequestDto
         {
             CredentialType = "ChemicalHandlingLicense",
@@ -482,6 +567,15 @@ public class PresentationRequestServiceTests
     [Fact]
     public async Task SubmitPresentationAsync_ValidWithVerifiedClaims_IncludesClaimsInResult()
     {
+        // Round 2 fix: claim values now come from the verified token, not the
+        // server-side credential row. The verifier mock must surface the same
+        // claims the credential row would have produced under pre-fix behaviour.
+        SetupVerifierClaims(new Dictionary<string, object>
+        {
+            ["class"] = "CategoryB",
+            ["permitNumber"] = "HSE-001"
+        });
+
         var request = await _service.CreateRequestAsync(CreateTestDto());
 
         _storeMock
@@ -555,6 +649,13 @@ public class PresentationRequestServiceTests
     [Fact]
     public async Task SubmitPresentationAsync_RequiredClaimWithMatchingValue_Verified()
     {
+        // Round 2: claim values come from the verified token. The mock surfaces
+        // the same value the test asserts against.
+        SetupVerifierClaims(new Dictionary<string, object>
+        {
+            ["class"] = "CategoryB"
+        });
+
         var dto = new CreatePresentationRequestDto
         {
             CredentialType = "ChemicalHandlingLicense",

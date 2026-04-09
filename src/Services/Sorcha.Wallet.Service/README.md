@@ -435,6 +435,22 @@ Future integration for:
 
 ## Security Considerations
 
+### Credential Presentation Verification (Feature 093)
+
+Since feature 093 (VC & presentation security fixes, HAIP prep), `POST /api/v1/presentations/{requestId}/submit` cryptographically verifies the submitted `vpToken` against the issuer's public key before any claim is considered. Claim values in the verification result come from the verified token, not from the server-side credential store. Tampered, forged, or replay tokens are rejected with specific verification errors.
+
+### Credential Status Embedding (Feature 093)
+
+When a credential is issued via a Blueprint action, the Blueprint Service's `ActionExecutionService` pre-allocates a status list index **before** calling the Wallet Service issue endpoint and forwards the allocation to the issue request. The Wallet Service's `CredentialEndpoints.IssueCredential` handler then embeds a `credentialStatus` claim (W3C `BitstringStatusListEntry` shape) in the signed SD-JWT VC payload in lockstep with the stored `CredentialEntity` row fields.
+
+The `CredentialStatus:EnableEmbedding` flag lives in the **Blueprint Service**'s `appsettings.json` (not here — see `src/Services/Sorcha.Blueprint.Service/appsettings.json`). When `true` (default), the Blueprint Service pre-allocates before signing and credentials carry the embedded claim. When `false`, pre-allocation is skipped and credentials are issued without the claim — dev-environment escape hatch for stacks that do not run the status list manager.
+
+**Non-fatal allocation failures**: if `IStatusListManager` is reachable but an allocation call throws, `ActionExecutionService` logs a warning and proceeds to issue the credential *without* the embedded claim. The credential is still valid and verifies via the spec 093 FR-010 server-side row fallback. This is a pragmatic scope deviation from spec FR-008 (which called for fail-closed) — documented in `specs/093-vc-security-fixes/tasks.md`.
+
+The direct HTTP issuance path (`POST /api/v1/wallets/{address}/credentials/issue` called outside a Blueprint action) does not embed the claim unless the caller explicitly supplies `statusListUrl` and `statusListIndex` on the request. Callers that want a HAIP-compliant credential through this path must supply the allocation themselves.
+
+Pre-Feature-093 credentials (no embedded `credentialStatus` claim) remain valid indefinitely and continue to verify via the server-side `CredentialEntity.StatusListUrl` / `StatusListIndex` fallback.
+
 ### Private Key Protection
 
 - **At-Rest Encryption**: All private keys encrypted with AES-256-GCM
