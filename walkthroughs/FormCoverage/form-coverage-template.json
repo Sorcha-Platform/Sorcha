@@ -1,0 +1,319 @@
+{
+  "id": "form-coverage-v1",
+  "title": "Form Renderer Coverage Demo",
+  "description": "Single-action blueprint that exercises every ControlTypes value (Layout, Label, TextLine, TextArea, Numeric, DateTime, File, Choice, Checkbox, Selection), all three layout modes (flat + x-sections + x-pages wizard), x-width hints, x-rule conditional visibility, x-introduction page intros, and the x-persona autofill extension from Feature 092.",
+  "version": 1,
+  "category": "demo",
+  "tags": ["demo", "forms", "controls", "coverage", "x-pages", "x-sections", "x-rule", "x-persona"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "form-coverage-generated",
+    "title": "Form Renderer Coverage Demo",
+    "description": "A single form that uses at least one of every form control type and form layout extension the renderer supports. Used to eyeball-test the SorchaFormRenderer and as a smoke test for new control changes.",
+    "version": 1,
+    "metadata": {
+      "category": "Demo",
+      "complexity": "Complex",
+      "actions": "1",
+      "features": "x-pages, x-sections, x-rule, x-introduction, x-width, x-persona, file-reference",
+      "sector": "Demo"
+    },
+    "instanceReference": {
+      "prefix": "FC",
+      "components": [
+        { "field": "/givenName", "transform": "FirstWord", "chars": 3 },
+        { "field": "/familyName", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "submitter",
+        "name": "Submitter",
+        "organisation": "Form Coverage Demo",
+        "description": "Fills the coverage form"
+      },
+      {
+        "id": "reviewer",
+        "name": "Reviewer",
+        "organisation": "Form Coverage Demo",
+        "description": "Receives and acknowledges the submission"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Coverage Form",
+        "description": "Complete every category of field so the renderer exercises every control type.",
+        "sender": "submitter",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "This form exists to exercise every control type supported by the SorchaFormRenderer. There is no business logic behind it — please fill it in however you like. The final page has a deliberate conditional field that only appears when you tick the box above it.",
+            "x-pages": [
+              {
+                "title": "Identity",
+                "description": "Text inputs, date/time pickers, and persona autofill",
+                "x-sections": [
+                  {
+                    "title": "Your Name",
+                    "description": "Given + family name. When Feature 092 persona autofill is enabled and you have saved these attributes, these fields prefill with a cream tint and `self` provenance tick.",
+                    "layout": "horizontal",
+                    "fields": ["givenName", "familyName"]
+                  },
+                  {
+                    "title": "Contact",
+                    "description": "Single-line text for the email (persona-aware) plus a multi-line note.",
+                    "layout": "vertical",
+                    "fields": ["email", "biography"]
+                  },
+                  {
+                    "title": "Key Dates",
+                    "description": "Date-of-birth picks up persona; appointment picker is a free choice.",
+                    "layout": "horizontal",
+                    "fields": ["dateOfBirth", "appointmentAt"]
+                  }
+                ]
+              },
+              {
+                "title": "Numbers & Choices",
+                "description": "Numeric field, radio choice, dropdown selection, read-only label.",
+                "x-sections": [
+                  {
+                    "title": "Preferences",
+                    "description": "Radio group (Choice) for the rating, dropdown (Selection) for the severity.",
+                    "layout": "vertical",
+                    "fields": ["satisfactionRating", "ticketSeverity", "favouriteNumber"]
+                  },
+                  {
+                    "title": "Guidance",
+                    "description": "Read-only Label control demonstrating static form text.",
+                    "layout": "vertical",
+                    "fields": ["helpNotice"]
+                  }
+                ]
+              },
+              {
+                "title": "Attachments & Consent",
+                "description": "File upload, conditional-visibility textarea, submission checkbox.",
+                "x-sections": [
+                  {
+                    "title": "Supporting Evidence",
+                    "description": "Optional file attachment (≤ 40 MB, any type).",
+                    "layout": "vertical",
+                    "fields": ["evidenceFile"]
+                  },
+                  {
+                    "title": "Follow-Up",
+                    "description": "Tick the box to reveal the follow-up note field (exercises x-rule SHOW).",
+                    "layout": "vertical",
+                    "fields": ["wantsFollowUp", "followUpNotes"]
+                  },
+                  {
+                    "title": "Confirmation",
+                    "description": "Final submission acknowledgement.",
+                    "layout": "vertical",
+                    "fields": ["confirmAccurate"]
+                  }
+                ]
+              }
+            ],
+            "properties": {
+              "givenName": {
+                "type": "string",
+                "title": "Given Name",
+                "description": "Your first name.",
+                "minLength": 1,
+                "maxLength": 100,
+                "x-width": "half",
+                "x-persona": "givenName"
+              },
+              "familyName": {
+                "type": "string",
+                "title": "Family Name",
+                "description": "Your surname.",
+                "minLength": 1,
+                "maxLength": 100,
+                "x-width": "half",
+                "x-persona": "familyName"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "title": "Email Address",
+                "description": "Persona autofill will populate this with your default email.",
+                "x-persona": "defaultEmail",
+                "x-width": "full"
+              },
+              "biography": {
+                "type": "string",
+                "title": "Short Biography",
+                "description": "A few sentences about yourself. Any length over 500 characters is forced into the TextArea renderer by the auto-generator — we override that explicitly below too so the renderer always gets the TextArea control for this field.",
+                "maxLength": 4000
+              },
+              "dateOfBirth": {
+                "type": "string",
+                "format": "date",
+                "title": "Date of Birth",
+                "description": "Date picker.",
+                "x-width": "half",
+                "x-persona": "dateOfBirth"
+              },
+              "appointmentAt": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Appointment Timestamp",
+                "description": "Date-and-time picker demonstrating the date-time format.",
+                "x-width": "half"
+              },
+              "favouriteNumber": {
+                "type": "integer",
+                "title": "Favourite Number",
+                "description": "Any integer between 0 and 1000.",
+                "minimum": 0,
+                "maximum": 1000,
+                "x-width": "third"
+              },
+              "satisfactionRating": {
+                "type": "string",
+                "title": "How satisfied are you with this form?",
+                "description": "Radio-button Choice control — pick exactly one.",
+                "enum": ["Very satisfied", "Satisfied", "Neutral", "Dissatisfied", "Very dissatisfied"]
+              },
+              "ticketSeverity": {
+                "type": "string",
+                "title": "Severity",
+                "description": "Dropdown Selection control.",
+                "enum": ["Low", "Medium", "High", "Critical"],
+                "x-width": "half"
+              },
+              "helpNotice": {
+                "type": "string",
+                "title": "Reminder",
+                "description": "Rendered as a read-only Label. No input is collected for this field.",
+                "readOnly": true,
+                "default": "Your submission is encrypted end-to-end and only the reviewer can decrypt it."
+              },
+              "evidenceFile": {
+                "type": "string",
+                "format": "file-reference",
+                "title": "Evidence (optional)",
+                "description": "Attach any supporting document.",
+                "x-file": {
+                  "accept": ["*/*"],
+                  "maxSizePerFile": "40MB",
+                  "maxChunks": 10
+                }
+              },
+              "wantsFollowUp": {
+                "type": "boolean",
+                "title": "I would like a follow-up conversation about this submission",
+                "description": "Checkbox control. Ticking this reveals the follow-up notes field below."
+              },
+              "followUpNotes": {
+                "type": "string",
+                "title": "Follow-up notes",
+                "description": "Only visible when the box above is ticked — demonstrates x-rule SHOW.",
+                "maxLength": 2000,
+                "x-rule": {
+                  "effect": "SHOW",
+                  "condition": {
+                    "scope": "/wantsFollowUp",
+                    "schema": { "const": true }
+                  }
+                }
+              },
+              "confirmAccurate": {
+                "type": "boolean",
+                "title": "I confirm the information on this form is accurate",
+                "description": "Required submission acknowledgement."
+              }
+            },
+            "required": [
+              "givenName",
+              "familyName",
+              "email",
+              "satisfactionRating",
+              "ticketSeverity",
+              "confirmAccurate"
+            ]
+          }
+        ],
+        "form": {
+          "type": "Layout",
+          "layout": "VerticalLayout",
+          "elements": [
+            { "type": "TextLine",  "title": "Given Name",        "scope": "/givenName" },
+            { "type": "TextLine",  "title": "Family Name",       "scope": "/familyName" },
+            { "type": "TextLine",  "title": "Email Address",     "scope": "/email" },
+            { "type": "TextArea",  "title": "Short Biography",   "scope": "/biography" },
+            { "type": "DateTime",  "title": "Date of Birth",     "scope": "/dateOfBirth" },
+            { "type": "DateTime",  "title": "Appointment",       "scope": "/appointmentAt" },
+            { "type": "Numeric",   "title": "Favourite Number",  "scope": "/favouriteNumber" },
+            { "type": "Choice",    "title": "Satisfaction",      "scope": "/satisfactionRating" },
+            { "type": "Selection", "title": "Severity",          "scope": "/ticketSeverity" },
+            { "type": "Label",     "title": "Reminder",          "scope": "/helpNotice" },
+            { "type": "File",      "title": "Evidence",          "scope": "/evidenceFile" },
+            { "type": "Checkbox",  "title": "Wants Follow-Up",   "scope": "/wantsFollowUp" },
+            {
+              "type": "TextArea",
+              "title": "Follow-up notes",
+              "scope": "/followUpNotes",
+              "rule": {
+                "effect": "SHOW",
+                "condition": {
+                  "scope": "/wantsFollowUp",
+                  "schema": { "const": true }
+                }
+              }
+            },
+            { "type": "Checkbox",  "title": "Confirm Accurate",  "scope": "/confirmAccurate" }
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "submitter", "dataPointers": ["/*"] },
+          { "participantAddress": "reviewer",  "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-review",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Forward the submission to the reviewer"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Acknowledge Submission",
+        "description": "Reviewer confirms receipt of the coverage form.",
+        "sender": "reviewer",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "acknowledged": {
+                "type": "boolean",
+                "title": "I have reviewed the submission",
+                "description": "Tick to confirm you've seen the coverage form."
+              },
+              "reviewerNote": {
+                "type": "string",
+                "title": "Reviewer note",
+                "description": "Optional short note back to the submitter.",
+                "maxLength": 1000
+              }
+            },
+            "required": ["acknowledged"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "reviewer",  "dataPointers": ["/*"] },
+          { "participantAddress": "submitter", "dataPointers": ["/*"] }
+        ],
+        "routes": []
+      }
+    ]
+  }
+}
