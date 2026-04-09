@@ -110,7 +110,7 @@ public sealed class PersonaServiceTests : IDisposable
             Emails = [new PersonaEmail("ada@example.com", true)],
         };
 
-        var result = await _sut.ReplaceAsync(_userId, payload);
+        var result = await _sut.ReplaceAsync(_userId, WalletAddress, payload);
 
         result.GivenName!.Value.Should().Be("Ada");
         result.DefaultEmail!.Value.Value.Should().Be("ada@example.com");
@@ -129,12 +129,15 @@ public sealed class PersonaServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ReplaceAsync_NoPrimaryWallet_Throws409WalletNotProvisioned()
+    public async Task ReplaceAsync_NoWalletAddress_Throws409WalletNotProvisioned()
     {
-        var otherUserId = Guid.NewGuid();
-
+        // Passing a null or empty wallet address — the endpoint does this
+        // when the caller's JWT carries no wallet_address claim — must fail
+        // fast with PersonaWalletNotProvisionedException so the UI can
+        // surface a "provision a wallet first" recovery prompt.
         var act = async () => await _sut.ReplaceAsync(
-            otherUserId,
+            _userId,
+            walletAddress: null,
             new PersonaAttributesV1 { GivenName = "Grace" });
 
         await act.Should().ThrowAsync<PersonaWalletNotProvisionedException>();
@@ -149,7 +152,7 @@ public sealed class PersonaServiceTests : IDisposable
             .Select(i => new PersonaEmail($"a{i}@example.com", i == 0))
             .ToList();
 
-        var act = async () => await _sut.ReplaceAsync(_userId, new PersonaAttributesV1 { Emails = emails });
+        var act = async () => await _sut.ReplaceAsync(_userId, WalletAddress, new PersonaAttributesV1 { Emails = emails });
 
         var ex = await act.Should().ThrowAsync<PersonaValidationException>();
         ex.Which.Errors.Should().ContainKey("emails");
@@ -168,7 +171,7 @@ public sealed class PersonaServiceTests : IDisposable
             ]
         };
 
-        var act = async () => await _sut.ReplaceAsync(_userId, payload);
+        var act = async () => await _sut.ReplaceAsync(_userId, WalletAddress, payload);
 
         var ex = await act.Should().ThrowAsync<PersonaValidationException>();
         ex.Which.Errors["emails"].Should().Contain("multiple_defaults");
@@ -186,7 +189,7 @@ public sealed class PersonaServiceTests : IDisposable
             Emails = [new PersonaEmail(bad, true)]
         };
 
-        var act = async () => await _sut.ReplaceAsync(_userId, payload);
+        var act = async () => await _sut.ReplaceAsync(_userId, WalletAddress, payload);
 
         var ex = await act.Should().ThrowAsync<PersonaValidationException>();
         ex.Which.Errors.Should().ContainKey("emails[0].value");
@@ -201,7 +204,7 @@ public sealed class PersonaServiceTests : IDisposable
             Phones = [new PersonaPhone("not-e164", true)]
         };
 
-        var act = async () => await _sut.ReplaceAsync(_userId, payload);
+        var act = async () => await _sut.ReplaceAsync(_userId, WalletAddress, payload);
 
         var ex = await act.Should().ThrowAsync<PersonaValidationException>();
         ex.Which.Errors["phones[0].value"].Should().Contain("invalid_phone");
@@ -230,7 +233,7 @@ public sealed class PersonaServiceTests : IDisposable
             ]
         };
 
-        var result = await _sut.ReplaceAsync(_userId, payload);
+        var result = await _sut.ReplaceAsync(_userId, WalletAddress, payload);
 
         result.DefaultAddress!.Value.Country.Should().Be("GB");
     }

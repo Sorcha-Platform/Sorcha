@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.ServiceDefaults;
@@ -97,9 +96,11 @@ public static class PersonaEndpoints
         var userId = GetUserId(context);
         if (userId == Guid.Empty) return TypedResults.Unauthorized();
 
+        var walletAddress = context.User.FindFirst("wallet_address")?.Value;
+
         try
         {
-            var result = await personaService.ReplaceAsync(userId, body, ct);
+            var result = await personaService.ReplaceAsync(userId, walletAddress, body, ct);
             return TypedResults.Ok(result);
         }
         catch (PersonaValidationException ex)
@@ -128,10 +129,17 @@ public static class PersonaEndpoints
         return TypedResults.NoContent();
     }
 
+    /// <summary>
+    /// Resolves the caller's <see cref="PlatformUser"/> id from the
+    /// <c>platform_user_id</c> claim. The <c>sub</c> claim carries the
+    /// org-scoped <c>UserIdentity.Id</c>, not the cross-org PlatformUser id,
+    /// so it cannot be used as the key for the <c>PlatformUserPersonas</c>
+    /// table (FK violation). See <c>TokenService.GenerateUserTokenAsync</c>
+    /// for where the <c>platform_user_id</c> claim is emitted.
+    /// </summary>
     private static Guid GetUserId(HttpContext context)
     {
-        var sub = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? context.User.FindFirst("sub")?.Value;
-        return Guid.TryParse(sub, out var id) ? id : Guid.Empty;
+        var platformUserId = context.User.FindFirst("platform_user_id")?.Value;
+        return Guid.TryParse(platformUserId, out var id) ? id : Guid.Empty;
     }
 }
