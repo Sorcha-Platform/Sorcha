@@ -122,6 +122,14 @@ function Invoke-SorchaApi {
         UseBasicParsing = $true
     }
 
+    # Allow running walkthroughs against a deployed HTTPS node from a
+    # developer box that cannot check CRLs (e.g. Windows Schannel offline).
+    # Opt in with SORCHA_WT_SKIP_CERT_CHECK=1.
+    if ([System.Environment]::GetEnvironmentVariable('SORCHA_WT_SKIP_CERT_CHECK') -eq '1' -and
+        $Uri -match '^https://') {
+        $params.SkipCertificateCheck = $true
+    }
+
     if ($Body) {
         if ($ContentType -eq "application/json") {
             $jsonBody = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 30 }
@@ -300,7 +308,17 @@ function Initialize-SorchaEnvironment {
         # Check API Gateway health
         Write-WtInfo "Checking API Gateway health..."
         try {
-            $null = Invoke-RestMethod -Uri "$($env.GatewayUrl)/api/health" -Method GET -TimeoutSec 10 -UseBasicParsing
+            $healthParams = @{
+                Uri             = "$($env.GatewayUrl)/api/health"
+                Method          = 'GET'
+                TimeoutSec      = 10
+                UseBasicParsing = $true
+            }
+            if ([System.Environment]::GetEnvironmentVariable('SORCHA_WT_SKIP_CERT_CHECK') -eq '1' -and
+                $env.GatewayUrl -match '^https://') {
+                $healthParams.SkipCertificateCheck = $true
+            }
+            $null = Invoke-RestMethod @healthParams
             Write-WtSuccess "API Gateway is healthy"
         } catch {
             Write-WtWarn "API Gateway health check failed — services may still be starting"
