@@ -115,9 +115,9 @@ Write-WtStep "Step 1: Bootstrap Organisations ($($selectedOrgs.Count))"
 # First, login as seed admin to create private orgs
 $seedAdmin = Connect-SorchaAdmin `
     -TenantUrl $env.TenantUrl `
-    -AdminEmail $secrets.seedAdminEmail `
+    -AdminEmail $secrets.adminEmail `
     -AdminName "Seed Admin" `
-    -AdminPassword $secrets.seedAdminPassword
+    -AdminPassword $secrets.adminPassword
 
 $orgContexts = @{}
 
@@ -140,6 +140,19 @@ foreach ($org in $selectedOrgs) {
         } catch {
             # User may already exist from a previous run — continue
             Write-WtInfo "  Admin user $adminEmail may already exist — continuing"
+        }
+
+        # Verify the admin's email via platform API so New-SorchaOrganization
+        # can add them directly without triggering an SMTP invite email.
+        # Nodes without SMTP (e.g. n1) fail hard otherwise.
+        try {
+            $null = Invoke-SorchaApi -Method POST `
+                -Uri "$($env.TenantUrl)/platform/users/verify-email" `
+                -Body @{ email = $adminEmail } `
+                -Headers $seedAdmin.Headers
+            Write-WtInfo "  Verified email for $adminEmail"
+        } catch {
+            Write-WtWarn "  Could not verify $adminEmail — org creation may fall back to SMTP invite"
         }
 
         # Create the private org via platform admin API
@@ -353,6 +366,14 @@ foreach ($regDef in $config.registers) {
         -Headers $ctx.Headers `
         -RegisterName $regDef.name `
         -SubscriptionType "Owner"
+
+    # Public org subscription so consumer users see the register.
+    $null = Add-SorchaPublicOrgSubscription `
+        -TenantUrl $env.TenantUrl `
+        -RegisterId $register.RegisterId `
+        -RegisterName $regDef.name `
+        -SysAdminHeaders $seedAdmin.Headers `
+        -SysAdminEmail $secrets.adminEmail
 
     Write-WtSuccess "  Register '$($regDef.name)': $($register.RegisterId)"
 }

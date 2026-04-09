@@ -37,6 +37,18 @@ try {
         -TenantId $state.organizationId -OwnerUserId $state.adminUserId `
         -OwnerWalletAddress $state.walletAddress -Headers $headers
     Write-WtSuccess "Register created locally: $($register.RegisterId)"
+
+    # Public org subscription (local node) so consumer users see the register.
+    if ($state.tenantUrl) {
+        $null = Add-SorchaPublicOrgSubscription `
+            -TenantUrl $state.tenantUrl `
+            -RegisterId $register.RegisterId `
+            -RegisterName "Distributed Test Register" `
+            -SysAdminHeaders $headers
+    } else {
+        Write-WtWarn "state.tenantUrl not set — re-run setup.ps1 to enable Public org subscription"
+    }
+
     $stepsPassed++
 } catch {
     Write-WtFail "Local register creation failed: $($_.Exception.Message)"

@@ -42,6 +42,7 @@ $state = @{
     adminUserId    = $admin.AdminUserId
     adminToken     = $admin.Token
     walletAddress  = $wallet.Address
+    tenantUrl      = $env.TenantUrl
     registerUrl    = $env.RegisterUrl
     walletUrl      = $env.WalletUrl
 }

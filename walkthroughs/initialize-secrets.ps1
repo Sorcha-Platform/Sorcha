@@ -110,6 +110,17 @@ $secrets = [ordered]@{
         patientPassword = "Dev_Pass_2025!"
         patientName    = "Demo Patient"
     }
+    "form-coverage" = @{
+        adminEmail        = $platformEmail
+        adminPassword     = $platformPassword
+        adminName         = $platformName
+        submitterEmail    = "submitter@form-coverage.local"
+        submitterPassword = "Dev_Pass_2025!"
+        submitterName     = "Demo Submitter"
+        reviewerEmail     = "reviewer@form-coverage.local"
+        reviewerPassword  = "Dev_Pass_2025!"
+        reviewerName      = "Demo Reviewer"
+    }
     "payload-test" = @{
         adminEmail    = $platformEmail
         adminPassword = $platformPassword

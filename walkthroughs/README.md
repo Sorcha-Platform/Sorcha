@@ -41,6 +41,7 @@ One organization exercising wallets, registers, and crypto primitives.
 | [RegisterCreationFlow](./RegisterCreationFlow/) | Full register lifecycle: two-phase creation (initiate → sign attestation → finalize), CLI commands (`sorcha register create`), docket inspection, OData queries against the Register Service, and genesis transaction verification. |
 | [WalletVerification](./WalletVerification/) | Multi-algorithm wallet testing across ED25519, P-256, and RSA-4096. Covers wallet creation, data signing, pre-hashed signing, and explicit signature verification. Ensures all three crypto backends produce valid, verifiable signatures. |
 | [RegisterMongoDB](./RegisterMongoDB/) | MongoDB storage backend integration. Validates connection establishment, repository DI wiring, collection/index creation, and storage mode switching between InMemory and MongoDB providers. |
+| [FormCoverage](./FormCoverage/) | **SorchaFormRenderer smoke test.** Single-org, 2 participants, 1 blueprint that exercises every `ControlTypes` value (Layout, Label, TextLine, TextArea, Numeric, DateTime, File, Choice, Checkbox, Selection), all three layout modes (`x-pages` wizard + `x-sections` + explicit `form.elements`), `x-width` hints, `x-rule` conditional visibility, `x-introduction`, and the `x-persona` autofill extension from Feature 092. `run.ps1 -Rounds N` loops the submit → acknowledge cycle N times as a lightweight form-pipeline smoke test. |
 
 ### Multi-Org
 

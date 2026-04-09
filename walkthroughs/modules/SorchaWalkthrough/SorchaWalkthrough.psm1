@@ -122,6 +122,14 @@ function Invoke-SorchaApi {
         UseBasicParsing = $true
     }
 
+    # Allow running walkthroughs against a deployed HTTPS node from a
+    # developer box that cannot check CRLs (e.g. Windows Schannel offline).
+    # Opt in with SORCHA_WT_SKIP_CERT_CHECK=1.
+    if ([System.Environment]::GetEnvironmentVariable('SORCHA_WT_SKIP_CERT_CHECK') -eq '1' -and
+        $Uri -match '^https://') {
+        $params.SkipCertificateCheck = $true
+    }
+
     if ($Body) {
         if ($ContentType -eq "application/json") {
             $jsonBody = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 30 }
@@ -300,7 +308,17 @@ function Initialize-SorchaEnvironment {
         # Check API Gateway health
         Write-WtInfo "Checking API Gateway health..."
         try {
-            $null = Invoke-RestMethod -Uri "$($env.GatewayUrl)/api/health" -Method GET -TimeoutSec 10 -UseBasicParsing
+            $healthParams = @{
+                Uri             = "$($env.GatewayUrl)/api/health"
+                Method          = 'GET'
+                TimeoutSec      = 10
+                UseBasicParsing = $true
+            }
+            if ([System.Environment]::GetEnvironmentVariable('SORCHA_WT_SKIP_CERT_CHECK') -eq '1' -and
+                $env.GatewayUrl -match '^https://') {
+                $healthParams.SkipCertificateCheck = $true
+            }
+            $null = Invoke-RestMethod @healthParams
             Write-WtSuccess "API Gateway is healthy"
         } catch {
             Write-WtWarn "API Gateway health check failed — services may still be starting"
@@ -396,6 +414,14 @@ function Connect-SorchaAdmin {
         [Parameter(Mandatory)][string]$AdminPassword
     )
 
+    # Well-known System Admin org id — DatabaseInitializer creates this on
+    # first startup and the seed admin is always a member. Used as the
+    # target for the two-step login fallback when the sysadmin has been
+    # added to additional orgs (e.g. Add-SorchaPublicOrgSubscription adds
+    # the sysadmin to the Public org, which breaks the OAuth password
+    # grant's "single org" fast path).
+    $systemAdminOrgId = "00000000-0000-0000-0000-000000000001"
+
     $token = ""
     $organizationId = ""
     $adminUserId = ""
@@ -403,15 +429,38 @@ function Connect-SorchaAdmin {
     $encodedPassword = [Uri]::EscapeDataString($AdminPassword)
     $loginBody = "grant_type=password&username=$AdminEmail&password=$encodedPassword&client_id=sorcha-cli"
 
-    $loginResponse = Invoke-SorchaApi -Method POST `
-        -Uri "$TenantUrl/service-auth/token" `
-        -Body $loginBody `
-        -ContentType "application/x-www-form-urlencoded"
+    try {
+        $loginResponse = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/service-auth/token" `
+            -Body $loginBody `
+            -ContentType "application/x-www-form-urlencoded"
+        $token = $loginResponse.access_token
+        Write-WtSuccess "Logged in as $AdminEmail (OAuth password grant)"
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
 
-    $token = $loginResponse.access_token
-    Write-WtSuccess "Logged in as $AdminEmail"
+        if ($statusCode -ne 401) { throw }
 
-    # Extract org info from JWT if not available from bootstrap
+        # OAuth password grant returns 401 when the user has >1 org (the
+        # Tenant Service can't auto-pick). Fall back to the two-step
+        # /auth/login + /auth/select-org flow and target the System Admin
+        # org explicitly.
+        Write-WtWarn "OAuth password grant returned 401 — falling back to two-step login"
+
+        $adminSession = Connect-SorchaUser `
+            -TenantUrl $TenantUrl `
+            -Email $AdminEmail `
+            -Password $AdminPassword `
+            -OrganizationId $systemAdminOrgId
+
+        $token = $adminSession.Token
+        $organizationId = $adminSession.OrganizationId
+        $adminUserId = $adminSession.UserId
+        Write-WtSuccess "Logged in as $AdminEmail -> System Admin org"
+    }
+
+    # Extract org info from JWT if not already populated by the fallback path.
     if (-not $organizationId -and $token) {
         $jwt = Decode-SorchaJwt -Token $token
         $organizationId = $jwt.org_id
@@ -1391,6 +1440,151 @@ function New-SorchaRegisterSubscription {
 
         if ($statusCode -eq 409) {
             Write-WtWarn "Org already subscribed to register $RegisterId — continuing"
+            return $null
+        }
+        throw
+    }
+}
+
+# ============================================================================
+# Add-SorchaPublicOrgSubscription — Subscribe the well-known Public org to
+# a public register, idempotently adding the system admin as an Administrator
+# of the Public org first so subsequent calls (and audit trails) have a
+# real membership record to lean on.
+# ============================================================================
+
+function Add-SorchaPublicOrgSubscription {
+    <#
+    .SYNOPSIS
+        Subscribe the Public organisation (00000000-0000-0000-0000-000000000002)
+        to a public register. Ensures the system admin is a member/admin of
+        the Public org before creating the subscription.
+    .DESCRIPTION
+        Walkthroughs that create public registers should also surface those
+        registers under the Public org so consumer users (who default to the
+        Public org) see them in their register list. This helper:
+
+        1. Lists users in the Public org to check if the sysadmin is already
+           a member. If not, it calls POST /organizations/{publicOrgId}/users
+           using the sysadmin's email + "Administrator" role. 409 is treated
+           as success.
+        2. Calls POST /organizations/{publicOrgId}/register-subscriptions
+           with SubscriptionType=Public and the sysadmin headers. 409 is
+           treated as success.
+    .PARAMETER TenantUrl
+        Tenant Service base URL.
+    .PARAMETER RegisterId
+        32-character hex register ID to subscribe the Public org to.
+    .PARAMETER RegisterName
+        Display name stored with the subscription record.
+    .PARAMETER SysAdminHeaders
+        Authorization headers carrying the SystemAdmin JWT. The sysadmin's
+        email is read from the bearer token's `email` claim so the helper
+        does not need a separate parameter.
+    .PARAMETER SysAdminEmail
+        Optional explicit sysadmin email. If omitted, extracted from the
+        bearer token in SysAdminHeaders.
+    .PARAMETER SysAdminDisplayName
+        Optional display name for the sysadmin membership row. Defaults to
+        "System Administrator".
+    .RETURNS
+        Subscription response, or $null if the subscription already existed.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$TenantUrl,
+        [Parameter(Mandatory)][string]$RegisterId,
+        [Parameter(Mandatory)][hashtable]$SysAdminHeaders,
+        [string]$RegisterName = "",
+        [string]$SysAdminEmail = "",
+        [string]$SysAdminDisplayName = "System Administrator"
+    )
+
+    $publicOrgId = "00000000-0000-0000-0000-000000000002"
+
+    # Resolve the sysadmin email from the bearer token if not supplied.
+    if (-not $SysAdminEmail) {
+        $authHeader = $SysAdminHeaders["Authorization"]
+        if ($authHeader -and $authHeader.StartsWith("Bearer ")) {
+            $token = $authHeader.Substring(7)
+            $parts = $token.Split('.')
+            if ($parts.Count -ge 2) {
+                $payload = $parts[1].Replace('-', '+').Replace('_', '/')
+                switch ($payload.Length % 4) {
+                    2 { $payload += '==' }
+                    3 { $payload += '=' }
+                }
+                try {
+                    $json = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
+                    $claims = $json | ConvertFrom-Json
+                    if ($claims.email) { $SysAdminEmail = $claims.email }
+                } catch {
+                    Write-WtWarn "Failed to decode sysadmin JWT for email claim: $_"
+                }
+            }
+        }
+    }
+
+    if (-not $SysAdminEmail) {
+        throw "Add-SorchaPublicOrgSubscription requires SysAdminEmail or a bearer token carrying an 'email' claim"
+    }
+
+    # 1. Ensure sysadmin is a member of the public org.
+    Write-WtInfo "Ensuring sysadmin '$SysAdminEmail' is an admin of the Public org"
+    try {
+        $users = Invoke-SorchaApi -Method GET `
+            -Uri "$TenantUrl/organizations/$publicOrgId/users?includeInactive=true" `
+            -Headers $SysAdminHeaders
+        $existing = $users.users | Where-Object { $_.email -eq $SysAdminEmail } | Select-Object -First 1
+    } catch {
+        Write-WtWarn "Could not list public org users: $($_.Exception.Message)"
+        $existing = $null
+    }
+
+    if (-not $existing) {
+        try {
+            $addBody = @{
+                email              = $SysAdminEmail
+                displayName        = $SysAdminDisplayName
+                externalIdpSubject = "sysadmin-publicorg-" + [guid]::NewGuid().ToString().Substring(0, 8)
+                roles              = @("Administrator")
+            }
+            $null = Invoke-SorchaApi -Method POST `
+                -Uri "$TenantUrl/organizations/$publicOrgId/users" `
+                -Body $addBody `
+                -Headers $SysAdminHeaders
+            Write-WtSuccess "Sysadmin added as Administrator of the Public org"
+        } catch {
+            $statusCode = $null
+            try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+            if ($statusCode -eq 409 -or $statusCode -eq 400) {
+                Write-WtWarn "Sysadmin already a member of the Public org — continuing"
+            } else {
+                throw
+            }
+        }
+    } else {
+        Write-WtInfo "Sysadmin already a member of the Public org"
+    }
+
+    # 2. Subscribe the public org to the register (idempotent — 409 = OK).
+    $body = @{
+        register_id       = $RegisterId
+        register_name     = $RegisterName
+        subscription_type = "Public"
+    }
+
+    try {
+        $response = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/organizations/$publicOrgId/register-subscriptions" `
+            -Body $body `
+            -Headers $SysAdminHeaders
+        Write-WtSuccess "Public org subscribed to register $RegisterId"
+        return $response
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+        if ($statusCode -eq 409) {
+            Write-WtWarn "Public org already subscribed to register $RegisterId — continuing"
             return $null
         }
         throw

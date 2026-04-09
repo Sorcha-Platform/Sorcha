@@ -51,6 +51,15 @@ try {
     if ($register.GenesisTransactionId) {
         Write-WtInfo "Genesis TX: $($register.GenesisTransactionId)"
     }
+
+    # Public org subscription so consumer users see the new register.
+    # The helper decodes the sysadmin email from the bearer token.
+    $null = Add-SorchaPublicOrgSubscription `
+        -TenantUrl $state.tenantUrl `
+        -RegisterId $register.RegisterId `
+        -RegisterName "Register Creation Demo Register" `
+        -SysAdminHeaders $headers
+
     $stepsPassed++
 } catch {
     Write-WtFail "Register creation failed: $($_.Exception.Message)"

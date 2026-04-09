@@ -1,13 +1,14 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# HealthDeclaration — Demo Setup
-# Single org, single participant. Bootstraps a demo clinic, creates one patient
-# user with a wallet, creates one register, and publishes the health declaration
-# blueprint exercising x-pages, x-sections, x-rule, x-introduction, and x-width.
-#
-# Use this walkthrough to demo Feature 091 layout extensions on any node.
+# FormCoverage — Demo Setup
+# Single-org walkthrough built to eyeball-test the SorchaFormRenderer. The
+# blueprint exercises every ControlTypes value (Layout, Label, TextLine,
+# TextArea, Numeric, DateTime, File, Choice, Checkbox, Selection), all three
+# layout modes (x-pages wizard + x-sections + flat form), x-width hints,
+# x-rule conditional visibility, x-introduction, and the x-persona extension
+# from Feature 092.
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
@@ -21,15 +22,15 @@ $ErrorActionPreference = "Stop"
 $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-Write-WtBanner "HealthDeclaration — Demo Setup"
+Write-WtBanner "FormCoverage — Demo Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "health-declaration"
+$secrets = Get-SorchaSecrets -WalkthroughName "form-coverage"
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
 
-# Pre-flight: validate existing state unless -Force
+# Pre-flight: validate existing state unless -Force.
 if ((Test-Path $stateFile) -and -not $Force) {
     Write-WtStep "Validating existing state.json"
     $existingState = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
@@ -38,7 +39,7 @@ if ((Test-Path $stateFile) -and -not $Force) {
     try {
         $testLogin = Invoke-SorchaApi -Method POST `
             -Uri "$($existingState.tenantUrl)/auth/login" `
-            -Body @{ email = $existingState.patient.email; password = $existingState.patient.password }
+            -Body @{ email = $existingState.submitter.email; password = $existingState.submitter.password }
         if (-not $testLogin.requires_org_selection -and -not $testLogin.access_token) {
             $stateValid = $false
         }
@@ -60,8 +61,8 @@ if ((Test-Path $stateFile) -and -not $Force) {
 Write-WtStep "Step 1: System Admin Login"
 $sysAdmin = Connect-SorchaAdmin `
     -TenantUrl $env.TenantUrl `
-    -OrgName "Health Declaration System" `
-    -OrgSubdomain "health-sys" `
+    -OrgName "Form Coverage System" `
+    -OrgSubdomain "form-coverage-sys" `
     -AdminEmail $secrets.adminEmail `
     -AdminName $secrets.adminName `
     -AdminPassword $secrets.adminPassword
@@ -81,23 +82,20 @@ try {
 }
 
 # ============================================================================
-# Step 2: Register Patient and Clinician Users on Public Org
+# Step 2: Register Submitter and Reviewer Users on Public Org
 # ============================================================================
-Write-WtStep "Step 2: Register Patient and Clinician Users"
-
-$clinicianEmail    = "clinician@health-demo.local"
-$clinicianPassword = $secrets.patientPassword
+Write-WtStep "Step 2: Register Submitter and Reviewer Users"
 
 foreach ($user in @(
-    @{ Email = $secrets.patientEmail; Name = $secrets.patientName },
-    @{ Email = $clinicianEmail;       Name = "Demo Clinician" }
+    @{ Email = $secrets.submitterEmail; Name = $secrets.submitterName; Password = $secrets.submitterPassword },
+    @{ Email = $secrets.reviewerEmail;  Name = $secrets.reviewerName;  Password = $secrets.reviewerPassword }
 )) {
     try {
         Register-SorchaPublicUser `
             -TenantUrl $env.TenantUrl `
             -Email $user.Email `
             -DisplayName $user.Name `
-            -Password $secrets.patientPassword
+            -Password $user.Password
         Write-WtInfo "Registered: $($user.Email)"
     } catch {
         if ($_.Exception.Message -match '409|already exists|duplicate') {
@@ -114,98 +112,98 @@ foreach ($user in @(
 }
 
 # ============================================================================
-# Step 3: Create Clinic Org
+# Step 3: Create Form Coverage Demo Org
 # ============================================================================
-Write-WtStep "Step 3: Create Demo Clinic Organization"
+Write-WtStep "Step 3: Create Form Coverage Demo Organization"
 
 try {
-    $clinicOrg = New-SorchaOrganization `
+    $demoOrg = New-SorchaOrganization `
         -TenantUrl $env.TenantUrl `
-        -Name "Demo Clinic" `
-        -Subdomain "health-demo" `
-        -AdminEmail $secrets.patientEmail `
+        -Name "Form Coverage Demo" `
+        -Subdomain "form-coverage-demo" `
+        -AdminEmail $secrets.submitterEmail `
         -Headers $sysAdmin.Headers
 } catch {
     if ($_.Exception.Message -match 'already taken|409|duplicate|400') {
         $orgs = (Invoke-SorchaApi -Method GET -Uri "$($env.TenantUrl)/platform/organizations?page=1&pageSize=50" -Headers $sysAdmin.Headers)
-        $existing = $orgs | Where-Object { $_.name -eq "Demo Clinic" -or $_.subdomain -eq "health-demo" } | Select-Object -First 1
-        if (-not $existing) { $existing = ($orgs.items | Where-Object { $_.name -eq "Demo Clinic" -or $_.subdomain -eq "health-demo" }) | Select-Object -First 1 }
-        $clinicOrg = @{ OrganizationId = $existing.id ?? $existing.organizationId }
-        Write-WtInfo "Demo Clinic exists: $($clinicOrg.OrganizationId)"
+        $existing = $orgs | Where-Object { $_.name -eq "Form Coverage Demo" -or $_.subdomain -eq "form-coverage-demo" } | Select-Object -First 1
+        if (-not $existing) { $existing = ($orgs.items | Where-Object { $_.name -eq "Form Coverage Demo" -or $_.subdomain -eq "form-coverage-demo" }) | Select-Object -First 1 }
+        $demoOrg = @{ OrganizationId = $existing.id ?? $existing.organizationId }
+        Write-WtInfo "Form Coverage Demo exists: $($demoOrg.OrganizationId)"
     } else { throw }
 }
-Write-WtInfo "Demo Clinic Org: $($clinicOrg.OrganizationId)"
+Write-WtInfo "Form Coverage Demo Org: $($demoOrg.OrganizationId)"
 
 # ============================================================================
-# Step 3.5: Add clinician to Demo Clinic as an Administrator
+# Step 3.5: Add reviewer to Form Coverage Demo as an Administrator
 # ============================================================================
-Write-WtStep "Step 3.5: Add Clinician to Demo Clinic"
+Write-WtStep "Step 3.5: Add Reviewer to Form Coverage Demo"
 Get-OrCreateUser `
     -TenantUrl $env.TenantUrl `
-    -OrganizationId $clinicOrg.OrganizationId `
-    -Email $clinicianEmail `
-    -DisplayName "Demo Clinician" `
+    -OrganizationId $demoOrg.OrganizationId `
+    -Email $secrets.reviewerEmail `
+    -DisplayName $secrets.reviewerName `
     -Headers $sysAdmin.Headers `
     -Roles @("Administrator", "Consumer") | Out-Null
-Write-WtInfo "Clinician added to Demo Clinic"
+Write-WtInfo "Reviewer added to Form Coverage Demo"
 
 # ============================================================================
 # Step 4: Login and create wallets + participants for both users
 # ============================================================================
 Write-WtStep "Step 4: Create Wallets & Participants"
 
-$patientAuth = Connect-SorchaUser `
+$submitterAuth = Connect-SorchaUser `
     -TenantUrl $env.TenantUrl `
-    -Email $secrets.patientEmail `
-    -Password $secrets.patientPassword `
-    -OrganizationId $clinicOrg.OrganizationId
+    -Email $secrets.submitterEmail `
+    -Password $secrets.submitterPassword `
+    -OrganizationId $demoOrg.OrganizationId
 
-$patientWallet = New-SorchaWallet `
+$submitterWallet = New-SorchaWallet `
     -WalletUrl $env.WalletUrl `
-    -Name "Patient Wallet" `
-    -Headers $patientAuth.Headers `
+    -Name "Submitter Wallet" `
+    -Headers $submitterAuth.Headers `
     -FetchPublicKey
 
-$patientParticipant = Register-SorchaParticipant `
+$null = Register-SorchaParticipant `
     -TenantUrl $env.TenantUrl `
     -WalletUrl $env.WalletUrl `
-    -OrganizationId $clinicOrg.OrganizationId `
-    -WalletAddress $patientWallet.Address `
-    -DisplayName "Patient" `
-    -Headers $patientAuth.Headers
-Write-WtSuccess "Patient: $($patientWallet.Address)"
+    -OrganizationId $demoOrg.OrganizationId `
+    -WalletAddress $submitterWallet.Address `
+    -DisplayName "Submitter" `
+    -Headers $submitterAuth.Headers
+Write-WtSuccess "Submitter: $($submitterWallet.Address)"
 
-$clinicianAuth = Connect-SorchaUser `
+$reviewerAuth = Connect-SorchaUser `
     -TenantUrl $env.TenantUrl `
-    -Email $clinicianEmail `
-    -Password $clinicianPassword `
-    -OrganizationId $clinicOrg.OrganizationId
+    -Email $secrets.reviewerEmail `
+    -Password $secrets.reviewerPassword `
+    -OrganizationId $demoOrg.OrganizationId
 
-$clinicianWallet = New-SorchaWallet `
+$reviewerWallet = New-SorchaWallet `
     -WalletUrl $env.WalletUrl `
-    -Name "Clinician Wallet" `
-    -Headers $clinicianAuth.Headers `
+    -Name "Reviewer Wallet" `
+    -Headers $reviewerAuth.Headers `
     -FetchPublicKey
 
-$clinicianParticipant = Register-SorchaParticipant `
+$null = Register-SorchaParticipant `
     -TenantUrl $env.TenantUrl `
     -WalletUrl $env.WalletUrl `
-    -OrganizationId $clinicOrg.OrganizationId `
-    -WalletAddress $clinicianWallet.Address `
-    -DisplayName "Clinician" `
-    -Headers $clinicianAuth.Headers
-Write-WtSuccess "Clinician: $($clinicianWallet.Address)"
+    -OrganizationId $demoOrg.OrganizationId `
+    -WalletAddress $reviewerWallet.Address `
+    -DisplayName "Reviewer" `
+    -Headers $reviewerAuth.Headers
+Write-WtSuccess "Reviewer: $($reviewerWallet.Address)"
 
 # ============================================================================
 # Step 5: Create Register (idempotent — reuse existing one if present)
 # ============================================================================
 Write-WtStep "Step 5: Create or Reuse Register"
 
-$registerName = "Health Declarations Register"
+$registerName = "Form Coverage Register"
 $existingRegisterId = Get-SorchaRegisterByName `
     -TenantUrl $env.TenantUrl `
     -Name $registerName `
-    -Headers $patientAuth.Headers
+    -Headers $submitterAuth.Headers
 
 if ($existingRegisterId) {
     Write-WtInfo "Reusing existing register '$registerName': $existingRegisterId"
@@ -215,27 +213,25 @@ if ($existingRegisterId) {
         -RegisterUrl $env.RegisterUrl `
         -WalletUrl $env.WalletUrl `
         -Name $registerName `
-        -Description "Register holding patient health declarations submitted before treatment" `
-        -TenantId $clinicOrg.OrganizationId `
-        -OwnerUserId $patientAuth.UserId `
-        -OwnerWalletAddress $patientWallet.Address `
-        -Headers $patientAuth.Headers
+        -Description "Register that holds FormCoverage test submissions for eyeballing every control type" `
+        -TenantId $demoOrg.OrganizationId `
+        -OwnerUserId $submitterAuth.UserId `
+        -OwnerWalletAddress $submitterWallet.Address `
+        -Headers $submitterAuth.Headers
     Write-WtSuccess "Register created: $($register.RegisterId)"
 
-    # Explicitly subscribe Demo Clinic as Owner so the register appears in
-    # /api/me/subscribed-registers for both patient and clinician.
     try {
         New-SorchaRegisterSubscription `
             -TenantUrl $env.TenantUrl `
-            -OrganizationId $clinicOrg.OrganizationId `
+            -OrganizationId $demoOrg.OrganizationId `
             -RegisterId $register.RegisterId `
             -RegisterName $registerName `
-            -Headers $patientAuth.Headers `
+            -Headers $submitterAuth.Headers `
             -SubscriptionType "Owner" | Out-Null
-        Write-WtInfo "Demo Clinic subscribed to register as Owner"
+        Write-WtInfo "Form Coverage Demo subscribed to register as Owner"
     } catch {
         if ($_.Exception.Message -match '409|already exists|duplicate') {
-            Write-WtInfo "Demo Clinic already subscribed (skipping)"
+            Write-WtInfo "Form Coverage Demo already subscribed (skipping)"
         } else {
             Write-WtWarn "Subscription failed: $($_.Exception.Message)"
         }
@@ -253,41 +249,41 @@ $null = Add-SorchaPublicOrgSubscription `
 # Publish both participants to register
 Publish-SorchaParticipant `
     -TenantUrl $env.TenantUrl `
-    -OrganizationId $clinicOrg.OrganizationId `
+    -OrganizationId $demoOrg.OrganizationId `
     -RegisterId $register.RegisterId `
-    -ParticipantName "Patient" `
-    -OrganizationName "Demo Clinic" `
-    -WalletAddress $patientWallet.Address `
-    -PublicKey $patientWallet.PublicKey `
-    -Headers $patientAuth.Headers
-Write-WtInfo "Patient participant published"
+    -ParticipantName "Submitter" `
+    -OrganizationName "Form Coverage Demo" `
+    -WalletAddress $submitterWallet.Address `
+    -PublicKey $submitterWallet.PublicKey `
+    -Headers $submitterAuth.Headers
+Write-WtInfo "Submitter participant published"
 
 Publish-SorchaParticipant `
     -TenantUrl $env.TenantUrl `
-    -OrganizationId $clinicOrg.OrganizationId `
+    -OrganizationId $demoOrg.OrganizationId `
     -RegisterId $register.RegisterId `
-    -ParticipantName "Clinician" `
-    -OrganizationName "Demo Clinic" `
-    -WalletAddress $clinicianWallet.Address `
-    -PublicKey $clinicianWallet.PublicKey `
-    -Headers $clinicianAuth.Headers
-Write-WtInfo "Clinician participant published"
+    -ParticipantName "Reviewer" `
+    -OrganizationName "Form Coverage Demo" `
+    -WalletAddress $reviewerWallet.Address `
+    -PublicKey $reviewerWallet.PublicKey `
+    -Headers $reviewerAuth.Headers
+Write-WtInfo "Reviewer participant published"
 
 # ============================================================================
 # Step 6: Publish Blueprint
 # ============================================================================
-Write-WtStep "Step 6: Publish Health Declaration Blueprint"
+Write-WtStep "Step 6: Publish Form Coverage Blueprint"
 
-$templatePath = Join-Path $scriptDir "health-declaration-template.json"
+$templatePath = Join-Path $scriptDir "form-coverage-template.json"
 $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
     -TemplatePath $templatePath `
     -WalletMap @{
-        "patient"   = $patientWallet.Address
-        "clinician" = $clinicianWallet.Address
+        "submitter" = $submitterWallet.Address
+        "reviewer"  = $reviewerWallet.Address
     } `
-    -Headers $patientAuth.Headers `
-    -IdPrefix "hd" `
+    -Headers $submitterAuth.Headers `
+    -IdPrefix "fc" `
     -RegisterId $register.RegisterId
 Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
 
@@ -303,33 +299,28 @@ $state = @{
     gatewayUrl   = $env.GatewayUrl
     registerId   = $register.RegisterId
     blueprintId  = $blueprint.BlueprintId
-    clinic       = @{
-        organizationId = $clinicOrg.OrganizationId
+    demoOrg      = @{
+        organizationId = $demoOrg.OrganizationId
     }
-    patient      = @{
-        email          = $secrets.patientEmail
-        password       = $secrets.patientPassword
-        organizationId = $clinicOrg.OrganizationId
-        walletAddress  = $patientWallet.Address
-        publicKey      = $patientWallet.PublicKey
+    submitter    = @{
+        email          = $secrets.submitterEmail
+        password       = $secrets.submitterPassword
+        organizationId = $demoOrg.OrganizationId
+        walletAddress  = $submitterWallet.Address
+        publicKey      = $submitterWallet.PublicKey
     }
-    clinician    = @{
-        email          = $clinicianEmail
-        password       = $clinicianPassword
-        organizationId = $clinicOrg.OrganizationId
-        walletAddress  = $clinicianWallet.Address
-        publicKey      = $clinicianWallet.PublicKey
+    reviewer     = @{
+        email          = $secrets.reviewerEmail
+        password       = $secrets.reviewerPassword
+        organizationId = $demoOrg.OrganizationId
+        walletAddress  = $reviewerWallet.Address
+        publicKey      = $reviewerWallet.PublicKey
     }
 }
 
-$state | ConvertTo-Json -Depth 5 | Set-Content -Path $stateFile -Encoding UTF8
+$state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile -Encoding UTF8
+Write-WtSuccess "State saved to $stateFile"
 
-Write-WtSuccess "Setup complete — state saved to state.json"
-Write-Host ""
-Write-WtInfo "Demo:"
-Write-WtInfo "  1. Visit: $($env.GatewayUrl)/app/new-submissions"
-Write-WtInfo "  2. Login: $($secrets.patientEmail) / $($secrets.patientPassword)"
-Write-WtInfo "  3. Click 'Pre-Treatment Health Declaration' to start the wizard"
-Write-Host ""
-Write-WtInfo "Try toggling 'Do you have any ongoing medical conditions?' on page 2 —"
-Write-WtInfo "the conditions list field appears via the x-rule extension."
+Write-WtBanner "FormCoverage Setup Complete"
+Write-WtInfo "Run: pwsh walkthroughs/FormCoverage/run.ps1 -Profile $Profile"
+Write-WtInfo "Or open: $($env.GatewayUrl)/app/new-submissions and start a new FormCoverage instance"
