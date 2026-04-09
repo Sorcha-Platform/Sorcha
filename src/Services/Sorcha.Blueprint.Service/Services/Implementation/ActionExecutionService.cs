@@ -23,6 +23,7 @@ using Sorcha.Blueprint.Service.Storage;
 using Sorcha.Cryptography.Enums;
 using Sorcha.TransactionHandler.Encryption;
 using Sorcha.TransactionHandler.Encryption.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ActionModel = Sorcha.Blueprint.Models.Action;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -54,6 +55,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
+    private readonly bool _credentialStatusEmbeddingEnabled;
     private readonly ILogger<ActionExecutionService> _logger;
     private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Service.ActionExecution");
 
@@ -76,6 +78,7 @@ public class ActionExecutionService : IActionExecutionService
         IActionStore actionStore,
         IExecutionEngine executionEngine,
         ILogger<ActionExecutionService> logger,
+        IConfiguration configuration,
         ICredentialVerifier? credentialVerifier = null,
         IOptions<TransactionConfirmationOptions>? confirmationOptions = null,
         IStatusListManager? statusListManager = null,
@@ -103,6 +106,13 @@ public class ActionExecutionService : IActionExecutionService
         _disclosureGroupBuilder = disclosureGroupBuilder;
         _encryptionChannel = encryptionChannel;
         _encryptionOperationStore = encryptionOperationStore;
+
+        // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
+        // ActionExecutionService skips the pre-signing status list allocation and
+        // credentials are issued without the credentialStatus claim — matching pre-fix
+        // behaviour for dev environments that do not run a status list manager.
+        _credentialStatusEmbeddingEnabled =
+            configuration?.GetValue<bool?>("CredentialStatus:EnableEmbedding") ?? true;
     }
 
     /// <inheritdoc/>
@@ -1185,10 +1195,14 @@ public class ActionExecutionService : IActionExecutionService
         // synthetic credential identifier for the in-memory list position; the Wallet Service
         // generates the final credential ID at signing time. The bit position is unique per
         // allocation regardless of the log identifier.
+        //
+        // The CredentialStatus:EnableEmbedding flag (default true) lets pure-internal dev
+        // environments disable the allocation step — useful when the Blueprint Service is
+        // running without a status list manager wired up.
         string? preAllocatedStatusListUrl = null;
         int? preAllocatedStatusListIndex = null;
 
-        if (_statusListManager != null)
+        if (_statusListManager != null && _credentialStatusEmbeddingEnabled)
         {
             try
             {

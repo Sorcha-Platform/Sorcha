@@ -275,12 +275,12 @@ public class SorchaDidResolverTests
         doc.Should().NotBeNull();
         doc!.VerificationMethod[0].PublicKeyMultibase.Should().BeNull(
             because: "PQC algorithms have no multicodec identifier — the resolver must not emit malformed multibase");
-        doc.VerificationMethod[0].PublicKeyJwk.Should().NotBeNull(
-            because: "unsupported algorithms fall back to publicKeyJwk per FR-014");
+        doc.VerificationMethod[0].PublicKeyJwk.Should().BeNull(
+            because: "per FR-014 the resolver fails closed for unsupported algorithms rather than emitting a synthesised JWK (which would require per-algorithm key encoding knowledge the resolver does not have)");
     }
 
     [Fact]
-    public async Task ResolveAsync_InvalidBase64PublicKey_EmitsJwkFallback_NotMalformedMultibase()
+    public async Task ResolveAsync_InvalidBase64PublicKey_FailsClosed_NeitherMultibaseNorJwk()
     {
         _walletClientMock
             .Setup(w => w.GetWalletAsync("bad-key-addr", It.IsAny<CancellationToken>()))
@@ -298,8 +298,9 @@ public class SorchaDidResolverTests
         var doc = await _resolver.ResolveAsync("did:sorcha:w:bad-key-addr");
 
         doc.Should().NotBeNull();
-        // Neither base64 nor hex decodes, so multibase falls back rather than emit garbage.
+        // Neither base64 nor hex decodes — the resolver fails closed per FR-014,
+        // leaving both PublicKeyMultibase and PublicKeyJwk unset rather than emit garbage.
         doc!.VerificationMethod[0].PublicKeyMultibase.Should().BeNull();
-        doc.VerificationMethod[0].PublicKeyJwk.Should().NotBeNull();
+        doc.VerificationMethod[0].PublicKeyJwk.Should().BeNull();
     }
 }

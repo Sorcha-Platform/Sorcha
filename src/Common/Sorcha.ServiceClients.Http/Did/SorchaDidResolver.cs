@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using SimpleBase;
+using Sorcha.ServiceClients.Http.Utilities;
 using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.ServiceClients.Did;
@@ -116,7 +115,10 @@ public class SorchaDidResolver : IDidResolver
     /// Builds a W3C DID Document for a resolved Sorcha wallet. Feature 093 US3 fixes
     /// the previously malformed multibase emission (was <c>"z" + hex</c>, now
     /// <c>"z" + Base58btc(multicodec || rawKey)</c>). Algorithms without an assigned
-    /// multicodec identifier fall back to <c>publicKeyJwk</c>.
+    /// multicodec identifier fail closed — per FR-014 the resolver MUST NOT emit
+    /// malformed multibase OR an incorrectly-shaped publicKeyJwk. Callers receive
+    /// a verification method with neither key material field populated and a clear
+    /// warning in logs.
     /// </summary>
     private DidDocument BuildDidDocument(string did, WalletInfo wallet)
     {
@@ -130,19 +132,34 @@ public class SorchaDidResolver : IDidResolver
             Controller = did
         };
 
-        var multibase = TryEncodeMultibase(wallet.Algorithm, wallet.PublicKey);
-        if (multibase is not null)
+        var rawKey = Multicodec.DecodePublicKeyBytes(wallet.PublicKey);
+        if (rawKey is null)
         {
-            verificationMethod.PublicKeyMultibase = multibase;
+            _logger.LogWarning(
+                "DID {Did} wallet public key could not be decoded as base64 or hex — emitting DID document with no key material",
+                did);
         }
         else
         {
-            // Algorithm not in the multicodec table (for example PQC): fall back to a
-            // minimal JWK carrying the raw key so external consumers still see a key.
-            verificationMethod.PublicKeyJwk = BuildFallbackJwk(wallet.Algorithm, wallet.PublicKey);
-            _logger.LogDebug(
-                "DID {Did} uses algorithm {Algorithm} which has no multicodec prefix — emitting publicKeyJwk fallback",
-                did, wallet.Algorithm);
+            var multibase = Multicodec.ToMultibasePublicKey(wallet.Algorithm, rawKey);
+            if (multibase is not null)
+            {
+                verificationMethod.PublicKeyMultibase = multibase;
+            }
+            else
+            {
+                // Algorithm not in the multicodec table (for example PQC): fail closed.
+                // Emitting a synthesised publicKeyJwk here would require per-algorithm
+                // JWK construction (OKP x, EC x+y, RSA n+e) that the current resolver
+                // cannot do safely from just the raw key bytes without knowing the
+                // algorithm's specific encoding rules. Per FR-014, fail-closed is the
+                // correct behaviour for unsupported algorithms.
+                _logger.LogWarning(
+                    "DID {Did} uses algorithm {Algorithm} which has no multicodec prefix — " +
+                    "emitting DID document with no key material. Callers that need the public " +
+                    "key for this algorithm should look it up via IWalletServiceClient directly.",
+                    did, wallet.Algorithm);
+            }
         }
 
         return new DidDocument
@@ -152,112 +169,6 @@ public class SorchaDidResolver : IDidResolver
             Authentication = [keyId],
             AssertionMethod = [keyId]
         };
-    }
-
-    // --- Multibase encoding helpers ---
-
-    // Multicodec identifiers from https://github.com/multiformats/multicodec/blob/master/table.csv
-    private const int Ed25519PubCodec = 0xed;   // varint: 0xed 0x01
-    private const int P256PubCodec = 0x1200;    // varint: 0x80 0x24
-    private const int RsaPubCodec = 0x1205;     // varint: 0x85 0x24
-
-    /// <summary>
-    /// Produces a W3C-valid <c>publicKeyMultibase</c> value, or null if the algorithm has
-    /// no assigned multicodec identifier. The stored <c>wallet.PublicKey</c> can be either
-    /// base64 (production path, see <c>WalletEndpoints.cs</c>) or hex (legacy). The helper
-    /// tries base64 first and falls back to hex parsing.
-    /// </summary>
-    private static string? TryEncodeMultibase(string algorithm, string? publicKey)
-    {
-        if (string.IsNullOrWhiteSpace(publicKey)) return null;
-
-        var codec = algorithm?.ToUpperInvariant() switch
-        {
-            "ED25519" => (int?)Ed25519PubCodec,
-            "NISTP256" or "NIST-P256" or "P-256" or "P256" or "ECDSA-P256" => P256PubCodec,
-            "RSA" or "RSA4096" or "RSA-4096" => RsaPubCodec,
-            _ => null
-        };
-
-        if (codec is null) return null;
-
-        var rawKey = DecodePublicKeyBytes(publicKey);
-        if (rawKey is null) return null;
-
-        var varintPrefix = EncodeUnsignedVarint(codec.Value);
-        var prefixed = new byte[varintPrefix.Length + rawKey.Length];
-        Buffer.BlockCopy(varintPrefix, 0, prefixed, 0, varintPrefix.Length);
-        Buffer.BlockCopy(rawKey, 0, prefixed, varintPrefix.Length, rawKey.Length);
-
-        // SimpleBase.Base58.Bitcoin uses the Bitcoin base58 alphabet, identical to base58btc.
-        return "z" + Base58.Bitcoin.Encode(prefixed);
-    }
-
-    /// <summary>
-    /// Decodes <c>wallet.PublicKey</c> to raw bytes. Tries base64 first (canonical format
-    /// since the <c>WalletEndpoints</c> rewrite); falls back to hex.
-    /// </summary>
-    private static byte[]? DecodePublicKeyBytes(string publicKey)
-    {
-        // Base64 first — it's the canonical storage format per WalletEndpoints.cs.
-        try
-        {
-            return Convert.FromBase64String(publicKey);
-        }
-        catch (FormatException)
-        {
-            // Fall through.
-        }
-
-        // Hex fallback — old wallets may still have hex-encoded public keys.
-        try
-        {
-            return Convert.FromHexString(publicKey);
-        }
-        catch (FormatException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Encodes an unsigned integer as an unsigned LEB128 / multiformats varint.
-    /// </summary>
-    private static byte[] EncodeUnsignedVarint(int value)
-    {
-        Span<byte> buffer = stackalloc byte[5];
-        var length = 0;
-        var remaining = (uint)value;
-        while (remaining >= 0x80)
-        {
-            buffer[length++] = (byte)((remaining & 0x7f) | 0x80);
-            remaining >>= 7;
-        }
-        buffer[length++] = (byte)remaining;
-        return buffer[..length].ToArray();
-    }
-
-    /// <summary>
-    /// Builds a minimal <c>publicKeyJwk</c> for algorithms without a multicodec identifier.
-    /// </summary>
-    private static JsonElement BuildFallbackJwk(string algorithm, string? publicKey)
-    {
-        var kty = algorithm?.ToUpperInvariant() switch
-        {
-            "ED25519" => "OKP",
-            "NISTP256" or "NIST-P256" or "P-256" or "P256" or "ECDSA-P256" => "EC",
-            "RSA" or "RSA4096" or "RSA-4096" => "RSA",
-            _ => "oct"
-        };
-
-        var jwk = new Dictionary<string, object?>
-        {
-            ["kty"] = kty,
-            ["alg"] = algorithm ?? "unknown",
-            ["k"] = publicKey ?? string.Empty
-        };
-
-        return JsonSerializer.SerializeToElement(jwk);
     }
 
     private DidDocument? ResolveRegisterDid(string did)

@@ -501,16 +501,16 @@ public class PresentationRequestService : IPresentationRequestService
                 $"Issuer wallet '{issuerAddress}' not found or has no public key");
         }
 
-        byte[] publicKeyBytes;
-        try
-        {
-            publicKeyBytes = Convert.FromBase64String(wallet.PublicKey);
-        }
-        catch (FormatException)
+        // Decode the stored public key. Production wallets use base64 (per WalletEndpoints.cs)
+        // but legacy wallets may have hex-encoded values. Reuse the shared decode helper to
+        // keep this verifier path symmetric with SorchaDidResolver.
+        var publicKeyBytes = Sorcha.ServiceClients.Http.Utilities.Multicodec
+            .DecodePublicKeyBytes(wallet.PublicKey);
+        if (publicKeyBytes is null)
         {
             return VpTokenVerifyOutcome.Fail(
                 "IssuerKeyFormat",
-                "Issuer public key is not in a recognised base64 format");
+                "Issuer public key is not in a recognised base64 or hex format");
         }
 
         SdJwtVerificationResult verification;
