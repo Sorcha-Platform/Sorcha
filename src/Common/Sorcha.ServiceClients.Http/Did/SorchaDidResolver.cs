@@ -154,7 +154,12 @@ public class SorchaDidResolver : IDidResolver
                 // cannot do safely from just the raw key bytes without knowing the
                 // algorithm's specific encoding rules. Per FR-014, fail-closed is the
                 // correct behaviour for unsupported algorithms.
-                _logger.LogWarning(
+                //
+                // LogError (not LogWarning) because a resolved DID document with no key
+                // material is unusable for any downstream verification — callers will see
+                // "resolution succeeded" but be unable to verify anything. Operators need
+                // to know when this happens, not just see it buried in warning noise.
+                _logger.LogError(
                     "DID {Did} uses algorithm {Algorithm} which has no multicodec prefix — " +
                     "emitting DID document with no key material. Callers that need the public " +
                     "key for this algorithm should look it up via IWalletServiceClient directly.",

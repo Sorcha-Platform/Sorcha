@@ -304,6 +304,18 @@ public static class CredentialEndpoints
         if (wallet.Status != Sorcha.Wallet.Core.Domain.WalletStatus.Active)
             return Results.BadRequest(new { error = "Wallet is not in a valid state for this operation" });
 
+        // Feature 093 US2: validate StatusListUrl as an absolute URI BEFORE signing.
+        // A malformed URL baked into a signed credential is unfixable — the signature
+        // covers it and the credential is permanently broken.
+        if (!string.IsNullOrWhiteSpace(request.StatusListUrl)
+            && !Uri.TryCreate(request.StatusListUrl, UriKind.Absolute, out _))
+        {
+            return Results.BadRequest(new
+            {
+                error = "statusListUrl must be an absolute URI when supplied"
+            });
+        }
+
         var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.CredentialEndpoints");
 
         // 2. Decrypt the wallet's private key

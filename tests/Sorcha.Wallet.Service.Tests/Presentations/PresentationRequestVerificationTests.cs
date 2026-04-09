@@ -41,8 +41,11 @@ public class PresentationRequestVerificationTests
     {
         // Build a tiny scoped provider so PresentationRequestService can resolve
         // the IWalletRepository mock per verification call, matching production.
+        // AddScoped (not AddSingleton) so the test exercises the scope-resolution path
+        // that PresentationRequestService uses precisely to handle the Singleton→Scoped
+        // boundary.
         var services = new ServiceCollection();
-        services.AddSingleton(_walletRepoMock.Object);
+        services.AddScoped(_ => _walletRepoMock.Object);
         var provider = services.BuildServiceProvider();
         _scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 

@@ -78,24 +78,33 @@ public class PresentationRequestService : IPresentationRequestService
 {
     private readonly ConcurrentDictionary<string, PresentationRequest> _requests = new();
     private readonly ICredentialStore _credentialStore;
-    private readonly ISdJwtService? _sdJwtService;
-    private readonly IServiceScopeFactory? _scopeFactory;
+    private readonly ISdJwtService _sdJwtService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDidResolverRegistry? _didRegistry;
     private readonly IHttpClientFactory? _httpClientFactory;
     private readonly ILogger<PresentationRequestService> _logger;
 
+    /// <summary>
+    /// Creates a new <see cref="PresentationRequestService"/>. Feature 093 US1 security hardening:
+    /// <paramref name="sdJwtService"/> and <paramref name="scopeFactory"/> are <b>required</b>
+    /// dependencies. A misconfigured container MUST fail at startup rather than silently
+    /// degrade to bearer-token acceptance at verification time — that was the pre-fix bug
+    /// this spec closes.
+    /// </summary>
     public PresentationRequestService(
         ICredentialStore credentialStore,
         ILogger<PresentationRequestService> logger,
-        ISdJwtService? sdJwtService = null,
-        IServiceScopeFactory? scopeFactory = null,
+        ISdJwtService sdJwtService,
+        IServiceScopeFactory scopeFactory,
         IDidResolverRegistry? didRegistry = null,
         IHttpClientFactory? httpClientFactory = null)
     {
-        _credentialStore = credentialStore;
-        _logger = logger;
-        _sdJwtService = sdJwtService;
-        _scopeFactory = scopeFactory;
+        _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _sdJwtService = sdJwtService ?? throw new ArgumentNullException(nameof(sdJwtService),
+            "ISdJwtService is required — a misconfigured container must fail closed rather than silently bypass presentation verification.");
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory),
+            "IServiceScopeFactory is required — needed to resolve scoped IWalletRepository from this Singleton service.");
         _didRegistry = didRegistry;
         _httpClientFactory = httpClientFactory;
     }
@@ -251,11 +260,11 @@ public class PresentationRequestService : IPresentationRequestService
 
         // 2. Cryptographic signature verification of the presented vpToken (Feature 093 FR-001 to FR-005).
         //    Claim values from this point on MUST come from the verified token, not from the
-        //    server-side credential row. If the SdJwt service or the wallet repository is not
-        //    wired into this service instance (legacy constructor path used by some unit tests),
-        //    we fall back to the pre-fix behaviour with a warning. Production DI always wires both.
+        //    server-side credential row. _sdJwtService and _scopeFactory are required
+        //    dependencies (see constructor); the only branch that skips verification is when
+        //    the caller submitted no token at all — treated as a pre-fix legacy call.
         Dictionary<string, object>? verifiedTokenClaims = null;
-        if (_sdJwtService != null && _scopeFactory != null && !string.IsNullOrEmpty(request.VpToken))
+        if (!string.IsNullOrEmpty(request.VpToken))
         {
             var verifyOutcome = await VerifyVpTokenSignatureAsync(
                 request.VpToken, credential, ct);
@@ -310,14 +319,6 @@ public class PresentationRequestService : IPresentationRequestService
                     StatusListCheck = "NotChecked"
                 };
             }
-        }
-        else if (!string.IsNullOrEmpty(request.VpToken))
-        {
-            // Legacy fallback path — logged so operators can see when production is missing the wiring.
-            _logger.LogWarning(
-                "Presentation verification running in legacy no-signature mode for credential {CredentialId}. " +
-                "ISdJwtService or IServiceScopeFactory not injected — production DI must wire both.",
-                credentialId);
         }
 
         // 3. Type match
@@ -490,7 +491,7 @@ public class PresentationRequestService : IPresentationRequestService
         }
 
         // Resolve IWalletRepository (Scoped) from a temporary scope since this service is Singleton.
-        using var scope = _scopeFactory!.CreateScope();
+        using var scope = _scopeFactory.CreateScope();
         var walletRepository = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
 
         var wallet = await walletRepository.GetByAddressAsync(issuerAddress, cancellationToken: ct);
@@ -516,17 +517,20 @@ public class PresentationRequestService : IPresentationRequestService
         SdJwtVerificationResult verification;
         try
         {
-            verification = await _sdJwtService!.VerifyPresentationAsync(
+            verification = await _sdJwtService.VerifyPresentationAsync(
                 vpToken, publicKeyBytes, wallet.Algorithm, ct);
         }
         catch (Exception ex)
         {
+            // Log the full exception internally but return a generic message to the caller
+            // to avoid leaking crypto-library internals, stack frames, or internal paths
+            // through the API surface.
             _logger.LogWarning(ex,
                 "SdJwtService.VerifyPresentationAsync threw for credential {CredentialId}",
                 credential.Id);
             return VpTokenVerifyOutcome.Fail(
                 "SignatureInvalid",
-                $"Presentation token verification threw: {ex.Message}");
+                "vpToken failed cryptographic verification");
         }
 
         if (!verification.IsValid)

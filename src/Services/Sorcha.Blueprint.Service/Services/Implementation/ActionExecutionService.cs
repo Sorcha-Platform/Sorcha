@@ -1196,6 +1196,12 @@ public class ActionExecutionService : IActionExecutionService
         // generates the final credential ID at signing time. The bit position is unique per
         // allocation regardless of the log identifier.
         //
+        // KNOWN FOLLOW-UP: if a future IStatusListManager implementation starts keying
+        // lookups by the credential ID passed here (rather than by listId + index), the
+        // "pending-{GUID}" placeholder will cause revocation lookups to fail. The current
+        // in-memory StatusListManager uses (listId, index) as its only key so this is
+        // non-issue today, but tracked for when a persistent backing store lands.
+        //
         // The CredentialStatus:EnableEmbedding flag (default true) lets pure-internal dev
         // environments disable the allocation step — useful when the Blueprint Service is
         // running without a status list manager wired up.
