@@ -122,6 +122,29 @@ for ($i = 1; $i -le $Rounds; $i++) {
         continue
     }
 
+    # --- Wait for action 2 to become current (async transaction pipeline) ---
+    $maxWait = 60
+    $waited = 0
+    $ready = $false
+    while ($waited -lt $maxWait) {
+        try {
+            $inst = Invoke-SorchaApi -Method GET `
+                -Uri "$($state.blueprintUrl)/instances/$instanceId" `
+                -Headers @{ Authorization = "Bearer $submitterToken" }
+            if ($inst.currentActionIds -contains 2) {
+                $ready = $true
+                break
+            }
+        } catch {}
+        Start-Sleep -Seconds 1
+        $waited++
+    }
+    if (-not $ready) {
+        Write-WtFail "  Timeout waiting for action 2 to become current (waited ${maxWait}s)"
+        continue
+    }
+    Write-WtInfo "  Action 2 ready (waited ${waited}s)"
+
     # --- Step 3: Reviewer acknowledges (action 2) ---
     $payload2 = @{
         acknowledged = $true

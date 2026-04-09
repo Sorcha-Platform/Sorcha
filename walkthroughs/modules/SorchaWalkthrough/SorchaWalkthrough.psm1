@@ -414,6 +414,14 @@ function Connect-SorchaAdmin {
         [Parameter(Mandatory)][string]$AdminPassword
     )
 
+    # Well-known System Admin org id — DatabaseInitializer creates this on
+    # first startup and the seed admin is always a member. Used as the
+    # target for the two-step login fallback when the sysadmin has been
+    # added to additional orgs (e.g. Add-SorchaPublicOrgSubscription adds
+    # the sysadmin to the Public org, which breaks the OAuth password
+    # grant's "single org" fast path).
+    $systemAdminOrgId = "00000000-0000-0000-0000-000000000001"
+
     $token = ""
     $organizationId = ""
     $adminUserId = ""
@@ -421,15 +429,38 @@ function Connect-SorchaAdmin {
     $encodedPassword = [Uri]::EscapeDataString($AdminPassword)
     $loginBody = "grant_type=password&username=$AdminEmail&password=$encodedPassword&client_id=sorcha-cli"
 
-    $loginResponse = Invoke-SorchaApi -Method POST `
-        -Uri "$TenantUrl/service-auth/token" `
-        -Body $loginBody `
-        -ContentType "application/x-www-form-urlencoded"
+    try {
+        $loginResponse = Invoke-SorchaApi -Method POST `
+            -Uri "$TenantUrl/service-auth/token" `
+            -Body $loginBody `
+            -ContentType "application/x-www-form-urlencoded"
+        $token = $loginResponse.access_token
+        Write-WtSuccess "Logged in as $AdminEmail (OAuth password grant)"
+    } catch {
+        $statusCode = $null
+        try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
 
-    $token = $loginResponse.access_token
-    Write-WtSuccess "Logged in as $AdminEmail"
+        if ($statusCode -ne 401) { throw }
 
-    # Extract org info from JWT if not available from bootstrap
+        # OAuth password grant returns 401 when the user has >1 org (the
+        # Tenant Service can't auto-pick). Fall back to the two-step
+        # /auth/login + /auth/select-org flow and target the System Admin
+        # org explicitly.
+        Write-WtWarn "OAuth password grant returned 401 — falling back to two-step login"
+
+        $adminSession = Connect-SorchaUser `
+            -TenantUrl $TenantUrl `
+            -Email $AdminEmail `
+            -Password $AdminPassword `
+            -OrganizationId $systemAdminOrgId
+
+        $token = $adminSession.Token
+        $organizationId = $adminSession.OrganizationId
+        $adminUserId = $adminSession.UserId
+        Write-WtSuccess "Logged in as $AdminEmail -> System Admin org"
+    }
+
+    # Extract org info from JWT if not already populated by the fallback path.
     if (-not $organizationId -and $token) {
         $jwt = Decode-SorchaJwt -Token $token
         $organizationId = $jwt.org_id
