@@ -365,12 +365,21 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 7. Status list check (if configured)
+        // 7. Status list check.
+        //    Feature 093 US2 FR-011: prefer the credentialStatus claim embedded in the
+        //    verified token over the server-side CredentialEntity row. The row is only
+        //    consulted as a fallback for pre-fix credentials (FR-010) that have no
+        //    embedded pointer in their signed payload.
         var statusListCheck = "NotConfigured";
-        if (!string.IsNullOrEmpty(credential.StatusListUrl) && credential.StatusListIndex.HasValue)
+        var (embeddedStatusUrl, embeddedStatusIndex) =
+            TryExtractEmbeddedCredentialStatus(verifiedTokenClaims);
+
+        var statusUrl = embeddedStatusUrl ?? credential.StatusListUrl;
+        var statusIndex = embeddedStatusIndex ?? credential.StatusListIndex;
+
+        if (!string.IsNullOrEmpty(statusUrl) && statusIndex.HasValue)
         {
-            statusListCheck = await CheckStatusListAsync(
-                credential.StatusListUrl, credential.StatusListIndex.Value, ct);
+            statusListCheck = await CheckStatusListAsync(statusUrl, statusIndex.Value, ct);
 
             if (statusListCheck == "Revoked" || statusListCheck == "Suspended")
             {
@@ -569,6 +578,48 @@ public class PresentationRequestService : IPresentationRequestService
 
         return !string.IsNullOrEmpty(tokenAddress)
             && string.Equals(tokenAddress, credentialAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Attempts to extract a W3C BitstringStatusListEntry credentialStatus claim from a
+    /// verified token's claims dictionary. Feature 093 US2 FR-011 — when present, this
+    /// pointer takes precedence over the server-side CredentialEntity row.
+    /// </summary>
+    private static (string? Url, int? Index) TryExtractEmbeddedCredentialStatus(
+        Dictionary<string, object>? verifiedClaims)
+    {
+        if (verifiedClaims == null) return (null, null);
+        if (!verifiedClaims.TryGetValue("credentialStatus", out var raw) || raw is null)
+            return (null, null);
+
+        string? url = null;
+        string? indexStr = null;
+
+        switch (raw)
+        {
+            case JsonElement je when je.ValueKind == JsonValueKind.Object:
+                if (je.TryGetProperty("statusListCredential", out var urlProp))
+                    url = urlProp.GetString();
+                if (je.TryGetProperty("statusListIndex", out var indexProp))
+                    indexStr = indexProp.ValueKind == JsonValueKind.Number
+                        ? indexProp.GetInt32().ToString()
+                        : indexProp.GetString();
+                break;
+
+            case Dictionary<string, object> dict:
+                if (dict.TryGetValue("statusListCredential", out var urlObj))
+                    url = urlObj?.ToString();
+                if (dict.TryGetValue("statusListIndex", out var indexObj))
+                    indexStr = indexObj?.ToString();
+                break;
+        }
+
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(indexStr))
+            return (null, null);
+
+        return int.TryParse(indexStr, out var index)
+            ? (url, index)
+            : (null, null);
     }
 
     /// <summary>

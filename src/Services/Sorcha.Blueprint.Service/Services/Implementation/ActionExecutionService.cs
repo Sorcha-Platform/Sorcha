@@ -1180,6 +1180,38 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
+        // Feature 093 US2: allocate the status list index BEFORE signing so the signed
+        // credential payload can carry a valid credentialStatus pointer. Allocation uses a
+        // synthetic credential identifier for the in-memory list position; the Wallet Service
+        // generates the final credential ID at signing time. The bit position is unique per
+        // allocation regardless of the log identifier.
+        string? preAllocatedStatusListUrl = null;
+        int? preAllocatedStatusListIndex = null;
+
+        if (_statusListManager != null)
+        {
+            try
+            {
+                var preAllocationId = $"pending-{Guid.NewGuid()}";
+                var allocation = await _statusListManager.AllocateIndexAsync(
+                    senderWallet, instance.RegisterId, preAllocationId, cancellationToken);
+                preAllocatedStatusListUrl = allocation.StatusListUrl;
+                preAllocatedStatusListIndex = allocation.Index;
+
+                _logger.LogInformation(
+                    "Pre-allocated status list index {Index} in list {ListId} for upcoming credential issuance",
+                    allocation.Index, allocation.ListId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to pre-allocate status list index for Blueprint action {ActionId} — credential will be issued without embedded credentialStatus claim",
+                    actionDef.Id);
+                // Non-fatal: fall through to issuance without embedding. The verifier
+                // will treat this as a pre-fix credential via the spec 093 FR-010 fallback.
+            }
+        }
+
         try
         {
             var result = await _walletClient.IssueCredentialAsync(
@@ -1190,43 +1222,10 @@ public class ActionExecutionService : IActionExecutionService
                 expiryDuration: config.ExpiryDuration,
                 disclosableClaims: config.Disclosable?.ToList(),
                 issuanceBlueprintId: instance.BlueprintId,
+                statusListUrl: preAllocatedStatusListUrl,
+                statusListIndex: preAllocatedStatusListIndex,
+                statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
                 cancellationToken: cancellationToken);
-
-            // Allocate status list index for revocation tracking
-            if (result != null && _statusListManager != null)
-            {
-                try
-                {
-                    var allocation = await _statusListManager.AllocateIndexAsync(
-                        senderWallet, instance.RegisterId, result.CredentialId, cancellationToken);
-
-                    // Return a new result with status list info populated
-                    result = new CredentialIssuanceResult
-                    {
-                        CredentialId = result.CredentialId,
-                        Type = result.Type,
-                        IssuerDid = result.IssuerDid,
-                        SubjectDid = result.SubjectDid,
-                        Claims = result.Claims,
-                        IssuedAt = result.IssuedAt,
-                        ExpiresAt = result.ExpiresAt,
-                        RawToken = result.RawToken,
-                        Status = result.Status,
-                        StatusListUrl = allocation.StatusListUrl,
-                        StatusListIndex = allocation.Index
-                    };
-
-                    _logger.LogInformation(
-                        "Allocated status list index {Index} in list {ListId} for credential {CredentialId}",
-                        allocation.Index, allocation.ListId, result.CredentialId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex,
-                        "Failed to allocate status list index for credential {CredentialId} — credential issued without revocation tracking",
-                        result.CredentialId);
-                }
-            }
 
             return result;
         }

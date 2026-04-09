@@ -291,6 +291,9 @@ public class WalletServiceClient : IWalletServiceClient
         string? expiryDuration = null,
         List<string>? disclosableClaims = null,
         string? issuanceBlueprintId = null,
+        string? statusListUrl = null,
+        int? statusListIndex = null,
+        string? statusListPurpose = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -308,7 +311,10 @@ public class WalletServiceClient : IWalletServiceClient
                 recipientWallet,
                 expiryDuration,
                 disclosableClaims,
-                issuanceBlueprintId
+                issuanceBlueprintId,
+                statusListUrl,
+                statusListIndex,
+                statusListPurpose
             };
 
             var response = await _httpClient.PostAsJsonAsync(
