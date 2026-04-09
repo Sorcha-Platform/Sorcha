@@ -137,7 +137,7 @@ A specific Sorcha deployment — for example, a Scottish council partner that wa
 
 **Tenant Root CA provisioning:**
 - **FR-001**: The system MUST provide a tenant-scoped provisioning operation that creates a Tenant Root CA if one does not already exist. The operation MUST be idempotent.
-- **FR-002**: The Tenant Root CA's private key MUST be stored according to the tenant's declared signing mode. `KmsResident` mode MUST honour the same KMS integration Sorcha already uses for wallet keys (spec 094 FR-028 surfaces the same pattern).
+- **FR-002**: The Tenant Root CA is a first-class domain entity with its own key storage, independent of the wallet HD hierarchy (see Clarifications Q4.1 ruling). Its private key MUST be stored in one of three modes: (a) generated internally and optionally derivable from a tenant CA recovery seed under the purpose `sorcha:tenant-ca-signing` for deterministic recovery, (b) imported from an external source such as an HSM, eIDAS QTSP-issued signer, or an existing PKI signing key, in which case no derivation is performed, or (c) `KmsResident` mode honouring the same KMS integration Sorcha already uses for wallet keys. The tenant picks the mode at provisioning time.
 - **FR-003**: The Tenant Root CA's public trust anchor MUST be published at a stable tenant-scoped URL so external verifiers can fetch and cache it.
 - **FR-004**: The Tenant Root CA MUST sign a tenant CRL that is published at a stable tenant-scoped URL with a configurable refresh interval (default 24 hours).
 - **FR-005**: The Tenant Root CA certificate MUST use a classical signing algorithm (ES256 default, matching spec 094 FR-030). PQC algorithms MUST NOT be used for the CA chain because HAIP 1.0 is classical-only at the trust boundary.
@@ -149,7 +149,7 @@ A specific Sorcha deployment — for example, a Scottish council partner that wa
 - **FR-009**: The Org Cert's Subject CN MUST be the organisation's human-readable display name.
 - **FR-010**: The Org Cert's Subject Alternative Name extension MUST contain a URI entry whose value is the organisation's `did:sorcha:org:{walletAddress}` identifier.
 - **FR-011**: The Org Cert's CRL Distribution Points extension MUST reference the tenant's CRL URL from FR-004.
-- **FR-012**: The Org Cert's Extended Key Usage extension MUST declare the extended key usages appropriate for a HAIP SD-JWT VC credential issuer. The exact EKU OID set is an architectural clarification flagged below — see Clarifications section.
+- **FR-012**: The Org Cert MUST NOT set an Extended Key Usage extension in this spec. HAIP 1.0 does not name a dedicated EKU OID for SD-JWT VC credential issuance and most HAIP verifiers do not enforce EKU. This is a known gap that will be revisited when HAIP 1.1 names an OID or when a named deployment partner (for example GOV.UK Wallet or EUDI Wallet) requires a specific EKU (see Clarifications Q4.2 ruling). A follow-up operational spec may later add a configurable EKU set per trust provider without changing the rest of this spec.
 - **FR-013**: The Org Cert MUST be issued with a validity period configurable at issuance time, with a sensible default (2 years).
 - **FR-014**: The Org Cert MUST be signed by the Tenant Root CA using the default signing algorithm declared at provisioning time.
 - **FR-015**: Attempting to issue an Org Cert for a wallet that does not carry the `HaipIssuer` capability MUST fail with a clear prerequisite error pointing at spec 094.
@@ -231,7 +231,7 @@ The following are explicitly deferred to later specs or later phases:
 
 ## Assumptions
 
-- The Sorcha wallet domain can hold a CA signing key via its existing key storage and signing mode abstractions. This assumption is flagged as an architectural clarification in the Clarifications section because it may require a new wallet purpose or a new "CA key" concept distinct from the `HaipIssuer` wallets.
+- The Tenant Root CA is a new first-class domain entity with its own key storage and lifecycle, parallel to the wallet domain rather than embedded in it (Q4.1 Option B ruled by the user). Internally generated CA keys MAY be derived from a tenant CA recovery seed under purpose `sorcha:tenant-ca-signing` for deterministic recovery; externally imported CA keys carry no derivation history. The long-term intent is to support importing signing keys from external sources (HSMs, eIDAS QTSPs, existing PKI), which motivates the separate-storage choice.
 - The existing `signingMode: KmsResident` model in spec 094 is sufficient to secure the Tenant Root CA key without requiring new KMS-specific plumbing.
 - A suitable .NET X.509 library is available (`System.Security.Cryptography.X509Certificates` is part of the BCL and covers certificate issuance, CRL generation, and chain validation for classical algorithms).
 - HAIP 1.0's use of `x5c` as the carrier for the issuer chain is stable and will not change between HAIP 1.0 and HAIP 1.1.
@@ -243,32 +243,15 @@ The following are explicitly deferred to later specs or later phases:
 
 ## Clarifications
 
-These architectural questions arose during drafting and need a ruling before `/speckit.plan`:
+These architectural questions arose during drafting and have been resolved by user ruling. Retained here for traceability.
 
 ### Q4.1 — CA signing key in the wallet domain: new purpose, new entity, or existing HAIP issuer co-key?
 
-The Tenant Root CA's private signing key needs a home in the Sorcha key-management story. Three options:
-
-| Option | Description | Implication |
-|---|---|---|
-| A | Derive the Tenant Root CA key under a new BIP32 purpose `sorcha:tenant-ca-signing`, treating it as a wallet key under a dedicated tenant-scoped wallet. | Consistent with spec 094 patterns (`sorcha:docket-signing`, `sorcha:persona-vault`, `sorcha:haip-issuer-signing`). Recoverable from mnemonic. But mixes CA keys with wallet keys conceptually. |
-| B | Introduce a new first-class entity "Tenant CA" in the domain, with its own key management independent of the wallet model. Key held in the same storage backends (local / KmsResident) but not part of the wallet HD hierarchy. | Cleaner separation. A CA key is not a wallet key. But adds a new domain entity and new plumbing parallel to the wallet domain. |
-| C | Reuse the tenant's existing system wallet (validators, system register bootstrapping) and add a CA key derivation under a new purpose on that wallet. | Minimises new entities. But the system wallet already carries several distinct responsibilities and adding another may overload it. |
-
-My default in the spec draft is **B**. A CA key conceptually is not a wallet key — it has its own lifecycle, its own rotation cadence, and its own trust posture. Treating it as a wallet key (Option A or C) risks confusion later. But I am flagging this because the Sorcha tradition (per your CLAUDE.md and memory notes) is to consolidate key derivation under BIP32 purposes, which would pull toward Option A.
+**Ruling: Option B (new first-class Tenant CA entity).** The Tenant Root CA is a domain entity separate from the wallet HD hierarchy, with its own key storage and lifecycle. User rationale: the end goal is to support importing signing keys from external sources (HSMs, eIDAS QTSPs, existing PKI), which requires storage independent of the wallet-derivation model. When a deployment generates the CA key internally, it can still be derived under purpose `sorcha:tenant-ca-signing` from a tenant CA recovery seed for deterministic recovery — so recoverability is preserved without forcing the CA key into the wallet HD hierarchy. Reflected in FR-002 and in Assumptions.
 
 ### Q4.2 — Extended Key Usage OID set for HAIP credential issuer Org Certs
 
-FR-012 requires the Org Cert to declare EKUs appropriate for a HAIP SD-JWT VC credential issuer. HAIP 1.0 does not name a specific EKU OID for this purpose. Three options:
-
-| Option | Description | Implication |
-|---|---|---|
-| A | Use no EKU extension at all — leave the Org Cert general-purpose. | Simplest. Works with any HAIP verifier that does not check EKU. May fail with strict verifiers that expect an explicit EKU constraint. |
-| B | Use `id-kp-emailProtection` or `id-kp-codeSigning` as a placeholder until HAIP names a dedicated OID. | Works with strict verifiers that check *some* EKU but is semantically wrong. Misleading. |
-| C | Use a Sorcha-private EKU OID under the Sorcha organisation's OID arc (or a private experimental arc) with a published meaning. | Semantically correct for internal verifiers that know the OID. Opaque to external verifiers unless they learn it. Establishes a pattern that can be retired once HAIP names an OID. |
-| D | Do not set EKU, and defer this question to HAIP 1.1. Flag as a known gap. | Pragmatic. Most HAIP verifiers do not enforce EKU today. |
-
-My default in the spec draft is **D** (do not set EKU, defer to HAIP 1.1). I am flagging this because the right answer is a deployment-ops question — if a specific partner (EUDI Wallet, GOV.UK Wallet) requires a specific EKU, we should use it.
+**Ruling: Option D (do not set EKU; defer to HAIP 1.1 or a named partner requirement).** The Org Cert does not set an EKU extension in this spec. HAIP 1.0 does not name a dedicated EKU OID for SD-JWT VC credential issuance and most HAIP verifiers do not enforce EKU. When HAIP 1.1 names an OID, or when a deployment partner such as GOV.UK Wallet or EUDI Wallet requires a specific EKU, a follow-up operational spec will add a configurable EKU set per trust provider. Reflected in FR-012.
 
 ## Dependencies
 
