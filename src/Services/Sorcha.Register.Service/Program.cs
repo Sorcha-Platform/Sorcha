@@ -459,9 +459,14 @@ app.MapPost("/api/internal/register-sync-status", async (
 .RequireAuthorization("RequireService")
 .ExcludeFromDescription();
 
+// Group-level policy is the minimal "authenticated" bar so that read endpoints
+// (GET /, GET /{id}, GET /stats/count) are accessible to any member — including
+// Consumers in the Public org who need to discover registers their org is subscribed
+// to. Write endpoints in this group (POST disable-dev-mode, PUT /{id}, DELETE /{id})
+// individually require the stricter "CanManageRegisters" policy below.
 var registersGroup = app.MapGroup("/api/registers")
     .WithTags("Registers")
-    .RequireAuthorization("CanManageRegisters");
+    .RequireAuthorization("RequireAuthenticated");
 
 // Disable dev mode (one-way — enables mandatory field-level encryption)
 registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
@@ -483,7 +488,8 @@ registersGroup.MapPost("/{registerId}/disable-dev-mode", async (
 })
 .WithName("DisableDevMode")
 .WithSummary("Disable dev mode (one-way)")
-.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.");
+.WithDescription("Irreversibly disables dev mode, enabling mandatory field-level encryption for new transactions. Cannot be undone.")
+.RequireAuthorization("CanManageRegisters");
 
 // NOTE: POST /api/registers/ (simple CRUD creation) has been removed.
 // All register creation must go through the two-phase initiate/finalize flow.
@@ -583,7 +589,8 @@ registersGroup.MapPut("/{id}", async (
 .Produces<object>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status404NotFound)
 .ProducesValidationProblem()
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status401Unauthorized)
+.RequireAuthorization("CanManageRegisters");
 
 // <summary>
 // Delete register
@@ -654,7 +661,8 @@ registersGroup.MapDelete("/{id}", async (
 .Produces(StatusCodes.Status204NoContent)
 .Produces(StatusCodes.Status403Forbidden)
 .Produces(StatusCodes.Status404NotFound)
-.Produces(StatusCodes.Status401Unauthorized);
+.Produces(StatusCodes.Status401Unauthorized)
+.RequireAuthorization("CanManageRegisters");
 
 // <summary>
 // Get register count
