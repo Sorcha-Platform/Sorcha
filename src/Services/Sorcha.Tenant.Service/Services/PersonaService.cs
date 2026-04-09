@@ -85,12 +85,16 @@ public sealed partial class PersonaService : IPersonaService
             return new PersonaReadModelV1();
         }
 
-        // Fetch the user's default wallet address so we can decrypt.
-        var walletAddress = await ResolvePrimaryWalletAsync(platformUserId, ct);
-        if (walletAddress is null)
+        // WrappedKeyRef stores the wallet address that was used to derive the
+        // content key on encrypt (see data-model.md §1). Using it directly
+        // means reads never depend on the caller's currently active wallet or
+        // on any org-scoped preferences row — the persona is cross-org, and
+        // so is its key material reference.
+        var walletAddress = row.WrappedKeyRef;
+        if (string.IsNullOrEmpty(walletAddress))
         {
             _logger.LogWarning(
-                "Persona row exists for user {PlatformUserId} but no primary wallet is set — returning empty.",
+                "Persona row for user {PlatformUserId} has no WrappedKeyRef — returning empty.",
                 platformUserId);
             return new PersonaReadModelV1();
         }
@@ -166,6 +170,7 @@ public sealed partial class PersonaService : IPersonaService
     /// <inheritdoc />
     public async Task<PersonaReadModelV1> ReplaceAsync(
         Guid platformUserId,
+        string? walletAddress,
         PersonaAttributesV1 plaintext,
         CancellationToken ct = default)
     {
@@ -174,9 +179,16 @@ public sealed partial class PersonaService : IPersonaService
         // 1. Validate invariants.
         var normalised = ValidateAndNormalise(plaintext);
 
-        // 2. Resolve the user's primary wallet — required for encryption.
-        var walletAddress = await ResolvePrimaryWalletAsync(platformUserId, ct)
-            ?? throw new PersonaWalletNotProvisionedException();
+        // 2. The caller-supplied wallet address is the content-key derivation
+        // input and is stored with the row as WrappedKeyRef so future reads
+        // can derive the same key. Persona is a cross-org attribute on the
+        // PlatformUser, so it is keyed by platform_user_id — the previous
+        // implementation's UserPreferences lookup was org-scoped and
+        // produced a foreign-key violation against PlatformUserPersonas.
+        if (string.IsNullOrEmpty(walletAddress))
+        {
+            throw new PersonaWalletNotProvisionedException();
+        }
 
         // 3. Encrypt via Wallet Service.
         var bytes = JsonSerializer.SerializeToUtf8Bytes(normalised, JsonOptions);
@@ -294,20 +306,6 @@ public sealed partial class PersonaService : IPersonaService
     }
 
     // -------- private helpers --------
-
-    /// <summary>
-    /// Resolves the user's primary wallet address from their
-    /// <see cref="UserPreferences.DefaultWalletAddress"/>. Returns null if
-    /// no default wallet is set. In v1 this is the sole mechanism —
-    /// richer resolution (latest active wallet, etc.) is a follow-up.
-    /// </summary>
-    private async Task<string?> ResolvePrimaryWalletAsync(Guid platformUserId, CancellationToken ct)
-    {
-        return await _db.UserPreferences
-            .Where(p => p.UserId == platformUserId)
-            .Select(p => p.DefaultWalletAddress)
-            .FirstOrDefaultAsync(ct);
-    }
 
     /// <summary>
     /// Validates invariants I-1 through I-5 from data-model.md §2 and

@@ -25,15 +25,28 @@ public interface IPersonaService
 
     /// <summary>
     /// Replaces the persona for a platform user with the supplied plaintext.
-    /// Validates invariants, encrypts via the Wallet Service, upserts the row
-    /// and writes an activity log entry.
+    /// Validates invariants, encrypts via the Wallet Service using
+    /// <paramref name="walletAddress"/>, upserts the row and writes an
+    /// activity log entry.
     /// </summary>
+    /// <param name="platformUserId">The cross-org <see cref="PlatformUser"/> id
+    /// that owns the persona row (FK target). This is the <c>platform_user_id</c>
+    /// claim on the caller's JWT, not <c>sub</c> — <c>sub</c> carries the
+    /// org-scoped <c>UserIdentity.Id</c>.</param>
+    /// <param name="walletAddress">Wallet address used to derive the content
+    /// key via the Wallet Service. Stored in <c>WrappedKeyRef</c> so reads
+    /// can re-derive the same key on decrypt. Passed in from the caller's
+    /// <c>wallet_address</c> JWT claim; <see cref="PersonaWalletNotProvisionedException"/>
+    /// is thrown if null or empty.</param>
+    /// <param name="plaintext">The persona attributes to encrypt and persist.</param>
+    /// <param name="ct">Cancellation token.</param>
     /// <exception cref="PersonaValidationException">Invariant violation — invalid
     /// email / phone / country code, multiple defaults, or list cap exceeded.</exception>
-    /// <exception cref="PersonaWalletNotProvisionedException">User has no primary
-    /// wallet provisioned — cannot encrypt.</exception>
+    /// <exception cref="PersonaWalletNotProvisionedException">No wallet address
+    /// supplied — cannot encrypt.</exception>
     Task<PersonaReadModelV1> ReplaceAsync(
         Guid platformUserId,
+        string? walletAddress,
         PersonaAttributesV1 plaintext,
         CancellationToken ct = default);
 
