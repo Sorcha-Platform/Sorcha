@@ -13,7 +13,7 @@ namespace Sorcha.Tenant.Service.Endpoints;
 /// <summary>
 /// Minimal API endpoints for the authenticated user's persona (self-asserted
 /// identity attributes used for form autofill). Routes live under
-/// <c>/me/persona</c> and require a platform user JWT. See
+/// <c>/api/me/persona</c> and require a platform user JWT. See
 /// <c>contracts/tenant-persona-api.yaml</c> for the full contract.
 /// </summary>
 public static class PersonaEndpoints
@@ -25,7 +25,7 @@ public static class PersonaEndpoints
     {
         // Centralised rate limiting per CLAUDE.md §Critical Patterns #8 —
         // the standard API policy protects persona reads/writes from abuse.
-        var group = app.MapGroup("/me/persona")
+        var group = app.MapGroup("/api/me/persona")
             .WithTags("Persona")
             .RequireAuthorization()
             .RequireRateLimiting(RateLimitPolicies.Api);
