@@ -220,6 +220,14 @@ New-SorchaRegisterSubscription `
     -SubscriptionType "Public"
 Write-WtInfo "Receiver org subscribed to register"
 
+# Public org subscription so consumer users see the register.
+$null = Add-SorchaPublicOrgSubscription `
+    -TenantUrl $env.TenantUrl `
+    -RegisterId $register.RegisterId `
+    -RegisterName "Payload Test Register" `
+    -SysAdminHeaders $sysAdmin.Headers `
+    -SysAdminEmail $secrets.adminEmail
+
 # Publish participants to register
 Publish-SorchaParticipant `
     -TenantUrl $env.TenantUrl `

@@ -359,6 +359,16 @@ foreach ($orgKey in @("apex", "riverside", "greenvalley")) {
         -Headers $orgSession.Headers
 }
 
+# Public org subscription so consumer users (default to Public org) see
+# the register in their list. The helper ensures the sysadmin is an
+# Administrator of the Public org first.
+$null = Add-SorchaPublicOrgSubscription `
+    -TenantUrl $env.TenantUrl `
+    -RegisterId $register.RegisterId `
+    -RegisterName "Construction Permit Register" `
+    -SysAdminHeaders $sysAdmin.Headers `
+    -SysAdminEmail $secrets.meridianAdminEmail
+
 # ============================================================================
 # Step 9: Publish Participant Records to Register
 # ============================================================================

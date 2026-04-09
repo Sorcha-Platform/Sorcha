@@ -242,6 +242,14 @@ if ($existingRegisterId) {
     }
 }
 
+# Public org subscription so consumer users see the register in their list.
+$null = Add-SorchaPublicOrgSubscription `
+    -TenantUrl $env.TenantUrl `
+    -RegisterId $register.RegisterId `
+    -RegisterName $registerName `
+    -SysAdminHeaders $sysAdmin.Headers `
+    -SysAdminEmail $secrets.adminEmail
+
 # Publish both participants to register
 Publish-SorchaParticipant `
     -TenantUrl $env.TenantUrl `

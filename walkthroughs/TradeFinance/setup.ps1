@@ -354,6 +354,14 @@ foreach ($regDef in $config.registers) {
         -RegisterName $regDef.name `
         -SubscriptionType "Owner"
 
+    # Public org subscription so consumer users see the register.
+    $null = Add-SorchaPublicOrgSubscription `
+        -TenantUrl $env.TenantUrl `
+        -RegisterId $register.RegisterId `
+        -RegisterName $regDef.name `
+        -SysAdminHeaders $seedAdmin.Headers `
+        -SysAdminEmail $secrets.seedAdminEmail
+
     Write-WtSuccess "  Register '$($regDef.name)': $($register.RegisterId)"
 }
 

@@ -87,6 +87,22 @@ $buildingRegister = New-SorchaRegister `
     -Metadata @{ createdBy = "SelfBuildHouse/setup.ps1"; registerType = "building-standards" }
 Write-WtSuccess "  Building Standards Register: $($buildingRegister.RegisterId)"
 
+# Public org subscription so consumer users see both registers in their list.
+# The Connect-SorchaAdmin call used the seed sysadmin, which carries the
+# SystemAdmin role — so it can add itself to the Public org and subscribe.
+$null = Add-SorchaPublicOrgSubscription `
+    -TenantUrl $env.TenantUrl `
+    -RegisterId $planningRegister.RegisterId `
+    -RegisterName "Highland Planning Register" `
+    -SysAdminHeaders $admin.Headers `
+    -SysAdminEmail $secrets.highlandAdminEmail
+$null = Add-SorchaPublicOrgSubscription `
+    -TenantUrl $env.TenantUrl `
+    -RegisterId $buildingRegister.RegisterId `
+    -RegisterName "Highland Building Standards Register" `
+    -SysAdminHeaders $admin.Headers `
+    -SysAdminEmail $secrets.highlandAdminEmail
+
 # Step 5: Publish TWO blueprints
 Write-WtStep "Step 5: Publish Blueprints (2)"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
