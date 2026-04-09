@@ -293,6 +293,10 @@ services:
       # Service-to-service auth for Wallet Service calls during wallet link verification
       ServiceAuth__ClientId: tenant-service
       ServiceAuth__ClientSecret: tenant-service-secret
+      # persona:crypto is required by the Wallet Service persona encrypt/decrypt
+      # endpoints that back the Consumer persona feature (092). wallets:sign and
+      # wallets:verify are retained for participant wallet link verification.
+      ServiceAuth__Scopes: "wallets:sign wallets:verify persona:crypto"
       ServiceClients__WalletService__Address: http://wallet-service:8080
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080

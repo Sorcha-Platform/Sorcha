@@ -421,7 +421,11 @@ public class DatabaseInitializer
                 "Tenant Service",
                 "tenant-service",
                 "tenant-service-secret",
-                new[] { "wallets:read", "wallets:sign", "wallets:verify" }
+                // persona:crypto grants access to the Wallet Service's
+                // /persona/encrypt|decrypt endpoints used by the Consumer
+                // persona feature (092). Only the Tenant Service is issued
+                // this scope.
+                new[] { "wallets:read", "wallets:sign", "wallets:verify", "persona:crypto" }
             )
         };
 
