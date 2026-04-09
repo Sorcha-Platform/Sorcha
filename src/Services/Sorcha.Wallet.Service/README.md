@@ -435,6 +435,19 @@ Future integration for:
 
 ## Security Considerations
 
+### Credential Presentation Verification (Feature 093)
+
+Since feature 093 (VC & presentation security fixes, HAIP prep), `POST /api/v1/presentations/{requestId}/submit` cryptographically verifies the submitted `vpToken` against the issuer's public key before any claim is considered. Claim values in the verification result come from the verified token, not from the server-side credential store. Tampered, forged, or replay tokens are rejected with specific verification errors.
+
+### Credential Status Embedding (Feature 093)
+
+The credential issuance endpoint (`POST /api/v1/wallets/{address}/credentials/issue`) allocates a status list index **before** signing and embeds a `credentialStatus` claim (W3C `BitstringStatusListEntry` shape) in the signed SD-JWT VC payload. This is controlled by the `CredentialStatus:EnableEmbedding` setting in `appsettings.json`:
+
+- **`true`** (default): allocation is mandatory; issuance fails closed if the Blueprint Service status list manager is unreachable.
+- **`false`**: escape hatch for pure-internal dev environments that do not run the Blueprint Service. Credentials are issued without a status pointer and fall back to the pre-feature-093 behaviour. **Do not use in production.**
+
+Pre-feature-093 credentials (no embedded `credentialStatus` claim) remain valid indefinitely and continue to verify via the server-side `CredentialEntity.StatusListUrl` / `StatusListIndex` fallback.
+
 ### Private Key Protection
 
 - **At-Rest Encryption**: All private keys encrypted with AES-256-GCM

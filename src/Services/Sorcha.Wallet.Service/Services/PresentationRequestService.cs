@@ -4,8 +4,11 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Sorcha.Cryptography.SdJwt;
 using Sorcha.ServiceClients.Did;
+using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
 
@@ -75,6 +78,8 @@ public class PresentationRequestService : IPresentationRequestService
 {
     private readonly ConcurrentDictionary<string, PresentationRequest> _requests = new();
     private readonly ICredentialStore _credentialStore;
+    private readonly ISdJwtService? _sdJwtService;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly IDidResolverRegistry? _didRegistry;
     private readonly IHttpClientFactory? _httpClientFactory;
     private readonly ILogger<PresentationRequestService> _logger;
@@ -82,11 +87,15 @@ public class PresentationRequestService : IPresentationRequestService
     public PresentationRequestService(
         ICredentialStore credentialStore,
         ILogger<PresentationRequestService> logger,
+        ISdJwtService? sdJwtService = null,
+        IServiceScopeFactory? scopeFactory = null,
         IDidResolverRegistry? didRegistry = null,
         IHttpClientFactory? httpClientFactory = null)
     {
         _credentialStore = credentialStore;
         _logger = logger;
+        _sdJwtService = sdJwtService;
+        _scopeFactory = scopeFactory;
         _didRegistry = didRegistry;
         _httpClientFactory = httpClientFactory;
     }
@@ -240,7 +249,78 @@ public class PresentationRequestService : IPresentationRequestService
             return new VerificationResult { IsValid = false, Errors = errors };
         }
 
-        // 2. Type match
+        // 2. Cryptographic signature verification of the presented vpToken (Feature 093 FR-001 to FR-005).
+        //    Claim values from this point on MUST come from the verified token, not from the
+        //    server-side credential row. If the SdJwt service or the wallet repository is not
+        //    wired into this service instance (legacy constructor path used by some unit tests),
+        //    we fall back to the pre-fix behaviour with a warning. Production DI always wires both.
+        Dictionary<string, object>? verifiedTokenClaims = null;
+        if (_sdJwtService != null && _scopeFactory != null && !string.IsNullOrEmpty(request.VpToken))
+        {
+            var verifyOutcome = await VerifyVpTokenSignatureAsync(
+                request.VpToken, credential, ct);
+
+            if (!verifyOutcome.Success)
+            {
+                errors.Add(new VerificationError
+                {
+                    RequirementType = request.CredentialType,
+                    FailureReason = verifyOutcome.FailureReason ?? "SignatureInvalid",
+                    Message = verifyOutcome.Message ?? "vpToken signature verification failed"
+                });
+
+                _logger.LogWarning(
+                    "Presentation verification failed for credential {CredentialId}: {FailureReason} — {Message}",
+                    credentialId, verifyOutcome.FailureReason, verifyOutcome.Message);
+
+                return new VerificationResult
+                {
+                    IsValid = false,
+                    Errors = errors,
+                    CredentialType = credential.Type,
+                    IssuerDid = credential.IssuerDid,
+                    StatusListCheck = "NotChecked"
+                };
+            }
+
+            verifiedTokenClaims = verifyOutcome.VerifiedClaims;
+
+            // Cross-check the verified token's iss claim against the stored credential's IssuerDid.
+            // Feature 093 FR-004: the token's iss and the credential row must agree.
+            if (!string.IsNullOrEmpty(verifyOutcome.VerifiedIssuer)
+                && !IssuerIdentifiersMatch(verifyOutcome.VerifiedIssuer, credential.IssuerDid))
+            {
+                errors.Add(new VerificationError
+                {
+                    RequirementType = request.CredentialType,
+                    FailureReason = "IssuerMismatch",
+                    Message = $"Token iss '{verifyOutcome.VerifiedIssuer}' does not match credential issuer '{credential.IssuerDid}'"
+                });
+
+                _logger.LogWarning(
+                    "Presentation issuer mismatch for credential {CredentialId}: token iss='{TokenIss}' credential iss='{CredentialIss}'",
+                    credentialId, verifyOutcome.VerifiedIssuer, credential.IssuerDid);
+
+                return new VerificationResult
+                {
+                    IsValid = false,
+                    Errors = errors,
+                    CredentialType = credential.Type,
+                    IssuerDid = credential.IssuerDid,
+                    StatusListCheck = "NotChecked"
+                };
+            }
+        }
+        else if (!string.IsNullOrEmpty(request.VpToken))
+        {
+            // Legacy fallback path — logged so operators can see when production is missing the wiring.
+            _logger.LogWarning(
+                "Presentation verification running in legacy no-signature mode for credential {CredentialId}. " +
+                "ISdJwtService or IServiceScopeFactory not injected — production DI must wire both.",
+                credentialId);
+        }
+
+        // 3. Type match
         if (!string.Equals(credential.Type, request.CredentialType, StringComparison.OrdinalIgnoreCase))
         {
             errors.Add(new VerificationError
@@ -251,7 +331,7 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 3. Issuer check
+        // 4. Issuer check
         if (request.AcceptedIssuers is { Length: > 0 } &&
             !request.AcceptedIssuers.Contains(credential.IssuerDid))
         {
@@ -263,7 +343,7 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 4. Status check (active)
+        // 5. Status check (active)
         if (credential.Status != "Active")
         {
             errors.Add(new VerificationError
@@ -274,7 +354,7 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 5. Expiry check
+        // 6. Expiry check
         if (credential.ExpiresAt.HasValue && credential.ExpiresAt.Value < DateTimeOffset.UtcNow)
         {
             errors.Add(new VerificationError
@@ -285,7 +365,7 @@ public class PresentationRequestService : IPresentationRequestService
             });
         }
 
-        // 6. Status list check (if configured)
+        // 7. Status list check (if configured)
         var statusListCheck = "NotConfigured";
         if (!string.IsNullOrEmpty(credential.StatusListUrl) && credential.StatusListIndex.HasValue)
         {
@@ -307,16 +387,19 @@ public class PresentationRequestService : IPresentationRequestService
             statusListCheck = "Active";
         }
 
-        // 7. Required claims verification
+        // 8. Required claims verification.
+        //    Feature 093 FR-003: claim values come from the verified token when available;
+        //    otherwise (legacy fallback path only) they come from the server-side credential row.
+        var claimsSource = verifiedTokenClaims ?? ParseClaims(credential.ClaimsJson);
         var verifiedClaims = new Dictionary<string, object>();
+
         if (request.RequiredClaims is { Length: > 0 })
         {
-            var claims = ParseClaims(credential.ClaimsJson);
-            if (claims != null)
+            if (claimsSource != null)
             {
                 foreach (var constraint in request.RequiredClaims)
                 {
-                    if (!claims.TryGetValue(constraint.ClaimName, out var value))
+                    if (!claimsSource.TryGetValue(constraint.ClaimName, out var value))
                     {
                         errors.Add(new VerificationError
                         {
@@ -348,31 +431,11 @@ public class PresentationRequestService : IPresentationRequestService
         }
         else
         {
-            // No required claims — include all available claims
-            var claims = ParseClaims(credential.ClaimsJson);
-            if (claims != null)
+            // No required claims — include all claims from the chosen source
+            if (claimsSource != null)
             {
-                foreach (var kvp in claims)
+                foreach (var kvp in claimsSource)
                     verifiedClaims[kvp.Key] = kvp.Value;
-            }
-        }
-
-        // 8. DID resolution verification (if DID registry available)
-        if (_didRegistry != null && errors.Count == 0)
-        {
-            try
-            {
-                var didDoc = await _didRegistry.ResolveAsync(credential.IssuerDid, ct);
-                if (didDoc == null)
-                {
-                    _logger.LogWarning(
-                        "DID resolution failed for issuer {IssuerDid} — continuing without DID verification",
-                        credential.IssuerDid);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "DID resolution error for {IssuerDid}", credential.IssuerDid);
             }
         }
 
@@ -396,6 +459,135 @@ public class PresentationRequestService : IPresentationRequestService
             IssuerDid = credential.IssuerDid,
             StatusListCheck = statusListCheck
         };
+    }
+
+    /// <summary>
+    /// Resolves the issuer public key via <see cref="IWalletRepository"/> and calls
+    /// <see cref="ISdJwtService.VerifyPresentationAsync"/> on the submitted vpToken.
+    /// Feature 093 FR-001 to FR-005.
+    /// </summary>
+    private async Task<VpTokenVerifyOutcome> VerifyVpTokenSignatureAsync(
+        string vpToken,
+        Sorcha.Wallet.Core.Domain.Entities.CredentialEntity credential,
+        CancellationToken ct)
+    {
+        // Extract the issuer wallet address from the credential's stored IssuerDid.
+        var issuerAddress = ExtractWalletAddress(credential.IssuerDid);
+        if (string.IsNullOrEmpty(issuerAddress))
+        {
+            return VpTokenVerifyOutcome.Fail(
+                "IssuerUnresolvable",
+                $"Cannot extract a wallet address from issuer identifier '{credential.IssuerDid}'");
+        }
+
+        // Resolve IWalletRepository (Scoped) from a temporary scope since this service is Singleton.
+        using var scope = _scopeFactory!.CreateScope();
+        var walletRepository = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
+
+        var wallet = await walletRepository.GetByAddressAsync(issuerAddress, cancellationToken: ct);
+        if (wallet == null || string.IsNullOrEmpty(wallet.PublicKey))
+        {
+            return VpTokenVerifyOutcome.Fail(
+                "IssuerNotFound",
+                $"Issuer wallet '{issuerAddress}' not found or has no public key");
+        }
+
+        byte[] publicKeyBytes;
+        try
+        {
+            publicKeyBytes = Convert.FromBase64String(wallet.PublicKey);
+        }
+        catch (FormatException)
+        {
+            return VpTokenVerifyOutcome.Fail(
+                "IssuerKeyFormat",
+                "Issuer public key is not in a recognised base64 format");
+        }
+
+        SdJwtVerificationResult verification;
+        try
+        {
+            verification = await _sdJwtService!.VerifyPresentationAsync(
+                vpToken, publicKeyBytes, wallet.Algorithm, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "SdJwtService.VerifyPresentationAsync threw for credential {CredentialId}",
+                credential.Id);
+            return VpTokenVerifyOutcome.Fail(
+                "SignatureInvalid",
+                $"Presentation token verification threw: {ex.Message}");
+        }
+
+        if (!verification.IsValid)
+        {
+            var errorMessage = verification.Errors.Count > 0
+                ? string.Join("; ", verification.Errors)
+                : "vpToken failed SD-JWT verification";
+
+            var failureReason = errorMessage.Contains("disclosure", StringComparison.OrdinalIgnoreCase)
+                ? "DisclosureIntegrityFailure"
+                : "SignatureInvalid";
+
+            return VpTokenVerifyOutcome.Fail(failureReason, errorMessage);
+        }
+
+        return VpTokenVerifyOutcome.Ok(verification.Claims, verification.Issuer);
+    }
+
+    /// <summary>
+    /// Normalises a stored IssuerDid value (either a bare wallet address or a
+    /// did:sorcha:w|org: URI) to a raw wallet address suitable for repository lookup.
+    /// </summary>
+    private static string ExtractWalletAddress(string issuerDid)
+    {
+        if (string.IsNullOrEmpty(issuerDid)) return string.Empty;
+
+        const string walletPrefix = "did:sorcha:w:";
+        const string orgPrefix = "did:sorcha:org:";
+
+        if (issuerDid.StartsWith(walletPrefix, StringComparison.OrdinalIgnoreCase))
+            return issuerDid[walletPrefix.Length..];
+        if (issuerDid.StartsWith(orgPrefix, StringComparison.OrdinalIgnoreCase))
+            return issuerDid[orgPrefix.Length..];
+
+        return issuerDid;
+    }
+
+    /// <summary>
+    /// Compares a verified token iss claim against a stored credential IssuerDid, allowing
+    /// for the two common shapes (bare wallet address, did:sorcha:w|org URI) to match.
+    /// </summary>
+    private static bool IssuerIdentifiersMatch(string tokenIss, string credentialIss)
+    {
+        if (string.Equals(tokenIss, credentialIss, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var tokenAddress = ExtractWalletAddress(tokenIss);
+        var credentialAddress = ExtractWalletAddress(credentialIss);
+
+        return !string.IsNullOrEmpty(tokenAddress)
+            && string.Equals(tokenAddress, credentialAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Internal result type for the vpToken signature verification step.
+    /// </summary>
+    private sealed class VpTokenVerifyOutcome
+    {
+        public bool Success { get; private init; }
+        public string? FailureReason { get; private init; }
+        public string? Message { get; private init; }
+        public Dictionary<string, object>? VerifiedClaims { get; private init; }
+        public string? VerifiedIssuer { get; private init; }
+
+        public static VpTokenVerifyOutcome Ok(
+            Dictionary<string, object> claims, string? issuer) =>
+            new() { Success = true, VerifiedClaims = claims, VerifiedIssuer = issuer };
+
+        public static VpTokenVerifyOutcome Fail(string reason, string message) =>
+            new() { Success = false, FailureReason = reason, Message = message };
     }
 
     private async Task<string> CheckStatusListAsync(
