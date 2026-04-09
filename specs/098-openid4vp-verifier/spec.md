@@ -196,7 +196,7 @@ Two distinct user flows are supported. **Cross-device**: a verifier terminal (a 
 - **FR-027**: The Blueprint Service's existing credential requirement model on actions MUST be extended with a `PresentationSource` field whose values are at minimum `SorchaInternal` (default, unchanged behaviour) and `HaipExternalWallet` (new, routes through the HAIP verifier).
 - **FR-028**: When `PresentationSource: HaipExternalWallet`, the Blueprint action MUST call the HAIP verifier's internal Presentation Request creation API at execution time and suspend the action in a new `AwaitingExternalPresentation` state.
 - **FR-029**: A Blueprint action in `AwaitingExternalPresentation` state MUST surface the Presentation Request URI in its execution result so the Sorcha UI can render it as a QR or a deep link.
-- **FR-030**: A Blueprint action in `AwaitingExternalPresentation` state MUST resume when a verification result is recorded against its Presentation Request. The action engine MUST observe the result transition via polling, a SignalR signal, or both.
+- **FR-030**: A Blueprint action in `AwaitingExternalPresentation` state MUST resume when a verification result is recorded against its Presentation Request. The action engine MUST observe the result transition primarily via a SignalR signal on the existing ActionsHub (per spec 089's minimal-disclosure policy) emitted by the HAIP verifier on result transitions, with periodic polling retained as a fallback for when SignalR delivery is unavailable. The signal carries only the Presentation Request identifier and the new status; the action engine pulls full details via an authenticated call. See Clarifications Q6.1 ruling.
 - **FR-031**: A Blueprint action in `AwaitingExternalPresentation` state MUST transition to a failure branch when its Presentation Request transitions to `Expired`, `Denied`, or `Cancelled`, with the failure cause propagated to the action's failure branch input.
 - **FR-032**: When the Blueprint action transitions to `Executing` after a successful HAIP verification, the verified claim subset MUST be available to the action as input, structured the same way as internal-path credential claims would be.
 - **FR-033**: When `PresentationSource` is absent or equal to `SorchaInternal`, the existing internal credential matching path runs unchanged.
@@ -272,19 +272,11 @@ The following are explicitly deferred or handled by earlier specs in the series:
 
 ## Clarifications
 
-One architectural question arose during drafting and needs a ruling before `/speckit.plan`:
+One architectural question arose during drafting and has been resolved by user ruling. Retained here for traceability.
 
 ### Q6.1 — How does a Blueprint action observe the verification outcome?
 
-Spec 089 introduced a thin-signal SignalR ActionsHub for real-time action notifications. The HAIP verifier's verification outcome needs to reach the originating Blueprint action so it can resume. Three options:
-
-| Option | Description | Implication |
-|---|---|---|
-| A | The Blueprint action polls the HAIP verifier at a configurable interval (default 5 seconds) while in `AwaitingExternalPresentation` state. The polling is driven by the action execution engine's existing mechanisms for long-running actions. | Simplest. Always works. 5-second polling introduces up to 5 seconds of latency between wallet submission and action resume — acceptable for a QR-scan UX but not ideal. |
-| B | The HAIP verifier calls back into the Blueprint Service directly when a verification result is recorded, using the existing service client pattern. The Blueprint Service resumes the action immediately. | Low latency. But introduces a direct dependency from the HAIP boundary service back into a core Sorcha service, which somewhat violates the "thin orchestrator" posture of Sorcha.Haip.Service. |
-| C | The HAIP verifier emits a signal on ActionsHub (per spec 089's minimal-disclosure policy) naming the Presentation Request identifier. The Blueprint action's execution engine is subscribed and resumes on signal. Polling remains as a fallback for when SignalR delivery is unavailable. | Minimises direct dependencies. Reuses existing SignalR infrastructure. Matches Sorcha's established pattern for real-time coordination. Slight complexity in subscribing the execution engine to the hub. |
-
-My draft default is **C** (SignalR signal with polling fallback). It fits the existing Sorcha pattern, keeps the HAIP service loosely coupled to the Blueprint Service, and reuses infrastructure that already works. Option A is simplest but introduces user-visible latency; Option B is low-latency but adds a direct reverse dependency the Sorcha architecture tries to avoid.
+**Ruling: Option C (SignalR signal with polling fallback).** The HAIP verifier emits a thin signal on the existing ActionsHub per spec 089's minimal-disclosure policy when a Presentation Request transitions to a terminal state (`Verified`, `Denied`, `Expired`, `Cancelled`). The Blueprint action execution engine subscribes to the hub and resumes the action on signal. Periodic polling remains as a fallback for when SignalR delivery is unavailable (network partition, client disconnect, hub restart). Rationale: loose coupling between `Sorcha.Haip.Service` and the Blueprint Service, reuse of existing SignalR infrastructure, matches the established Sorcha pattern for real-time coordination. Reflected in FR-030.
 
 ## Dependencies
 
