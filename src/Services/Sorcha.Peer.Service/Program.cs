@@ -159,6 +159,13 @@ builder.Services.AddSingleton<Sorcha.Cryptography.Utilities.DocketHasher>();
 // Register P2P replication services
 builder.Services.AddSingleton<RegisterCache>();
 builder.Services.AddSingleton<ValidatorKeyCache>();
+
+// Feature 099: System register genesis trust verification
+builder.Services.Configure<Sorcha.ServiceDefaults.SystemRegisterOptions>(
+    builder.Configuration.GetSection(Sorcha.ServiceDefaults.SystemRegisterOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.Peer.Service.Replication.ISystemRegisterSyncVerifier,
+    Sorcha.Peer.Service.Replication.SystemRegisterSyncVerifier>();
+
 builder.Services.AddSingleton<DocketFinalizationService>();
 builder.Services.AddSingleton<RegisterReplicationService>();
 builder.Services.AddSingleton<IRedisAdvertisementStore, RedisAdvertisementStore>();

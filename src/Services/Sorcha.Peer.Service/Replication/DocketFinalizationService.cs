@@ -25,6 +25,7 @@ public class DocketFinalizationService
     private readonly RegisterCache _registerCache;
     private readonly ICryptoModule _cryptoModule;
     private readonly DocketHasher _docketHasher;
+    private readonly ISystemRegisterSyncVerifier? _systemRegisterVerifier;
     private readonly ConcurrentDictionary<string, DocketFinalizationRecord> _records = new();
 
     public DocketFinalizationService(
@@ -33,7 +34,8 @@ public class DocketFinalizationService
         ValidatorKeyCache validatorKeyCache,
         RegisterCache registerCache,
         ICryptoModule cryptoModule,
-        DocketHasher docketHasher)
+        DocketHasher docketHasher,
+        ISystemRegisterSyncVerifier? systemRegisterVerifier = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -41,6 +43,7 @@ public class DocketFinalizationService
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _docketHasher = docketHasher ?? throw new ArgumentNullException(nameof(docketHasher));
+        _systemRegisterVerifier = systemRegisterVerifier;
     }
 
     /// <summary>
@@ -102,6 +105,25 @@ public class DocketFinalizationService
 
         try
         {
+            // Step 0: System register genesis trust verification (Feature 099)
+            // For system register genesis dockets only, verify the genesis transaction
+            // signature against the trusted public key from the genesis file.
+            if (docket.Version == 0 && _systemRegisterVerifier?.IsSystemRegister(registerId) == true)
+            {
+                var trusted = await _systemRegisterVerifier.VerifySystemRegisterGenesisAsync(
+                    registerId, docket, cancellationToken);
+                if (!trusted)
+                {
+                    record.Status = FinalizationStatus.Rejected;
+                    record.ErrorMessage = "System register genesis rejected: signature does not match trusted genesis";
+                    _logger.LogError(
+                        "System register genesis docket rejected for register {RegisterId}: " +
+                        "genesis signature does not match trusted public key",
+                        registerId);
+                    return record;
+                }
+            }
+
             // Step 1: Ensure validator key is cached (extract from genesis if needed)
             await EnsureValidatorKeyCachedAsync(registerId, cancellationToken);
 

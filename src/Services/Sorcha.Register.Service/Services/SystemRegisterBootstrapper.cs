@@ -1,29 +1,31 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Buffers.Text;
 using System.Text.Json;
 using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
+using Sorcha.Register.Models.Genesis;
 using Sorcha.ServiceClients.SystemWallet;
-using Sorcha.ServiceClients.Wallet;
 
 namespace Sorcha.Register.Service.Services;
 
 /// <summary>
-/// Background service that bootstraps the system register on startup using the
-/// standard two-phase register creation flow via <see cref="RegisterCreationOrchestrator"/>.
+/// Background service that bootstraps the system register on startup using a
+/// pre-signed genesis block. Instances never create a genesis at runtime.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The bootstrapper always runs (idempotent). It checks whether the system register exists,
-/// creates it via the standard initiate/finalize flow if missing, waits for the genesis docket,
-/// and seeds default blueprints.
+/// The bootstrap follows a 4-step flow:
+/// 1. Check if system register exists locally (idempotent)
+/// 2. Try peer sync (future — currently skipped, handled by Peer Service)
+/// 3. Load and ingest pre-signed genesis from configured file or embedded resource
+/// 4. Stop if unable to proceed (no genesis file, not rostered, etc.)
 /// </para>
 /// <para>
-/// Exceptions are caught and logged to avoid crashing the host. After a maximum
-/// of three retries (2s, 4s, 8s exponential backoff), the bootstrapper gives up gracefully.
+/// After genesis confirmation, default blueprints are seeded.
+/// Exceptions are caught and logged. After a maximum of three retries
+/// (2s, 4s, 8s exponential backoff), the bootstrapper stops gracefully.
 /// </para>
 /// </remarks>
 public class SystemRegisterBootstrapper : BackgroundService
@@ -66,16 +68,26 @@ public class SystemRegisterBootstrapper : BackgroundService
         {
             _logger.LogInformation("System register bootstrap cancelled due to host shutdown");
         }
+        catch (SystemRegisterBootstrapStopException ex)
+        {
+            // Deliberate stop — not an error, just a hard stop requiring operator action
+            _logger.LogCritical(
+                "System register bootstrap STOPPED: {Reason}. " +
+                "The service cannot proceed without the system register. " +
+                "Run 'sorcha system-register create' to initialize a new network or " +
+                "deploy with a valid genesis file.",
+                ex.Message);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "System register bootstrap failed after all retries. The system register may need manual initialization");
+            _logger.LogError(ex,
+                "System register bootstrap failed after all retries. " +
+                "The system register may need manual initialization");
         }
     }
 
     /// <summary>
     /// Attempts bootstrap with exponential backoff retry (2s, 4s, 8s).
-    /// Handles partial progress: if the register exists but blueprints are missing,
-    /// only the blueprint seeding is retried.
     /// </summary>
     private async Task BootstrapWithRetryAsync(CancellationToken cancellationToken)
     {
@@ -87,38 +99,65 @@ public class SystemRegisterBootstrapper : BackgroundService
             {
                 using var scope = _scopeFactory.CreateScope();
                 var registerManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
-                var orchestrator = scope.ServiceProvider.GetRequiredService<IRegisterCreationOrchestrator>();
-                var signingService = scope.ServiceProvider.GetRequiredService<ISystemWalletSigningService>();
-                var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
+                var genesisIngestion = scope.ServiceProvider.GetRequiredService<GenesisIngestionService>();
                 var systemRegisterService = scope.ServiceProvider.GetRequiredService<SystemRegisterService>();
-                var signingOptions = scope.ServiceProvider.GetRequiredService<SystemWalletSigningOptions>();
 
-                // Step 1: Check if system register already exists
+                // Step 1: Check if system register already exists locally
                 var existingRegister = await registerManager.GetRegisterAsync(
                     SystemRegisterConstants.SystemRegisterId, cancellationToken);
 
-                if (existingRegister is null)
-                {
-                    _logger.LogInformation("System register not found — creating via standard register creation flow");
-                    await CreateSystemRegisterAsync(
-                        registerManager, orchestrator, signingService, walletClient,
-                        signingOptions, cancellationToken);
-                }
-                else
+                if (existingRegister is not null)
                 {
                     _logger.LogInformation(
                         "System register already exists (Height={Height}, Status={Status})",
                         existingRegister.Height, existingRegister.Status);
                 }
+                else
+                {
+                    // Step 2: Try peer sync (handled externally by Peer Service subscription)
+                    // The Peer Service will sync the system register if a peer has it,
+                    // verified by SystemRegisterSyncVerifier. Here we proceed to Step 3.
 
-                // Step 5: Wait for genesis docket if register height is 0
+                    // Step 3: Load and ingest pre-signed genesis
+                    var genesis = await genesisIngestion.LoadAndVerifyGenesisAsync(cancellationToken);
+                    if (genesis is null)
+                    {
+                        // Step 4: Stop — no genesis file, no peers
+                        throw new SystemRegisterBootstrapStopException(
+                            "No system register genesis file found. " +
+                            "No peers available and no genesis file configured or embedded. " +
+                            "Run 'sorcha system-register create' to initialize a new network.");
+                    }
+
+                    _logger.LogInformation(
+                        "System register bootstrap: Network ID = {NetworkId}, Fingerprint = {Fingerprint}",
+                        genesis.NetworkId, genesis.GenesisPublicKeyFingerprint);
+
+                    // Check if local validator can seal (is in roster)
+                    // For now, attempt ingestion and let the validator handle it
+                    var ingested = await genesisIngestion.IngestGenesisAsync(genesis, cancellationToken);
+                    if (!ingested)
+                    {
+                        throw new SystemRegisterBootstrapStopException(
+                            "Genesis transaction was rejected by the Validator Service. " +
+                            "The local validator may not be in the genesis validator roster. " +
+                            "Import the genesis validator key with " +
+                            "'sorcha system-register import-validator-key'.");
+                    }
+                }
+
+                // Wait for genesis docket if register height is 0
                 await WaitForGenesisDocketAsync(registerManager, cancellationToken);
 
-                // Step 6: Seed default blueprints if missing
+                // Seed default blueprints if missing
                 await SeedBlueprintsIfMissingAsync(systemRegisterService, cancellationToken);
 
                 _logger.LogInformation("System register bootstrap completed successfully");
                 return;
+            }
+            catch (SystemRegisterBootstrapStopException)
+            {
+                throw; // Deliberate stop — don't retry
             }
             catch (OperationCanceledException)
             {
@@ -139,93 +178,6 @@ public class SystemRegisterBootstrapper : BackgroundService
                 delay *= 2; // Exponential backoff: 2s → 4s → 8s
             }
         }
-    }
-
-    /// <summary>
-    /// Creates the system register using the standard two-phase register creation flow.
-    /// </summary>
-    private async Task CreateSystemRegisterAsync(
-        RegisterManager registerManager,
-        IRegisterCreationOrchestrator orchestrator,
-        ISystemWalletSigningService signingService,
-        IWalletServiceClient walletClient,
-        SystemWalletSigningOptions signingOptions,
-        CancellationToken cancellationToken)
-    {
-        // Get system wallet address for the owner attestation
-        var systemWalletAddress = await walletClient.CreateOrRetrieveSystemWalletAsync(
-            signingOptions.ValidatorId, cancellationToken);
-
-        _logger.LogInformation(
-            "Using system wallet {WalletAddress} for system register bootstrap",
-            systemWalletAddress);
-
-        // Step 2: Initiate register creation with deterministic ID
-        var initiateRequest = new InitiateRegisterCreationRequest
-        {
-            RegisterId = SystemRegisterConstants.SystemRegisterId,
-            Name = SystemRegisterConstants.SystemRegisterName,
-            Description = "Platform-wide system register for blueprint governance and metadata storage",
-            Purpose = Sorcha.Register.Models.Enums.RegisterPurpose.System,
-            Advertise = true,
-            Owners = new List<OwnerInfo>
-            {
-                new OwnerInfo
-                {
-                    UserId = "system",
-                    WalletId = systemWalletAddress
-                }
-            }
-        };
-
-        var initiateResponse = await orchestrator.InitiateAsync(initiateRequest, cancellationToken);
-
-        _logger.LogInformation(
-            "System register initiation complete: RegisterId={RegisterId}, {AttestationCount} attestation(s) to sign",
-            initiateResponse.RegisterId, initiateResponse.AttestationsToSign.Count);
-
-        // Step 3: Sign the attestation(s) using the wallet service directly
-        // (ISystemWalletSigningService adds an extra SHA256("{txId}:{payloadHash}") layer
-        // which is for transaction signing, not attestation signing)
-        var signedAttestations = new List<SignedAttestation>();
-        foreach (var attestation in initiateResponse.AttestationsToSign)
-        {
-            // DataToSign is a hex-encoded SHA-256 hash — sign it directly (pre-hashed)
-            var hashBytes = Convert.FromHexString(attestation.DataToSign);
-            var signResult = await walletClient.SignTransactionAsync(
-                systemWalletAddress,
-                hashBytes,
-                derivationPath: "sorcha:register-attestation",
-                isPreHashed: true,
-                cancellationToken);
-
-            signedAttestations.Add(new SignedAttestation
-            {
-                AttestationData = attestation.AttestationData,
-                PublicKey = Convert.ToBase64String(signResult.PublicKey),
-                Signature = Convert.ToBase64String(signResult.Signature),
-                Algorithm = MapAlgorithmString(signResult.Algorithm)
-            });
-
-            _logger.LogDebug(
-                "Signed attestation for {Subject} ({Role})",
-                attestation.AttestationData.Subject,
-                attestation.AttestationData.Role);
-        }
-
-        // Step 4: Finalize register creation
-        var finalizeRequest = new FinalizeRegisterCreationRequest
-        {
-            RegisterId = initiateResponse.RegisterId,
-            Nonce = initiateResponse.Nonce,
-            SignedAttestations = signedAttestations
-        };
-
-        var finalizeResponse = await orchestrator.FinalizeAsync(finalizeRequest, cancellationToken);
-
-        _logger.LogInformation(
-            "System register created successfully: RegisterId={RegisterId}, GenesisTransactionId={GenesisTransactionId}",
-            finalizeResponse.RegisterId, finalizeResponse.GenesisTransactionId);
     }
 
     /// <summary>
@@ -270,58 +222,26 @@ public class SystemRegisterBootstrapper : BackgroundService
         SystemRegisterService systemRegisterService,
         CancellationToken cancellationToken)
     {
-        // Check and publish register-creation-v1
-        if (!await systemRegisterService.BlueprintExistsAsync("register-creation-v1", cancellationToken))
-        {
-            _logger.LogInformation("Seeding blueprint: register-creation-v1");
-            var creationBlueprint = LoadBlueprintFromCatalog("register-creation-v1");
-            await systemRegisterService.PublishBlueprintAsync(
-                "register-creation-v1",
-                creationBlueprint,
-                "system",
-                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
-                cancellationToken);
-            _logger.LogInformation("Blueprint register-creation-v1 seeded successfully");
-        }
-        else
-        {
-            _logger.LogInformation("Blueprint register-creation-v1 already exists — skipping");
-        }
+        var blueprints = new[] { "register-creation-v1", "register-governance-v1", "create-organisation-v1" };
 
-        // Check and publish register-governance-v1
-        if (!await systemRegisterService.BlueprintExistsAsync("register-governance-v1", cancellationToken))
+        foreach (var blueprintId in blueprints)
         {
-            _logger.LogInformation("Seeding blueprint: register-governance-v1");
-            var governanceBlueprint = LoadBlueprintFromCatalog("register-governance-v1");
-            await systemRegisterService.PublishBlueprintAsync(
-                "register-governance-v1",
-                governanceBlueprint,
-                "system",
-                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
-                cancellationToken);
-            _logger.LogInformation("Blueprint register-governance-v1 seeded successfully");
-        }
-        else
-        {
-            _logger.LogInformation("Blueprint register-governance-v1 already exists — skipping");
-        }
-
-        // Check and publish create-organisation-v1
-        if (!await systemRegisterService.BlueprintExistsAsync("create-organisation-v1", cancellationToken))
-        {
-            _logger.LogInformation("Seeding blueprint: create-organisation-v1");
-            var orgCreationBlueprint = LoadBlueprintFromCatalog("create-organisation-v1");
-            await systemRegisterService.PublishBlueprintAsync(
-                "create-organisation-v1",
-                orgCreationBlueprint,
-                "system",
-                new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
-                cancellationToken);
-            _logger.LogInformation("Blueprint create-organisation-v1 seeded successfully");
-        }
-        else
-        {
-            _logger.LogInformation("Blueprint create-organisation-v1 already exists — skipping");
+            if (!await systemRegisterService.BlueprintExistsAsync(blueprintId, cancellationToken))
+            {
+                _logger.LogInformation("Seeding blueprint: {BlueprintId}", blueprintId);
+                var blueprint = LoadBlueprintFromCatalog(blueprintId);
+                await systemRegisterService.PublishBlueprintAsync(
+                    blueprintId,
+                    blueprint,
+                    "system",
+                    new Dictionary<string, string> { ["seedReason"] = "bootstrap" },
+                    cancellationToken);
+                _logger.LogInformation("Blueprint {BlueprintId} seeded successfully", blueprintId);
+            }
+            else
+            {
+                _logger.LogInformation("Blueprint {BlueprintId} already exists — skipping", blueprintId);
+            }
         }
     }
 
@@ -331,7 +251,6 @@ public class SystemRegisterBootstrapper : BackgroundService
     /// </summary>
     private static JsonElement LoadBlueprintFromCatalog(string blueprintId)
     {
-        // Template catalog is at the repo/container root: /blueprints/templates/
         var paths = new[]
         {
             Path.Combine(AppContext.BaseDirectory, "blueprints", "templates", $"{blueprintId}.json"),
@@ -346,13 +265,9 @@ public class SystemRegisterBootstrapper : BackgroundService
             var json = File.ReadAllText(path);
             using var doc = JsonDocument.Parse(json);
 
-            // The catalog file wraps the blueprint in a "template" property
             if (doc.RootElement.TryGetProperty("template", out var template))
-            {
                 return template.Clone();
-            }
 
-            // If no wrapper, use the root element directly
             return doc.RootElement.Clone();
         }
 
@@ -360,20 +275,13 @@ public class SystemRegisterBootstrapper : BackgroundService
             $"Blueprint template '{blueprintId}.json' not found in catalog. " +
             $"Searched: {string.Join(", ", paths)}");
     }
+}
 
-    /// <summary>
-    /// Maps an algorithm string (e.g. "ED25519") to the <see cref="SignatureAlgorithm"/> enum.
-    /// </summary>
-    private static SignatureAlgorithm MapAlgorithmString(string algorithm)
-    {
-        return algorithm.ToUpperInvariant() switch
-        {
-            "ED25519" => SignatureAlgorithm.ED25519,
-            "NISTP256" or "P-256" or "P256" => SignatureAlgorithm.NISTP256,
-            "RSA4096" or "RSA-4096" => SignatureAlgorithm.RSA4096,
-            "ML-DSA-65" or "ML_DSA_65" => SignatureAlgorithm.ML_DSA_65,
-            "SLH-DSA-128S" or "SLH_DSA_128S" => SignatureAlgorithm.SLH_DSA_128s,
-            _ => throw new ArgumentException($"Unknown signature algorithm: {algorithm}")
-        };
-    }
+/// <summary>
+/// Thrown when the bootstrapper must stop and wait for operator action.
+/// Not an error — a deliberate halt requiring manual intervention.
+/// </summary>
+internal sealed class SystemRegisterBootstrapStopException : Exception
+{
+    public SystemRegisterBootstrapStopException(string message) : base(message) { }
 }

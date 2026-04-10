@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "networkId": "sorcha-dev",
+  "genesisTransaction": {
+    "txId": "7bb8165b9f3b3d7a119147f0ca08618ce34d283234928cc7afd019fdefbe339e",
+    "payload": "eyJyZWdpc3RlcklkIjoiYWViZjI2MzYyZTA3OTA4NzU3MWFjMDkzMmQ0ZGI5NzMiLCJuYW1lIjoiU29yY2hhIFN5c3RlbSBSZWdpc3RlciIsImRlc2NyaXB0aW9uIjoiU29yY2hhIHBsYXRmb3JtIHN5c3RlbSByZWdpc3RlciDigJQgcm9vdCBvZiB0cnVzdCBmb3IgYmx1ZXByaW50cyBhbmQgZ292ZXJuYW5jZS4iLCJjcmVhdGVkQXQiOiIyMDI2LTA0LTEwVDE0OjU3OjI2Ljc2Njc4OTkrMDA6MDAiLCJhdHRlc3RhdGlvbnMiOlt7InJvbGUiOiJPd25lciIsInN1YmplY3QiOiJkaWQ6c29yY2hhOmdlbmVzaXM6NDM1Yjg3MjgwYjQzYTEzYmUwYzE3M2RlZWM4YzIzZjQiLCJwdWJsaWNLZXkiOiJqdk1zVTBKNDI3WmJCMGNsWmpubW5jV29sR2ZTZktJVmZsVVl6b3lKRVRJPSIsInNpZ25hdHVyZSI6IiIsImFsZ29yaXRobSI6IkVEMjU1MTkiLCJncmFudGVkQXQiOiIyMDI2LTA0LTEwVDE0OjU3OjI2Ljc2Njc4OTkrMDA6MDAifV0sImNyeXB0b1BvbGljeSI6eyJ2ZXJzaW9uIjoxLCJhY2NlcHRlZFNpZ25hdHVyZUFsZ29yaXRobXMiOlsiRUQyNTUxOSIsIk5JU1RQMjU2IiwiUlNBNDA5NiIsIk1MLURTQS02NSIsIlNMSC1EU0EtMTI4cyJdLCJyZXF1aXJlZFNpZ25hdHVyZUFsZ29yaXRobXMiOltdLCJhY2NlcHRlZEVuY3J5cHRpb25TY2hlbWVzIjpbIlhDSEFDSEEyMC1QT0xZMTMwNSIsIkFFUy0yNTYtR0NNIiwiTUwtS0VNLTc2OCJdLCJhY2NlcHRlZEhhc2hGdW5jdGlvbnMiOlsiU0hBLTI1NiIsIkJMQUtFMkItMjU2Il0sImVuZm9yY2VtZW50TW9kZSI6IlBlcm1pc3NpdmUiLCJlZmZlY3RpdmVGcm9tIjoiMjAyNi0wNC0xMFQxNDo1NzoyNi43NzAyMjI5WiIsImRlcHJlY2F0ZWRBbGdvcml0aG1zIjpbXX0sInJlZ2lzdGVyUG9saWN5Ijp7InZlcnNpb24iOjEsImdvdmVybmFuY2UiOnsicXVvcnVtRm9ybXVsYSI6IlN0cmljdE1ham9yaXR5IiwicHJvcG9zYWxUdGxEYXlzIjo3LCJvd25lckNhbkJ5cGFzc1F1b3J1bSI6dHJ1ZSwiYmx1ZXByaW50VmVyc2lvbiI6InJlZ2lzdGVyLWdvdmVybmFuY2UtdjEifSwidmFsaWRhdG9ycyI6eyJyZWdpc3RyYXRpb25Nb2RlIjoiUHVibGljIiwiYXBwcm92ZWRWYWxpZGF0b3JzIjpbXSwibWluVmFsaWRhdG9ycyI6MSwibWF4VmFsaWRhdG9ycyI6MTAwLCJyZXF1aXJlU3Rha2UiOmZhbHNlLCJvcGVyYXRpb25hbFR0bFNlY29uZHMiOjYwfSwiY29uc2Vuc3VzIjp7InNpZ25hdHVyZVRocmVzaG9sZE1pbiI6Miwic2lnbmF0dXJlVGhyZXNob2xkTWF4IjoxMCwibWF4VHJhbnNhY3Rpb25zUGVyRG9ja2V0IjoxMDAwLCJkb2NrZXRCdWlsZEludGVydmFsTXMiOjEwMCwiZG9ja2V0VGltZW91dFNlY29uZHMiOjMwfSwibGVhZGVyRWxlY3Rpb24iOnsibWVjaGFuaXNtIjoiUm90YXRpbmciLCJoZWFydGJlYXRJbnRlcnZhbE1zIjoxMDAwLCJsZWFkZXJUaW1lb3V0TXMiOjUwMDAsInRlcm1EdXJhdGlvblNlY29uZHMiOjYwfSwidXBkYXRlZEF0IjoiMjAyNi0wNC0xMFQxNDo1NzoyNi43NzA1NTIrMDA6MDAifSwidmFsaWRhdG9ycyI6eyJ2YWxpZGF0b3JzIjpbeyJ2YWxpZGF0b3JJZCI6InMxNDM1Yjg3MjgwYjQzYTEzYmUwYzE3M2RlZWM4YzIzZjQwMmY4YzJkMSIsInB1YmxpY0tleSI6Imp2TXNVMEo0MjdaYkIwY2xaam5tbmNXb2xHZlNmS0lWZmxVWXpveUpFVEk9IiwiYWxnb3JpdGhtIjoiRUQyNTUxOSIsImRlcml2YXRpb25Db250ZXh0Ijoic29yY2hhOmRvY2tldC1zaWduaW5nIiwic3RhdHVzIjoiQWN0aXZlIiwiYXV0aG9yaXplZEF0IjoiMjAyNi0wNC0xMFQxNDo1NzoyNi43NjY3ODk5KzAwOjAwIn1dLCJyZXF1aXJlZFNpZ25hdHVyZXMiOjEsInZlcnNpb24iOjF9fQ==",
+    "payloadHash": "19e9c9026e0f2b4b70fc52dba59511d67da7a6a2566fe354b2981c40f45916e7",
+    "signature": {
+      "publicKey": "UrMgr4NFNG4EcMnrfHPlUDUUZoKTAZ44XjR8hxh5BcY=",
+      "signatureValue": "02WXB44NjlCXRxRNzUeVDwQbQhXwlcYv0v7j7HgUZTWsw33mnw5GPmDSIIaSGdpF7rPnDCsb42G\u002Bz7Ll7Ea7Dw==",
+      "algorithm": "ED25519",
+      "signedAt": "2026-04-10T14:57:26.875907+00:00"
+    }
+  },
+  "validatorRoster": {
+    "validators": [
+      {
+        "validatorId": "ws11qz80xtzngfudhdjmqarj2e3eu6wut2y5vlf8egs40e233n5v3ygnyasvzaz",
+        "publicKey": "jvMsU0J427ZbB0clZjnmncWolGfSfKIVflUYzoyJETI=",
+        "algorithm": "ED25519",
+        "derivationContext": "sorcha:docket-signing",
+        "status": "Active",
+        "authorizedAt": "2026-04-10T14:57:26.875907+00:00"
+      }
+    ],
+    "requiredSignatures": 1,
+    "version": 1
+  },
+  "genesisPublicKeyFingerprint": "4042aaa57c500a43df21f1fe439e90d9"
+}

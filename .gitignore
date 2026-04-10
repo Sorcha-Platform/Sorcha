@@ -3,6 +3,9 @@
 .worktrees/
 .superpowers/
 
+# Genesis ceremony private key material (never commit)
+genesis-validator-key.json
+
 # .NET
 bin/
 obj/

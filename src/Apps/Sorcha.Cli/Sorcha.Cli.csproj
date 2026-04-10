@@ -63,12 +63,16 @@
 
     <!-- JWT Token Handling -->
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+
+    <!-- BIP39/BIP32 for genesis ceremony key derivation -->
+    <PackageReference Include="NBitcoin" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Shared Model Libraries -->
     <ProjectReference Include="..\..\Common\Sorcha.Register.Models\Sorcha.Register.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
   </ItemGroup>
 
 </Project>

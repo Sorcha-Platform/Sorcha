@@ -31,6 +31,10 @@ public static class SystemRegisterConstants
     /// </summary>
     public const string SystemSetupWalletName = "system-setup";
 
-    // Note: The SORCHA_SEED_SYSTEM_REGISTER env var was removed in Feature 057.
-    // System register bootstrap is now automatic and idempotent on startup.
+    /// <summary>
+    /// Genesis public key fingerprint for the embedded default genesis.
+    /// This value is updated when the genesis ceremony is run for the production network.
+    /// Empty string means no production genesis is embedded (use config file or run ceremony).
+    /// </summary>
+    public const string GenesisPublicKeyFingerprint = "";
 }
