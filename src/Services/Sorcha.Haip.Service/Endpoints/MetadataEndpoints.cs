@@ -23,8 +23,7 @@ public static class MetadataEndpoints
                 "Returns the issuer metadata document per HAIP 1.0 Section 5. " +
                 "HAIP wallets use this to discover supported credential types, endpoints, and algorithms.")
             .Produces<IssuerMetadata>(StatusCodes.Status200OK)
-            .AllowAnonymous()
-            .CacheOutput(p => p.Expire(TimeSpan.FromMinutes(5)));
+            .AllowAnonymous();
 
         app.MapGet("/.well-known/oauth-authorization-server", GetOAuthMetadata)
             .WithName("GetOAuthAuthorizationServerMetadata")
@@ -34,8 +33,7 @@ public static class MetadataEndpoints
                 "Returns the OAuth 2.0 AS metadata document declaring the pre-authorized code grant type " +
                 "and the token endpoint URL.")
             .Produces<object>(StatusCodes.Status200OK)
-            .AllowAnonymous()
-            .CacheOutput(p => p.Expire(TimeSpan.FromMinutes(5)));
+            .AllowAnonymous();
     }
 
     private static IResult GetIssuerMetadata(IConfiguration configuration)

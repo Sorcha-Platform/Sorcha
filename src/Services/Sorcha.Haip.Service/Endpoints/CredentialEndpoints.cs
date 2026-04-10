@@ -28,7 +28,8 @@ public static class CredentialEndpoints
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
-            .AllowAnonymous();
+            .Produces(StatusCodes.Status501NotImplemented)
+            .AllowAnonymous(); // TODO(097): require Bearer token once token store is wired
     }
 
     private static async Task<IResult> IssueCredential(
@@ -123,17 +124,17 @@ public static class CredentialEndpoints
 
         logger.LogInformation("JWT proof validated, holder key present: {HasHolderKey}", holderJwk.HasValue);
 
-        // TODO(097-push2): Wire to HaipCredentialMinter — call Wallet Service for SD-JWT signing,
-        // Tenant Service for x5c chain, Blueprint Service for status list allocation.
-        // For now, return a placeholder response indicating the proof was accepted.
-        var response = new
-        {
-            format = "vc+sd-jwt",
-            credential = "placeholder-sd-jwt-vc-token~disclosure1~",
-            c_nonce = (await nonceStore.CreateAsync(ct)).Nonce,
-            c_nonce_expires_in = 300
-        };
+        // SD-JWT VC minting not yet wired — return 501 until HaipCredentialMinter
+        // is connected to Wallet Service (signing), Tenant Service (x5c chain),
+        // and Blueprint Service (status list allocation).
+        logger.LogWarning(
+            "Credential endpoint: JWT proof validated but SD-JWT VC minting not yet implemented. " +
+            "HaipCredentialMinter wiring pending.");
 
-        return Results.Ok(response);
+        return Results.Json(new
+        {
+            error = "not_implemented",
+            error_description = "SD-JWT VC minting is not yet wired. JWT proof was validated successfully."
+        }, statusCode: 501);
     }
 }

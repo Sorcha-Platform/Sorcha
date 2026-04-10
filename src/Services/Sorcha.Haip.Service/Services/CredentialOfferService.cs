@@ -61,17 +61,19 @@ public class CredentialOfferService
         _offers[offer.Id] = offer;
 
         // Build the credential offer URI per OpenID4VCI
-        var offerPayload = new
+        // Build offer payload with correct IETF grant-type key (colons, not underscores)
+        var grants = new Dictionary<string, object>
         {
-            credential_issuer = _issuerUrl,
-            credentials = new[] { credentialType },
-            grants = new
+            ["urn:ietf:params:oauth:grant-type:pre-authorized_code"] = new Dictionary<string, object>
             {
-                urn_ietf_params_oauth_grant_type_pre_authorized_code = new
-                {
-                    pre_authorized_code = code
-                }
+                ["pre-authorized_code"] = code
             }
+        };
+        var offerPayload = new Dictionary<string, object>
+        {
+            ["credential_issuer"] = _issuerUrl,
+            ["credentials"] = new[] { credentialType },
+            ["grants"] = grants
         };
 
         var offerJson = JsonSerializer.Serialize(offerPayload);

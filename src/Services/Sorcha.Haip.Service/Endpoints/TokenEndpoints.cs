@@ -28,7 +28,7 @@ public static class TokenEndpoints
     }
 
     private static async Task<IResult> ExchangeToken(
-        [FromBody] TokenRequest request,
+        [FromForm] TokenRequest request,
         PreAuthCodeStore codeStore,
         NonceStore nonceStore,
         CredentialOfferService offerService,

@@ -35,13 +35,17 @@ public enum OfferStatus
 
 /// <summary>
 /// OAuth 2.0 token request for the pre-authorized code grant.
+/// Form-encoded per RFC 6749 §4.1.3. Field names use underscores/hyphens
+/// as specified by the OAuth 2.0 and OpenID4VCI specs.
 /// </summary>
 public class TokenRequest
 {
     [JsonPropertyName("grant_type")]
+    [Microsoft.AspNetCore.Mvc.FromForm(Name = "grant_type")]
     public string GrantType { get; set; } = string.Empty;
 
     [JsonPropertyName("pre-authorized_code")]
+    [Microsoft.AspNetCore.Mvc.FromForm(Name = "pre-authorized_code")]
     public string PreAuthorizedCode { get; set; } = string.Empty;
 }
 
