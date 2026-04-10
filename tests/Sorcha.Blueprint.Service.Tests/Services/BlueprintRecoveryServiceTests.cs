@@ -74,7 +74,7 @@ public class BlueprintRecoveryServiceTests
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "Test Register", Height = 5, Status = "Active" }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "Test Register", Height = 5, Status = "Active" }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
@@ -127,8 +127,8 @@ public class BlueprintRecoveryServiceTests
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
-                new RegisterSummary { Id = "reg-1", Name = "Register 1", Height = 3 },
-                new RegisterSummary { Id = "reg-2", Name = "Register 2", Height = 7 }
+                new InternalRegisterInfo { Id = "reg-1", Name = "Register 1", Height = 3 },
+                new InternalRegisterInfo { Id = "reg-2", Name = "Register 2", Height = 7 }
             ]);
 
         _mockRegisterClient
@@ -159,7 +159,7 @@ public class BlueprintRecoveryServiceTests
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "R1", Height = 2 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 2 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
@@ -210,7 +210,7 @@ public class BlueprintRecoveryServiceTests
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "R1", Height = 4 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 4 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
@@ -265,7 +265,7 @@ public class BlueprintRecoveryServiceTests
     {
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-fail", Name = "Failing", Height = 0 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-fail", Name = "Failing", Height = 0 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-fail", It.IsAny<CancellationToken>()))
@@ -285,7 +285,7 @@ public class BlueprintRecoveryServiceTests
     {
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-err", Name = "Error", Height = 0 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-err", Name = "Error", Height = 0 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-err", It.IsAny<CancellationToken>()))
@@ -305,7 +305,7 @@ public class BlueprintRecoveryServiceTests
     {
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "R1", Height = 2 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 2 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
@@ -363,7 +363,7 @@ public class BlueprintRecoveryServiceTests
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-flaky", Name = "Flaky", Height = 0 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-flaky", Name = "Flaky", Height = 0 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-flaky", It.IsAny<CancellationToken>()))
@@ -400,7 +400,7 @@ public class BlueprintRecoveryServiceTests
 
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "R1", Height = 0 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 0 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
@@ -428,7 +428,7 @@ public class BlueprintRecoveryServiceTests
     {
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "R1", Height = 3 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "R1", Height = 3 }]);
 
         // First call fails
         _mockRegisterClient
@@ -462,7 +462,7 @@ public class BlueprintRecoveryServiceTests
     {
         _mockRegisterClient
             .Setup(c => c.GetInternalRegistersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new RegisterSummary { Id = "reg-1", Name = "Empty", Height = 1 }]);
+            .ReturnsAsync([new InternalRegisterInfo { Id = "reg-1", Name = "Empty", Height = 1 }]);
 
         _mockRegisterClient
             .Setup(c => c.GetPublishedBlueprintsAsync("reg-1", It.IsAny<CancellationToken>()))
