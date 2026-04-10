@@ -142,4 +142,49 @@ public class CredentialIssuanceBuilderTests
 
         config.Disclosable.Should().BeNull();
     }
+
+    [Fact]
+    public void MakeDisclosablePath_AddsJsonPointerToConfig()
+    {
+        var builder = new CredentialIssuanceBuilder();
+        builder
+            .OfType("AddressCredential")
+            .MakeDisclosablePath("/address/locality")
+            .MakeDisclosablePath("/address/country");
+
+        var config = builder.Build();
+
+        config.Disclosable.Should().HaveCount(2);
+        config.Disclosable.Should().Contain("/address/locality");
+        config.Disclosable.Should().Contain("/address/country");
+    }
+
+    [Fact]
+    public void MakeDisclosable_AndMakeDisclosablePath_CoexistInSameConfig()
+    {
+        var builder = new CredentialIssuanceBuilder();
+        builder
+            .OfType("MixedCredential")
+            .MakeDisclosable("name")
+            .MakeDisclosablePath("/address/locality")
+            .MakeDisclosable("age");
+
+        var config = builder.Build();
+
+        config.Disclosable.Should().HaveCount(3);
+        config.Disclosable.Should().Contain("name");
+        config.Disclosable.Should().Contain("age");
+        config.Disclosable.Should().Contain("/address/locality");
+    }
+
+    [Fact]
+    public void MakeDisclosablePath_InvalidPath_ThrowsArgumentException()
+    {
+        var builder = new CredentialIssuanceBuilder();
+
+        var act = () => builder.MakeDisclosablePath("address/locality"); // missing leading /
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*must start with '/'*");
+    }
 }

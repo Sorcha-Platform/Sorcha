@@ -106,6 +106,43 @@ public static class SorchaDerivationPaths
     public const string PersonaVaultPath = "m/44'/0'/0'/0/104";
 
     /// <summary>
+    /// Derivation path for credential holder binding key (KB-JWT signing)
+    /// </summary>
+    /// <remarks>
+    /// Used by the Wallet Service to derive a per-wallet key that proves
+    /// holder possession of a credential via a Key Binding JWT (KB-JWT).
+    /// One key per wallet, not per credential. The public half is embedded
+    /// in the credential's <c>cnf</c> claim at issuance; the private half
+    /// signs KB-JWTs at presentation time.
+    /// Maps to: m/44'/0'/0'/0/105
+    /// </remarks>
+    public const string CredentialHolderBinding = "sorcha:credential-holder-binding";
+
+    /// <summary>
+    /// BIP44 path for credential holder binding key
+    /// </summary>
+    public const string CredentialHolderBindingPath = "m/44'/0'/0'/0/105";
+
+    /// <summary>
+    /// Derivation path for HAIP-facing classical issuer co-key
+    /// </summary>
+    /// <remarks>
+    /// Used by wallets whose primary algorithm is PQC (ML-DSA, SLH-DSA) to
+    /// derive a classical signing key (ES256 by default) for signing
+    /// HAIP-conformant SD-JWT VCs. External HAIP wallets require classical
+    /// signatures; Sorcha-internal transactions continue using the primary
+    /// PQC key. Wallets whose primary key is already classical do not derive
+    /// a co-key under this purpose.
+    /// Maps to: m/44'/0'/0'/0/106
+    /// </remarks>
+    public const string HaipIssuerSigning = "sorcha:haip-issuer-signing";
+
+    /// <summary>
+    /// BIP44 path for HAIP issuer classical co-key
+    /// </summary>
+    public const string HaipIssuerSigningPath = "m/44'/0'/0'/0/106";
+
+    /// <summary>
     /// Resolves a Sorcha system path to its corresponding BIP44 path
     /// </summary>
     /// <param name="systemPath">Sorcha system path (e.g., "sorcha:register-attestation")</param>
@@ -128,6 +165,8 @@ public static class SorchaDerivationPaths
             DocketSigning => DocketSigningPath,
             BlueprintPublish => BlueprintPublishPath,
             PersonaVault => PersonaVaultPath,
+            CredentialHolderBinding => CredentialHolderBindingPath,
+            HaipIssuerSigning => HaipIssuerSigningPath,
             _ => throw new ArgumentException($"Unknown Sorcha system path: {systemPath}", nameof(systemPath))
         };
     }

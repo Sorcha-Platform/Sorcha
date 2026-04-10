@@ -69,6 +69,14 @@ builder.Services.AddScoped<Sorcha.Wallet.Core.Services.Interfaces.IOrgKeyDerivat
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IPersonaCryptoService,
     Sorcha.Wallet.Service.Services.Implementation.PersonaCryptoService>();
 
+// Feature 094: Holder binding key (KB-JWT signing for SD-JWT VC presentations)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHolderBindingKeyService,
+    Sorcha.Wallet.Service.Services.Implementation.HolderBindingKeyService>();
+
+// Feature 094: HAIP issuer classical co-key (PQC wallets issue HAIP-compliant credentials)
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IHaipIssuerCoKeyService,
+    Sorcha.Wallet.Service.Services.Implementation.HaipIssuerCoKeyService>();
+
 // File reassembly service (US2 — File Download)
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IFileReassemblyService,
     Sorcha.Wallet.Service.Services.Implementation.FileReassemblyService>();

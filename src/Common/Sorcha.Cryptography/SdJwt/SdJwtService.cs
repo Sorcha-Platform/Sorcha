@@ -23,6 +23,8 @@ namespace Sorcha.Cryptography.SdJwt;
 /// </remarks>
 public class SdJwtService : ISdJwtService
 {
+    private static readonly TimeSpan DefaultClockSkew = TimeSpan.FromSeconds(60);
+
     /// <inheritdoc />
     public Task<SdJwtToken> CreateTokenAsync(
         Dictionary<string, object> claims,
@@ -34,28 +36,83 @@ public class SdJwtService : ISdJwtService
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default)
     {
+        return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
+            algorithm, holderJwk: null, expiresAt, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        byte[] signingKey,
+        string algorithm,
+        JsonElement holderJwk,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
+            algorithm, holderJwk, expiresAt, cancellationToken);
+    }
+
+    private Task<SdJwtToken> CreateTokenCoreAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        byte[] signingKey,
+        string algorithm,
+        JsonElement? holderJwk,
+        DateTimeOffset? expiresAt,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(claims);
         ArgumentException.ThrowIfNullOrWhiteSpace(issuer);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
         ArgumentNullException.ThrowIfNull(signingKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
 
-        var disclosableSet = disclosableClaims?.ToHashSet() ?? claims.Keys.ToHashSet();
+        var disclosableList = disclosableClaims?.ToList() ?? claims.Keys.ToList();
 
-        // Build disclosures for each disclosable claim
-        var disclosures = new List<string>();
-        var sdDigests = new List<string>();
+        List<string> disclosures;
+        List<string> sdDigests;
+        Dictionary<string, object> payloadClaims;
 
-        foreach (var claimName in disclosableSet)
+        if (NestedDisclosure.HasNestedPaths(disclosableList))
         {
-            if (!claims.TryGetValue(claimName, out var claimValue))
-                continue;
+            // Mixed top-level + nested JSON Pointer paths — use NestedDisclosure
+            var (translated, nestedDisclosures, topSd) = NestedDisclosure.Translate(claims, disclosableList);
+            disclosures = nestedDisclosures;
+            sdDigests = topSd;
+            payloadClaims = translated;
+        }
+        else
+        {
+            // Top-level name-keyed only — preserve original byte-identical behaviour (FR-021)
+            var disclosableSet = disclosableList.ToHashSet();
+            disclosures = new List<string>();
+            sdDigests = new List<string>();
 
-            var disclosure = CreateDisclosure(claimName, claimValue);
-            disclosures.Add(disclosure);
+            foreach (var claimName in disclosableSet)
+            {
+                if (!claims.TryGetValue(claimName, out var claimValue))
+                    continue;
 
-            var digest = ComputeDisclosureDigest(disclosure);
-            sdDigests.Add(digest);
+                var disclosure = CreateDisclosure(claimName, claimValue);
+                disclosures.Add(disclosure);
+
+                var digest = ComputeDisclosureDigest(disclosure);
+                sdDigests.Add(digest);
+            }
+
+            // Non-disclosable claims go directly into the payload
+            payloadClaims = new Dictionary<string, object>();
+            foreach (var (key, value) in claims)
+            {
+                if (!disclosableSet.Contains(key))
+                    payloadClaims[key] = value;
+            }
         }
 
         // Build the JWT payload
@@ -70,11 +127,21 @@ public class SdJwtService : ISdJwtService
         if (expiresAt.HasValue)
             payload["exp"] = expiresAt.Value.ToUnixTimeSeconds();
 
-        // Add non-disclosable claims directly
-        foreach (var (key, value) in claims)
+        // Add cnf (confirmation) claim with holder's public key if provided (FR-001, FR-002)
+        // cnf is always non-disclosable (FR-003)
+        if (holderJwk.HasValue)
         {
-            if (!disclosableSet.Contains(key))
-                payload[key] = value;
+            var cnf = new Dictionary<string, object>
+            {
+                ["jwk"] = holderJwk.Value
+            };
+            payload["cnf"] = cnf;
+        }
+
+        // Add processed claims to payload
+        foreach (var (key, value) in payloadClaims)
+        {
+            payload[key] = value;
         }
 
         // Add SD digests
@@ -168,6 +235,14 @@ public class SdJwtService : ISdJwtService
             if (payload.TryGetValue("exp", out var exp))
                 result.ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64());
 
+            // Extract cnf (confirmation) claim if present
+            if (payload.TryGetValue("cnf", out var cnf) &&
+                cnf.ValueKind == JsonValueKind.Object &&
+                cnf.TryGetProperty("jwk", out var jwk))
+            {
+                result.CnfJwk = jwk;
+            }
+
             // Extract non-SD claims
             var reservedClaims = new HashSet<string> { "iss", "sub", "iat", "exp", "_sd", "_sd_alg", "cnf" };
             foreach (var (key, value) in payload)
@@ -221,34 +296,11 @@ public class SdJwtService : ISdJwtService
         ArgumentException.ThrowIfNullOrWhiteSpace(rawToken);
         ArgumentNullException.ThrowIfNull(claimsToDisclose);
 
-        var disclosureSet = claimsToDisclose.ToHashSet();
         var parts = rawToken.TrimEnd('~').Split('~');
         var jwtPart = parts[0];
         var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
 
-        // Select only the disclosures for claims we want to reveal
-        var selectedDisclosures = new List<string>();
-        foreach (var disclosure in allDisclosures)
-        {
-            if (string.IsNullOrWhiteSpace(disclosure))
-                continue;
-
-            try
-            {
-                var disclosureJson = Base64UrlDecode(disclosure);
-                var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
-                if (disclosureArray is { Length: 3 })
-                {
-                    var claimName = disclosureArray[1].GetString();
-                    if (claimName != null && disclosureSet.Contains(claimName))
-                        selectedDisclosures.Add(disclosure);
-                }
-            }
-            catch
-            {
-                // Skip malformed disclosures
-            }
-        }
+        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
 
         // Build presentation: jwt~selected_disclosure1~selected_disclosure2~[kb-jwt]
         var presentationParts = new List<string> { jwtPart };
@@ -277,7 +329,342 @@ public class SdJwtService : ISdJwtService
         return VerifyTokenAsync(rawPresentation, issuerPublicKey, algorithm, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<SdJwtPresentation> CreatePresentationAsync(
+        string rawToken,
+        IEnumerable<string> claimsToDisclose,
+        Func<byte[], CancellationToken, Task<byte[]>> kbJwtSigner,
+        string holderAlgorithm,
+        string audience,
+        string nonce,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rawToken);
+        ArgumentNullException.ThrowIfNull(claimsToDisclose);
+        ArgumentNullException.ThrowIfNull(kbJwtSigner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(holderAlgorithm);
+        ArgumentException.ThrowIfNullOrWhiteSpace(audience);
+        ArgumentException.ThrowIfNullOrWhiteSpace(nonce);
+
+        // Build the presentation without KB-JWT first
+        var parts = rawToken.TrimEnd('~').Split('~');
+        var jwtPart = parts[0];
+        var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
+
+        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
+
+        // Build the presentation prefix (everything before the KB-JWT)
+        var presentationParts = new List<string> { jwtPart };
+        presentationParts.AddRange(selectedDisclosures);
+        var presentationPrefix = string.Join("~", presentationParts) + "~";
+
+        // Compute sd_hash: base64url(sha256(presentationPrefix))
+        var sdHash = Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(presentationPrefix)));
+
+        // Build the KB-JWT
+        var kbHeader = new Dictionary<string, object>
+        {
+            ["alg"] = MapAlgorithm(holderAlgorithm),
+            ["typ"] = "kb+jwt"
+        };
+
+        var kbPayload = new Dictionary<string, object>
+        {
+            ["aud"] = audience,
+            ["nonce"] = nonce,
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["sd_hash"] = sdHash
+        };
+
+        var kbHeaderB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(kbHeader));
+        var kbPayloadB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(kbPayload));
+        var kbSigningInput = Encoding.UTF8.GetBytes($"{kbHeaderB64}.{kbPayloadB64}");
+
+        var kbSignature = await kbJwtSigner(kbSigningInput, cancellationToken);
+        var kbSignatureB64 = Base64UrlEncode(kbSignature);
+        var kbJwt = $"{kbHeaderB64}.{kbPayloadB64}.{kbSignatureB64}";
+
+        // Assemble final presentation: prefix + kb-jwt
+        var rawPresentation = presentationPrefix + kbJwt;
+
+        return new SdJwtPresentation
+        {
+            Token = new SdJwtToken { RawToken = rawToken },
+            SelectedDisclosures = selectedDisclosures,
+            KeyBindingJwt = kbJwt,
+            RawPresentation = rawPresentation
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<SdJwtVerificationResult> VerifyPresentationAsync(
+        string rawPresentation,
+        byte[] issuerPublicKey,
+        string algorithm,
+        string expectedAudience,
+        string expectedNonce,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rawPresentation);
+        ArgumentNullException.ThrowIfNull(issuerPublicKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedAudience);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedNonce);
+
+        // Split presentation into: jwt~disclosures...~[kb-jwt]
+        // The KB-JWT is the last non-empty segment that looks like a JWT (has 2 dots)
+        var allParts = rawPresentation.TrimEnd('~').Split('~');
+        if (allParts.Length < 1)
+        {
+            return new SdJwtVerificationResult
+            {
+                Errors = { "Invalid presentation format" }
+            };
+        }
+
+        // Detect KB-JWT: last segment with exactly 2 dots
+        string? kbJwtRaw = null;
+        string[] presentationPartsWithoutKbJwt;
+        var lastPart = allParts[^1];
+        if (lastPart.Count(c => c == '.') == 2 && allParts.Length > 1 && allParts[0].Count(c => c == '.') == 2)
+        {
+            // Last segment looks like a JWT and isn't the issuer JWT — it's the KB-JWT
+            kbJwtRaw = lastPart;
+            presentationPartsWithoutKbJwt = allParts[..^1];
+        }
+        else
+        {
+            presentationPartsWithoutKbJwt = allParts;
+        }
+
+        // Rebuild the presentation prefix (without KB-JWT) for sd_hash verification and issuer verification
+        var presentationPrefix = string.Join("~", presentationPartsWithoutKbJwt) + "~";
+
+        // First verify the issuer JWT + disclosures
+        var result = await VerifyTokenAsync(presentationPrefix, issuerPublicKey, algorithm, cancellationToken);
+        if (!result.IsValid)
+            return result;
+
+        // If the credential has cnf, KB-JWT is mandatory (FR-014)
+        if (result.CnfJwk.HasValue)
+        {
+            if (kbJwtRaw == null)
+            {
+                result.IsValid = false;
+                result.Errors.Add("Missing KB-JWT: credential has cnf claim but presentation has no Key Binding JWT");
+                return result;
+            }
+
+            // Parse KB-JWT
+            var kbSegments = kbJwtRaw.Split('.');
+            if (kbSegments.Length != 3)
+            {
+                result.IsValid = false;
+                result.Errors.Add("Invalid KB-JWT format");
+                return result;
+            }
+
+            // Verify KB-JWT signature against cnf.jwk
+            var kbSigningInput = Encoding.UTF8.GetBytes($"{kbSegments[0]}.{kbSegments[1]}");
+            var kbSignatureBytes = Base64UrlDecode(kbSegments[2]);
+            var holderKeyBytes = ExportPublicKeyFromJwk(result.CnfJwk.Value, out var holderAlg);
+
+            if (holderKeyBytes == null)
+            {
+                result.IsValid = false;
+                result.Errors.Add("Key binding mismatch: cannot extract public key from cnf JWK");
+                return result;
+            }
+
+            if (!Verify(kbSigningInput, kbSignatureBytes, holderKeyBytes, holderAlg))
+            {
+                result.IsValid = false;
+                result.Errors.Add("Key binding mismatch: KB-JWT signature invalid against cnf public key");
+                return result;
+            }
+
+            // Parse KB-JWT payload and validate claims
+            var kbPayloadJson = Base64UrlDecode(kbSegments[1]);
+            var kbPayload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(kbPayloadJson)
+                ?? new Dictionary<string, JsonElement>();
+
+            // Check aud
+            var audValue = kbPayload.TryGetValue("aud", out var aud) ? aud.GetString() : null;
+            if (audValue != expectedAudience)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Audience mismatch: KB-JWT aud '{audValue ?? "<missing>"}' does not match expected '{expectedAudience}'");
+                return result;
+            }
+
+            // Check nonce
+            if (!kbPayload.TryGetValue("nonce", out var nonceEl) || nonceEl.GetString() != expectedNonce)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Nonce mismatch: KB-JWT nonce does not match expected value");
+                return result;
+            }
+
+            // Check iat (clock skew ±60s)
+            if (!kbPayload.TryGetValue("iat", out var kbIat))
+            {
+                result.IsValid = false;
+                result.Errors.Add("Clock skew: KB-JWT missing iat claim");
+                return result;
+            }
+
+            var kbIssuedAt = DateTimeOffset.FromUnixTimeSeconds(kbIat.GetInt64());
+            var now = DateTimeOffset.UtcNow;
+            if (kbIssuedAt < now - DefaultClockSkew || kbIssuedAt > now + DefaultClockSkew)
+            {
+                result.IsValid = false;
+                result.Errors.Add($"Clock skew: KB-JWT iat {kbIssuedAt:O} is outside the ±{DefaultClockSkew.TotalSeconds}s window");
+                return result;
+            }
+
+            // Check sd_hash
+            if (!kbPayload.TryGetValue("sd_hash", out var sdHashEl))
+            {
+                result.IsValid = false;
+                result.Errors.Add("sd_hash mismatch: KB-JWT missing sd_hash claim");
+                return result;
+            }
+
+            var expectedSdHash = Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(presentationPrefix)));
+            if (sdHashEl.GetString() != expectedSdHash)
+            {
+                result.IsValid = false;
+                result.Errors.Add("sd_hash mismatch: KB-JWT sd_hash does not match presentation content");
+                return result;
+            }
+
+            result.HolderKeyVerified = true;
+        }
+        else if (kbJwtRaw != null)
+        {
+            // Legacy credential without cnf — ignore trailing KB-JWT if present (FR-006 compat)
+        }
+
+        return result;
+    }
+
     // --- Internal helpers ---
+
+    /// <summary>
+    /// Selects disclosures that match the caller's disclosure request.
+    /// Handles both top-level claim names and JSON Pointer paths by extracting
+    /// the leaf segment from each pointer path.
+    /// </summary>
+    private static List<string> SelectDisclosures(string[] allDisclosures, IEnumerable<string> claimsToDisclose)
+    {
+        // Build a set of names to match against disclosure name fields.
+        // For JSON Pointer paths like "/address/locality", extract the leaf "locality".
+        // For top-level names like "name", use as-is.
+        var matchNames = new HashSet<string>();
+        foreach (var entry in claimsToDisclose)
+        {
+            if (entry.StartsWith('/'))
+            {
+                var lastSlash = entry.LastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash < entry.Length - 1)
+                    matchNames.Add(entry[(lastSlash + 1)..]);
+            }
+            else
+            {
+                matchNames.Add(entry);
+            }
+        }
+
+        var selected = new List<string>();
+        foreach (var disclosure in allDisclosures)
+        {
+            if (string.IsNullOrWhiteSpace(disclosure))
+                continue;
+
+            try
+            {
+                var disclosureJson = Base64UrlDecode(disclosure);
+                var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
+
+                // Three-element disclosure: [salt, name, value]
+                if (disclosureArray is { Length: 3 })
+                {
+                    var claimName = disclosureArray[1].GetString();
+                    if (claimName != null && matchNames.Contains(claimName))
+                        selected.Add(disclosure);
+                }
+                // Two-element disclosure: [salt, value] — array element.
+                // TODO(094): Array element selection currently includes all array disclosures.
+                // When array-element disclosure is wired end-to-end (spec 097/098),
+                // correlate requested indices against {"...": digest} placeholders
+                // in the parent array to select only the requested elements.
+                else if (disclosureArray is { Length: 2 })
+                {
+                    selected.Add(disclosure);
+                }
+            }
+            catch
+            {
+                // Skip malformed disclosures
+            }
+        }
+
+        return selected;
+    }
+
+    /// <summary>
+    /// Extracts the public key bytes from a JWK JsonElement and determines the algorithm.
+    /// Only supports P-256 (EC) and Ed25519 (OKP) — the two algorithms valid for
+    /// HAIP holder binding keys.
+    /// </summary>
+    private static byte[]? ExportPublicKeyFromJwk(JsonElement jwk, out string algorithm)
+    {
+        if (!jwk.TryGetProperty("kty", out var kty))
+        {
+            algorithm = string.Empty;
+            return null;
+        }
+
+        var keyType = kty.GetString();
+        switch (keyType)
+        {
+            case "EC":
+            {
+                var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+                if (crv != "P-256")
+                {
+                    algorithm = string.Empty;
+                    return null; // Only P-256 supported for holder binding
+                }
+
+                algorithm = "ES256";
+                var x = Base64UrlDecode(jwk.GetProperty("x").GetString()!);
+                var y = Base64UrlDecode(jwk.GetProperty("y").GetString()!);
+
+                using var ecdsa = ECDsa.Create(new ECParameters
+                {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    Q = new ECPoint { X = x, Y = y }
+                });
+                return ecdsa.ExportSubjectPublicKeyInfo();
+            }
+            case "OKP":
+            {
+                var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+                if (crv != "Ed25519")
+                {
+                    algorithm = string.Empty;
+                    return null; // Only Ed25519 supported for holder binding
+                }
+
+                algorithm = "EdDSA";
+                return Base64UrlDecode(jwk.GetProperty("x").GetString()!);
+            }
+            default:
+                algorithm = string.Empty;
+                return null;
+        }
+    }
 
     private static string CreateDisclosure(string claimName, object claimValue)
     {

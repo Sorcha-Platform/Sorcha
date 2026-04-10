@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace Sorcha.Cryptography.SdJwt;
 
@@ -45,4 +46,16 @@ public class SdJwtVerificationResult
     /// Expiration timestamp from the token payload.
     /// </summary>
     public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>
+    /// The holder's confirmation key (cnf.jwk) extracted from the token payload,
+    /// if present. Used by the verifier to validate Key Binding JWTs.
+    /// </summary>
+    public JsonElement? CnfJwk { get; set; }
+
+    /// <summary>
+    /// Whether the Key Binding JWT was present and successfully verified
+    /// against the holder's confirmation key.
+    /// </summary>
+    public bool HolderKeyVerified { get; set; }
 }

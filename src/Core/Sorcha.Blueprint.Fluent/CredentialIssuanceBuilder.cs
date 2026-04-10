@@ -62,11 +62,26 @@ public class CredentialIssuanceBuilder
     }
 
     /// <summary>
-    /// Marks a claim as supporting selective disclosure.
+    /// Marks a top-level claim as supporting selective disclosure.
     /// </summary>
     public CredentialIssuanceBuilder MakeDisclosable(string claimName)
     {
         _disclosable.Add(claimName);
+        return this;
+    }
+
+    /// <summary>
+    /// Marks a nested field as independently disclosable using a JSON Pointer path.
+    /// Supports object properties (e.g., "/address/locality") and array elements
+    /// (e.g., "/qualifications/0"). Can be mixed with top-level <see cref="MakeDisclosable"/>.
+    /// </summary>
+    /// <param name="jsonPointer">JSON Pointer path (must start with "/").</param>
+    public CredentialIssuanceBuilder MakeDisclosablePath(string jsonPointer)
+    {
+        if (!jsonPointer.StartsWith('/'))
+            throw new ArgumentException("JSON Pointer path must start with '/'", nameof(jsonPointer));
+
+        _disclosable.Add(jsonPointer);
         return this;
     }
 
