@@ -67,8 +67,8 @@ public static class ValidationEndpoints
                 ExpiresAt = request.ExpiresAt,
                 Signatures = request.Signatures.Select(s => new Signature
                 {
-                    PublicKey = Base64Url.DecodeFromChars(s.PublicKey),
-                    SignatureValue = Base64Url.DecodeFromChars(s.SignatureValue),
+                    PublicKey = DecodeBase64(s.PublicKey),
+                    SignatureValue = DecodeBase64(s.SignatureValue),
                     Algorithm = s.Algorithm,
                     SignedBy = s.SignedBy,
                     SignedAt = request.CreatedAt
@@ -182,6 +182,22 @@ public static class ValidationEndpoints
     {
         var stats = await memPoolManager.GetStatsAsync(registerId, cancellationToken);
         return Results.Ok(stats);
+    }
+
+    /// <summary>
+    /// Decodes a Base64 or Base64URL encoded string to bytes.
+    /// Handles both standard Base64 (+/=) and URL-safe Base64 (-_) encodings.
+    /// </summary>
+    private static byte[] DecodeBase64(string value)
+    {
+        try
+        {
+            return Base64Url.DecodeFromChars(value);
+        }
+        catch (FormatException)
+        {
+            return Convert.FromBase64String(value);
+        }
     }
 }
 
