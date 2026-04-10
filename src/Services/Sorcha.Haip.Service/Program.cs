@@ -42,5 +42,9 @@ app.MapDefaultEndpoints();
 
 // Map HAIP endpoints
 app.MapMetadataEndpoints();
+app.MapTokenEndpoints();
+app.MapNonceEndpoints();
+app.MapCredentialEndpoints();
+app.MapOfferEndpoints();
 
 app.Run();

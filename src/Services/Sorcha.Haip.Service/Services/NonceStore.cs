@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Caching.Distributed;
 
@@ -8,7 +9,7 @@ namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
 /// Redis-backed store for c_nonce values. Nonces are single-use
-/// with TTL-based expiry.
+/// with TTL-based expiry. Thread-safe via ConcurrentDictionary fallback.
 /// </summary>
 public class NonceStore
 {
@@ -16,7 +17,7 @@ public class NonceStore
     private readonly ILogger<NonceStore> _logger;
     private readonly int _ttlSeconds;
 
-    private readonly HashSet<string> _memoryStore = new();
+    private readonly ConcurrentDictionary<string, byte> _memoryStore = new();
 
     public NonceStore(
         ILogger<NonceStore> logger,
@@ -46,7 +47,7 @@ public class NonceStore
         }
         else
         {
-            _memoryStore.Add(key);
+            _memoryStore[key] = 1;
         }
 
         return (nonce, _ttlSeconds);
@@ -54,6 +55,7 @@ public class NonceStore
 
     /// <summary>
     /// Consumes a c_nonce (single-use). Returns true if the nonce was valid.
+    /// Uses atomic remove for thread safety.
     /// </summary>
     public async Task<bool> ConsumeAsync(string nonce, CancellationToken ct = default)
     {
@@ -67,6 +69,6 @@ public class NonceStore
             return true;
         }
 
-        return _memoryStore.Remove(key);
+        return _memoryStore.TryRemove(key, out _);
     }
 }
