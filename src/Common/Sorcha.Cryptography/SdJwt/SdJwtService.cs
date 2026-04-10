@@ -407,6 +407,7 @@ public class SdJwtService : ISdJwtService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rawPresentation);
         ArgumentNullException.ThrowIfNull(issuerPublicKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedAudience);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedNonce);
 
@@ -488,10 +489,11 @@ public class SdJwtService : ISdJwtService
                 ?? new Dictionary<string, JsonElement>();
 
             // Check aud
-            if (!kbPayload.TryGetValue("aud", out var aud) || aud.GetString() != expectedAudience)
+            var audValue = kbPayload.TryGetValue("aud", out var aud) ? aud.GetString() : null;
+            if (audValue != expectedAudience)
             {
                 result.IsValid = false;
-                result.Errors.Add($"Audience mismatch: KB-JWT aud '{aud.GetString()}' does not match expected '{expectedAudience}'");
+                result.Errors.Add($"Audience mismatch: KB-JWT aud '{audValue ?? "<missing>"}' does not match expected '{expectedAudience}'");
                 return result;
             }
 
@@ -591,8 +593,11 @@ public class SdJwtService : ISdJwtService
                     if (claimName != null && matchNames.Contains(claimName))
                         selected.Add(disclosure);
                 }
-                // Two-element disclosure: [salt, value] — array element, always include
-                // if it was part of the disclosable set (future: more precise matching)
+                // Two-element disclosure: [salt, value] — array element.
+                // TODO(094): Array element selection currently includes all array disclosures.
+                // When array-element disclosure is wired end-to-end (spec 097/098),
+                // correlate requested indices against {"...": digest} placeholders
+                // in the parent array to select only the requested elements.
                 else if (disclosureArray is { Length: 2 })
                 {
                     selected.Add(disclosure);

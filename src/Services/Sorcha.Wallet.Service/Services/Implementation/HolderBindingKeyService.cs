@@ -69,6 +69,15 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         return (signature, algorithm);
     }
 
+    // Algorithms that HAIP 1.0 verifiers can process for holder binding
+    private static readonly HashSet<string> ClassicalAlgorithms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ED25519", "EDDSA", "ES256", "P-256", "P256", "NIST-P256", "NISTP256", "ECDSA-P256",
+        "RS256", "RSA", "RSA-4096"
+    };
+
+    private const string DefaultClassicalAlgorithm = "ES256";
+
     private async Task<(byte[] PrivateKey, byte[] PublicKey, string Algorithm)> DeriveBindingKeyAsync(
         string walletAddress, CancellationToken ct)
     {
@@ -81,11 +90,17 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         var resolvedPath = SorchaDerivationPaths.ResolvePath(SorchaDerivationPaths.CredentialHolderBinding);
         var parsedPath = new DerivationPath(resolvedPath);
 
-        // For holder binding, always derive using the wallet's native algorithm
-        var (derivedPrivate, derivedPublic) = await _keyManagement.DeriveKeyAtPathAsync(
-            masterKey, parsedPath, wallet.Algorithm);
+        // HAIP 1.0 mandates classical algorithms for holder binding (ES256, EdDSA).
+        // PQC-primary wallets derive the binding key as ES256 so external verifiers
+        // can process the cnf.jwk — same pattern as HaipIssuerCoKeyService.
+        var derivationAlg = ClassicalAlgorithms.Contains(wallet.Algorithm)
+            ? wallet.Algorithm
+            : DefaultClassicalAlgorithm;
 
-        return (derivedPrivate, derivedPublic, wallet.Algorithm);
+        var (derivedPrivate, derivedPublic) = await _keyManagement.DeriveKeyAtPathAsync(
+            masterKey, parsedPath, derivationAlg);
+
+        return (derivedPrivate, derivedPublic, derivationAlg);
     }
 
     private static JsonElement BuildJwk(byte[] publicKey, string algorithm)

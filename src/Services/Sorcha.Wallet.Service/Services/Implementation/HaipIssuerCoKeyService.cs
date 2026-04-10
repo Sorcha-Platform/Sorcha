@@ -24,12 +24,6 @@ public class HaipIssuerCoKeyService : IHaipIssuerCoKeyService
         "RS256", "RSA", "RSA-4096"
     };
 
-    private static readonly HashSet<string> PqcAlgorithms = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ML-DSA-65", "ML-DSA-87", "SLH-DSA-SHA2-128S", "SLH-DSA-SHA2-128F",
-        "SLH-DSA-SHA2-192S", "SLH-DSA-SHA2-192F", "SLH-DSA-SHA2-256S", "SLH-DSA-SHA2-256F"
-    };
-
     private const string DefaultClassicalAlgorithm = "ES256";
 
     private readonly IWalletRepository _repository;
