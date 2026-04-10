@@ -111,8 +111,11 @@ public static class StatusListEndpoints
         IStatusListManager statusListManager,
         IIetfTokenStatusListSerializer serializer,
         IConfiguration configuration,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.Endpoints.StatusListEndpoints");
+
         var list = await statusListManager.GetListAsync(listId, cancellationToken);
         if (list == null)
             return Results.NotFound(new { error = $"Status list '{listId}' not found" });
@@ -121,11 +124,13 @@ public static class StatusListEndpoints
         if (rawBytes == null)
             return Results.NotFound(new { error = $"Status list '{listId}' bitstring not available" });
 
-        // For now, sign with a placeholder key — in production this would use
-        // the issuer wallet's signing key via IHaipIssuerCoKeyService or similar.
-        // The endpoint returns the correct JWT structure; signing key wiring
-        // is completed when spec 097 (OpenID4VCI issuer) lands.
-        // TODO(095): Wire real signing key from issuer wallet
+        // Build the full sub URL per IETF Token Status List spec
+        var ietfBaseUrl = configuration.GetValue<string>("StatusList:IetfBaseUrl")
+            ?? "https://sorcha.example/api/v1/credentials/ietf-status-lists";
+        var subUrl = $"{ietfBaseUrl}/{listId}";
+
+        // Signing key: configurable for production, ephemeral fallback for dev.
+        // TODO(095): Wire real signing key from issuer wallet via IHaipIssuerCoKeyService
         var signingKeyBase64 = configuration.GetValue<string>("StatusList:IetfSigningKey");
         var algorithm = configuration.GetValue<string>("StatusList:IetfSigningAlgorithm") ?? "ES256";
 
@@ -136,7 +141,10 @@ public static class StatusListEndpoints
         }
         else
         {
-            // Development fallback: generate an ephemeral P-256 key
+            logger.LogWarning(
+                "IETF Token Status List endpoint using ephemeral signing key for list {ListId}. " +
+                "Set StatusList:IetfSigningKey in production — JWTs signed with ephemeral keys are unverifiable.",
+                listId);
             using var ecdsa = System.Security.Cryptography.ECDsa.Create(
                 System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
             signingKey = ecdsa.ExportECPrivateKey();
@@ -146,7 +154,7 @@ public static class StatusListEndpoints
         var bitsPerEntry = list.Purpose == "suspension" ? 2 : 1;
 
         var maxAge = configuration.GetValue<int>("StatusList:CacheMaxAgeSeconds", 300);
-        var jwt = serializer.Serialize(rawBytes, listId, issuerDid, bitsPerEntry, signingKey, algorithm, maxAge);
+        var jwt = serializer.Serialize(rawBytes, subUrl, issuerDid, bitsPerEntry, signingKey, algorithm, maxAge);
 
         // Return as application/statuslist+jwt with cache headers
         var result = Results.Text(jwt, "application/statuslist+jwt", statusCode: 200);

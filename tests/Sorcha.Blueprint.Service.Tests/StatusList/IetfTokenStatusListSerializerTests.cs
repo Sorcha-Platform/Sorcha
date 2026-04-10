@@ -50,6 +50,8 @@ public class IetfTokenStatusListSerializerTests
         payload["sub"].GetString().Should().Be("list-001");
         payload.Should().ContainKey("iat");
         payload.Should().ContainKey("exp");
+        payload.Should().ContainKey("ttl");
+        payload["ttl"].GetInt32().Should().Be(300);
         payload.Should().ContainKey("status_list");
 
         var statusList = payload["status_list"];

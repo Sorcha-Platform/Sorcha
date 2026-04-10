@@ -75,6 +75,7 @@ public class IetfTokenStatusListSerializer : IIetfTokenStatusListSerializer
             ["sub"] = listId,
             ["iat"] = now.ToUnixTimeSeconds(),
             ["exp"] = now.AddSeconds(ttlSeconds).ToUnixTimeSeconds(),
+            ["ttl"] = ttlSeconds,
             ["status_list"] = new Dictionary<string, object>
             {
                 ["bits"] = bitsPerEntry,
