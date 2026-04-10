@@ -143,6 +143,21 @@ public static class SorchaDerivationPaths
     public const string HaipIssuerSigningPath = "m/44'/0'/0'/0/106";
 
     /// <summary>
+    /// Derivation path for tenant-level CA signing key
+    /// </summary>
+    /// <remarks>
+    /// Used by the Tenant Service to derive a key for signing the tenant's
+    /// self-signed root CA certificate and organisation certificates.
+    /// Maps to: m/44'/0'/0'/0/107
+    /// </remarks>
+    public const string TenantCaSigning = "sorcha:tenant-ca-signing";
+
+    /// <summary>
+    /// BIP44 path for tenant CA signing key
+    /// </summary>
+    public const string TenantCaSigningPath = "m/44'/0'/0'/0/107";
+
+    /// <summary>
     /// Resolves a Sorcha system path to its corresponding BIP44 path
     /// </summary>
     /// <param name="systemPath">Sorcha system path (e.g., "sorcha:register-attestation")</param>
@@ -167,6 +182,7 @@ public static class SorchaDerivationPaths
             PersonaVault => PersonaVaultPath,
             CredentialHolderBinding => CredentialHolderBindingPath,
             HaipIssuerSigning => HaipIssuerSigningPath,
+            TenantCaSigning => TenantCaSigningPath,
             _ => throw new ArgumentException($"Unknown Sorcha system path: {systemPath}", nameof(systemPath))
         };
     }

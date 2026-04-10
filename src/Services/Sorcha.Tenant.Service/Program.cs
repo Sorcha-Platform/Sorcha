@@ -93,6 +93,10 @@ builder.Services.AddScoped<Sorcha.Tenant.Service.Services.Interfaces.IEventServi
     Sorcha.Tenant.Service.Services.EventService>();
 builder.Services.AddHostedService<Sorcha.Tenant.Service.Services.EventCleanupService>();
 
+// Feature 096: X.509 Organisation Trust — trust anchor provisioning and org cert enrolment
+builder.Services.AddSingleton<Sorcha.Tenant.Service.Trust.ITrustProvider,
+    Sorcha.Tenant.Service.Trust.InternalCaTrustProvider>();
+
 // Feature 092: Consumer persona — orchestrator + typed HttpClient to Wallet Service
 builder.Services.AddScoped<Sorcha.Tenant.Service.Services.IPersonaService,
     Sorcha.Tenant.Service.Services.PersonaService>();
@@ -184,6 +188,7 @@ app.MapPushSubscriptionEndpoints();
 app.MapEventEndpoints();
 app.MapRegisterSubscriptionEndpoints();
 app.MapRegisterInvitationEndpoints();
+app.MapTrustEndpoints();
 app.MapRazorPages();
 
 // Health check is provided by MapDefaultEndpoints() which maps /health and /alive
