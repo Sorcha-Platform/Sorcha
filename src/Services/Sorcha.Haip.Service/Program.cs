@@ -22,10 +22,13 @@ builder.AddJwtAuthentication();
 // Add rate limiting
 builder.AddRateLimiting();
 
-// Feature 097: HAIP services
+// Feature 097: HAIP issuance services
 builder.Services.AddSingleton<PreAuthCodeStore>();
 builder.Services.AddSingleton<NonceStore>();
 builder.Services.AddSingleton<CredentialOfferService>();
+
+// Feature 098: HAIP verifier services
+builder.Services.AddSingleton<PresentationRequestStore>();
 
 var app = builder.Build();
 
@@ -46,5 +49,6 @@ app.MapTokenEndpoints();
 app.MapNonceEndpoints();
 app.MapCredentialEndpoints();
 app.MapOfferEndpoints();
+app.MapVerifierEndpoints();
 
 app.Run();

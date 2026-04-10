@@ -47,4 +47,26 @@ public class CredentialRequirement
     [JsonPropertyName("description")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Where the presentation should come from. Default: <see cref="PresentationSource.SorchaInternal"/>.
+    /// Set to <see cref="PresentationSource.HaipExternalWallet"/> to require presentation via
+    /// the HAIP OpenID4VP verifier (spec 098) instead of matching against Sorcha-internal credentials.
+    /// </summary>
+    [JsonPropertyName("presentationSource")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public PresentationSource PresentationSource { get; set; } = PresentationSource.SorchaInternal;
+}
+
+/// <summary>
+/// Controls where a credential presentation should originate from.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PresentationSource
+{
+    /// <summary>Internal Sorcha participant — matched against stored credentials.</summary>
+    SorchaInternal = 0,
+
+    /// <summary>External HAIP wallet — presented via OpenID4VP direct_post flow.</summary>
+    HaipExternalWallet = 1
 }
