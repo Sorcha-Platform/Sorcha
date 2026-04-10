@@ -848,3 +848,4 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | sorcha-ui | Builds Sorcha.UI Blazor WASM pages with accompanying Playwright E2E tests using the Docker test infrastructure |
 | blueprint-builder | Creates blueprint JSON templates, defines participants/actions/routes/schemas, configures cycle detection, troubleshoots blueprint publishing |
 | walkthrough-builder | Architects, builds, and runs walkthroughs using the autonomous actor agent framework. Creates actor definitions, launcher scripts, and cross-register credential flows |
+| network-bootstrap | Bootstraps the Sorcha network: genesis ceremony, n1.sorcha.dev deployment, validator key import, and platform setup |
