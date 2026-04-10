@@ -97,7 +97,8 @@ public class GenesisIngestionService
         // Decode payload for the Validator Service (expects JsonElement)
         var payloadBytes = Convert.FromBase64String(tx.Payload);
         var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
-        var payloadElement = JsonDocument.Parse(payloadJson).RootElement;
+        using var payloadDoc = JsonDocument.Parse(payloadJson);
+        var payloadElement = payloadDoc.RootElement.Clone();
 
         var submission = new TransactionSubmission
         {

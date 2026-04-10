@@ -57,7 +57,7 @@ public class SystemRegisterCreateCommandTests : IDisposable
         await SystemRegisterCreateCommand.ExecuteCreateAsync(
             "test-network", outputPath, "ED25519", CancellationToken.None);
 
-        // Key file is written next to the genesis file
+        // Key file is written adjacent to genesis when --output is specified
         var keyFilePath = Path.Combine(_tempDir, "genesis-validator-key.json");
 
         var keyFile = JsonSerializer.Deserialize<GenesisValidatorKeyFile>(

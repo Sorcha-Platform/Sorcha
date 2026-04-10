@@ -240,8 +240,11 @@ public class SystemRegisterCreateCommand : Command
 
         await File.WriteAllTextAsync(genesisPath, genesisJson, ct);
 
-        var keyFileDir = Path.GetDirectoryName(genesisPath) ?? Directory.GetCurrentDirectory();
-        var keyFilePath = Path.Combine(keyFileDir, "genesis-validator-key.json");
+        // Write key file adjacent to genesis when output path is specified (for test isolation),
+        // otherwise to current working directory
+        var keyFilePath = outputPath is not null
+            ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? Directory.GetCurrentDirectory(), "genesis-validator-key.json")
+            : Path.Combine(Directory.GetCurrentDirectory(), "genesis-validator-key.json");
         var keyFileJson = JsonSerializer.Serialize(validatorKeyFile, PrettyJsonOptions);
         await File.WriteAllTextAsync(keyFilePath, keyFileJson, ct);
 
@@ -317,7 +320,7 @@ public class SystemRegisterCreateCommand : Command
             "RSA4096" => SignatureAlgorithm.RSA4096,
             "ML_DSA_65" or "ML-DSA-65" => SignatureAlgorithm.ML_DSA_65,
             "SLH_DSA_128S" or "SLH-DSA-128S" => SignatureAlgorithm.SLH_DSA_128s,
-            _ => SignatureAlgorithm.ED25519
+            _ => throw new ArgumentOutOfRangeException(nameof(algorithm), algorithm, "Unsupported signature algorithm")
         };
 
     internal static string DeriveWalletAddress(byte[] publicKey, WalletNetworks network)

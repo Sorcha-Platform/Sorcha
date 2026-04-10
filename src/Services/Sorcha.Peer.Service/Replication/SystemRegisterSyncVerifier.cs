@@ -39,20 +39,29 @@ public interface ISystemRegisterSyncVerifier
 /// <inheritdoc />
 public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
 {
-    private readonly IOptions<SystemRegisterOptions> _options;
     private readonly ICryptoModule _cryptoModule;
     private readonly ILogger<SystemRegisterSyncVerifier> _logger;
-    private SystemRegisterGenesis? _trustedGenesis;
-    private bool _genesisLoaded;
+    private readonly Lazy<SystemRegisterGenesis?> _trustedGenesis;
 
     public SystemRegisterSyncVerifier(
         IOptions<SystemRegisterOptions> options,
         ICryptoModule cryptoModule,
         ILogger<SystemRegisterSyncVerifier> logger)
     {
-        _options = options;
         _cryptoModule = cryptoModule;
         _logger = logger;
+        _trustedGenesis = new Lazy<SystemRegisterGenesis?>(() =>
+        {
+            try
+            {
+                return GenesisFileLoader.Load(options.Value.GenesisFile);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to load trusted genesis file for system register verification");
+                return null;
+            }
+        });
     }
 
     /// <inheritdoc />
@@ -68,21 +77,9 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
         if (!IsSystemRegister(registerId))
             return true; // Not system register — bypass
 
-        // Load trusted genesis (lazy, once)
-        if (!_genesisLoaded)
-        {
-            try
-            {
-                _trustedGenesis = GenesisFileLoader.Load(_options.Value.GenesisFile);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to load trusted genesis file for system register verification");
-            }
-            _genesisLoaded = true;
-        }
+        var trustedGenesis = _trustedGenesis.Value;
 
-        if (_trustedGenesis is null)
+        if (trustedGenesis is null)
         {
             _logger.LogWarning(
                 "No trusted genesis file available — cannot verify system register from peer. " +
@@ -106,13 +103,13 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
             return false;
         }
 
-        // Verify the peer's genesis public key matches our trusted fingerprint
+        // Step 1: Verify the peer's genesis public key matches our trusted fingerprint
         try
         {
             var peerPublicKeyBytes = Convert.FromBase64String(peerSignature.Value.publicKey);
             var trusted = GenesisSignatureVerifier.MatchesFingerprint(
                 peerPublicKeyBytes,
-                _trustedGenesis.GenesisPublicKeyFingerprint);
+                trustedGenesis.GenesisPublicKeyFingerprint);
 
             if (!trusted)
             {
@@ -120,13 +117,46 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
                 _logger.LogError(
                     "Peer system register rejected: genesis signed by unknown key. " +
                     "Expected fingerprint: {Expected}, got: {Actual}",
-                    _trustedGenesis.GenesisPublicKeyFingerprint, peerFingerprint);
+                    trustedGenesis.GenesisPublicKeyFingerprint, peerFingerprint);
+                return false;
+            }
+
+            // Step 2: Verify the cryptographic signature over the payload
+            // (fingerprint alone is insufficient — a compromised peer could present
+            // the real public key with a tampered control record)
+            var peerPayload = controlTxPayload!;
+            var peerPayloadBytes = Convert.FromBase64String(peerPayload);
+            var peerPayloadHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(peerPayloadBytes)).ToLowerInvariant();
+            var peerTxId = GenesisSignatureVerifier.ComputeGenesisTxId();
+            var dataToSign = $"{peerTxId}:{peerPayloadHash}";
+            var signedDataHash = System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(dataToSign));
+
+            var peerSignatureBytes = Convert.FromBase64String(peerSignature.Value.signatureValue);
+
+            if (!Enum.TryParse<Sorcha.Cryptography.Enums.WalletNetworks>(
+                    peerSignature.Value.algorithm, ignoreCase: true, out var network))
+            {
+                _logger.LogError("Unsupported algorithm in peer genesis: {Algorithm}", peerSignature.Value.algorithm);
+                return false;
+            }
+
+            var verifyResult = await _cryptoModule.VerifyAsync(
+                peerSignatureBytes, signedDataHash, (byte)network, peerPublicKeyBytes, cancellationToken);
+
+            if (verifyResult != Sorcha.Cryptography.Enums.CryptoStatus.Success)
+            {
+                _logger.LogError(
+                    "Peer system register rejected: genesis signature verification failed ({Status}). " +
+                    "The control record may have been tampered with.",
+                    verifyResult);
                 return false;
             }
 
             _logger.LogInformation(
-                "Peer system register genesis fingerprint verified: {Fingerprint}",
-                _trustedGenesis.GenesisPublicKeyFingerprint);
+                "Peer system register genesis verified: fingerprint={Fingerprint}, signature=VALID",
+                trustedGenesis.GenesisPublicKeyFingerprint);
             return true;
         }
         catch (Exception ex)
