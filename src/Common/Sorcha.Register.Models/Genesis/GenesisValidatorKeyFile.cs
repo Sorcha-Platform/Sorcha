@@ -24,9 +24,12 @@ public class GenesisValidatorKeyFile
     [JsonPropertyName("walletAddress")]
     public required string WalletAddress { get; set; }
 
-    /// <summary>Base64-encoded private key bytes.</summary>
+    /// <summary>
+    /// Base64-encoded private key bytes. Null when mnemonic-based recovery is used instead.
+    /// </summary>
     [JsonPropertyName("privateKey")]
-    public required string PrivateKey { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivateKey { get; set; }
 
     /// <summary>Base64-encoded public key bytes.</summary>
     [JsonPropertyName("publicKey")]

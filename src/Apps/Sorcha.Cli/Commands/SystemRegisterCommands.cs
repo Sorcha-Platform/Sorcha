@@ -222,7 +222,7 @@ public class SystemRegisterCreateCommand : Command
             Version = 1,
             NetworkId = networkId,
             WalletAddress = walletAddress,
-            PrivateKey = "", // Not used — recover from mnemonic instead
+            // PrivateKey omitted — recover from mnemonic instead
             PublicKey = Convert.ToBase64String(publicKeyBytes),
             Algorithm = algorithm,
             CreatedAt = now,
@@ -263,8 +263,9 @@ public class SystemRegisterCreateCommand : Command
         Console.WriteLine($"  Genesis File:   {genesisPath}");
         Console.WriteLine($"  Validator Key:  {keyFilePath}");
         Console.WriteLine();
-        ConsoleHelper.WriteWarning("Store genesis-validator-key.json securely or destroy it after");
-        ConsoleHelper.WriteWarning("importing into the first validator. It is not needed for normal operation.");
+        ConsoleHelper.WriteWarning("Store genesis-validator-key.json securely or destroy it after importing");
+        ConsoleHelper.WriteWarning("into the first validator. The mnemonic controls ALL keys derived from");
+        ConsoleHelper.WriteWarning("this wallet, not just the genesis signing key.");
 
         return ExitCodes.Success;
     }
