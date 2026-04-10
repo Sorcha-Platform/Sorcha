@@ -8,7 +8,8 @@ namespace Sorcha.Tenant.Service.Trust;
 
 /// <summary>
 /// Builds X.509 certificates using the .NET BCL <see cref="CertificateRequest"/> API.
-/// Supports ES256 (P-256) and EdDSA (Ed25519 via exportable key) root CA and org certificates.
+/// Currently supports ES256 (P-256) for root CA and org certificates.
+/// EdDSA (Ed25519) support deferred — BCL CertificateRequest requires an asymmetric algorithm adapter.
 /// </summary>
 public static class X509CertificateBuilder
 {

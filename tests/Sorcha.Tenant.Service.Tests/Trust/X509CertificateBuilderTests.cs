@@ -39,7 +39,7 @@ public class X509CertificateBuilderTests
         using var cert = X509CertificateLoader.LoadCertificate(certDer);
         var expectedExpiry = DateTimeOffset.UtcNow.AddYears(5);
 
-        // Allow 2 hours of clock skew (UTC vs local time conversion)
+        // Allow 5 minutes tolerance for UTC/local time conversion and test execution time
         cert.NotAfter.ToUniversalTime().Should().BeCloseTo(expectedExpiry.UtcDateTime, TimeSpan.FromMinutes(5));
     }
 
@@ -137,9 +137,13 @@ public class X509CertificateBuilderTests
 
         using var orgCert = X509CertificateLoader.LoadCertificate(orgCertDer);
 
-        // Check SAN extension exists
+        // Check SAN extension exists and contains the DID URI
         var san = orgCert.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
         san.Should().NotBeNull("org cert must have SAN extension");
+        // The SAN extension's formatted string should contain the DID URI
+        var sanFormatted = san!.Format(true);
+        sanFormatted.Should().Contain("did:sorcha:org:ws1qtest123",
+            because: "SAN URI should contain the org's DID");
     }
 
     [Fact]

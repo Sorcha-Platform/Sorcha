@@ -83,6 +83,23 @@ public class InternalCaTrustProviderTests
     }
 
     [Fact]
+    public async Task IssueOrgCert_IsIdempotent_ReturnsExistingCert()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+
+        var cert1 = await _provider.IssueOrgCertAsync(
+            "tenant-1", "ws1qorg123", orgPublicKey, "Test Organisation");
+        var cert2 = await _provider.IssueOrgCertAsync(
+            "tenant-1", "ws1qorg123", orgPublicKey, "Test Organisation");
+
+        cert1.Id.Should().Be(cert2.Id);
+        cert1.SerialNumber.Should().Be(cert2.SerialNumber);
+    }
+
+    [Fact]
     public async Task IssueOrgCert_WithoutProvisionedRoot_Throws()
     {
         using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);

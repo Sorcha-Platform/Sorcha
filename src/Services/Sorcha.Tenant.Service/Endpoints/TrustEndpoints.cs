@@ -27,7 +27,7 @@ public static class TrustEndpoints
                 "Creates a self-signed X.509 root CA certificate for the tenant. " +
                 "Idempotent — returns the existing root if already provisioned.")
             .Produces<TrustAnchorResponse>(StatusCodes.Status200OK)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireAdministrator");
 
         // Trust anchor — public (verifiers need to fetch the root cert)
         group.MapGet("/tenants/{tenantId}/trust-anchor", GetTrustAnchor)
@@ -49,7 +49,7 @@ public static class TrustEndpoints
                 "signed by the tenant's root CA. Binds the org's DID to the certificate via SAN URI.")
             .Produces<OrgCertEnrolmentResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireAdministrator");
 
         // Org cert chain — public
         group.MapGet("/tenants/{tenantId}/orgs/{orgWalletAddress}/cert-chain", GetOrgCertChain)
