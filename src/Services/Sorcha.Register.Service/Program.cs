@@ -1260,6 +1260,7 @@ docketsGroup.MapPost("/", async (
     IRegisterRepository repository,
     Sorcha.Register.Core.Events.IEventPublisher eventPublisher,
     Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter transactionRouter,
+    Sorcha.Register.Core.Managers.RegisterManager registerManager,
     ILogger<Program> logger,
     string registerId,
     WriteDocketRequest request) =>
@@ -1272,7 +1273,6 @@ docketsGroup.MapPost("/", async (
             registerId == Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterId)
         {
             logger.LogInformation("Auto-creating system register for genesis docket");
-            var registerManager = app.Services.GetRequiredService<Sorcha.Register.Core.Managers.RegisterManager>();
             register = await registerManager.CreateRegisterAsync(
                 Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterName,
                 advertise: false,
