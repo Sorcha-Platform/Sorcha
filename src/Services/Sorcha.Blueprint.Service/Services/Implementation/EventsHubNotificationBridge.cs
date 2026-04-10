@@ -259,23 +259,28 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             GroupKey = groupKey
         };
 
-        // Persist as ActivityEvent via Tenant Service (best-effort, for pull-back)
-        await PersistActivityEventAsync(actionEvent, notification);
+        // Persist as ActivityEvent via Tenant Service and broadcast to activity panel
+        await PersistAndBroadcastActivityEventAsync(actionEvent, notification);
     }
 
-    private async Task PersistActivityEventAsync(InboundActionEvent actionEvent, InboundActionNotification notification)
+    private async Task PersistAndBroadcastActivityEventAsync(InboundActionEvent actionEvent, InboundActionNotification notification)
     {
+        var severity = notification.Urgency switch
+        {
+            "urgent" => "Error",
+            "warning" => "Warning",
+            _ => "Info"
+        };
+
+        var eventId = Guid.NewGuid();
+        var createdAt = DateTime.UtcNow;
+        var userGroup = $"user:{actionEvent.UserId}";
+
+        // 1. Persist to Tenant Service activity log (best-effort)
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var eventClient = scope.ServiceProvider.GetRequiredService<IEventServiceClient>();
-
-            var severity = notification.Urgency switch
-            {
-                "urgent" => "Error",
-                "warning" => "Warning",
-                _ => "Info"
-            };
 
             var request = new CreateActivityEventRequest(
                 OrganizationId: Guid.TryParse(actionEvent.TenantId, out var tenantGuid) ? tenantGuid : Guid.Empty,
@@ -298,6 +303,53 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         {
             _logger.LogWarning(ex,
                 "Failed to persist PendingAction activity event for user {UserId}",
+                actionEvent.UserId);
+        }
+
+        // 2. Broadcast full event to activity panel via SignalR (real-time update)
+        try
+        {
+            var activityEvent = new
+            {
+                Id = eventId,
+                EventType = "PendingAction",
+                Severity = severity,
+                Title = notification.ActionDescription ?? "New action available",
+                Message = notification.Summary ?? "",
+                SourceService = "Blueprint",
+                EntityId = actionEvent.InstanceId,
+                EntityType = "BlueprintInstance",
+                IsRead = false,
+                CreatedAt = createdAt,
+                UserDisplayName = notification.SenderDisplayName
+            };
+
+            await _hubContext.Clients.Group(userGroup)
+                .SendAsync("EventReceived", activityEvent);
+
+            _logger.LogDebug(
+                "Broadcast EventReceived to group {Group} for instance {InstanceId}",
+                userGroup, actionEvent.InstanceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to broadcast EventReceived for user {UserId}",
+                actionEvent.UserId);
+        }
+
+        // 3. Broadcast updated unread count
+        try
+        {
+            // Increment is approximate — the client can refresh the exact count on demand.
+            // We send -1 as a signal to increment the local counter by 1.
+            await _hubContext.Clients.Group(userGroup)
+                .SendAsync("UnreadCountUpdated", -1);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to broadcast UnreadCountUpdated for user {UserId}",
                 actionEvent.UserId);
         }
     }

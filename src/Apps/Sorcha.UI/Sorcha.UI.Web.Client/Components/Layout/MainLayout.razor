@@ -251,7 +251,7 @@
     <ActivityLogPanel @bind-IsOpen="_activityLogOpen" OnEventsRead="RefreshUnreadCount" />
     <OperationNotificationListener />
     <CryptoProgressPopover />
-    <PendingActionToast />
+    @* PendingActionToast removed — activity log panel now handles all notifications *@
     <PendingActionInbox @bind-IsOpen="_pendingInboxOpen" />
 </MudLayout>
 
@@ -332,7 +332,9 @@
 
     private void OnUnreadCountUpdated(int count)
     {
-        _unreadCount = count;
+        // -1 signals "increment by 1" (server doesn't know exact count in real-time)
+        // Any other value is an absolute count from a REST refresh
+        _unreadCount = count == -1 ? _unreadCount + 1 : count;
         InvokeAsync(StateHasChanged);
     }
 
