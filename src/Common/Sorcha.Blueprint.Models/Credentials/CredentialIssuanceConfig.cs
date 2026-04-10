@@ -81,4 +81,26 @@ public class CredentialIssuanceConfig
     [JsonPropertyName("displayConfig")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CredentialDisplayConfig? DisplayConfig { get; set; }
+
+    /// <summary>
+    /// Where the issued credential is delivered. Default: <see cref="TargetAudience.SorchaInternal"/>.
+    /// Set to <see cref="TargetAudience.HaipExternalWallet"/> to issue via the HAIP OpenID4VCI
+    /// path (spec 097) instead of writing to a Sorcha participant's wallet.
+    /// </summary>
+    [JsonPropertyName("targetAudience")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public TargetAudience TargetAudience { get; set; } = TargetAudience.SorchaInternal;
+}
+
+/// <summary>
+/// Controls how an issued credential is delivered to the recipient.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TargetAudience
+{
+    /// <summary>Internal Sorcha participant — credential written to Sorcha wallet.</summary>
+    SorchaInternal = 0,
+
+    /// <summary>External HAIP wallet — credential issued via OpenID4VCI pre-authorized code flow.</summary>
+    HaipExternalWallet = 1
 }
