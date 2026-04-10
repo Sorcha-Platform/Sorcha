@@ -63,6 +63,9 @@
 
     <!-- JWT Token Handling -->
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
+
+    <!-- BIP39/BIP32 for genesis ceremony key derivation -->
+    <PackageReference Include="NBitcoin" />
   </ItemGroup>
 
   <ItemGroup>

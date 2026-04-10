@@ -7,10 +7,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NBitcoin;
 using Sorcha.Cli.Infrastructure;
 using Sorcha.Cli.Services;
 using Sorcha.Cryptography.Core;
 using Sorcha.Cryptography.Enums;
+using Sorcha.Cryptography.Utilities;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Genesis;
@@ -109,8 +111,17 @@ public class SystemRegisterCreateCommand : Command
 
         var crypto = new CryptoModule();
 
-        // 1. Generate genesis keypair
-        var keyResult = await crypto.GenerateKeySetAsync(network, cancellationToken: ct);
+        // 1. Generate BIP39 mnemonic and derive keys at sorcha:docket-signing path
+        var mnemonic = new Mnemonic(Wordlist.English, WordCount.TwentyFour);
+        var mnemonicWords = mnemonic.ToString();
+
+        // BIP39 seed → BIP32 master key → derive at m/44'/0'/0'/0/102 (sorcha:docket-signing)
+        var extKey = mnemonic.DeriveExtKey();
+        var derivedKey = extKey.Derive(new KeyPath("m/44'/0'/0'/0/102"));
+        var derivedPrivateKeyBytes = derivedKey.PrivateKey.ToBytes(); // 32-byte BIP32 leaf
+
+        // Generate ED25519 keypair from derived 32-byte seed
+        var keyResult = await crypto.GenerateKeySetAsync(network, seed: derivedPrivateKeyBytes, cancellationToken: ct);
         if (!keyResult.IsSuccess)
         {
             ConsoleHelper.WriteError($"Key generation failed: {keyResult.ErrorMessage}");
@@ -120,6 +131,19 @@ public class SystemRegisterCreateCommand : Command
         var keySet = keyResult.Value;
         var publicKeyBytes = keySet.PublicKey.Key!;
         var privateKeyBytes = keySet.PrivateKey.Key!;
+
+        // Also derive the register-control key (m/44'/0'/0'/0/101) for signing the genesis transaction
+        var controlDerivedKey = extKey.Derive(new KeyPath("m/44'/0'/0'/0/101"));
+        var controlPrivateKeyBytes = controlDerivedKey.PrivateKey.ToBytes();
+        var controlKeyResult = await crypto.GenerateKeySetAsync(network, seed: controlPrivateKeyBytes, cancellationToken: ct);
+        if (!controlKeyResult.IsSuccess)
+        {
+            ConsoleHelper.WriteError($"Control key derivation failed: {controlKeyResult.ErrorMessage}");
+            return ExitCodes.GeneralError;
+        }
+        var controlKeySet = controlKeyResult.Value;
+        var controlPublicKeyBytes = controlKeySet.PublicKey.Key!;
+        var controlPrivateKey = controlKeySet.PrivateKey.Key!;
 
         // 2. Build the control record
         var controlRecord = BuildControlRecord(publicKeyBytes, algorithm);
@@ -137,7 +161,8 @@ public class SystemRegisterCreateCommand : Command
         var dataToSign = $"{txId}:{payloadHash}";
         var signedDataHash = SHA256.HashData(Encoding.UTF8.GetBytes(dataToSign));
 
-        var signResult = await crypto.SignAsync(signedDataHash, (byte)network, privateKeyBytes, ct);
+        // Sign genesis with the register-control derived key (not docket-signing)
+        var signResult = await crypto.SignAsync(signedDataHash, (byte)network, controlPrivateKey, ct);
         if (!signResult.IsSuccess || signResult.Value is null)
         {
             ConsoleHelper.WriteError($"Signing failed: {signResult.ErrorMessage}");
@@ -146,10 +171,12 @@ public class SystemRegisterCreateCommand : Command
 
         var signatureBytes = signResult.Value;
         var now = DateTimeOffset.UtcNow;
-        var fingerprint = GenesisFileLoader.ComputeFingerprint(publicKeyBytes);
+        var fingerprint = GenesisFileLoader.ComputeFingerprint(controlPublicKeyBytes);
 
-        // 6. Derive wallet address from public key
-        var walletAddress = DeriveWalletAddress(publicKeyBytes, network);
+        // 6. Derive wallet address from docket-signing public key (used in validator roster)
+        var walletUtils = new WalletUtilities();
+        var walletAddress = walletUtils.PublicKeyToWallet(publicKeyBytes, (byte)network)
+            ?? DeriveWalletAddress(publicKeyBytes, network);
 
         // 7. Build genesis file
         var genesis = new SystemRegisterGenesis
@@ -163,7 +190,7 @@ public class SystemRegisterCreateCommand : Command
                 PayloadHash = payloadHash,
                 Signature = new GenesisSignature
                 {
-                    PublicKey = Convert.ToBase64String(publicKeyBytes),
+                    PublicKey = Convert.ToBase64String(controlPublicKeyBytes),
                     SignatureValue = Convert.ToBase64String(signatureBytes),
                     Algorithm = algorithm,
                     SignedAt = now
@@ -189,17 +216,18 @@ public class SystemRegisterCreateCommand : Command
             GenesisPublicKeyFingerprint = fingerprint
         };
 
-        // 8. Build validator key file
+        // 8. Build validator key file (contains mnemonic for wallet recovery)
         var validatorKeyFile = new GenesisValidatorKeyFile
         {
             Version = 1,
             NetworkId = networkId,
             WalletAddress = walletAddress,
-            PrivateKey = Convert.ToBase64String(privateKeyBytes),
+            PrivateKey = "", // Not used — recover from mnemonic instead
             PublicKey = Convert.ToBase64String(publicKeyBytes),
             Algorithm = algorithm,
             CreatedAt = now,
-            Fingerprint = fingerprint
+            Fingerprint = fingerprint,
+            Mnemonic = mnemonicWords
         };
 
         // 9. Write output files
@@ -219,6 +247,7 @@ public class SystemRegisterCreateCommand : Command
 
         // 10. Zeroize key material in memory
         keySet.Zeroize();
+        controlKeySet.Zeroize();
 
         // 11. Output
         Console.WriteLine();
@@ -451,8 +480,8 @@ public class SystemRegisterVerifyCommand : Command
 }
 
 /// <summary>
-/// Imports a genesis validator key into the local Wallet Service.
-/// Placeholder — full implementation in US5 (Phase 7).
+/// Imports a genesis validator key into the local Wallet Service by recovering
+/// a wallet from the BIP39 mnemonic in the key file.
 /// </summary>
 public class SystemRegisterImportValidatorKeyCommand : Command
 {
@@ -470,10 +499,96 @@ public class SystemRegisterImportValidatorKeyCommand : Command
 
         Options.Add(keyOption);
 
-        this.SetAction((ParseResult parseResult, CancellationToken ct) =>
+        this.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
         {
-            ConsoleHelper.WriteWarning("import-validator-key is not yet implemented. Coming in a future update.");
-            return Task.FromResult(ExitCodes.GeneralError);
+            var keyFilePath = parseResult.GetValue(keyOption)!;
+
+            try
+            {
+                // 1. Load and validate key file
+                if (!File.Exists(keyFilePath))
+                {
+                    ConsoleHelper.WriteError($"Key file not found: {keyFilePath}");
+                    return ExitCodes.ValidationError;
+                }
+
+                var json = await File.ReadAllTextAsync(keyFilePath, ct);
+                var keyFile = JsonSerializer.Deserialize<GenesisValidatorKeyFile>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (keyFile is null)
+                {
+                    ConsoleHelper.WriteError("Failed to parse genesis validator key file.");
+                    return ExitCodes.ValidationError;
+                }
+
+                if (string.IsNullOrWhiteSpace(keyFile.Mnemonic))
+                {
+                    ConsoleHelper.WriteError("Key file does not contain a mnemonic. Regenerate with the latest ceremony.");
+                    return ExitCodes.ValidationError;
+                }
+
+                // 2. Get auth token and wallet client
+                var profile = await configService.GetActiveProfileAsync();
+                var profileName = profile?.Name ?? "dev";
+                var token = await authService.GetAccessTokenAsync(profileName);
+
+                if (string.IsNullOrEmpty(token))
+                {
+                    ConsoleHelper.WriteError("Not authenticated. Run 'sorcha auth login' first.");
+                    return ExitCodes.AuthenticationError;
+                }
+
+                var walletClient = await clientFactory.CreateWalletServiceClientAsync(profileName);
+
+                // 3. Recover wallet from mnemonic
+                var mnemonicWords = keyFile.Mnemonic.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var recoverRequest = new Models.RecoverWalletRequest
+                {
+                    MnemonicWords = mnemonicWords,
+                    Name = $"genesis-validator-{keyFile.NetworkId}",
+                    Algorithm = keyFile.Algorithm
+                };
+
+                ConsoleHelper.WriteInfo($"Recovering wallet from mnemonic for network '{keyFile.NetworkId}'...");
+
+                var wallet = await walletClient.RecoverWalletAsync(
+                    recoverRequest,
+                    $"Bearer {token}");
+
+                // 4. Display result
+                Console.WriteLine();
+                ConsoleHelper.WriteSuccess("Validator key imported successfully.");
+                Console.WriteLine();
+                Console.WriteLine($"  Wallet Address: {wallet?.Address ?? "unknown"}");
+                Console.WriteLine($"  Network ID:     {keyFile.NetworkId}");
+                Console.WriteLine($"  Algorithm:      {keyFile.Algorithm}");
+                Console.WriteLine($"  Fingerprint:    {keyFile.Fingerprint}");
+                Console.WriteLine();
+                ConsoleHelper.WriteInfo("The local validator can now seal genesis dockets for this network.");
+
+                return ExitCodes.Success;
+            }
+            catch (Refit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                ConsoleHelper.WriteError("Authentication failed. Run 'sorcha auth login' first.");
+                return ExitCodes.AuthenticationError;
+            }
+            catch (Refit.ApiException ex)
+            {
+                ConsoleHelper.WriteError($"Wallet Service error: {ex.StatusCode} - {ex.Content}");
+                return ExitCodes.ServiceError;
+            }
+            catch (HttpRequestException)
+            {
+                ConsoleHelper.WriteError("Cannot reach Wallet Service. Ensure services are running.");
+                return ExitCodes.NetworkError;
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteError($"Import failed: {ex.Message}");
+                return ExitCodes.GeneralError;
+            }
         });
     }
 }

@@ -43,4 +43,12 @@ public class GenesisValidatorKeyFile
     /// <summary>SHA-256 fingerprint matching the genesis file.</summary>
     [JsonPropertyName("fingerprint")]
     public required string Fingerprint { get; set; }
+
+    /// <summary>
+    /// BIP39 mnemonic phrase for wallet recovery.
+    /// The wallet recovered from this mnemonic will produce the correct signing keys
+    /// at the sorcha:docket-signing derivation path.
+    /// </summary>
+    [JsonPropertyName("mnemonic")]
+    public string? Mnemonic { get; set; }
 }
