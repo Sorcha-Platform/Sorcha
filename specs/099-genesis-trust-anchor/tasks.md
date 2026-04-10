@@ -118,8 +118,8 @@
 
 **Note**: This story is already implemented by T017 (SystemRegisterVerifyCommand) in User Story 1. This phase validates that the verify command meets the P2 acceptance scenarios.
 
-- [ ] T030 [US4] Add detailed verification output (network ID, roster details, per-signature pass/fail reporting) to SystemRegisterVerifyCommand in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
-- [ ] T031 [US4] Write additional verify tests for edge cases (corrupted file, wrong version, missing fields) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterVerifyCommandTests.cs
+- [x] T030 [US4] Add detailed verification output (network ID, roster details, per-signature pass/fail reporting) to SystemRegisterVerifyCommand in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
+- [x] T031 [US4] Write additional verify tests for edge cases (corrupted file, wrong version, missing fields) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterVerifyCommandTests.cs
 
 **Checkpoint**: Verify command provides complete diagnostic output for operators.
 
@@ -133,15 +133,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T032 [P] [US5] Write import-validator-key endpoint tests (valid key, invalid key, idempotent reimport) in tests/Sorcha.Wallet.Service.Tests/Endpoints/ImportValidatorKeyEndpointTests.cs
-- [ ] T033 [P] [US5] Write CLI import command tests (valid file, invalid file, unreachable service) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterImportKeyCommandTests.cs
+- [ ] T032 [P] [US5] DEFERRED: Write import-validator-key endpoint tests (valid key, invalid key, idempotent reimport) in tests/Sorcha.Wallet.Service.Tests/Endpoints/ImportValidatorKeyEndpointTests.cs
+- [ ] T033 [P] [US5] DEFERRED: Write CLI import command tests (valid file, invalid file, unreachable service) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterImportKeyCommandTests.cs
 
 ### Implementation for User Story 5
 
-- [ ] T034 [US5] Add POST /api/v1/wallets/import-validator-key endpoint to src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs — accept raw private/public key pair, create wallet entry, idempotent on matching public key
-- [ ] T035 [US5] Add ImportValidatorKey method to WalletManager (key validation, wallet creation from raw keys, address derivation) in src/Services/Sorcha.Wallet.Service/ (WalletManager or new service)
-- [ ] T036 [US5] Add IWalletServiceClient.ImportValidatorKeyAsync method to src/Common/Sorcha.ServiceClients.Http/Wallet/IWalletServiceClient.cs
-- [ ] T037 [US5] Implement SystemRegisterImportValidatorKeyCommand in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs — load key file, call Wallet Service import endpoint, display result
+- [ ] T034 [US5] DEFERRED: Add POST /api/v1/wallets/import-validator-key endpoint to src/Services/Sorcha.Wallet.Service/Endpoints/WalletEndpoints.cs — accept raw private/public key pair, create wallet entry, idempotent on matching public key
+- [ ] T035 [US5] DEFERRED: Add ImportValidatorKey method to WalletManager (key validation, wallet creation from raw keys, address derivation) in src/Services/Sorcha.Wallet.Service/ (WalletManager or new service)
+- [ ] T036 [US5] DEFERRED: Add IWalletServiceClient.ImportValidatorKeyAsync method to src/Common/Sorcha.ServiceClients.Http/Wallet/IWalletServiceClient.cs
+- [ ] T037 [US5] DEFERRED: Implement SystemRegisterImportValidatorKeyCommand in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs — load key file, call Wallet Service import endpoint, display result
 
 **Checkpoint**: Validator key import works end-to-end. First validator can seal genesis dockets.
 

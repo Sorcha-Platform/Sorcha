@@ -115,6 +115,45 @@ public class SystemRegisterVerifyCommandTests : IDisposable
         exitCode.Should().Be(ExitCodes.ValidationError);
     }
 
+    [Fact]
+    public async Task Verify_WrongVersion_ReturnsValidationError()
+    {
+        var genesisPath = await CreateValidGenesis();
+        var json = File.ReadAllText(genesisPath);
+        // Replace version 1 with 99
+        json = json.Replace("\"version\": 1", "\"version\": 99");
+        File.WriteAllText(genesisPath, json);
+
+        var exitCode = await SystemRegisterVerifyCommand.ExecuteVerifyAsync(
+            genesisPath, CancellationToken.None);
+
+        exitCode.Should().Be(ExitCodes.ValidationError);
+    }
+
+    [Fact]
+    public async Task Verify_MissingSignature_ReturnsValidationError()
+    {
+        var path = Path.Combine(_tempDir, "no-sig.json");
+        File.WriteAllText(path, """
+        {
+            "version": 1,
+            "networkId": "test",
+            "genesisTransaction": {
+                "txId": "test",
+                "payload": "dGVzdA==",
+                "payloadHash": "test"
+            },
+            "validatorRoster": { "validators": [], "requiredSignatures": 1, "version": 1 },
+            "genesisPublicKeyFingerprint": "test"
+        }
+        """);
+
+        var exitCode = await SystemRegisterVerifyCommand.ExecuteVerifyAsync(
+            path, CancellationToken.None);
+
+        exitCode.Should().NotBe(ExitCodes.Success);
+    }
+
     private async Task<string> CreateValidGenesis()
     {
         var outputPath = Path.Combine(_tempDir, $"genesis-{Guid.NewGuid():N}.json");
