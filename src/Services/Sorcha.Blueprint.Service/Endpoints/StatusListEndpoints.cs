@@ -31,6 +31,20 @@ public static class StatusListEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .AllowAnonymous();
 
+        // IETF Token Status List endpoint (spec 095) — HAIP-conformant envelope
+        var ietfPublicGroup = app.MapGroup("/api/v1/credentials/ietf-status-lists")
+            .WithTags("StatusLists");
+
+        ietfPublicGroup.MapGet("/{listId}", GetIetfStatusList)
+            .WithName("GetIetfStatusList")
+            .WithSummary("Get a Token Status List (IETF format)")
+            .WithDescription(
+                "Returns the status list as a signed JWT per the IETF Token Status List draft. " +
+                "HAIP-conformant verifiers use this endpoint. The underlying bitstring is shared with the W3C endpoint.")
+            .Produces<string>(StatusCodes.Status200OK, "application/statuslist+jwt")
+            .Produces(StatusCodes.Status404NotFound)
+            .AllowAnonymous();
+
         // Internal endpoints — service-to-service auth required
         var internalGroup = app.MapGroup("/api/v1/credentials/status-lists")
             .WithTags("StatusLists")
@@ -90,6 +104,61 @@ public static class StatusListEndpoints
             is IResult result
             ? new CachedResult(result, maxAge)
             : Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetIetfStatusList(
+        string listId,
+        IStatusListManager statusListManager,
+        IIetfTokenStatusListSerializer serializer,
+        IConfiguration configuration,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.Endpoints.StatusListEndpoints");
+
+        var list = await statusListManager.GetListAsync(listId, cancellationToken);
+        if (list == null)
+            return Results.NotFound(new { error = $"Status list '{listId}' not found" });
+
+        var rawBytes = await statusListManager.GetRawBitstringBytesAsync(listId, cancellationToken);
+        if (rawBytes == null)
+            return Results.NotFound(new { error = $"Status list '{listId}' bitstring not available" });
+
+        // Build the full sub URL per IETF Token Status List spec
+        var ietfBaseUrl = configuration.GetValue<string>("StatusList:IetfBaseUrl")
+            ?? "https://sorcha.example/api/v1/credentials/ietf-status-lists";
+        var subUrl = $"{ietfBaseUrl}/{listId}";
+
+        // Signing key: configurable for production, ephemeral fallback for dev.
+        // TODO(095): Wire real signing key from issuer wallet via IHaipIssuerCoKeyService
+        var signingKeyBase64 = configuration.GetValue<string>("StatusList:IetfSigningKey");
+        var algorithm = configuration.GetValue<string>("StatusList:IetfSigningAlgorithm") ?? "ES256";
+
+        byte[] signingKey;
+        if (!string.IsNullOrWhiteSpace(signingKeyBase64))
+        {
+            signingKey = Convert.FromBase64String(signingKeyBase64);
+        }
+        else
+        {
+            logger.LogWarning(
+                "IETF Token Status List endpoint using ephemeral signing key for list {ListId}. " +
+                "Set StatusList:IetfSigningKey in production — JWTs signed with ephemeral keys are unverifiable.",
+                listId);
+            using var ecdsa = System.Security.Cryptography.ECDsa.Create(
+                System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+            signingKey = ecdsa.ExportECPrivateKey();
+        }
+
+        var issuerDid = $"did:sorcha:org:{list.IssuerWallet}";
+        var bitsPerEntry = list.Purpose == "suspension" ? 2 : 1;
+
+        var maxAge = configuration.GetValue<int>("StatusList:CacheMaxAgeSeconds", 300);
+        var jwt = serializer.Serialize(rawBytes, subUrl, issuerDid, bitsPerEntry, signingKey, algorithm, maxAge);
+
+        // Return as application/statuslist+jwt with cache headers
+        var result = Results.Text(jwt, "application/statuslist+jwt", statusCode: 200);
+        return new CachedResult(result, maxAge);
     }
 
     private static async Task<IResult> AllocateIndex(

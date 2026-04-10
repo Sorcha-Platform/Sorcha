@@ -53,14 +53,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionCompleteAsync_WithUserId_SendsToBothHubs()
     {
         // Arrange
-        var notification = new EncryptionCompleteNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-1",
-            TransactionHash = "abc123def456abc123def456abc123def456abc123def456abc123def456abcd"
+            PercentComplete = 100,
+            Status = "complete"
         };
 
         // Act
-        await _service.NotifyEncryptionCompleteAsync("wallet-001", notification, userId: "user-42");
+        await _service.NotifyEncryptionCompleteAsync("wallet-001", signal, userId: "user-42");
 
         // Assert — ActionsHub received EncryptionComplete
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-001"), Times.Once);
@@ -75,14 +76,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionFailedAsync_WithUserId_SendsToBothHubs()
     {
         // Arrange
-        var notification = new EncryptionFailedNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-2",
-            Error = "Key not found"
+            PercentComplete = 30,
+            Status = "failed"
         };
 
         // Act
-        await _service.NotifyEncryptionFailedAsync("wallet-002", notification, userId: "user-43");
+        await _service.NotifyEncryptionFailedAsync("wallet-002", signal, userId: "user-43");
 
         // Assert — ActionsHub received EncryptionFailed
         _actionsHubClients.Verify(c => c.Group("wallet:wallet-002"), Times.Once);
@@ -97,14 +99,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionCompleteAsync_EventsHubMessage_GoesToUserGroup()
     {
         // Arrange
-        var notification = new EncryptionCompleteNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-3",
-            TransactionHash = "tx-hash-abc"
+            PercentComplete = 100,
+            Status = "complete"
         };
 
         // Act
-        await _service.NotifyEncryptionCompleteAsync("wallet-003", notification, userId: "user-99");
+        await _service.NotifyEncryptionCompleteAsync("wallet-003", signal, userId: "user-99");
 
         // Assert — EventsHub group name is user:{userId}, NOT wallet:{address}
         _eventsHubClients.Verify(c => c.Group("user:user-99"), Times.Once);
@@ -115,14 +118,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionFailedAsync_EventsHubMessage_GoesToUserGroup()
     {
         // Arrange
-        var notification = new EncryptionFailedNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-4",
-            Error = "timeout"
+            PercentComplete = 30,
+            Status = "failed"
         };
 
         // Act
-        await _service.NotifyEncryptionFailedAsync("wallet-004", notification, userId: "user-100");
+        await _service.NotifyEncryptionFailedAsync("wallet-004", signal, userId: "user-100");
 
         // Assert — EventsHub group name is user:{userId}
         _eventsHubClients.Verify(c => c.Group("user:user-100"), Times.Once);
@@ -137,14 +141,15 @@ public class NotificationServiceEventsHubTests
                 It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("EventsHub connection lost"));
 
-        var notification = new EncryptionCompleteNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-5",
-            TransactionHash = "tx-resilience"
+            PercentComplete = 100,
+            Status = "complete"
         };
 
         // Act — should not throw
-        var act = async () => await _service.NotifyEncryptionCompleteAsync("wallet-005", notification, userId: "user-50");
+        var act = async () => await _service.NotifyEncryptionCompleteAsync("wallet-005", signal, userId: "user-50");
         await act.Should().NotThrowAsync();
 
         // Assert — ActionsHub still received its notification
@@ -159,14 +164,15 @@ public class NotificationServiceEventsHubTests
                 It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("EventsHub connection lost"));
 
-        var notification = new EncryptionFailedNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-6",
-            Error = "P-256 key error"
+            PercentComplete = 30,
+            Status = "failed"
         };
 
         // Act — should not throw
-        var act = async () => await _service.NotifyEncryptionFailedAsync("wallet-006", notification, userId: "user-51");
+        var act = async () => await _service.NotifyEncryptionFailedAsync("wallet-006", signal, userId: "user-51");
         await act.Should().NotThrowAsync();
 
         // Assert — ActionsHub still received its notification
@@ -177,14 +183,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionCompleteAsync_WithoutUserId_SkipsEventsHub()
     {
         // Arrange
-        var notification = new EncryptionCompleteNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-7",
-            TransactionHash = "tx-no-user"
+            PercentComplete = 100,
+            Status = "complete"
         };
 
         // Act — no userId provided
-        await _service.NotifyEncryptionCompleteAsync("wallet-007", notification);
+        await _service.NotifyEncryptionCompleteAsync("wallet-007", signal);
 
         // Assert — ActionsHub received notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionComplete");
@@ -197,14 +204,15 @@ public class NotificationServiceEventsHubTests
     public async Task NotifyEncryptionFailedAsync_WithoutUserId_SkipsEventsHub()
     {
         // Arrange
-        var notification = new EncryptionFailedNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-8",
-            Error = "key error"
+            PercentComplete = 30,
+            Status = "failed"
         };
 
         // Act — no userId provided
-        await _service.NotifyEncryptionFailedAsync("wallet-008", notification);
+        await _service.NotifyEncryptionFailedAsync("wallet-008", signal);
 
         // Assert — ActionsHub received notification
         _actionsMessages.Should().ContainSingle(m => m.Method == "EncryptionFailed");

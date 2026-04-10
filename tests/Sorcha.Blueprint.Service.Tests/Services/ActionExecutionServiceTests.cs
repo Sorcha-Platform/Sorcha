@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Security.Claims;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
@@ -71,7 +72,8 @@ public class ActionExecutionServiceTests
             _mockInstanceStore.Object,
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            Mock.Of<IConfiguration>());
     }
 
     #region Constructor Tests
@@ -92,7 +94,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -111,7 +114,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -130,7 +134,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -149,7 +154,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -168,7 +174,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -187,7 +194,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -206,7 +214,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -225,7 +234,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -244,7 +254,8 @@ public class ActionExecutionServiceTests
                 null!,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -263,7 +274,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 null!,
                 _mockExecutionEngine.Object,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -282,7 +294,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 null!,
-                _mockLogger.Object));
+                _mockLogger.Object,
+                Mock.Of<IConfiguration>()));
     }
 
     [Fact]
@@ -301,7 +314,8 @@ public class ActionExecutionServiceTests
                 _mockInstanceStore.Object,
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
-                null!));
+                null!,
+                Mock.Of<IConfiguration>()));
     }
 
     #endregion
@@ -439,7 +453,8 @@ public class ActionExecutionServiceTests
             _mockInstanceStore.Object,
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            Mock.Of<IConfiguration>());
 
         Assert.NotNull(service);
     }

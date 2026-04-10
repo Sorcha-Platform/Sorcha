@@ -11,8 +11,8 @@ using Sorcha.Blueprint.Service.Services.Interfaces;
 namespace Sorcha.Blueprint.Service.Tests.Integration;
 
 /// <summary>
-/// Integration tests for SignalR real-time notifications (Sprint 5)
-/// Tests BP-5.7: SignalR integration tests
+/// Integration tests for SignalR real-time notifications.
+/// Tests thin signal notification delivery via ActionsHub.
 /// </summary>
 public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicationFactory>, IAsyncLifetime
 {
@@ -164,16 +164,16 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
     #region Notification Broadcast Tests
 
     [Fact]
-    public async Task NotifyActionAvailable_ToSubscribedWallet_ReceivesNotification()
+    public async Task NotifyActionAvailable_ToSubscribedWallet_ReceivesSignal()
     {
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xabcdef1234567890";
-        var receivedNotification = Channel.CreateUnbounded<ActionNotification>();
+        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
 
-        connection.On<ActionNotification>("ActionAvailable", notification =>
+        connection.On<SignalNotification>("ActionAvailable", signal =>
         {
-            receivedNotification.Writer.TryWrite(notification);
+            receivedSignal.Writer.TryWrite(signal);
         });
 
         await connection.StartAsync();
@@ -181,86 +181,29 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var expectedNotification = new ActionNotification
-        {
-            TransactionHash = "0x9876543210fedcba",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister123",
-            BlueprintId = "blueprint-001",
-            ActionId = "action-001",
-            InstanceId = "instance-001",
-            Message = "New action available"
-        };
-
         // Act
-        await notificationService.NotifyActionAvailableAsync(expectedNotification);
+        await notificationService.NotifyActionAvailableAsync("instance-001", walletAddress);
 
         // Assert
-        var received = await receivedNotification.Reader.ReadAsync(
+        var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
         received.Should().NotBeNull();
-        received.TransactionHash.Should().Be(expectedNotification.TransactionHash);
-        received.WalletAddress.Should().Be(expectedNotification.WalletAddress);
-        received.RegisterAddress.Should().Be(expectedNotification.RegisterAddress);
-        received.BlueprintId.Should().Be(expectedNotification.BlueprintId);
-        received.ActionId.Should().Be(expectedNotification.ActionId);
-        received.InstanceId.Should().Be(expectedNotification.InstanceId);
-        received.Message.Should().Be(expectedNotification.Message);
+        received.SignalType.Should().Be("action-available");
+        received.InstanceId.Should().Be("instance-001");
     }
 
     [Fact]
-    public async Task NotifyActionConfirmed_ToSubscribedWallet_ReceivesNotification()
-    {
-        // Arrange
-        var connection = CreateHubConnection();
-        var walletAddress = "0xconfirmed123456";
-        var receivedNotification = Channel.CreateUnbounded<ActionNotification>();
-
-        connection.On<ActionNotification>("ActionConfirmed", notification =>
-        {
-            receivedNotification.Writer.TryWrite(notification);
-        });
-
-        await connection.StartAsync();
-        await connection.InvokeAsync("SubscribeToWallet", walletAddress);
-
-        var notificationService = _factory.Services.GetRequiredService<INotificationService>();
-
-        var expectedNotification = new ActionNotification
-        {
-            TransactionHash = "0xconfirmedtx789",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister456",
-            BlueprintId = "blueprint-002",
-            ActionId = "action-002",
-            InstanceId = "instance-002",
-            Message = "Action confirmed"
-        };
-
-        // Act
-        await notificationService.NotifyActionConfirmedAsync(expectedNotification);
-
-        // Assert
-        var received = await receivedNotification.Reader.ReadAsync(
-            new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
-
-        received.Should().NotBeNull();
-        received.TransactionHash.Should().Be(expectedNotification.TransactionHash);
-        received.Message.Should().Be(expectedNotification.Message);
-    }
-
-    [Fact]
-    public async Task NotifyActionRejected_ToSubscribedWallet_ReceivesNotification()
+    public async Task NotifyActionRejected_ToSubscribedWallet_ReceivesSignal()
     {
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xrejected654321";
-        var receivedNotification = Channel.CreateUnbounded<ActionNotification>();
+        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
 
-        connection.On<ActionNotification>("ActionRejected", notification =>
+        connection.On<SignalNotification>("ActionRejected", signal =>
         {
-            receivedNotification.Writer.TryWrite(notification);
+            receivedSignal.Writer.TryWrite(signal);
         });
 
         await connection.StartAsync();
@@ -268,27 +211,16 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var expectedNotification = new ActionNotification
-        {
-            TransactionHash = "0xrejectedtx321",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister789",
-            BlueprintId = "blueprint-003",
-            ActionId = "action-003",
-            InstanceId = "instance-003",
-            Message = "Action rejected"
-        };
-
         // Act
-        await notificationService.NotifyActionRejectedAsync(expectedNotification);
+        await notificationService.NotifyActionRejectedAsync("instance-003", walletAddress);
 
         // Assert
-        var received = await receivedNotification.Reader.ReadAsync(
+        var received = await receivedSignal.Reader.ReadAsync(
             new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
 
         received.Should().NotBeNull();
-        received.TransactionHash.Should().Be(expectedNotification.TransactionHash);
-        received.Message.Should().Be(expectedNotification.Message);
+        received.SignalType.Should().Be("action-rejected");
+        received.InstanceId.Should().Be("instance-003");
     }
 
     [Fact]
@@ -297,11 +229,11 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xunsubscribed999";
-        var receivedNotification = Channel.CreateUnbounded<ActionNotification>();
+        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
 
-        connection.On<ActionNotification>("ActionAvailable", notification =>
+        connection.On<SignalNotification>("ActionAvailable", signal =>
         {
-            receivedNotification.Writer.TryWrite(notification);
+            receivedSignal.Writer.TryWrite(signal);
         });
 
         await connection.StartAsync();
@@ -309,23 +241,15 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var notification = new ActionNotification
-        {
-            TransactionHash = "0xshouldnotreceive",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister000",
-            Message = "Should not receive this"
-        };
-
         // Act
-        await notificationService.NotifyActionAvailableAsync(notification);
+        await notificationService.NotifyActionAvailableAsync("instance-nosub", walletAddress);
 
         // Assert - Should timeout because no notification received
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var received = false;
         try
         {
-            await receivedNotification.Reader.ReadAsync(cts.Token);
+            await receivedSignal.Reader.ReadAsync(cts.Token);
             received = true;
         }
         catch (OperationCanceledException)
@@ -342,11 +266,11 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xafterunsub888";
-        var receivedNotification = Channel.CreateUnbounded<ActionNotification>();
+        var receivedSignal = Channel.CreateUnbounded<SignalNotification>();
 
-        connection.On<ActionNotification>("ActionAvailable", notification =>
+        connection.On<SignalNotification>("ActionAvailable", signal =>
         {
-            receivedNotification.Writer.TryWrite(notification);
+            receivedSignal.Writer.TryWrite(signal);
         });
 
         await connection.StartAsync();
@@ -355,23 +279,15 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var notification = new ActionNotification
-        {
-            TransactionHash = "0xafterunsub",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister111",
-            Message = "Should not receive after unsubscribe"
-        };
-
         // Act
-        await notificationService.NotifyActionAvailableAsync(notification);
+        await notificationService.NotifyActionAvailableAsync("instance-unsub", walletAddress);
 
         // Assert - Should timeout
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         var received = false;
         try
         {
-            await receivedNotification.Reader.ReadAsync(cts.Token);
+            await receivedSignal.Reader.ReadAsync(cts.Token);
             received = true;
         }
         catch (OperationCanceledException)
@@ -396,13 +312,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection2 = CreateHubConnection();
         var connection3 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<ActionNotification>();
-        var received2 = Channel.CreateUnbounded<ActionNotification>();
-        var received3 = Channel.CreateUnbounded<ActionNotification>();
+        var received1 = Channel.CreateUnbounded<SignalNotification>();
+        var received2 = Channel.CreateUnbounded<SignalNotification>();
+        var received3 = Channel.CreateUnbounded<SignalNotification>();
 
-        connection1.On<ActionNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<ActionNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
-        connection3.On<ActionNotification>("ActionAvailable", n => received3.Writer.TryWrite(n));
+        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
+        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
+        connection3.On<SignalNotification>("ActionAvailable", n => received3.Writer.TryWrite(n));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -414,16 +330,8 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var notification = new ActionNotification
-        {
-            TransactionHash = "0xmulticlienttx",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister222",
-            Message = "All should receive this"
-        };
-
         // Act
-        await notificationService.NotifyActionAvailableAsync(notification);
+        await notificationService.NotifyActionAvailableAsync("instance-multi", walletAddress);
 
         // Assert - All three clients should receive
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -432,9 +340,9 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var n2 = await received2.Reader.ReadAsync(cts.Token);
         var n3 = await received3.Reader.ReadAsync(cts.Token);
 
-        n1.TransactionHash.Should().Be(notification.TransactionHash);
-        n2.TransactionHash.Should().Be(notification.TransactionHash);
-        n3.TransactionHash.Should().Be(notification.TransactionHash);
+        n1.InstanceId.Should().Be("instance-multi");
+        n2.InstanceId.Should().Be("instance-multi");
+        n3.InstanceId.Should().Be("instance-multi");
     }
 
     [Fact]
@@ -447,11 +355,11 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
         var connection1 = CreateHubConnection();
         var connection2 = CreateHubConnection();
 
-        var received1 = Channel.CreateUnbounded<ActionNotification>();
-        var received2 = Channel.CreateUnbounded<ActionNotification>();
+        var received1 = Channel.CreateUnbounded<SignalNotification>();
+        var received2 = Channel.CreateUnbounded<SignalNotification>();
 
-        connection1.On<ActionNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
-        connection2.On<ActionNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
+        connection1.On<SignalNotification>("ActionAvailable", n => received1.Writer.TryWrite(n));
+        connection2.On<SignalNotification>("ActionAvailable", n => received2.Writer.TryWrite(n));
 
         await connection1.StartAsync();
         await connection2.StartAsync();
@@ -461,21 +369,13 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var notification = new ActionNotification
-        {
-            TransactionHash = "0xspecifictx",
-            WalletAddress = wallet1, // Only for wallet1
-            RegisterAddress = "0xregister333",
-            Message = "Only wallet1 should receive"
-        };
-
-        // Act
-        await notificationService.NotifyActionAvailableAsync(notification);
+        // Act — only wallet1 should receive
+        await notificationService.NotifyActionAvailableAsync("instance-specific", wallet1);
 
         // Assert
         var cts1 = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var n1 = await received1.Reader.ReadAsync(cts1.Token);
-        n1.TransactionHash.Should().Be(notification.TransactionHash);
+        n1.InstanceId.Should().Be("instance-specific");
 
         // Connection2 should NOT receive
         var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -495,51 +395,37 @@ public class SignalRIntegrationTests : IClassFixture<BlueprintServiceWebApplicat
 
     #endregion
 
-    #region All Notification Types Test
+    #region Both Notification Types Test
 
     [Fact]
-    public async Task Hub_SupportsAllThreeNotificationTypes_Successfully()
+    public async Task Hub_SupportsBothSignalTypes_Successfully()
     {
         // Arrange
         var connection = CreateHubConnection();
         var walletAddress = "0xalltypes123";
 
-        var availableReceived = Channel.CreateUnbounded<ActionNotification>();
-        var confirmedReceived = Channel.CreateUnbounded<ActionNotification>();
-        var rejectedReceived = Channel.CreateUnbounded<ActionNotification>();
+        var availableReceived = Channel.CreateUnbounded<SignalNotification>();
+        var rejectedReceived = Channel.CreateUnbounded<SignalNotification>();
 
-        connection.On<ActionNotification>("ActionAvailable", n => availableReceived.Writer.TryWrite(n));
-        connection.On<ActionNotification>("ActionConfirmed", n => confirmedReceived.Writer.TryWrite(n));
-        connection.On<ActionNotification>("ActionRejected", n => rejectedReceived.Writer.TryWrite(n));
+        connection.On<SignalNotification>("ActionAvailable", n => availableReceived.Writer.TryWrite(n));
+        connection.On<SignalNotification>("ActionRejected", n => rejectedReceived.Writer.TryWrite(n));
 
         await connection.StartAsync();
         await connection.InvokeAsync("SubscribeToWallet", walletAddress);
 
         var notificationService = _factory.Services.GetRequiredService<INotificationService>();
 
-        var notification = new ActionNotification
-        {
-            TransactionHash = "0xalltypestx",
-            WalletAddress = walletAddress,
-            RegisterAddress = "0xregister444"
-        };
-
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         // Act & Assert - ActionAvailable
-        await notificationService.NotifyActionAvailableAsync(notification);
+        await notificationService.NotifyActionAvailableAsync("instance-avail", walletAddress);
         var available = await availableReceived.Reader.ReadAsync(cts.Token);
-        available.TransactionHash.Should().Be(notification.TransactionHash);
-
-        // Act & Assert - ActionConfirmed
-        await notificationService.NotifyActionConfirmedAsync(notification);
-        var confirmed = await confirmedReceived.Reader.ReadAsync(cts.Token);
-        confirmed.TransactionHash.Should().Be(notification.TransactionHash);
+        available.SignalType.Should().Be("action-available");
 
         // Act & Assert - ActionRejected
-        await notificationService.NotifyActionRejectedAsync(notification);
+        await notificationService.NotifyActionRejectedAsync("instance-reject", walletAddress);
         var rejected = await rejectedReceived.Reader.ReadAsync(cts.Token);
-        rejected.TransactionHash.Should().Be(notification.TransactionHash);
+        rejected.SignalType.Should().Be("action-rejected");
     }
 
     #endregion

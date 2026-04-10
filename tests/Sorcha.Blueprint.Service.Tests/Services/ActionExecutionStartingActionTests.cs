@@ -3,6 +3,7 @@
 
 using System.Security.Claims;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Sorcha.Blueprint.Engine.Interfaces;
@@ -72,7 +73,8 @@ public class ActionExecutionStartingActionTests
             _mockInstanceStore.Object,
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            Mock.Of<IConfiguration>());
     }
 
     [Fact]

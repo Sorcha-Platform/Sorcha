@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
@@ -93,6 +94,7 @@ public class ActionExecutionServiceEncryptionTests
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
             _mockLogger.Object,
+            Mock.Of<IConfiguration>(),
             credentialVerifier: null,
             confirmationOptions: null,
             statusListManager: null,
@@ -113,7 +115,8 @@ public class ActionExecutionServiceEncryptionTests
             _mockInstanceStore.Object,
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
-            _mockLogger.Object);
+            _mockLogger.Object,
+            Mock.Of<IConfiguration>());
     }
 
     #region Encryption Pipeline Integration Tests

@@ -272,6 +272,10 @@ builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.TemplateSeed
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IStatusListManager,
     Sorcha.Blueprint.Service.Services.StatusListManager>();
 
+// Feature 095: IETF Token Status List serializer (parallel to W3C)
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IIetfTokenStatusListSerializer,
+    Sorcha.Blueprint.Service.Services.IetfTokenStatusListSerializer>();
+
 // Add JWT authentication and authorization (AUTH-002)
 // JWT authentication is now configured via shared ServiceDefaults with auto-key generation
 builder.AddJwtAuthentication();
