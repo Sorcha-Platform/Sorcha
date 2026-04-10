@@ -233,6 +233,10 @@ public class WalletDbContext : DbContext
                 .HasForeignKey<Domain.Entities.Wallet>(e => e.DerivedKeyRecordId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            // HAIP issuer flag (Feature 094)
+            entity.Property(e => e.HaipIssuer)
+                .HasDefaultValue(false);
+
             // Soft delete filter
             entity.HasQueryFilter(e => e.DeletedAt == null);
         });

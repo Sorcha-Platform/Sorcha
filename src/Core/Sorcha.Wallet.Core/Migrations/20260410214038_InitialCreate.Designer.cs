@@ -13,7 +13,7 @@ using Sorcha.Wallet.Core.Data;
 namespace Sorcha.Wallet.Core.Migrations
 {
     [DbContext(typeof(WalletDbContext))]
-    [Migration("20260401011518_InitialCreate")]
+    [Migration("20260410214038_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -126,6 +126,150 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("Credentials", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("CustodyMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Custodial");
+
+                    b.Property<long>("DepartmentId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DerivationPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("KeyIndex")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("KeyUsage")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("OrgMasterKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Active");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("WalletAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WalletAddress")
+                        .HasDatabaseName("IX_DerivedKeyRecords_WalletAddress");
+
+                    b.HasIndex("OrganizationId", "UserId")
+                        .HasDatabaseName("IX_DerivedKeyRecords_Org_User");
+
+                    b.HasIndex("OrgMasterKeyId", "UserId", "DepartmentId", "KeyUsage", "KeyIndex")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DerivedKeyRecords_Unique_Path");
+
+                    b.ToTable("DerivedKeyRecords", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.OrgMasterKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("ED25519");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<byte[]>("EncryptedSeed")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("MasterPublicKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ProtectionKeyId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ProtectionProvider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("RotatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Active");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_OrgMasterKeys_OrganizationId");
+
+                    b.ToTable("OrgMasterKeys", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.RecoveryAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -235,6 +379,152 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("RecoveryKeyWraps", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.SigningKeyShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<byte[]>("EncryptedShareData")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ParticipantId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ProtectionKeyId")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("ShareIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Active");
+
+                    b.Property<Guid>("ThresholdKeyGroupId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ThresholdKeyGroupId", "ShareIndex")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SigningKeyShares_Group_Index");
+
+                    b.ToTable("SigningKeyShares", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.SigningSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<int>("CollectedPartials")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RequiredSigners")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Initializing");
+
+                    b.Property<Guid>("ThresholdKeyGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TransactionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ThresholdKeyGroupId")
+                        .HasDatabaseName("IX_SigningSessions_ThresholdKeyGroupId");
+
+                    b.ToTable("SigningSessions", "wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.ThresholdKeyGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("DkgSessionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("GroupPublicKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<int>("Threshold")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalShares")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("IX_ThresholdKeyGroups_OrganizationId");
+
+                    b.ToTable("ThresholdKeyGroups", "wallet");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.Wallet", b =>
                 {
                     b.Property<string>("Address")
@@ -251,8 +541,18 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<string>("CustodyMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Custodial");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DerivedKeyRecordId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1024)
@@ -269,6 +569,15 @@ namespace Sorcha.Wallet.Core.Migrations
 
                     b.Property<string>("EncryptionKeyId")
                         .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<bool>("HaipIssuer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("KmsKeyId")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
@@ -307,6 +616,13 @@ namespace Sorcha.Wallet.Core.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("bytea");
 
+                    b.Property<string>("SigningMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Local");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -331,6 +647,9 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Address");
+
+                    b.HasIndex("DerivedKeyRecordId")
+                        .IsUnique();
 
                     b.HasIndex("Owner")
                         .HasDatabaseName("IX_Wallets_Owner");
@@ -580,6 +899,17 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.ToTable("WalletTransactions", "wallet");
                 });
 
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", b =>
+                {
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.OrgMasterKey", "OrgMasterKey")
+                        .WithMany("DerivedKeys")
+                        .HasForeignKey("OrgMasterKeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("OrgMasterKey");
+                });
+
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.RecoveryKeyWrap", b =>
                 {
                     b.HasOne("Sorcha.Wallet.Core.Domain.Entities.Wallet", "Wallet")
@@ -589,6 +919,36 @@ namespace Sorcha.Wallet.Core.Migrations
                         .IsRequired();
 
                     b.Navigation("Wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.SigningKeyShare", b =>
+                {
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.ThresholdKeyGroup", "ThresholdKeyGroup")
+                        .WithMany("Shares")
+                        .HasForeignKey("ThresholdKeyGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ThresholdKeyGroup");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.SigningSession", b =>
+                {
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.ThresholdKeyGroup", "ThresholdKeyGroup")
+                        .WithMany("Sessions")
+                        .HasForeignKey("ThresholdKeyGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ThresholdKeyGroup");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.Wallet", b =>
+                {
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", null)
+                        .WithOne("Wallet")
+                        .HasForeignKey("Sorcha.Wallet.Core.Domain.Entities.Wallet", "DerivedKeyRecordId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.WalletAccess", b =>
@@ -622,6 +982,24 @@ namespace Sorcha.Wallet.Core.Migrations
                         .IsRequired();
 
                     b.Navigation("Wallet");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", b =>
+                {
+                    b.Navigation("Wallet")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.OrgMasterKey", b =>
+                {
+                    b.Navigation("DerivedKeys");
+                });
+
+            modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.ThresholdKeyGroup", b =>
+                {
+                    b.Navigation("Sessions");
+
+                    b.Navigation("Shares");
                 });
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.Wallet", b =>
