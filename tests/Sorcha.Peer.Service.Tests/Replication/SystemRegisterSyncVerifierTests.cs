@@ -13,10 +13,20 @@ using Xunit;
 
 namespace Sorcha.Peer.Service.Tests.Replication;
 
-public class SystemRegisterSyncVerifierTests
+public class SystemRegisterSyncVerifierTests : IDisposable
 {
     private readonly Mock<ICryptoModule> _cryptoModule = new();
     private readonly Mock<ILogger<SystemRegisterSyncVerifier>> _logger = new();
+    private readonly List<string> _tempDirs = new();
+
+    public void Dispose()
+    {
+        foreach (var dir in _tempDirs)
+        {
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+            catch { /* best effort */ }
+        }
+    }
 
     [Fact]
     public void IsSystemRegister_WithSystemRegisterId_ReturnsTrue()
@@ -77,9 +87,9 @@ public class SystemRegisterSyncVerifierTests
 
     private SystemRegisterSyncVerifier CreateVerifierWithGenesis()
     {
-        // Create a temp genesis file for the verifier to load
         var tempDir = Path.Combine(Path.GetTempPath(), $"sync-verifier-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
+        _tempDirs.Add(tempDir);
         var genesisPath = Path.Combine(tempDir, "genesis.json");
 
         var publicKey = new byte[32];

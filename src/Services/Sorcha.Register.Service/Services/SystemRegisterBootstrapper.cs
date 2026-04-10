@@ -114,9 +114,12 @@ public class SystemRegisterBootstrapper : BackgroundService
                 }
                 else
                 {
-                    // Step 2: Try peer sync (handled externally by Peer Service subscription)
-                    // The Peer Service will sync the system register if a peer has it,
-                    // verified by SystemRegisterSyncVerifier. Here we proceed to Step 3.
+                    // Step 2: Peer sync is opportunistic — if the Peer Service has already
+                    // replicated the system register from a peer by the time we retry Step 1
+                    // (up to 3 retries with exponential backoff: 2s, 4s, 8s), we'll find it
+                    // locally and skip directly to blueprint seeding. Otherwise we fall through
+                    // to Step 3 (genesis ingestion). The SystemRegisterSyncVerifier in the Peer
+                    // Service ensures any synced genesis matches the trusted public key.
 
                     // Step 3: Load and ingest pre-signed genesis
                     var genesis = await genesisIngestion.LoadAndVerifyGenesisAsync(cancellationToken);

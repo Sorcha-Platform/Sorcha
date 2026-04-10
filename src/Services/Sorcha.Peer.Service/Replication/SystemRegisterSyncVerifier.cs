@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Cryptography.Enums;
@@ -39,6 +40,9 @@ public interface ISystemRegisterSyncVerifier
 /// <inheritdoc />
 public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
 {
+    /// <summary>TransactionType.Control = 0 — register governance transactions.</summary>
+    private const int ControlTransactionType = 0;
+
     private readonly ICryptoModule _cryptoModule;
     private readonly ILogger<SystemRegisterSyncVerifier> _logger;
     private readonly Lazy<SystemRegisterGenesis?> _trustedGenesis;
@@ -87,26 +91,23 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
             return false;
         }
 
-        // Extract the control transaction from the genesis docket
-        var controlTxPayload = ExtractControlTransactionPayload(genesisDocket);
-        if (controlTxPayload is null)
+        // Extract both payload and signature from the control transaction in a single parse
+        var extracted = TryExtractControlTransaction(genesisDocket);
+        if (extracted is null)
         {
-            _logger.LogWarning("System register genesis docket has no control transaction — rejecting");
+            _logger.LogWarning("System register genesis docket has no valid control transaction — rejecting");
             return false;
         }
 
-        // Extract the signature from the docket's control transaction
-        var peerSignature = ExtractTransactionSignature(genesisDocket);
-        if (peerSignature is null)
-        {
-            _logger.LogWarning("System register genesis has no transaction signature — rejecting");
-            return false;
-        }
+        var (controlPayload, peerPublicKey, peerSignatureValue, peerAlgorithm) = extracted.Value;
 
-        // Step 1: Verify the peer's genesis public key matches our trusted fingerprint
         try
         {
-            var peerPublicKeyBytes = Convert.FromBase64String(peerSignature.Value.publicKey);
+            // Step 1: Verify the peer's genesis public key matches our trusted fingerprint.
+            // Fingerprint is SHA-256 truncated to 128 bits (32 hex chars). This is sufficient
+            // for collision resistance as a pre-filter; the full cryptographic signature
+            // verification in Step 2 provides the actual security guarantee.
+            var peerPublicKeyBytes = Convert.FromBase64String(peerPublicKey);
             var trusted = GenesisSignatureVerifier.MatchesFingerprint(
                 peerPublicKeyBytes,
                 trustedGenesis.GenesisPublicKeyFingerprint);
@@ -121,11 +122,10 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
                 return false;
             }
 
-            // Step 2: Verify the cryptographic signature over the payload
-            // (fingerprint alone is insufficient — a compromised peer could present
-            // the real public key with a tampered control record)
-            var peerPayload = controlTxPayload!;
-            var peerPayloadBytes = Convert.FromBase64String(peerPayload);
+            // Step 2: Verify the cryptographic signature over the payload.
+            // Fingerprint alone is insufficient — a compromised peer could present
+            // the real public key with a tampered control record.
+            var peerPayloadBytes = Convert.FromBase64String(controlPayload);
             var peerPayloadHash = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(peerPayloadBytes)).ToLowerInvariant();
             var peerTxId = GenesisSignatureVerifier.ComputeGenesisTxId();
@@ -133,19 +133,18 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
             var signedDataHash = System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(dataToSign));
 
-            var peerSignatureBytes = Convert.FromBase64String(peerSignature.Value.signatureValue);
+            var peerSignatureBytes = Convert.FromBase64String(peerSignatureValue);
 
-            if (!Enum.TryParse<Sorcha.Cryptography.Enums.WalletNetworks>(
-                    peerSignature.Value.algorithm, ignoreCase: true, out var network))
+            if (!Enum.TryParse<WalletNetworks>(peerAlgorithm, ignoreCase: true, out var network))
             {
-                _logger.LogError("Unsupported algorithm in peer genesis: {Algorithm}", peerSignature.Value.algorithm);
+                _logger.LogError("Unsupported algorithm in peer genesis: {Algorithm}", peerAlgorithm);
                 return false;
             }
 
             var verifyResult = await _cryptoModule.VerifyAsync(
                 peerSignatureBytes, signedDataHash, (byte)network, peerPublicKeyBytes, cancellationToken);
 
-            if (verifyResult != Sorcha.Cryptography.Enums.CryptoStatus.Success)
+            if (verifyResult != CryptoStatus.Success)
             {
                 _logger.LogError(
                     "Peer system register rejected: genesis signature verification failed ({Status}). " +
@@ -159,6 +158,11 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
                 trustedGenesis.GenesisPublicKeyFingerprint);
             return true;
         }
+        catch (FormatException ex)
+        {
+            _logger.LogError(ex, "Failed to decode peer system register genesis data");
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to verify peer system register genesis signature");
@@ -166,48 +170,19 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
         }
     }
 
-    private static string? ExtractControlTransactionPayload(CachedDocket docket)
+    /// <summary>
+    /// Extracts payload and signature from the control transaction in a single JSON parse.
+    /// Returns null if the docket has no valid control transaction.
+    /// </summary>
+    private static (string payload, string publicKey, string signatureValue, string algorithm)?
+        TryExtractControlTransaction(CachedDocket docket)
     {
         if (docket.Data is null || docket.Data.Length == 0)
             return null;
 
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(docket.Data);
-            var root = doc.RootElement;
-
-            // Look for transactions array
-            if (!root.TryGetProperty("transactions", out var transactions))
-                return null;
-
-            foreach (var tx in transactions.EnumerateArray())
-            {
-                // Find control transaction (type == 0)
-                if (tx.TryGetProperty("transactionType", out var txType) &&
-                    txType.GetInt32() == 0)
-                {
-                    if (tx.TryGetProperty("payload", out var payload))
-                        return payload.GetString();
-                }
-            }
-        }
-        catch
-        {
-            // JSON parse failure — docket is malformed
-        }
-
-        return null;
-    }
-
-    private static (string publicKey, string signatureValue, string algorithm)? ExtractTransactionSignature(
-        CachedDocket docket)
-    {
-        if (docket.Data is null || docket.Data.Length == 0)
-            return null;
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(docket.Data);
+            using var doc = JsonDocument.Parse(docket.Data);
             var root = doc.RootElement;
 
             if (!root.TryGetProperty("transactions", out var transactions))
@@ -215,24 +190,29 @@ public class SystemRegisterSyncVerifier : ISystemRegisterSyncVerifier
 
             foreach (var tx in transactions.EnumerateArray())
             {
-                if (tx.TryGetProperty("transactionType", out var txType) &&
-                    txType.GetInt32() == 0)
-                {
-                    if (tx.TryGetProperty("signature", out var sig))
-                    {
-                        var pk = sig.TryGetProperty("publicKey", out var pkEl) ? pkEl.GetString() : null;
-                        var sv = sig.TryGetProperty("signatureValue", out var svEl) ? svEl.GetString() : null;
-                        var algo = sig.TryGetProperty("algorithm", out var algoEl) ? algoEl.GetString() : null;
+                if (!tx.TryGetProperty("transactionType", out var txType) ||
+                    txType.GetInt32() != ControlTransactionType)
+                    continue;
 
-                        if (pk != null && sv != null && algo != null)
-                            return (pk, sv, algo);
-                    }
-                }
+                var payload = tx.TryGetProperty("payload", out var p) ? p.GetString() : null;
+                if (payload is null)
+                    continue;
+
+                if (!tx.TryGetProperty("signature", out var sig))
+                    continue;
+
+                var pk = sig.TryGetProperty("publicKey", out var pkEl) ? pkEl.GetString() : null;
+                var sv = sig.TryGetProperty("signatureValue", out var svEl) ? svEl.GetString() : null;
+                var algo = sig.TryGetProperty("algorithm", out var algoEl) ? algoEl.GetString() : null;
+
+                if (pk is not null && sv is not null && algo is not null)
+                    return (payload, pk, sv, algo);
             }
         }
-        catch
+        catch (JsonException ex)
         {
-            // JSON parse failure
+            // Docket JSON is malformed — caller will log and reject
+            _ = ex;
         }
 
         return null;
