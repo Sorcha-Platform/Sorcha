@@ -330,11 +330,11 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private const int IncrementByOneSignal = -1;
+
     private void OnUnreadCountUpdated(int count)
     {
-        // -1 signals "increment by 1" (server doesn't know exact count in real-time)
-        // Any other value is an absolute count from a REST refresh
-        _unreadCount = count == -1 ? _unreadCount + 1 : count;
+        _unreadCount = count == IncrementByOneSignal ? _unreadCount + 1 : count;
         InvokeAsync(StateHasChanged);
     }
 

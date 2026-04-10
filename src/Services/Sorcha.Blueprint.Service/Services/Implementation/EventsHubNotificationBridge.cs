@@ -122,7 +122,8 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             // Enrich and persist to Tenant Service activity feed (for pull-back)
             await EnrichAndPersistEventAsync(actionEvent);
 
-            // Send thin signal to user's SignalR group — client pulls detail from activity feed
+            // Send thin signal to user's SignalR group — consumed by PendingActionInbox
+            // and MainLayout for pending action count (separate from activity log)
             var userGroup = $"user:{actionEvent.UserId}";
             var signal = new Hubs.SignalNotification
             {
@@ -272,7 +273,6 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
             _ => "Info"
         };
 
-        var eventId = Guid.NewGuid();
         var createdAt = DateTime.UtcNow;
         var userGroup = $"user:{actionEvent.UserId}";
 
@@ -306,12 +306,16 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
                 actionEvent.UserId);
         }
 
-        // 2. Broadcast full event to activity panel via SignalR (real-time update)
+        // 2. Broadcast full event to activity panel via SignalR (real-time update).
+        // Shape matches Sorcha.UI.Core.Models.ActivityEventDto — coupled by JSON contract,
+        // not by project reference (Blueprint Service does not reference UI.Core).
+        // Id is omitted — the Tenant Service assigns the canonical ID on persist.
+        // The panel uses CreatedAt + EntityId for dedup when re-fetching from REST.
         try
         {
             var activityEvent = new
             {
-                Id = eventId,
+                Id = Guid.Empty,
                 EventType = "PendingAction",
                 Severity = severity,
                 Title = notification.ActionDescription ?? "New action available",
@@ -341,10 +345,11 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         // 3. Broadcast updated unread count
         try
         {
-            // Increment is approximate — the client can refresh the exact count on demand.
-            // We send -1 as a signal to increment the local counter by 1.
+            // Signal client to increment its local unread counter by 1.
+            // The client can refresh the exact count from REST on demand.
+            const int incrementByOne = -1;
             await _hubContext.Clients.Group(userGroup)
-                .SendAsync("UnreadCountUpdated", -1);
+                .SendAsync("UnreadCountUpdated", incrementByOne);
         }
         catch (Exception ex)
         {
