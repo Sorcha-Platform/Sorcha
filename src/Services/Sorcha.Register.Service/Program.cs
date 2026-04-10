@@ -150,7 +150,12 @@ builder.Services.AddScoped<Sorcha.Register.Core.Services.IRegisterPolicyService,
 builder.Services.AddScoped<SystemRegisterService>();
 builder.Services.AddSingleton<StructuralDiffService>();
 
-// Feature 057: System register bootstrap — always runs (idempotent), uses standard register creation flow
+// Feature 099: Genesis trust anchor — load pre-signed genesis, verify signature
+builder.Services.Configure<Sorcha.ServiceDefaults.SystemRegisterOptions>(
+    builder.Configuration.GetSection(Sorcha.ServiceDefaults.SystemRegisterOptions.SectionName));
+builder.Services.AddScoped<GenesisIngestionService>();
+
+// System register bootstrap — ingests pre-signed genesis (never creates at runtime)
 builder.Services.AddHostedService<SystemRegisterBootstrapper>();
 
 // Participant index service (in-memory address → participant mapping)

@@ -76,14 +76,14 @@
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] Write SystemRegisterBootstrapperTests — 4 flow paths (local exists, peer sync, genesis ingest + seal, stop) in tests/Sorcha.Register.Service.Tests/Services/SystemRegisterBootstrapperTests.cs
+- [x] T020 [P] [US2] Write SystemRegisterBootstrapperTests — 4 flow paths (local exists, peer sync, genesis ingest + seal, stop) in tests/Sorcha.Register.Service.Tests/Services/SystemRegisterBootstrapperTests.cs
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Create GenesisIngestionService — load genesis file via GenesisFileLoader, verify signature, build TransactionSubmission from pre-signed data, submit to Validator Service in src/Services/Sorcha.Register.Service/Services/GenesisIngestionService.cs
-- [ ] T022 [US2] Rewrite SystemRegisterBootstrapper — replace CreateSystemRegisterAsync with 4-step flow (check local → peer sync → ingest genesis → stop), inject GenesisIngestionService, keep WaitForGenesisDocketAsync and SeedBlueprintsIfMissingAsync in src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs
-- [ ] T023 [US2] Register GenesisIngestionService and SystemRegisterOptions in Register Service DI in src/Services/Sorcha.Register.Service/Program.cs
-- [ ] T024 [US2] Add SystemRegister config section to src/Services/Sorcha.Register.Service/appsettings.json and docker-compose environment variables
+- [x] T021 [US2] Create GenesisIngestionService — load genesis file via GenesisFileLoader, verify signature, build TransactionSubmission from pre-signed data, submit to Validator Service in src/Services/Sorcha.Register.Service/Services/GenesisIngestionService.cs
+- [x] T022 [US2] Rewrite SystemRegisterBootstrapper — replace CreateSystemRegisterAsync with 4-step flow (check local → peer sync → ingest genesis → stop), inject GenesisIngestionService, keep WaitForGenesisDocketAsync and SeedBlueprintsIfMissingAsync in src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs
+- [x] T023 [US2] Register GenesisIngestionService and SystemRegisterOptions in Register Service DI in src/Services/Sorcha.Register.Service/Program.cs
+- [x] T024 [US2] Add SystemRegister config section to src/Services/Sorcha.Register.Service/appsettings.json and docker-compose environment variables
 
 **Checkpoint**: First instance bootstrap works with pre-signed genesis. No more self-created genesis at runtime.
 
