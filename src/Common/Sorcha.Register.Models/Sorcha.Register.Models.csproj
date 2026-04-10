@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources/system-register-genesis.json" />
   </ItemGroup>
 
 </Project>

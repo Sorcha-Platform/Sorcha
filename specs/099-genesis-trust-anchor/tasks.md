@@ -19,13 +19,13 @@
 
 **Purpose**: Genesis file models, configuration, and shared components used by all user stories.
 
-- [ ] T001 [P] Create SystemRegisterGenesis model in src/Common/Sorcha.Register.Models/Genesis/SystemRegisterGenesis.cs
-- [ ] T002 [P] Create GenesisTransactionData model in src/Common/Sorcha.Register.Models/Genesis/GenesisTransactionData.cs
-- [ ] T003 [P] Create GenesisSignature model in src/Common/Sorcha.Register.Models/Genesis/GenesisSignature.cs
-- [ ] T004 [P] Create GenesisValidatorKeyFile model in src/Common/Sorcha.Register.Models/Genesis/GenesisValidatorKeyFile.cs
-- [ ] T005 Create SystemRegisterOptions configuration model in src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs
-- [ ] T006 Add EmbeddedResource entry for Resources/system-register-genesis.json in src/Common/Sorcha.Register.Models/Sorcha.Register.Models.csproj
-- [ ] T007 Create placeholder system-register-genesis.json in src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json (empty JSON object, replaced by ceremony)
+- [x] T001 [P] Create SystemRegisterGenesis model in src/Common/Sorcha.Register.Models/Genesis/SystemRegisterGenesis.cs
+- [x] T002 [P] Create GenesisTransactionData model in src/Common/Sorcha.Register.Models/Genesis/GenesisTransactionData.cs
+- [x] T003 [P] Create GenesisSignature model in src/Common/Sorcha.Register.Models/Genesis/GenesisSignature.cs
+- [x] T004 [P] Create GenesisValidatorKeyFile model in src/Common/Sorcha.Register.Models/Genesis/GenesisValidatorKeyFile.cs
+- [x] T005 Create SystemRegisterOptions configuration model in src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs
+- [x] T006 Add EmbeddedResource entry for Resources/system-register-genesis.json in src/Common/Sorcha.Register.Models/Sorcha.Register.Models.csproj
+- [x] T007 Create placeholder system-register-genesis.json in src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json (empty JSON object, replaced by ceremony)
 
 ---
 
@@ -35,11 +35,11 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T008 Create GenesisFileLoader (config path → embedded resource fallback → error) in src/Common/Sorcha.Register.Models/Genesis/GenesisFileLoader.cs
-- [ ] T009 Create GenesisSignatureVerifier (verify genesis transaction signature using ICryptoModule) in src/Common/Sorcha.Register.Models/Genesis/GenesisSignatureVerifier.cs
-- [ ] T010 [P] Add SystemRegisterOptions binding in src/Common/Sorcha.ServiceDefaults/ (register config section "SystemRegister")
-- [ ] T011 [P] Write GenesisFileLoaderTests (config path, embedded fallback, missing file, invalid JSON) in tests/Sorcha.Register.Models.Tests/Genesis/GenesisFileLoaderTests.cs
-- [ ] T012 [P] Write GenesisSignatureVerifierTests (valid signature, tampered payload, wrong algorithm) in tests/Sorcha.Register.Models.Tests/Genesis/GenesisSignatureVerifierTests.cs
+- [x] T008 Create GenesisFileLoader (config path → embedded resource fallback → error) in src/Common/Sorcha.Register.Models/Genesis/GenesisFileLoader.cs
+- [x] T009 Create GenesisSignatureVerifier (verify genesis transaction signature using ICryptoModule) in src/Common/Sorcha.Register.Models/Genesis/GenesisSignatureVerifier.cs
+- [x] T010 [P] Add SystemRegisterOptions binding in src/Common/Sorcha.ServiceDefaults/ (register config section "SystemRegister")
+- [x] T011 [P] Write GenesisFileLoaderTests (config path, embedded fallback, missing file, invalid JSON) in tests/Sorcha.Register.Models.Tests/Genesis/GenesisFileLoaderTests.cs
+- [x] T012 [P] Write GenesisSignatureVerifierTests (valid signature, tampered payload, wrong algorithm) in tests/Sorcha.Register.Models.Tests/Genesis/GenesisSignatureVerifierTests.cs
 
 **Checkpoint**: Genesis loading and verification infrastructure ready. All user stories can now proceed.
 
