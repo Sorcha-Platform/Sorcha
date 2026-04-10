@@ -569,6 +569,11 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<bool>("HaipIssuer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("KmsKeyId")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
@@ -937,12 +942,10 @@ namespace Sorcha.Wallet.Core.Migrations
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.Wallet", b =>
                 {
-                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", "DerivedKeyRecord")
+                    b.HasOne("Sorcha.Wallet.Core.Domain.Entities.DerivedKeyRecord", null)
                         .WithOne("Wallet")
                         .HasForeignKey("Sorcha.Wallet.Core.Domain.Entities.Wallet", "DerivedKeyRecordId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("DerivedKeyRecord");
                 });
 
             modelBuilder.Entity("Sorcha.Wallet.Core.Domain.Entities.WalletAccess", b =>
