@@ -400,6 +400,59 @@ await personaService.SetAutofillEnabledAsync(false);
 
 ---
 
+## System Register Genesis Trust Anchor (Feature 099)
+
+The system register is bootstrapped from a pre-signed genesis block produced by an offline ceremony. Instances never create the genesis at runtime — they consume it from a genesis file (config path or embedded resource).
+
+### Genesis Ceremony CLI
+
+```bash
+# Create a new network genesis (offline — no services needed)
+sorcha system-register create --network-id sorcha-dev
+
+# Outputs:
+#   system-register-genesis.json  → embed in source tree or deploy as config
+#   genesis-validator-key.json    → import into first validator, then destroy
+
+# Verify a genesis file
+sorcha system-register verify path/to/system-register-genesis.json
+
+# Import validator key into running Wallet Service (first validator only)
+sorcha system-register import-validator-key --key genesis-validator-key.json
+```
+
+### Bootstrap Flow (Register Service)
+
+1. **Check local** — system register exists? Proceed normally.
+2. **Try peer sync** — sync from peers, verify genesis signature against trust anchor.
+3. **Ingest genesis** — load pre-signed genesis file, submit to Validator Service.
+4. **Stop** — if no genesis file and no peers, log actionable message and halt.
+
+### Configuration
+
+```json
+{
+  "SystemRegister": {
+    "GenesisFile": "/etc/sorcha/system-register-genesis.json"
+  }
+}
+```
+
+When `GenesisFile` is null, the embedded resource in `Sorcha.Register.Models` is used.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/Common/Sorcha.Register.Models/Genesis/` | Genesis file models and loader |
+| `src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json` | Embedded dev genesis |
+| `src/Services/Sorcha.Register.Service/Services/GenesisIngestionService.cs` | Load, verify, submit genesis |
+| `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` | 4-step bootstrap flow |
+| `src/Services/Sorcha.Peer.Service/Replication/SystemRegisterSyncVerifier.cs` | Peer genesis trust check |
+| `src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs` | CLI ceremony commands |
+
+---
+
 ## Project Structure
 
 ```

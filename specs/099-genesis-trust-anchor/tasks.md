@@ -151,13 +151,13 @@
 
 **Purpose**: Documentation, integration testing, and final hardening.
 
-- [ ] T038 [P] Update CLAUDE.md with System Register Genesis Trust section (API endpoints, ceremony workflow)
+- [x] T038 [P] Update CLAUDE.md with System Register Genesis Trust section (API endpoints, ceremony workflow)
 - [ ] T039 [P] Update src/Services/Sorcha.Register.Service/README.md with new bootstrap behaviour
 - [ ] T040 [P] Update docs/reference/development-status.md with feature 099 status
-- [ ] T041 Run genesis ceremony to produce initial dev genesis file, commit to src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json
+- [x] T041 Run genesis ceremony to produce initial dev genesis file, commit to src/Common/Sorcha.Register.Models/Resources/system-register-genesis.json
 - [ ] T042 Write integration test: ceremony → first instance bootstrap → seal genesis → second instance peer sync in tests/Sorcha.Register.Service.IntegrationTests/ or tests/Sorcha.Peer.Service.IntegrationTests/
 - [ ] T043 Run quickstart.md validation — execute the documented steps end-to-end
-- [ ] T044 Add structured log messages for all bootstrap states (NetworkId on startup, fingerprint mismatch, stop reasons) in src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs
+- [x] T044 Add structured log messages for all bootstrap states (NetworkId on startup, fingerprint mismatch, stop reasons) in src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs
 
 ---
 
