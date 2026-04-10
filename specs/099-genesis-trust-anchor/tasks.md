@@ -97,14 +97,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T025 [P] [US3] Write SystemRegisterSyncVerifierTests — matching fingerprint accepted, mismatched rejected, non-system-register bypassed in tests/Sorcha.Peer.Service.Tests/Replication/SystemRegisterSyncVerifierTests.cs
+- [x] T025 [P] [US3] Write SystemRegisterSyncVerifierTests — matching fingerprint accepted, mismatched rejected, non-system-register bypassed in tests/Sorcha.Peer.Service.Tests/Replication/SystemRegisterSyncVerifierTests.cs
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Create ISystemRegisterSyncVerifier interface and SystemRegisterSyncVerifier implementation — verify genesis transaction signature against trusted public key from GenesisFileLoader, only applies to SystemRegisterConstants.SystemRegisterId in src/Services/Sorcha.Peer.Service/Replication/SystemRegisterSyncVerifier.cs
-- [ ] T027 [US3] Inject ISystemRegisterSyncVerifier into DocketFinalizationService — add genesis signature check before step 1 for system register genesis dockets (Version 0) in src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs
-- [ ] T028 [US3] Register SystemRegisterSyncVerifier and SystemRegisterOptions in Peer Service DI in src/Services/Sorcha.Peer.Service/Program.cs
-- [ ] T029 [US3] Add SystemRegister config section to src/Services/Sorcha.Peer.Service/appsettings.json
+- [x] T026 [US3] Create ISystemRegisterSyncVerifier interface and SystemRegisterSyncVerifier implementation — verify genesis transaction signature against trusted public key from GenesisFileLoader, only applies to SystemRegisterConstants.SystemRegisterId in src/Services/Sorcha.Peer.Service/Replication/SystemRegisterSyncVerifier.cs
+- [x] T027 [US3] Inject ISystemRegisterSyncVerifier into DocketFinalizationService — add genesis signature check before step 1 for system register genesis dockets (Version 0) in src/Services/Sorcha.Peer.Service/Replication/DocketFinalizationService.cs
+- [x] T028 [US3] Register SystemRegisterSyncVerifier and SystemRegisterOptions in Peer Service DI in src/Services/Sorcha.Peer.Service/Program.cs
+- [x] T029 [US3] Add SystemRegister config section to src/Services/Sorcha.Peer.Service/appsettings.json
 
 **Checkpoint**: Peer sync verifies genesis signature. Rogue peers with different genesis are rejected.
 
