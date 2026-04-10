@@ -73,22 +73,46 @@ public class SdJwtService : ISdJwtService
         ArgumentNullException.ThrowIfNull(signingKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(algorithm);
 
-        var disclosableSet = disclosableClaims?.ToHashSet() ?? claims.Keys.ToHashSet();
+        var disclosableList = disclosableClaims?.ToList() ?? claims.Keys.ToList();
 
-        // Build disclosures for each disclosable claim
-        var disclosures = new List<string>();
-        var sdDigests = new List<string>();
+        List<string> disclosures;
+        List<string> sdDigests;
+        Dictionary<string, object> payloadClaims;
 
-        foreach (var claimName in disclosableSet)
+        if (NestedDisclosure.HasNestedPaths(disclosableList))
         {
-            if (!claims.TryGetValue(claimName, out var claimValue))
-                continue;
+            // Mixed top-level + nested JSON Pointer paths — use NestedDisclosure
+            var (translated, nestedDisclosures, topSd) = NestedDisclosure.Translate(claims, disclosableList);
+            disclosures = nestedDisclosures;
+            sdDigests = topSd;
+            payloadClaims = translated;
+        }
+        else
+        {
+            // Top-level name-keyed only — preserve original byte-identical behaviour (FR-021)
+            var disclosableSet = disclosableList.ToHashSet();
+            disclosures = new List<string>();
+            sdDigests = new List<string>();
 
-            var disclosure = CreateDisclosure(claimName, claimValue);
-            disclosures.Add(disclosure);
+            foreach (var claimName in disclosableSet)
+            {
+                if (!claims.TryGetValue(claimName, out var claimValue))
+                    continue;
 
-            var digest = ComputeDisclosureDigest(disclosure);
-            sdDigests.Add(digest);
+                var disclosure = CreateDisclosure(claimName, claimValue);
+                disclosures.Add(disclosure);
+
+                var digest = ComputeDisclosureDigest(disclosure);
+                sdDigests.Add(digest);
+            }
+
+            // Non-disclosable claims go directly into the payload
+            payloadClaims = new Dictionary<string, object>();
+            foreach (var (key, value) in claims)
+            {
+                if (!disclosableSet.Contains(key))
+                    payloadClaims[key] = value;
+            }
         }
 
         // Build the JWT payload
@@ -114,11 +138,10 @@ public class SdJwtService : ISdJwtService
             payload["cnf"] = cnf;
         }
 
-        // Add non-disclosable claims directly
-        foreach (var (key, value) in claims)
+        // Add processed claims to payload
+        foreach (var (key, value) in payloadClaims)
         {
-            if (!disclosableSet.Contains(key))
-                payload[key] = value;
+            payload[key] = value;
         }
 
         // Add SD digests

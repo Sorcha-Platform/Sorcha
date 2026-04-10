@@ -134,6 +134,13 @@ public class Wallet
     public CustodyMode CustodyMode { get; set; } = CustodyMode.Custodial;
 
     /// <summary>
+    /// Whether this wallet is eligible to issue HAIP-facing credentials.
+    /// When true and the primary algorithm is PQC, a classical co-key is
+    /// derived under <c>sorcha:haip-issuer-signing</c>.
+    /// </summary>
+    public bool HaipIssuer { get; set; }
+
+    /// <summary>
     /// Schema version for migrations
     /// </summary>
     public int Version { get; set; } = 1;

@@ -451,6 +451,26 @@ The direct HTTP issuance path (`POST /api/v1/wallets/{address}/credentials/issue
 
 Pre-Feature-093 credentials (no embedded `credentialStatus` claim) remain valid indefinitely and continue to verify via the server-side `CredentialEntity.StatusListUrl` / `StatusListIndex` fallback.
 
+### Holder Binding Key (Feature 094)
+
+Every Sorcha wallet has a deterministic holder binding key derived from the wallet seed under the `sorcha:credential-holder-binding` BIP32 purpose (index 105). This key is used to prove holder possession of a credential via a Key Binding JWT (KB-JWT) in SD-JWT VC presentations.
+
+- **One key per wallet**, not per credential
+- **Deterministic**: same mnemonic always produces the same binding key
+- **Automatic**: the Wallet Service derives and signs KB-JWTs without callers managing key material
+
+Services: `IHolderBindingKeyService` provides `GetPublicJwkAsync(walletAddress)` and `SignKbJwtAsync(walletAddress, signingInput)`.
+
+### HAIP Issuer Classical Co-Key (Feature 094)
+
+Wallets whose primary algorithm is PQC (ML-DSA, SLH-DSA) derive a classical co-key (ES256 by default) under the `sorcha:haip-issuer-signing` BIP32 purpose (index 106) for signing HAIP-conformant SD-JWT VCs. Wallets with a classical primary key (Ed25519, P-256) use their primary key directly.
+
+- Requires the `HaipIssuer` capability flag on the wallet entity
+- Classical-primary wallets: no new key derived, primary key used for HAIP issuance
+- PQC-primary wallets: ES256 co-key derived alongside the PQC primary
+
+Services: `IHaipIssuerCoKeyService` provides `GetSigningKeyForHaipIssuanceAsync(walletAddress)`.
+
 ### Private Key Protection
 
 - **At-Rest Encryption**: All private keys encrypted with AES-256-GCM
