@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,6 +34,30 @@ public interface ISdJwtService
         string subject,
         byte[] signingKey,
         string algorithm,
+        DateTimeOffset? expiresAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a new SD-JWT VC token with selective disclosure and holder key binding (cnf).
+    /// </summary>
+    /// <param name="claims">All credential claims to include.</param>
+    /// <param name="disclosableClaims">Claim names that support selective disclosure. Null = all disclosable.</param>
+    /// <param name="issuer">Issuer identifier (DID URI or wallet address).</param>
+    /// <param name="subject">Subject identifier (DID URI or wallet address).</param>
+    /// <param name="signingKey">Private key bytes for signing.</param>
+    /// <param name="algorithm">Signing algorithm (e.g., "EdDSA", "ES256", "RS256").</param>
+    /// <param name="holderJwk">Holder's public key in JWK form, embedded as the <c>cnf.jwk</c> claim.</param>
+    /// <param name="expiresAt">Optional expiration timestamp.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The created SD-JWT token with cnf claim and all disclosures.</returns>
+    Task<SdJwtToken> CreateTokenAsync(
+        Dictionary<string, object> claims,
+        IEnumerable<string>? disclosableClaims,
+        string issuer,
+        string subject,
+        byte[] signingKey,
+        string algorithm,
+        JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
         CancellationToken cancellationToken = default);
 
@@ -69,6 +94,28 @@ public interface ISdJwtService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Creates a presentation with a Key Binding JWT signed by a delegate.
+    /// The delegate receives the signing input bytes and returns the signature.
+    /// This allows the Wallet Service to sign without exposing the private key.
+    /// </summary>
+    /// <param name="rawToken">The complete SD-JWT token.</param>
+    /// <param name="claimsToDisclose">Claim names to reveal in the presentation.</param>
+    /// <param name="kbJwtSigner">Delegate that signs the KB-JWT input bytes and returns the signature.</param>
+    /// <param name="holderAlgorithm">Algorithm for the KB-JWT header (e.g., "ES256", "EdDSA").</param>
+    /// <param name="audience">Verifier audience URI for the KB-JWT <c>aud</c> claim.</param>
+    /// <param name="nonce">Verifier nonce for the KB-JWT <c>nonce</c> claim.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The SD-JWT presentation with KB-JWT appended.</returns>
+    Task<SdJwtPresentation> CreatePresentationAsync(
+        string rawToken,
+        IEnumerable<string> claimsToDisclose,
+        Func<byte[], CancellationToken, Task<byte[]>> kbJwtSigner,
+        string holderAlgorithm,
+        string audience,
+        string nonce,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Verifies an SD-JWT presentation, extracting only the disclosed claims.
     /// </summary>
     /// <param name="rawPresentation">The serialized SD-JWT presentation.</param>
@@ -80,5 +127,24 @@ public interface ISdJwtService
         string rawPresentation,
         byte[] issuerPublicKey,
         string algorithm,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies an SD-JWT presentation including KB-JWT validation against the
+    /// holder's confirmation key from the credential's <c>cnf</c> claim.
+    /// </summary>
+    /// <param name="rawPresentation">The serialized SD-JWT presentation (ending with KB-JWT).</param>
+    /// <param name="issuerPublicKey">Issuer's public key for signature verification.</param>
+    /// <param name="algorithm">Expected issuer signing algorithm.</param>
+    /// <param name="expectedAudience">Expected <c>aud</c> in the KB-JWT.</param>
+    /// <param name="expectedNonce">Expected <c>nonce</c> in the KB-JWT.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Verification result with disclosed claims and holder key verification status.</returns>
+    Task<SdJwtVerificationResult> VerifyPresentationAsync(
+        string rawPresentation,
+        byte[] issuerPublicKey,
+        string algorithm,
+        string expectedAudience,
+        string expectedNonce,
         CancellationToken cancellationToken = default);
 }
