@@ -200,6 +200,9 @@ internal class Program
         rootCommand.Subcommands.Add(new PlatformCommand(clientFactory, authService, configService));
         rootCommand.Subcommands.Add(new AuditCommand(clientFactory, authService, configService));
 
+        // System register genesis operations
+        rootCommand.Subcommands.Add(new SystemRegisterGenesisCommand(clientFactory, authService, configService));
+
         // Configuration management commands
         rootCommand.Subcommands.Add(new ConfigCommand(configService, authService));
 

@@ -53,16 +53,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Write ceremony unit tests (key generation, genesis signing, deterministic register ID, file output) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterCreateCommandTests.cs
-- [ ] T014 [P] [US1] Write verify command unit tests (valid file passes, tampered file fails, exit codes) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterVerifyCommandTests.cs
+- [x] T013 [P] [US1] Write ceremony unit tests (key generation, genesis signing, deterministic register ID, file output) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterCreateCommandTests.cs
+- [x] T014 [P] [US1] Write verify command unit tests (valid file passes, tampered file fails, exit codes) in tests/Sorcha.Cli.Tests/Commands/SystemRegisterVerifyCommandTests.cs
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Create SystemRegisterCommand group (parent command) in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
-- [ ] T016 [US1] Implement SystemRegisterCreateCommand — generate ED25519 keypair via CryptoModule, build RegisterControlRecord with deterministic SystemRegisterId, populate ValidatorRoster, sign control record at sorcha:register-control, output genesis file and validator key file in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
-- [ ] T017 [US1] Implement SystemRegisterVerifyCommand — load genesis file, verify all signatures, display validator roster and fingerprint, exit code 0/1 in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
-- [ ] T018 [US1] Register SystemRegisterCommand group in src/Apps/Sorcha.Cli/Program.cs (add to root command)
-- [ ] T019 [US1] Add GenesisPublicKeyFingerprint constant field to src/Common/Sorcha.Register.Models/Constants/SystemRegisterConstants.cs
+- [x] T015 [US1] Create SystemRegisterCommand group (parent command) in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
+- [x] T016 [US1] Implement SystemRegisterCreateCommand — generate ED25519 keypair via CryptoModule, build RegisterControlRecord with deterministic SystemRegisterId, populate ValidatorRoster, sign control record at sorcha:register-control, output genesis file and validator key file in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
+- [x] T017 [US1] Implement SystemRegisterVerifyCommand — load genesis file, verify all signatures, display validator roster and fingerprint, exit code 0/1 in src/Apps/Sorcha.Cli/Commands/SystemRegisterCommands.cs
+- [x] T018 [US1] Register SystemRegisterCommand group in src/Apps/Sorcha.Cli/Program.cs (add to root command)
+- [x] T019 [US1] Add GenesisPublicKeyFingerprint constant field to src/Common/Sorcha.Register.Models/Constants/SystemRegisterConstants.cs
 
 **Checkpoint**: Genesis ceremony CLI works end-to-end. Operator can create and verify genesis files offline.
 
