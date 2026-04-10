@@ -117,13 +117,9 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         }
         else
         {
-            // Fallback: encode as raw key material
-            jwk = new Dictionary<string, object>
-            {
-                ["kty"] = "OKP",
-                ["crv"] = algorithm,
-                ["x"] = Base64UrlEncode(publicKey)
-            };
+            throw new NotSupportedException(
+                $"Unsupported algorithm '{algorithm}' for holder binding key JWK. " +
+                "Only Ed25519 and P-256 are supported for HAIP holder binding.");
         }
 
         return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(jwk));

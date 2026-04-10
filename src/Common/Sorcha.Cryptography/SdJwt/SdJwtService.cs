@@ -296,34 +296,11 @@ public class SdJwtService : ISdJwtService
         ArgumentException.ThrowIfNullOrWhiteSpace(rawToken);
         ArgumentNullException.ThrowIfNull(claimsToDisclose);
 
-        var disclosureSet = claimsToDisclose.ToHashSet();
         var parts = rawToken.TrimEnd('~').Split('~');
         var jwtPart = parts[0];
         var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
 
-        // Select only the disclosures for claims we want to reveal
-        var selectedDisclosures = new List<string>();
-        foreach (var disclosure in allDisclosures)
-        {
-            if (string.IsNullOrWhiteSpace(disclosure))
-                continue;
-
-            try
-            {
-                var disclosureJson = Base64UrlDecode(disclosure);
-                var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
-                if (disclosureArray is { Length: 3 })
-                {
-                    var claimName = disclosureArray[1].GetString();
-                    if (claimName != null && disclosureSet.Contains(claimName))
-                        selectedDisclosures.Add(disclosure);
-                }
-            }
-            catch
-            {
-                // Skip malformed disclosures
-            }
-        }
+        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
 
         // Build presentation: jwt~selected_disclosure1~selected_disclosure2~[kb-jwt]
         var presentationParts = new List<string> { jwtPart };
@@ -369,34 +346,12 @@ public class SdJwtService : ISdJwtService
         ArgumentException.ThrowIfNullOrWhiteSpace(audience);
         ArgumentException.ThrowIfNullOrWhiteSpace(nonce);
 
-        // Build the presentation without KB-JWT first (reuse existing logic)
-        var disclosureSet = claimsToDisclose.ToHashSet();
+        // Build the presentation without KB-JWT first
         var parts = rawToken.TrimEnd('~').Split('~');
         var jwtPart = parts[0];
         var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
 
-        var selectedDisclosures = new List<string>();
-        foreach (var disclosure in allDisclosures)
-        {
-            if (string.IsNullOrWhiteSpace(disclosure))
-                continue;
-
-            try
-            {
-                var disclosureJson = Base64UrlDecode(disclosure);
-                var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
-                if (disclosureArray is { Length: 3 })
-                {
-                    var claimName = disclosureArray[1].GetString();
-                    if (claimName != null && disclosureSet.Contains(claimName))
-                        selectedDisclosures.Add(disclosure);
-                }
-            }
-            catch
-            {
-                // Skip malformed disclosures
-            }
-        }
+        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
 
         // Build the presentation prefix (everything before the KB-JWT)
         var presentationParts = new List<string> { jwtPart };
@@ -594,7 +549,68 @@ public class SdJwtService : ISdJwtService
     // --- Internal helpers ---
 
     /// <summary>
+    /// Selects disclosures that match the caller's disclosure request.
+    /// Handles both top-level claim names and JSON Pointer paths by extracting
+    /// the leaf segment from each pointer path.
+    /// </summary>
+    private static List<string> SelectDisclosures(string[] allDisclosures, IEnumerable<string> claimsToDisclose)
+    {
+        // Build a set of names to match against disclosure name fields.
+        // For JSON Pointer paths like "/address/locality", extract the leaf "locality".
+        // For top-level names like "name", use as-is.
+        var matchNames = new HashSet<string>();
+        foreach (var entry in claimsToDisclose)
+        {
+            if (entry.StartsWith('/'))
+            {
+                var lastSlash = entry.LastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash < entry.Length - 1)
+                    matchNames.Add(entry[(lastSlash + 1)..]);
+            }
+            else
+            {
+                matchNames.Add(entry);
+            }
+        }
+
+        var selected = new List<string>();
+        foreach (var disclosure in allDisclosures)
+        {
+            if (string.IsNullOrWhiteSpace(disclosure))
+                continue;
+
+            try
+            {
+                var disclosureJson = Base64UrlDecode(disclosure);
+                var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
+
+                // Three-element disclosure: [salt, name, value]
+                if (disclosureArray is { Length: 3 })
+                {
+                    var claimName = disclosureArray[1].GetString();
+                    if (claimName != null && matchNames.Contains(claimName))
+                        selected.Add(disclosure);
+                }
+                // Two-element disclosure: [salt, value] — array element, always include
+                // if it was part of the disclosable set (future: more precise matching)
+                else if (disclosureArray is { Length: 2 })
+                {
+                    selected.Add(disclosure);
+                }
+            }
+            catch
+            {
+                // Skip malformed disclosures
+            }
+        }
+
+        return selected;
+    }
+
+    /// <summary>
     /// Extracts the public key bytes from a JWK JsonElement and determines the algorithm.
+    /// Only supports P-256 (EC) and Ed25519 (OKP) — the two algorithms valid for
+    /// HAIP holder binding keys.
     /// </summary>
     private static byte[]? ExportPublicKeyFromJwk(JsonElement jwk, out string algorithm)
     {
@@ -609,9 +625,14 @@ public class SdJwtService : ISdJwtService
         {
             case "EC":
             {
-                var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : "P-256";
-                algorithm = crv == "P-256" ? "ES256" : "ES256";
+                var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+                if (crv != "P-256")
+                {
+                    algorithm = string.Empty;
+                    return null; // Only P-256 supported for holder binding
+                }
 
+                algorithm = "ES256";
                 var x = Base64UrlDecode(jwk.GetProperty("x").GetString()!);
                 var y = Base64UrlDecode(jwk.GetProperty("y").GetString()!);
 
@@ -624,6 +645,13 @@ public class SdJwtService : ISdJwtService
             }
             case "OKP":
             {
+                var crv = jwk.TryGetProperty("crv", out var crvEl) ? crvEl.GetString() : null;
+                if (crv != "Ed25519")
+                {
+                    algorithm = string.Empty;
+                    return null; // Only Ed25519 supported for holder binding
+                }
+
                 algorithm = "EdDSA";
                 return Base64UrlDecode(jwk.GetProperty("x").GetString()!);
             }

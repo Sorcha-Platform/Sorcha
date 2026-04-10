@@ -112,8 +112,8 @@ public static class NestedDisclosure
                     arrayValue is List<object> array &&
                     arrayIndex >= 0 && arrayIndex < array.Count)
                 {
-                    // Array element disclosure — create disclosure for the element
-                    var disclosure = CreateArrayElementDisclosure(arrayIndex, array[arrayIndex]);
+                    // Array element disclosure — two-element format per SD-JWT §5.2.4
+                    var disclosure = CreateArrayElementDisclosure(array[arrayIndex]);
                     disclosures.Add(disclosure);
                     nestedSdDigests.Add(ComputeDigest(disclosure));
                 }
@@ -271,10 +271,14 @@ public static class NestedDisclosure
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
-    private static string CreateArrayElementDisclosure(int index, object elementValue)
+    private static string CreateArrayElementDisclosure(object elementValue)
     {
-        // Array element disclosures use the index as the "name"
-        return CreateDisclosure(index.ToString(), elementValue);
+        // SD-JWT spec §5.2.4: array element disclosures are two-element [salt, value]
+        var salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var disclosure = JsonSerializer.Serialize(new object[] { salt, elementValue });
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(disclosure))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     private static string ComputeDigest(string disclosure)
