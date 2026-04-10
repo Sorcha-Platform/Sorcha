@@ -1264,11 +1264,27 @@ docketsGroup.MapPost("/", async (
     string registerId,
     WriteDocketRequest request) =>
 {
-    // Validate register exists
+    // Validate register exists (auto-create for genesis docket 0 on system register)
     var register = await repository.GetRegisterAsync(registerId);
     if (register == null)
     {
-        return Results.NotFound(new { error = "Register not found" });
+        if (request.DocketNumber == 0 &&
+            registerId == Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterId)
+        {
+            logger.LogInformation("Auto-creating system register for genesis docket");
+            var registerManager = app.Services.GetRequiredService<Sorcha.Register.Core.Managers.RegisterManager>();
+            register = await registerManager.CreateRegisterAsync(
+                Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterName,
+                advertise: false,
+                isFullReplica: true,
+                registerId: registerId,
+                description: "Sorcha platform system register — root of trust for blueprints and governance.",
+                purpose: Sorcha.Register.Models.Enums.RegisterPurpose.System);
+        }
+        else
+        {
+            return Results.NotFound(new { error = "Register not found" });
+        }
     }
 
     // Create docket from request
