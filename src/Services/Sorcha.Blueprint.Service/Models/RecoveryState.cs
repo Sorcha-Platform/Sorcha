@@ -20,6 +20,9 @@ public class RecoveryState
     /// <summary>When recovery finished (null if in progress).</summary>
     public DateTimeOffset? CompletedAt { get; set; }
 
+    /// <summary>When the last periodic refresh completed (null if never refreshed).</summary>
+    public DateTimeOffset? LastRefreshedAt { get; set; }
+
     /// <summary>Per-register recovery status, keyed by register ID.</summary>
     public ConcurrentDictionary<string, RegisterRecoveryState> RegisterStates { get; } = new();
 }

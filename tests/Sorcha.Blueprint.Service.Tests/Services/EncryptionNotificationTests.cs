@@ -50,17 +50,15 @@ public class EncryptionNotificationTests
     {
         // Arrange
         var walletAddress = "wallet-test-001";
-        var notification = new EncryptionProgressNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-1",
-            Step = 2,
-            StepName = "Encrypting payloads",
-            TotalSteps = 4,
-            PercentComplete = 30
+            PercentComplete = 30,
+            Status = "encrypting"
         };
 
         // Act
-        await _service.NotifyEncryptionProgressAsync(walletAddress, notification);
+        await _service.NotifyEncryptionProgressAsync(walletAddress, signal);
 
         // Assert — correct group name: wallet:{address}
         _hubClients.Verify(c => c.Group("wallet:wallet-test-001"), Times.Once);
@@ -73,33 +71,31 @@ public class EncryptionNotificationTests
 
         // Verify captured payload shape
         var sent = _sentMessages.Single(m => m.Method == "EncryptionProgress");
-        var payload = sent.Args[0].Should().BeOfType<EncryptionProgressNotification>().Subject;
+        var payload = sent.Args[0].Should().BeOfType<EncryptionSignal>().Subject;
         payload.OperationId.Should().Be("op-1");
-        payload.Step.Should().Be(2);
-        payload.StepName.Should().Be("Encrypting payloads");
-        payload.TotalSteps.Should().Be(4);
         payload.PercentComplete.Should().Be(30);
+        payload.Status.Should().Be("encrypting");
     }
 
     [Fact]
-    public async Task SendEncryptionComplete_IncludesTransactionHash()
+    public async Task SendEncryptionComplete_IncludesOperationId()
     {
         // Arrange
         var walletAddress = "wallet-test-002";
-        var txHash = "abc123def456abc123def456abc123def456abc123def456abc123def456abcd";
-        var notification = new EncryptionCompleteNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-2",
-            TransactionHash = txHash
+            PercentComplete = 100,
+            Status = "complete"
         };
 
         // Act
-        await _service.NotifyEncryptionCompleteAsync(walletAddress, notification);
+        await _service.NotifyEncryptionCompleteAsync(walletAddress, signal);
 
         // Assert — correct group
         _hubClients.Verify(c => c.Group("wallet:wallet-test-002"), Times.Once);
 
-        // Assert — payload includes transaction hash
+        // Assert — payload includes operation id and status
         _clientProxy.Verify(c => c.SendCoreAsync(
             "EncryptionComplete",
             It.Is<object?[]>(args => args.Length == 1 && args[0] != null),
@@ -107,31 +103,31 @@ public class EncryptionNotificationTests
 
         // Verify captured payload shape
         var sent = _sentMessages.Single(m => m.Method == "EncryptionComplete");
-        var payload = sent.Args[0].Should().BeOfType<EncryptionCompleteNotification>().Subject;
+        var payload = sent.Args[0].Should().BeOfType<EncryptionSignal>().Subject;
         payload.OperationId.Should().Be("op-2");
-        payload.TransactionHash.Should().Be(txHash);
+        payload.PercentComplete.Should().Be(100);
+        payload.Status.Should().Be("complete");
     }
 
     [Fact]
-    public async Task SendEncryptionFailed_IncludesErrorAndRecipient()
+    public async Task SendEncryptionFailed_IncludesFailedStatus()
     {
         // Arrange
         var walletAddress = "wallet-test-003";
-        var notification = new EncryptionFailedNotification
+        var signal = new EncryptionSignal
         {
             OperationId = "op-3",
-            Error = "P-256 key not available for recipient",
-            FailedRecipient = "wallet-recipient-fail",
-            Step = 2
+            PercentComplete = 30,
+            Status = "failed"
         };
 
         // Act
-        await _service.NotifyEncryptionFailedAsync(walletAddress, notification);
+        await _service.NotifyEncryptionFailedAsync(walletAddress, signal);
 
         // Assert — correct group
         _hubClients.Verify(c => c.Group("wallet:wallet-test-003"), Times.Once);
 
-        // Assert — payload includes error details
+        // Assert — payload includes failed status
         _clientProxy.Verify(c => c.SendCoreAsync(
             "EncryptionFailed",
             It.Is<object?[]>(args => args.Length == 1 && args[0] != null),
@@ -139,11 +135,10 @@ public class EncryptionNotificationTests
 
         // Verify captured payload shape
         var sent = _sentMessages.Single(m => m.Method == "EncryptionFailed");
-        var payload = sent.Args[0].Should().BeOfType<EncryptionFailedNotification>().Subject;
+        var payload = sent.Args[0].Should().BeOfType<EncryptionSignal>().Subject;
         payload.OperationId.Should().Be("op-3");
-        payload.Error.Should().Be("P-256 key not available for recipient");
-        payload.FailedRecipient.Should().Be("wallet-recipient-fail");
-        payload.Step.Should().Be(2);
+        payload.Status.Should().Be("failed");
+        payload.PercentComplete.Should().Be(30);
     }
 
     [Fact]
@@ -152,22 +147,20 @@ public class EncryptionNotificationTests
         // Arrange & Act — send all 4 steps
         var steps = new[]
         {
-            (step: 1, name: "Resolving recipient keys", pct: 10),
-            (step: 2, name: "Encrypting payloads", pct: 30),
-            (step: 3, name: "Building transaction", pct: 60),
-            (step: 4, name: "Signing and submitting", pct: 80)
+            (pct: 10, status: "encrypting"),
+            (pct: 30, status: "encrypting"),
+            (pct: 60, status: "encrypting"),
+            (pct: 80, status: "encrypting")
         };
 
-        foreach (var (step, name, pct) in steps)
+        foreach (var (pct, status) in steps)
         {
             await _service.NotifyEncryptionProgressAsync("wallet-all-steps",
-                new EncryptionProgressNotification
+                new EncryptionSignal
                 {
                     OperationId = "op-steps",
-                    Step = step,
-                    StepName = name,
-                    TotalSteps = 4,
-                    PercentComplete = pct
+                    PercentComplete = pct,
+                    Status = status
                 });
         }
 
@@ -179,97 +172,5 @@ public class EncryptionNotificationTests
             "EncryptionProgress",
             It.IsAny<object?[]>(),
             It.IsAny<CancellationToken>()), Times.Exactly(4));
-    }
-
-    [Fact]
-    public async Task NotifyRecipientProgressAsync_SendsToCorrectWalletGroup()
-    {
-        // Arrange
-        var walletAddress = "wallet-recipient-test-001";
-        var notification = new RecipientEncryptionNotification
-        {
-            OperationId = "op-rp-1",
-            RecipientName = "Alice Johnson",
-            RecipientIndex = 1,
-            TotalRecipients = 3,
-            DisclosedFieldsSummary = ["/name", "/email"],
-            Status = "secured",
-            PipelineStep = 2
-        };
-
-        // Act
-        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
-
-        // Assert — correct group name
-        _hubClients.Verify(c => c.Group("wallet:wallet-recipient-test-001"), Times.Once);
-
-        // Assert — correct event name
-        _clientProxy.Verify(c => c.SendCoreAsync(
-            "RecipientEncryptionProgress",
-            It.Is<object?[]>(args => args.Length == 1 && args[0] != null),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task NotifyRecipientProgressAsync_PayloadContainsAllRequiredFields()
-    {
-        // Arrange
-        var walletAddress = "wallet-rp-fields";
-        var notification = new RecipientEncryptionNotification
-        {
-            OperationId = "op-rp-fields",
-            RecipientName = "Bob Smith",
-            RecipientIndex = 2,
-            TotalRecipients = 5,
-            DisclosedFieldsSummary = ["/name", "/amount", "/date"],
-            Status = "secured",
-            PipelineStep = 2,
-            ErrorMessage = null
-        };
-
-        // Act
-        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
-
-        // Assert — verify captured payload contains all required fields
-        var sent = _sentMessages.Single(m => m.Method == "RecipientEncryptionProgress");
-        var payload = sent.Args[0].Should().BeOfType<RecipientEncryptionNotification>().Subject;
-
-        payload.OperationId.Should().Be("op-rp-fields");
-        payload.RecipientName.Should().Be("Bob Smith");
-        payload.RecipientIndex.Should().Be(2);
-        payload.TotalRecipients.Should().Be(5);
-        payload.DisclosedFieldsSummary.Should().BeEquivalentTo(["/name", "/amount", "/date"]);
-        payload.Status.Should().Be("secured");
-        payload.PipelineStep.Should().Be(2);
-        payload.ErrorMessage.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task NotifyRecipientProgressAsync_FailedRecipient_IncludesErrorMessage()
-    {
-        // Arrange
-        var walletAddress = "wallet-rp-fail";
-        var notification = new RecipientEncryptionNotification
-        {
-            OperationId = "op-rp-fail",
-            RecipientName = "Carol Fail",
-            RecipientIndex = 3,
-            TotalRecipients = 3,
-            DisclosedFieldsSummary = ["/ssn"],
-            Status = "failed",
-            PipelineStep = 2,
-            ErrorMessage = "Public key invalid for encryption"
-        };
-
-        // Act
-        await _service.NotifyRecipientProgressAsync(walletAddress, notification);
-
-        // Assert
-        var sent = _sentMessages.Single(m => m.Method == "RecipientEncryptionProgress");
-        var payload = sent.Args[0].Should().BeOfType<RecipientEncryptionNotification>().Subject;
-
-        payload.Status.Should().Be("failed");
-        payload.ErrorMessage.Should().Be("Public key invalid for encryption");
-        payload.RecipientName.Should().Be("Carol Fail");
     }
 }

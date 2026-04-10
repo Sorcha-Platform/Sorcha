@@ -23,7 +23,8 @@ namespace Sorcha.Blueprint.Service.Tests.Services;
 
 /// <summary>
 /// Integration-style tests verifying that <see cref="EncryptionBackgroundService"/>
-/// emits both step-level AND per-recipient progress events during processing.
+/// stores per-recipient progress in the operation store during processing.
+/// Per-recipient SignalR signals were removed; recipients are now pull-back only.
 /// </summary>
 public class EncryptionBackgroundServiceRecipientTests
 {
@@ -213,7 +214,7 @@ public class EncryptionBackgroundServiceRecipientTests
     }
 
     [Fact]
-    public async Task ProcessWorkItem_WithRecipientProgress_EmitsRecipientProgressForEachRecipient()
+    public async Task ProcessWorkItem_WithRecipientProgress_StoresRecipientsInOperationStore()
     {
         // Arrange
         var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
@@ -224,33 +225,12 @@ public class EncryptionBackgroundServiceRecipientTests
         // Act
         await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
 
-        // Assert — NotifyRecipientProgressAsync called 3 times (once per recipient)
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn =>
-                rn.OperationId == "op-recip-bg" &&
-                rn.RecipientName == "Alice" &&
-                rn.RecipientIndex == 1 &&
-                rn.TotalRecipients == 3 &&
-                rn.Status == "secured" &&
-                rn.PipelineStep == 2),
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn =>
-                rn.RecipientName == "Bob" &&
-                rn.RecipientIndex == 2 &&
-                rn.TotalRecipients == 3),
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn =>
-                rn.RecipientName == "Carol" &&
-                rn.RecipientIndex == 3 &&
-                rn.TotalRecipients == 3),
-            It.IsAny<CancellationToken>()), Times.Once);
+        // Assert — operation store was updated with per-recipient status
+        _operationStore.Verify(s => s.UpdateAsync(It.Is<EncryptionOperation>(op =>
+            op.Recipients.Count == 3 &&
+            op.Recipients.Any(r => r.Name == "Alice") &&
+            op.Recipients.Any(r => r.Name == "Bob") &&
+            op.Recipients.Any(r => r.Name == "Carol"))), Times.AtLeastOnce);
     }
 
     [Fact]
@@ -268,55 +248,27 @@ public class EncryptionBackgroundServiceRecipientTests
         // Assert — step-level NotifyEncryptionProgressAsync still called for all 4 steps
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 1),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 10 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 2),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 30 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 3),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 60 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 4),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 80 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
-
-        // Assert — both recipient-level AND step-level were emitted
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            It.IsAny<string>(),
-            It.IsAny<RecipientEncryptionNotification>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
 
     [Fact]
-    public async Task ProcessWorkItem_RecipientNotification_ContainsDisclosedFieldsSummary()
-    {
-        // Arrange
-        var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
-        var service = CreateService(channel);
-        var workItem = CreateTestWorkItem();
-        SetupSuccessfulPipelineWithRecipientProgress();
-
-        // Act
-        await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
-
-        // Assert — each recipient notification includes the disclosed fields summary
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn =>
-                rn.DisclosedFieldsSummary.Length == 2 &&
-                rn.DisclosedFieldsSummary.Contains("/name") &&
-                rn.DisclosedFieldsSummary.Contains("/email")),
-            It.IsAny<CancellationToken>()), Times.Exactly(3));
-    }
-
-    [Fact]
-    public async Task ProcessWorkItem_EncryptionFails_RecipientProgressStillEmitted()
+    public async Task ProcessWorkItem_EncryptionFails_RecipientStatusStillStored()
     {
         // Arrange — pipeline returns failure with some recipient progress
         var channel = Channel.CreateUnbounded<EncryptionWorkItem>();
@@ -358,24 +310,16 @@ public class EncryptionBackgroundServiceRecipientTests
         // Act
         await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
 
-        // Assert — recipient progress events still emitted even on failure
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn => rn.RecipientName == "Alice" && rn.Status == "secured"),
-            It.IsAny<CancellationToken>()), Times.Once);
+        // Assert — recipient status stored in operation store even on failure
+        _operationStore.Verify(s => s.UpdateAsync(It.Is<EncryptionOperation>(op =>
+            op.Recipients.Count == 2 &&
+            op.Recipients.Any(r => r.Name == "Alice" && r.Status == "secured") &&
+            op.Recipients.Any(r => r.Name == "Bob" && r.Status == "failed"))), Times.AtLeastOnce);
 
-        _notificationService.Verify(n => n.NotifyRecipientProgressAsync(
-            "wallet-sender-001",
-            It.Is<RecipientEncryptionNotification>(rn =>
-                rn.RecipientName == "Bob" &&
-                rn.Status == "failed" &&
-                rn.ErrorMessage == "Invalid key"),
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        // Assert — failure notification also sent
+        // Assert — failure notification also sent via EncryptionSignal
         _notificationService.Verify(n => n.NotifyEncryptionFailedAsync(
             "wallet-sender-001",
-            It.Is<EncryptionFailedNotification>(f => f.Error.Contains("Key wrapping failed")),
+            It.Is<EncryptionSignal>(s => s.Status == "failed"),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }

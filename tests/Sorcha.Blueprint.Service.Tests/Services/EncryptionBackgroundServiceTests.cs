@@ -190,33 +190,34 @@ public class EncryptionBackgroundServiceTests
         // Act
         await service.ProcessWorkItemAsync(workItem, CancellationToken.None);
 
-        // Assert — progress notifications sent for each step
+        // Assert — progress notifications sent for each step (thin EncryptionSignal)
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 1 && p.StepName == "Resolving recipient keys"),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 10 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 2 && p.StepName == "Encrypting payloads"),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 30 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 3 && p.StepName == "Building transaction"),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 60 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         _notificationService.Verify(n => n.NotifyEncryptionProgressAsync(
             "wallet-sender-001",
-            It.Is<EncryptionProgressNotification>(p => p.Step == 4 && p.StepName == "Signing and submitting"),
+            It.Is<EncryptionSignal>(s => s.PercentComplete == 80 && s.Status == "encrypting"),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Assert — completion notification sent
         _notificationService.Verify(n => n.NotifyEncryptionCompleteAsync(
             "wallet-sender-001",
-            It.Is<EncryptionCompleteNotification>(c =>
-                c.OperationId == "op123" &&
-                !string.IsNullOrEmpty(c.TransactionHash)),
+            It.Is<EncryptionSignal>(s =>
+                s.OperationId == "op123" &&
+                s.PercentComplete == 100 &&
+                s.Status == "complete"),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -256,10 +257,9 @@ public class EncryptionBackgroundServiceTests
         // Assert
         _notificationService.Verify(n => n.NotifyEncryptionFailedAsync(
             "wallet-sender-001",
-            It.Is<EncryptionFailedNotification>(f =>
-                f.OperationId == "op123" &&
-                f.Error.Contains("P-256 key error") &&
-                f.FailedRecipient == "wallet-recipient-001"),
+            It.Is<EncryptionSignal>(s =>
+                s.OperationId == "op123" &&
+                s.Status == "failed"),
             It.IsAny<string?>(),
             It.IsAny<CancellationToken>()), Times.Once);
 
