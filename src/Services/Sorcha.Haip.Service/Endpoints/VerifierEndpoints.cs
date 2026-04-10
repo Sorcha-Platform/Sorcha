@@ -40,7 +40,7 @@ public static class VerifierEndpoints
             .WithDescription(
                 "Returns the signed JWT Request Object containing the presentation_definition, " +
                 "nonce, and response_mode. Wallets fetch this via the request_uri from the QR code.")
-            .Produces<string>(StatusCodes.Status200OK, "application/oauth-authz-req+jwt")
+            .Produces<string>(StatusCodes.Status200OK, "application/json") // TODO(098): application/oauth-authz-req+jwt once signed
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status410Gone)
             .AllowAnonymous();
@@ -183,27 +183,17 @@ public static class VerifierEndpoints
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });
 
-        // TODO(098): Wire HaipPresentationVerifier to validate:
-        // 1. Parse SD-JWT VC from vp_token
-        // 2. Verify issuer signature
-        // 3. Validate x5c chain against trust store
-        // 4. Verify KB-JWT against cnf (nonce must match request.Nonce)
-        // 5. Check IETF/W3C status list
-        // 6. Match disclosed claims against presentation_definition
-        // For now, store a placeholder result
+        // Verification pipeline not yet wired — return 501 until HaipPresentationVerifier
+        // connects the full pipeline (x5c chain walk, KB-JWT, status, claim matching).
         logger.LogWarning(
-            "direct_post received for request {RequestId} — full verification pipeline not yet wired",
+            "direct_post received for request {RequestId} — verification pipeline not yet wired",
             requestId);
 
-        var result = new VerificationResult
+        return Results.Json(new
         {
-            IsValid = false,
-            Errors = { "Verification pipeline not yet implemented (spec 098 push 2)" }
-        };
-
-        await store.MarkCompletedAsync(requestId, result, ct);
-
-        return Results.Ok(new { redirect_uri = (string?)null });
+            error = "not_implemented",
+            error_description = "Verification pipeline not yet wired. vp_token was received but not processed."
+        }, statusCode: 501);
     }
 
     private static async Task<IResult> GetVerificationResult(

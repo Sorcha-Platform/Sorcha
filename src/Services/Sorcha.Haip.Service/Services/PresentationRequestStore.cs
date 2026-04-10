@@ -45,19 +45,18 @@ public class PresentationRequestStore
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+        var id = Guid.NewGuid();
         var request = new PresentationRequest
         {
+            Id = id,
             Nonce = nonce,
             ClientId = clientId,
             CredentialType = credentialType,
             RequiredClaims = requiredClaims,
             AcceptedIssuers = acceptedIssuers,
-            ResponseUri = $"{baseUrl}/api/v1/verifier/requests/{Guid.Empty}/direct-post",
+            ResponseUri = $"{baseUrl}/api/v1/verifier/requests/{id}/direct-post",
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_ttlSeconds)
         };
-
-        // Fix response URI with actual ID
-        request.ResponseUri = $"{baseUrl}/api/v1/verifier/requests/{request.Id}/direct-post";
 
         if (_cache != null)
         {
