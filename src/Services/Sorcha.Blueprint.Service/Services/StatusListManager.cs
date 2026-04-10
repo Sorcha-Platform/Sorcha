@@ -34,6 +34,12 @@ public interface IStatusListManager
     /// Gets a status list by its ID.
     /// </summary>
     Task<BitstringStatusList?> GetListAsync(string listId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the raw decompressed bitstring bytes for a given list.
+    /// Both the W3C and IETF envelopes derive from this single source of truth.
+    /// </summary>
+    Task<byte[]?> GetRawBitstringBytesAsync(string listId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -152,6 +158,16 @@ public class StatusListManager : IStatusListManager, IDisposable
     {
         _lists.TryGetValue(listId, out var list);
         return Task.FromResult(list);
+    }
+
+    /// <inheritdoc />
+    public Task<byte[]?> GetRawBitstringBytesAsync(string listId, CancellationToken ct = default)
+    {
+        if (!_lists.TryGetValue(listId, out var list))
+            return Task.FromResult<byte[]?>(null);
+
+        var raw = BitstringStatusList.DecompressBitstring(list.EncodedList);
+        return Task.FromResult<byte[]?>(raw);
     }
 
     /// <inheritdoc />
