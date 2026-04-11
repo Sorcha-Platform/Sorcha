@@ -133,9 +133,12 @@ $secrets = [ordered]@{
         receiverName   = "Receiver"
     }
     "self-build-house" = @{
-        adminEmail    = $platformEmail
-        adminPassword = $platformPassword
-        adminName     = $platformName
+        adminEmail             = $platformEmail
+        adminPassword          = $platformPassword
+        adminName              = $platformName
+        # First-org admin alias (Highland Construction is the bootstrap org, doubles as platform admin)
+        highlandAdminEmail     = $platformEmail
+        highlandAdminPassword  = $platformPassword
     }
     "trade-finance" = @{
         adminEmail    = $platformEmail

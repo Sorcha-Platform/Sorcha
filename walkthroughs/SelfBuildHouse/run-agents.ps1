@@ -54,7 +54,7 @@ $headers = @{ Authorization = "Bearer $($state.adminToken)" }
 
 # Planning instance
 Write-Host "  Creating planning permission instance..."
-$planningInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/" `
+$planningInstance = Invoke-SorchaApi -Method POST -Uri "$blueprintUrl/instances/" `
     -Headers $headers -Body @{
         blueprintId  = $state.planningBlueprintId
         registerId   = $state.planningRegisterId
@@ -65,7 +65,7 @@ Write-Host "  Planning instance: $($planningInstance.id)" -ForegroundColor Cyan
 
 # Building warrant instance
 Write-Host "  Creating building warrant instance..."
-$warrantInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/" `
+$warrantInstance = Invoke-SorchaApi -Method POST -Uri "$blueprintUrl/instances/" `
     -Headers $headers -Body @{
         blueprintId  = $state.warrantBlueprintId
         registerId   = $state.buildingRegisterId
@@ -79,10 +79,20 @@ Write-Host "  Warrant instance: $($warrantInstance.id)" -ForegroundColor Cyan
 [Environment]::SetEnvironmentVariable("ADMIN_PASSWORD", $secrets.adminPassword)
 
 # --- Launch Agents ---
-$agentProject = Join-Path $walkthroughDir ".." ".." "src" "Apps" "Sorcha.Agent" "Sorcha.Agent.csproj"
-if (-not (Test-Path $agentProject)) {
-    Write-Error "Cannot find Sorcha.Agent project."
-    exit 1
+# Prefer the installed `sorcha-agent` global tool (single binary, no per-agent
+# build race). Fall back to `dotnet run --project` only if the tool is missing.
+$agentCommand = (Get-Command sorcha-agent -ErrorAction SilentlyContinue)
+if ($agentCommand) {
+    $useGlobalTool = $true
+    Write-Host "  Using installed sorcha-agent ($($agentCommand.Source))" -ForegroundColor DarkGray
+} else {
+    $useGlobalTool = $false
+    $agentProject = Join-Path $walkthroughDir ".." ".." "src" "Apps" "Sorcha.Agent" "Sorcha.Agent.csproj"
+    if (-not (Test-Path $agentProject)) {
+        Write-Error "sorcha-agent is not installed and Sorcha.Agent.csproj was not found. Install with: dotnet tool install --global Sorcha.Agent"
+        exit 1
+    }
+    Write-Warning "sorcha-agent global tool not found — falling back to 'dotnet run' (slower, parallel build races possible). Install with: dotnet tool install --global Sorcha.Agent"
 }
 
 $actorFiles = @(
@@ -109,10 +119,17 @@ foreach ($file in $actorFiles) {
     }
 
     $logFile = Join-Path $logsDir "$($file -replace '\.json$', '.log')"
-    $args = @("run", "--project", (Resolve-Path $agentProject).Path, "--", "run", "--config", $configPath, "--state", $StatePath)
+
+    if ($useGlobalTool) {
+        $exe = "sorcha-agent"
+        $args = @("run", "--config", $configPath, "--state", $StatePath)
+    } else {
+        $exe = "dotnet"
+        $args = @("run", "--project", (Resolve-Path $agentProject).Path, "--", "run", "--config", $configPath, "--state", $StatePath)
+    }
 
     Write-Host "  Starting $file..."
-    $proc = Start-Process -FilePath "dotnet" -ArgumentList $args `
+    $proc = Start-Process -FilePath $exe -ArgumentList $args `
         -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" `
         -PassThru -NoNewWindow
 

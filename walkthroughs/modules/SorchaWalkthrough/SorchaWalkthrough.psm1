@@ -331,6 +331,11 @@ function Initialize-SorchaEnvironment {
     Write-WtInfo "  Register:  $($env.RegisterUrl)"
     Write-WtInfo "  Wallet:    $($env.WalletUrl)"
 
+    # Cache at module scope so downstream helpers (e.g. New-SorchaRegister's
+    # auto public-org subscription) can find TenantUrl without requiring every
+    # caller to pass it explicitly.
+    $script:LastEnvironment = $env
+
     return $env
 }
 
@@ -1005,7 +1010,13 @@ function New-SorchaRegister {
         [Parameter(Mandatory)][string]$OwnerUserId,
         [Parameter(Mandatory)][string]$OwnerWalletAddress,
         [Parameter(Mandatory)][hashtable]$Headers,
-        [hashtable]$Metadata = @{}
+        [hashtable]$Metadata = @{},
+        # Optional: tenant URL used to auto-subscribe the Sorcha Public Org
+        # (well-known ID 00000000-0000-0000-0000-000000000002). When provided,
+        # the Public Org is subscribed as "Public" immediately after finalize
+        # so consumer-persona and public-discovery flows have access by default.
+        [string]$TenantUrl,
+        [switch]$SkipPublicOrgSubscription
     )
 
     # Phase 1: Initiate
@@ -1082,6 +1093,32 @@ function New-SorchaRegister {
         -Headers $Headers
 
     Write-WtSuccess "Register '$Name' created: $registerId"
+
+    # Auto-subscribe Sorcha Public Org (well-known ID) so consumer-persona
+    # and public-discovery flows can access the register by default.
+    # TenantUrl resolution order: explicit parameter → cached environment.
+    if (-not $SkipPublicOrgSubscription) {
+        $resolvedTenantUrl = if ($TenantUrl) { $TenantUrl } `
+                             elseif ($script:LastEnvironment) { $script:LastEnvironment.TenantUrl } `
+                             else { $null }
+
+        if ($resolvedTenantUrl) {
+            $publicOrgId = "00000000-0000-0000-0000-000000000002"
+            try {
+                $null = New-SorchaRegisterSubscription `
+                    -TenantUrl $resolvedTenantUrl `
+                    -OrganizationId $publicOrgId `
+                    -RegisterId $registerId `
+                    -RegisterName $Name `
+                    -SubscriptionType "Public" `
+                    -Headers $Headers
+            } catch {
+                Write-WtWarn "  Public org auto-subscribe failed for register '$Name': $($_.Exception.Message)"
+            }
+        } else {
+            Write-WtWarn "  Skipping public org subscription for '$Name' — no TenantUrl available (pass -TenantUrl or call Initialize-SorchaEnvironment first)"
+        }
+    }
 
     return @{
         RegisterId           = $registerId

@@ -65,7 +65,7 @@ Write-WtStep "Step 4: Create Registers (2)"
 
 Write-WtInfo "  Creating Highland Planning Register..."
 $planningRegister = New-SorchaRegister `
-    -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl `
+    -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl -TenantUrl $env.TenantUrl `
     -Name "Highland Planning Register" `
     -Description "Planning applications, consultations, and decisions for the Highland Council area" `
     -TenantId $admin.OrganizationId `
@@ -77,7 +77,7 @@ Write-WtSuccess "  Planning Register: $($planningRegister.RegisterId)"
 
 Write-WtInfo "  Creating Highland Building Standards Register..."
 $buildingRegister = New-SorchaRegister `
-    -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl `
+    -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl -TenantUrl $env.TenantUrl `
     -Name "Highland Building Standards Register" `
     -Description "Building warrants, staged inspections, and completion certificates for the Highland Council area" `
     -TenantId $admin.OrganizationId `
@@ -114,7 +114,7 @@ $planningBlueprint = Publish-SorchaBlueprint `
     -WalletMap $wallets `
     -Headers $admin.Headers `
     -IdPrefix "self-build-planning" `
-    -RegisterId $register.RegisterId
+    -RegisterId $planningRegister.RegisterId
 Write-WtSuccess "  Planning Blueprint: $($planningBlueprint.BlueprintId)"
 
 Write-WtInfo "  Publishing Building Warrant blueprint..."
@@ -124,7 +124,7 @@ $warrantBlueprint = Publish-SorchaBlueprint `
     -WalletMap $wallets `
     -Headers $admin.Headers `
     -IdPrefix "self-build-warrant" `
-    -RegisterId $register.RegisterId
+    -RegisterId $buildingRegister.RegisterId
 Write-WtSuccess "  Warrant Blueprint: $($warrantBlueprint.BlueprintId)"
 
 # Save state
