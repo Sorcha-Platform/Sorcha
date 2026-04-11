@@ -8,6 +8,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
+using HaipCredentialMinter = Sorcha.Haip.Service.Services.HaipCredentialMinter;
+using CredentialOfferService = Sorcha.Haip.Service.Services.CredentialOfferService;
 
 namespace Sorcha.Haip.Service.Endpoints;
 
@@ -35,6 +37,9 @@ public static class CredentialEndpoints
     private static async Task<IResult> IssueCredential(
         [FromBody] CredentialRequest request,
         NonceStore nonceStore,
+        HaipCredentialMinter minter,
+        CredentialOfferService offerService,
+        IConfiguration configuration,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -124,17 +129,71 @@ public static class CredentialEndpoints
 
         logger.LogInformation("JWT proof validated, holder key present: {HasHolderKey}", holderJwk.HasValue);
 
-        // SD-JWT VC minting not yet wired — return 501 until HaipCredentialMinter
-        // is connected to Wallet Service (signing), Tenant Service (x5c chain),
-        // and Blueprint Service (status list allocation).
-        logger.LogWarning(
-            "Credential endpoint: JWT proof validated but SD-JWT VC minting not yet implemented. " +
-            "HaipCredentialMinter wiring pending.");
+        // Mint the SD-JWT VC credential
+        // In production, the signing key comes from IHaipIssuerCoKeyService via
+        // the Wallet Service. For now, use an ephemeral key if no config is set.
+        var signingKeyBase64 = configuration.GetValue<string>("Haip:IssuerSigningKey");
+        var signingAlgorithm = configuration.GetValue<string>("Haip:IssuerSigningAlgorithm") ?? "ES256";
 
-        return Results.Json(new
+        byte[] signingKey;
+        if (!string.IsNullOrWhiteSpace(signingKeyBase64))
         {
-            error = "not_implemented",
-            error_description = "SD-JWT VC minting is not yet wired. JWT proof was validated successfully."
-        }, statusCode: 501);
+            signingKey = Convert.FromBase64String(signingKeyBase64);
+        }
+        else
+        {
+            logger.LogWarning("Using ephemeral signing key — set Haip:IssuerSigningKey for production");
+            using var ecdsa = System.Security.Cryptography.ECDsa.Create(
+                System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+            signingKey = ecdsa.ExportECPrivateKey();
+        }
+
+        var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
+            ?? "https://sorcha.example/haip";
+
+        // Default claims if no specific offer is linked
+        // TODO: Correlate the access token back to a specific offer for claim/type lookup
+        var claims = new Dictionary<string, object>
+        {
+            ["type"] = "SorchaCredential"
+        };
+        var disclosablePaths = new List<string>();
+        var credentialType = "SorchaCredential";
+
+        try
+        {
+            var credential = await minter.MintCredentialAsync(
+                issuerDid: issuerUrl,
+                holderJwk: holderJwk ?? default,
+                credentialType: credentialType,
+                claims: claims,
+                disclosablePaths: disclosablePaths,
+                signingKey: signingKey,
+                algorithm: signingAlgorithm,
+                expiresAt: DateTimeOffset.UtcNow.AddYears(1),
+                ct: ct);
+
+            // Generate a fresh c_nonce for the next request
+            var (newNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
+
+            logger.LogInformation("Issued HAIP credential, token length={Length}", credential.Length);
+
+            return Results.Ok(new
+            {
+                format = "vc+sd-jwt",
+                credential,
+                c_nonce = newNonce,
+                c_nonce_expires_in = nonceExpiresIn
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to mint credential");
+            return Results.Json(new
+            {
+                error = "server_error",
+                error_description = "Credential minting failed"
+            }, statusCode: 500);
+        }
     }
 }

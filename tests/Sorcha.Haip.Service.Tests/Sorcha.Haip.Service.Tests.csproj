@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Sorcha.Haip.Service\Sorcha.Haip.Service.csproj" />
+    <ProjectReference Include="..\..\src\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
