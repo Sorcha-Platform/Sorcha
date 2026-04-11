@@ -45,6 +45,8 @@ services:
 
   peer-service:
     image: sorchadev/peer-service:latest
+    ports: !override
+      - "5001:5000"      # gRPC P2P — Caddy on host proxies 50051 → 5001
     environment:
       <<: *jwt-env
       PeerService__NodeId: n1.sorcha.dev

@@ -1,16 +1,24 @@
+# Caddy runs on the HOST, not in Docker. Use localhost:PORT for upstream.
+# API Gateway is mapped to host port 8880 via docker-compose.ports.yml.
+# Peer Service gRPC is mapped to host port 5001 via docker-compose.n1.yml.
+
 n1.sorcha.dev {
-	# Automatic HTTPS via Let's Encrypt
-	# Caddy handles certificate provisioning and renewal
+	reverse_proxy localhost:8880
 
-	# Proxy all traffic to the API Gateway
-	reverse_proxy api-gateway:8080
-
-	# Aspire dashboard on subdomain path
-	handle_path /aspire/* {
-		reverse_proxy aspire-dashboard:18888
+	log {
+		output stdout
+		format console
 	}
+}
 
-	# Logging
+# gRPC Peer Service — TLS termination on port 50051
+# Peers connect via gRPCS (gRPC over TLS) to this port
+n1.sorcha.dev:50051 {
+	reverse_proxy localhost:5001 {
+		transport http {
+			versions h2c
+		}
+	}
 	log {
 		output stdout
 		format console
