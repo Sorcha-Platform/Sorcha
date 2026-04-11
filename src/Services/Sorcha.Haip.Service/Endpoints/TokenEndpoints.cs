@@ -31,7 +31,7 @@ public static class TokenEndpoints
     }
 
     private static async Task<IResult> ExchangeToken(
-        [FromForm] TokenRequest request,
+        HttpContext httpContext,
         PreAuthCodeStore codeStore,
         NonceStore nonceStore,
         AccessTokenStore tokenStore,
@@ -39,19 +39,24 @@ public static class TokenEndpoints
         IConfiguration configuration,
         CancellationToken ct)
     {
+        // Read form-encoded body (OAuth 2.0 §4.1.3)
+        var form = await httpContext.Request.ReadFormAsync(ct);
+        var grantType = form["grant_type"].FirstOrDefault() ?? string.Empty;
+        var preAuthorizedCode = form["pre-authorized_code"].FirstOrDefault() ?? string.Empty;
+
         // Validate grant type
-        if (request.GrantType != "urn:ietf:params:oauth:grant-type:pre-authorized_code")
+        if (grantType != "urn:ietf:params:oauth:grant-type:pre-authorized_code")
         {
             return Results.BadRequest(new { error = "unsupported_grant_type" });
         }
 
-        if (string.IsNullOrWhiteSpace(request.PreAuthorizedCode))
+        if (string.IsNullOrWhiteSpace(preAuthorizedCode))
         {
             return Results.BadRequest(new { error = "invalid_request", error_description = "pre-authorized_code is required" });
         }
 
         // Redeem the pre-authorized code (one-time-use)
-        var offerId = await codeStore.RedeemAsync(request.PreAuthorizedCode, ct);
+        var offerId = await codeStore.RedeemAsync(preAuthorizedCode, ct);
         if (offerId == null)
         {
             return Results.BadRequest(new { error = "invalid_grant", error_description = "Pre-authorized code is invalid, expired, or already redeemed" });

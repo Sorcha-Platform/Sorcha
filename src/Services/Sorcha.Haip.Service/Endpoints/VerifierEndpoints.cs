@@ -54,7 +54,8 @@ public static class VerifierEndpoints
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status410Gone)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .DisableAntiforgery(); // OID4VP direct_post — wallet-to-verifier, no browser CSRF
 
         // Internal — Blueprint Service polls for result
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/result", GetVerificationResult)

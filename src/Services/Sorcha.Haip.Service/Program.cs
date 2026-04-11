@@ -19,6 +19,17 @@ builder.AddRedisClient("redis");
 // Add JWT authentication (for service-to-service calls on internal endpoints)
 builder.AddJwtAuthentication();
 
+// Add authorization with shared policies
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthorizationPolicies.RequireService, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireClaim("client_id"));
+});
+
+// Add anti-forgery (required by .NET 10 for [FromForm] endpoints)
+builder.Services.AddAntiforgery();
+
 // Add rate limiting
 builder.AddRateLimiting();
 
@@ -44,6 +55,7 @@ app.MapSorchaOpenApiUi("Sorcha HAIP Service API");
 // Standard middleware pipeline
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAntiforgery();
 app.UseRateLimiter();
 
 // Map Aspire default endpoints (health, alive)
