@@ -1275,7 +1275,7 @@ docketsGroup.MapPost("/", async (
             logger.LogInformation("Auto-creating system register for genesis docket");
             register = await registerManager.CreateRegisterAsync(
                 Sorcha.Register.Models.Constants.SystemRegisterConstants.SystemRegisterName,
-                advertise: false,
+                advertise: true,
                 isFullReplica: true,
                 registerId: registerId,
                 description: "Sorcha platform system register — root of trust for blueprints and governance.",
