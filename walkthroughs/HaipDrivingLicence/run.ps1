@@ -26,14 +26,14 @@ $walletDir = $state.walletDir
 $agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
 
 # --- Step 1: Authenticate ---
-Write-WtStep 1 "Authenticating as Council admin"
+Write-WtStep "Step 1: Authenticating as Council admin"
 $secrets = Get-SorchaSecrets -WalkthroughName "haip-licence"
 $councilToken = Connect-SorchaUser -BaseUrl $state.baseUrl `
     -Email "council-admin@haip-walkthrough.local" -Password $secrets.DefaultPassword `
     -OrganizationId $state.councilOrgId
 
 # --- Step 2: Create presentation request for identity credential ---
-Write-WtStep 2 "Creating presentation request for VerifiedIdentityCredential"
+Write-WtStep "Step 2: Creating presentation request for VerifiedIdentityCredential"
 
 $presRequestBody = @{
     credentialType = "VerifiedIdentityCredential"
@@ -54,7 +54,7 @@ try {
 }
 
 # --- Step 3: Present identity credential via sorcha-agent ---
-Write-WtStep 3 "Presenting VerifiedIdentityCredential"
+Write-WtStep "Step 3: Presenting VerifiedIdentityCredential"
 Write-WtInfo "Disclosing: givenName, familyName, dateOfBirth"
 
 try {
@@ -75,7 +75,7 @@ try {
 }
 
 # --- Step 4: Create credential offer for driving licence ---
-Write-WtStep 4 "Creating credential offer for DrivingLicenceCredential"
+Write-WtStep "Step 4: Creating credential offer for DrivingLicenceCredential"
 
 $today = (Get-Date).ToString("yyyy-MM-dd")
 $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
@@ -108,7 +108,7 @@ try {
 }
 
 # --- Step 5: Receive driving licence credential ---
-Write-WtStep 5 "Receiving DrivingLicenceCredential"
+Write-WtStep "Step 5: Receiving DrivingLicenceCredential"
 
 try {
     & dotnet run --project $agentProject -- haip receive `
@@ -126,7 +126,7 @@ try {
 }
 
 # --- Step 6: Verify both credentials in wallet ---
-Write-WtStep 6 "Verifying wallet contents"
+Write-WtStep "Step 6: Verifying wallet contents"
 
 $identityCred = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
 $licenceCred = Join-Path $walletDir "credentials/DrivingLicenceCredential.sdjwt"

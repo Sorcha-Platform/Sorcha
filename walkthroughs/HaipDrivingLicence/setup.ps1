@@ -32,7 +32,7 @@ if ((Test-Path $stateFile) -and -not $Force) {
 }
 
 # --- Step 1: Ensure identity attestation is complete ---
-Write-WtStep 1 "Checking for identity credential"
+Write-WtStep "Step 1: Checking for identity credential"
 if (-not (Test-Path $identityState)) {
     Write-WtWarn "HaipIdentityAttestation not run — running it now"
     & (Join-Path $identityDir "setup.ps1") -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
@@ -46,11 +46,11 @@ $secrets = Get-SorchaSecrets -WalkthroughName "haip-licence"
 $env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 # --- Step 2: Connect as system admin ---
-Write-WtStep 2 "Connecting as system admin"
+Write-WtStep "Step 2: Connecting as system admin"
 $adminToken = Connect-SorchaAdmin -BaseUrl $env.BaseUrl -Secrets $secrets
 
 # --- Step 3: Create Council Licensing Authority ---
-Write-WtStep 3 "Creating Council Licensing Authority"
+Write-WtStep "Step 3: Creating Council Licensing Authority"
 $councilOrg = Get-OrCreateOrganization -BaseUrl $env.BaseUrl -Token $adminToken `
     -Name "Council Licensing Authority" `
     -AdminEmail "council-admin@haip-walkthrough.local" `
@@ -60,7 +60,7 @@ $councilOrgId = $councilOrg.id
 Write-WtSuccess "Council org: $councilOrgId"
 
 # --- Step 4: Create Council wallet ---
-Write-WtStep 4 "Creating Council wallet"
+Write-WtStep "Step 4: Creating Council wallet"
 $councilToken = Connect-SorchaUser -BaseUrl $env.BaseUrl `
     -Email "council-admin@haip-walkthrough.local" -Password $secrets.DefaultPassword `
     -OrganizationId $councilOrgId
@@ -71,7 +71,7 @@ $councilWallet = New-SorchaWallet -BaseUrl $env.BaseUrl -Token $councilToken `
 Write-WtSuccess "Council wallet: $($councilWallet.address)"
 
 # --- Step 5: Enrol Council as HAIP issuer ---
-Write-WtStep 5 "Enrolling Council as HAIP issuer"
+Write-WtStep "Step 5: Enrolling Council as HAIP issuer"
 try {
     $enrolResult = Invoke-SorchaApi -BaseUrl $env.BaseUrl -Token $adminToken `
         -Method POST `
@@ -86,7 +86,7 @@ try {
 }
 
 # --- Step 6: Publish driving licence blueprint ---
-Write-WtStep 6 "Publishing driving licence blueprint"
+Write-WtStep "Step 6: Publishing driving licence blueprint"
 $blueprintPath = Join-Path $scriptDir "blueprints/driving-licence.json"
 $blueprint = Get-Content -Path $blueprintPath -Raw | ConvertFrom-Json
 
