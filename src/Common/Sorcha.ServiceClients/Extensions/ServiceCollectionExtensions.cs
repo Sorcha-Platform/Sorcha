@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sorcha.ServiceClients.Grpc;
 using Sorcha.ServiceClients.Http.Extensions;
+using Sorcha.ServiceClients.Haip;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.Register.Service.Grpc;
 using Sorcha.Wallet.Service.Grpc;
@@ -46,6 +47,15 @@ public static class ServiceCollectionExtensions
     {
         // Register all HTTP clients (auth, REST, DID resolvers) from ServiceClients.Http
         services.AddHttpServiceClients(configuration);
+
+        // Feature 097/098: HAIP Service client (credential offers + presentation requests)
+        services.AddHttpClient<IHaipServiceClient, HaipServiceClient>((sp, client) =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var address = config["ServiceClients:HaipService:Address"] ?? "";
+            if (!string.IsNullOrEmpty(address))
+                client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+        });
 
         // Peer Service: HttpClient via factory (avoids socket exhaustion), gRPC channel created internally
         services.AddHttpClient<IPeerServiceClient, PeerServiceClient>((sp, client) =>

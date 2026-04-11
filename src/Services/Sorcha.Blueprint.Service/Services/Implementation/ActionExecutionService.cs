@@ -12,6 +12,7 @@ using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Register.Models;
 using Sorcha.ServiceClients.Validator;
+using Sorcha.ServiceClients.Haip;
 using Sorcha.Blueprint.Engine.Credentials;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Models.Credentials;
@@ -53,6 +54,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IDisclosureGroupBuilder? _disclosureGroupBuilder;
     private readonly Channel<EncryptionWorkItem>? _encryptionChannel;
     private readonly IEncryptionOperationStore? _encryptionOperationStore;
+    private readonly IHaipServiceClient? _haipClient;
     private readonly IActionStore _actionStore;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly bool _credentialStatusEmbeddingEnabled;
@@ -85,7 +87,8 @@ public class ActionExecutionService : IActionExecutionService
         IEncryptionPipelineService? encryptionPipeline = null,
         IDisclosureGroupBuilder? disclosureGroupBuilder = null,
         Channel<EncryptionWorkItem>? encryptionChannel = null,
-        IEncryptionOperationStore? encryptionOperationStore = null)
+        IEncryptionOperationStore? encryptionOperationStore = null,
+        IHaipServiceClient? haipClient = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -106,6 +109,7 @@ public class ActionExecutionService : IActionExecutionService
         _disclosureGroupBuilder = disclosureGroupBuilder;
         _encryptionChannel = encryptionChannel;
         _encryptionOperationStore = encryptionOperationStore;
+        _haipClient = haipClient;
 
         // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
         // ActionExecutionService skips the pre-signing status list allocation and
@@ -526,10 +530,37 @@ public class ActionExecutionService : IActionExecutionService
 
         // 9d. Issue credential if action has issuance configuration
         CredentialIssuanceResult? issuedCredential = null;
+        string? credentialOfferUri = null;
         if (actionDef.CredentialIssuanceConfig != null)
         {
-            issuedCredential = await IssueCredentialFromActionAsync(
-                actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
+            // Feature 097: Route HAIP-path issuance through the HAIP service
+            if (actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
+                && _haipClient != null)
+            {
+                _logger.LogInformation(
+                    "Routing credential issuance to HAIP service for external wallet: type={Type}",
+                    actionDef.CredentialIssuanceConfig.CredentialType);
+
+                var offerResult = await _haipClient.CreateCredentialOfferAsync(
+                    request.SenderWallet,
+                    instance.RegisterId,
+                    actionDef.CredentialIssuanceConfig.CredentialType,
+                    mergedData,
+                    actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
+                    cancellationToken);
+
+                credentialOfferUri = offerResult.CredentialOfferUri;
+
+                _logger.LogInformation(
+                    "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
+                    offerResult.OfferId, offerResult.ExpiresAt);
+            }
+            else
+            {
+                // Internal Sorcha issuance path (existing behaviour)
+                issuedCredential = await IssueCredentialFromActionAsync(
+                    actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
+            }
         }
 
         // 10. Build transaction
