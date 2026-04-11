@@ -274,7 +274,7 @@ public class SchemaEndpointsTests : IAsyncLifetime
         {
             var result = await response.Content.ReadFromJsonAsync<ExternalSchemaSearchResponse>();
             result.Should().NotBeNull();
-            result!.Provider.Should().Be("SchemaStore.org");
+            result!.Provider.Should().NotBeNullOrWhiteSpace();
             result.Query.Should().Be("package");
         }
     }

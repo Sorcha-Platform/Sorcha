@@ -17,7 +17,7 @@ public class RegisterSubscriptionTests
         sub.RegisterId.Should().BeEmpty();
         sub.Mode.Should().Be(ReplicationMode.ForwardOnly);
         sub.SyncState.Should().Be(RegisterSyncState.Subscribing);
-        sub.LastSyncedDocketVersion.Should().Be(0);
+        sub.LastSyncedDocketVersion.Should().Be(-1); // -1 = never synced
         sub.LastSyncedTransactionVersion.Should().Be(0);
         sub.TotalDocketsInChain.Should().Be(0);
         sub.SourcePeerIds.Should().NotBeNull().And.BeEmpty();

@@ -241,7 +241,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/validate", new { loginToken = "", code = "123456" });
 
         // Rate limiter may intercept before handler; accept 400 or 503
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var unauthClient = _factory.CreateClient();
         var response = await unauthClient.PostAsJsonAsync("/api/totp/validate", new { loginToken = "some-token", code = "" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
             new { loginToken = badToken, code = "123456" });
 
         // Rate limiter may intercept before handler; accept 401 or 503
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/validate",
             new { loginToken = fakeToken, code = "123456" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     #endregion
@@ -289,7 +289,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/backup-validate",
             new { loginToken = "", backupCode = "ABCD1234" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/backup-validate",
             new { loginToken = "some-token", backupCode = "" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -311,7 +311,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/backup-validate",
             new { loginToken = badToken, backupCode = "ABCD1234" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
@@ -322,7 +322,7 @@ public class TotpEndpointsTests : IClassFixture<TenantServiceWebApplicationFacto
         var response = await unauthClient.PostAsJsonAsync("/api/totp/backup-validate",
             new { loginToken = fakeToken, backupCode = "ABCD1234" });
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.ServiceUnavailable, HttpStatusCode.TooManyRequests);
     }
 
     #endregion
