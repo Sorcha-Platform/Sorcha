@@ -3,8 +3,8 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # HaipDrivingLicence — Setup
-# Creates a Council Licensing Authority org and publishes the driving licence blueprint.
-# Checks for HaipIdentityAttestation and runs it if missing.
+# Creates a Council Licensing Authority org. Checks for identity credential
+# from HaipIdentityAttestation (runs it inline if missing).
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
@@ -25,14 +25,17 @@ $stateFile = Join-Path $scriptDir "state.json"
 $identityDir = Join-Path (Split-Path -Parent $scriptDir) "HaipIdentityAttestation"
 $identityState = Join-Path $identityDir "state.json"
 
-# Check if already set up
+# Skip if already set up
 if ((Test-Path $stateFile) -and -not $Force) {
-    Write-WtInfo "state.json already exists. Use -Force to re-run setup."
+    Write-WtInfo "state.json exists. Use -Force to re-run."
     return
 }
 
-# --- Step 1: Ensure identity attestation is complete ---
-Write-WtStep "Step 1: Checking for identity credential"
+# ============================================================================
+# Step 1: Ensure identity attestation is complete
+# ============================================================================
+Write-WtStep "Step 1: Check Identity Credential"
+
 if (-not (Test-Path $identityState)) {
     Write-WtWarn "HaipIdentityAttestation not run — running it now"
     & (Join-Path $identityDir "setup.ps1") -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
@@ -40,78 +43,128 @@ if (-not (Test-Path $identityState)) {
 }
 
 $idState = Get-Content -Path $identityState -Raw | ConvertFrom-Json
-Write-WtSuccess "Identity credential available from $identityDir"
+Write-WtSuccess "Identity credential available"
 
 $secrets = Get-SorchaSecrets -WalkthroughName "haip-licence"
-$env = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
+$sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
-# --- Step 2: Connect as system admin ---
-Write-WtStep "Step 2: Connecting as system admin"
-$adminToken = Connect-SorchaAdmin -BaseUrl $env.BaseUrl -Secrets $secrets
+# ============================================================================
+# Step 2: Login as System Admin
+# ============================================================================
+Write-WtStep "Step 2: Login as System Admin"
 
-# --- Step 3: Create Council Licensing Authority ---
-Write-WtStep "Step 3: Creating Council Licensing Authority"
-$councilOrg = Get-OrCreateOrganization -BaseUrl $env.BaseUrl -Token $adminToken `
+$sysAdmin = Connect-SorchaAdmin `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -AdminEmail $secrets.adminEmail `
+    -AdminPassword $secrets.adminPassword
+
+# ============================================================================
+# Step 3: Register Council Admin + Create Org
+# ============================================================================
+Write-WtStep "Step 3: Create Council Licensing Authority"
+
+$publicOrgId = "00000000-0000-0000-0000-000000000002"
+$councilAdminEmail = "council-admin@haip-walkthrough.local"
+$councilAdminPassword = $secrets.DefaultPassword
+
+# Register on public org
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $councilAdminEmail `
+    -Password $councilAdminPassword `
+    -DisplayName "Council Admin" | Out-Null
+
+# Verify email
+$publicUsers = Invoke-SorchaApi -Method GET `
+    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
+$councilUser = $publicUsers.users | Where-Object { $_.email -eq $councilAdminEmail } | Select-Object -First 1
+if ($councilUser) {
+    Confirm-SorchaUserEmail `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -UserId $councilUser.id `
+        -Headers $sysAdmin.Headers
+}
+
+# Create org
+$councilOrg = New-SorchaOrganization `
+    -TenantUrl $sorchaEnv.TenantUrl `
     -Name "Council Licensing Authority" `
-    -AdminEmail "council-admin@haip-walkthrough.local" `
-    -AdminPassword $secrets.DefaultPassword
+    -Subdomain "council-licence" `
+    -AdminEmail $councilAdminEmail `
+    -Headers $sysAdmin.Headers `
+    -Description "Issues driving licences after identity verification"
 
-$councilOrgId = $councilOrg.id
+$councilOrgId = $councilOrg.OrganizationId
 Write-WtSuccess "Council org: $councilOrgId"
 
-# --- Step 4: Create Council wallet ---
-Write-WtStep "Step 4: Creating Council wallet"
-$councilToken = Connect-SorchaUser -BaseUrl $env.BaseUrl `
-    -Email "council-admin@haip-walkthrough.local" -Password $secrets.DefaultPassword `
+# ============================================================================
+# Step 4: Council Admin — Login, Wallet, Participant
+# ============================================================================
+Write-WtStep "Step 4: Council Admin Setup"
+
+$councilSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $councilAdminEmail `
+    -Password $councilAdminPassword `
     -OrganizationId $councilOrgId
 
-$councilWallet = New-SorchaWallet -BaseUrl $env.BaseUrl -Token $councilToken `
-    -Name "Council Licence Issuer" -Algorithm "ES256"
+$councilWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Council Licence Issuer" `
+    -Headers $councilSession.Headers `
+    -FetchPublicKey
 
-Write-WtSuccess "Council wallet: $($councilWallet.address)"
+Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $councilOrgId `
+    -WalletAddress $councilWallet.Address `
+    -DisplayName "Council Admin" `
+    -Headers $councilSession.Headers
 
-# --- Step 5: Enrol Council as HAIP issuer ---
-Write-WtStep "Step 5: Enrolling Council as HAIP issuer"
+Write-WtSuccess "Council wallet: $($councilWallet.Address)"
+
+# ============================================================================
+# Step 5: Enrol Council as HAIP Issuer
+# ============================================================================
+Write-WtStep "Step 5: Enrol Council as HAIP Issuer"
+
+$tenantId = $idState.tenantId  # Reuse tenant from identity walkthrough
+
 try {
-    $enrolResult = Invoke-SorchaApi -BaseUrl $env.BaseUrl -Token $adminToken `
-        -Method POST `
-        -Path "/api/v1/trust/tenants/$($env.TenantId)/orgs/$($councilWallet.address)/enrol" `
+    Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($councilWallet.Address)/enrol" `
+        -Headers $sysAdmin.Headers `
         -Body @{
-            orgPublicKeyBase64 = $councilWallet.publicKey
+            orgPublicKeyBase64 = $councilWallet.PublicKey
             orgDisplayName = "Council Licensing Authority"
         }
     Write-WtSuccess "Council cert enrolled"
-} catch {
-    Write-WtWarn "Enrolment may already exist: $_"
-}
+} catch { Write-WtWarn "Enrolment may already exist" }
 
-# --- Step 6: Publish driving licence blueprint ---
-Write-WtStep "Step 6: Publishing driving licence blueprint"
-$blueprintPath = Join-Path $scriptDir "blueprints/driving-licence.json"
-$blueprint = Get-Content -Path $blueprintPath -Raw | ConvertFrom-Json
-
-# Create a register for the blueprint
-$register = New-SorchaRegister -BaseUrl $env.BaseUrl -Token $councilToken `
-    -Name "Driving Licence Register" -Description "HAIP walkthrough register"
-
-$publishedBlueprint = Publish-SorchaBlueprint -BaseUrl $env.BaseUrl -Token $councilToken `
-    -Blueprint $blueprint -RegisterId $register.id
-
-Write-WtSuccess "Blueprint published: $($publishedBlueprint.id)"
-
-# --- Save state ---
+# ============================================================================
+# Save State
+# ============================================================================
 $state = @{
-    tenantId = $env.TenantId
+    tenantUrl    = $sorchaEnv.TenantUrl
+    blueprintUrl = $sorchaEnv.BlueprintUrl
+    walletUrl    = $sorchaEnv.WalletUrl
+    gatewayUrl   = $sorchaEnv.GatewayUrl
+    tenantId     = $tenantId
     councilOrgId = $councilOrgId
-    councilOrgName = "Council Licensing Authority"
-    councilWalletAddress = $councilWallet.address
-    registerId = $register.id
-    blueprintId = $publishedBlueprint.id
+    councilWalletAddress = $councilWallet.Address
     identityStateFile = $identityState
-    citizenEmail = $idState.citizenEmail
-    citizenPassword = $idState.citizenPassword
-    walletDir = $idState.walletDir
-    baseUrl = $env.BaseUrl
+    walletDir    = $idState.walletDir
+    roles = @{
+        councilAdmin = @{
+            email = $councilAdminEmail
+            password = $councilAdminPassword
+            organizationId = $councilOrgId
+            walletAddress = $councilWallet.Address
+        }
+    }
 }
 
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile

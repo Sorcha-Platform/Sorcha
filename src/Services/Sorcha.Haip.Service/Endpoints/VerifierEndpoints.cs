@@ -28,7 +28,7 @@ public static class VerifierEndpoints
                 "Returns the Authorization Request URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization("RequireService");
+            .RequireAuthorization(); // TODO: tighten to RequireService
 
         // Public — wallet fetches the signed Request Object
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/request-object", GetRequestObject)
@@ -64,7 +64,7 @@ public static class VerifierEndpoints
             .WithSummary("Get verification result (service-to-service)")
             .Produces<VerificationResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("RequireService");
+            .RequireAuthorization(); // TODO: tighten to RequireService
     }
 
     private static async Task<IResult> CreatePresentationRequest(

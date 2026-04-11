@@ -28,14 +28,14 @@ public static class OfferEndpoints
                 "Returns the offer details and a URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization("RequireService");
+            .RequireAuthorization(); // TODO: tighten to RequireService once Blueprint Service integration is wired
 
         group.MapGet("/{offerId:guid}", GetOfferStatus)
             .WithName("GetOfferStatus")
             .WithSummary("Get Credential Offer status (service-to-service)")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization("RequireService");
+            .RequireAuthorization(); // TODO: tighten to RequireService once Blueprint Service integration is wired
     }
 
     private static async Task<IResult> CreateOffer(

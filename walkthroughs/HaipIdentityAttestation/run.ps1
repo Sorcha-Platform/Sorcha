@@ -23,21 +23,25 @@ if (-not (Test-Path $stateFile)) { Write-WtFail "No state.json. Run setup.ps1 fi
 $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
 
 $walletDir = Join-Path $scriptDir "wallet"
-$baseUrl = $state.gatewayUrl
 $secrets = Get-SorchaSecrets -WalkthroughName "haip-identity"
 
-# --- Step 1: Authenticate as system admin (for offer creation) ---
-Write-WtStep "Step 1: Authenticating"
+# ============================================================================
+# Step 1: Authenticate as system admin (offer creation needs service-level access)
+# ============================================================================
+Write-WtStep "Step 1: Authenticate"
+
 $sorchaEnv = Initialize-SorchaEnvironment -Profile gateway -SkipHealthCheck
 $sysAdmin = Connect-SorchaAdmin `
     -TenantUrl $sorchaEnv.TenantUrl `
     -AdminEmail $secrets.adminEmail `
     -AdminPassword $secrets.adminPassword
 
-$adminToken = $sysAdmin.Token
+Write-WtSuccess "Authenticated as admin"
 
-# --- Step 2: Create credential offer ---
-Write-WtStep "Step 2: Creating credential offer for VerifiedIdentityCredential"
+# ============================================================================
+# Step 2: Create credential offer for VerifiedIdentityCredential
+# ============================================================================
+Write-WtStep "Step 2: Create Credential Offer"
 
 $persona = $state.persona
 $offerBody = @{
@@ -67,8 +71,8 @@ $offerBody = @{
 
 try {
     $offerResult = Invoke-SorchaApi -Method POST `
-        -Uri "$baseUrl/api/v1/offers" `
-        -Headers @{ Authorization = "Bearer $adminToken" } `
+        -Uri "$($state.gatewayUrl)/api/v1/offers" `
+        -Headers $sysAdmin.Headers `
         -Body $offerBody
 
     $offerUri = $offerResult.credentialOfferUri
@@ -79,31 +83,33 @@ try {
     exit 1
 }
 
-# --- Step 3: Run sorcha-agent haip receive ---
-Write-WtStep "Step 3: Invoking sorcha-agent haip receive"
-Write-WtInfo "Offer URI: $($offerUri.Substring(0, [Math]::Min(80, $offerUri.Length)))..."
+# ============================================================================
+# Step 3: Invoke sorcha-agent haip receive
+# ============================================================================
+Write-WtStep "Step 3: sorcha-agent haip receive"
+
+$truncatedUri = $offerUri.Substring(0, [Math]::Min(80, $offerUri.Length))
+Write-WtInfo "Offer URI: $truncatedUri..."
 
 $agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
 
-try {
-    & dotnet run --project $agentProject -- haip receive --offer-uri $offerUri --wallet-dir $walletDir
-    if ($LASTEXITCODE -ne 0) {
-        Write-WtFail "sorcha-agent haip receive failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
-} catch {
-    Write-WtFail "Agent threw an exception: $_"
-    exit 1
+& dotnet run --project $agentProject -- haip receive --offer-uri $offerUri --wallet-dir $walletDir
+if ($LASTEXITCODE -ne 0) {
+    Write-WtFail "sorcha-agent haip receive failed (exit $LASTEXITCODE)"
+    exit $LASTEXITCODE
 }
 
-# --- Step 4: Verify credential stored ---
-Write-WtStep "Step 4: Verifying credential stored"
+# ============================================================================
+# Step 4: Verify credential stored
+# ============================================================================
+Write-WtStep "Step 4: Verify Credential"
+
 $credFile = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
 if (Test-Path $credFile) {
     $credSize = (Get-Item $credFile).Length
     Write-WtSuccess "Credential stored: $credFile ($credSize bytes)"
 } else {
-    Write-WtFail "Credential file not found at $credFile"
+    Write-WtFail "Credential file not found"
     exit 1
 }
 

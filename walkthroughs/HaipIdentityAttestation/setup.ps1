@@ -3,9 +3,11 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # HaipIdentityAttestation — Setup
-# Creates a Government Identity Authority and a citizen user with persona data.
+# Creates a Government Identity Authority org with admin user and wallet.
 # Provisions trust anchor and enrols the Government org as a HAIP issuer.
+# Creates a citizen user with persona data.
 #
+# Follows the same setup pattern as ConstructionPermit.
 # Idempotent — safe to run multiple times.
 
 param(
@@ -27,94 +29,176 @@ $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$Sk
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
-$baseUrl = $sorchaEnv.GatewayUrl
 
-# Check if already set up (idempotent)
+# Well-known public org ID
+$publicOrgId = "00000000-0000-0000-0000-000000000002"
+
+# Skip if already set up
 if ((Test-Path $stateFile) -and -not $Force) {
-    Write-WtInfo "state.json already exists. Use -Force to re-run setup."
-    $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
-    Write-WtSuccess "Setup already complete. Org: $($state.govOrgName)"
+    Write-WtInfo "state.json exists. Use -Force to re-run."
     return
 }
 
-# --- Step 1: Connect as system admin ---
-Write-WtStep "Step 1: Connecting as system admin"
+# ============================================================================
+# Step 1: Login as System Admin
+# ============================================================================
+Write-WtStep "Step 1: Login as System Admin"
 $sysAdmin = Connect-SorchaAdmin `
     -TenantUrl $sorchaEnv.TenantUrl `
     -AdminEmail $secrets.adminEmail `
     -AdminPassword $secrets.adminPassword
 
-$adminToken = $sysAdmin.Token
-$tenantId = $sysAdmin.OrganizationId
-Write-WtSuccess "Connected as admin (org: $tenantId)"
+Write-WtSuccess "Connected (org: $($sysAdmin.OrganizationId))"
 
-# --- Step 2: Create Government Identity Authority org ---
-Write-WtStep "Step 2: Creating Government Identity Authority"
-$govOrg = Get-OrCreateOrganization -BaseUrl $baseUrl -Token $adminToken `
-    -Name "Government Identity Authority" `
-    -AdminEmail "gov-admin@haip-walkthrough.local" `
-    -AdminPassword $secrets.DefaultPassword
+# ============================================================================
+# Step 2: Enable Public Org + Register Users
+# ============================================================================
+Write-WtStep "Step 2: Enable Public Org and Register Users"
 
-$govOrgId = $govOrg.id
-Write-WtSuccess "Government org: $govOrgId"
+Invoke-SorchaApi -Method PUT `
+    -Uri "$($sorchaEnv.TenantUrl)/platform/settings/public-org" `
+    -Body @{ enabled = $true } `
+    -Headers $sysAdmin.Headers
+Write-WtInfo "Public org enabled"
 
-# --- Step 3: Create citizen user ---
-Write-WtStep "Step 3: Creating citizen user"
+# Register Government admin on public org
+$govAdminEmail = "gov-admin@haip-walkthrough.local"
+$govAdminPassword = $secrets.DefaultPassword
+
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $govAdminEmail `
+    -Password $govAdminPassword `
+    -DisplayName "Government Admin" | Out-Null
+Write-WtInfo "gov-admin registered: $govAdminEmail"
+
+# Register citizen on public org
 $citizenEmail = "alice.obrien@haip-walkthrough.local"
 $citizenPassword = $secrets.DefaultPassword
 
-try {
-    Register-SorchaPublicUser -BaseUrl $baseUrl `
-        -Email $citizenEmail -Password $citizenPassword -DisplayName "Alice O'Brien"
-} catch { Write-WtInfo "Citizen user may already exist" }
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $citizenEmail `
+    -Password $citizenPassword `
+    -DisplayName "Alice O'Brien" | Out-Null
+Write-WtInfo "citizen registered: $citizenEmail"
 
-try {
-    Confirm-SorchaUserEmail -BaseUrl $baseUrl -Token $adminToken -Email $citizenEmail
-} catch { Write-WtInfo "Email may already be confirmed" }
+# ============================================================================
+# Step 3: Verify Emails (admin override — no SMTP)
+# ============================================================================
+Write-WtStep "Step 3: Verify User Emails"
 
-Write-WtSuccess "Citizen user: $citizenEmail"
+$publicUsers = Invoke-SorchaApi -Method GET `
+    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
 
-# --- Step 4: Create Government wallet ---
-Write-WtStep "Step 4: Creating Government wallet"
-$govLogin = Connect-SorchaUser -BaseUrl $baseUrl `
-    -Email "gov-admin@haip-walkthrough.local" -Password $secrets.DefaultPassword `
+foreach ($email in @($govAdminEmail, $citizenEmail)) {
+    $user = $publicUsers.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
+    if ($user) {
+        Confirm-SorchaUserEmail `
+            -TenantUrl $sorchaEnv.TenantUrl `
+            -OrganizationId $publicOrgId `
+            -UserId $user.id `
+            -Headers $sysAdmin.Headers
+        Write-WtInfo "  verified: $email"
+    }
+}
+
+# ============================================================================
+# Step 4: Create Government Identity Authority Org
+# ============================================================================
+Write-WtStep "Step 4: Create Government Identity Authority"
+
+$govOrg = New-SorchaOrganization `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Name "Government Identity Authority" `
+    -Subdomain "gov-identity" `
+    -AdminEmail $govAdminEmail `
+    -Headers $sysAdmin.Headers `
+    -Description "Issues verified identity credentials to citizens"
+
+$govOrgId = $govOrg.OrganizationId
+Write-WtSuccess "Government org: $govOrgId"
+
+# ============================================================================
+# Step 5: Per-Role Setup (login, wallet, participant)
+# ============================================================================
+Write-WtStep "Step 5: Government Admin — Login, Wallet, Participant"
+
+$govSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $govAdminEmail `
+    -Password $govAdminPassword `
     -OrganizationId $govOrgId
 
-$govWallet = New-SorchaWallet -BaseUrl $baseUrl -Token $govLogin.Token `
-    -Name "Government Identity Issuer" -Algorithm "ES256"
-Write-WtSuccess "Government wallet: $($govWallet.address)"
+$govWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Government Identity Issuer" `
+    -Headers $govSession.Headers `
+    -FetchPublicKey
 
-# --- Step 5: Provision trust anchor ---
-Write-WtStep "Step 5: Provisioning trust anchor"
+Write-WtSuccess "Government wallet: $($govWallet.Address)"
+
+# Register participant + link wallet
+$govParticipant = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $govOrgId `
+    -WalletAddress $govWallet.Address `
+    -DisplayName "Government Admin" `
+    -Headers $govSession.Headers
+Write-WtInfo "Participant registered"
+
+# ============================================================================
+# Step 6: Provision Trust Anchor + Enrol as HAIP Issuer
+# ============================================================================
+Write-WtStep "Step 6: Trust Anchor + HAIP Issuer Enrolment"
+
+$tenantId = $sysAdmin.OrganizationId
+
 try {
     Invoke-SorchaApi -Method POST `
-        -Uri "$baseUrl/api/v1/trust/tenants/$tenantId/provision" `
-        -Headers @{ Authorization = "Bearer $adminToken" } `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/provision" `
+        -Headers $sysAdmin.Headers `
         -Body @{}
     Write-WtSuccess "Trust anchor provisioned"
 } catch { Write-WtWarn "Trust anchor may already exist" }
 
-# --- Step 6: Enrol Government org as HAIP issuer ---
-Write-WtStep "Step 6: Enrolling Government org as HAIP issuer"
 try {
     Invoke-SorchaApi -Method POST `
-        -Uri "$baseUrl/api/v1/trust/tenants/$tenantId/orgs/$($govWallet.address)/enrol" `
-        -Headers @{ Authorization = "Bearer $adminToken" } `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($govWallet.Address)/enrol" `
+        -Headers $sysAdmin.Headers `
         -Body @{
-            orgPublicKeyBase64 = $govWallet.publicKey
+            orgPublicKeyBase64 = $govWallet.PublicKey
             orgDisplayName = "Government Identity Authority"
         }
     Write-WtSuccess "Org cert enrolled"
 } catch { Write-WtWarn "Enrolment may already exist" }
 
-# --- Save state ---
+# ============================================================================
+# Save State
+# ============================================================================
 $state = @{
-    tenantId = $tenantId
-    govOrgId = $govOrgId
-    govOrgName = "Government Identity Authority"
-    govWalletAddress = $govWallet.address
-    citizenEmail = $citizenEmail
-    citizenPassword = $citizenPassword
+    tenantUrl    = $sorchaEnv.TenantUrl
+    blueprintUrl = $sorchaEnv.BlueprintUrl
+    walletUrl    = $sorchaEnv.WalletUrl
+    gatewayUrl   = $sorchaEnv.GatewayUrl
+    tenantId     = $tenantId
+    govOrgId     = $govOrgId
+    govWalletAddress = $govWallet.Address
+    govWalletPublicKey = $govWallet.PublicKey
+    roles = @{
+        govAdmin = @{
+            email = $govAdminEmail
+            password = $govAdminPassword
+            organizationId = $govOrgId
+            walletAddress = $govWallet.Address
+        }
+        citizen = @{
+            email = $citizenEmail
+            password = $citizenPassword
+        }
+    }
     persona = @{
         givenName = "Alice"
         familyName = "O'Brien"
@@ -129,7 +213,6 @@ $state = @{
             country = "Ireland"
         }
     }
-    gatewayUrl = $baseUrl
 }
 
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile

@@ -25,57 +25,64 @@ $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
 $walletDir = $state.walletDir
 $agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
 
-# --- Step 1: Authenticate ---
-Write-WtStep "Step 1: Authenticating as Council admin"
-$secrets = Get-SorchaSecrets -WalkthroughName "haip-licence"
-$councilToken = Connect-SorchaUser -BaseUrl $state.baseUrl `
-    -Email "council-admin@haip-walkthrough.local" -Password $secrets.DefaultPassword `
-    -OrganizationId $state.councilOrgId
+# ============================================================================
+# Step 1: Authenticate as Council admin
+# ============================================================================
+Write-WtStep "Step 1: Authenticate as Council Admin"
 
-# --- Step 2: Create presentation request for identity credential ---
-Write-WtStep "Step 2: Creating presentation request for VerifiedIdentityCredential"
+$councilSession = Connect-SorchaUser `
+    -TenantUrl $state.tenantUrl `
+    -Email $state.roles.councilAdmin.email `
+    -Password $state.roles.councilAdmin.password `
+    -OrganizationId $state.roles.councilAdmin.organizationId
+
+Write-WtSuccess "Authenticated"
+
+# ============================================================================
+# Step 2: Create presentation request for identity credential
+# ============================================================================
+Write-WtStep "Step 2: Create Presentation Request"
 
 $presRequestBody = @{
     credentialType = "VerifiedIdentityCredential"
     requiredClaims = @("givenName", "familyName", "dateOfBirth")
-    acceptedIssuers = $null
 }
 
 try {
-    $presRequest = Invoke-SorchaApi -BaseUrl $state.baseUrl -Token $councilToken `
-        -Method POST -Path "/api/v1/verifier/requests" -Body $presRequestBody
+    $presRequest = Invoke-SorchaApi -Method POST `
+        -Uri "$($state.gatewayUrl)/api/v1/verifier/requests" `
+        -Headers $councilSession.Headers `
+        -Body $presRequestBody
 
-    $requestUri = $presRequest.requestUri
-    Write-WtSuccess "Presentation request created: $($presRequest.requestId)"
+    Write-WtSuccess "Presentation request: $($presRequest.requestId)"
     if ($ShowJson) { $presRequest | ConvertTo-Json -Depth 5 | Write-Host }
 } catch {
     Write-WtFail "Failed to create presentation request: $_"
     exit 1
 }
 
-# --- Step 3: Present identity credential via sorcha-agent ---
-Write-WtStep "Step 3: Presenting VerifiedIdentityCredential"
+# ============================================================================
+# Step 3: Present identity credential via sorcha-agent
+# ============================================================================
+Write-WtStep "Step 3: sorcha-agent haip present"
 Write-WtInfo "Disclosing: givenName, familyName, dateOfBirth"
 
-try {
-    & dotnet run --project $agentProject -- haip present `
-        --request-uri $requestUri `
-        --credential "VerifiedIdentityCredential" `
-        --disclose "givenName,familyName,dateOfBirth" `
-        --wallet-dir $walletDir
+& dotnet run --project $agentProject -- haip present `
+    --request-uri $presRequest.requestUri `
+    --credential "VerifiedIdentityCredential" `
+    --disclose "givenName,familyName,dateOfBirth" `
+    --wallet-dir $walletDir
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-WtFail "Presentation failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
-    Write-WtSuccess "Identity credential presented and verified"
-} catch {
-    Write-WtFail "Presentation threw an exception: $_"
-    exit 1
+if ($LASTEXITCODE -ne 0) {
+    Write-WtFail "Presentation failed (exit $LASTEXITCODE)"
+    exit $LASTEXITCODE
 }
+Write-WtSuccess "Identity credential presented and verified"
 
-# --- Step 4: Create credential offer for driving licence ---
-Write-WtStep "Step 4: Creating credential offer for DrivingLicenceCredential"
+# ============================================================================
+# Step 4: Create credential offer for driving licence
+# ============================================================================
+Write-WtStep "Step 4: Create Driving Licence Offer"
 
 $today = (Get-Date).ToString("yyyy-MM-dd")
 $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
@@ -97,52 +104,51 @@ $licenceOfferBody = @{
 }
 
 try {
-    $licenceOffer = Invoke-SorchaApi -BaseUrl $state.baseUrl -Token $councilToken `
-        -Method POST -Path "/api/v1/offers" -Body $licenceOfferBody
+    $licenceOffer = Invoke-SorchaApi -Method POST `
+        -Uri "$($state.gatewayUrl)/api/v1/offers" `
+        -Headers $councilSession.Headers `
+        -Body $licenceOfferBody
 
-    Write-WtSuccess "Licence offer created: $($licenceOffer.offerId)"
+    Write-WtSuccess "Licence offer: $($licenceOffer.offerId)"
     if ($ShowJson) { $licenceOffer | ConvertTo-Json -Depth 5 | Write-Host }
 } catch {
     Write-WtFail "Failed to create licence offer: $_"
     exit 1
 }
 
-# --- Step 5: Receive driving licence credential ---
-Write-WtStep "Step 5: Receiving DrivingLicenceCredential"
+# ============================================================================
+# Step 5: Receive driving licence credential
+# ============================================================================
+Write-WtStep "Step 5: sorcha-agent haip receive"
 
-try {
-    & dotnet run --project $agentProject -- haip receive `
-        --offer-uri $licenceOffer.credentialOfferUri `
-        --wallet-dir $walletDir
+& dotnet run --project $agentProject -- haip receive `
+    --offer-uri $licenceOffer.credentialOfferUri `
+    --wallet-dir $walletDir
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-WtFail "Credential receive failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
-    Write-WtSuccess "Driving licence credential received"
-} catch {
-    Write-WtFail "Credential receive threw an exception: $_"
-    exit 1
+if ($LASTEXITCODE -ne 0) {
+    Write-WtFail "Credential receive failed (exit $LASTEXITCODE)"
+    exit $LASTEXITCODE
 }
 
-# --- Step 6: Verify both credentials in wallet ---
-Write-WtStep "Step 6: Verifying wallet contents"
+# ============================================================================
+# Step 6: Verify both credentials in wallet
+# ============================================================================
+Write-WtStep "Step 6: Verify Wallet Contents"
 
 $identityCred = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
 $licenceCred = Join-Path $walletDir "credentials/DrivingLicenceCredential.sdjwt"
 
-$identityOk = Test-Path $identityCred
-$licenceOk = Test-Path $licenceCred
+$allPresent = (Test-Path $identityCred) -and (Test-Path $licenceCred)
 
-if ($identityOk -and $licenceOk) {
-    Write-WtSuccess "Both credentials present in wallet:"
+if ($allPresent) {
+    Write-WtSuccess "Both credentials in wallet:"
     Write-WtInfo "  VerifiedIdentityCredential: $((Get-Item $identityCred).Length) bytes"
     Write-WtInfo "  DrivingLicenceCredential:   $((Get-Item $licenceCred).Length) bytes"
 } else {
-    if (-not $identityOk) { Write-WtFail "Missing: VerifiedIdentityCredential" }
-    if (-not $licenceOk)  { Write-WtFail "Missing: DrivingLicenceCredential" }
+    if (-not (Test-Path $identityCred)) { Write-WtFail "Missing: VerifiedIdentityCredential" }
+    if (-not (Test-Path $licenceCred))  { Write-WtFail "Missing: DrivingLicenceCredential" }
     exit 1
 }
 
 Write-WtBanner "HaipDrivingLicence — Complete"
-Write-WtSuccess "Full HAIP round-trip: present identity → verify → issue licence"
+Write-WtSuccess "Full HAIP round-trip: present identity -> verify -> issue licence"
