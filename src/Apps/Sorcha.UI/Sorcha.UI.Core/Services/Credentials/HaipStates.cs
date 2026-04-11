@@ -13,6 +13,31 @@ public static class HaipOfferStates
     public const string Exchanged = "Exchanged";
     public const string Expired = "Expired";
     public const string Cancelled = "Cancelled";
+
+    /// <summary>Whether the status is terminal (no further transitions expected).</summary>
+    public static bool IsTerminal(string status) =>
+        status is Exchanged or Expired or Cancelled;
+
+    /// <summary>Delay (ms) before auto-closing a dialog after reaching a success state.</summary>
+    public const int SuccessCloseDelayMs = 1500;
+}
+
+/// <summary>
+/// Shared polling constants for HAIP QR card components.
+/// </summary>
+public static class HaipPollingDefaults
+{
+    /// <summary>Interval between poll ticks.</summary>
+    public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>Maximum number of poll ticks before giving up (5 minutes at 2s intervals).</summary>
+    public const int MaxPollTicks = 150;
+
+    /// <summary>Delay (ms) before auto-closing a dialog after reaching an error state.</summary>
+    public const int ErrorCloseDelayMs = 3000;
+
+    /// <summary>Delay (ms) before auto-closing a dialog after successful verification.</summary>
+    public const int VerifiedCloseDelayMs = 2000;
 }
 
 /// <summary>
