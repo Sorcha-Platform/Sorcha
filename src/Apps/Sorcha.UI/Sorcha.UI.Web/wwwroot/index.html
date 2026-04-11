@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sorcha - Collaborate Across Boundaries. Control Every Disclosure.</title>
-    <meta name="description" content="Sorcha is trust infrastructure that lets organizations collaborate securely on shared workflows — with provable actions, privacy by design, tamper-proof records, and quantum-safe cryptography.">
-    <meta name="keywords" content="multi-party collaboration, selective disclosure, verifiable credentials, trust infrastructure, anti-fraud, privacy by design, audit trail, distributed ledger, quantum-safe, eIDAS, .NET">
-    <meta property="og:title" content="Sorcha - Collaborate Across Boundaries. Control Every Disclosure.">
-    <meta property="og:description" content="Trust infrastructure for secure multi-party workflows. Every action provable, every disclosure controlled, every record immutable.">
+    <title>Sorcha — Trust Infrastructure for the Multi-Party World</title>
+    <meta name="description" content="Open-source cryptographic proof that your workflows happened, your data is intact, and every participant can verify it — without trusting the platform. Post-quantum ready, HAIP-compliant, MIT licensed.">
+    <meta name="keywords" content="trust infrastructure, verifiable credentials, SD-JWT VC, HAIP, OpenID4VCI, selective disclosure, post-quantum cryptography, ML-DSA, distributed ledger, multi-party workflows, .NET 10, open source">
+    <meta property="og:title" content="Sorcha — Trust Infrastructure for the Multi-Party World">
+    <meta property="og:description" content="Open-source cryptographic proof that your workflows happened, your data is intact, and every participant can verify it — without trusting the platform.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://www.sorcha.dev">
     <meta name="robots" content="index, follow, max-snippet:-1">
@@ -16,7 +16,7 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Sorcha",
-        "description": "Trust infrastructure for secure, multi-party collaboration. Provable actions, selective disclosure, tamper-proof records, and quantum-safe cryptography.",
+        "description": "Open-source trust infrastructure for multi-party workflows. Cryptographic proof, selective disclosure, post-quantum signatures, and HAIP-compliant credential issuance.",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Cross-platform",
         "license": "https://opensource.org/licenses/MIT",
@@ -58,30 +58,26 @@
     <!-- ============================================================ -->
     <section class="hero">
         <div class="hero-content">
-            <div class="hero-badge">Trust Infrastructure for Business</div>
+            <div class="hero-badge">Open-Source Trust Infrastructure</div>
             <h1 class="hero-title">
-                Collaborate Across Boundaries.
-                <span class="hero-highlight">Control Every Disclosure.</span>
+                Trust infrastructure for the
+                <span class="hero-highlight">multi-party world.</span>
             </h1>
             <p class="hero-subtitle">
-                When organisations share sensitive data — purchase orders, patient records,
-                credentials, compliance reports — they rely on trust, email, and hope.
-                Sorcha replaces hope with cryptographic proof.
+                Open-source cryptographic proof that your workflows happened,
+                your data is intact, and every participant can verify it
+                — without trusting the platform.
             </p>
             <div class="hero-actions">
-                <a href="/auth/login" class="btn btn-primary btn-lg">
-                    Start Building
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <a href="https://github.com/Sorcha-Platform" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    View on GitHub
                 </a>
-                <a href="#why" class="btn btn-outline btn-lg">See Why It Matters</a>
+                <a href="#how" class="btn btn-outline btn-lg">Read the Architecture</a>
             </div>
             <div class="hero-stats">
                 <div class="stat-item">
-                    <span class="stat-value">7+</span>
-                    <span class="stat-label">Crypto Algorithms</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value">7</span>
+                    <span class="stat-value">8</span>
                     <span class="stat-label">Microservices</span>
                 </div>
                 <div class="stat-item">
@@ -89,8 +85,12 @@
                     <span class="stat-label">Tests Passing</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-value">8</span>
-                    <span class="stat-label">Open Standards</span>
+                    <span class="stat-value">PQC</span>
+                    <span class="stat-label">Quantum-Safe</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">MIT</span>
+                    <span class="stat-label">Licensed</span>
                 </div>
             </div>
         </div>
@@ -100,38 +100,38 @@
                     <span class="visual-dot"></span>
                     <span class="visual-dot"></span>
                     <span class="visual-dot"></span>
-                    <span class="visual-title">Supply Chain Workflow</span>
+                    <span class="visual-title">HAIP Credential Flow</span>
                 </div>
                 <div class="visual-content">
                     <div class="visual-flow">
                         <div class="flow-node flow-node-start">
                             <span class="flow-icon">1</span>
-                            Submit Order
+                            Issue Credential
                         </div>
                         <div class="flow-arrow"></div>
                         <div class="flow-node flow-node-middle">
                             <span class="flow-icon">2</span>
-                            Verify &amp; Sign
+                            Hold &amp; Present
                         </div>
                         <div class="flow-arrow"></div>
                         <div class="flow-node flow-node-end">
                             <span class="flow-icon">3</span>
-                            Confirm
+                            Verify Proof
                         </div>
                     </div>
                     <div class="visual-disclosure">
-                        <div class="disclosure-label">Selective Disclosure</div>
+                        <div class="disclosure-label">Selective Disclosure (SD-JWT VC)</div>
                         <div class="disclosure-row">
-                            <span class="disclosure-party">Buyer sees:</span>
-                            <span class="disclosure-field visible">Item</span>
-                            <span class="disclosure-field visible">Qty</span>
-                            <span class="disclosure-field hidden">Cost</span>
+                            <span class="disclosure-party">Verifier sees:</span>
+                            <span class="disclosure-field visible">Name</span>
+                            <span class="disclosure-field visible">Licence</span>
+                            <span class="disclosure-field hidden">Address</span>
                         </div>
                         <div class="disclosure-row">
-                            <span class="disclosure-party">Seller sees:</span>
-                            <span class="disclosure-field visible">Item</span>
-                            <span class="disclosure-field hidden">Budget</span>
-                            <span class="disclosure-field visible">Price</span>
+                            <span class="disclosure-party">Bound by:</span>
+                            <span class="disclosure-field visible">cnf</span>
+                            <span class="disclosure-field visible">KB-JWT</span>
+                            <span class="disclosure-field visible">x5c</span>
                         </div>
                     </div>
                 </div>
@@ -393,14 +393,14 @@
             </p>
             <div class="standards-grid">
                 <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">EU Regulation</span></div>
-                    <h3>eIDAS 2.0 Ready</h3>
-                    <p>Issue and verify electronic attestations aligned with the European Digital Identity framework for cross-border recognition.</p>
+                    <div class="standard-header"><span class="standard-badge">HAIP 1.0</span></div>
+                    <h3>OpenID4VCI &amp; OpenID4VP</h3>
+                    <p>Full HAIP-compliant credential issuance and verification. External wallets (GOV.UK Wallet, EUDI Wallet) can receive and present Sorcha-issued credentials via standard protocols.</p>
                 </div>
                 <div class="standard-card">
-                    <div class="standard-header"><span class="standard-badge">IETF RFC 9449</span></div>
-                    <h3>SD-JWT Verifiable Credentials</h3>
-                    <p>Selective Disclosure JWTs allow holders to present only the claims needed — prove you're qualified without revealing your full transcript.</p>
+                    <div class="standard-header"><span class="standard-badge">IETF RFC 9901</span></div>
+                    <h3>SD-JWT VC with Key Binding</h3>
+                    <p>Holder key binding (cnf), Key Binding JWTs, nested selective disclosure via JSON Pointer. Credentials are proof-of-possession tokens, not bearer tokens.</p>
                 </div>
                 <div class="standard-card">
                     <div class="standard-header"><span class="standard-badge">W3C Specification</span></div>
@@ -617,8 +617,8 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     </div>
                     <h3>Verifiable Credentials</h3>
-                    <p class="toolkit-tagline">Issue. Store. Present. Verify.</p>
-                    <p>eIDAS-aligned SD-JWT credentials that gate workflow actions on credential proof. Chain credentials across multiple blueprints for complex multi-step processes.</p>
+                    <p class="toolkit-tagline">Issue. Hold. Present. Verify.</p>
+                    <p>HAIP-compliant SD-JWT VCs with holder key binding (cnf), Key Binding JWTs, nested selective disclosure, and X.509 trust chains. Issue to external wallets via OpenID4VCI. Verify presentations via OpenID4VP direct_post.</p>
                 </div>
                 <div class="toolkit-card">
                     <div class="toolkit-icon">
@@ -706,7 +706,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
                     </div>
                     <h3>Source Code</h3>
-                    <p>39 projects, 30 test projects, 2700+ tests. Browse the full codebase on GitHub.</p>
+                    <p>42 projects, 31 test projects, 2800+ tests. Browse the full codebase on GitHub.</p>
                 </a>
                 <a href="https://github.com/Sorcha-Platform/Sorcha/issues" target="_blank" rel="noopener" class="developer-card">
                     <div class="developer-icon">
@@ -777,11 +777,11 @@
                 </div>
                 <div class="footer-col">
                     <h4>Standards</h4>
-                    <a href="#how">eIDAS 2.0</a>
-                    <a href="#how">SD-JWT VC</a>
-                    <a href="#how">W3C DID</a>
-                    <a href="#how">BIP32/39/44</a>
-                    <a href="#how">CNSA 2.0</a>
+                    <a href="#how">HAIP 1.0</a>
+                    <a href="#how">SD-JWT VC / KB-JWT</a>
+                    <a href="#how">OpenID4VCI / OpenID4VP</a>
+                    <a href="#how">W3C DID / X.509</a>
+                    <a href="#how">ML-DSA / ML-KEM</a>
                 </div>
             </div>
             <div class="footer-bottom">
