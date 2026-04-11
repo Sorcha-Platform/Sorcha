@@ -145,16 +145,57 @@ try {
 } catch { Write-WtWarn "Enrolment may already exist" }
 
 # ============================================================================
+# Step 6: Create Register
+# ============================================================================
+Write-WtStep "Step 6: Create Register"
+
+$register = New-SorchaRegister `
+    -RegisterUrl $sorchaEnv.RegisterUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "HAIP Driving Licence Register" `
+    -Description "Register for HAIP driving licence workflows" `
+    -TenantId $councilOrgId `
+    -OwnerUserId $councilSession.UserId `
+    -OwnerWalletAddress $councilWallet.Address `
+    -Headers $councilSession.Headers `
+    -TenantUrl $sorchaEnv.TenantUrl
+
+Write-WtSuccess "Register: $($register.RegisterId)"
+
+# ============================================================================
+# Step 7: Publish Blueprint
+# ============================================================================
+Write-WtStep "Step 7: Publish Blueprint"
+
+$walletMap = @{
+    "council"   = $councilWallet.Address
+    "applicant" = $councilWallet.Address  # Placeholder — external wallet handles credential delivery
+}
+
+$blueprint = Publish-SorchaBlueprint `
+    -BlueprintUrl $sorchaEnv.BlueprintUrl `
+    -TemplatePath (Join-Path $scriptDir "blueprints/driving-licence.json") `
+    -WalletMap $walletMap `
+    -Headers $councilSession.Headers `
+    -IdPrefix "haip-licence" `
+    -RegisterId $register.RegisterId
+
+Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
+
+# ============================================================================
 # Save State
 # ============================================================================
 $state = @{
     tenantUrl    = $sorchaEnv.TenantUrl
     blueprintUrl = $sorchaEnv.BlueprintUrl
     walletUrl    = $sorchaEnv.WalletUrl
+    registerUrl  = $sorchaEnv.RegisterUrl
     gatewayUrl   = $sorchaEnv.GatewayUrl
     tenantId     = $tenantId
     councilOrgId = $councilOrgId
     councilWalletAddress = $councilWallet.Address
+    registerId   = $register.RegisterId
+    blueprintId  = $blueprint.BlueprintId
     identityStateFile = $identityState
     walletDir    = $idState.walletDir
     roles = @{
