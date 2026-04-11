@@ -103,6 +103,53 @@ public static class CredentialEndpoints
             return Results.BadRequest(new { error = "invalid_proof", error_description = "Malformed JWT proof" });
         }
 
+        // Verify the JWT proof signature using the holder's JWK
+        if (holderJwk == null)
+        {
+            return Results.BadRequest(new { error = "invalid_proof", error_description = "JWT proof header must contain a jwk claim" });
+        }
+
+        try
+        {
+            var jwk = holderJwk.Value;
+            if (jwk.TryGetProperty("kty", out var ktyProp) && ktyProp.GetString() == "EC"
+                && jwk.TryGetProperty("crv", out var crvProp) && crvProp.GetString() == "P-256"
+                && jwk.TryGetProperty("x", out var xProp) && jwk.TryGetProperty("y", out var yProp))
+            {
+                var proofParts2 = request.Proof.Jwt.Split('.');
+                var signingInput = Encoding.ASCII.GetBytes($"{proofParts2[0]}.{proofParts2[1]}");
+                var signature = Base64Url.DecodeFromChars(proofParts2[2]);
+
+                var xBytes = Base64Url.DecodeFromChars(xProp.GetString()!);
+                var yBytes = Base64Url.DecodeFromChars(yProp.GetString()!);
+
+                using var ecdsa = ECDsa.Create(new ECParameters
+                {
+                    Curve = ECCurve.NamedCurves.nistP256,
+                    Q = new ECPoint { X = xBytes, Y = yBytes }
+                });
+
+                if (!ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)
+                    && !ecdsa.VerifyData(signingInput, signature, HashAlgorithmName.SHA256))
+                {
+                    return Results.BadRequest(new { error = "invalid_proof", error_description = "JWT proof signature verification failed" });
+                }
+            }
+            else
+            {
+                return Results.BadRequest(new
+                {
+                    error = "invalid_proof",
+                    error_description = "Only EC P-256 JWKs are supported for proof verification"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "JWT proof signature verification error");
+            return Results.BadRequest(new { error = "invalid_proof", error_description = "JWT proof signature verification failed" });
+        }
+
         // Validate c_nonce binding
         if (!proofPayload.TryGetProperty("nonce", out var nonceElement))
         {
@@ -116,6 +163,29 @@ public static class CredentialEndpoints
             {
                 error = "invalid_proof",
                 error_description = "c_nonce is invalid, expired, or already consumed"
+            });
+        }
+
+        // Validate aud — must match the credential issuer URL (HAIP §7.2.1.2)
+        var expectedAud = configuration.GetValue<string>("Haip:IssuerUrl") ?? "https://sorcha.example/haip";
+        if (proofPayload.TryGetProperty("aud", out var audElement))
+        {
+            var audValue = audElement.GetString();
+            if (!string.Equals(audValue, expectedAud, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "invalid_proof",
+                    error_description = $"JWT proof aud must be '{expectedAud}'"
+                });
+            }
+        }
+        else
+        {
+            return Results.BadRequest(new
+            {
+                error = "invalid_proof",
+                error_description = "JWT proof must contain an aud claim matching the credential issuer URL"
             });
         }
 

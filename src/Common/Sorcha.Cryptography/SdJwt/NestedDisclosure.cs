@@ -149,6 +149,14 @@ public static class NestedDisclosure
     /// Reconstructs disclosed claims from a mix of top-level and nested disclosures,
     /// merging them into a unified claims dictionary.
     /// </summary>
+    /// <remarks>
+    /// WARNING: This method currently places nested disclosures at the top level
+    /// (e.g., "locality" instead of "address.locality"). It does not walk nested
+    /// _sd digests to inject values at the correct depth. This is a known gap
+    /// from PR #226 review item #2. The method is not called from any production
+    /// path — SdJwtService.VerifyTokenAsync uses its own disclosure parsing.
+    /// Fix required before nested selective disclosure is used end-to-end.
+    /// </remarks>
     /// <param name="basePayload">The JWT payload (may contain nested _sd arrays).</param>
     /// <param name="disclosures">Decoded disclosure arrays.</param>
     /// <returns>Merged claims dictionary.</returns>

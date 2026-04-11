@@ -25,6 +25,7 @@ builder.AddRateLimiting();
 // Feature 097: HAIP issuance services
 builder.Services.AddSingleton<PreAuthCodeStore>();
 builder.Services.AddSingleton<NonceStore>();
+builder.Services.AddSingleton<AccessTokenStore>();
 builder.Services.AddSingleton<CredentialOfferService>();
 builder.Services.AddSingleton<Sorcha.Cryptography.SdJwt.SdJwtService>();
 builder.Services.AddSingleton<Sorcha.Cryptography.SdJwt.ISdJwtService>(sp =>
