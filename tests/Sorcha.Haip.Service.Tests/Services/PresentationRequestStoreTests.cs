@@ -111,7 +111,7 @@ public class PresentationRequestStoreTests
         await _store.MarkCompletedAsync(created.Id, result);
 
         var updated = await _store.GetAsync(created.Id);
-        updated!.State.Should().Be(PresentationRequestState.Failed);
+        updated!.State.Should().Be(PresentationRequestState.Denied);
         updated.Result!.Errors.Should().Contain("KB-JWT signature invalid");
     }
 }

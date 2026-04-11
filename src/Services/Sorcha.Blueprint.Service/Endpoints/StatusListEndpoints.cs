@@ -130,6 +130,9 @@ public static class StatusListEndpoints
         var subUrl = $"{ietfBaseUrl}/{listId}";
 
         // Signing key: configurable for production, ephemeral fallback for dev.
+        // The ephemeral key fallback is intentional for pre-release — no startup validation
+        // is needed until the production deployment guide exists. The runtime warning below
+        // is sufficient to flag misconfiguration during development.
         // TODO(095): Wire real signing key from issuer wallet via IHaipIssuerCoKeyService
         var signingKeyBase64 = configuration.GetValue<string>("StatusList:IetfSigningKey");
         var algorithm = configuration.GetValue<string>("StatusList:IetfSigningAlgorithm") ?? "ES256";
