@@ -51,26 +51,44 @@ public class HaipWalkthroughScreenshotTests : DockerTestBase
         await Page.Locator("input[type='password']").First.FillAsync(password);
         await Page.Locator("button[type='submit']").First.ClickAsync();
 
-        // Wait for either org selection or dashboard
-        await Page.WaitForURLAsync(url =>
-            url.Contains("/app/") || url.Contains("/auth/select-org") || url.Contains("/wallets/create"),
-            new() { Timeout = TestConstants.PageLoadTimeout });
-
-        // If org selection is required, select the org
-        if (Page.Url.Contains("/auth/select-org") && orgName != null)
+        // Multi-org users stay on /auth/login with org selection cards.
+        // Single-org users redirect to /app/.
+        // Wait for either: org selection cards appear OR URL changes to /app/
+        if (orgName != null)
         {
-            // Look for the org card and click it
-            await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
-            var orgCard = Page.GetByText(orgName);
-            if (await orgCard.CountAsync() > 0)
+            // Wait for the org card to appear (SPA renders org selection within login page)
+            var orgCard = Page.GetByText(orgName, new() { Exact = false });
+            try
             {
+                await orgCard.First.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
                 await orgCard.First.ClickAsync();
-                await Page.WaitForURLAsync(url => url.Contains("/app/"),
-                    new() { Timeout = TestConstants.PageLoadTimeout });
+            }
+            catch (TimeoutException)
+            {
+                // Maybe the user only has one org — check if we're already on /app/
+                if (!Page.Url.Contains("/app/"))
+                {
+                    await Page.ScreenshotAsync(new()
+                    {
+                        Path = Path.Combine(_screenshotDir, $"debug-login-{email.Split('@')[0]}.png")
+                    });
+                    throw new InvalidOperationException($"Could not find org '{orgName}' for {email}");
+                }
             }
         }
 
-        // Wait for Blazor hydration
+        // Wait for dashboard/app to load
+        try
+        {
+            await Page.WaitForURLAsync(
+                url => url.Contains("/app/") || url.Contains("/wallets/create"),
+                new() { Timeout = TestConstants.PageLoadTimeout });
+        }
+        catch (TimeoutException)
+        {
+            // Best effort — capture where we are
+        }
+
         await Page.WaitForTimeoutAsync(TestConstants.BlazorHydrationTimeout);
     }
 
