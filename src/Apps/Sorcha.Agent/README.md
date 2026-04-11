@@ -78,6 +78,8 @@ The agent will authenticate, connect to the inbox, and begin processing actions 
 |---------|-------------|
 | `sorcha-agent run --config <path>` | Start the autonomous actor loop |
 | `sorcha-agent validate --config <path>` | Pre-flight configuration checks |
+| `sorcha-agent haip receive --offer-uri <uri>` | Receive a credential via OID4VCI pre-authorized code flow |
+| `sorcha-agent haip present --request-uri <uri>` | Present a credential via OID4VP direct_post |
 
 ### Options
 
@@ -87,6 +89,87 @@ The agent will authenticate, connect to the inbox, and begin processing actions 
 | `--state` | Path to state.json for placeholder resolution |
 | `--verbose` | Enable debug-level logging |
 | `--quiet` | Errors only |
+
+## HAIP Wallet Commands
+
+The agent can act as a simulated HAIP wallet for end-to-end testing of OpenID4VCI and OpenID4VP flows. These commands are standalone (they do not use actor JSON files or the autonomous loop) and operate on a local file-based wallet directory.
+
+### Receive a Credential (OpenID4VCI)
+
+```bash
+sorcha-agent haip receive --offer-uri <uri> --wallet-dir ./wallet
+```
+
+Executes the OID4VCI pre-authorized code flow:
+1. Parses the `openid-credential-offer://` URI to extract the offer JSON
+2. Fetches issuer metadata from `/.well-known/openid-credential-issuer`
+3. Exchanges the pre-authorized code for an access token and `c_nonce`
+4. Builds a JWT proof of possession binding the holder key to the nonce
+5. Requests the credential at the credential endpoint
+6. Stores the SD-JWT VC in `<wallet-dir>/credentials/<CredentialType>.sdjwt`
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--offer-uri` | Yes | - | OpenID4VCI Credential Offer URI |
+| `--wallet-dir` | No | `./wallet` | Directory for keys and credentials |
+| `--key-file` | No | `<wallet-dir>/holder-key.pem` | Path to holder key PEM file |
+
+### Present a Credential (OpenID4VP)
+
+```bash
+sorcha-agent haip present --request-uri <uri> --credential VerifiedIdentityCredential --disclose "givenName,familyName,dateOfBirth" --wallet-dir ./wallet
+```
+
+Executes the OID4VP `direct_post` flow:
+1. Loads the specified credential from the wallet
+2. Fetches the authorization request object from the request URI
+3. Builds a selective disclosure presentation with only the specified claims
+4. Signs a KB-JWT (Key Binding JWT) with the holder key, binding nonce and audience
+5. Submits the `vp_token` via `direct_post` to the verifier's response URI
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--request-uri` | Yes | - | OpenID4VP Authorization Request URI |
+| `--credential` | Yes | - | Credential type to present (e.g., `VerifiedIdentityCredential`) |
+| `--disclose` | Yes | - | Comma-separated claim names to disclose |
+| `--wallet-dir` | No | `./wallet` | Directory for keys and credentials |
+
+### Exit Codes (HAIP commands)
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error (invalid URI, missing credential, unexpected failure) |
+| 2 | Authentication error (token exchange failed, request object fetch failed) |
+| 3 | Credential/presentation rejected by server |
+| 4 | Network or metadata error |
+
+### Wallet Directory Structure
+
+The HAIP commands use a flat file-based wallet:
+
+```
+wallet/
+├── holder-key.pem               # ES256 (P-256) private key — auto-generated on first use
+├── holder-key.jwk.json           # Public JWK for reference
+└── credentials/
+    ├── VerifiedIdentityCredential.sdjwt
+    └── DrivingLicenceCredential.sdjwt
+```
+
+### Holder Key
+
+The holder key is an ECDSA P-256 (ES256) key pair used for:
+- **JWT proof of possession** during credential issuance (binds the credential to this key via `cnf`)
+- **KB-JWT signing** during credential presentation (proves the presenter holds the key)
+
+The key is generated on first use and persisted as a PEM file. Subsequent `receive` and `present` invocations reuse the same key. Both walkthroughs in `walkthroughs/HaipIdentityAttestation/` and `walkthroughs/HaipDrivingLicence/` share the same wallet directory and holder key.
+
+### Important Notes
+
+- **IssuerUrl resolution**: The issuer URL embedded in the credential offer must be host-resolvable (typically `http://127.0.0.1` when running against Docker). The agent runs on the host machine and must reach the issuer's metadata, token, and credential endpoints directly.
+- **Issuer JWK in header**: In dev/walkthrough mode, the issuer's public JWK is embedded in the JWS header. Production deployments use `x5c` certificate chains.
+- **No authentication required for HAIP commands**: Unlike the `run` and `validate` commands, the HAIP commands do not authenticate against Sorcha. They interact directly with the OID4VCI/OID4VP endpoints using the pre-authorized code or presentation request URI.
 
 ## Decision Engines
 

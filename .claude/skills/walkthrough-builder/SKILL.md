@@ -259,6 +259,122 @@ sorcha-agent validate --config actor.json --state state.json
 
 Checks: JSON structure, variable resolution, credential connectivity, SignalR reachability.
 
+## HAIP Walkthroughs (External Wallet)
+
+The agent supports HAIP wallet commands for OpenID4VCI/OpenID4VP flows with external wallets:
+
+### Agent HAIP Commands
+
+```bash
+# Receive a credential via OID4VCI pre-authorized code flow
+sorcha-agent haip receive --offer-uri <uri> --wallet-dir ./wallet
+
+# Present a credential via OID4VP direct_post
+sorcha-agent haip present --request-uri <uri> --credential <type> --disclose <claims> --wallet-dir ./wallet
+```
+
+### HAIP Walkthrough Structure
+
+```
+walkthroughs/HaipIdentityAttestation/   # Simple — OID4VCI issuance only
+├── setup.ps1                            # Trust anchor, Government org, citizen user
+├── run.ps1                              # Create offer → agent receives credential
+├── actors/citizen.json                  # Actor def with haip section
+└── wallet/                              # Generated — holder keys + credentials
+
+walkthroughs/HaipDrivingLicence/         # Complex — OID4VP + OID4VCI round-trip
+├── setup.ps1                            # Council org (chains from identity walkthrough)
+├── run.ps1                              # Present identity → receive licence
+├── actors/citizen.json
+└── blueprints/driving-licence.json      # Blueprint with HAIP presentation + issuance
+```
+
+### Key Setup Patterns for HAIP Walkthroughs
+
+**Trust anchor provisioning** — required before HAIP credential issuance:
+```powershell
+# Provision trust anchor (once per tenant)
+Invoke-SorchaApi -Method POST `
+    -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/provision" `
+    -Headers $sysAdmin.Headers -Body @{}
+
+# Enrol org as HAIP issuer
+Invoke-SorchaApi -Method POST `
+    -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($wallet.Address)/enrol" `
+    -Headers $sysAdmin.Headers `
+    -Body @{ orgPublicKeyBase64 = $wallet.PublicKey; orgDisplayName = "Org Name" }
+```
+
+**Credential offer creation** — creates the offer the agent redeems:
+```powershell
+$offerResult = Invoke-SorchaApi -Method POST `
+    -Uri "$($sorchaEnv.GatewayUrl)/api/v1/offers" `
+    -Headers $session.Headers `
+    -Body @{
+        issuerWalletAddress = $walletAddress
+        tenantId = $tenantId
+        credentialType = "VerifiedIdentityCredential"
+        claims = @{ givenName = "Alice"; familyName = "O'Brien" }
+        disclosablePaths = @("givenName", "familyName", "/address/locality")
+    }
+# offerResult.credentialOfferUri is the URI for the agent
+```
+
+**Presentation request creation** — for OID4VP verification:
+```powershell
+$presRequest = Invoke-SorchaApi -Method POST `
+    -Uri "$($sorchaEnv.GatewayUrl)/api/v1/verifier/requests" `
+    -Headers $session.Headers `
+    -Body @{
+        credentialType = "VerifiedIdentityCredential"
+        requiredClaims = @("givenName", "familyName", "dateOfBirth")
+    }
+# presRequest.requestUri is the URI for the agent
+```
+
+### Critical HAIP Configuration Notes
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Agent can't reach issuer metadata | `Haip:IssuerUrl` in docker-compose uses Docker-internal hostname (`api-gateway:8080`) | Change to `http://127.0.0.1` — agent runs on the host, not inside Docker |
+| Trust endpoints return 404 through gateway | No YARP route for `/api/v1/trust/*` | Add `"trust-api"` route to `tenant-cluster` in API Gateway `appsettings.json` |
+| Credential has no claims | Credential endpoint doesn't know which offer was redeemed | AccessTokenStore maps Bearer token → offer ID → claims. Ensure `StoreAsync` is called in token endpoint |
+| Issuer key unresolvable by verifier | No x5c chain or DID resolver configured | Dev mode: issuer JWK is embedded in JWS header. Production: use x5c chains from spec 096 |
+| Offer creation returns 403 | Internal endpoints use `RequireService` policy | Relaxed to `RequireAuthorization()` for walkthrough access. Production should use service principal tokens |
+
+### HAIP Walkthrough Chaining
+
+The DrivingLicence walkthrough chains from IdentityAttestation:
+
+```powershell
+# In HaipDrivingLicence/setup.ps1:
+$identityState = Join-Path $identityDir "state.json"
+if (-not (Test-Path $identityState)) {
+    # Run identity attestation inline
+    & (Join-Path $identityDir "setup.ps1") -Profile $Profile
+    & (Join-Path $identityDir "run.ps1")
+}
+$idState = Get-Content -Path $identityState -Raw | ConvertFrom-Json
+# Reuse: $idState.walletDir, $idState.tenantId, etc.
+```
+
+### Playwright Screenshot Tests
+
+HAIP walkthroughs include Playwright tests that capture UI screenshots for all user paths:
+
+```bash
+dotnet test tests/Sorcha.UI.E2E.Tests/ --filter "Category=HaipScreenshots"
+```
+
+12 tests capturing: admin dashboard, org management, gov admin wallets, council presentations form, citizen credentials, and HAIP metadata endpoints.
+
+**Multi-org login pattern**: The Sorcha UI renders org selection cards within the login page (SPA, URL stays on `/auth/login`). Tests must wait for the org name text to appear as a clickable element, not wait for URL change:
+```csharp
+var orgCard = Page.GetByText(orgName, new() { Exact = false });
+await orgCard.First.WaitForAsync(new() { Timeout = TestConstants.PageLoadTimeout });
+await orgCard.First.ClickAsync();
+```
+
 ## Existing Walkthroughs Reference
 
 | Walkthrough | Actors | Actions | Registers | Key Feature |
@@ -267,6 +383,8 @@ Checks: JSON structure, variable resolution, credential connectivity, SignalR re
 | PayloadTests | 2 | 2 | 1 | File upload preActions, chunked transfer |
 | SelfBuildHouse | 7 | 14 | 2 | Cross-register VCs, credential chains, staged inspections |
 | TradeFinance | 6 | 10 | 2 | Cross-register VCs, dispute loops, 4 orgs |
+| HaipIdentityAttestation | 1 (agent) | N/A | N/A | OID4VCI pre-auth code flow, SD-JWT VC with cnf |
+| HaipDrivingLicence | 1 (agent) | N/A | N/A | OID4VP direct_post + OID4VCI round-trip |
 
 ## Troubleshooting
 
@@ -277,3 +395,7 @@ Checks: JSON structure, variable resolution, credential connectivity, SignalR re
 | Action submission fails 400 | Payload doesn't match schema | Check action name matches blueprint exactly |
 | Credential requirement blocks | VC not yet issued by upstream action | Expected — actor waits until VC exists |
 | Auth fails across registers | Org not subscribed to register | Check setup.ps1 subscriptions |
+| Agent: "No such host" on metadata fetch | IssuerUrl uses Docker hostname | Set `Haip__IssuerUrl=http://127.0.0.1` in docker-compose |
+| Agent: "No matching credential" | Credential type mismatch or wallet dir wrong | Check `--wallet-dir` points to correct location and credential type matches exactly |
+| Walkthrough: secrets not found | Missing entry in passwords.json | Add `haip-identity` / `haip-licence` entries to `walkthroughs/.secrets/passwords.json` |
+| Walkthrough: org subdomain taken | Re-running setup without volume reset | Use `docker compose down -v` for clean slate, or use `-Force` flag |
