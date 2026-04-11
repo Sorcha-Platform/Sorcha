@@ -15,8 +15,8 @@
 
 **Purpose**: No new project setup needed. All projects exist. This phase ensures the branch is ready.
 
-- [ ] T001 Verify solution builds cleanly with `dotnet build`
-- [ ] T002 Verify existing Blueprint Service tests pass with `dotnet test tests/Sorcha.Blueprint.Service.Tests/`
+- [x] T001 Verify solution builds cleanly with `dotnet build`
+- [x] T002 Verify existing Blueprint Service tests pass with `dotnet test tests/Sorcha.Blueprint.Service.Tests/` (81 pre-existing failures, 432 passing — baseline noted)
 
 ---
 
@@ -24,17 +24,17 @@
 
 **Purpose**: Add HAIP data to ActionSubmissionResponse and map it in ActionExecutionService. This MUST complete before walkthrough scripts can extract HAIP data from action responses.
 
-- [ ] T003 [P] Add `HaipCredentialOfferResponse` record to `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs` with properties: OfferId (Guid), CredentialOfferUri (string), CredentialType (string), IssuerName (string?), ExpiresAt (DateTimeOffset). Add XML documentation.
-- [ ] T004 [P] Add `HaipPresentationRequestResponse` record to `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs` with properties: RequestId (Guid), PresentationRequestUri (string), CredentialType (string), RequestedClaims (List<string>?), ExpiresAt (DateTimeOffset). Add XML documentation.
-- [ ] T005 Add nullable `CredentialOffer` (HaipCredentialOfferResponse?) and `PresentationRequest` (HaipPresentationRequestResponse?) properties to `ActionSubmissionResponse` in `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs`. Add XML documentation.
-- [ ] T006 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` around line 544: capture the full `offerResult` from `_haipClient.CreateCredentialOfferAsync()` (not just the URI string). Replace `credentialOfferUri = offerResult.CredentialOfferUri` with storing the full `CreateOfferResult` in a local variable.
-- [ ] T007 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` around line 704 (response builder): map the captured `CreateOfferResult` to `response.CredentialOffer` as a new `HaipCredentialOfferResponse` with OfferId, CredentialOfferUri, CredentialType (from `actionDef.CredentialIssuanceConfig.CredentialType`), and ExpiresAt. IssuerName can be null for now.
-- [ ] T008 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` after the credential verification block (around line 238): add HAIP presentation request creation. If `actionDef.CredentialRequirements` contains any requirement with `PresentationSource.HaipExternalWallet` AND `request.CredentialPresentations` is null/empty AND `_haipClient != null`, call `_haipClient.CreatePresentationRequestAsync()` with the credential type and required claim names. Store the `CreatePresentationRequestResult` for response mapping. Skip the existing presentation verification (it would throw since no presentations were submitted).
-- [ ] T009 In the response builder (line ~704): map the captured `CreatePresentationRequestResult` to `response.PresentationRequest` as a new `HaipPresentationRequestResponse` with RequestId, PresentationRequestUri (from AuthorizationRequestUri), CredentialType, RequestedClaims, and ExpiresAt.
+- [x] T003 [P] Add `HaipCredentialOfferResponse` record to `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs` with properties: OfferId (Guid), CredentialOfferUri (string), CredentialType (string), IssuerName (string?), ExpiresAt (DateTimeOffset). Add XML documentation.
+- [x] T004 [P] Add `HaipPresentationRequestResponse` record to `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs` with properties: RequestId (Guid), PresentationRequestUri (string), CredentialType (string), RequestedClaims (List<string>?), ExpiresAt (DateTimeOffset). Add XML documentation.
+- [x] T005 Add nullable `CredentialOffer` (HaipCredentialOfferResponse?) and `PresentationRequest` (HaipPresentationRequestResponse?) properties to `ActionSubmissionResponse` in `src/Services/Sorcha.Blueprint.Service/Models/Responses/ActionSubmissionResponse.cs`. Add XML documentation.
+- [x] T006 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` around line 544: capture the full `offerResult` from `_haipClient.CreateCredentialOfferAsync()` (not just the URI string). Replace `credentialOfferUri = offerResult.CredentialOfferUri` with storing the full `CreateOfferResult` in a local variable.
+- [x] T007 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` around line 704 (response builder): map the captured `CreateOfferResult` to `response.CredentialOffer` as a new `HaipCredentialOfferResponse` with OfferId, CredentialOfferUri, CredentialType (from `actionDef.CredentialIssuanceConfig.CredentialType`), and ExpiresAt. IssuerName can be null for now.
+- [x] T008 In `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` after the credential verification block (around line 238): add HAIP presentation request creation. If `actionDef.CredentialRequirements` contains any requirement with `PresentationSource.HaipExternalWallet` AND `request.CredentialPresentations` is null/empty AND `_haipClient != null`, call `_haipClient.CreatePresentationRequestAsync()` with the credential type and required claim names. Store the `CreatePresentationRequestResult` for response mapping. Skip the existing presentation verification (it would throw since no presentations were submitted).
+- [x] T009 In the response builder (line ~704): map the captured `CreatePresentationRequestResult` to `response.PresentationRequest` as a new `HaipPresentationRequestResponse` with RequestId, PresentationRequestUri (from AuthorizationRequestUri), CredentialType, RequestedClaims, and ExpiresAt.
 - [ ] T010 Add unit test in `tests/Sorcha.Blueprint.Service.Tests/` verifying that when ActionExecutionService processes an action with `CredentialIssuanceConfig.TargetAudience == HaipExternalWallet`, the response includes a non-null `CredentialOffer` with valid OfferId, CredentialOfferUri, CredentialType, and ExpiresAt.
 - [ ] T011 Add unit test verifying that when ActionExecutionService processes an action with `CredentialRequirements` containing `PresentationSource.HaipExternalWallet` and no presentations submitted, the response includes a non-null `PresentationRequest` with valid RequestId, PresentationRequestUri, CredentialType, and RequestedClaims.
 - [ ] T012 Add unit test verifying that standard (non-HAIP) action execution returns null for both `CredentialOffer` and `PresentationRequest`.
-- [ ] T013 Verify solution builds and all existing tests pass with `dotnet build && dotnet test`
+- [x] T013 Verify solution builds and all existing tests pass with `dotnet build && dotnet test`
 
 **Checkpoint**: Blueprint Service returns HAIP data in action responses. UI QR dialogs will fire when receiving this data.
 

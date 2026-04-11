@@ -76,6 +76,64 @@ public record ActionSubmissionResponse
     /// Timestamp when the transaction was created
     /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// HAIP credential offer details when the action issues a credential to an external wallet.
+    /// Present when the action has a credentialIssuanceConfig with targetAudience HaipExternalWallet.
+    /// </summary>
+    public HaipCredentialOfferResponse? CredentialOffer { get; init; }
+
+    /// <summary>
+    /// HAIP presentation request details when the action requires a credential from an external wallet.
+    /// Present when the action has credentialRequirements with presentationSource HaipExternalWallet.
+    /// </summary>
+    public HaipPresentationRequestResponse? PresentationRequest { get; init; }
+}
+
+/// <summary>
+/// HAIP credential offer details for QR code rendering and status polling.
+/// Returned when a Blueprint action issues a credential to an external HAIP wallet
+/// via the OpenID4VCI pre-authorized code flow.
+/// </summary>
+public record HaipCredentialOfferResponse
+{
+    /// <summary>The unique offer identifier, used for status polling.</summary>
+    public required Guid OfferId { get; init; }
+
+    /// <summary>The openid-credential-offer:// URI to render as a QR code.</summary>
+    public required string CredentialOfferUri { get; init; }
+
+    /// <summary>The type of credential being offered (e.g. VerifiedIdentityCredential).</summary>
+    public required string CredentialType { get; init; }
+
+    /// <summary>Display name of the issuing organisation (null if not available).</summary>
+    public string? IssuerName { get; init; }
+
+    /// <summary>When the credential offer expires.</summary>
+    public required DateTimeOffset ExpiresAt { get; init; }
+}
+
+/// <summary>
+/// HAIP presentation request details for QR code rendering and verification polling.
+/// Returned when a Blueprint action requires a credential presentation from an external
+/// HAIP wallet via the OpenID4VP direct_post flow.
+/// </summary>
+public record HaipPresentationRequestResponse
+{
+    /// <summary>The unique request identifier, used for verification result polling.</summary>
+    public required Guid RequestId { get; init; }
+
+    /// <summary>The openid4vp://authorize URI to render as a QR code.</summary>
+    public required string PresentationRequestUri { get; init; }
+
+    /// <summary>The type of credential being requested (e.g. VerifiedIdentityCredential).</summary>
+    public required string CredentialType { get; init; }
+
+    /// <summary>The list of claims requested for selective disclosure.</summary>
+    public List<string>? RequestedClaims { get; init; }
+
+    /// <summary>When the presentation request expires.</summary>
+    public required DateTimeOffset ExpiresAt { get; init; }
 }
 
 /// <summary>
