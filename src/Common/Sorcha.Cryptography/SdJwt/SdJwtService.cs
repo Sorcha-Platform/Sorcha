@@ -240,7 +240,7 @@ public class SdJwtService : ISdJwtService
                 cnf.ValueKind == JsonValueKind.Object &&
                 cnf.TryGetProperty("jwk", out var jwk))
             {
-                result.CnfJwk = jwk;
+                result.CnfJwk = jwk.Clone();
             }
 
             // Extract non-SD claims
@@ -330,6 +330,12 @@ public class SdJwtService : ISdJwtService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// This overload always builds a KB-JWT. The caller is responsible for not invoking
+    /// this method on legacy credentials that do not contain a <c>cnf</c> claim — a KB-JWT
+    /// appended to such a credential is harmless (verifiers ignore it per FR-006) but adds
+    /// unnecessary bytes and signing overhead.
+    /// </remarks>
     public async Task<SdJwtPresentation> CreatePresentationAsync(
         string rawToken,
         IEnumerable<string> claimsToDisclose,

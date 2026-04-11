@@ -78,6 +78,9 @@ public class CredentialRequest
     [JsonPropertyName("format")]
     public string Format { get; set; } = "vc+sd-jwt";
 
+    [JsonPropertyName("vct")]
+    public string? Vct { get; set; }
+
     [JsonPropertyName("proof")]
     public CredentialRequestProof? Proof { get; set; }
 }

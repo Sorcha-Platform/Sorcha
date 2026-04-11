@@ -47,6 +47,7 @@ public class PresentationRequestStoreTests
         request.CredentialType.Should().Be("LicenseCredential");
         request.RequiredClaims.Should().HaveCount(2);
         request.State.Should().Be(PresentationRequestState.Pending);
+        request.StateToken.Should().Be(request.Id.ToString());
         request.ResponseUri.Should().Contain(request.Id.ToString());
     }
 
@@ -96,7 +97,7 @@ public class PresentationRequestStoreTests
     }
 
     [Fact]
-    public async Task MarkCompletedAsync_FailedResult_SetsFailedState()
+    public async Task MarkCompletedAsync_DeniedResult_SetsDeniedState()
     {
         var created = await _store.CreateAsync(
             "https://test.example/haip", "TestCredential",
@@ -111,7 +112,7 @@ public class PresentationRequestStoreTests
         await _store.MarkCompletedAsync(created.Id, result);
 
         var updated = await _store.GetAsync(created.Id);
-        updated!.State.Should().Be(PresentationRequestState.Failed);
+        updated!.State.Should().Be(PresentationRequestState.Denied);
         updated.Result!.Errors.Should().Contain("KB-JWT signature invalid");
     }
 }

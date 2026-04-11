@@ -21,6 +21,13 @@ public class PresentationRequest
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset ExpiresAt { get; set; }
     public PresentationRequestState State { get; set; } = PresentationRequestState.Pending;
+
+    /// <summary>
+    /// Opaque state token for OID4VP state correlation (CSRF protection).
+    /// Must be set explicitly by the store on creation — not auto-initialized.
+    /// </summary>
+    public string StateToken { get; set; } = string.Empty;
+
     public VerificationResult? Result { get; set; }
 }
 
@@ -30,8 +37,9 @@ public enum PresentationRequestState
     Pending = 0,
     Submitted = 1,
     Verified = 2,
-    Failed = 3,
-    Expired = 4
+    Denied = 3,
+    Expired = 4,
+    Cancelled = 10 // Non-contiguous to avoid shifting Expired's ordinal (existing Redis data safety)
 }
 
 /// <summary>
@@ -42,9 +50,11 @@ public class VerificationResult
     [JsonPropertyName("isValid")]
     public bool IsValid { get; set; }
 
+    // TODO(098-#45): Key by input descriptor ID: Dictionary<string, Dictionary<string, object>>
     [JsonPropertyName("verifiedClaims")]
     public Dictionary<string, object> VerifiedClaims { get; set; } = new();
 
+    // TODO(098-#44): Migrate to structured VerificationError with Kind, Description, InputDescriptorId
     [JsonPropertyName("errors")]
     public List<string> Errors { get; set; } = new();
 

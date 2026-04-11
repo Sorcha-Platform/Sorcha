@@ -11,7 +11,7 @@ namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
 /// Redis-backed store for HAIP presentation requests. Requests have TTL-based
-/// expiry and transition through Pending → Submitted → Verified/Failed states.
+/// expiry and transition through Pending → Submitted → Verified/Denied states.
 /// </summary>
 public class PresentationRequestStore
 {
@@ -56,7 +56,8 @@ public class PresentationRequestStore
             RequiredClaims = requiredClaims,
             AcceptedIssuers = acceptedIssuers,
             ResponseUri = $"{baseUrl}/api/v1/verifier/requests/{id}/direct-post",
-            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_ttlSeconds)
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_ttlSeconds),
+            StateToken = id.ToString()
         };
 
         if (_cache != null)
@@ -115,7 +116,7 @@ public class PresentationRequestStore
             if (json != null)
             {
                 var request = JsonSerializer.Deserialize<PresentationRequest>(json)!;
-                request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Failed;
+                request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Denied;
                 request.Result = result;
                 await _cache.SetStringAsync(key, JsonSerializer.Serialize(request),
                     new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_ttlSeconds) },
@@ -124,7 +125,7 @@ public class PresentationRequestStore
         }
         else if (_memoryStore.TryGetValue(requestId, out var request))
         {
-            request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Failed;
+            request.State = result.IsValid ? PresentationRequestState.Verified : PresentationRequestState.Denied;
             request.Result = result;
         }
     }

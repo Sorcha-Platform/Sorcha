@@ -16,6 +16,7 @@ public class CredentialOfferService
     private readonly PreAuthCodeStore _codeStore;
     private readonly ILogger<CredentialOfferService> _logger;
     private readonly string _issuerUrl;
+    private readonly int _offerLifetimeSeconds;
 
     // In-memory offer store (production would use Redis or a database)
     private readonly ConcurrentDictionary<Guid, CredentialOffer> _offers = new();
@@ -29,6 +30,7 @@ public class CredentialOfferService
         _logger = logger;
         _issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
+        _offerLifetimeSeconds = configuration.GetValue<int>("Haip:OfferLifetimeSeconds", 600);
     }
 
     /// <summary>
@@ -51,7 +53,7 @@ public class CredentialOfferService
             Claims = claims,
             DisclosablePaths = disclosablePaths ?? new(),
             PreAuthorizedCode = string.Empty, // Set below
-            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10)
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_offerLifetimeSeconds)
         };
 
         // Generate and store the pre-authorized code

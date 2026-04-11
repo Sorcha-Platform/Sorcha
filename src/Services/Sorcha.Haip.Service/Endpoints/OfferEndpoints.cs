@@ -26,7 +26,7 @@ public static class OfferEndpoints
             .WithDescription(
                 "Creates a Credential Offer with a pre-authorized code for an external HAIP wallet. " +
                 "Returns the offer details and a URI for QR code rendering.")
-            .Produces<object>(StatusCodes.Status200OK)
+            .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
             .RequireAuthorization("RequireService");
 
@@ -58,7 +58,7 @@ public static class OfferEndpoints
             request.DisclosablePaths,
             ct);
 
-        return Results.Ok(new
+        return Results.Created($"/api/v1/offers/{offer.Id}", new
         {
             offerId = offer.Id,
             credentialOfferUri = offerUri,
