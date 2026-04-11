@@ -236,3 +236,5 @@ tests/Sorcha.Performance.Tests/performance-reports/
 # Generated API specs (export with: npm run postman:export)
 docs/api/*.json
 build/
+walkthroughs/*/wallet/
+walkthroughs/*/state.json
