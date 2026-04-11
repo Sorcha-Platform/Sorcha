@@ -26,6 +26,10 @@ builder.AddRateLimiting();
 builder.Services.AddSingleton<PreAuthCodeStore>();
 builder.Services.AddSingleton<NonceStore>();
 builder.Services.AddSingleton<CredentialOfferService>();
+builder.Services.AddSingleton<Sorcha.Cryptography.SdJwt.SdJwtService>();
+builder.Services.AddSingleton<Sorcha.Cryptography.SdJwt.ISdJwtService>(sp =>
+    sp.GetRequiredService<Sorcha.Cryptography.SdJwt.SdJwtService>());
+builder.Services.AddSingleton<HaipCredentialMinter>();
 
 // Feature 098: HAIP verifier services
 builder.Services.AddSingleton<PresentationRequestStore>();
