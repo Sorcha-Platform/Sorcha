@@ -23,8 +23,8 @@ public class PresentationRequest
     public PresentationRequestState State { get; set; } = PresentationRequestState.Pending;
 
     /// <summary>
-    /// Opaque state token for OID4VP state correlation.
-    /// Defaults to the request ID string on creation.
+    /// Opaque state token for OID4VP state correlation (CSRF protection).
+    /// Must be set explicitly by the store on creation — not auto-initialized.
     /// </summary>
     public string StateToken { get; set; } = string.Empty;
 
@@ -38,8 +38,8 @@ public enum PresentationRequestState
     Submitted = 1,
     Verified = 2,
     Denied = 3,
-    Cancelled = 4, // TODO: wire cancellation endpoint when request timeout is implemented
-    Expired = 5    // Ordinal skips no values — Cancelled (4) added in wave 3
+    Expired = 4,
+    Cancelled = 10 // Non-contiguous to avoid shifting Expired's ordinal (existing Redis data safety)
 }
 
 /// <summary>
