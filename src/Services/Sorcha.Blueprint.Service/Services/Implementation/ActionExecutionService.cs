@@ -217,12 +217,11 @@ public class ActionExecutionService : IActionExecutionService
 
         // 4c. Verify credential presentations against action requirements
         CreatePresentationRequestResult? haipPresentationResult = null;
+        // Resolve HAIP requirement early — reused in response builder (avoids duplicate LINQ)
+        var haipRequirement = actionDef.CredentialRequirements?
+            .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
         if (actionDef.CredentialRequirements?.Any() == true)
         {
-            // Check if any requirement targets an external HAIP wallet
-            var haipRequirement = actionDef.CredentialRequirements
-                .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
-
             var hasSubmittedPresentations = request.CredentialPresentations is { Count: > 0 };
 
             if (haipRequirement != null && !hasSubmittedPresentations && _haipClient != null)
@@ -760,12 +759,9 @@ public class ActionExecutionService : IActionExecutionService
                 {
                     RequestId = haipPresentationResult.RequestId,
                     PresentationRequestUri = haipPresentationResult.AuthorizationRequestUri,
-                    CredentialType = actionDef.CredentialRequirements?
-                        .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet)?.Type
-                        ?? string.Empty,
-                    RequestedClaims = actionDef.CredentialRequirements?
-                        .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet)?
-                        .RequiredClaims?.Select(c => c.ClaimName).ToList(),
+                    CredentialType = haipRequirement?.Type ?? string.Empty,
+                    RequestedClaims = haipRequirement?.RequiredClaims?
+                        .Select(c => c.ClaimName).ToList(),
                     ExpiresAt = haipPresentationResult.ExpiresAt
                 }
                 : null

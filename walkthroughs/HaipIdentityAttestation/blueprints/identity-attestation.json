@@ -91,7 +91,7 @@
         "credentialIssuanceConfig": {
           "credentialType": "VerifiedIdentityCredential",
           "targetAudience": "HaipExternalWallet",
-          "recipientParticipantId": "government-admin",
+          "recipientParticipantId": "citizen",
           "claimMappings": [
             { "claimName": "givenName", "sourceField": "/givenName" },
             { "claimName": "familyName", "sourceField": "/familyName" },
