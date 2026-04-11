@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+
 namespace Sorcha.UI.Core.Services.Credentials;
 
 /// <summary>
@@ -33,5 +35,5 @@ public record HaipVerificationResult(
     Guid RequestId,
     string State,
     bool? IsValid,
-    Dictionary<string, object>? VerifiedClaims,
+    Dictionary<string, JsonElement>? VerifiedClaims,
     List<string>? Errors);
