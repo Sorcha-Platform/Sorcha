@@ -47,6 +47,7 @@ public class PresentationRequestStoreTests
         request.CredentialType.Should().Be("LicenseCredential");
         request.RequiredClaims.Should().HaveCount(2);
         request.State.Should().Be(PresentationRequestState.Pending);
+        request.StateToken.Should().Be(request.Id.ToString());
         request.ResponseUri.Should().Contain(request.Id.ToString());
     }
 
@@ -96,7 +97,7 @@ public class PresentationRequestStoreTests
     }
 
     [Fact]
-    public async Task MarkCompletedAsync_FailedResult_SetsFailedState()
+    public async Task MarkCompletedAsync_DeniedResult_SetsDeniedState()
     {
         var created = await _store.CreateAsync(
             "https://test.example/haip", "TestCredential",

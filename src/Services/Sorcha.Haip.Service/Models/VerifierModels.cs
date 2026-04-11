@@ -38,8 +38,8 @@ public enum PresentationRequestState
     Submitted = 1,
     Verified = 2,
     Denied = 3,
-    Cancelled = 4,
-    Expired = 5
+    Cancelled = 4, // TODO: wire cancellation endpoint when request timeout is implemented
+    Expired = 5    // Ordinal skips no values — Cancelled (4) added in wave 3
 }
 
 /// <summary>
