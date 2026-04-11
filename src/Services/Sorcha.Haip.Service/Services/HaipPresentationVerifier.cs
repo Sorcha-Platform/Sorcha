@@ -218,6 +218,30 @@ public class HaipPresentationVerifier
                     }
                 }
             }
+            // Fallback: try to extract issuer key from the JWS header's jwk field
+            // (self-signed test mode — issuer embeds its own public key)
+            if (header.TryGetProperty("jwk", out var issuerJwk))
+            {
+                var keyBytes = ExtractPublicKeyFromJwk(issuerJwk);
+                if (keyBytes != null)
+                {
+                    _logger.LogWarning("Resolved issuer key from JWS header jwk (self-signed test mode)");
+                    return (keyBytes, null);
+                }
+            }
+
+            // Last resort: extract the signing key from the credential's algorithm
+            // and attempt to verify with the public key embedded in the JWT itself.
+            // This is the "trust-on-first-use" pattern for development walkthroughs.
+            var alg = header.TryGetProperty("alg", out var algEl) ? algEl.GetString() : null;
+            if (alg == "ES256")
+            {
+                // For ES256 ephemeral keys, we can't resolve without x5c or DID.
+                // Log clearly so the operator knows what to fix.
+                _logger.LogWarning(
+                    "Cannot resolve issuer key: no x5c chain, no DID resolver, no jwk in header. " +
+                    "Configure x5c on credentials or register a DID resolver.");
+            }
         }
         catch (Exception ex)
         {

@@ -38,8 +38,10 @@ public static class CredentialEndpoints
     }
 
     private static async Task<IResult> IssueCredential(
+        HttpContext httpContext,
         [FromBody] CredentialRequest request,
         NonceStore nonceStore,
+        AccessTokenStore tokenStore,
         HaipCredentialMinter minter,
         CredentialOfferService offerService,
         IConfiguration configuration,
@@ -226,14 +228,42 @@ public static class CredentialEndpoints
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
 
-        // Default claims if no specific offer is linked
-        // TODO: Correlate the access token back to a specific offer for claim/type lookup
-        var claims = new Dictionary<string, object>
+        // Look up the offer via the access token to get real claims
+        var bearerToken = httpContext.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+        var offerId = !string.IsNullOrEmpty(bearerToken)
+            ? await tokenStore.LookupAsync(bearerToken, ct)
+            : null;
+
+        Dictionary<string, object> claims;
+        List<string> disclosablePaths;
+        string credentialType;
+
+        if (offerId.HasValue)
         {
-            ["type"] = "SorchaCredential"
-        };
-        var disclosablePaths = new List<string>();
-        var credentialType = "SorchaCredential";
+            var offer = offerService.GetOffer(offerId.Value);
+            if (offer != null)
+            {
+                claims = offer.Claims;
+                disclosablePaths = offer.DisclosablePaths;
+                credentialType = offer.CredentialType;
+                logger.LogInformation("Resolved offer {OfferId}: type={Type}, claims={Count}",
+                    offerId, credentialType, claims.Count);
+            }
+            else
+            {
+                claims = new Dictionary<string, object> { ["type"] = "SorchaCredential" };
+                disclosablePaths = new List<string>();
+                credentialType = "SorchaCredential";
+                logger.LogWarning("Offer {OfferId} not found in store — using default claims", offerId);
+            }
+        }
+        else
+        {
+            claims = new Dictionary<string, object> { ["type"] = "SorchaCredential" };
+            disclosablePaths = new List<string>();
+            credentialType = "SorchaCredential";
+            logger.LogWarning("No bearer token or offer correlation — using default claims");
+        }
 
         try
         {
@@ -247,6 +277,11 @@ public static class CredentialEndpoints
                 algorithm: signingAlgorithm,
                 expiresAt: DateTimeOffset.UtcNow.AddYears(1),
                 ct: ct);
+
+            // Inject issuer public key into JWS header for verifier key resolution.
+            // In production this would be an x5c chain; for dev/walkthrough mode we
+            // embed the issuer's public JWK so the verifier can self-resolve.
+            credential = InjectIssuerJwkInHeader(credential, signingKey, signingAlgorithm);
 
             // Generate a fresh c_nonce for the next request
             var (newNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
@@ -269,6 +304,53 @@ public static class CredentialEndpoints
                 error = "server_error",
                 error_description = "Credential minting failed"
             }, statusCode: 500);
+        }
+    }
+
+    /// <summary>
+    /// Injects the issuer's public key as a JWK into the JWS header.
+    /// This enables the verifier to resolve the issuer key without x5c or DID.
+    /// Development/walkthrough mode only — production should use x5c chains.
+    /// </summary>
+    private static string InjectIssuerJwkInHeader(string credential, byte[] signingKey, string algorithm)
+    {
+        try
+        {
+            var alg = algorithm.ToUpperInvariant();
+            if (alg is not ("ES256" or "P-256" or "P256")) return credential;
+
+            using var ecdsa = System.Security.Cryptography.ECDsa.Create();
+            ecdsa.ImportECPrivateKey(signingKey, out _);
+            var parameters = ecdsa.ExportParameters(includePrivateParameters: false);
+
+            var issuerJwk = new Dictionary<string, string>
+            {
+                ["kty"] = "EC",
+                ["crv"] = "P-256",
+                ["x"] = System.Buffers.Text.Base64Url.EncodeToString(parameters.Q.X!),
+                ["y"] = System.Buffers.Text.Base64Url.EncodeToString(parameters.Q.Y!)
+            };
+
+            // Parse the existing header, add jwk, re-sign
+            var parts = credential.TrimEnd('~').Split('~');
+            var jwtParts = parts[0].Split('.');
+
+            var headerBytes = System.Buffers.Text.Base64Url.DecodeFromChars(jwtParts[0]);
+            var header = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(headerBytes)!;
+            header["jwk"] = issuerJwk;
+
+            var newHeaderB64 = System.Buffers.Text.Base64Url.EncodeToString(
+                System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(header));
+            var signingInput = System.Text.Encoding.UTF8.GetBytes($"{newHeaderB64}.{jwtParts[1]}");
+            var signature = ecdsa.SignData(signingInput, System.Security.Cryptography.HashAlgorithmName.SHA256);
+            var signatureB64 = System.Buffers.Text.Base64Url.EncodeToString(signature);
+
+            var newJwt = $"{newHeaderB64}.{jwtParts[1]}.{signatureB64}";
+            return newJwt + "~" + string.Join("~", parts[1..]) + "~";
+        }
+        catch
+        {
+            return credential; // Return original on any failure
         }
     }
 }

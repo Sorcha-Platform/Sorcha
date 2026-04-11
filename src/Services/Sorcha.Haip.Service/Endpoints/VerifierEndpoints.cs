@@ -102,15 +102,58 @@ public static class VerifierEndpoints
         });
     }
 
-    private static IResult GetRequestObject(
-        Guid requestId)
+    private static async Task<IResult> GetRequestObject(
+        Guid requestId,
+        PresentationRequestStore store,
+        IConfiguration configuration,
+        CancellationToken ct)
     {
-        // HAIP requires the Request Object to be a signed JWT (application/oauth-authz-req+jwt).
-        // Serving unsigned JSON would be silently rejected by compliant wallets.
-        // TODO(098): Sign the Request Object with the verifier's key once HaipCredentialMinter lands.
-        return Results.Json(
-            new { error = "Request Object signing is not yet configured. The verifier cannot serve unsigned request objects." },
-            statusCode: StatusCodes.Status503ServiceUnavailable);
+        var request = await store.GetAsync(requestId, ct);
+        if (request == null)
+            return Results.NotFound(new { error = $"Presentation request '{requestId}' not found" });
+
+        if (request.ExpiresAt < DateTimeOffset.UtcNow)
+            return Results.Json(new { error = "Presentation request has expired" }, statusCode: 410);
+
+        // Build the Request Object payload per OpenID4VP
+        // TODO(098): Sign this as a JWT with the verifier's key for production HAIP compliance
+        var requestObject = new Dictionary<string, object>
+        {
+            ["response_type"] = "vp_token",
+            ["response_mode"] = "direct_post",
+            ["response_uri"] = request.ResponseUri,
+            ["client_id"] = request.ClientId,
+            ["nonce"] = request.Nonce,
+            ["state"] = request.Id.ToString(),
+            ["presentation_definition"] = new Dictionary<string, object>
+            {
+                ["id"] = $"pd-{request.Id}",
+                ["input_descriptors"] = new[]
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["id"] = request.CredentialType,
+                        ["format"] = new Dictionary<string, object>
+                        {
+                            ["vc+sd-jwt"] = new Dictionary<string, object>
+                            {
+                                ["alg"] = new[] { "ES256" }
+                            }
+                        },
+                        ["constraints"] = new Dictionary<string, object>
+                        {
+                            ["fields"] = (request.RequiredClaims ?? new List<string>()).Select(c =>
+                                new Dictionary<string, object>
+                                {
+                                    ["path"] = new[] { $"$.{c}" }
+                                }).ToArray()
+                        }
+                    }
+                }
+            }
+        };
+
+        return Results.Json(requestObject);
     }
 
     private static async Task<IResult> HandleDirectPost(
