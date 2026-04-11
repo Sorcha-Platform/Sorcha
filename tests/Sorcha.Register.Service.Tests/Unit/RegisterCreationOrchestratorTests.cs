@@ -10,6 +10,7 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
@@ -131,7 +132,7 @@ public class RegisterCreationOrchestratorTests
         {
             Name = "Test Register",
             Description = "Test Description",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -164,7 +165,7 @@ public class RegisterCreationOrchestratorTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "Multi-Admin Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -210,7 +211,7 @@ public class RegisterCreationOrchestratorTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -244,7 +245,7 @@ public class RegisterCreationOrchestratorTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "Public Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -276,7 +277,7 @@ public class RegisterCreationOrchestratorTests
         var initiateRequest = new InitiateRegisterCreationRequest
         {
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -308,7 +309,7 @@ public class RegisterCreationOrchestratorTests
         {
             Id = initiateResponse.RegisterId,
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             CreatedAt = DateTime.UtcNow
         };
 
@@ -324,12 +325,13 @@ public class RegisterCreationOrchestratorTests
         _mockRegisterManager
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
                 It.IsAny<bool>(),
                 It.IsAny<bool>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(createdRegister);
 
@@ -374,7 +376,7 @@ public class RegisterCreationOrchestratorTests
         var initiateRequest = new InitiateRegisterCreationRequest
         {
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -424,7 +426,7 @@ public class RegisterCreationOrchestratorTests
         var initiateRequest = new InitiateRegisterCreationRequest
         {
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -483,7 +485,7 @@ public class RegisterCreationOrchestratorTests
         var initiateRequest = new InitiateRegisterCreationRequest
         {
             Name = "Test Register",
-            TenantId = "tenant-123",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-001", WalletId = "wallet-001" }
@@ -526,18 +528,19 @@ public class RegisterCreationOrchestratorTests
         _mockRegisterManager
             .Setup(m => m.CreateRegisterAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
                 It.IsAny<bool>(),
                 It.IsAny<bool>(),
-                It.IsAny<string>(),
+                It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sorcha.Register.Models.Register
             {
                 Id = initiateResponse.RegisterId,
                 Name = "Test Register",
-                TenantId = "tenant-123",
+    
                 CreatedAt = DateTime.UtcNow
             });
 

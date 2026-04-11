@@ -106,7 +106,7 @@ public class RegisterCreationPolicyTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "PolicyTest",
-            TenantId = "tenant-1",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-1", WalletId = "wallet-1" }
@@ -138,7 +138,7 @@ public class RegisterCreationPolicyTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "NoPolicyTest",
-            TenantId = "tenant-1",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-1", WalletId = "wallet-1" }
@@ -171,7 +171,7 @@ public class RegisterCreationPolicyTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "DefaultsTest",
-            TenantId = "tenant-1",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-1", WalletId = "wallet-1" }
@@ -220,7 +220,7 @@ public class RegisterCreationPolicyTests
         var request = new InitiateRegisterCreationRequest
         {
             Name = "ConsentModeTest",
-            TenantId = "tenant-1",
+
             Owners = new List<OwnerInfo>
             {
                 new() { UserId = "user-1", WalletId = "wallet-1" }

@@ -58,7 +58,7 @@ public class RegisterEventBridgeServiceTests
         {
             RegisterId = "reg-1",
             Name = "My Register",
-            TenantId = "tenant-42",
+
             CreatedAt = DateTime.UtcNow
         });
 
@@ -71,7 +71,7 @@ public class RegisterEventBridgeServiceTests
         await StartBridgeAndPublishAsync("register:deleted", new RegisterDeletedEvent
         {
             RegisterId = "reg-2",
-            TenantId = "tenant-42",
+
             DeletedAt = DateTime.UtcNow
         });
 
@@ -113,7 +113,7 @@ public class RegisterEventBridgeServiceTests
         await StartBridgeAndPublishAsync("register:status-changed", new RegisterStatusChangedEvent
         {
             RegisterId = "reg-5",
-            TenantId = "tenant-42",
+
             OldStatus = "Offline",
             NewStatus = "Online",
             ChangedAt = DateTime.UtcNow

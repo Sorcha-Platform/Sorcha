@@ -16,6 +16,8 @@ using Sorcha.Register.Service.Services;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
+using Sorcha.ServiceDefaults;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests.Unit;
@@ -97,9 +99,12 @@ public class SystemRegisterBootstrapTests
 
         var serviceProvider = services.BuildServiceProvider();
 
+        var options = Options.Create(new SystemRegisterOptions { BootstrapMode = BootstrapMode.Auto });
+
         return new SystemRegisterBootstrapper(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
-            _mockBootstrapLogger.Object);
+            _mockBootstrapLogger.Object,
+            options);
     }
 
     [Fact]
@@ -113,7 +118,7 @@ public class SystemRegisterBootstrapTests
                 Id = SystemRegisterConstants.SystemRegisterId,
                 Name = SystemRegisterConstants.SystemRegisterName,
                 Height = 2,
-                TenantId = "system"
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
         var transactions = new List<TransactionModel>
@@ -241,7 +246,7 @@ public class SystemRegisterBootstrapTests
                     Id = SystemRegisterConstants.SystemRegisterId,
                     Name = SystemRegisterConstants.SystemRegisterName,
                     Height = 1,
-                    TenantId = "system"
+                    Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
                 };
             });
 
@@ -257,8 +262,7 @@ public class SystemRegisterBootstrapTests
         _mockOrchestrator.Verify(o => o.InitiateAsync(
             It.Is<InitiateRegisterCreationRequest>(r =>
                 r.RegisterId == SystemRegisterConstants.SystemRegisterId &&
-                r.Name == SystemRegisterConstants.SystemRegisterName &&
-                r.TenantId == "system"),
+                r.Name == SystemRegisterConstants.SystemRegisterName),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Finalization was called
@@ -279,7 +283,7 @@ public class SystemRegisterBootstrapTests
                 Id = SystemRegisterConstants.SystemRegisterId,
                 Name = SystemRegisterConstants.SystemRegisterName,
                 Height = 5,
-                TenantId = "system",
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online,
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             });
 

@@ -51,7 +51,7 @@ public class SystemRegisterBlueprintTests
                 Id = SystemRegisterConstants.SystemRegisterId,
                 Name = SystemRegisterConstants.SystemRegisterName,
                 Height = 0,
-                TenantId = "system"
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
         // Default: no transactions
