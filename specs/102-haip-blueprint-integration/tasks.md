@@ -48,11 +48,11 @@
 
 ### Implementation
 
-- [ ] T014 [P] [US1] Create identity attestation blueprint template at `walkthroughs/HaipIdentityAttestation/blueprints/identity-attestation.json`. Single participant `government-admin`. Single starting action "Issue Identity Credential" with schema for givenName, familyName, fullName, dateOfBirth (format: date), email (format: email), address (nested object: street, locality, region, postcode, country). credentialIssuance config: VerifiedIdentityCredential, targetAudience: HaipExternalWallet, disclosable for all fields, route to null (workflow complete).
-- [ ] T015 [US1] Rewrite `walkthroughs/HaipIdentityAttestation/setup.ps1` to add register and blueprint creation. After existing org/user/wallet/participant setup and trust anchor provisioning: call `New-SorchaRegister` to create a register, call `Publish-SorchaBlueprint` with the identity-attestation.json template, save registerId and blueprintId to state.json. Keep all existing setup steps (org creation, user registration, wallet creation, participant linking, trust anchor, HAIP issuer enrolment).
-- [ ] T016 [US1] Rewrite `walkthroughs/HaipIdentityAttestation/run.ps1` to use Blueprint instance flow. Login as gov-admin with org token. Create instance via POST `/instances/` with blueprintId and registerId. Execute the starting action via `Invoke-SorchaAction` with citizen persona data as payload. Extract `credentialOffer.credentialOfferUri` from the action response. Pass the URI to `sorcha-agent haip receive`. Verify credential stored in wallet. Save instanceId to state.json.
-- [ ] T017 [US1] Test: run `pwsh walkthroughs/HaipIdentityAttestation/setup.ps1 -Force` against fresh Docker stack and verify state.json contains registerId and blueprintId
-- [ ] T018 [US1] Test: run `pwsh walkthroughs/HaipIdentityAttestation/run.ps1` and verify credential is exchanged and state.json contains instanceId
+- [x] T014 [P] [US1] Create identity attestation blueprint template at `walkthroughs/HaipIdentityAttestation/blueprints/identity-attestation.json`. Single participant `government-admin`. Single starting action "Issue Identity Credential" with schema for givenName, familyName, fullName, dateOfBirth (format: date), email (format: email), address (nested object: street, locality, region, postcode, country). credentialIssuance config: VerifiedIdentityCredential, targetAudience: HaipExternalWallet, disclosable for all fields, route to null (workflow complete).
+- [x] T015 [US1] Rewrite `walkthroughs/HaipIdentityAttestation/setup.ps1` to add register and blueprint creation. After existing org/user/wallet/participant setup and trust anchor provisioning: call `New-SorchaRegister` to create a register, call `Publish-SorchaBlueprint` with the identity-attestation.json template, save registerId and blueprintId to state.json. Keep all existing setup steps (org creation, user registration, wallet creation, participant linking, trust anchor, HAIP issuer enrolment).
+- [x] T016 [US1] Rewrite `walkthroughs/HaipIdentityAttestation/run.ps1` to use Blueprint instance flow. Login as gov-admin with org token. Create instance via POST `/instances/` with blueprintId and registerId. Execute the starting action via `Invoke-SorchaAction` with citizen persona data as payload. Extract `credentialOffer.credentialOfferUri` from the action response. Pass the URI to `sorcha-agent haip receive`. Verify credential stored in wallet. Save instanceId to state.json.
+- [x] T017 [US1] Test: run `pwsh walkthroughs/HaipIdentityAttestation/setup.ps1 -Force` against fresh Docker stack and verify state.json contains registerId and blueprintId
+- [x] T018 [US1] Test: run `pwsh walkthroughs/HaipIdentityAttestation/run.ps1` and verify credential is exchanged and state.json contains instanceId
 
 **Checkpoint**: Identity attestation walkthrough runs end-to-end through Blueprint flows. Government admin's actions appear in the UI.
 
@@ -66,11 +66,11 @@
 
 ### Implementation
 
-- [ ] T019 [P] [US2] Update driving licence blueprint at `walkthroughs/HaipDrivingLicence/blueprints/driving-licence.json`. Change action "verify-identity" participant from `applicant` to `council`. Ensure action 1 is marked `isStartingAction: true`. Ensure action 1 has credentialRequirements with presentationSource: HaipExternalWallet. Add route from action 1 to action 2 (issue-licence). Ensure action 2 has credentialIssuance with targetAudience: HaipExternalWallet and route to null.
-- [ ] T020 [US2] Rewrite `walkthroughs/HaipDrivingLicence/setup.ps1` to add register and blueprint creation. After existing org/user/wallet/participant setup and HAIP issuer enrolment: call `New-SorchaRegister`, call `Publish-SorchaBlueprint` with driving-licence.json, save registerId and blueprintId to state.json. Keep all existing setup steps.
-- [ ] T021 [US2] Rewrite `walkthroughs/HaipDrivingLicence/run.ps1` to use Blueprint instance flow. Login as council-admin. Create instance via POST `/instances/`. Execute "Verify Applicant Identity" action (action 1) via `Invoke-SorchaAction`. Extract `presentationRequest.presentationRequestUri` from response. Run `sorcha-agent haip present` with the request URI. Poll instance for action 2 to become current (check currentActionIds). Execute "Issue Driving Licence" action (action 2) with licence data. Extract `credentialOffer.credentialOfferUri` from response. Run `sorcha-agent haip receive`. Verify both credentials in wallet.
-- [ ] T022 [US2] Test: run `pwsh walkthroughs/HaipDrivingLicence/setup.ps1 -Force` and verify state.json contains registerId and blueprintId
-- [ ] T023 [US2] Test: run `pwsh walkthroughs/HaipDrivingLicence/run.ps1` and verify both credentials are exchanged
+- [x] T019 [P] [US2] Update driving licence blueprint at `walkthroughs/HaipDrivingLicence/blueprints/driving-licence.json`. Change action "verify-identity" participant from `applicant` to `council`. Ensure action 1 is marked `isStartingAction: true`. Ensure action 1 has credentialRequirements with presentationSource: HaipExternalWallet. Add route from action 1 to action 2 (issue-licence). Ensure action 2 has credentialIssuance with targetAudience: HaipExternalWallet and route to null.
+- [x] T020 [US2] Rewrite `walkthroughs/HaipDrivingLicence/setup.ps1` to add register and blueprint creation. After existing org/user/wallet/participant setup and HAIP issuer enrolment: call `New-SorchaRegister`, call `Publish-SorchaBlueprint` with driving-licence.json, save registerId and blueprintId to state.json. Keep all existing setup steps.
+- [x] T021 [US2] Rewrite `walkthroughs/HaipDrivingLicence/run.ps1` to use Blueprint instance flow. Login as council-admin. Create instance via POST `/instances/`. Execute "Verify Applicant Identity" action (action 1) via `Invoke-SorchaAction`. Extract `presentationRequest.presentationRequestUri` from response. Run `sorcha-agent haip present` with the request URI. Poll instance for action 2 to become current (check currentActionIds). Execute "Issue Driving Licence" action (action 2) with licence data. Extract `credentialOffer.credentialOfferUri` from response. Run `sorcha-agent haip receive`. Verify both credentials in wallet.
+- [x] T022 [US2] Test: run `pwsh walkthroughs/HaipDrivingLicence/setup.ps1 -Force` and verify state.json contains registerId and blueprintId
+- [x] T023 [US2] Test: run `pwsh walkthroughs/HaipDrivingLicence/run.ps1` and verify both credentials are exchanged
 
 **Checkpoint**: Driving licence walkthrough runs end-to-end through Blueprint flows. Council admin's workflows and actions appear in the UI.
 
@@ -84,12 +84,12 @@
 
 ### Implementation
 
-- [ ] T024 [US3] Rebuild Docker images with `docker compose build --parallel`
-- [ ] T025 [US3] Reset Docker stack: `docker compose down -v && docker compose up -d`
-- [ ] T026 [US3] Run both HAIP walkthrough setup and run scripts against fresh Docker
-- [ ] T027 [US3] Run screenshot tests: `dotnet test tests/Sorcha.UI.E2E.Tests/ --filter "TestCategory=HaipScreenshots" -- NUnit.NumberOfTestWorkers=1`
-- [ ] T028 [US3] Verify that at least 3 previously-empty screenshots now show real workflow data (My Workflows, Pending Actions, credentials views)
-- [ ] T029 [US3] Copy updated screenshots to `docs/screenshots/haip-walkthrough/` and update `docs/screenshots/haip-walkthrough/README.md` with revised captions
+- [x] T024 [US3] Rebuild Docker images with `docker compose build --parallel`
+- [x] T025 [US3] Reset Docker stack: `docker compose down -v && docker compose up -d`
+- [x] T026 [US3] Run both HAIP walkthrough setup and run scripts against fresh Docker
+- [x] T027 [US3] Run screenshot tests: `dotnet test tests/Sorcha.UI.E2E.Tests/ --filter "TestCategory=HaipScreenshots" -- NUnit.NumberOfTestWorkers=1`
+- [x] T028 [US3] Verify that at least 3 previously-empty screenshots now show real workflow data (My Workflows, Pending Actions, credentials views)
+- [x] T029 [US3] Copy updated screenshots to `docs/screenshots/haip-walkthrough/` and update `docs/screenshots/haip-walkthrough/README.md` with revised captions
 
 **Checkpoint**: All screenshots capture real HAIP workflow data for documentation.
 

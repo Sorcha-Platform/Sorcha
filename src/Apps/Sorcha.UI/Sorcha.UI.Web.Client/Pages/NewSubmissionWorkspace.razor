@@ -193,6 +193,36 @@
                 : $"Submission started — instance {result.InstanceId[..Math.Min(8, result.InstanceId.Length)]}...";
             Snackbar.Add(message, Severity.Success);
 
+            // HAIP external wallet interactions — show QR dialog before navigating away
+            if (result.CredentialOffer is { } offer)
+            {
+                var offerParams = new DialogParameters<Components.Credentials.CredentialOfferQrDialog>
+                {
+                    { x => x.CredentialOfferUri, offer.CredentialOfferUri },
+                    { x => x.OfferId, offer.OfferId },
+                    { x => x.CredentialType, offer.CredentialType },
+                    { x => x.IssuerName, offer.IssuerName },
+                    { x => x.ExpiresAt, offer.ExpiresAt }
+                };
+                var offerOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+                await DialogService.ShowAsync<Components.Credentials.CredentialOfferQrDialog>(
+                    "Credential Offer", offerParams, offerOptions);
+            }
+            else if (result.PresentationRequest is { } presentation)
+            {
+                var requestParams = new DialogParameters<Components.Credentials.PresentationRequestQrDialog>
+                {
+                    { x => x.PresentationRequestUri, presentation.PresentationRequestUri },
+                    { x => x.RequestId, presentation.RequestId },
+                    { x => x.CredentialType, presentation.CredentialType },
+                    { x => x.RequestedClaims, presentation.RequestedClaims },
+                    { x => x.ExpiresAt, presentation.ExpiresAt }
+                };
+                var requestOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+                await DialogService.ShowAsync<Components.Credentials.PresentationRequestQrDialog>(
+                    "Credential Verification", requestParams, requestOptions);
+            }
+
             Navigation.NavigateTo("my-actions");
         }
         catch (Exception ex)
