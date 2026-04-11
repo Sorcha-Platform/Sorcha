@@ -49,6 +49,8 @@ public static class CredentialEndpoints
         var logger = loggerFactory.CreateLogger("Sorcha.Haip.Service.Endpoints.CredentialEndpoints");
 
         // Validate format
+        // TODO: Validate request.Vct against credentials_supported when offer → token
+        // correlation is wired (requires AccessTokenStore.LookupAsync integration).
         if (request.Format != "vc+sd-jwt")
         {
             return Results.BadRequest(new
