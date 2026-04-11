@@ -11,6 +11,13 @@ namespace Sorcha.Haip.Service.Services;
 /// TTL-based expiry. The in-memory fallback uses MemoryCache with TTL
 /// to prevent unbounded growth.
 /// </summary>
+/// <remarks>
+/// TODO: Hash the access token (SHA-256) before using it as the Redis key
+/// to prevent token exposure via key enumeration (SCAN).
+/// TODO: Implement IDisposable to dispose the MemoryCache fallback (CA2213).
+/// TODO: Wire LookupAsync in CredentialEndpoints to correlate Bearer tokens
+/// to offer IDs for claim/type resolution.
+/// </remarks>
 public class AccessTokenStore
 {
     private readonly IDistributedCache? _cache;

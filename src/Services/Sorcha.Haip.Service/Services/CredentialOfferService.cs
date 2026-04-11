@@ -100,10 +100,14 @@ public class CredentialOfferService
     /// <summary>
     /// Marks an offer as exchanged.
     /// </summary>
+    // TODO: Log a warning when offerId is not found — indicates an unexpected state
+    // (code was redeemed but offer doesn't exist).
     public Task MarkExchangedAsync(Guid offerId, CancellationToken ct = default)
     {
         if (_offers.TryGetValue(offerId, out var offer))
             offer.Status = OfferStatus.Exchanged;
+        else
+            _logger.LogWarning("Offer {OfferId} not found when marking as exchanged — unexpected state", offerId);
 
         return Task.CompletedTask;
     }
