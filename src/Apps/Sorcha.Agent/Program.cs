@@ -15,6 +15,12 @@ internal class Program
             rootCommand.Subcommands.Add(new RunCommand());
             rootCommand.Subcommands.Add(new ValidateCommand());
 
+            // HAIP wallet commands (spec 101)
+            var haipCommand = new Command("haip", "HAIP wallet operations — receive and present credentials");
+            haipCommand.Subcommands.Add(new HaipReceiveCommand());
+            haipCommand.Subcommands.Add(new HaipPresentCommand());
+            rootCommand.Subcommands.Add(haipCommand);
+
             return await rootCommand.Parse(args).InvokeAsync();
         }
         catch (Exception ex)

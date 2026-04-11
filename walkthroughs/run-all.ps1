@@ -47,6 +47,10 @@ $walkthroughs = @(
     # Multi-Org
     @{ Name = "ConstructionPermit"; Category = "Multi-Org"; HasSetupRun = $true }
     @{ Name = "SelfBuildHouse"; Category = "Multi-Org"; HasSetupRun = $true }
+
+    # HAIP (External Wallet) — must run in order (licence depends on identity)
+    @{ Name = "HaipIdentityAttestation"; Category = "HAIP"; HasSetupRun = $true }
+    @{ Name = "HaipDrivingLicence"; Category = "HAIP"; HasSetupRun = $true }
 )
 
 if (-not $SkipAdvanced) {
