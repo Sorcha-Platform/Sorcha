@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Sorcha.Haip.Service.Services;
 
 /// <summary>
 /// Redis-backed store for access tokens. Maps token IDs to offer IDs with
-/// TTL-based expiry. The in-memory fallback uses ConcurrentDictionary
-/// for thread safety under concurrent ASP.NET Core requests.
+/// TTL-based expiry. The in-memory fallback uses MemoryCache with TTL
+/// to prevent unbounded growth.
 /// </summary>
 public class AccessTokenStore
 {
@@ -17,7 +17,8 @@ public class AccessTokenStore
     private readonly ILogger<AccessTokenStore> _logger;
     private readonly int _ttlSeconds;
 
-    private readonly ConcurrentDictionary<string, string> _memoryStore = new();
+    // In-memory fallback with TTL-based eviction (no unbounded growth)
+    private readonly MemoryCache _memoryStore = new(new MemoryCacheOptions());
 
     public AccessTokenStore(
         ILogger<AccessTokenStore> logger,
@@ -45,15 +46,15 @@ public class AccessTokenStore
         }
         else
         {
-            _memoryStore[key] = value;
+            _memoryStore.Set(key, value, TimeSpan.FromSeconds(_ttlSeconds));
         }
 
-        _logger.LogInformation("Stored access token for offer {OfferId}, TTL={Ttl}s", offerId, _ttlSeconds);
+        _logger.LogDebug("Stored access token for offer {OfferId}, TTL={Ttl}s", offerId, _ttlSeconds);
     }
 
     /// <summary>
-    /// Looks up the offer ID associated with an access token.
-    /// Returns null if the token is invalid or expired.
+    /// Looks up the offer ID for a given access token.
+    /// Returns null if the token is invalid/expired.
     /// </summary>
     public async Task<Guid?> LookupAsync(string accessToken, CancellationToken ct = default)
     {
@@ -70,9 +71,7 @@ public class AccessTokenStore
         }
 
         if (value == null || !Guid.TryParse(value, out var offerId))
-        {
             return null;
-        }
 
         return offerId;
     }

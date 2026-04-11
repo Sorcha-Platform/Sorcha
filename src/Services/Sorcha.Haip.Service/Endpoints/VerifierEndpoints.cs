@@ -131,18 +131,12 @@ public static class VerifierEndpoints
         if (request.ExpiresAt < DateTimeOffset.UtcNow)
             return Results.Json(new { error = "Presentation request has expired" }, statusCode: 410);
 
-        // Validate state parameter against request ID
-        if (!string.IsNullOrEmpty(state))
-        {
-            if (state != requestId.ToString())
-                return Results.BadRequest(new { error = "state parameter does not match the request" });
-        }
-        else
-        {
-            logger.LogWarning(
-                "direct_post for request {RequestId} did not include a state parameter",
-                requestId);
-        }
+        // Validate state parameter against request ID (OID4VP §6.2 — required for CSRF protection)
+        if (string.IsNullOrEmpty(state))
+            return Results.BadRequest(new { error = "state parameter is required" });
+
+        if (state != requestId.ToString())
+            return Results.BadRequest(new { error = "state parameter does not match the request" });
 
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });
