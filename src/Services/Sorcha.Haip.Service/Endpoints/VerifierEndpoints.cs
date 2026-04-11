@@ -168,6 +168,7 @@ public static class VerifierEndpoints
         [FromForm] string? presentation_submission,
         [FromForm] string? state,
         PresentationRequestStore store,
+        HaipPresentationVerifier verifier,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -183,17 +184,36 @@ public static class VerifierEndpoints
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });
 
-        // Verification pipeline not yet wired — return 501 until HaipPresentationVerifier
-        // connects the full pipeline (x5c chain walk, KB-JWT, status, claim matching).
-        logger.LogWarning(
-            "direct_post received for request {RequestId} — verification pipeline not yet wired",
-            requestId);
+        // Run the verification pipeline
+        var result = await verifier.VerifyAsync(
+            vp_token,
+            expectedNonce: request.Nonce,
+            expectedAudience: request.ClientId,
+            requiredCredentialType: request.CredentialType,
+            requiredClaims: request.RequiredClaims,
+            ct: ct);
 
-        return Results.Json(new
+        // Store the result
+        await store.MarkCompletedAsync(requestId, result, ct);
+
+        if (result.IsValid)
         {
-            error = "not_implemented",
-            error_description = "Verification pipeline not yet wired. vp_token was received but not processed."
-        }, statusCode: 501);
+            logger.LogInformation(
+                "Presentation verified for request {RequestId}: {ClaimCount} claims",
+                requestId, result.VerifiedClaims.Count);
+            return Results.Ok(new { redirect_uri = (string?)null });
+        }
+        else
+        {
+            logger.LogWarning(
+                "Presentation verification failed for request {RequestId}: {Errors}",
+                requestId, string.Join("; ", result.Errors));
+            return Results.BadRequest(new
+            {
+                error = "invalid_presentation",
+                error_description = string.Join("; ", result.Errors)
+            });
+        }
     }
 
     private static async Task<IResult> GetVerificationResult(
