@@ -1,0 +1,79 @@
+{
+  "title": "Driving Licence Application",
+  "description": "Citizen presents verified identity, Council issues driving licence via HAIP",
+  "participants": [
+    {
+      "id": "applicant",
+      "name": "Licence Applicant",
+      "description": "Citizen applying for a driving licence"
+    },
+    {
+      "id": "council",
+      "name": "Council Licensing Authority",
+      "description": "Issues driving licences after identity verification"
+    }
+  ],
+  "actions": [
+    {
+      "id": "verify-identity",
+      "title": "Verify Applicant Identity",
+      "description": "Council requests identity credential from applicant",
+      "participant": "applicant",
+      "credentialRequirements": [
+        {
+          "type": "VerifiedIdentityCredential",
+          "presentationSource": "HaipExternalWallet",
+          "requiredClaims": [
+            { "claimName": "givenName" },
+            { "claimName": "familyName" },
+            { "claimName": "dateOfBirth" }
+          ],
+          "revocationCheckPolicy": "FailClosed",
+          "description": "Government-issued identity credential"
+        }
+      ],
+      "schema": {
+        "type": "object",
+        "properties": {
+          "confirmed": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "id": "issue-licence",
+      "title": "Issue Driving Licence",
+      "description": "Council issues driving licence credential to applicant",
+      "participant": "council",
+      "credentialIssuance": {
+        "credentialType": "DrivingLicenceCredential",
+        "targetAudience": "HaipExternalWallet",
+        "recipientParticipantId": "applicant",
+        "claimMappings": [
+          { "claimName": "licenceNumber", "sourceField": "/licenceNumber" },
+          { "claimName": "vehicleClass", "sourceField": "/vehicleClass" },
+          { "claimName": "issuedDate", "sourceField": "/issuedDate" },
+          { "claimName": "expiryDate", "sourceField": "/expiryDate" },
+          { "claimName": "holderName", "sourceField": "/holderName" }
+        ],
+        "disclosable": [
+          "licenceNumber", "vehicleClass", "issuedDate", "expiryDate", "holderName"
+        ],
+        "expiryDuration": "P10Y"
+      },
+      "schema": {
+        "type": "object",
+        "properties": {
+          "licenceNumber": { "type": "string" },
+          "vehicleClass": { "type": "string" },
+          "issuedDate": { "type": "string", "format": "date" },
+          "expiryDate": { "type": "string", "format": "date" },
+          "holderName": { "type": "string" }
+        },
+        "required": ["licenceNumber", "vehicleClass"]
+      },
+      "routes": [
+        { "condition": "true", "target": null }
+      ]
+    }
+  ]
+}

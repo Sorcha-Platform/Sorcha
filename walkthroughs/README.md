@@ -60,6 +60,15 @@ AI agent-operated walkthroughs using MCP Server connections for autonomous execu
 |-------------|--------------|
 | [TradeFinance](./TradeFinance/) | **Agent-driven multi-register workflow.** 4 organisations, 6 participants, **2 registers** with a procurement-to-pay blueprint (6 actions) and an invoice finance blueprint (4 actions). Exercises cross-register verifiable credentials (VerifiedInvoiceCredential required on Register 2), credential chains, selective disclosure under field-level encryption, AI agent coordination via MCP Server (2 Claude Code sessions on separate machines), scripted and persona execution modes, DevMode-to-FLE transition, and 5 JSON Logic calculations. Three scenarios: golden path (approved), disputed invoice (rejection + resubmission), and declined financing (low credit score). |
 
+### HAIP (External Wallet)
+
+Credential issuance and verification with external HAIP wallets via OpenID4VCI/OpenID4VP.
+
+| Walkthrough | What It Tests |
+|-------------|--------------|
+| [HaipIdentityAttestation](./HaipIdentityAttestation/) | Government issues a VerifiedIdentityCredential to a citizen via the HAIP OID4VCI pre-authorized code flow. Tests trust anchor provisioning, org cert enrolment, credential offer creation, pre-auth code exchange, JWT proof of possession, SD-JWT VC issuance with cnf holder key binding and nested address disclosure. Uses `sorcha-agent haip receive`. |
+| [HaipDrivingLicence](./HaipDrivingLicence/) | Council verifies the citizen's identity credential via OID4VP direct_post, then issues a driving licence credential via OID4VCI. Tests the full HAIP round-trip: present credential with KB-JWT and selective disclosure → verify → issue new credential. Chains from HaipIdentityAttestation. Uses `sorcha-agent haip present` and `haip receive`. |
+
 ### Advanced
 
 Specialized infrastructure scenarios requiring additional setup beyond `docker-compose up -d`.
