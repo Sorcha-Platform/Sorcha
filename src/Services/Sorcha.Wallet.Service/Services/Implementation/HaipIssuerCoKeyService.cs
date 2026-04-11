@@ -18,14 +18,6 @@ namespace Sorcha.Wallet.Service.Services.Implementation;
 /// </summary>
 public class HaipIssuerCoKeyService : IHaipIssuerCoKeyService
 {
-    private static readonly HashSet<string> ClassicalAlgorithms = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ED25519", "EDDSA", "ES256", "P-256", "P256", "NIST-P256", "NISTP256", "ECDSA-P256",
-        "RS256", "RSA", "RSA-4096"
-    };
-
-    private const string DefaultClassicalAlgorithm = "ES256";
-
     private readonly IWalletRepository _repository;
     private readonly IKeyManagementService _keyManagement;
     private readonly ILogger<HaipIssuerCoKeyService> _logger;
@@ -64,7 +56,7 @@ public class HaipIssuerCoKeyService : IHaipIssuerCoKeyService
             wallet.EncryptedPrivateKey, wallet.EncryptionKeyId);
 
         // If the primary algorithm is classical, use the primary key directly (FR-029)
-        if (ClassicalAlgorithms.Contains(wallet.Algorithm))
+        if (WalletAlgorithmClassification.ClassicalAlgorithms.Contains(wallet.Algorithm))
         {
             var publicKey = Convert.FromBase64String(wallet.PublicKey!);
 
@@ -80,12 +72,12 @@ public class HaipIssuerCoKeyService : IHaipIssuerCoKeyService
         var parsedPath = new DerivationPath(resolvedPath);
 
         var (derivedPrivate, derivedPublic) = await _keyManagement.DeriveKeyAtPathAsync(
-            masterKey, parsedPath, DefaultClassicalAlgorithm);
+            masterKey, parsedPath, WalletAlgorithmClassification.DefaultClassicalAlgorithm);
 
         _logger.LogInformation(
             "HAIP issuance for wallet {Address}: PQC primary ({PrimaryAlg}), derived classical co-key ({CoKeyAlg})",
-            walletAddress, wallet.Algorithm, DefaultClassicalAlgorithm);
+            walletAddress, wallet.Algorithm, WalletAlgorithmClassification.DefaultClassicalAlgorithm);
 
-        return (derivedPrivate, derivedPublic, DefaultClassicalAlgorithm);
+        return (derivedPrivate, derivedPublic, WalletAlgorithmClassification.DefaultClassicalAlgorithm);
     }
 }

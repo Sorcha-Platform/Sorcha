@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -184,8 +185,11 @@ public static class NestedDisclosure
         if (string.IsNullOrEmpty(pointer) || pointer == "/")
             return [];
 
-        // RFC 6901: split by /, skip the leading empty segment
-        return pointer.Split('/').Where(s => s.Length > 0).ToArray();
+        // RFC 6901: split by /, skip the leading empty segment, then unescape
+        // per §4: ~1 → / first, then ~0 → ~
+        return pointer.Split('/').Where(s => s.Length > 0)
+            .Select(s => s.Replace("~1", "/").Replace("~0", "~"))
+            .ToArray();
     }
 
     /// <summary>
@@ -264,28 +268,24 @@ public static class NestedDisclosure
 
     private static string CreateDisclosure(string claimName, object claimValue)
     {
-        var salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var salt = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
         var disclosure = JsonSerializer.Serialize(new object[] { salt, claimName, claimValue });
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(disclosure))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return Base64Url.EncodeToString(Encoding.UTF8.GetBytes(disclosure));
     }
 
     private static string CreateArrayElementDisclosure(object elementValue)
     {
         // SD-JWT spec §5.2.4: array element disclosures are two-element [salt, value]
-        var salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var salt = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
         var disclosure = JsonSerializer.Serialize(new object[] { salt, elementValue });
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(disclosure))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return Base64Url.EncodeToString(Encoding.UTF8.GetBytes(disclosure));
     }
 
     private static string ComputeDigest(string disclosure)
     {
         var bytes = Encoding.ASCII.GetBytes(disclosure);
         var hash = SHA256.HashData(bytes);
-        return Convert.ToBase64String(hash).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return Base64Url.EncodeToString(hash);
     }
 
     private static Dictionary<string, object> DeepClone(Dictionary<string, object> source)

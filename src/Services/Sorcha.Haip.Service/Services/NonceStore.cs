@@ -34,7 +34,7 @@ public class NonceStore
     /// </summary>
     public async Task<(string Nonce, int ExpiresIn)> CreateAsync(CancellationToken ct = default)
     {
-        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))
+        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         var key = $"haip:nonce:{nonce}";

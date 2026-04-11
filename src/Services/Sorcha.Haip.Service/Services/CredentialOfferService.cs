@@ -96,12 +96,12 @@ public class CredentialOfferService
     }
 
     /// <summary>
-    /// Marks an offer as redeemed.
+    /// Marks an offer as exchanged.
     /// </summary>
-    public Task MarkRedeemedAsync(Guid offerId, CancellationToken ct = default)
+    public Task MarkExchangedAsync(Guid offerId, CancellationToken ct = default)
     {
         if (_offers.TryGetValue(offerId, out var offer))
-            offer.Status = OfferStatus.Redeemed;
+            offer.Status = OfferStatus.Exchanged;
 
         return Task.CompletedTask;
     }

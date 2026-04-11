@@ -150,4 +150,6 @@ public class IetfTokenStatusListSerializerTests
 
         decompressed.Should().BeEquivalentTo(original);
     }
+
+    // TODO: Add EdDSA signing test when Sodium.Core is reliably available in CI
 }

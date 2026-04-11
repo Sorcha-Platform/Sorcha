@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -69,15 +70,6 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         return (signature, algorithm);
     }
 
-    // Algorithms that HAIP 1.0 verifiers can process for holder binding
-    private static readonly HashSet<string> ClassicalAlgorithms = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ED25519", "EDDSA", "ES256", "P-256", "P256", "NIST-P256", "NISTP256", "ECDSA-P256",
-        "RS256", "RSA", "RSA-4096"
-    };
-
-    private const string DefaultClassicalAlgorithm = "ES256";
-
     private async Task<(byte[] PrivateKey, byte[] PublicKey, string Algorithm)> DeriveBindingKeyAsync(
         string walletAddress, CancellationToken ct)
     {
@@ -93,9 +85,9 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         // HAIP 1.0 mandates classical algorithms for holder binding (ES256, EdDSA).
         // PQC-primary wallets derive the binding key as ES256 so external verifiers
         // can process the cnf.jwk — same pattern as HaipIssuerCoKeyService.
-        var derivationAlg = ClassicalAlgorithms.Contains(wallet.Algorithm)
+        var derivationAlg = WalletAlgorithmClassification.ClassicalAlgorithms.Contains(wallet.Algorithm)
             ? wallet.Algorithm
-            : DefaultClassicalAlgorithm;
+            : WalletAlgorithmClassification.DefaultClassicalAlgorithm;
 
         var (derivedPrivate, derivedPublic) = await _keyManagement.DeriveKeyAtPathAsync(
             masterKey, parsedPath, derivationAlg);
@@ -114,7 +106,7 @@ public class HolderBindingKeyService : IHolderBindingKeyService
             {
                 ["kty"] = "OKP",
                 ["crv"] = "Ed25519",
-                ["x"] = Base64UrlEncode(publicKey)
+                ["x"] = Base64Url.EncodeToString(publicKey)
             };
         }
         else if (alg is "ES256" or "P-256" or "P256" or "NIST-P256" or "NISTP256" or "ECDSA-P256")
@@ -126,8 +118,8 @@ public class HolderBindingKeyService : IHolderBindingKeyService
             {
                 ["kty"] = "EC",
                 ["crv"] = "P-256",
-                ["x"] = Base64UrlEncode(parameters.Q.X!),
-                ["y"] = Base64UrlEncode(parameters.Q.Y!)
+                ["x"] = Base64Url.EncodeToString(parameters.Q.X!),
+                ["y"] = Base64Url.EncodeToString(parameters.Q.Y!)
             };
         }
         else
@@ -159,6 +151,4 @@ public class HolderBindingKeyService : IHolderBindingKeyService
         throw new NotSupportedException($"Unsupported holder binding key algorithm: {algorithm}");
     }
 
-    private static string Base64UrlEncode(byte[] data) =>
-        Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

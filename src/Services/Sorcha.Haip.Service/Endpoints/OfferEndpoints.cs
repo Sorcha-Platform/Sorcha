@@ -12,6 +12,9 @@ namespace Sorcha.Haip.Service.Endpoints;
 /// </summary>
 public static class OfferEndpoints
 {
+    /// <summary>
+    /// Maps the HAIP credential offer management endpoints.
+    /// </summary>
     public static void MapOfferEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/offers")

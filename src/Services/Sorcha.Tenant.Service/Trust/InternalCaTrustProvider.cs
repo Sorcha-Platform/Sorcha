@@ -57,6 +57,7 @@ public class InternalCaTrustProvider : ITrustProvider
 
         var dn = subjectDn ?? $"CN=Sorcha Tenant {tenantId} Root CA, O=Sorcha, C=IE";
 
+        var now = DateTimeOffset.UtcNow;
         var (certDer, privateKey, serialNumber) = X509CertificateBuilder.BuildSelfSignedRoot(
             _defaultAlgorithm, dn, _defaultCaValidityYears);
 
@@ -67,8 +68,8 @@ public class InternalCaTrustProvider : ITrustProvider
             SerialNumber = serialNumber,
             SubjectDn = dn,
             Algorithm = _defaultAlgorithm,
-            NotBefore = DateTimeOffset.UtcNow,
-            NotAfter = DateTimeOffset.UtcNow.AddYears(_defaultCaValidityYears),
+            NotBefore = now,
+            NotAfter = now.AddYears(_defaultCaValidityYears),
             KeyProtectionMode = TrustProviderMode.Local
         };
 
