@@ -29,6 +29,47 @@ public record ActionSubmissionResultViewModel
     /// Whether this result has an active async encryption operation to track.
     /// </summary>
     public bool HasAsyncOperation => IsAsync && !string.IsNullOrEmpty(OperationId);
+
+    /// <summary>
+    /// HAIP credential offer URI when the action issues a credential to an external wallet.
+    /// Present when TargetAudience is HaipExternalWallet.
+    /// </summary>
+    public HaipCredentialOfferInfo? CredentialOffer { get; init; }
+
+    /// <summary>
+    /// HAIP presentation request URI when the action requires a credential from an external wallet.
+    /// Present when PresentationSource is HaipExternalWallet.
+    /// </summary>
+    public HaipPresentationRequestInfo? PresentationRequest { get; init; }
+
+    /// <summary>
+    /// Whether this result includes a HAIP external wallet interaction.
+    /// </summary>
+    public bool HasHaipInteraction => CredentialOffer is not null || PresentationRequest is not null;
+}
+
+/// <summary>
+/// HAIP credential offer details for QR rendering.
+/// </summary>
+public record HaipCredentialOfferInfo
+{
+    public Guid OfferId { get; init; }
+    public string CredentialOfferUri { get; init; } = string.Empty;
+    public string CredentialType { get; init; } = string.Empty;
+    public string? IssuerName { get; init; }
+    public DateTimeOffset ExpiresAt { get; init; }
+}
+
+/// <summary>
+/// HAIP presentation request details for QR rendering.
+/// </summary>
+public record HaipPresentationRequestInfo
+{
+    public Guid RequestId { get; init; }
+    public string PresentationRequestUri { get; init; } = string.Empty;
+    public string CredentialType { get; init; } = string.Empty;
+    public List<string>? RequestedClaims { get; init; }
+    public DateTimeOffset ExpiresAt { get; init; }
 }
 
 /// <summary>

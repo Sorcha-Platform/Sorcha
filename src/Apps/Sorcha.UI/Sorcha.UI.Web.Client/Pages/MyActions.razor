@@ -409,6 +409,36 @@
                     RebuildGroups();
                     StateHasChanged();
 
+                    // HAIP external wallet interactions — show QR dialog
+                    if (submitResult.CredentialOffer is { } offer)
+                    {
+                        var offerParams = new DialogParameters<Components.Credentials.CredentialOfferQrDialog>
+                        {
+                            { x => x.CredentialOfferUri, offer.CredentialOfferUri },
+                            { x => x.OfferId, offer.OfferId },
+                            { x => x.CredentialType, offer.CredentialType },
+                            { x => x.IssuerName, offer.IssuerName },
+                            { x => x.ExpiresAt, offer.ExpiresAt }
+                        };
+                        var offerOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+                        await DialogService.ShowAsync<Components.Credentials.CredentialOfferQrDialog>(
+                            "Credential Offer", offerParams, offerOptions);
+                    }
+                    else if (submitResult.PresentationRequest is { } request)
+                    {
+                        var requestParams = new DialogParameters<Components.Credentials.PresentationRequestQrDialog>
+                        {
+                            { x => x.PresentationRequestUri, request.PresentationRequestUri },
+                            { x => x.RequestId, request.RequestId },
+                            { x => x.CredentialType, request.CredentialType },
+                            { x => x.RequestedClaims, request.RequestedClaims },
+                            { x => x.ExpiresAt, request.ExpiresAt }
+                        };
+                        var requestOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+                        await DialogService.ShowAsync<Components.Credentials.PresentationRequestQrDialog>(
+                            "Credential Verification", requestParams, requestOptions);
+                    }
+
                     // TODO: When the Blueprint Service surfaces credential issuance data in the
                     // ActionSubmissionResultViewModel (e.g. an IssuedCredential property), show
                     // the IssuanceSummaryPanel dialog here:

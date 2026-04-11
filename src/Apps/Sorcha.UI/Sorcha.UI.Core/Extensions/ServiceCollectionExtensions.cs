@@ -250,6 +250,16 @@ public static class ServiceCollectionExtensions
             return new IssuedCredentialService(httpClient, logger);
         });
 
+        // HAIP Offer Service (polls offer status and verifier results)
+        services.AddScoped<IHaipOfferService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<HaipOfferService>>();
+            return new HaipOfferService(httpClient, logger);
+        });
+
         // QR Presentation Service (no HTTP needed — generates locally)
         services.AddScoped<IQrPresentationService, QrPresentationService>();
 
