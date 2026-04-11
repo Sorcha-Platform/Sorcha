@@ -72,7 +72,12 @@
           }
         ],
         "routes": [
-          { "condition": "true", "target": 2 }
+          {
+            "id": "to-issue-licence",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to licence issuance after identity verification"
+          }
         ]
       },
       {
@@ -116,7 +121,12 @@
           }
         ],
         "routes": [
-          { "condition": "true", "target": null }
+          {
+            "id": "complete",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Workflow complete after licence issued"
+          }
         ]
       }
     ]

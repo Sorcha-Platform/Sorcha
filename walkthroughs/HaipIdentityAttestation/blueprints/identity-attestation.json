@@ -25,6 +25,12 @@
         "name": "Government Admin",
         "organisation": "Government Identity Authority",
         "description": "Issues verified identity credentials to citizens"
+      },
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Receives verified identity credential via external HAIP wallet"
       }
     ],
     "actions": [
@@ -107,7 +113,12 @@
           }
         ],
         "routes": [
-          { "condition": "true", "target": null }
+          {
+            "id": "complete",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Workflow complete after credential issued"
+          }
         ]
       }
     ]
