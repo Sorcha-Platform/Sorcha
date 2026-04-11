@@ -34,6 +34,7 @@ public class PresentationRequestStore
     /// <summary>
     /// Creates and stores a new presentation request.
     /// </summary>
+    // TODO(098): client_id should be the verifier's DID or x509_san_uri, not the base URL
     public async Task<PresentationRequest> CreateAsync(
         string clientId,
         string credentialType,

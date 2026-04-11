@@ -15,6 +15,11 @@ public static class NonceEndpoints
     /// </summary>
     public static void MapNonceEndpoints(this WebApplication app)
     {
+        // NOTE: Per OpenID4VCI spec, the nonce endpoint does not require
+        // authentication (AllowAnonymous). Rate limiting is handled by the
+        // centralised AddRateLimiting() from ServiceDefaults, which applies
+        // via the UseRateLimiter() middleware pipeline registered in Program.cs.
+        // No additional per-endpoint rate limiting configuration is needed here.
         app.MapPost("/nonce", GetNonce)
             .WithName("GetNonce")
             .WithTags("HAIP Nonce")

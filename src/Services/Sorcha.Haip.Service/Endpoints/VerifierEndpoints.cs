@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
@@ -30,7 +28,7 @@ public static class VerifierEndpoints
                 "Returns the Authorization Request URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireService");
 
         // Public — wallet fetches the signed Request Object
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/request-object", GetRequestObject)
@@ -40,7 +38,7 @@ public static class VerifierEndpoints
             .WithDescription(
                 "Returns the signed JWT Request Object containing the presentation_definition, " +
                 "nonce, and response_mode. Wallets fetch this via the request_uri from the QR code.")
-            .Produces<string>(StatusCodes.Status200OK, "application/json") // TODO(098): application/oauth-authz-req+jwt once signed
+            .Produces(StatusCodes.Status503ServiceUnavailable)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status410Gone)
             .AllowAnonymous();
@@ -65,7 +63,7 @@ public static class VerifierEndpoints
             .WithSummary("Get verification result (service-to-service)")
             .Produces<VerificationResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireService");
     }
 
     private static async Task<IResult> CreatePresentationRequest(
@@ -80,6 +78,7 @@ public static class VerifierEndpoints
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
 
+        // TODO(098): client_id should be the verifier's DID or x509_san_uri, not the base URL
         var presRequest = await store.CreateAsync(
             clientId: issuerUrl,
             credentialType: request.CredentialType,
@@ -102,64 +101,15 @@ public static class VerifierEndpoints
         });
     }
 
-    private static async Task<IResult> GetRequestObject(
-        Guid requestId,
-        PresentationRequestStore store,
-        IConfiguration configuration,
-        CancellationToken ct)
+    private static IResult GetRequestObject(
+        Guid requestId)
     {
-        var request = await store.GetAsync(requestId, ct);
-        if (request == null)
-            return Results.NotFound(new { error = $"Presentation request '{requestId}' not found" });
-
-        if (request.ExpiresAt < DateTimeOffset.UtcNow)
-            return Results.Json(new { error = "Presentation request has expired" }, statusCode: 410);
-
-        var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
-            ?? "https://sorcha.example/haip";
-
-        // Build the Request Object payload per OpenID4VP
-        var requestObject = new Dictionary<string, object>
-        {
-            ["response_type"] = "vp_token",
-            ["response_mode"] = "direct_post",
-            ["response_uri"] = request.ResponseUri,
-            ["client_id"] = request.ClientId,
-            ["nonce"] = request.Nonce,
-            ["state"] = request.Id.ToString(),
-            ["presentation_definition"] = new Dictionary<string, object>
-            {
-                ["id"] = $"pd-{request.Id}",
-                ["input_descriptors"] = new[]
-                {
-                    new Dictionary<string, object>
-                    {
-                        ["id"] = request.CredentialType,
-                        ["format"] = new Dictionary<string, object>
-                        {
-                            ["vc+sd-jwt"] = new Dictionary<string, object>
-                            {
-                                ["alg"] = new[] { "ES256" }
-                            }
-                        },
-                        ["constraints"] = new Dictionary<string, object>
-                        {
-                            ["fields"] = (request.RequiredClaims ?? new List<string>()).Select(c =>
-                                new Dictionary<string, object>
-                                {
-                                    ["path"] = new[] { $"$.{c}" }
-                                }).ToArray()
-                        }
-                    }
-                }
-            }
-        };
-
-        // For now, return as unsigned JSON (signed JWT Request Object requires
-        // signing key wiring — deferred until HaipCredentialMinter lands)
-        // TODO(098): Sign the Request Object with the verifier's key
-        var json = JsonSerializer.Serialize(requestObject);
-        return Results.Text(json, "application/json", statusCode: 200);
+        // HAIP requires the Request Object to be a signed JWT (application/oauth-authz-req+jwt).
+        // Serving unsigned JSON would be silently rejected by compliant wallets.
+        // TODO(098): Sign the Request Object with the verifier's key once HaipCredentialMinter lands.
+        return Results.Json(
+            new { error = "Request Object signing is not yet configured. The verifier cannot serve unsigned request objects." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     private static async Task<IResult> HandleDirectPost(
@@ -180,6 +130,19 @@ public static class VerifierEndpoints
 
         if (request.ExpiresAt < DateTimeOffset.UtcNow)
             return Results.Json(new { error = "Presentation request has expired" }, statusCode: 410);
+
+        // Validate state parameter against request ID
+        if (!string.IsNullOrEmpty(state))
+        {
+            if (state != requestId.ToString())
+                return Results.BadRequest(new { error = "state parameter does not match the request" });
+        }
+        else
+        {
+            logger.LogWarning(
+                "direct_post for request {RequestId} did not include a state parameter",
+                requestId);
+        }
 
         if (string.IsNullOrWhiteSpace(vp_token))
             return Results.BadRequest(new { error = "vp_token is required" });

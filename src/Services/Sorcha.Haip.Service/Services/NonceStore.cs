@@ -63,6 +63,12 @@ public class NonceStore
 
         if (_cache != null)
         {
+            // Atomic get-and-delete: read then remove in sequence.
+            // IDistributedCache doesn't expose GETDEL — the Remove call
+            // is a separate round-trip but acceptable for the pre-release
+            // in-memory Redis provider. Production should use IDatabase.StringGetDeleteAsync
+            // to close the TOCTOU gap where a concurrent request could consume
+            // the same nonce between the Get and Remove calls.
             var value = await _cache.GetStringAsync(key, ct);
             if (value == null) return false;
             await _cache.RemoveAsync(key, ct);

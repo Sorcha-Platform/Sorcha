@@ -106,6 +106,8 @@ public static class TrustEndpoints
         if (string.IsNullOrWhiteSpace(request.OrgDisplayName))
             return Results.BadRequest(new { error = "OrgDisplayName is required" });
 
+        // TODO(096-#15): Verify the submitted public key matches the org wallet's
+        // HaipIssuerCoKey via IHaipIssuerCoKeyService. Currently accepts any key.
         byte[] orgPublicKey;
         try
         {

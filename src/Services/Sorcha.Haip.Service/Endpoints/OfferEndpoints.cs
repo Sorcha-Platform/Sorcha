@@ -28,14 +28,14 @@ public static class OfferEndpoints
                 "Returns the offer details and a URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireService");
 
         group.MapGet("/{offerId:guid}", GetOfferStatus)
             .WithName("GetOfferStatus")
             .WithSummary("Get Credential Offer status (service-to-service)")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .RequireAuthorization();
+            .RequireAuthorization("RequireService");
     }
 
     private static async Task<IResult> CreateOffer(

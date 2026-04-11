@@ -34,6 +34,7 @@ public static class TokenEndpoints
         [FromForm] TokenRequest request,
         PreAuthCodeStore codeStore,
         NonceStore nonceStore,
+        AccessTokenStore tokenStore,
         CredentialOfferService offerService,
         IConfiguration configuration,
         CancellationToken ct)
@@ -66,6 +67,9 @@ public static class TokenEndpoints
 
         // Generate c_nonce for the credential request proof
         var (cNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
+
+        // Store the access token → offer mapping for later correlation
+        await tokenStore.StoreAsync(accessToken, offerId.Value, ct);
 
         // TODO: RFC 6749 §5.1 requires Cache-Control: no-store on token responses.
         // Add a CachedResult wrapper (similar to Blueprint Service) to set the header.
