@@ -17,9 +17,9 @@
 
 **Purpose**: Extend configuration model and prepare the bootstrapper for mode-driven logic
 
-- [ ] T001 Add `BootstrapMode` enum (`Auto`, `SyncOnly`, `GenesisFile`) to `src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs`
-- [ ] T002 Add retry timing properties (`FastRetryIntervalSeconds`, `FastRetryDurationSeconds`, `BackoffIntervalSeconds`) to `SystemRegisterOptions` in `src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs`
-- [ ] T003 Add default configuration values to `src/Services/Sorcha.Register.Service/appsettings.json` under the `SystemRegister` section: `BootstrapMode: Auto`, `FastRetryIntervalSeconds: 5`, `FastRetryDurationSeconds: 120`, `BackoffIntervalSeconds: 300`
+- [x] T001 Add `BootstrapMode` enum (`Auto`, `SyncOnly`, `GenesisFile`) to `src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs`
+- [x] T002 Add retry timing properties (`FastRetryIntervalSeconds`, `FastRetryDurationSeconds`, `BackoffIntervalSeconds`) to `SystemRegisterOptions` in `src/Common/Sorcha.ServiceDefaults/SystemRegisterOptions.cs`
+- [x] T003 Add default configuration values to `src/Services/Sorcha.Register.Service/appsettings.json` under the `SystemRegister` section: `BootstrapMode: Auto`, `FastRetryIntervalSeconds: 5`, `FastRetryDurationSeconds: 120`, `BackoffIntervalSeconds: 300`
 
 **Checkpoint**: Configuration model compiles, options bind from appsettings.json
 
@@ -31,10 +31,10 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Add startup validation of `BootstrapMode` value in `SystemRegisterBootstrapper.ExecuteAsync()` — fail with `InvalidOperationException` if unrecognised value, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
-- [ ] T005 Add bootstrap mode announcement log at start of `ExecuteAsync()` — log `BootstrapMode`, `FastRetryInterval`, `BackoffInterval` as structured fields, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
-- [ ] T006 Refactor `ExecuteAsync()` to dispatch to mode-specific methods: `BootstrapAutoAsync()`, `BootstrapSyncOnlyAsync()`, `BootstrapGenesisFileAsync()` — extract current `BootstrapWithRetryAsync` as `BootstrapAutoAsync` with no behaviour change, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
-- [ ] T007 Inject `IOptions<SystemRegisterOptions>` into `SystemRegisterBootstrapper` constructor (it currently creates a scope to resolve it — make it a constructor dependency), in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
+- [x] T004 Add startup validation of `BootstrapMode` value in `SystemRegisterBootstrapper.ExecuteAsync()` — fail with `InvalidOperationException` if unrecognised value, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
+- [x] T005 Add bootstrap mode announcement log at start of `ExecuteAsync()` — log `BootstrapMode`, `FastRetryInterval`, `BackoffInterval` as structured fields, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
+- [x] T006 Refactor `ExecuteAsync()` to dispatch to mode-specific methods: `BootstrapAutoAsync()`, `BootstrapSyncOnlyAsync()`, `BootstrapGenesisFileAsync()` — extract current `BootstrapWithRetryAsync` as `BootstrapAutoAsync` with no behaviour change, in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
+- [x] T007 Inject `IOptions<SystemRegisterOptions>` into `SystemRegisterBootstrapper` constructor (it currently creates a scope to resolve it — make it a constructor dependency), in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs`
 
 **Checkpoint**: Bootstrapper dispatches by mode. `Auto` mode behaves identically to current code. Build succeeds.
 
@@ -48,16 +48,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Create test class `SystemRegisterBootstrapperSyncOnlyTests` in `tests/Sorcha.Register.Service.Tests/Services/SystemRegisterBootstrapperTests.cs` with test: `SyncOnly_NoRegisterFound_RetriesIndefinitely` — verify bootstrapper does not throw or complete within fast-retry window when register is never found
-- [ ] T009 [P] [US1] Add test: `SyncOnly_RegisterFoundDuringFastRetry_CompletesBootstrap` — mock `RegisterManager.GetRegisterAsync` to return null twice then a valid register on third call, verify bootstrap completes and seeds blueprints
-- [ ] T010 [P] [US1] Add test: `SyncOnly_TransitionsToBackoffPhase_AfterFastRetryDuration` — verify that after `FastRetryDurationSeconds` elapses, the retry interval changes from `FastRetryIntervalSeconds` to `BackoffIntervalSeconds`
-- [ ] T011 [P] [US1] Add test: `SyncOnly_NeverIngestsGenesisFile_EvenWhenAvailable` — verify `GenesisIngestionService.LoadAndVerifyGenesisAsync` is never called in SyncOnly mode
-- [ ] T012 [P] [US1] Add test: `SyncOnly_RespectsShutdownCancellation_DuringPolling` — cancel the token during a delay, verify clean exit without exception
+- [x] T008 [P] [US1] Create test class `SystemRegisterBootstrapperSyncOnlyTests` in `tests/Sorcha.Register.Service.Tests/Services/SystemRegisterBootstrapperTests.cs` with test: `SyncOnly_NoRegisterFound_RetriesIndefinitely` — verify bootstrapper does not throw or complete within fast-retry window when register is never found
+- [x] T009 [P] [US1] Add test: `SyncOnly_RegisterFoundDuringFastRetry_CompletesBootstrap` — mock `RegisterManager.GetRegisterAsync` to return null twice then a valid register on third call, verify bootstrap completes and seeds blueprints
+- [x] T010 [P] [US1] Add test: `SyncOnly_TransitionsToBackoffPhase_AfterFastRetryDuration` — verify that after `FastRetryDurationSeconds` elapses, the retry interval changes from `FastRetryIntervalSeconds` to `BackoffIntervalSeconds`
+- [x] T011 [P] [US1] Add test: `SyncOnly_NeverIngestsGenesisFile_EvenWhenAvailable` — verify `GenesisIngestionService.LoadAndVerifyGenesisAsync` is never called in SyncOnly mode
+- [x] T012 [P] [US1] Add test: `SyncOnly_RespectsShutdownCancellation_DuringPolling` — cancel the token during a delay, verify clean exit without exception
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement `BootstrapSyncOnlyAsync()` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — two-phase retry loop: fast retries every `FastRetryIntervalSeconds` for `FastRetryDurationSeconds`, then backoff to `BackoffIntervalSeconds`. Each iteration checks `RegisterManager.GetRegisterAsync()`. On register found, call `WaitForGenesisDocketAsync` and `SeedBlueprintsIfMissingAsync`
-- [ ] T014 [US1] Add structured logging for SyncOnly mode in `BootstrapSyncOnlyAsync()`: log attempt count, elapsed time, next interval at `Information` during fast phase, log phase transition at `Information`, log subsequent backoff attempts at `Debug` level
+- [x] T013 [US1] Implement `BootstrapSyncOnlyAsync()` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — two-phase retry loop: fast retries every `FastRetryIntervalSeconds` for `FastRetryDurationSeconds`, then backoff to `BackoffIntervalSeconds`. Each iteration checks `RegisterManager.GetRegisterAsync()`. On register found, call `WaitForGenesisDocketAsync` and `SeedBlueprintsIfMissingAsync`
+- [x] T014 [US1] Add structured logging for SyncOnly mode in `BootstrapSyncOnlyAsync()`: log attempt count, elapsed time, next interval at `Information` during fast phase, log phase transition at `Information`, log subsequent backoff attempts at `Debug` level
 
 **Checkpoint**: SyncOnly mode fully functional. Tests pass. Node retries indefinitely, syncs when peer available, never creates local genesis.
 
@@ -71,14 +71,14 @@
 
 ### Tests for User Story 2
 
-- [ ] T015 [P] [US2] Add test: `GenesisFile_ValidGenesis_IngestsImmediately` — verify `GenesisIngestionService.LoadAndVerifyGenesisAsync` is called without any delay or peer check
-- [ ] T016 [P] [US2] Add test: `GenesisFile_GenesisFileNotFound_ThrowsWithActionableMessage` — mock `LoadAndVerifyGenesisAsync` to return null, verify `SystemRegisterBootstrapStopException` message includes the configured path
-- [ ] T017 [P] [US2] Add test: `GenesisFile_InvalidSignature_ThrowsWithClearError` — mock `LoadAndVerifyGenesisAsync` to throw `InvalidOperationException`, verify it propagates as bootstrap stop
+- [x] T015 [P] [US2] Add test: `GenesisFile_ValidGenesis_IngestsImmediately` — verify `GenesisIngestionService.LoadAndVerifyGenesisAsync` is called without any delay or peer check
+- [x] T016 [P] [US2] Add test: `GenesisFile_GenesisFileNotFound_ThrowsWithActionableMessage` — mock `LoadAndVerifyGenesisAsync` to return null, verify `SystemRegisterBootstrapStopException` message includes the configured path
+- [x] T017 [P] [US2] Add test: `GenesisFile_InvalidSignature_ThrowsWithClearError` — mock `LoadAndVerifyGenesisAsync` to throw `InvalidOperationException`, verify it propagates as bootstrap stop
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Implement `BootstrapGenesisFileAsync()` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — call `GenesisIngestionService.LoadAndVerifyGenesisAsync()` directly. If null, throw `SystemRegisterBootstrapStopException` with message naming the configured path (or "embedded resource"). If valid, call `IngestGenesisAsync`, then `WaitForGenesisDocketAsync` and `SeedBlueprintsIfMissingAsync`
-- [ ] T019 [US2] Add structured logging for GenesisFile mode: log "Ingesting genesis file directly (BootstrapMode: GenesisFile)" at `Information` level before ingestion
+- [x] T018 [US2] Implement `BootstrapGenesisFileAsync()` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — call `GenesisIngestionService.LoadAndVerifyGenesisAsync()` directly. If null, throw `SystemRegisterBootstrapStopException` with message naming the configured path (or "embedded resource"). If valid, call `IngestGenesisAsync`, then `WaitForGenesisDocketAsync` and `SeedBlueprintsIfMissingAsync`
+- [x] T019 [US2] Add structured logging for GenesisFile mode: log "Ingesting genesis file directly (BootstrapMode: GenesisFile)" at `Information` level before ingestion
 
 **Checkpoint**: GenesisFile mode fully functional. Tests pass. Ingests immediately, fails clearly on missing/invalid genesis.
 
@@ -92,13 +92,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T020 [P] [US3] Add test: `Auto_DefaultBehaviour_TriesPeersThenFallsBackToGenesis` — verify the existing 3-retry exponential backoff flow, then genesis ingestion
-- [ ] T021 [P] [US3] Add test: `Auto_FallbackToEmbeddedGenesis_LogsNewNetworkWarning` — verify a `Warning` level log containing "creating a new local network" when Auto mode ingests embedded genesis
+- [x] T020 [P] [US3] Add test: `Auto_DefaultBehaviour_TriesPeersThenFallsBackToGenesis` — verify the existing 3-retry exponential backoff flow, then genesis ingestion
+- [x] T021 [P] [US3] Add test: `Auto_FallbackToEmbeddedGenesis_LogsNewNetworkWarning` — verify a `Warning` level log containing "creating a new local network" when Auto mode ingests embedded genesis
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] Rename existing `BootstrapWithRetryAsync` to `BootstrapAutoAsync` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` (if not done in T006)
-- [ ] T023 [US3] Add warning log to `BootstrapAutoAsync` when falling back to embedded genesis: log at `Warning` level with message "Ingesting embedded genesis — creating a new local network. Set BootstrapMode to SyncOnly to join an existing network instead."
+- [x] T022 [US3] Rename existing `BootstrapWithRetryAsync` to `BootstrapAutoAsync` in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` (if not done in T006)
+- [x] T023 [US3] Add warning log to `BootstrapAutoAsync` when falling back to embedded genesis: log at `Warning` level with message "Ingesting embedded genesis — creating a new local network. Set BootstrapMode to SyncOnly to join an existing network instead."
 
 **Checkpoint**: Auto mode identical to current behaviour plus clearer logging. docker-compose workflow unaffected.
 
@@ -112,12 +112,12 @@
 
 ### Tests for User Story 4
 
-- [ ] T024 [P] [US4] Add test: `AllModes_LogBootstrapModeAtStartup` — verify each mode logs its name and strategy at `Information` level before first action
-- [ ] T025 [P] [US4] Add test: `SyncOnly_LogFrequencyDecreases_AfterPhaseTransition` — verify log level drops from `Information` to `Debug` after transitioning to backoff phase
+- [x] T024 [P] [US4] Add test: `AllModes_LogBootstrapModeAtStartup` — verify each mode logs its name and strategy at `Information` level before first action
+- [x] T025 [P] [US4] Add test: `SyncOnly_LogFrequencyDecreases_AfterPhaseTransition` — verify log level drops from `Information` to `Debug` after transitioning to backoff phase
 
 ### Implementation for User Story 4
 
-- [ ] T026 [US4] Review and consolidate all log messages across modes in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — ensure consistent structured fields (`BootstrapMode`, `Phase`, `Attempt`, `ElapsedSeconds`, `NextRetrySeconds`) per the contracts/README.md log event contracts
+- [x] T026 [US4] Review and consolidate all log messages across modes in `src/Services/Sorcha.Register.Service/Services/SystemRegisterBootstrapper.cs` — ensure consistent structured fields (`BootstrapMode`, `Phase`, `Attempt`, `ElapsedSeconds`, `NextRetrySeconds`) per the contracts/README.md log event contracts
 
 **Checkpoint**: Operator can observe bootstrap progress, phase transitions, and timing from logs alone.
 
@@ -127,10 +127,10 @@
 
 **Purpose**: Configuration for production, documentation, final validation
 
-- [ ] T027 [P] Set `SystemRegister__BootstrapMode=SyncOnly` for the Register Service in `docker-compose.n1.yml`
-- [ ] T028 [P] Update `src/Services/Sorcha.Register.Service/README.md` with BootstrapMode configuration documentation
-- [ ] T029 Run all tests in `tests/Sorcha.Register.Service.Tests/` and verify passing
-- [ ] T030 Run quickstart.md validation — execute the three quick test scenarios (Auto, SyncOnly, GenesisFile) against a local build
+- [x] T027 [P] Set `SystemRegister__BootstrapMode=SyncOnly` for the Register Service in `docker-compose.n1.yml`
+- [x] T028 [P] Update `src/Services/Sorcha.Register.Service/README.md` with BootstrapMode configuration documentation
+- [x] T029 Run all tests in `tests/Sorcha.Register.Service.Tests/` and verify passing
+- [x] T030 Run quickstart.md validation — execute the three quick test scenarios (Auto, SyncOnly, GenesisFile) against a local build
 
 ---
 

@@ -312,7 +312,31 @@ GET /odata/Transactions?$filter=contains(SenderWallet,'1A2B') and TimeStamp gt 2
 | GET | `/api/system-register/blueprints/{blueprintId}/versions/{version}` | Get specific blueprint version |
 | POST | `/api/system-register/publish` | Publish a new blueprint to the system register |
 
-> The **System Register** is a real register backed by the standard ledger infrastructure. It is automatically bootstrapped on first startup (no environment variable needed). Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`), replacing the previous standalone MongoDB collection (`sorcha_system_register_blueprints`).
+> The **System Register** is a real register backed by the standard ledger infrastructure. It is bootstrapped on first startup using a pre-signed genesis block. Blueprint entries are stored as control-chain transactions on the well-known system register (ID: `aebf26362e079087571ac0932d4db973`).
+
+#### Bootstrap Mode Configuration (Feature 100)
+
+The `SystemRegister:BootstrapMode` setting controls how the system register is obtained on startup:
+
+| Mode | Behaviour | Use Case |
+|------|-----------|----------|
+| `Auto` (default) | Brief peer sync (14s), then ingest embedded genesis | Local development (`docker-compose up`) |
+| `SyncOnly` | Wait for peer sync indefinitely (5s fast retries for 2 min, then 5 min polling) | Production nodes joining an existing network |
+| `GenesisFile` | Ingest genesis file immediately, no peer sync | First node creating a new network |
+
+```json
+{
+  "SystemRegister": {
+    "BootstrapMode": "SyncOnly",
+    "GenesisFile": null,
+    "FastRetryIntervalSeconds": 5,
+    "FastRetryDurationSeconds": 120,
+    "BackoffIntervalSeconds": 300
+  }
+}
+```
+
+Environment variable override: `SystemRegister__BootstrapMode=SyncOnly`
 
 ### RegisterPurpose
 

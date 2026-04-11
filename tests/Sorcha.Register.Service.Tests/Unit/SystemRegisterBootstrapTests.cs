@@ -16,6 +16,8 @@ using Sorcha.Register.Service.Services;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
 using Sorcha.ServiceClients.Wallet;
+using Sorcha.ServiceDefaults;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Sorcha.Register.Service.Tests.Unit;
@@ -97,9 +99,12 @@ public class SystemRegisterBootstrapTests
 
         var serviceProvider = services.BuildServiceProvider();
 
+        var options = Options.Create(new SystemRegisterOptions { BootstrapMode = BootstrapMode.Auto });
+
         return new SystemRegisterBootstrapper(
             serviceProvider.GetRequiredService<IServiceScopeFactory>(),
-            _mockBootstrapLogger.Object);
+            _mockBootstrapLogger.Object,
+            options);
     }
 
     [Fact]
