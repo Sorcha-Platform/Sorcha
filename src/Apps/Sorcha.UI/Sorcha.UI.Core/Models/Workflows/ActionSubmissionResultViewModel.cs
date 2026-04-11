@@ -68,7 +68,7 @@ public record HaipPresentationRequestInfo
     public Guid RequestId { get; init; }
     public string PresentationRequestUri { get; init; } = string.Empty;
     public string CredentialType { get; init; } = string.Empty;
-    public List<string>? RequestedClaims { get; init; }
+    public IReadOnlyList<string>? RequestedClaims { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
 }
 

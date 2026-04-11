@@ -36,4 +36,4 @@ public record HaipVerificationResult(
     string State,
     bool? IsValid,
     Dictionary<string, JsonElement>? VerifiedClaims,
-    List<string>? Errors);
+    IReadOnlyList<string>? Errors);
