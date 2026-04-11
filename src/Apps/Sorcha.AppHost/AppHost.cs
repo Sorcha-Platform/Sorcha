@@ -102,6 +102,14 @@ var validatorService = builder.AddProject<Projects.Sorcha_Validator_Service>("va
     .WithEnvironment("ServiceAuth__Scopes", "registers:write registers:read")
     .WithExternalHttpEndpoints(); // Exposed for walkthrough testing
 
+// Add HAIP Service for external wallet credential issuance and verification (specs 097/098)
+var haipService = builder.AddProject<Projects.Sorcha_Haip_Service>("haip-service")
+    .WithReference(redis)
+    .WithEnvironment("JwtSettings__SigningKey", jwtSigningKey)
+    .WithEnvironment("JwtSettings__Issuer", "https://localhost:7110")
+    .WithEnvironment("JwtSettings__Audience", "https://sorcha.local")
+    .WithExternalHttpEndpoints(); // Exposed for HAIP wallet access
+
 // Add API Gateway as the API entry point for backend services
 var apiGateway = builder.AddProject<Projects.Sorcha_ApiGateway>("api-gateway")
     .WithReference(tenantService)
@@ -110,6 +118,7 @@ var apiGateway = builder.AddProject<Projects.Sorcha_ApiGateway>("api-gateway")
     .WithReference(registerService)
     .WithReference(peerService)
     .WithReference(validatorService)
+    .WithReference(haipService)
     .WithReference(redis)
     .WithExternalHttpEndpoints(); // Exposed for API calls from UI
 

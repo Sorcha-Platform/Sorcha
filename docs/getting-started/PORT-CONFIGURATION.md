@@ -28,6 +28,7 @@ Sorcha uses a standardized port configuration across all development and deploym
 | **Peer Service** | 5002 | 7002 | 5002 | 8080 |
 | **Tenant Service** | 5110 | 7110 | 5110 | 8080 |
 | **Register Service** | 5290 | 7290 | 5290 | 8080 |
+| **HAIP Service** | 5300 | 7300 | N/A | 8080 |
 | **API Gateway** | 8080 | 7082 | 8080 | 8080 |
 | **Admin UI** | 8081 | 7083 | N/A | N/A |
 
