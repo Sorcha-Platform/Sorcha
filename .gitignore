@@ -238,3 +238,4 @@ docs/api/*.json
 build/
 walkthroughs/*/wallet/
 walkthroughs/*/state.json
+.claude/scheduled_tasks.lock
