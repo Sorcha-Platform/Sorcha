@@ -118,7 +118,7 @@ public class SystemRegisterBootstrapTests
                 Id = SystemRegisterConstants.SystemRegisterId,
                 Name = SystemRegisterConstants.SystemRegisterName,
                 Height = 2,
-                TenantId = "system"
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
             });
 
         var transactions = new List<TransactionModel>
@@ -246,7 +246,7 @@ public class SystemRegisterBootstrapTests
                     Id = SystemRegisterConstants.SystemRegisterId,
                     Name = SystemRegisterConstants.SystemRegisterName,
                     Height = 1,
-                    TenantId = "system"
+                    Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
                 };
             });
 
@@ -262,8 +262,7 @@ public class SystemRegisterBootstrapTests
         _mockOrchestrator.Verify(o => o.InitiateAsync(
             It.Is<InitiateRegisterCreationRequest>(r =>
                 r.RegisterId == SystemRegisterConstants.SystemRegisterId &&
-                r.Name == SystemRegisterConstants.SystemRegisterName &&
-                r.TenantId == "system"),
+                r.Name == SystemRegisterConstants.SystemRegisterName),
             It.IsAny<CancellationToken>()), Times.Once);
 
         // Finalization was called
@@ -284,7 +283,7 @@ public class SystemRegisterBootstrapTests
                 Id = SystemRegisterConstants.SystemRegisterId,
                 Name = SystemRegisterConstants.SystemRegisterName,
                 Height = 5,
-                TenantId = "system",
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online,
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             });
 

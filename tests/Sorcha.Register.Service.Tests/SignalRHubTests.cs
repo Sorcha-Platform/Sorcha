@@ -301,7 +301,7 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
     private async Task<RegisterResponse> CreateTestRegisterAsync(string name, string tenantId)
     {
         var register = await _factory.CreateTestRegisterAsync(name, tenantId);
-        return new RegisterResponse(register.Id, register.Name, register.TenantId);
+        return new RegisterResponse(register.Id, register.Name);
     }
 
     private TransactionModel CreateValidTransaction(string registerId)
@@ -333,5 +333,5 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
         };
     }
 
-    private record RegisterResponse(string Id, string Name, string TenantId);
+    private record RegisterResponse(string Id, string Name);
 }

@@ -93,7 +93,7 @@ public class RegisterRecoveryServiceTests
         Id = RegisterId,
         Name = "Test Register",
         Height = height,
-        TenantId = "tenant-001"
+        Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
     };
 
     private static GetLatestDocketNumberResponse CreateNetworkResponse(

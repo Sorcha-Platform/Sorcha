@@ -136,20 +136,20 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
     }
 
     [Fact]
-    public async Task GetAllRegisters_WithTenantFilter_ShouldReturnOnlyTenantRegisters()
+    public async Task GetAllRegisters_MultipleRegisters_ShouldReturnAll()
     {
         // Arrange
-        await _factory.CreateTestRegisterAsync("Tenant1 Reg1", "tenant123");
-        await _factory.CreateTestRegisterAsync("Tenant2 Reg", "tenant456");
-        await _factory.CreateTestRegisterAsync("Tenant1 Reg2", "tenant123");
+        await _factory.CreateTestRegisterAsync("Register A");
+        await _factory.CreateTestRegisterAsync("Register B");
+        await _factory.CreateTestRegisterAsync("Register C");
 
         // Act
-        var response = await _client.GetAsync("/api/registers?tenantId=tenant123");
+        var response = await _client.GetAsync("/api/registers");
         var registers = await response.Content.ReadFromJsonAsync<RegisterResponse[]>();
 
         // Assert
         registers.Should().NotBeNull();
-        registers.Should().OnlyContain(r => r.TenantId == "tenant123");
+        registers!.Length.Should().BeGreaterThanOrEqualTo(3);
     }
 
     [Fact]
@@ -320,7 +320,6 @@ public class RegisterApiTests : IClassFixture<RegisterServiceWebApplicationFacto
         RegisterStatus Status,
         bool Advertise,
         bool IsFullReplica,
-        string TenantId,
         DateTime CreatedAt,
         DateTime UpdatedAt);
 

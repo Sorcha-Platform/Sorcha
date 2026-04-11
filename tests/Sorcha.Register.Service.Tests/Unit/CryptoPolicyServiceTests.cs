@@ -69,7 +69,7 @@ public class CryptoPolicyServiceTests
         {
             RegisterId = registerId,
             Name = "Test",
-            TenantId = "tenant-1",
+
             CreatedAt = DateTimeOffset.UtcNow,
             CryptoPolicy = policy,
             Attestations = new List<RegisterAttestation>()
