@@ -17,9 +17,6 @@ public static class HaipOfferStates
     /// <summary>Whether the status is terminal (no further transitions expected).</summary>
     public static bool IsTerminal(string status) =>
         status is Exchanged or Expired or Cancelled;
-
-    /// <summary>Delay (ms) before auto-closing a dialog after reaching a success state.</summary>
-    public const int SuccessCloseDelayMs = 1500;
 }
 
 /// <summary>
@@ -33,11 +30,14 @@ public static class HaipPollingDefaults
     /// <summary>Maximum number of poll ticks before giving up (5 minutes at 2s intervals).</summary>
     public const int MaxPollTicks = 150;
 
-    /// <summary>Delay (ms) before auto-closing a dialog after reaching an error state.</summary>
-    public const int ErrorCloseDelayMs = 3000;
+    /// <summary>Delay (ms) before auto-closing a dialog after a successful exchange or collection.</summary>
+    public const int SuccessCloseDelayMs = 1500;
 
     /// <summary>Delay (ms) before auto-closing a dialog after successful verification.</summary>
     public const int VerifiedCloseDelayMs = 2000;
+
+    /// <summary>Delay (ms) before auto-closing a dialog after reaching an error state.</summary>
+    public const int ErrorCloseDelayMs = 3000;
 }
 
 /// <summary>
