@@ -13,6 +13,9 @@ namespace Sorcha.Haip.Service.Endpoints;
 /// </summary>
 public static class TokenEndpoints
 {
+    /// <summary>
+    /// Maps the HAIP token endpoint.
+    /// </summary>
     public static void MapTokenEndpoints(this WebApplication app)
     {
         app.MapPost("/token", ExchangeToken)
@@ -53,8 +56,8 @@ public static class TokenEndpoints
             return Results.BadRequest(new { error = "invalid_grant", error_description = "Pre-authorized code is invalid, expired, or already redeemed" });
         }
 
-        // Mark the offer as redeemed
-        await offerService.MarkRedeemedAsync(offerId.Value, ct);
+        // Mark the offer as exchanged
+        await offerService.MarkExchangedAsync(offerId.Value, ct);
 
         // Generate access token
         var tokenLifetime = configuration.GetValue<int>("Haip:TokenLifetimeSeconds", 300);
@@ -64,6 +67,8 @@ public static class TokenEndpoints
         // Generate c_nonce for the credential request proof
         var (cNonce, nonceExpiresIn) = await nonceStore.CreateAsync(ct);
 
+        // TODO: RFC 6749 §5.1 requires Cache-Control: no-store on token responses.
+        // Add a CachedResult wrapper (similar to Blueprint Service) to set the header.
         return Results.Ok(new TokenResponse
         {
             AccessToken = accessToken,

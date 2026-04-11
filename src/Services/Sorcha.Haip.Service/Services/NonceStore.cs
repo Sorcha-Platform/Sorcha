@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Caching.Distributed;
@@ -34,8 +35,7 @@ public class NonceStore
     /// </summary>
     public async Task<(string Nonce, int ExpiresIn)> CreateAsync(CancellationToken ct = default)
     {
-        var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var nonce = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
 
         var key = $"haip:nonce:{nonce}";
 

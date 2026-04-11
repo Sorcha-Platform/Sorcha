@@ -10,6 +10,9 @@ namespace Sorcha.Haip.Service.Endpoints;
 /// </summary>
 public static class NonceEndpoints
 {
+    /// <summary>
+    /// Maps the HAIP nonce endpoint.
+    /// </summary>
     public static void MapNonceEndpoints(this WebApplication app)
     {
         app.MapPost("/nonce", GetNonce)

@@ -18,6 +18,9 @@ namespace Sorcha.Haip.Service.Endpoints;
 /// </summary>
 public static class CredentialEndpoints
 {
+    /// <summary>
+    /// Maps the HAIP credential issuance endpoint.
+    /// </summary>
     public static void MapCredentialEndpoints(this WebApplication app)
     {
         app.MapPost("/credential", IssueCredential)

@@ -28,7 +28,7 @@ public class CredentialOffer
 public enum OfferStatus
 {
     Pending = 0,
-    Redeemed = 1,
+    Exchanged = 1,
     Expired = 2,
     Cancelled = 3
 }
