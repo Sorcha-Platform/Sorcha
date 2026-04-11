@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Sorcha.UI\Sorcha.UI.Web\Sorcha.UI.Web.csproj" />
     <ProjectReference Include="..\..\Services\Sorcha.Tenant.Service\Sorcha.Tenant.Service.csproj" />
     <ProjectReference Include="..\..\Services\Sorcha.Validator.Service\Sorcha.Validator.Service.csproj" />
+    <ProjectReference Include="..\..\Services\Sorcha.Haip.Service\Sorcha.Haip.Service.csproj" />
   </ItemGroup>
 
 </Project>
