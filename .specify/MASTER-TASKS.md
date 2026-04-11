@@ -45,6 +45,8 @@ This document now tracks **remaining work for the first production release**, or
 | SEC-011 | Service-to-service authentication for internal endpoints | P1 | 8h | ✅ | Closed: RequireService policy on all 5 internal endpoints. Service clients attach JWT headers. |
 | SEC-011b | Defence-in-depth: per-service identity policies | P2 | 8h | 📋 | Check `service_name` claim per endpoint, scope enforcement, API Gateway internal route blocking, audit logging. Deferred from SEC-011. |
 | SEC-012 | CodeQL alert remediation — log injection, info exposure, resource leaks | P1 | 4h | ✅ | Fixed: AcsEmailSender private info exposure, HttpRequestMessage/FormUrlEncodedContent dispose, SystemWalletSigningService double-check-locking. Log injection alerts (19) confirmed already resolved in master. |
+| SEC-013 | HAIP Service internal endpoints — replace AllowAnonymous with service-to-service JWT auth | P0 | 4h | 📋 | PR #253 changed HAIP offer/verifier endpoints to AllowAnonymous for Blueprint Service calls. Needs proper RequireService policy with service JWT token forwarding (same pattern as SEC-011). Endpoints: POST /api/v1/offers, GET /api/v1/offers/{id}, POST /api/v1/verifier/requests, GET /api/v1/verifier/requests/{id}/result. |
+| SEC-014 | HAIP presentation-request action — two-phase execution to prevent premature ledger recording | P0 | 12h | 📋 | PR #253: when a Blueprint action has credentialRequirements with HaipExternalWallet, the action currently records to the ledger before the citizen scans the QR and presents their credential. Needs two-phase execution: (1) create presentation request and return QR data without recording, (2) complete action and record after verification succeeds via callback or re-submission. |
 
 ---
 

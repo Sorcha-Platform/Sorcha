@@ -176,17 +176,57 @@ try {
 } catch { Write-WtWarn "Enrolment may already exist" }
 
 # ============================================================================
+# Step 7: Create Register
+# ============================================================================
+Write-WtStep "Step 7: Create Register"
+
+$register = New-SorchaRegister `
+    -RegisterUrl $sorchaEnv.RegisterUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "HAIP Identity Register" `
+    -Description "Register for HAIP identity attestation workflows" `
+    -TenantId $govOrgId `
+    -OwnerUserId $govSession.UserId `
+    -OwnerWalletAddress $govWallet.Address `
+    -Headers $govSession.Headers `
+    -TenantUrl $sorchaEnv.TenantUrl
+
+Write-WtSuccess "Register: $($register.RegisterId)"
+
+# ============================================================================
+# Step 8: Publish Blueprint
+# ============================================================================
+Write-WtStep "Step 8: Publish Blueprint"
+
+$walletMap = @{
+    "government-admin" = $govWallet.Address
+}
+
+$blueprint = Publish-SorchaBlueprint `
+    -BlueprintUrl $sorchaEnv.BlueprintUrl `
+    -TemplatePath (Join-Path $scriptDir "blueprints/identity-attestation.json") `
+    -WalletMap $walletMap `
+    -Headers $govSession.Headers `
+    -IdPrefix "haip-identity" `
+    -RegisterId $register.RegisterId
+
+Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
+
+# ============================================================================
 # Save State
 # ============================================================================
 $state = @{
     tenantUrl    = $sorchaEnv.TenantUrl
     blueprintUrl = $sorchaEnv.BlueprintUrl
     walletUrl    = $sorchaEnv.WalletUrl
+    registerUrl  = $sorchaEnv.RegisterUrl
     gatewayUrl   = $sorchaEnv.GatewayUrl
     tenantId     = $tenantId
     govOrgId     = $govOrgId
     govWalletAddress = $govWallet.Address
     govWalletPublicKey = $govWallet.PublicKey
+    registerId   = $register.RegisterId
+    blueprintId  = $blueprint.BlueprintId
     roles = @{
         govAdmin = @{
             email = $govAdminEmail

@@ -216,25 +216,56 @@ public class ActionExecutionService : IActionExecutionService
         }
 
         // 4c. Verify credential presentations against action requirements
-        if (actionDef.CredentialRequirements?.Any() == true && _credentialVerifier != null)
+        CreatePresentationRequestResult? haipPresentationResult = null;
+        // Resolve HAIP requirement early — reused in response builder (avoids duplicate LINQ)
+        var haipRequirement = actionDef.CredentialRequirements?
+            .FirstOrDefault(r => r.PresentationSource == PresentationSource.HaipExternalWallet);
+        if (actionDef.CredentialRequirements?.Any() == true)
         {
-            var presentations = request.CredentialPresentations ?? [];
-            var credentialResult = await _credentialVerifier.VerifyAsync(
-                actionDef.CredentialRequirements,
-                presentations,
-                cancellationToken);
+            var hasSubmittedPresentations = request.CredentialPresentations is { Count: > 0 };
 
-            if (!credentialResult.IsValid)
+            if (haipRequirement != null && !hasSubmittedPresentations && _haipClient != null)
             {
-                var credentialErrors = credentialResult.Errors
-                    .Select(e => $"Credential: {e.Message}")
-                    .ToList();
-                throw new ValidationException(credentialErrors);
-            }
+                // HAIP external wallet flow: create a presentation request QR instead of blocking
+                _logger.LogInformation(
+                    "Creating HAIP presentation request for external wallet: type={Type}",
+                    haipRequirement.Type);
 
-            _logger.LogInformation(
-                "Credential verification passed for action {ActionId}: {Count} credential(s) verified",
-                actionId, credentialResult.VerifiedCredentials.Count);
+                var requiredClaimNames = haipRequirement.RequiredClaims?
+                    .Select(c => c.ClaimName)
+                    .ToList();
+
+                haipPresentationResult = await _haipClient.CreatePresentationRequestAsync(
+                    haipRequirement.Type,
+                    requiredClaimNames,
+                    haipRequirement.AcceptedIssuers?.ToList(),
+                    cancellationToken);
+
+                _logger.LogInformation(
+                    "HAIP presentation request created: requestId={RequestId}, expiresAt={ExpiresAt}",
+                    haipPresentationResult.RequestId, haipPresentationResult.ExpiresAt);
+            }
+            else if (_credentialVerifier != null)
+            {
+                // Internal Sorcha credential verification (existing path)
+                var presentations = request.CredentialPresentations ?? [];
+                var credentialResult = await _credentialVerifier.VerifyAsync(
+                    actionDef.CredentialRequirements,
+                    presentations,
+                    cancellationToken);
+
+                if (!credentialResult.IsValid)
+                {
+                    var credentialErrors = credentialResult.Errors
+                        .Select(e => $"Credential: {e.Message}")
+                        .ToList();
+                    throw new ValidationException(credentialErrors);
+                }
+
+                _logger.LogInformation(
+                    "Credential verification passed for action {ActionId}: {Count} credential(s) verified",
+                    actionId, credentialResult.VerifiedCredentials.Count);
+            }
         }
 
         // 5. Reconstruct accumulated state from prior transactions
@@ -530,7 +561,7 @@ public class ActionExecutionService : IActionExecutionService
 
         // 9d. Issue credential if action has issuance configuration
         CredentialIssuanceResult? issuedCredential = null;
-        string? credentialOfferUri = null;
+        CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null)
         {
             // Feature 097: Route HAIP-path issuance through the HAIP service
@@ -541,7 +572,7 @@ public class ActionExecutionService : IActionExecutionService
                     "Routing credential issuance to HAIP service for external wallet: type={Type}",
                     actionDef.CredentialIssuanceConfig.CredentialType);
 
-                var offerResult = await _haipClient.CreateCredentialOfferAsync(
+                haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
                     request.SenderWallet,
                     instance.RegisterId,
                     actionDef.CredentialIssuanceConfig.CredentialType,
@@ -549,11 +580,9 @@ public class ActionExecutionService : IActionExecutionService
                     actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
                     cancellationToken);
 
-                credentialOfferUri = offerResult.CredentialOfferUri;
-
                 _logger.LogInformation(
                     "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
-                    offerResult.OfferId, offerResult.ExpiresAt);
+                    haipOfferResult.OfferId, haipOfferResult.ExpiresAt);
             }
             else
             {
@@ -715,7 +744,27 @@ public class ActionExecutionService : IActionExecutionService
             Calculations = calculations,
             IsComplete = routingResult.NextActions.Count == 0,
             Warnings = validationResult.Warnings,
-            IssuedCredentialId = issuedCredential?.CredentialId
+            IssuedCredentialId = issuedCredential?.CredentialId,
+            CredentialOffer = haipOfferResult != null
+                ? new HaipCredentialOfferResponse
+                {
+                    OfferId = haipOfferResult.OfferId,
+                    CredentialOfferUri = haipOfferResult.CredentialOfferUri,
+                    CredentialType = actionDef.CredentialIssuanceConfig?.CredentialType ?? string.Empty,
+                    ExpiresAt = haipOfferResult.ExpiresAt
+                }
+                : null,
+            PresentationRequest = haipPresentationResult != null
+                ? new HaipPresentationRequestResponse
+                {
+                    RequestId = haipPresentationResult.RequestId,
+                    PresentationRequestUri = haipPresentationResult.AuthorizationRequestUri,
+                    CredentialType = haipRequirement?.Type ?? string.Empty,
+                    RequestedClaims = haipRequirement?.RequiredClaims?
+                        .Select(c => c.ClaimName).ToList(),
+                    ExpiresAt = haipPresentationResult.ExpiresAt
+                }
+                : null
         };
 
         _logger.LogInformation(

@@ -1,0 +1,126 @@
+{
+  "id": "haip-identity-attestation-v1",
+  "title": "HAIP Identity Attestation",
+  "description": "Government issues a VerifiedIdentityCredential to a citizen via the HAIP OpenID4VCI pre-authorized code flow. Single-action workflow where the government admin fills in citizen details and the credential is delivered to an external HAIP wallet via QR code.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["haip", "identity", "oid4vci", "verifiable-credential", "external-wallet"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "haip-identity-attestation",
+    "title": "HAIP Identity Attestation",
+    "description": "Issue a VerifiedIdentityCredential to a citizen's external HAIP wallet",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "1",
+      "features": "HAIP, OpenID4VCI, External Wallet, Verifiable Credential",
+      "sector": "Government"
+    },
+    "participants": [
+      {
+        "id": "government-admin",
+        "name": "Government Admin",
+        "organisation": "Government Identity Authority",
+        "description": "Issues verified identity credentials to citizens"
+      },
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Receives verified identity credential via external HAIP wallet"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Issue Identity Credential",
+        "description": "Government admin enters citizen identity details. A VerifiedIdentityCredential is issued to the citizen's external HAIP wallet via a QR code.",
+        "sender": "government-admin",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "givenName": {
+                "type": "string",
+                "title": "Given Name",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "familyName": {
+                "type": "string",
+                "title": "Family Name",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "fullName": {
+                "type": "string",
+                "title": "Full Name",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "dateOfBirth": {
+                "type": "string",
+                "format": "date",
+                "title": "Date of Birth"
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "title": "Email Address"
+              },
+              "address": {
+                "type": "object",
+                "title": "Address",
+                "properties": {
+                  "street": { "type": "string", "title": "Street" },
+                  "locality": { "type": "string", "title": "City/Town" },
+                  "region": { "type": "string", "title": "Region/State" },
+                  "postcode": { "type": "string", "title": "Postcode" },
+                  "country": { "type": "string", "title": "Country" }
+                },
+                "required": ["street", "locality", "country"]
+              }
+            },
+            "required": ["givenName", "familyName", "fullName", "dateOfBirth"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "VerifiedIdentityCredential",
+          "targetAudience": "HaipExternalWallet",
+          "recipientParticipantId": "citizen",
+          "claimMappings": [
+            { "claimName": "givenName", "sourceField": "/givenName" },
+            { "claimName": "familyName", "sourceField": "/familyName" },
+            { "claimName": "fullName", "sourceField": "/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dateOfBirth" },
+            { "claimName": "email", "sourceField": "/email" },
+            { "claimName": "address", "sourceField": "/address" }
+          ],
+          "disclosable": [
+            "givenName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/street", "/address/locality", "/address/region",
+            "/address/postcode", "/address/country"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "government-admin",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "complete",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Workflow complete after credential issued"
+          }
+        ]
+      }
+    ]
+  }
+}

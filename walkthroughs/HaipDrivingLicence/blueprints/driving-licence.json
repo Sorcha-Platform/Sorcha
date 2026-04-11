@@ -1,79 +1,134 @@
 {
+  "id": "haip-driving-licence-v1",
   "title": "Driving Licence Application",
-  "description": "Citizen presents verified identity, Council issues driving licence via HAIP",
-  "participants": [
-    {
-      "id": "applicant",
-      "name": "Licence Applicant",
-      "description": "Citizen applying for a driving licence"
+  "description": "Council verifies citizen identity via HAIP presentation request, then issues a DrivingLicenceCredential via HAIP credential offer. Two-action workflow: verify identity (council-initiated QR), then issue licence.",
+  "version": 1,
+  "category": "licensing",
+  "tags": ["haip", "driving-licence", "oid4vci", "oid4vp", "verifiable-credential", "external-wallet"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "haip-driving-licence",
+    "title": "Driving Licence Application",
+    "description": "Citizen presents verified identity, Council issues driving licence via HAIP",
+    "version": 1,
+    "metadata": {
+      "category": "Licensing & Permits",
+      "complexity": "Standard",
+      "actions": "2",
+      "features": "HAIP, OpenID4VCI, OpenID4VP, External Wallet, Verifiable Credential",
+      "sector": "Government"
     },
-    {
-      "id": "council",
-      "name": "Council Licensing Authority",
-      "description": "Issues driving licences after identity verification"
-    }
-  ],
-  "actions": [
-    {
-      "id": "verify-identity",
-      "title": "Verify Applicant Identity",
-      "description": "Council requests identity credential from applicant",
-      "participant": "applicant",
-      "credentialRequirements": [
-        {
-          "type": "VerifiedIdentityCredential",
-          "presentationSource": "HaipExternalWallet",
-          "requiredClaims": [
-            { "claimName": "givenName" },
-            { "claimName": "familyName" },
-            { "claimName": "dateOfBirth" }
-          ],
-          "revocationCheckPolicy": "FailClosed",
-          "description": "Government-issued identity credential"
-        }
-      ],
-      "schema": {
-        "type": "object",
-        "properties": {
-          "confirmed": { "type": "boolean" }
-        }
+    "participants": [
+      {
+        "id": "council",
+        "name": "Council Licensing Officer",
+        "organisation": "Council Licensing Authority",
+        "description": "Verifies citizen identity and issues driving licences"
+      },
+      {
+        "id": "applicant",
+        "name": "Licence Applicant",
+        "organisation": "Citizen",
+        "description": "Citizen applying for a driving licence"
       }
-    },
-    {
-      "id": "issue-licence",
-      "title": "Issue Driving Licence",
-      "description": "Council issues driving licence credential to applicant",
-      "participant": "council",
-      "credentialIssuance": {
-        "credentialType": "DrivingLicenceCredential",
-        "targetAudience": "HaipExternalWallet",
-        "recipientParticipantId": "applicant",
-        "claimMappings": [
-          { "claimName": "licenceNumber", "sourceField": "/licenceNumber" },
-          { "claimName": "vehicleClass", "sourceField": "/vehicleClass" },
-          { "claimName": "issuedDate", "sourceField": "/issuedDate" },
-          { "claimName": "expiryDate", "sourceField": "/expiryDate" },
-          { "claimName": "holderName", "sourceField": "/holderName" }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Verify Applicant Identity",
+        "description": "Council requests identity credential from the applicant's external HAIP wallet. A QR code is displayed for the citizen to scan and present their VerifiedIdentityCredential.",
+        "sender": "council",
+        "isStartingAction": true,
+        "credentialRequirements": [
+          {
+            "type": "VerifiedIdentityCredential",
+            "presentationSource": "HaipExternalWallet",
+            "requiredClaims": [
+              { "claimName": "givenName" },
+              { "claimName": "familyName" },
+              { "claimName": "dateOfBirth" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Government-issued identity credential"
+          }
         ],
-        "disclosable": [
-          "licenceNumber", "vehicleClass", "issuedDate", "expiryDate", "holderName"
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "verificationNotes": {
+                "type": "string",
+                "title": "Verification Notes",
+                "maxLength": 500
+              }
+            }
+          }
         ],
-        "expiryDuration": "P10Y"
+        "disclosures": [
+          {
+            "participantAddress": "council",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-issue-licence",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to licence issuance after identity verification"
+          }
+        ]
       },
-      "schema": {
-        "type": "object",
-        "properties": {
-          "licenceNumber": { "type": "string" },
-          "vehicleClass": { "type": "string" },
-          "issuedDate": { "type": "string", "format": "date" },
-          "expiryDate": { "type": "string", "format": "date" },
-          "holderName": { "type": "string" }
+      {
+        "id": 2,
+        "title": "Issue Driving Licence",
+        "description": "Council issues a DrivingLicenceCredential to the applicant's external HAIP wallet via QR code.",
+        "sender": "council",
+        "credentialIssuanceConfig": {
+          "credentialType": "DrivingLicenceCredential",
+          "targetAudience": "HaipExternalWallet",
+          "recipientParticipantId": "applicant",
+          "claimMappings": [
+            { "claimName": "licenceNumber", "sourceField": "/licenceNumber" },
+            { "claimName": "vehicleClass", "sourceField": "/vehicleClass" },
+            { "claimName": "issuedDate", "sourceField": "/issuedDate" },
+            { "claimName": "expiryDate", "sourceField": "/expiryDate" },
+            { "claimName": "holderName", "sourceField": "/holderName" }
+          ],
+          "disclosable": [
+            "licenceNumber", "vehicleClass", "issuedDate", "expiryDate", "holderName"
+          ],
+          "expiryDuration": "P10Y"
         },
-        "required": ["licenceNumber", "vehicleClass"]
-      },
-      "routes": [
-        { "condition": "true", "target": null }
-      ]
-    }
-  ]
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "licenceNumber": { "type": "string", "title": "Licence Number" },
+              "vehicleClass": { "type": "string", "title": "Vehicle Class" },
+              "issuedDate": { "type": "string", "format": "date", "title": "Issue Date" },
+              "expiryDate": { "type": "string", "format": "date", "title": "Expiry Date" },
+              "holderName": { "type": "string", "title": "Holder Name" }
+            },
+            "required": ["licenceNumber", "vehicleClass"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "council",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "complete",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Workflow complete after licence issued"
+          }
+        ]
+      }
+    ]
+  }
 }

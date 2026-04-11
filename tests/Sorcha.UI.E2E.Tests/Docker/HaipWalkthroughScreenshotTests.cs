@@ -221,6 +221,84 @@ public class HaipWalkthroughScreenshotTests : DockerTestBase
     }
 
     // ========================================================================
+    // Path 2b: Government Admin - Extra Views
+    // ========================================================================
+
+    [Test]
+    [Order(13)]
+    public async Task GovAdmin_MyActions()
+    {
+        await LoginAsAsync(GovAdminEmail, DefaultPassword, "Government Identity Authority");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.MyActions}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("13-gov-my-actions");
+    }
+
+    [Test]
+    [Order(14)]
+    public async Task GovAdmin_MyWorkflows()
+    {
+        await LoginAsAsync(GovAdminEmail, DefaultPassword, "Government Identity Authority");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.MyWorkflows}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("14-gov-my-workflows");
+    }
+
+    // ========================================================================
+    // Path 3b: Council Admin - Extra Views
+    // ========================================================================
+
+    [Test]
+    [Order(23)]
+    public async Task CouncilAdmin_Credentials()
+    {
+        await LoginAsAsync(CouncilAdminEmail, DefaultPassword, "Council Licensing Authority");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.Credentials}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("23-council-credentials");
+    }
+
+    [Test]
+    [Order(24)]
+    public async Task CouncilAdmin_MyActions()
+    {
+        await LoginAsAsync(CouncilAdminEmail, DefaultPassword, "Council Licensing Authority");
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.MyActions}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("24-council-my-actions");
+    }
+
+    // ========================================================================
+    // Path 4b: Citizen - Extra Views
+    // ========================================================================
+
+    [Test]
+    [Order(32)]
+    public async Task Citizen_MyActions()
+    {
+        await LoginAsAsync(CitizenEmail, DefaultPassword);
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.MyActions}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("32-citizen-my-actions");
+    }
+
+    [Test]
+    [Order(33)]
+    public async Task Citizen_Wallets()
+    {
+        await LoginAsAsync(CitizenEmail, DefaultPassword);
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.Wallets}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("33-citizen-wallets");
+    }
+
+    // ========================================================================
     // HAIP Service Endpoints (API responses, not UI)
     // ========================================================================
 
@@ -242,5 +320,69 @@ public class HaipWalkthroughScreenshotTests : DockerTestBase
             new() { WaitUntil = WaitUntilState.NetworkIdle });
         await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
         await ScreenshotAsync("41-haip-oauth-metadata");
+    }
+
+    [Test]
+    [Order(42)]
+    public async Task Haip_NonceEndpoint()
+    {
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}/api/v1/nonce",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        await ScreenshotAsync("42-haip-nonce");
+    }
+
+    // ========================================================================
+    // Path 5: Admin Organisation Detail Views
+    // ========================================================================
+
+    [Test]
+    [Order(50)]
+    public async Task Admin_GovOrgDetail()
+    {
+        await LoginAsAsync(TestConstants.TestEmail, TestConstants.TestPassword);
+        // Navigate to organizations and click on the gov org
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.AdminOrganizations}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+
+        // Try to click on the Government Identity Authority org
+        var govOrgLink = Page.GetByText("Government Identity Authority", new() { Exact = false });
+        try
+        {
+            await govOrgLink.First.WaitForAsync(new() { Timeout = TestConstants.ElementTimeout });
+            await govOrgLink.First.ClickAsync();
+            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        }
+        catch (TimeoutException)
+        {
+            // Org may not be visible — screenshot whatever is shown
+        }
+        await ScreenshotAsync("50-admin-gov-org-detail");
+    }
+
+    [Test]
+    [Order(51)]
+    public async Task Admin_CouncilOrgDetail()
+    {
+        await LoginAsAsync(TestConstants.TestEmail, TestConstants.TestPassword);
+        await Page.GotoAsync($"{TestConstants.UiWebUrl}{TestConstants.AuthenticatedRoutes.AdminOrganizations}",
+            new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+
+        var councilOrgLink = Page.GetByText("Council Licensing Authority", new() { Exact = false });
+        try
+        {
+            await councilOrgLink.First.WaitForAsync(new() { Timeout = TestConstants.ElementTimeout });
+            await councilOrgLink.First.ClickAsync();
+            await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+            await Page.WaitForTimeoutAsync(TestConstants.ShortWait);
+        }
+        catch (TimeoutException)
+        {
+            // Org may not be visible — screenshot whatever is shown
+        }
+        await ScreenshotAsync("51-admin-council-org-detail");
     }
 }
