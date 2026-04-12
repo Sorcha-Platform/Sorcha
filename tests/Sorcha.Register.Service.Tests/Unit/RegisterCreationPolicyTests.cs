@@ -71,7 +71,8 @@ public class RegisterCreationPolicyTests
             mockValidatorClient.Object,
             mockSigningService.Object,
             _mockPendingStore.Object,
-            mockPeerClient.Object);
+            mockPeerClient.Object,
+            Mock.Of<ITenantSubscriptionClient>());
     }
 
     [Fact]

@@ -1124,27 +1124,11 @@ function New-SorchaRegister {
 
     Write-WtSuccess "Register '$Name' created: $registerId"
 
-    # Subscribe the owner org to its own register so idempotent name-lookups
-    # (via /me/subscribed-registers) find it on subsequent setup runs. Without
-    # this, subscriptions and ownership diverge — the owner can create a
-    # register but never see it listed. Uses SubscriptionType "Owner".
-    $ownerSubTenantUrl = if ($TenantUrl) { $TenantUrl } `
-                         elseif ($script:LastEnvironment) { $script:LastEnvironment.TenantUrl } `
-                         else { $null }
-
-    if ($ownerSubTenantUrl) {
-        try {
-            $null = New-SorchaRegisterSubscription `
-                -TenantUrl $ownerSubTenantUrl `
-                -OrganizationId $TenantId `
-                -RegisterId $registerId `
-                -RegisterName $Name `
-                -SubscriptionType "Owner" `
-                -Headers $Headers
-        } catch {
-            Write-WtWarn "  Owner org auto-subscribe failed for register '$Name': $($_.Exception.Message)"
-        }
-    }
+    # Owner subscription is now created server-side by the Register Service's
+    # finalize endpoint via a service-to-service call to the Tenant Service
+    # internal subscription endpoint. No client-side subscribe call is needed
+    # or even possible for service-principal callers (they don't have the
+    # Administrator role required by the public subscribe endpoint).
 
     # Auto-subscribe Sorcha Public Org (well-known ID) so consumer-persona
     # and public-discovery flows can access the register by default.

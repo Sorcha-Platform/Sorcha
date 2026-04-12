@@ -222,7 +222,11 @@ public class SystemRegisterBootstrapTests
 
         // Finalize returns success
         _mockOrchestrator
-            .Setup(o => o.FinalizeAsync(It.IsAny<FinalizeRegisterCreationRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(o => o.FinalizeAsync(
+                It.IsAny<FinalizeRegisterCreationRequest>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FinalizeRegisterCreationResponse
             {
                 RegisterId = SystemRegisterConstants.SystemRegisterId,
@@ -265,10 +269,13 @@ public class SystemRegisterBootstrapTests
                 r.Name == SystemRegisterConstants.SystemRegisterName),
             It.IsAny<CancellationToken>()), Times.Once);
 
-        // Finalization was called
+        // Finalization was called — bootstrapper runs with no caller identity
+        // (system path), so orgId / userId should be Guid.Empty.
         _mockOrchestrator.Verify(o => o.FinalizeAsync(
             It.Is<FinalizeRegisterCreationRequest>(r =>
                 r.RegisterId == SystemRegisterConstants.SystemRegisterId),
+            It.IsAny<Guid>(),
+            It.IsAny<Guid>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

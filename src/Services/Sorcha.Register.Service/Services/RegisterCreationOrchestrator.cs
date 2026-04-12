@@ -32,6 +32,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     private readonly ISystemWalletSigningService _signingService;
     private readonly IPendingRegistrationStore _pendingStore;
     private readonly IPeerServiceClient _peerClient;
+    private readonly ITenantSubscriptionClient _tenantSubscriptionClient;
 
     private readonly TimeSpan _pendingExpirationTime = TimeSpan.FromMinutes(5);
     private readonly JsonSerializerOptions _canonicalJsonOptions;
@@ -46,7 +47,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         IValidatorServiceClient validatorClient,
         ISystemWalletSigningService signingService,
         IPendingRegistrationStore pendingStore,
-        IPeerServiceClient peerClient)
+        IPeerServiceClient peerClient,
+        ITenantSubscriptionClient tenantSubscriptionClient)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _registerManager = registerManager ?? throw new ArgumentNullException(nameof(registerManager));
@@ -58,6 +60,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         _signingService = signingService ?? throw new ArgumentNullException(nameof(signingService));
         _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
+        _tenantSubscriptionClient = tenantSubscriptionClient ?? throw new ArgumentNullException(nameof(tenantSubscriptionClient));
 
         // Configure JSON serialization for canonical form
         // UnsafeRelaxedJsonEscaping ensures characters like '+' in DateTimeOffset and base64
@@ -229,10 +232,17 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     }
 
     /// <summary>
-    /// Finalizes register creation (Phase 2): verifies signatures and creates register
+    /// Finalizes register creation (Phase 2): verifies signatures and creates register.
+    /// When <paramref name="callerOrganizationId"/> is non-empty, the owning
+    /// organisation is immediately subscribed via a service-to-service call to
+    /// the Tenant Service's internal endpoint. Failures there are logged but do
+    /// NOT fail finalisation — the register has already been sealed and can be
+    /// subscribed manually later.
     /// </summary>
     public async Task<FinalizeRegisterCreationResponse> FinalizeAsync(
         FinalizeRegisterCreationRequest request,
+        Guid callerOrganizationId = default,
+        Guid callerUserId = default,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
@@ -481,8 +491,36 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // It will be written to Register Service database after docket creation
         // Validator Service handles the write after successful docket build
 
-        // Owner subscription is created by the UI's CreateRegisterWizard after finalization
-        // via POST /api/organizations/{orgId}/register-subscriptions with subscription_type=Owner.
+        // Create the owner subscription via a service-to-service call to the
+        // Tenant Service. Attestation signatures have already been verified above,
+        // so the Register Service is in a position to vouch for ownership without
+        // the admin role check that gates the public subscribe endpoint. Failure
+        // here is logged but non-fatal — the register itself is already sealed
+        // and a manual subscribe will reconcile it.
+        if (callerOrganizationId != Guid.Empty)
+        {
+            try
+            {
+                await _tenantSubscriptionClient.CreateOwnerSubscriptionAsync(
+                    callerOrganizationId,
+                    register.Id,
+                    controlRecord.Name,
+                    callerUserId,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Owner subscription call failed for register {RegisterId} (org {OrgId}). Register was created successfully; subscribe manually to reconcile.",
+                    register.Id, callerOrganizationId);
+            }
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Register {RegisterId} finalised without a caller org_id — owner subscription skipped (e.g. system bootstrap path).",
+                register.Id);
+        }
 
         return new FinalizeRegisterCreationResponse
         {
@@ -716,9 +754,16 @@ public interface IRegisterCreationOrchestrator
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Finalizes register creation (Phase 2): verifies signatures and creates register
+    /// Finalizes register creation (Phase 2): verifies signatures and creates register.
+    /// After successful persistence, the orchestrator calls the Tenant Service's
+    /// internal owner-subscription endpoint using <paramref name="callerOrganizationId"/>
+    /// and <paramref name="callerUserId"/> (both resolved from the authenticated
+    /// caller's JWT claims). Pass <see cref="Guid.Empty"/> for either value to skip
+    /// the subscription step (e.g. bootstrapper contexts with no user identity).
     /// </summary>
     Task<FinalizeRegisterCreationResponse> FinalizeAsync(
         FinalizeRegisterCreationRequest request,
+        Guid callerOrganizationId = default,
+        Guid callerUserId = default,
         CancellationToken cancellationToken = default);
 }
