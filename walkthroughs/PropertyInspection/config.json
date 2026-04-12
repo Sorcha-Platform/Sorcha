@@ -1,0 +1,29 @@
+{
+  "name": "PropertyInspection",
+  "description": "Council property services — tenant reports problem with photo evidence, council triages and allocates contractor, tenant verifies operative identity, contractor completes work with photo evidence, council signs off. 4 actors, 7 actions, 3 scenarios.",
+  "category": "multi-org",
+  "universe": "strathcarron-council",
+  "organizations": [
+    { "name": "Public Org", "subdomain": "public", "role": "tenant (citizen)" },
+    { "name": "Strathcarron Council", "subdomain": "strathcarron", "role": "housing-officer, building-inspector" },
+    { "name": "Stoniebridge Construction", "subdomain": "stoniebridge", "role": "contractor" }
+  ],
+  "secretsKey": "property-inspection",
+  "councilSecretsKey": "council",
+  "requiresRegister": true,
+  "requiresParticipants": true,
+  "template": "property-inspection-template.json",
+  "scenarios": [
+    "data/scenario-a-routine.json",
+    "data/scenario-b-emergency.json",
+    "data/scenario-c-verification-failure.json"
+  ],
+  "features": [
+    "file-upload",
+    "verifiable-credentials",
+    "consumer-persona",
+    "conditional-routing",
+    "cyclic-rework",
+    "participant-verification"
+  ]
+}
