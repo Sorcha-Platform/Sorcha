@@ -128,6 +128,20 @@ builder.Services.AddScoped<ICryptoModule, Sorcha.Cryptography.Core.CryptoModule>
 // Register wallet service client
 builder.Services.AddServiceClients(builder.Configuration);
 
+// Tenant Service internal subscription client. After finalising a register, the
+// Register Service immediately subscribes the owning organisation via a
+// service-to-service call — this removes the old client-side admin-gated hop
+// that blocked service-principal callers from seeing their own registers.
+builder.Services.AddHttpClient<
+    Sorcha.Register.Service.Services.ITenantSubscriptionClient,
+    Sorcha.Register.Service.Services.TenantSubscriptionClient>(client =>
+{
+    var tenantBase = builder.Configuration["ServiceClients:TenantService:Address"]
+        ?? builder.Configuration["TenantService:Endpoint"]
+        ?? "http://tenant-service";
+    client.BaseAddress = new Uri(tenantBase);
+});
+
 // Register system wallet signing service (opt-in — used for genesis + blueprint publish)
 builder.Services.AddSystemWalletSigning(builder.Configuration);
 
@@ -772,11 +786,29 @@ The pending registration expires after 5 minutes. The client must finalize withi
 registerCreationGroup.MapPost("/finalize", async (
     IRegisterCreationOrchestrator orchestrator,
     FinalizeRegisterCreationRequest request,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
     try
     {
-        var response = await orchestrator.FinalizeAsync(request, cancellationToken);
+        // Pull the caller's org_id and sub claims so the orchestrator can
+        // create an owner subscription via the Tenant Service internal
+        // endpoint. These are read from the JWT, NEVER from the request body —
+        // that's the whole point: the caller doesn't get to pick whose org
+        // becomes the owner.
+        var orgIdClaim = httpContext.User.FindFirst("org_id")?.Value
+            ?? httpContext.User.FindFirst("organization_id")?.Value;
+        var userIdClaim = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? httpContext.User.FindFirst("sub")?.Value;
+
+        Guid.TryParse(orgIdClaim, out var callerOrgId);
+        Guid.TryParse(userIdClaim, out var callerUserId);
+
+        var response = await orchestrator.FinalizeAsync(
+            request,
+            callerOrgId,
+            callerUserId,
+            cancellationToken);
         return Results.Created($"/api/registers/{response.RegisterId}", response);
     }
     catch (InvalidOperationException ex) when (ex.Message.Contains("expired"))

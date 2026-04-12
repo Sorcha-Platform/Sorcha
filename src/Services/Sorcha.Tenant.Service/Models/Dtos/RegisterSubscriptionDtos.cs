@@ -6,6 +6,44 @@ using System.Text.Json.Serialization;
 namespace Sorcha.Tenant.Service.Models.Dtos;
 
 /// <summary>
+/// Service-to-service request body for <c>POST /api/internal/register-owner-subscriptions</c>.
+/// Sent by the Register Service immediately after finalising a register so that the
+/// owning organisation is subscribed without the client having to make a second
+/// admin-gated call. The Register Service has already verified owner attestations
+/// cryptographically, so the admin role check on the public subscribe endpoint is
+/// redundant here — trust is established by the service-to-service token instead.
+/// </summary>
+public record InternalOwnerSubscriptionRequest
+{
+    /// <summary>
+    /// Owning organisation ID — resolved from the authenticated caller's JWT claims
+    /// by the Register Service finalize endpoint, never accepted from an untrusted
+    /// request body.
+    /// </summary>
+    [JsonPropertyName("organizationId")]
+    public required Guid OrganizationId { get; init; }
+
+    /// <summary>
+    /// Register identifier (32-character hex string).
+    /// </summary>
+    [JsonPropertyName("registerId")]
+    public required string RegisterId { get; init; }
+
+    /// <summary>
+    /// Human-readable register name (cached on the subscription row for display).
+    /// </summary>
+    [JsonPropertyName("registerName")]
+    public string? RegisterName { get; init; }
+
+    /// <summary>
+    /// User ID recorded as the creator of the subscription. Resolved from the
+    /// authenticated caller's <c>sub</c> claim by the Register Service.
+    /// </summary>
+    [JsonPropertyName("ownerUserId")]
+    public required Guid OwnerUserId { get; init; }
+}
+
+/// <summary>
 /// Request to subscribe an organization to a register.
 /// </summary>
 public record SubscribeRequest

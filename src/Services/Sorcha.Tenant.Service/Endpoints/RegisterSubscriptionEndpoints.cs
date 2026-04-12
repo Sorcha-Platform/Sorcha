@@ -81,6 +81,31 @@ public static class RegisterSubscriptionEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .RequireAuthorization();
 
+        // Service-to-service endpoint: Register Service calls this right after
+        // it finalises a register so that the owning organisation is subscribed
+        // without the client needing to make a second admin-gated call. The
+        // Register Service has already cryptographically verified the owner
+        // attestations, so the admin role check that gates the public endpoint
+        // above is redundant here — we trust the caller by virtue of it holding
+        // a valid service token (RequireService policy).
+        app.MapPost("/api/internal/register-owner-subscriptions", CreateInternalOwnerSubscription)
+            .WithName("CreateInternalOwnerSubscription")
+            .WithSummary("Internal: create an owner register subscription (service-to-service)")
+            .WithDescription(
+                "Creates an Owner subscription for the supplied organization. Requires a service "
+                + "token. The caller is expected to have already established that the supplied "
+                + "organization is the rightful owner of the register (e.g. via signed owner "
+                + "attestations during register finalisation). Returns 409 if a subscription "
+                + "already exists. Idempotent — treating 409 as success is safe.")
+            .WithTags("Register Subscriptions")
+            .Produces<RegisterSubscriptionResponse>(StatusCodes.Status201Created)
+            .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .RequireAuthorization("RequireService")
+            .ExcludeFromDescription();
+
         return app;
     }
 
@@ -223,6 +248,60 @@ public static class RegisterSubscriptionEndpoints
 
         var subscriptions = await subscriptionService.GetSubscribedRegistersForOrgAsync(orgId, cancellationToken);
         return TypedResults.Ok(subscriptions);
+    }
+
+    /// <summary>
+    /// POST /api/internal/register-owner-subscriptions — service-to-service handler that
+    /// creates an owner subscription without the RequireAdministrator gate used by the
+    /// public subscribe endpoint.
+    /// </summary>
+    private static async Task<IResult> CreateInternalOwnerSubscription(
+        InternalOwnerSubscriptionRequest request,
+        IRegisterSubscriptionService subscriptionService,
+        ILogger<Program> logger,
+        CancellationToken cancellationToken)
+    {
+        if (request is null
+            || request.OrganizationId == Guid.Empty
+            || string.IsNullOrWhiteSpace(request.RegisterId))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["request"] = ["organizationId and registerId are required"]
+            });
+        }
+
+        try
+        {
+            var subscription = await subscriptionService.CreateOwnerSubscriptionAsync(
+                request.OrganizationId,
+                request.RegisterId,
+                request.RegisterName,
+                request.OwnerUserId,
+                cancellationToken);
+
+            logger.LogInformation(
+                "Internal owner subscription created for org {OrgId} on register {RegisterId}",
+                request.OrganizationId, request.RegisterId);
+
+            return TypedResults.Created(
+                $"/api/organizations/{request.OrganizationId}/register-subscriptions/{request.RegisterId}",
+                subscription);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already has a subscription"))
+        {
+            // Idempotent: caller may retry after a transient failure. Returning 409 lets
+            // callers distinguish "already done" from "newly created" without breaking.
+            logger.LogInformation(
+                "Owner subscription already exists for org {OrgId} on register {RegisterId}",
+                request.OrganizationId, request.RegisterId);
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Duplicate Subscription",
+                Detail = ex.Message,
+                Status = StatusCodes.Status409Conflict
+            });
+        }
     }
 
     private static Guid GetUserId(ClaimsPrincipal user)

@@ -35,6 +35,7 @@ public class RegisterCreationOrchestratorTests
     private readonly Mock<ISystemWalletSigningService> _mockSigningService;
     private readonly Mock<IPendingRegistrationStore> _mockPendingStore;
     private readonly Mock<IPeerServiceClient> _mockPeerClient;
+    private readonly Mock<ITenantSubscriptionClient> _mockTenantSubscriptionClient;
     private readonly RegisterCreationOrchestrator _orchestrator;
 
     public RegisterCreationOrchestratorTests()
@@ -109,6 +110,16 @@ public class RegisterCreationOrchestratorTests
                 return false;
             });
 
+        _mockTenantSubscriptionClient = new Mock<ITenantSubscriptionClient>();
+        _mockTenantSubscriptionClient
+            .Setup(c => c.CreateOwnerSubscriptionAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         _orchestrator = new RegisterCreationOrchestrator(
             _mockLogger.Object,
             _mockRegisterManager.Object,
@@ -119,7 +130,8 @@ public class RegisterCreationOrchestratorTests
             _mockValidatorClient.Object,
             _mockSigningService.Object,
             _mockPendingStore.Object,
-            _mockPeerClient.Object);
+            _mockPeerClient.Object,
+            _mockTenantSubscriptionClient.Object);
     }
 
     #region InitiateAsync Tests
@@ -367,6 +379,157 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
+        // Default call (no caller claims) should NOT subscribe — we only
+        // create owner subscriptions when the caller identity is known.
+        _mockTenantSubscriptionClient.Verify(
+            c => c.CreateOwnerSubscriptionAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_WithCallerClaims_ShouldCreateOwnerSubscription()
+    {
+        // Arrange — same shape as the happy-path test, but pass caller org/user ids
+        // so the orchestrator can invoke the tenant service internal endpoint.
+        var callerOrgId = Guid.NewGuid();
+        var callerUserId = Guid.NewGuid();
+
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Smoke Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Smoke Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        // Act
+        await _orchestrator.FinalizeAsync(finalizeRequest, callerOrgId, callerUserId);
+
+        // Assert — the tenant subscription client was called exactly once with
+        // the caller's org/user ids and the register id/name from the pending
+        // control record (NOT from anything the caller could have spoofed).
+        _mockTenantSubscriptionClient.Verify(
+            c => c.CreateOwnerSubscriptionAsync(
+                callerOrgId,
+                initiateResponse.RegisterId,
+                "Smoke Register",
+                callerUserId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_WithEmptyCallerOrg_ShouldNotCreateOwnerSubscription()
+    {
+        // Arrange — bootstrap-style call where no user identity exists.
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Bootstrap Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Bootstrap Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        // Act — explicit Guid.Empty for caller org means "bootstrap context,
+        // skip the subscription hop". The register itself still gets created.
+        await _orchestrator.FinalizeAsync(finalizeRequest, Guid.Empty, Guid.Empty);
+
+        // Assert
+        _mockTenantSubscriptionClient.Verify(
+            c => c.CreateOwnerSubscriptionAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
