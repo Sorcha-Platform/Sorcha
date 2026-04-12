@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Docker Compose override for the seed node of a fresh network.
+#
+# Usage (typically on top of n1.yml):
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.n1.yml \
+#     -f docker-compose.seed.yml \
+#     -f docker-compose.ports.yml \
+#     up -d
+#
+# Use this ONLY for the very first node of a brand-new network, when there
+# are no peers to sync the system register from. It switches the register
+# service from SyncOnly (wait for a peer) to GenesisFile (ingest the embedded
+# genesis block, then bootstrap the governance blueprints).
+#
+# Once the seed has the system register persisted on disk, subsequent restarts
+# can drop this override — the local copy will be discovered before either
+# the sync path or the genesis path is attempted.
+#
+# Secondary / replica nodes must NOT use this override. They should pull the
+# system register from the seed via the peer network.
+
+services:
+  register-service:
+    environment:
+      SystemRegister__BootstrapMode: GenesisFile
