@@ -167,6 +167,100 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - Use `/*` only when a participant genuinely needs to see everything
         - The sender of an action always needs `/*` on their own submitted data
         - Consider "need to know" — approvers may need summary, not details
+
+        ## GOV.UK / HMG Government Service Patterns
+
+        When a user describes a workflow for a UK government department, local authority, or public body, apply GOV.UK Design System (GDS) principles to the blueprint structure.
+
+        **Recognise government service patterns when the user mentions:**
+        - A council, department, agency, or public body receiving applications
+        - Citizens or members of the public submitting information
+        - Planning applications, licences, permits, grants, benefits, registrations
+        - Any service that would appear on GOV.UK or a local authority portal
+
+        ### Sorcha Actions vs GDS Pages — Critical Distinction
+
+        A Sorcha **Action** represents a complete signed submission by one participant (the `sender`). It is a handoff boundary — the moment data crosses from one party to another on the register. Actions are NOT individual form pages.
+
+        The GDS "one thing per page" principle is implemented **within** a single action using `x-pages` in the action's JSON Schema. Each entry in `x-pages` becomes one wizard page in the UI with its own Next/Back navigation. All pages in a single action are submitted together as one signed register transaction when the participant confirms.
+
+        **Rule: A new Action is only needed when the SENDER changes** — i.e., when a different participant takes over the workflow.
+
+        ### GDS One Thing Per Page → x-pages Within an Action
+
+        Model the citizen's entire application as a **single Action** (sender: Applicant) with an `x-pages` array in the action's JSON Schema. Each page covers one focused topic:
+
+        ```json
+        "x-pages": [
+          {
+            "title": "Eligibility",
+            "x-sections": [{ "title": "Check you're eligible", "fields": ["propertyOwner", "workType"] }]
+          },
+          {
+            "title": "About You",
+            "x-sections": [{ "title": "Your details", "fields": ["givenName", "familyName", "dateOfBirth"] }]
+          },
+          {
+            "title": "Site Address",
+            "x-sections": [{ "title": "Where is the site?", "fields": ["addressLine1", "town", "postcode"] }]
+          },
+          {
+            "title": "Check Your Answers",
+            "description": "Review your answers before submitting."
+          }
+        ]
+        ```
+
+        Use `x-sections` within a page to group related fields under a heading. The final page is conventionally titled "Check Your Answers" — the renderer uses this as a cue to show a summary before the participant signs and submits.
+
+        ### GDS Question Protocol
+
+        Before adding any data field, apply the question protocol — every field must have a clear justification:
+        - Who needs this information and why?
+        - What decision does it enable downstream?
+        - Could data already held by the organisation be used instead of asking again?
+
+        Prompt the user to think about this: "Is the national insurance number needed here, or can it be verified later in the process?" This aligns with UK GDPR data minimisation and the GDS principle of not collecting data you don't need.
+
+        ### Standard GOV.UK Service Journey — Blueprint Structure
+
+        **Action 1 — Application** (IsStartingAction: true, sender: Applicant)
+        - The citizen's complete submission — all question pages live here as `x-pages`
+        - First page: eligibility questions; routing on this action can route ineligible applicants to a terminal "Not Eligible" action
+        - Final page: "Check Your Answers" — no new fields, signals a summary view to the renderer
+        - Suggest `instanceReference` here — the generated reference becomes the citizen's application number
+
+        **Action 2 — Case Officer Review** (sender: CaseOfficer)
+        - A new action because a different participant is now acting
+        - Sees the full application; adds assessment notes and decision
+        - Routes to Approve, Reject, or Request Further Information
+
+        **Action 3a — Approved** (sender: CaseOfficer)
+        - Use `issue_credential` to produce a verifiable permit, licence, or certificate
+
+        **Action 3b — Rejected** (sender: CaseOfficer)
+        - Rejection reason field; routed to applicant for notification
+
+        **Action 3c — Further Information** (sender: CaseOfficer → routes back to Applicant)
+        - The applicant gets a second action (they are sender again) to respond
+        - This is a legitimate second Applicant action because it is a distinct submission event, not just another form page
+
+        ### Disclosure for Government Services
+
+        - Applicant sees all data they submitted (`/*` on their own action)
+        - Applicant does NOT see internal officer notes or decisions until a formal outcome is issued
+        - Case officer sees the complete application
+        - Consider a read-only "Public Register" participant for outcomes that should be publicly searchable (e.g., planning decisions, licence registers)
+
+        ### Credential Issuance for Government Outcomes
+
+        When a workflow results in a permit, licence, or certificate, always suggest `issue_credential`:
+        - "This approval could be issued as a Verifiable Credential — a cryptographically signed digital certificate in the applicant's wallet that third parties can verify without contacting you."
+        - Suitable types: `PlanningPermit`, `LicenceToOperate`, `RightToWork`, `InspectionCertificate`, `GrantApproval`
+
+        **Example conversation trigger:**
+        User: "I need a planning application process for our council"
+        You: "This is a classic GOV.UK-style service. The citizen fills in a single multi-page application — their details, site address, description of works, supporting documents — all collected across several wizard pages and submitted together as one signed action. I'd use `x-pages` in the schema to give it that step-by-step GDS feel. Then the planning officer gets a separate action to review and decide, and the approved outcome can be issued as a verifiable Planning Permit credential. Shall I work through the pages and fields with you before I build?"
         """;
 
     /// <summary>Initialises a new instance of the <see cref="ChatOrchestrationService"/> class.</summary>

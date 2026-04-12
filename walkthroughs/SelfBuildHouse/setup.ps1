@@ -7,7 +7,7 @@
 # Uses single-org model with admin token for all participants (simplified).
 
 param(
-    [ValidateSet('gateway', 'direct', 'aspire')]
+    [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
     [string]$Profile = 'gateway',
     [switch]$SkipHealthCheck
 )

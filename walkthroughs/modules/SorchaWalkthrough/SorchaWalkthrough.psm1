@@ -1469,13 +1469,26 @@ function New-SorchaOrganization {
         }
     } catch {
         $statusCode = $null
+        $responseBody = ""
         try { $statusCode = $_.Exception.Response.StatusCode.value__ } catch {}
+        try { $responseBody = $_.ErrorDetails.Message } catch {}
 
-        if ($statusCode -eq 409) {
+        # The tenant service rejects duplicate-creation attempts two different
+        # ways depending on which validator trips first: 409 Conflict if the
+        # org name/id collides, or 400 with InvalidSubdomain if the subdomain
+        # is already taken. Both mean "the org we wanted already exists" — in
+        # either case fall through to the list-and-match recovery path so
+        # setup.ps1 stays idempotent.
+        $looksLikeDuplicate = $statusCode -eq 409 `
+            -or ($statusCode -eq 400 -and $responseBody -match "InvalidSubdomain|already taken|already exists")
+
+        if ($looksLikeDuplicate) {
             Write-WtWarn "Organization '$Name' already exists — fetching"
-            # List orgs to find existing
+            # List orgs to find existing. The platform endpoint requires explicit
+            # pagination params (`page` and `pageSize` are mandatory), so pass a
+            # wide window rather than relying on server-side defaults.
             $orgs = Invoke-SorchaApi -Method GET `
-                -Uri "$TenantUrl/platform/organizations" `
+                -Uri "$TenantUrl/platform/organizations?page=1&pageSize=100" `
                 -Headers $Headers
             $existing = $orgs.items | Where-Object { $_.subdomain -eq $Subdomain } | Select-Object -First 1
             if ($existing) {
@@ -1485,7 +1498,7 @@ function New-SorchaOrganization {
                     AdminDirectlyAdded = $true
                 }
             }
-            throw "Organization '$Name' returned 409 but could not be found"
+            throw "Organization '$Name' looked like a duplicate but could not be found by subdomain"
         }
         throw
     }
