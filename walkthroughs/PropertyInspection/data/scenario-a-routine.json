@@ -1,0 +1,56 @@
+{
+  "name": "Scenario A: Routine Plumbing Repair",
+  "description": "Happy path — leaking tap, routine severity, accepted first time",
+  "path": "0 → 1 → 2 → 3 → 4 → 6",
+  "actions": {
+    "reportProblem": {
+      "tenantName": "Flora MacInnes",
+      "contactPhone": "+44 1463 555 201",
+      "propertyAddress": {
+        "street": "14 Moray Crescent",
+        "town": "Carronbridge",
+        "postcode": "SC4 2TL"
+      },
+      "description": "Kitchen tap is leaking continuously. Water has caused damage to the chipboard cabinet underneath the sink. The cabinet door is swollen and won't close properly.",
+      "category": "Plumbing",
+      "urgencyDescription": "Not an emergency but getting worse — bucket filling up twice a day",
+      "accessNotes": "Key safe at side gate, code shared with housing office. Available weekdays 9am-5pm."
+    },
+    "triageAllocate": {
+      "severity": "Routine",
+      "targetCompletionDate": "2026-04-25",
+      "requirements": [
+        "Replace tap unit (mixer tap, kitchen spec)",
+        "Check isolation valve under sink",
+        "Inspect for further water damage to adjacent units",
+        "Replace damaged cabinet panel if beyond repair"
+      ],
+      "allocationNotes": "Standard plumbing job. Tenant has key safe access so no need for appointment.",
+      "assignedOperativeName": "Jamie Crawford"
+    },
+    "verifyOperative": {
+      "operativeVerified": true,
+      "verificationNotes": "Credential matches — Jamie Crawford, Stoniebridge Construction"
+    },
+    "completeWork": {
+      "completedItems": [
+        "Replaced tap unit — fitted Bristan Quest mono mixer",
+        "Checked isolation valve — functioning correctly, no leak",
+        "Inspected adjacent cabinets — no further water damage",
+        "Replaced damaged cabinet panel with matching unit"
+      ],
+      "materialsUsed": "Bristan Quest mono mixer tap, 15mm flexi connectors x2, cabinet panel (600mm white melamine)",
+      "hoursWorked": 3.0,
+      "deliveryNotes": "Tap replaced and tested with no leaks. Cabinet panel replaced. All waste removed from property."
+    },
+    "reviewCompletion": {
+      "decision": "Accepted",
+      "reviewNotes": "All checklist items completed. Photos show clean installation. No further action required."
+    },
+    "confirmSatisfaction": {
+      "satisfied": true,
+      "feedbackNotes": "Very tidy job, thank you. Kitchen is back to normal.",
+      "rating": 5
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "name": "Scenario B: Emergency Ceiling Collapse (Rework + Inspector)",
+  "description": "Emergency severity — ceiling collapse, first attempt missing electrical check, rework, then inspector sign-off",
+  "path": "0 → 1 → 2 → 3 → 4(rework) → 3 → 4(accepted) → 5 → 6",
+  "actions": {
+    "reportProblem": {
+      "tenantName": "Angus Beaton",
+      "contactPhone": "+44 1463 555 302",
+      "propertyAddress": {
+        "street": "7 Loch Morach Drive",
+        "town": "Dalreoch",
+        "postcode": "SC6 8JN"
+      },
+      "description": "Bedroom ceiling has partially collapsed following heavy rain. Large section of plaster has fallen onto the bed. Water staining visible on exposed joists. Concerned about structural integrity of remaining ceiling and possible electrical risk from ceiling light fitting.",
+      "category": "Structural",
+      "urgencyDescription": "Emergency — ceiling still dropping plaster, cannot use bedroom, worried about further collapse",
+      "accessNotes": "Will be home all day. Bedroom door is closed to contain debris. Please call on arrival."
+    },
+    "triageAllocate": {
+      "severity": "Emergency",
+      "targetCompletionDate": "2026-04-13",
+      "requirements": [
+        "Make safe — prop and shore remaining ceiling",
+        "Remove fallen debris safely",
+        "Inspect roof above for source of water ingress",
+        "Repair roof leak",
+        "Replace ceiling plasterboard and skim",
+        "Redecorate ceiling and affected walls",
+        "Electrical check on ceiling light fitting and wiring"
+      ],
+      "allocationNotes": "Emergency response. Ceiling collapse with potential structural and electrical risk. Send experienced team.",
+      "assignedOperativeName": "Rory MacPherson"
+    },
+    "verifyOperative": {
+      "operativeVerified": true,
+      "verificationNotes": "Credential confirmed — Rory MacPherson, Stoniebridge Construction, Emergency job"
+    },
+    "completeWorkFirstAttempt": {
+      "completedItems": [
+        "Made safe — Acrow props installed under remaining ceiling section",
+        "Removed all fallen plaster and debris, bagged and removed from property",
+        "Inspected roof — found cracked ridge tile allowing water ingress",
+        "Replaced cracked ridge tile and repointed surrounding tiles",
+        "Replaced ceiling plasterboard (2 sheets 2400x1200) and skimmed",
+        "Redecorated ceiling with mist coat and two coats white emulsion"
+      ],
+      "materialsUsed": "Acrow props x2, plasterboard 2400x1200 x2, multi-finish plaster, ridge tile, roofing cement, white emulsion 5L",
+      "hoursWorked": 14.0,
+      "deliveryNotes": "Roof repaired and ceiling replaced. Room cleaned and usable. Note: electrical check of ceiling fitting still to be completed — waiting for qualified electrician availability."
+    },
+    "reviewCompletionRework": {
+      "decision": "Rework",
+      "reviewNotes": "Six of seven checklist items completed. Roof and ceiling repair looks good in photos.",
+      "reworkInstructions": "Electrical check on ceiling light fitting not evidenced. This is a safety requirement for Emergency jobs. Please arrange qualified electrician and submit certificate."
+    },
+    "completeWorkRetry": {
+      "completedItems": [
+        "Made safe — completed (previous visit)",
+        "Removed debris — completed (previous visit)",
+        "Inspected roof — completed (previous visit)",
+        "Repaired roof leak — completed (previous visit)",
+        "Replaced ceiling plasterboard — completed (previous visit)",
+        "Redecorated — completed (previous visit)",
+        "Electrical check — NICEIC-registered electrician tested ceiling rose, pendant, and cable run. All satisfactory. Certificate ref: NICEIC-2026-SC-008734"
+      ],
+      "materialsUsed": "No additional materials (electrical inspection only)",
+      "hoursWorked": 1.5,
+      "deliveryNotes": "Electrical inspection completed by qualified NICEIC electrician. Ceiling light fitting, wiring, and connection all tested satisfactory. Certificate provided."
+    },
+    "reviewCompletionAccepted": {
+      "decision": "Accepted",
+      "reviewNotes": "All seven checklist items now completed including electrical certificate. Forwarding to Building Inspector for Emergency safety sign-off."
+    },
+    "safetySignOff": {
+      "structuralSafe": true,
+      "electricalSafe": true,
+      "gasSafe": true,
+      "complianceNotes": "Ceiling repair structurally sound — plasterboard properly fixed to joists. Roof repair adequate. NICEIC electrical certificate confirms safe installation. No gas appliances affected. Property safe for habitation.",
+      "signOffDecision": "Pass"
+    },
+    "confirmSatisfaction": {
+      "satisfied": true,
+      "feedbackNotes": "Took two visits but the repair is solid. Bedroom ceiling looks like new. Glad the electrical was checked properly.",
+      "rating": 4
+    }
+  }
+}

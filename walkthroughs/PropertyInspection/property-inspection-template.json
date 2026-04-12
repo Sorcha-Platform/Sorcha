@@ -1,0 +1,492 @@
+{
+  "id": "property-inspection-v1",
+  "title": "Council Property Inspection",
+  "description": "Council property services workflow — tenant reports problem with photo evidence, council triages and allocates contractor, tenant verifies operative identity, contractor completes work with photo evidence, council signs off.",
+  "version": 1,
+  "category": "government",
+  "tags": ["council", "property", "inspection", "photo-evidence", "safeguarding", "strathcarron"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "property-inspection-generated",
+    "title": "Council Property Inspection",
+    "version": 1,
+    "metadata": {
+      "category": "Council Services",
+      "complexity": "Complex",
+      "actions": "7",
+      "features": "Multi-Org, File Upload, Conditional Routing, Cycles, Verifiable Credentials, Persona Autofill",
+      "sector": "Local Government",
+      "hasCycles": "true"
+    },
+    "instanceReference": {
+      "prefix": "PI",
+      "components": [
+        { "field": "/category", "transform": "Truncate", "chars": 4 },
+        { "field": "/propertyAddress/town", "transform": "FirstWord", "chars": 3 }
+      ]
+    },
+    "participants": [
+      {
+        "id": "tenant",
+        "name": "Council Tenant",
+        "organisation": "Public",
+        "description": "Reports problem with photo evidence, verifies operative identity, confirms satisfaction",
+        "walletAddress": "addr_patched_by_publish_blueprint"
+      },
+      {
+        "id": "housing-officer",
+        "name": "Housing Officer",
+        "organisation": "Strathcarron Council",
+        "description": "Triages requests, sets requirements checklist, allocates contractor, reviews completion",
+        "walletAddress": "addr_patched_by_publish_blueprint"
+      },
+      {
+        "id": "contractor",
+        "name": "Site Operative",
+        "organisation": "Stoniebridge Construction",
+        "description": "Completes repair work, submits delivery note with photo evidence of completed work",
+        "walletAddress": "addr_patched_by_publish_blueprint"
+      },
+      {
+        "id": "building-inspector",
+        "name": "Building Inspector",
+        "organisation": "Strathcarron Council",
+        "description": "Signs off structural/safety work for Emergency severity jobs",
+        "walletAddress": "addr_patched_by_publish_blueprint"
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Report Problem",
+        "description": "Tenant reports a property issue with description, category, and photo evidence of damage",
+        "sender": "tenant",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "tenantName": {
+                "type": "string",
+                "title": "Full Name",
+                "minLength": 2,
+                "maxLength": 100,
+                "x-persona": "fullName"
+              },
+              "contactPhone": {
+                "type": "string",
+                "format": "tel",
+                "title": "Contact Phone",
+                "x-persona": "defaultPhone"
+              },
+              "propertyAddress": {
+                "type": "object",
+                "title": "Property Address",
+                "x-persona": "defaultAddress",
+                "properties": {
+                  "street": { "type": "string", "title": "Street", "minLength": 3 },
+                  "town": { "type": "string", "title": "Town", "minLength": 2 },
+                  "postcode": { "type": "string", "title": "Postcode", "pattern": "^SC[0-9] [0-9][A-Z]{2}$" }
+                },
+                "required": ["street", "town", "postcode"]
+              },
+              "description": {
+                "type": "string",
+                "title": "Problem Description",
+                "minLength": 10,
+                "maxLength": 2000
+              },
+              "category": {
+                "type": "string",
+                "title": "Category",
+                "enum": ["Plumbing", "Electrical", "Structural", "Roofing", "Other"]
+              },
+              "urgencyDescription": {
+                "type": "string",
+                "title": "Urgency Notes",
+                "maxLength": 500
+              },
+              "accessNotes": {
+                "type": "string",
+                "title": "Access Notes",
+                "description": "Key safe location, neighbour contact, availability",
+                "maxLength": 500
+              },
+              "damagePhoto": {
+                "type": "string",
+                "format": "file-reference",
+                "title": "Photo of Damage",
+                "x-file": {
+                  "accept": ["image/jpeg", "image/png"],
+                  "maxSizePerFile": "16MB",
+                  "maxChunks": 10
+                }
+              }
+            },
+            "required": ["tenantName", "contactPhone", "propertyAddress", "description", "category", "damagePhoto"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "tenant", "dataPointers": ["/*"] },
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-triage",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Route to Housing Officer for triage"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Triage & Allocate",
+        "description": "Housing Officer assesses severity, creates requirements checklist, and allocates contractor",
+        "sender": "housing-officer",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "title": "Severity",
+                "enum": ["Routine", "Urgent", "Emergency"]
+              },
+              "targetCompletionDate": {
+                "type": "string",
+                "format": "date",
+                "title": "Target Completion Date"
+              },
+              "requirements": {
+                "type": "array",
+                "title": "Requirements Checklist",
+                "items": { "type": "string", "minLength": 3 },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "allocationNotes": {
+                "type": "string",
+                "title": "Allocation Notes",
+                "maxLength": 1000
+              },
+              "assignedOperativeName": {
+                "type": "string",
+                "title": "Assigned Operative",
+                "minLength": 2
+              }
+            },
+            "required": ["severity", "targetCompletionDate", "requirements", "assignedOperativeName"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "JobAssignmentCredential",
+          "recipientParticipantId": "contractor",
+          "expiryDuration": "P30D",
+          "claimMappings": [
+            { "claimName": "jobReference", "sourceField": "/instanceReference" },
+            { "claimName": "propertyAddress", "sourceField": "/propertyAddress" },
+            { "claimName": "tenantName", "sourceField": "/tenantName" },
+            { "claimName": "assignedOperativeName", "sourceField": "/assignedOperativeName" },
+            { "claimName": "severity", "sourceField": "/severity" },
+            { "claimName": "scopeSummary", "sourceField": "/requirements" }
+          ],
+          "disclosable": [
+            "jobReference",
+            "assignedOperativeName",
+            "severity"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "tenant", "dataPointers": ["/severity", "/targetCompletionDate", "/assignedOperativeName"] },
+          { "participantAddress": "contractor", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-verify",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Route to tenant for operative verification"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Verify Operative",
+        "description": "Tenant verifies the contractor's identity using the JobAssignmentCredential before granting access",
+        "sender": "tenant",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "operativeVerified": {
+                "type": "boolean",
+                "title": "Operative Identity Verified"
+              },
+              "verificationNotes": {
+                "type": "string",
+                "title": "Verification Notes",
+                "maxLength": 500
+              }
+            },
+            "required": ["operativeVerified"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "tenant", "dataPointers": ["/*"] },
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "contractor", "dataPointers": ["/operativeVerified"] }
+        ],
+        "routes": [
+          {
+            "id": "verified-proceed",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "operativeVerified" }, true] },
+            "description": "Operative verified — proceed to work"
+          },
+          {
+            "id": "rejected-reallocate",
+            "nextActionIds": [1],
+            "condition": { "==": [{ "var": "operativeVerified" }, false] },
+            "description": "Verification failed — return to Housing Officer for re-allocation"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Complete Work",
+        "description": "Contractor completes repair, ticks off checklist items, and submits photo evidence of completed work",
+        "sender": "contractor",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "completedItems": {
+                "type": "array",
+                "title": "Completed Checklist Items",
+                "items": { "type": "string", "minLength": 3 },
+                "minItems": 1
+              },
+              "materialsUsed": {
+                "type": "string",
+                "title": "Materials Used",
+                "maxLength": 1000
+              },
+              "hoursWorked": {
+                "type": "number",
+                "title": "Hours Worked",
+                "minimum": 0.5,
+                "maximum": 100
+              },
+              "completionPhoto": {
+                "type": "string",
+                "format": "file-reference",
+                "title": "Photo of Completed Work",
+                "x-file": {
+                  "accept": ["image/jpeg", "image/png"],
+                  "maxSizePerFile": "16MB",
+                  "maxChunks": 10
+                }
+              },
+              "deliveryNotes": {
+                "type": "string",
+                "title": "Delivery Notes",
+                "minLength": 5,
+                "maxLength": 2000
+              }
+            },
+            "required": ["completedItems", "hoursWorked", "completionPhoto", "deliveryNotes"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "contractor", "dataPointers": ["/*"] },
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "building-inspector", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-review",
+            "nextActionIds": [4],
+            "isDefault": true,
+            "description": "Route to Housing Officer for completion review"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Review Completion",
+        "description": "Housing Officer reviews the contractor's work, photos, and checklist completion",
+        "sender": "housing-officer",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["Accepted", "Rework"]
+              },
+              "reviewNotes": {
+                "type": "string",
+                "title": "Review Notes",
+                "maxLength": 2000
+              },
+              "reworkInstructions": {
+                "type": "string",
+                "title": "Rework Instructions",
+                "maxLength": 2000
+              }
+            },
+            "required": ["decision", "reviewNotes"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "contractor", "dataPointers": ["/decision", "/reworkInstructions"] },
+          { "participantAddress": "tenant", "dataPointers": ["/decision"] },
+          { "participantAddress": "building-inspector", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "rework",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "decision" }, "Rework"] },
+            "description": "Work incomplete — return to contractor"
+          },
+          {
+            "id": "accepted-emergency",
+            "nextActionIds": [5],
+            "condition": {
+              "and": [
+                { "==": [{ "var": "decision" }, "Accepted"] },
+                { "==": [{ "var": "severity" }, "Emergency"] }
+              ]
+            },
+            "description": "Emergency job accepted — route to Building Inspector for safety sign-off"
+          },
+          {
+            "id": "accepted-standard",
+            "nextActionIds": [6],
+            "isDefault": true,
+            "description": "Non-emergency job accepted — route to tenant for satisfaction"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Safety Sign-Off",
+        "description": "Building Inspector verifies structural, electrical, and gas safety for Emergency severity jobs",
+        "sender": "building-inspector",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "structuralSafe": {
+                "type": "boolean",
+                "title": "Structural Integrity Safe"
+              },
+              "electricalSafe": {
+                "type": "boolean",
+                "title": "Electrical Safety Confirmed"
+              },
+              "gasSafe": {
+                "type": "boolean",
+                "title": "Gas Safety Confirmed"
+              },
+              "complianceNotes": {
+                "type": "string",
+                "title": "Compliance Notes",
+                "maxLength": 2000
+              },
+              "signOffDecision": {
+                "type": "string",
+                "title": "Sign-Off Decision",
+                "enum": ["Pass", "Fail"]
+              }
+            },
+            "required": ["structuralSafe", "electricalSafe", "signOffDecision"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "building-inspector", "dataPointers": ["/*"] },
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "tenant", "dataPointers": ["/signOffDecision"] },
+          { "participantAddress": "contractor", "dataPointers": ["/signOffDecision", "/complianceNotes"] }
+        ],
+        "routes": [
+          {
+            "id": "safety-pass",
+            "nextActionIds": [6],
+            "condition": { "==": [{ "var": "signOffDecision" }, "Pass"] },
+            "description": "Safety checks passed — proceed to tenant satisfaction"
+          },
+          {
+            "id": "safety-fail",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "signOffDecision" }, "Fail"] },
+            "description": "Safety checks failed — return to contractor"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Confirm Satisfaction",
+        "description": "Tenant confirms satisfaction with the completed repair work",
+        "sender": "tenant",
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "satisfied": {
+                "type": "boolean",
+                "title": "Satisfied with Repair"
+              },
+              "feedbackNotes": {
+                "type": "string",
+                "title": "Feedback",
+                "maxLength": 1000
+              },
+              "rating": {
+                "type": "integer",
+                "title": "Rating (1-5)",
+                "minimum": 1,
+                "maximum": 5
+              }
+            },
+            "required": ["satisfied", "rating"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "ServiceCompletionCredential",
+          "recipientParticipantId": "tenant",
+          "expiryDuration": "P3650D",
+          "claimMappings": [
+            { "claimName": "jobReference", "sourceField": "/instanceReference" },
+            { "claimName": "propertyAddress", "sourceField": "/propertyAddress" },
+            { "claimName": "category", "sourceField": "/category" },
+            { "claimName": "completionDate", "sourceField": "/completionDate" },
+            { "claimName": "satisfactionRating", "sourceField": "/rating" },
+            { "claimName": "contractorName", "sourceField": "/assignedOperativeName" }
+          ],
+          "disclosable": [
+            "jobReference",
+            "propertyAddress",
+            "completionDate",
+            "satisfactionRating"
+          ]
+        },
+        "disclosures": [
+          { "participantAddress": "tenant", "dataPointers": ["/*"] },
+          { "participantAddress": "housing-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "contractor", "dataPointers": ["/satisfied", "/rating", "/feedbackNotes"] }
+        ],
+        "routes": []
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}
