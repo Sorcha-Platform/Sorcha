@@ -8,8 +8,8 @@
   "expectedRejection": false,
   "actions": {
     "1": {
-      "projectName": "Central Business Tower",
-      "siteAddress": "42 Commerce Street, Riverside, RS2 7GH",
+      "projectName": "Carronbridge Business Tower",
+      "siteAddress": "42 Commerce Street, Carronbridge, SC2 7GH",
       "buildingType": "commercial",
       "estimatedValue": 5000000,
       "grossFloorArea": 3500,
@@ -35,11 +35,11 @@
       "structuralApproved": true,
       "fireCompliant": true,
       "accessCompliant": true,
-      "inspectionNotes": "Structural plans exceed minimum requirements. Fire strategy includes dual staircase evacuation, sprinkler system throughout, and smoke ventilation in atrium. Accessible lifts to all floors with refuge areas at each level. Environmental conditions from Green Valley Environmental to be incorporated as permit conditions."
+      "inspectionNotes": "Structural plans exceed minimum requirements. Fire strategy includes dual staircase evacuation, sprinkler system throughout, and smoke ventilation in atrium. Accessible lifts to all floors with refuge areas at each level. Environmental conditions from Heatherbank Environmental to be incorporated as permit conditions."
     },
     "6": {
       "approved": true,
-      "permitNumber": "RBC-2026-00287",
+      "permitNumber": "SC-2026-00287",
       "validUntil": "2029-02-17",
       "conditions": "Subject to environmental conditions: noise mitigation during piling (09:00-17:00 only), dust suppression during demolition, contaminated soil remediation per EA guidelines, SuDS attenuation tank installation, ecological survey of canal corridor. Construction management plan required before commencement. Party wall agreements with adjacent properties to be completed."
     }

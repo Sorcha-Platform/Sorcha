@@ -16,10 +16,10 @@
 #   7-9. Register creation, subscriptions, participant publishing, blueprint
 #
 # Organizations:
-#   1. Meridian Construction     — contractor (admin)
-#   2. Apex Structural Engineers — structural-engineer (admin)
-#   3. Riverside Borough Council — planning-officer (admin) + building-control
-#   4. Green Valley Environmental — environmental-assessor (admin)
+#   1. Stoniebridge Construction     — contractor (admin)
+#   2. Murchison Engineering         — structural-engineer (admin)
+#   3. Strathcarron Council          — planning-officer (admin) + building-control
+#   4. Heatherbank Environmental     — environmental-assessor (admin)
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
@@ -101,26 +101,26 @@ $publicOrgId = "00000000-0000-0000-0000-000000000002"
 # ============================================================================
 
 $orgDefs = @(
-    @{ name = "Meridian Construction";      subdomain = "meridian";    desc = "General contractor";        adminRole = "contractor" }
-    @{ name = "Apex Structural Engineers";  subdomain = "apex";        desc = "Structural assessment";     adminRole = "structural-engineer" }
-    @{ name = "Riverside Borough Council";  subdomain = "riverside";   desc = "Local planning authority";  adminRole = "planning-officer" }
-    @{ name = "Green Valley Environmental"; subdomain = "greenvalley"; desc = "Environmental assessment";  adminRole = "environmental-assessor" }
+    @{ name = "Stoniebridge Construction";  subdomain = "stoniebridge";  desc = "General contractor";        adminRole = "contractor" }
+    @{ name = "Murchison Engineering";      subdomain = "murchison";     desc = "Structural assessment";     adminRole = "structural-engineer" }
+    @{ name = "Strathcarron Council";       subdomain = "strathcarron";  desc = "Local planning authority";  adminRole = "planning-officer" }
+    @{ name = "Heatherbank Environmental";  subdomain = "heatherbank";   desc = "Environmental assessment";  adminRole = "environmental-assessor" }
 )
 
 $userDefs = @(
-    @{ role = "contractor";              org = "meridian";    email = $secrets.contractorEmail;       password = $secrets.contractorPassword;       name = $secrets.contractorName;        isOrgAdmin = $true }
-    @{ role = "structural-engineer";     org = "apex";        email = $secrets.engineerEmail;         password = $secrets.engineerPassword;         name = $secrets.engineerName;          isOrgAdmin = $true }
-    @{ role = "planning-officer";        org = "riverside";   email = $secrets.planningEmail;         password = $secrets.planningPassword;         name = $secrets.planningName;          isOrgAdmin = $true }
-    @{ role = "environmental-assessor";  org = "greenvalley"; email = $secrets.environmentalEmail;    password = $secrets.environmentalPassword;    name = $secrets.environmentalName;     isOrgAdmin = $true }
-    @{ role = "building-control";        org = "riverside";   email = $secrets.inspectorEmail;        password = $secrets.inspectorPassword;        name = $secrets.inspectorName;         isOrgAdmin = $false }
+    @{ role = "contractor";              org = "stoniebridge";  email = $secrets.contractorEmail;       password = $secrets.contractorPassword;       name = $secrets.contractorName;        isOrgAdmin = $true }
+    @{ role = "structural-engineer";     org = "murchison";    email = $secrets.engineerEmail;         password = $secrets.engineerPassword;         name = $secrets.engineerName;          isOrgAdmin = $true }
+    @{ role = "planning-officer";        org = "strathcarron"; email = $secrets.planningEmail;         password = $secrets.planningPassword;         name = $secrets.planningName;          isOrgAdmin = $true }
+    @{ role = "environmental-assessor";  org = "heatherbank";  email = $secrets.environmentalEmail;    password = $secrets.environmentalPassword;    name = $secrets.environmentalName;     isOrgAdmin = $true }
+    @{ role = "building-control";        org = "strathcarron"; email = $secrets.inspectorEmail;        password = $secrets.inspectorPassword;        name = $secrets.inspectorName;         isOrgAdmin = $false }
 )
 
 $orgUserMap = @{
-    "contractor"             = "meridian"
-    "structural-engineer"    = "apex"
-    "planning-officer"       = "riverside"
-    "environmental-assessor" = "greenvalley"
-    "building-control"       = "riverside"
+    "contractor"             = "stoniebridge"
+    "structural-engineer"    = "murchison"
+    "planning-officer"       = "strathcarron"
+    "environmental-assessor" = "heatherbank"
+    "building-control"       = "strathcarron"
 }
 
 # ============================================================================
@@ -314,12 +314,12 @@ foreach ($u in $userDefs) {
 }
 
 # ============================================================================
-# Step 7: Create Register (owned by Meridian contractor)
+# Step 7: Create Register (owned by Stoniebridge contractor)
 # ============================================================================
 Write-WtStep "Step 8: Create Register"
 
 # Reuse contractor's cached session for meridian org
-$meridianSession = $sessionCache["$($secrets.contractorEmail)|$($orgs.meridian)"]
+$meridianSession = $sessionCache["$($secrets.contractorEmail)|$($orgs.stoniebridge)"]
 
 $register = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl `
@@ -327,7 +327,7 @@ $register = New-SorchaRegister `
     -TenantUrl $env.TenantUrl `
     -Name "Construction Permit Register" `
     -Description "Multi-org construction permit approval register" `
-    -TenantId $orgs.meridian `
+    -TenantId $orgs.stoniebridge `
     -OwnerUserId $meridianSession.UserId `
     -OwnerWalletAddress $users["contractor"].WalletAddress `
     -Headers $meridianSession.Headers `
@@ -340,15 +340,15 @@ Write-WtStep "Step 9: Subscribe Organizations to Register"
 
 New-SorchaRegisterSubscription `
     -TenantUrl $env.TenantUrl `
-    -OrganizationId $orgs.meridian `
+    -OrganizationId $orgs.stoniebridge `
     -RegisterId $register.RegisterId `
     -RegisterName "Construction Permit Register" `
     -SubscriptionType "Owner" `
     -Headers $meridianSession.Headers
 
-$orgAdminMap = @{ "apex" = $secrets.engineerEmail; "riverside" = $secrets.planningEmail; "greenvalley" = $secrets.environmentalEmail }
+$orgAdminMap = @{ "murchison" = $secrets.engineerEmail; "strathcarron" = $secrets.planningEmail; "heatherbank" = $secrets.environmentalEmail }
 
-foreach ($orgKey in @("apex", "riverside", "greenvalley")) {
+foreach ($orgKey in @("murchison", "strathcarron", "heatherbank")) {
     $orgSession = $sessionCache["$($orgAdminMap[$orgKey])|$($orgs[$orgKey])"]
 
     New-SorchaRegisterSubscription `
@@ -376,11 +376,11 @@ $null = Add-SorchaPublicOrgSubscription `
 Write-WtStep "Step 10: Publish Participant Records to Register"
 
 $orgNameMap = @{
-    "contractor"             = "Meridian Construction"
-    "structural-engineer"    = "Apex Structural Engineers"
-    "planning-officer"       = "Riverside Borough Council"
-    "environmental-assessor" = "Green Valley Environmental"
-    "building-control"       = "Riverside Borough Council"
+    "contractor"             = "Stoniebridge Construction"
+    "structural-engineer"    = "Murchison Engineering"
+    "planning-officer"       = "Strathcarron Council"
+    "environmental-assessor" = "Heatherbank Environmental"
+    "building-control"       = "Strathcarron Council"
 }
 
 foreach ($u in $userDefs) {

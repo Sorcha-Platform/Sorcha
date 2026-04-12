@@ -8,8 +8,8 @@
   "expectedRejection": false,
   "actions": {
     "1": {
-      "projectName": "Riverside Heights",
-      "siteAddress": "14 Waterfront Lane, Riverside, RS1 4AB",
+      "projectName": "Carronbridge Heights",
+      "siteAddress": "14 Waterfront Lane, Carronbridge, SC1 4AB",
       "buildingType": "residential",
       "estimatedValue": 500000,
       "grossFloorArea": 800,
@@ -34,7 +34,7 @@
     },
     "6": {
       "approved": true,
-      "permitNumber": "RBC-2026-00142",
+      "permitNumber": "SC-2026-00142",
       "validUntil": "2029-02-17",
       "conditions": "Standard drainage conditions apply. Construction hours limited to 07:00-19:00 weekdays, 08:00-13:00 Saturdays. No work on Sundays or bank holidays."
     }

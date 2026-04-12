@@ -25,7 +25,7 @@ The scenario exercises every major Sorcha capability:
 
 ### The Story
 
-**Meridian Construction** wants to build a new development on a brownfield site. They submit their plans through Sorcha, which routes the application through structural assessment, council planning, an optional environmental review (for high-risk builds), building control sign-off, and finally back to the council planning officer for permit issuance.
+**Stoniebridge Construction** wants to build a new development on a brownfield site. They submit their plans through Sorcha, which routes the application through structural assessment, council planning, an optional environmental review (for high-risk builds), building control sign-off, and finally back to the council planning officer for permit issuance.
 
 Two test runs demonstrate the branching:
 1. **Low risk** — 3-storey residential (risk score 5.5) skips environmental review
@@ -35,20 +35,20 @@ Two test runs demonstrate the branching:
 
 | Organization | Role | Description |
 |---|---|---|
-| **Meridian Construction** | Contractor | Submits building application with plans and site data |
-| **Apex Structural Engineers** | Structural Assessor | Independent review of structural integrity, calculates risk score |
-| **Riverside Borough Council** | Local Authority | Two participants: Planning Officer (zoning + final approval) and Building Control Inspector (technical sign-off) |
-| **Green Valley Environmental** | Environmental Assessor | Conducts impact assessment when risk score is high (conditional) |
+| **Stoniebridge Construction** | Contractor | Submits building application with plans and site data |
+| **Murchison Engineering** | Structural Assessor | Independent review of structural integrity, calculates risk score |
+| **Strathcarron Council** | Local Authority | Two participants: Planning Officer (zoning + final approval) and Building Control Inspector (technical sign-off) |
+| **Heatherbank Environmental** | Environmental Assessor | Conducts impact assessment when risk score is high (conditional) |
 
 ### Participants
 
 | Participant ID | Display Name | Organization | Role in Workflow |
 |---|---|---|---|
-| `contractor` | Site Manager | Meridian Construction | Submits application (Action 1) |
-| `structural-engineer` | Lead Engineer | Apex Structural Engineers | Structural assessment + risk calculation (Action 2) |
-| `planning-officer` | Planning Officer | Riverside Borough Council | Zoning review + final approval (Actions 3, 6) |
-| `environmental-assessor` | Environmental Consultant | Green Valley Environmental | Environmental impact assessment (Action 4, conditional) |
-| `building-control` | Building Control Inspector | Riverside Borough Council | Technical inspection + fee calculation (Action 5) |
+| `contractor` | Site Manager | Stoniebridge Construction | Submits application (Action 1) |
+| `structural-engineer` | Lead Engineer | Murchison Engineering | Structural assessment + risk calculation (Action 2) |
+| `planning-officer` | Planning Officer | Strathcarron Council | Zoning review + final approval (Actions 3, 6) |
+| `environmental-assessor` | Environmental Consultant | Heatherbank Environmental | Environmental impact assessment (Action 4, conditional) |
+| `building-control` | Building Control Inspector | Strathcarron Council | Technical inspection + fee calculation (Action 5) |
 
 ---
 
@@ -115,7 +115,7 @@ Two test runs demonstrate the branching:
 ### Action Details
 
 #### Action 1: Submit Application
-**Participant:** `contractor` (Meridian Construction)
+**Participant:** `contractor` (Stoniebridge Construction)
 **Purpose:** Submit building plans and project details for assessment
 
 | Field | Type | Validation | Description |
@@ -135,7 +135,7 @@ Two test runs demonstrate the branching:
 ---
 
 #### Action 2: Structural Assessment
-**Participant:** `structural-engineer` (Apex Structural Engineers)
+**Participant:** `structural-engineer` (Murchison Engineering)
 **Purpose:** Review structural plans and calculate risk score
 
 | Field | Type | Description |
@@ -179,7 +179,7 @@ Two test runs demonstrate the branching:
 ---
 
 #### Action 3: Planning Review
-**Participant:** `planning-officer` (Riverside Borough Council)
+**Participant:** `planning-officer` (Strathcarron Council)
 **Purpose:** Evaluate zoning compliance and route based on risk
 
 | Field | Type | Description |
@@ -201,7 +201,7 @@ Two test runs demonstrate the branching:
 ---
 
 #### Action 4: Environmental Impact Assessment (Conditional)
-**Participant:** `environmental-assessor` (Green Valley Environmental)
+**Participant:** `environmental-assessor` (Heatherbank Environmental)
 **Purpose:** Assess environmental impact for high-risk projects (riskScore >= 7)
 
 *This action is only reached when the planning officer routes high-risk projects here.*
@@ -221,7 +221,7 @@ Two test runs demonstrate the branching:
 ---
 
 #### Action 5: Building Control Inspection
-**Participant:** `building-control` (Riverside Borough Council)
+**Participant:** `building-control` (Strathcarron Council)
 **Purpose:** Technical review and compliance check, calculate permit fee
 
 | Field | Type | Description |
@@ -261,13 +261,13 @@ Two test runs demonstrate the branching:
 ---
 
 #### Action 6: Final Approval
-**Participant:** `planning-officer` (Riverside Borough Council)
+**Participant:** `planning-officer` (Strathcarron Council)
 **Purpose:** Issue or reject the building permit and mint the verifiable credential
 
 | Field | Type | Description |
 |---|---|---|
 | `approved` | boolean | Final approval decision |
-| `permitNumber` | string | Unique permit reference (e.g., RBC-2026-00142) |
+| `permitNumber` | string | Unique permit reference (e.g., SC-2026-00142) |
 | `validUntil` | string (date) | Permit expiry date (typically 3 years) |
 | `conditions` | string | Any conditions attached to the permit |
 
@@ -281,9 +281,9 @@ On approval, a **Building Permit Verifiable Credential** is minted:
   "type": ["VerifiableCredential", "BuildingPermitCredential"],
   "issuer": "did:sorcha:w:{planning-officer-wallet}",
   "credentialSubject": {
-    "permitNumber": "RBC-2026-00142",
-    "projectName": "Riverside Heights",
-    "siteAddress": "14 Waterfront Lane, Riverside, RS1 4AB",
+    "permitNumber": "SC-2026-00142",
+    "projectName": "Carronbridge Heights",
+    "siteAddress": "14 Waterfront Lane, Carronbridge, SC1 4AB",
     "buildingType": "residential",
     "storeys": 3,
     "riskScore": 6.1,
@@ -387,7 +387,7 @@ docker-compose up -d
 | Rejection routing | Actions 3, 4, 6 can reject back to Action 1 |
 | Chained calculations | Risk score (Action 2) feeds routing; permit fee (Action 5) feeds credential |
 | Selective disclosure | Each participant sees only what they need |
-| Multi-user same org | Planning Officer and Building Control are both Riverside Council |
+| Multi-user same org | Planning Officer and Building Control are both Strathcarron Council |
 | Verifiable credential | Building Permit VC issued on final approval |
 | Credential downstream use | Contractor can present the permit VC to other systems/inspectors |
 

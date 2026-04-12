@@ -23,8 +23,8 @@
       "actionName": "Submit Application",
       "decision": "approve",
       "payload": {
-        "projectName": "Riverside Heights",
-        "siteAddress": "14 Waterfront Lane, Riverside Borough, RB1 4WL",
+        "projectName": "Carronbridge Heights",
+        "siteAddress": "14 Waterfront Lane, Carronbridge, SC1 4WL",
         "buildingType": "residential",
         "estimatedValue": 500000,
         "grossFloorArea": 800,
