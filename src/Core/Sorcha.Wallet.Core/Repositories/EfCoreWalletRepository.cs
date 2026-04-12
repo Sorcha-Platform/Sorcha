@@ -140,9 +140,15 @@ public class EfCoreWalletRepository : IWalletRepository
 
         _logger.LogDebug("Getting wallets for owner {Owner} in tenant {Tenant}", owner, tenant);
 
+        // Exclude soft-deleted wallets from the owner listing — DeleteWalletAsync
+        // flips Status to Deleted but the row is kept for audit. Including it
+        // here leaks tombstones into every wallet UI indefinitely. If an admin
+        // ever needs to see deleted wallets for forensics, add a separate
+        // flag-gated query rather than expanding this default view.
         var wallets = await _context.Wallets
             .AsNoTracking()
-            .Where(w => w.Owner == owner && w.Tenant == tenant)
+            .Where(w => w.Owner == owner && w.Tenant == tenant
+                && w.Status != Domain.WalletStatus.Deleted)
             .OrderByDescending(w => w.CreatedAt)
             .ToListAsync(cancellationToken);
 
