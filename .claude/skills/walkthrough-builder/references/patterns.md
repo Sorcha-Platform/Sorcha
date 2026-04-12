@@ -47,6 +47,62 @@
 }
 ```
 
+## Multi-Page Forms (x-pages / x-sections)
+
+For dense action schemas, group fields into pages and sections inside the
+schema. Fields are referenced by name from the schema's `properties`, so the
+`properties` / `required` lists stay intact and submission payloads are
+unaffected. `x-pages` renders a wizard; `x-sections` (without `x-pages`)
+renders a single page with grouped blocks.
+
+```json
+"dataSchemas": [
+  {
+    "type": "object",
+    "x-introduction": "Optional intro paragraph shown above page 1.",
+    "x-pages": [
+      {
+        "title": "Project",
+        "description": "Location and basic site data.",
+        "x-sections": [
+          {
+            "title": "Identity",
+            "layout": "horizontal",
+            "fields": ["projectName", "siteAddress"]
+          },
+          {
+            "title": "Site",
+            "layout": "vertical",
+            "fields": ["gridReference", "plotSizeHectares", "existingLandUse"]
+          }
+        ]
+      },
+      {
+        "title": "Supporting documents",
+        "x-sections": [
+          {
+            "title": "Drawings",
+            "layout": "vertical",
+            "fields": ["siteLocationPlan", "proposedFloorPlans", "elevationDrawings"]
+          }
+        ]
+      }
+    ],
+    "properties": { ... },
+    "required": [ ... ]
+  }
+]
+```
+
+Section layout values: `horizontal` (fields side-by-side on wide screens) or
+`vertical` (stacked). Combine with `x-width: "half" | "third" | "full"` on
+individual properties for finer control.
+
+**When to use which:**
+- >10 props AND distinct phases → `x-pages` wizard
+- ≤10 props OR reviewer/approver screen → single page, multiple `x-sections`
+- ≤7 props → no sections, flat form is fine
+
 ## Conditional Routing
 
 ```json

@@ -62,6 +62,62 @@
         "dataSchemas": [
           {
             "type": "object",
+            "x-introduction": "This is the application to Highland Council for planning permission for a self-build dwelling. Three short pages: the project and site, the dwelling you want to build, and the supporting drawings.",
+            "x-pages": [
+              {
+                "title": "Project & site",
+                "description": "Where you're building and what the land is currently used for.",
+                "x-sections": [
+                  {
+                    "title": "Project",
+                    "layout": "vertical",
+                    "fields": ["projectName", "siteAddress"]
+                  },
+                  {
+                    "title": "Location",
+                    "layout": "horizontal",
+                    "fields": ["gridReference", "plotSizeHectares"]
+                  },
+                  {
+                    "title": "Site character",
+                    "layout": "vertical",
+                    "fields": ["existingLandUse", "accessArrangement", "withinConservationArea"]
+                  }
+                ]
+              },
+              {
+                "title": "Dwelling",
+                "description": "The house you want to build.",
+                "x-sections": [
+                  {
+                    "title": "Type & size",
+                    "layout": "horizontal",
+                    "fields": ["dwellingType", "storeys", "bedrooms", "grossFloorArea"]
+                  },
+                  {
+                    "title": "Construction",
+                    "layout": "horizontal",
+                    "fields": ["constructionMethod", "estimatedBuildCost"]
+                  }
+                ]
+              },
+              {
+                "title": "Supporting documents",
+                "description": "Drawings and design statement required by the council.",
+                "x-sections": [
+                  {
+                    "title": "Design statement",
+                    "layout": "vertical",
+                    "fields": ["designStatement"]
+                  },
+                  {
+                    "title": "Drawings",
+                    "layout": "vertical",
+                    "fields": ["siteLocationPlan", "proposedFloorPlans", "elevationDrawings"]
+                  }
+                ]
+              }
+            ],
             "properties": {
               "projectName": {
                 "type": "string",
@@ -1077,6 +1133,27 @@
         "dataSchemas": [
           {
             "type": "object",
+            "x-introduction": "Review the accumulated consultation responses and record the planning decision. Kept on one page so you can see policy, consultation and decision together.",
+            "x-sections": [
+              {
+                "title": "Policy compliance",
+                "description": "Local Development Plan check and design/landscape assessment.",
+                "layout": "vertical",
+                "fields": ["localPlanCompliance", "designQuality", "landscapeImpact", "accessAndParkingAdequate"]
+              },
+              {
+                "title": "Consultation",
+                "description": "Neighbour notification outcome.",
+                "layout": "horizontal",
+                "fields": ["neighbourNotificationComplete", "objectionsReceived"]
+              },
+              {
+                "title": "Decision",
+                "description": "Approval, conditions, refusal reasons and officer report.",
+                "layout": "vertical",
+                "fields": ["decision", "conditions", "refusalReasons", "planningNotes", "officerReport"]
+              }
+            ],
             "properties": {
               "localPlanCompliance": {
                 "type": "boolean",

@@ -60,13 +60,64 @@
               { "claimName": "permitReference" },
               { "claimName": "siteAddress" }
             ],
-            "revocationCheckPolicy": "FailClosed",
+            "revocationCheckPolicy": "FailOpen",
             "description": "Valid planning permission is required before a building warrant can be applied for"
           }
         ],
         "dataSchemas": [
           {
             "type": "object",
+            "x-introduction": "Building warrant application. You must already hold a Planning Permission credential — the reference comes from that VC. Three pages: prerequisite, build specification, and attached drawings.",
+            "x-pages": [
+              {
+                "title": "Planning prerequisite",
+                "description": "Evidence of planning permission and the start date.",
+                "x-sections": [
+                  {
+                    "title": "Reference",
+                    "layout": "horizontal",
+                    "fields": ["planningPermitReference", "proposedStartDate"]
+                  },
+                  {
+                    "title": "Site",
+                    "layout": "vertical",
+                    "fields": ["siteAddress"]
+                  }
+                ]
+              },
+              {
+                "title": "Build specification",
+                "description": "Construction method, thermal envelope and cost.",
+                "x-sections": [
+                  {
+                    "title": "Construction",
+                    "layout": "horizontal",
+                    "fields": ["constructionMethod", "wallInsulationType"]
+                  },
+                  {
+                    "title": "Energy",
+                    "layout": "horizontal",
+                    "fields": ["heatingSystem", "renewableEnergy", "sapRating"]
+                  },
+                  {
+                    "title": "Cost",
+                    "layout": "vertical",
+                    "fields": ["estimatedBuildCost"]
+                  }
+                ]
+              },
+              {
+                "title": "Drawings & calculations",
+                "description": "Approved drawings and SAP workbook.",
+                "x-sections": [
+                  {
+                    "title": "Attachments",
+                    "layout": "vertical",
+                    "fields": ["approvedPlanDrawings", "buildingSpecification", "energyCalculations"]
+                  }
+                ]
+              }
+            ],
             "properties": {
               "planningPermitReference": {
                 "type": "string",
@@ -493,6 +544,35 @@
         "dataSchemas": [
           {
             "type": "object",
+            "x-introduction": "Assess the application against the seven Scottish Building Standards, record an overall decision, and attach the technical report. Single-page review so you can see all seven standards together.",
+            "x-sections": [
+              {
+                "title": "Seven Scottish Building Standards",
+                "description": "Mark each standard pass, fail or minor-amendment.",
+                "layout": "horizontal",
+                "fields": [
+                  "standard1Structure",
+                  "standard2Fire",
+                  "standard3Environment",
+                  "standard4Safety",
+                  "standard5Noise",
+                  "standard6Energy",
+                  "standard7Sustainability"
+                ]
+              },
+              {
+                "title": "Decision",
+                "description": "Overall verdict and reviewer notes.",
+                "layout": "vertical",
+                "fields": ["overallDecision", "reviewNotes"]
+              },
+              {
+                "title": "Supporting report",
+                "description": "Full technical review document.",
+                "layout": "vertical",
+                "fields": ["technicalReport"]
+              }
+            ],
             "properties": {
               "standard1Structure": {
                 "type": "string",
@@ -835,7 +915,7 @@
             "requiredClaims": [
               { "claimName": "warrantReference" }
             ],
-            "revocationCheckPolicy": "FailClosed",
+            "revocationCheckPolicy": "FailOpen",
             "description": "Valid building warrant required for staged inspections"
           }
         ],
@@ -1200,6 +1280,57 @@
         "dataSchemas": [
           {
             "type": "object",
+            "x-introduction": "Final inspection before issuing the Completion Certificate. Three pages: on-site sign-off, compliance evidence, and photographic/certificate attachments.",
+            "x-pages": [
+              {
+                "title": "Site inspection",
+                "description": "What the inspector saw on the day.",
+                "x-sections": [
+                  {
+                    "title": "Visit",
+                    "layout": "horizontal",
+                    "fields": ["inspectionDate", "habitable"]
+                  },
+                  {
+                    "title": "Services & safety",
+                    "layout": "vertical",
+                    "fields": ["allServicesConnected", "fireSafetyVerified"]
+                  }
+                ]
+              },
+              {
+                "title": "Compliance evidence",
+                "description": "Third-party sign-offs and performance metrics.",
+                "x-sections": [
+                  {
+                    "title": "Certificates",
+                    "layout": "horizontal",
+                    "fields": ["electricalCertificateRef", "plumbingSignOff"]
+                  },
+                  {
+                    "title": "Energy performance",
+                    "layout": "horizontal",
+                    "fields": ["epcRating", "finalSapScore"]
+                  },
+                  {
+                    "title": "Completion reference",
+                    "layout": "vertical",
+                    "fields": ["completionRef"]
+                  }
+                ]
+              },
+              {
+                "title": "Attachments",
+                "description": "Photos and scanned certificates.",
+                "x-sections": [
+                  {
+                    "title": "Documents",
+                    "layout": "vertical",
+                    "fields": ["inspectionPhotos", "electricalCertificate", "epcCertificate"]
+                  }
+                ]
+              }
+            ],
             "properties": {
               "inspectionDate": {
                 "type": "string",

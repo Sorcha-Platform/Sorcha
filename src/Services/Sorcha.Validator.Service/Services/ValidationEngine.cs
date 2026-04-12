@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Json.Schema;
 using Microsoft.Extensions.Options;
 using Sorcha.Cryptography.Enums;
@@ -568,7 +569,13 @@ public class ValidationEngine : IValidationEngine
                 JsonSchema jsonSchema;
                 try
                 {
-                    var schemaText = schemaDoc.RootElement.GetRawText();
+                    // Strip x-* custom keywords (e.g. x-pages, x-sections, x-introduction,
+                    // x-width, x-rule, x-persona, x-file) before parsing. These are
+                    // UI-renderer extensions consumed by Sorcha.Blueprint.Models.SchemaLayoutParser
+                    // and friends, not JSON Schema vocabulary. Json.Schema (the library) is
+                    // strict about unknown keywords and throws "Unknown keywords (x-pages)
+                    // are disallowed for this dialect" when they appear at the schema root.
+                    var schemaText = StripCustomExtensionKeywords(schemaDoc.RootElement);
                     jsonSchema = JsonSchema.FromText(schemaText);
                 }
                 catch (Exception ex)
@@ -1726,6 +1733,47 @@ public class ValidationEngine : IValidationEngine
             Field = field,
             IsFatal = isFatal
         };
+    }
+
+    /// <summary>
+    /// Returns the schema JSON with any property whose name starts with "x-"
+    /// recursively removed. Json.Schema rejects unknown keywords, but Sorcha
+    /// blueprints embed UI-renderer hints (x-pages, x-sections, x-introduction,
+    /// x-width, x-rule, x-persona, x-file) that must survive round-trips
+    /// without interfering with schema validation.
+    /// </summary>
+    private static string StripCustomExtensionKeywords(JsonElement root)
+    {
+        var node = JsonNode.Parse(root.GetRawText());
+        StripXPrefixedKeysRecursive(node);
+        return node?.ToJsonString() ?? "{}";
+    }
+
+    private static void StripXPrefixedKeysRecursive(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var toRemove = obj
+                    .Where(kvp => kvp.Key.StartsWith("x-", StringComparison.Ordinal))
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                foreach (var key in toRemove)
+                {
+                    obj.Remove(key);
+                }
+                foreach (var kvp in obj)
+                {
+                    StripXPrefixedKeysRecursive(kvp.Value);
+                }
+                break;
+            case JsonArray arr:
+                foreach (var item in arr)
+                {
+                    StripXPrefixedKeysRecursive(item);
+                }
+                break;
+        }
     }
 
     private static ValidationEngineResult CreateFailureResult(

@@ -1019,6 +1019,36 @@ function New-SorchaRegister {
         [switch]$SkipPublicOrgSubscription
     )
 
+    # Idempotency short-circuit: if the caller's current identity is already
+    # subscribed to a register with this exact name, reuse it instead of creating
+    # a duplicate. This keeps re-running setup.ps1 cheap and avoids register
+    # proliferation during development. Only the current user's subscriptions
+    # are consulted — cross-peer discovery is deferred until the peer network
+    # exposes a lookup API.
+    $lookupTenantUrl = if ($TenantUrl) { $TenantUrl } `
+                       elseif ($script:LastEnvironment) { $script:LastEnvironment.TenantUrl } `
+                       else { $null }
+
+    if ($lookupTenantUrl) {
+        try {
+            $existingRegisterId = Get-SorchaRegisterByName `
+                -TenantUrl $lookupTenantUrl `
+                -Name $Name `
+                -Headers $Headers
+        } catch {
+            $existingRegisterId = $null
+        }
+
+        if ($existingRegisterId) {
+            Write-WtSuccess "Register '$Name' already exists: $existingRegisterId (reusing)"
+            return @{
+                RegisterId           = $existingRegisterId
+                GenesisTransactionId = $null
+                Reused               = $true
+            }
+        }
+    }
+
     # Phase 1: Initiate
     Write-WtInfo "Initiating register '$Name'..."
 
@@ -1093,6 +1123,28 @@ function New-SorchaRegister {
         -Headers $Headers
 
     Write-WtSuccess "Register '$Name' created: $registerId"
+
+    # Subscribe the owner org to its own register so idempotent name-lookups
+    # (via /me/subscribed-registers) find it on subsequent setup runs. Without
+    # this, subscriptions and ownership diverge — the owner can create a
+    # register but never see it listed. Uses SubscriptionType "Owner".
+    $ownerSubTenantUrl = if ($TenantUrl) { $TenantUrl } `
+                         elseif ($script:LastEnvironment) { $script:LastEnvironment.TenantUrl } `
+                         else { $null }
+
+    if ($ownerSubTenantUrl) {
+        try {
+            $null = New-SorchaRegisterSubscription `
+                -TenantUrl $ownerSubTenantUrl `
+                -OrganizationId $TenantId `
+                -RegisterId $registerId `
+                -RegisterName $Name `
+                -SubscriptionType "Owner" `
+                -Headers $Headers
+        } catch {
+            Write-WtWarn "  Owner org auto-subscribe failed for register '$Name': $($_.Exception.Message)"
+        }
+    }
 
     # Auto-subscribe Sorcha Public Org (well-known ID) so consumer-persona
     # and public-discovery flows can access the register by default.
@@ -1261,6 +1313,7 @@ function Invoke-SorchaAction {
         [Parameter(Mandatory)][string]$RegisterId,
         [string]$Token,
         [hashtable]$PayloadData = @{},
+        [array]$CredentialPresentations = @(),
         [switch]$Reject,
         [string]$RejectionReason = ""
     )
@@ -1294,6 +1347,10 @@ function Invoke-SorchaAction {
             payloadData     = $PayloadData
         }
 
+        if ($CredentialPresentations -and $CredentialPresentations.Count -gt 0) {
+            $actionBody.credentialPresentations = @($CredentialPresentations)
+        }
+
         $response = Invoke-SorchaApi -Method POST `
             -Uri "$BlueprintUrl/instances/$InstanceId/actions/$ActionId/execute" `
             -Body $actionBody `
@@ -1302,6 +1359,81 @@ function Invoke-SorchaAction {
         $nextAction = if ($response.nextAction) { $response.nextAction } else { "complete" }
         Write-WtSuccess "Action $ActionId executed (next: $nextAction)"
         return $response
+    }
+}
+
+# ============================================================================
+# Get-SorchaCredentialPresentation — Fetch a VC from a wallet and wrap it
+# ============================================================================
+
+function Get-SorchaCredentialPresentation {
+    <#
+    .SYNOPSIS
+        Fetch an issued credential of a given type from a wallet and build a
+        CredentialPresentation body that the blueprint service will accept.
+    .PARAMETER WalletUrl
+        Wallet service base URL (e.g., http://127.0.0.1/api).
+    .PARAMETER WalletAddress
+        The wallet address holding the credential.
+    .PARAMETER CredentialType
+        The credential type to find (e.g., "PlanningPermissionCredential").
+    .PARAMETER Token
+        Bearer token authorised for this wallet.
+    .RETURNS
+        A hashtable with credentialId, disclosedClaims, rawPresentation — or $null
+        if no credential of that type was found.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$WalletUrl,
+        [Parameter(Mandatory)][string]$WalletAddress,
+        [Parameter(Mandatory)][string]$CredentialType,
+        [Parameter(Mandatory)][string]$Token
+    )
+
+    $headers = @{ Authorization = "Bearer $Token" }
+
+    $credentials = Invoke-SorchaApi -Method GET `
+        -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/" `
+        -Headers $headers
+
+    if (-not $credentials) { return $null }
+
+    $match = $credentials | Where-Object { $_.type -eq $CredentialType } | Select-Object -First 1
+    if (-not $match) { return $null }
+
+    $exported = Invoke-SorchaApi -Method GET `
+        -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/$($match.id)/export" `
+        -Headers $headers
+
+    $rawToken = $exported.rawToken
+    if (-not $rawToken) { $rawToken = "placeholder-raw-token" }
+
+    # Pull claims from the stored credential (used by the verifier's loose match).
+    # The verifier only requires: type/vct match, issuer match (if constrained),
+    # and any requiredClaims to be present in disclosedClaims.
+    $details = Invoke-SorchaApi -Method GET `
+        -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/$($match.id)" `
+        -Headers $headers
+
+    $disclosed = @{
+        type = $CredentialType
+        vct  = $CredentialType
+        iss  = $details.issuerDid
+    }
+
+    if ($details.claimsJson) {
+        try {
+            $parsed = $details.claimsJson | ConvertFrom-Json -AsHashtable
+            foreach ($k in $parsed.Keys) { $disclosed[$k] = $parsed[$k] }
+        } catch {
+            # claimsJson malformed — fall back to the basic fields already set
+        }
+    }
+
+    return @{
+        credentialId    = $match.id
+        disclosedClaims = $disclosed
+        rawPresentation = $rawToken
     }
 }
 

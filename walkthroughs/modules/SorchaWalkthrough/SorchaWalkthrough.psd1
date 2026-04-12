@@ -39,6 +39,7 @@
         'New-SorchaRegister'
         'Publish-SorchaBlueprint'
         'Invoke-SorchaAction'
+        'Get-SorchaCredentialPresentation'
 
         # Utilities
         'ConvertFrom-HexToBase64'

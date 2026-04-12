@@ -138,6 +138,7 @@ $state = @{
     planningBlueprintId    = $planningBlueprint.BlueprintId
     warrantBlueprintId     = $warrantBlueprint.BlueprintId
     blueprintUrl           = $env.BlueprintUrl
+    walletUrl              = $env.WalletUrl
 }
 
 $stateFile = Join-Path $scriptDir "state.json"
