@@ -87,24 +87,36 @@ REPO_RAW="https://raw.githubusercontent.com/Sorcha-Platform/Sorcha/master"
 curl -sL "$REPO_RAW/docker-compose.yml" -o docker-compose.yml
 curl -sL "$REPO_RAW/docker-compose.n1.yml" -o docker-compose.n1.yml
 curl -sL "$REPO_RAW/docker-compose.ports.yml" -o docker-compose.ports.yml
+curl -sL "$REPO_RAW/docker-compose.seed.yml" -o docker-compose.seed.yml
 curl -sL "$REPO_RAW/docker/postgres-init.sql" -o docker/postgres-init.sql
 curl -sL "$REPO_RAW/scripts/n1-setup-remote.sh" -o n1-setup-remote.sh
 chmod +x n1-setup-remote.sh
 '
 ```
 
-**Pull images and start:**
+**Pull images and start (seed mode for a fresh network):**
+
+`docker-compose.n1.yml` defaults to `SystemRegister__BootstrapMode: SyncOnly`,
+which is correct for replica nodes but will leave the seed waiting forever
+for a peer that doesn't exist. For the very first node of a new network,
+stack `docker-compose.seed.yml` on top — it flips the register service to
+`GenesisFile` so it ingests the embedded trust anchor and bootstraps the
+governance blueprints. Drop the seed override on subsequent restarts
+(local storage will find the system register before either path runs).
 
 ```bash
 az vm run-command invoke --resource-group sorcha-n1-uk --name sorcha-n1-vm \
   --command-id RunShellScript --scripts '
 cd /opt/sorcha
-docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml pull
+COMPOSE_FILES="-f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.seed.yml -f docker-compose.ports.yml"
+docker compose $COMPOSE_FILES pull
 docker volume create sorcha_wallet-encryption-keys 2>/dev/null || true
 docker run --rm -v sorcha_wallet-encryption-keys:/data alpine chown -R 1654:1654 /data
-docker compose -f docker-compose.yml -f docker-compose.n1.yml -f docker-compose.ports.yml up -d
+docker compose $COMPOSE_FILES up -d
 '
 ```
+
+Replica nodes and routine n1 restarts omit `-f docker-compose.seed.yml`.
 
 ### Step 4: Bootstrap Platform
 
