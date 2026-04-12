@@ -1,17 +1,17 @@
 {
   "name": "Scenario C: Refused — Modern Design in Conservation Area",
-  "description": "A two-storey contemporary design proposed within a Highland conservation area village. Good ground conditions and ecology, but the modern flat-roof design clashes with the traditional village character. Planning officer refuses the application at Action 6 — terminal rejection. No planning permission credential issued, building warrant process never starts.",
+  "description": "A two-storey contemporary design proposed within a Strathcarron conservation area village. Good ground conditions and ecology, but the modern flat-roof design clashes with the traditional village character. Planning officer refuses the application at Action 6 — terminal rejection. No planning permission credential issued, building warrant process never starts.",
   "expectedFoundationRiskScore": 1,
   "expectedPlanningFee": 600,
   "expectedPlanningPath": [1, 2, 3, 5, 6],
   "skipsSpeciesMitigation": true,
   "expectedRejection": true,
-  "rejectionReason": "The proposed development is contrary to Policy 28 (Sustainable Design), Policy 57 (Natural, Built and Cultural Heritage), and the Cromarty Conservation Area Management Plan. The contemporary flat-roof design with rendered walls and large-format glazing is fundamentally incompatible with the traditional character of the conservation area, which is characterised by pitched-roof stone and slate buildings. The design fails to preserve or enhance the character and appearance of the conservation area as required by Section 64 of the Planning (Listed Buildings and Conservation Areas) (Scotland) Act 1997. A redesign incorporating traditional proportions, materials, and roof form would be welcome as a fresh application.",
+  "rejectionReason": "The proposed development is contrary to Policy 28 (Sustainable Design), Policy 57 (Natural, Built and Cultural Heritage), and the Invercarron Conservation Area Management Plan. The contemporary flat-roof design with rendered walls and large-format glazing is fundamentally incompatible with the traditional character of the conservation area, which is characterised by pitched-roof stone and slate buildings. The design fails to preserve or enhance the character and appearance of the conservation area as required by Section 64 of the Planning (Listed Buildings and Conservation Areas) (Scotland) Act 1997. A redesign incorporating traditional proportions, materials, and roof form would be welcome as a fresh application.",
   "planning": {
     "1": {
       "projectName": "Harbour View",
-      "siteAddress": "Gap Site, Church Street, Cromarty, Ross-shire, IV11 8XA",
-      "gridReference": "NH7867",
+      "siteAddress": "Gap Site, Church Street, Invercarron, Strathcarron, SC2 8XA",
+      "gridReference": "SC7867",
       "plotSizeHectares": 0.08,
       "dwellingType": "detached",
       "storeys": 2,
@@ -22,7 +22,7 @@
       "existingLandUse": "vacant",
       "accessArrangement": "existing-access",
       "withinConservationArea": true,
-      "designStatement": "A bold contemporary dwelling on a gap site in Cromarty village. The design features a flat-roof form with full-height glazing to capture harbour views. White rendered walls with timber rain-screen cladding accents provide a clean modern aesthetic. The ICF (Insulated Concrete Form) construction method delivers exceptional thermal performance and air-tightness. While acknowledging the conservation area setting, the design takes the position that high-quality contemporary architecture can sit alongside traditional buildings and contribute positively to the village streetscape through its honest expression of modern materials and forms."
+      "designStatement": "A bold contemporary dwelling on a gap site in Invercarron village. The design features a flat-roof form with full-height glazing to capture harbour views. White rendered walls with timber rain-screen cladding accents provide a clean modern aesthetic. The ICF (Insulated Concrete Form) construction method delivers exceptional thermal performance and air-tightness. While acknowledging the conservation area setting, the design takes the position that high-quality contemporary architecture can sit alongside traditional buildings and contribute positively to the village streetscape through its honest expression of modern materials and forms."
     },
     "2": {
       "soilClassification": "rock",
@@ -62,13 +62,13 @@
       "decision": "refuse",
       "conditions": [],
       "refusalReasons": [
-        "The proposed flat-roof contemporary design is fundamentally incompatible with the character and appearance of the Cromarty Conservation Area, contrary to Policy 57 (Natural, Built and Cultural Heritage)",
+        "The proposed flat-roof contemporary design is fundamentally incompatible with the character and appearance of the Invercarron Conservation Area, contrary to Policy 57 (Natural, Built and Cultural Heritage)",
         "The design fails to preserve or enhance the conservation area as required by Section 64 of the Planning (Listed Buildings and Conservation Areas) (Scotland) Act 1997",
         "The rendered walls and large-format glazing do not reflect the local vernacular of sandstone and slate that defines the Church Street streetscape",
         "7 objections received from local residents citing harm to the historic character of the village",
-        "The application is contrary to the adopted Cromarty Conservation Area Management Plan which specifically discourages flat-roof and overtly modern designs on gap sites within the historic core"
+        "The application is contrary to the adopted Invercarron Conservation Area Management Plan which specifically discourages flat-roof and overtly modern designs on gap sites within the historic core"
       ],
-      "planningNotes": "Application for a two-storey contemporary dwelling on a gap site in Cromarty Conservation Area. While the technical aspects (ground conditions, ecology, utilities) are all satisfactory, the design is wholly inappropriate for its sensitive conservation area setting. Church Street is one of the finest intact 18th-century streetscapes in the Highlands, characterised by two-storey sandstone buildings with pitched slate roofs and traditional proportions. The proposed flat-roof, rendered design with large-format glazing would cause significant harm to the character and appearance of the conservation area. 7 objections received from neighbouring residents and the Cromarty & District Community Council. The application is recommended for refusal. The applicant is encouraged to submit a revised design that responds to the traditional character of the area — there is no in-principle objection to a dwelling on this gap site."
+      "planningNotes": "Application for a two-storey contemporary dwelling on a gap site in Invercarron Conservation Area. While the technical aspects (ground conditions, ecology, utilities) are all satisfactory, the design is wholly inappropriate for its sensitive conservation area setting. Church Street is one of the finest intact 18th-century streetscapes in Strathcarron, characterised by two-storey sandstone buildings with pitched slate roofs and traditional proportions. The proposed flat-roof, rendered design with large-format glazing would cause significant harm to the character and appearance of the conservation area. 7 objections received from neighbouring residents and the Invercarron & District Community Council. The application is recommended for refusal. The applicant is encouraged to submit a revised design that responds to the traditional character of the area — there is no in-principle objection to a dwelling on this gap site."
     }
   }
 }

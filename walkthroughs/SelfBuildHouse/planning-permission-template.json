@@ -1,7 +1,7 @@
 {
   "id": "self-build-planning-permission-v1",
   "title": "Self-Build Planning Permission (Scotland)",
-  "description": "Scottish planning permission workflow for a self-build dwelling. Involves the applicant (member of public), structural engineer, ecologist, Scottish Water, and the local authority planning department. Features conditional routing for protected species, document uploads, rejection paths, and Planning Permission Verifiable Credential issuance.",
+  "description": "Scottish planning permission workflow for a self-build dwelling. Involves the applicant (member of public), structural engineer, ecologist, Caledonian Water, and the local authority planning department. Features conditional routing for protected species, document uploads, rejection paths, and Planning Permission Verifiable Credential issuance.",
   "version": 1,
   "category": "government",
   "tags": ["planning", "self-build", "scotland", "multi-org", "conditional-routing", "verifiable-credential", "document-upload", "ecology"],
@@ -30,25 +30,25 @@
       {
         "id": "structural-engineer",
         "name": "Lead Engineer",
-        "organisation": "MacGregor Structural Engineers",
+        "organisation": "Murchison Engineering",
         "description": "Conducts site investigation, produces ground conditions report, and recommends foundation type."
       },
       {
         "id": "ecologist",
         "name": "Senior Ecologist",
-        "organisation": "Glen Ecology Consultants",
+        "organisation": "Heatherbank Environmental",
         "description": "Conducts Phase 1 habitat survey, assesses protected species, and produces mitigation plan if required."
       },
       {
         "id": "utilities-officer",
         "name": "Connections Officer",
-        "organisation": "Scottish Water",
+        "organisation": "Caledonian Water",
         "description": "Assesses water supply feasibility and drainage capacity for the proposed development."
       },
       {
         "id": "planning-officer",
         "name": "Planning Officer",
-        "organisation": "Highland Council — Planning",
+        "organisation": "Strathcarron Council — Planning",
         "description": "Reviews planning application against local development plan, consults statutory bodies, and issues planning permission decision."
       }
     ],
@@ -62,7 +62,7 @@
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "This is the application to Highland Council for planning permission for a self-build dwelling. Three short pages: the project and site, the dwelling you want to build, and the supporting drawings.",
+            "x-introduction": "This is the application to Strathcarron Council for planning permission for a self-build dwelling. Three short pages: the project and site, the dwelling you want to build, and the supporting drawings.",
             "x-pages": [
               {
                 "title": "Project & site",
@@ -937,7 +937,7 @@
       {
         "id": 5,
         "title": "Utilities Consultation",
-        "description": "Scottish Water assesses water supply feasibility and drainage capacity for the proposed development. Can reject the application if connection is not feasible.",
+        "description": "Caledonian Water assesses water supply feasibility and drainage capacity for the proposed development. Can reject the application if connection is not feasible.",
         "sender": "utilities-officer",
         "requiredPriorActions": [1],
         "dataSchemas": [
@@ -1127,7 +1127,7 @@
       {
         "id": 6,
         "title": "Planning Review & Decision",
-        "description": "Planning officer reviews all consultation responses, assesses compliance with the Highland Local Development Plan, and makes a decision. Can approve, request amendments, or refuse. Calculates the planning application fee.",
+        "description": "Planning officer reviews all consultation responses, assesses compliance with the Strathcarron Local Development Plan, and makes a decision. Can approve, request amendments, or refuse. Calculates the planning application fee.",
         "sender": "planning-officer",
         "requiredPriorActions": [1, 2, 3, 5],
         "dataSchemas": [
@@ -1276,7 +1276,7 @@
                 {
                   "type": "Checkbox",
                   "scope": "/localPlanCompliance",
-                  "title": "Complies with Highland Local Development Plan"
+                  "title": "Complies with Strathcarron Local Development Plan"
                 },
                 {
                   "type": "Layout",
@@ -1497,19 +1497,19 @@
       },
       "structuralEngineerWallet": {
         "type": "string",
-        "description": "Wallet address for the structural engineer (MacGregor Structural)"
+        "description": "Wallet address for the structural engineer (Murchison Engineering)"
       },
       "ecologistWallet": {
         "type": "string",
-        "description": "Wallet address for the ecologist (Glen Ecology Consultants)"
+        "description": "Wallet address for the ecologist (Heatherbank Environmental)"
       },
       "utilitiesOfficerWallet": {
         "type": "string",
-        "description": "Wallet address for the utilities officer (Scottish Water)"
+        "description": "Wallet address for the utilities officer (Caledonian Water)"
       },
       "planningOfficerWallet": {
         "type": "string",
-        "description": "Wallet address for the planning officer (Highland Council)"
+        "description": "Wallet address for the planning officer (Strathcarron Council)"
       }
     },
     "required": [

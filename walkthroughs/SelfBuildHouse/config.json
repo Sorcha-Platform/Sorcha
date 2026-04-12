@@ -4,18 +4,18 @@
   "category": "multi-org",
   "organizations": [
     { "name": "Self-Builder (Member of Public)", "subdomain": "self-builder", "role": "applicant" },
-    { "name": "Highland Council — Planning", "subdomain": "highland-planning", "role": "planning authority" },
-    { "name": "Highland Council — Building Standards", "subdomain": "highland-building-standards", "role": "building warrant + inspections" },
-    { "name": "Scottish Water", "subdomain": "scottish-water", "role": "utilities consultation" },
-    { "name": "MacGregor Structural Engineers", "subdomain": "macgregor-structural", "role": "site investigation + structural calcs" },
-    { "name": "Glen Ecology Consultants", "subdomain": "glen-ecology", "role": "habitat survey + environmental assessment" }
+    { "name": "Strathcarron Council — Planning", "subdomain": "strathcarron-planning", "role": "planning authority" },
+    { "name": "Strathcarron Council — Building Standards", "subdomain": "strathcarron-building-standards", "role": "building warrant + inspections" },
+    { "name": "Caledonian Water", "subdomain": "caledonian-water", "role": "utilities consultation" },
+    { "name": "Murchison Engineering", "subdomain": "murchison-structural", "role": "site investigation + structural calcs" },
+    { "name": "Heatherbank Environmental", "subdomain": "heatherbank", "role": "habitat survey + environmental assessment" }
   ],
   "secretsKey": "self-build-house",
   "requiresRegister": true,
   "requiresParticipants": true,
   "registers": [
-    { "name": "Highland Planning Register", "purpose": "Planning applications and decisions" },
-    { "name": "Highland Building Standards Register", "purpose": "Building warrants and completion certificates" }
+    { "name": "Strathcarron Planning Register", "purpose": "Planning applications and decisions" },
+    { "name": "Strathcarron Building Standards Register", "purpose": "Building warrants and completion certificates" }
   ],
   "templates": [
     "planning-permission-template.json",

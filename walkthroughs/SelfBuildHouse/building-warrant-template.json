@@ -30,19 +30,19 @@
       {
         "id": "structural-engineer",
         "name": "Lead Engineer",
-        "organisation": "MacGregor Structural Engineers",
+        "organisation": "Murchison Engineering",
         "description": "Submits structural calculations package, foundation design, and wind/snow loading analysis."
       },
       {
         "id": "building-standards-officer",
         "name": "Building Standards Officer",
-        "organisation": "Highland Council — Building Standards",
+        "organisation": "Strathcarron Council — Building Standards",
         "description": "Reviews application against the 7 Scottish Building Standards, calculates warrant fee, and issues Building Warrant."
       },
       {
         "id": "building-inspector",
         "name": "Building Inspector",
-        "organisation": "Highland Council — Building Standards",
+        "organisation": "Strathcarron Council — Building Standards",
         "description": "Conducts staged site inspections (foundations, structure & weathertight, final completion) and issues Completion Certificate."
       }
     ],
@@ -1548,15 +1548,15 @@
       },
       "structuralEngineerWallet": {
         "type": "string",
-        "description": "Wallet address for the structural engineer (MacGregor Structural)"
+        "description": "Wallet address for the structural engineer (Murchison Engineering)"
       },
       "buildingStandardsOfficerWallet": {
         "type": "string",
-        "description": "Wallet address for the Building Standards Officer (Highland Council)"
+        "description": "Wallet address for the Building Standards Officer (Strathcarron Council)"
       },
       "buildingInspectorWallet": {
         "type": "string",
-        "description": "Wallet address for the Building Inspector (Highland Council)"
+        "description": "Wallet address for the Building Inspector (Strathcarron Council)"
       }
     },
     "required": [

@@ -24,8 +24,8 @@
       "decision": "approve",
       "payload": {
         "projectName": "Birchwood Cottage",
-        "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
-        "gridReference": "NH5130",
+        "siteAddress": "Plot 3, Lochside Road, Dalreoch, Strathcarron, SC6 3TU",
+        "gridReference": "SC5130",
         "plotSizeHectares": 0.25,
         "dwellingType": "detached",
         "storeys": 1,
@@ -36,7 +36,7 @@
         "existingLandUse": "garden-ground",
         "accessArrangement": "existing-access",
         "withinConservationArea": false,
-        "designStatement": "A single-storey timber-frame dwelling designed to sit sympathetically within the existing landscape of Lochside Road. Natural larch cladding, natural slate roof, and generous glazing oriented south toward Loch Ness."
+        "designStatement": "A single-storey timber-frame dwelling designed to sit sympathetically within the existing landscape of Lochside Road. Natural larch cladding, natural slate roof, and generous glazing oriented south toward Loch Morach."
       }
     },
     {
@@ -44,7 +44,7 @@
       "decision": "approve",
       "payload": {
         "planningPermitReference": "26/00142/FUL",
-        "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
+        "siteAddress": "Plot 3, Lochside Road, Dalreoch, Strathcarron, SC6 3TU",
         "constructionMethod": "timber-frame",
         "wallInsulationType": "mineral-wool",
         "heatingSystem": "air-source-heat-pump",

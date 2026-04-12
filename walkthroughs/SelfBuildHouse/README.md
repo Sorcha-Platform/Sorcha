@@ -28,12 +28,12 @@ This walkthrough models the real-world process a member of the public goes throu
 | Organisation | Participant | Role |
 |-------------|-------------|------|
 | *(Member of Public)* | `self-builder` | Applicant — submits applications, uploads evidence, receives credentials |
-| Highland Council — Planning | `planning-officer` | Reviews planning application, issues Planning Permission |
-| Highland Council — Building Standards | `building-standards-officer` | Reviews warrant against 7 Scottish standards, issues Building Warrant |
-| Highland Council — Building Standards | `building-inspector` | Conducts staged site inspections, issues Completion Certificate |
-| Scottish Water | `utilities-officer` | Water supply & drainage consultation |
-| MacGregor Structural Engineers | `structural-engineer` | Site investigation, structural calculations, foundation design |
-| Glen Ecology Consultants | `ecologist` | Habitat survey, protected species assessment, mitigation planning |
+| Strathcarron Council — Planning | `planning-officer` | Reviews planning application, issues Planning Permission |
+| Strathcarron Council — Building Standards | `building-standards-officer` | Reviews warrant against 7 Scottish standards, issues Building Warrant |
+| Strathcarron Council — Building Standards | `building-inspector` | Conducts staged site inspections, issues Completion Certificate |
+| Caledonian Water | `utilities-officer` | Water supply & drainage consultation |
+| Murchison Engineering | `structural-engineer` | Site investigation, structural calculations, foundation design |
+| Heatherbank Environmental | `ecologist` | Habitat survey, protected species assessment, mitigation planning |
 
 ---
 
@@ -41,14 +41,14 @@ This walkthrough models the real-world process a member of the public goes throu
 
 | Register | Purpose | Owner |
 |----------|---------|-------|
-| **Highland Planning Register** | Planning applications, consultations, decisions, and Planning Permission VCs | Planning Officer |
-| **Highland Building Standards Register** | Building warrant applications, staged inspections, and Completion Certificate VCs | Building Standards Officer |
+| **Strathcarron Planning Register** | Planning applications, consultations, decisions, and Planning Permission VCs | Planning Officer |
+| **Strathcarron Building Standards Register** | Building warrant applications, staged inspections, and Completion Certificate VCs | Building Standards Officer |
 
 ---
 
 ## Blueprint 1: Planning Permission
 
-**Register:** Highland Planning Register
+**Register:** Strathcarron Planning Register
 **Actions:** 7 (including conditional action 4)
 **Credential Issued:** `PlanningPermissionCredential`
 
@@ -80,7 +80,7 @@ This walkthrough models the real-world process a member of the public goes throu
 ┌──────────────────────────┐                                │
 │ 5. Utilities             │──── not feasible ──────────────┘
 │    Consultation          │
-│    (scottish-water)      │
+│    (caledonian-water)      │
 └────────┬─────────────────┘
          │ feasible
          ▼
@@ -129,7 +129,7 @@ This walkthrough models the real-world process a member of the public goes throu
 
 ## Blueprint 2: Building Warrant & Completion
 
-**Register:** Highland Building Standards Register
+**Register:** Strathcarron Building Standards Register
 **Actions:** 7 (including 3 staged inspections)
 **Credential Required:** `PlanningPermissionCredential` (from Blueprint 1!)
 **Credentials Issued:** `BuildingWarrantCredential`, `CompletionCertificateCredential`
@@ -255,11 +255,11 @@ Credential                         │ (self-builder)       │
 
 ### Scenario A: Happy Path — Timber-Frame Bungalow
 
-**Setting:** Rural bungalow at Drumnadrochit on Loch Ness-side, garden ground plot.
+**Setting:** Rural bungalow at Dalreoch on Loch Morach-side, garden ground plot.
 
 | Attribute | Value |
 |-----------|-------|
-| Location | Lochside Road, Drumnadrochit, IV63 6TU |
+| Location | Lochside Road, Dalreoch, SC6 3TU |
 | Dwelling | Single-storey detached, 120m², 3 bedrooms |
 | Construction | Timber-frame, natural larch cladding, slate roof |
 | Ground | Gravel, good bearing, deep water table |
@@ -274,11 +274,11 @@ Credential                         │ (self-builder)       │
 
 ### Scenario B: Protected Species — Two-Storey Woodland Edge
 
-**Setting:** Woodland edge plot near Aviemore in the Cairngorms National Park. Bat roost and red squirrels discovered.
+**Setting:** Woodland edge plot near Carronbridge in the Cairngorms National Park. Bat roost and red squirrels discovered.
 
 | Attribute | Value |
 |-----------|-------|
-| Location | Rothiemurchus, Aviemore, PH22 1QH |
+| Location | Rothiemurchus, Carronbridge, SC4 1QH |
 | Dwelling | Two-storey detached, 200m², 4 bedrooms |
 | Construction | Timber-frame, larch cladding, zinc standing-seam roof |
 | Ground | Clay, moderate bearing, water table at 1.5m — raft foundation |
@@ -293,11 +293,11 @@ Credential                         │ (self-builder)       │
 
 ### Scenario C: Refused — Modern Design in Conservation Area
 
-**Setting:** Gap site in Cromarty village conservation area. Contemporary flat-roof design clashes with traditional character.
+**Setting:** Gap site in Invercarron village conservation area. Contemporary flat-roof design clashes with traditional character.
 
 | Attribute | Value |
 |-----------|-------|
-| Location | Church Street, Cromarty, IV11 8XA |
+| Location | Church Street, Invercarron, SC2 8XA |
 | Dwelling | Two-storey detached, 150m², 3 bedrooms |
 | Construction | ICF (Insulated Concrete Form), white render |
 | Ground | Rock, excellent bearing — no issues |
