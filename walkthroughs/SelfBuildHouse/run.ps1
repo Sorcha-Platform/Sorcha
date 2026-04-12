@@ -30,6 +30,35 @@ $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
 $wallets = @{}
 foreach ($prop in $state.wallets.PSObject.Properties) { $wallets[$prop.Name] = $prop.Value }
 
+# Convert roles PSObject to hashtable
+$roles = @{}
+foreach ($prop in $state.roles.PSObject.Properties) {
+    $r = $prop.Value
+    $roles[$prop.Name] = @{
+        email          = $r.email
+        password       = $r.password
+        organizationId = $r.organizationId
+        orgKey         = $r.orgKey
+        walletAddress  = $r.walletAddress
+    }
+}
+
+# Login each role up-front and cache per-role tokens. Every subsequent action
+# submission goes out under the sending role's own user token — NOT a shared
+# admin token — so the audit trail ties every transaction back to the real
+# user who performed it.
+Write-WtStep "Authenticating (per-role login)"
+$roleTokenCache = @{}
+foreach ($role in $roles.Keys) {
+    $r = $roles[$role]
+    $session = Connect-SorchaUser `
+        -TenantUrl $state.tenantUrl `
+        -Email $r.email `
+        -Password $r.password `
+        -OrganizationId $r.organizationId
+    $roleTokenCache[$role] = $session.Token
+}
+
 # Action-to-sender mapping for PLANNING PERMISSION blueprint
 $planningSenderMap = @{
     1 = "self-builder"
@@ -78,14 +107,20 @@ function Invoke-BlueprintScenario {
 
     Write-WtInfo "  Phase: $Phase (Blueprint: $BlueprintId)"
 
-    # Create instance
+    # Create the instance under the token of the first-action sender (the
+    # self-builder in both phases). That user's org becomes the tenant on
+    # the instance, and instance metadata reflects them — not the sysadmin.
+    $starterRole = $SenderMap[[int]$ExpectedPath[0]]
+    $starterToken = $roleTokenCache[$starterRole]
+    $starterOrgId = $roles[$starterRole].organizationId
+
     $instanceBody = @{
         blueprintId = $BlueprintId; registerId = $RegisterId
-        tenantId = $state.organizationId
+        tenantId = $starterOrgId
         metadata = @{ source = "walkthrough"; phase = $Phase }
     }
     $ir = Invoke-SorchaApi -Method POST -Uri "$($state.blueprintUrl)/instances/" -Body $instanceBody `
-        -Headers @{ Authorization = "Bearer $($state.adminToken)" } -ShowJson:$ShowJson
+        -Headers @{ Authorization = "Bearer $starterToken" } -ShowJson:$ShowJson
     $instanceId = $ir.id
     Write-WtSuccess "  Instance: $instanceId"
 
@@ -108,13 +143,18 @@ function Invoke-BlueprintScenario {
         $isLastAction = ($actionId -eq $ExpectedPath[-1])
         $isRejectionAction = $IsRejection -and $isLastAction
 
+        # Use the sender's own token — their user JWT — for this action so
+        # the signed submission matches the participant identity on the
+        # register.
+        $senderToken = $roleTokenCache[$sender]
+
         try {
             if ($isRejectionAction) {
                 $null = Invoke-SorchaAction `
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
-                    -Token $state.adminToken `
+                    -Token $senderToken `
                     -Reject -RejectionReason $RejectionReason
                 Write-WtWarn "    Action $actionIdStr ($sender) -> REJECTED"
             } else {
@@ -128,7 +168,7 @@ function Invoke-BlueprintScenario {
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
-                    -Token $state.adminToken -PayloadData $payloadData `
+                    -Token $senderToken -PayloadData $payloadData `
                     -CredentialPresentations $presentations
 
                 Write-WtSuccess "    Action $actionIdStr ($sender) -> OK"
@@ -182,13 +222,17 @@ foreach ($sid in $scenariosToRun) {
     if ($planningResult.Passed -and -not $isRejection -and $scenarioData.expectedWarrantPath) {
         $warrantPath = @($scenarioData.expectedWarrantPath)
 
-        # Lazy credential fetcher: pulls the correct VC just-in-time per action.
-        # Action 1 needs PlanningPermissionCredential; actions 5-7 (staged inspections)
-        # need BuildingWarrantCredential, which isn't issued until warrant action 4
-        # completes — so fetch-on-demand instead of up-front.
+        # Lazy credential fetcher: pulls the correct VC just-in-time per
+        # action. Action 1 needs PlanningPermissionCredential; actions 5-7
+        # (staged inspections) need BuildingWarrantCredential, which isn't
+        # issued until warrant action 4 completes — so fetch on demand
+        # rather than up-front.
+        # The credentials are held in the self-builder's wallet, so we hit
+        # the wallet API with the self-builder's own token rather than a
+        # shared admin token. Authorisation stays scoped to the holder.
         $selfBuilderWallet = $wallets["self-builder"]
         $walletUrl = $state.walletUrl
-        $adminToken = $state.adminToken
+        $selfBuilderToken = $roleTokenCache["self-builder"]
         $warrantFetcher = {
             param($actionId)
             $aid = [int]$actionId
@@ -196,13 +240,13 @@ foreach ($sid in $scenariosToRun) {
                 $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
                     -WalletAddress $selfBuilderWallet `
                     -CredentialType "PlanningPermissionCredential" `
-                    -Token $adminToken
+                    -Token $selfBuilderToken
                 if ($p) { return @($p) }
             } elseif ($aid -ge 5) {
                 $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
                     -WalletAddress $selfBuilderWallet `
                     -CredentialType "BuildingWarrantCredential" `
-                    -Token $adminToken
+                    -Token $selfBuilderToken
                 if ($p) { return @($p) }
             }
             return $null
