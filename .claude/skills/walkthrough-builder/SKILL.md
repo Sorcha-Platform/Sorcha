@@ -46,6 +46,18 @@ tests/Sorcha.Agent.Tests/          # Agent unit tests
 
 Define participants, actions, schemas, routes, and conditions in a JSON template file. See `references/patterns.md` for the blueprint template structure.
 
+**Form layout rules** — when an action's schema has many fields, split the form for readability:
+
+| Prop count | Layout |
+|---|---|
+| ≤ 7 | Flat schema, no sections needed |
+| 8–10 | Single page with `x-sections` grouping related fields |
+| > 10 | Multi-page wizard via `x-pages`, each page with `x-sections` |
+
+**Exception:** reviewer/approver actions should stay single-page even at 10+ props — the whole point is seeing all context on one screen. Use `x-sections` to group, not `x-pages`.
+
+`x-pages`/`x-sections` are render-only — they don't affect `properties`, `required`, or the submitted payload, so walkthrough runners keep working without script changes. See `references/patterns.md` for the JSON shape. Reference implementations: `FormCoverage/form-coverage-template.json`, `HealthDeclaration/health-declaration-template.json`, `SelfBuildHouse/planning-permission-template.json`.
+
 ### Step 2: Write setup.ps1
 
 Use the shared module functions:
@@ -64,7 +76,12 @@ $wallet = New-SorchaWallet -WalletUrl $env.WalletUrl -Headers $admin.Headers -Al
 Register-SorchaParticipant ...
 Publish-SorchaParticipant ...
 
-# Create register and publish blueprint
+# Create register and publish blueprint.
+# New-SorchaRegister is idempotent: if the current user is already subscribed
+# to a register with the same display name it's reused (Reused=$true in result),
+# and the owner org is auto-subscribed on fresh creation so re-running setup.ps1
+# doesn't produce duplicates. Cross-peer discovery is not yet supported —
+# lookup is current-user-only.
 $register = New-SorchaRegister ...
 Publish-SorchaBlueprint -TemplatePath "./my-template.json" -WalletMap $walletMap ...
 

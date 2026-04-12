@@ -72,7 +72,8 @@ function Invoke-BlueprintScenario {
         [array]$ExpectedPath,
         [PSObject]$ActionData,
         [bool]$IsRejection,
-        [string]$RejectionReason
+        [string]$RejectionReason,
+        [scriptblock]$PresentationFetcher = $null
     )
 
     Write-WtInfo "  Phase: $Phase (Blueprint: $BlueprintId)"
@@ -117,11 +118,18 @@ function Invoke-BlueprintScenario {
                     -Reject -RejectionReason $RejectionReason
                 Write-WtWarn "    Action $actionIdStr ($sender) -> REJECTED"
             } else {
+                $presentations = @()
+                if ($PresentationFetcher) {
+                    $fetched = & $PresentationFetcher $actionId
+                    if ($fetched) { $presentations = @($fetched) }
+                }
+
                 $response = Invoke-SorchaAction `
                     -BlueprintUrl $state.blueprintUrl -InstanceId $instanceId `
                     -ActionId $actionIdStr -BlueprintId $BlueprintId `
                     -SenderWallet $senderWallet -RegisterId $RegisterId `
-                    -Token $state.adminToken -PayloadData $payloadData
+                    -Token $state.adminToken -PayloadData $payloadData `
+                    -CredentialPresentations $presentations
 
                 Write-WtSuccess "    Action $actionIdStr ($sender) -> OK"
 
@@ -174,6 +182,32 @@ foreach ($sid in $scenariosToRun) {
     if ($planningResult.Passed -and -not $isRejection -and $scenarioData.expectedWarrantPath) {
         $warrantPath = @($scenarioData.expectedWarrantPath)
 
+        # Lazy credential fetcher: pulls the correct VC just-in-time per action.
+        # Action 1 needs PlanningPermissionCredential; actions 5-7 (staged inspections)
+        # need BuildingWarrantCredential, which isn't issued until warrant action 4
+        # completes — so fetch-on-demand instead of up-front.
+        $selfBuilderWallet = $wallets["self-builder"]
+        $walletUrl = $state.walletUrl
+        $adminToken = $state.adminToken
+        $warrantFetcher = {
+            param($actionId)
+            $aid = [int]$actionId
+            if ($aid -eq 1) {
+                $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
+                    -WalletAddress $selfBuilderWallet `
+                    -CredentialType "PlanningPermissionCredential" `
+                    -Token $adminToken
+                if ($p) { return @($p) }
+            } elseif ($aid -ge 5) {
+                $p = Get-SorchaCredentialPresentation -WalletUrl $walletUrl `
+                    -WalletAddress $selfBuilderWallet `
+                    -CredentialType "BuildingWarrantCredential" `
+                    -Token $adminToken
+                if ($p) { return @($p) }
+            }
+            return $null
+        }.GetNewClosure()
+
         $warrantResult = Invoke-BlueprintScenario `
             -Phase "Building Warrant" `
             -BlueprintId $state.warrantBlueprintId `
@@ -182,7 +216,8 @@ foreach ($sid in $scenariosToRun) {
             -ExpectedPath $warrantPath `
             -ActionData $scenarioData.warrant `
             -IsRejection $false `
-            -RejectionReason ""
+            -RejectionReason "" `
+            -PresentationFetcher $warrantFetcher
 
         $warrantOutcome = if ($warrantResult.Passed) { "COMPLETED" } else { "INCOMPLETE" }
     }
