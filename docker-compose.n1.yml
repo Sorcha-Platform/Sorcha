@@ -43,6 +43,13 @@ services:
       Fido2__ServerDomain: n1.sorcha.dev
       Fido2__ServerName: Sorcha
       Fido2__Origins__0: https://n1.sorcha.dev
+      # n1 is the shared dev/demo node. Walkthrough setup scripts create
+      # bursts of users in one run — 7 for SelfBuildHouse, 5 for ConstructionPermit.
+      # The baked-in 10/min PlatformAuth limit is brute-force protection for
+      # production and is inappropriate here, so loosen it. Other policies
+      # (TOTP, Strict) keep their production defaults.
+      RateLimiting__PlatformAuthPermitLimit: 500
+      RateLimiting__PlatformAuthQueueLimit: 100
 
   peer-service:
     image: sorchadev/peer-service:latest
