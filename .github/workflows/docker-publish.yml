@@ -33,7 +33,7 @@ jobs:
       - name: Detect changed services
         id: detect
         run: |
-          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web"]'
+          ALL_SERVICES='["blueprint-service","wallet-service","register-service","tenant-service","peer-service","validator-service","api-gateway","mcp-server","ui-web","haip-service"]'
 
           if [ "${{ github.event.inputs.force_publish_all }}" == "true" ]; then
             echo "Force publishing all services"
@@ -64,6 +64,7 @@ jobs:
           SERVICE_PATHS["api-gateway"]="src/Services/Sorcha.ApiGateway/"
           SERVICE_PATHS["mcp-server"]="src/Apps/Sorcha.McpServer/"
           SERVICE_PATHS["ui-web"]="src/Apps/Sorcha.UI/"
+          SERVICE_PATHS["haip-service"]="src/Services/Sorcha.Haip.Service/"
 
           CHANGED="["
           FIRST=true
@@ -111,6 +112,7 @@ jobs:
           DOCKERFILES["api-gateway"]="src/Services/Sorcha.ApiGateway/Dockerfile"
           DOCKERFILES["mcp-server"]="src/Apps/Sorcha.McpServer/Dockerfile"
           DOCKERFILES["ui-web"]="src/Apps/Sorcha.UI/Sorcha.UI.Web/Dockerfile"
+          DOCKERFILES["haip-service"]="src/Services/Sorcha.Haip.Service/Dockerfile"
           echo "dockerfile=${DOCKERFILES[${{ matrix.service }}]}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
