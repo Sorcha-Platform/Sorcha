@@ -58,6 +58,16 @@ services:
     environment:
       <<: *jwt-env
 
+  haip-service:
+    image: sorchadev/haip-service:latest
+    environment:
+      <<: *jwt-env
+      # Credential offers embed this URL as the credential_issuer; the agent
+      # receiving the offer dereferences /.well-known/openid-credential-issuer
+      # against it, so it must be the public URL, not the internal 127.0.0.1
+      # default baked into docker-compose.yml.
+      Haip__IssuerUrl: https://n1.sorcha.dev
+
   sorcha-ui-web:
     image: sorchadev/ui-web:latest
 
