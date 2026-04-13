@@ -293,6 +293,64 @@ For full API documentation with request/response schemas, open **Scalar UI** at 
 
 ---
 
+## Verified Citizen v2 Subsystems (Feature 103)
+
+Three Blueprint Service components ship with Feature 103. They cooperate
+to support open citizen-facing actions, schema reuse via JSON Schema
+`$ref`, and credential issuance from nested primitive payloads.
+
+### CoreSchemaSeedService
+
+Hosted background service that seeds the Sorcha core identity primitives
+(`PersonName/v1`, `DateOfBirth/v1`, `EmailAddress/v1`, `PostalAddress/v1`)
+into the schema store on startup if they are not already present. Seed
+documents live under
+`src/Services/Sorcha.Blueprint.Service/CoreSchemas/v1/*.schema.json` and
+are embedded resources, so the service runs without any external file
+mount. Future versions add new files alongside existing ones — the
+seeder is idempotent and never overwrites a stored schema.
+
+### SchemaRefResolver
+
+Publish-time JSON Schema `$ref` flattener. When `PublishService`
+processes an action's `dataSchemas`, the resolver walks the schema tree
+and inlines any `$ref` that points to a `https://schemas.sorcha.dev/core/*`
+primitive, producing a single self-contained schema document for the
+runtime. Inlining at publish time means the runtime never has to chase
+external `$ref` URLs — `JsonSchema.Net` evaluation runs against a fully
+materialised tree. The `BlueprintRefResolutionContext` tracks visited
+URIs to defend against accidental cycles and missing primitives are
+reported as publish-time validation errors with the same shape as
+schema-validation errors.
+
+### InstanceBindingCache
+
+Redis-backed cache that pins the late-bound applicant wallet to an open
+starting action's `Sender` participant. The first qualifying submitter
+wins and is recorded for the lifetime of the instance; subsequent
+submissions from a different wallet are rejected with the standard
+`wallet not authorized` validation error. The cache uses a dedicated
+`sorcha:binding:{instanceId}:{actionId}` keyspace with a 24-hour TTL
+and emits OpenTelemetry metrics under `sorcha.binding_cache.*` for
+hit-rate and read latency observability. A publish-time guardrail
+(`VAL_BP_010` in the Validator Service) rejects blueprints where the
+participant referenced by an open starting action has a non-null
+`WalletAddress` — the foot-gun this whole feature exists to prevent.
+
+### Late-binding claim mapping
+
+`ActionExecutionService.BuildClaimsFromMappings` walks `ClaimMapping.SourceField`
+JSON Pointer paths (with RFC 6901 `~1`/`~0` escape decoding) so a
+credential with claims like `givenName`, `familyName`, `dateOfBirth` can
+source from a nested submission payload like `{ "name": { "givenName": "..." } }`.
+The same helper feeds both the internal Sorcha issuance path and the
+HAIP external-wallet path, so the two stay in sync. Missing claim
+sources are logged at Warning level — silently dropped claims would
+otherwise produce credentials with fewer attributes than the action
+promised.
+
+---
+
 ## Development
 
 ### Project Structure

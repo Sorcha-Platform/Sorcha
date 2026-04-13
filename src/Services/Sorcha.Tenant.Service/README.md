@@ -482,6 +482,48 @@ For full API documentation, open **Scalar UI** at `https://localhost:7080/scalar
 
 ---
 
+## Address Lookup (Feature 103)
+
+The Tenant Service hosts the postcode → address autofill API used by the
+`PostcodeLookupRenderer` form control. Providers are pluggable behind
+`IAddressLookupProvider`:
+
+| Provider | Capability | Country | Auth | Default |
+|----------|------------|---------|------|---------|
+| **Postcodes.io** | ValidateOnly (postcode → town / region / country / lat-long) | UK | None (free public API) | ✅ Always on |
+| **OS Places**    | FullAddress (postcode → candidate list) | UK | API key | ❌ Opt-in |
+
+### Endpoints (routed via API Gateway `/api/*`)
+
+- `GET  /api/address-lookup/providers` — list configured providers and their live availability
+- `POST /api/address-lookup/postcode`  — resolve a postcode (validate-only metadata or full-address candidate list)
+
+Both require a Bearer JWT and apply the standard API rate-limit policy.
+The renderer falls back to plain text when no provider is reachable, so
+service downtime never blocks form submission.
+
+### Configuration
+
+```json
+{
+  "AddressLookup": {
+    "Enabled": true,
+    "Providers": {
+      "PostcodesIo": { "Enabled": true },
+      "OSPlaces":    { "Enabled": false, "ApiKey": "" }
+    },
+    "CacheTtlMinutes": 60
+  }
+}
+```
+
+To enable OS Places, set `Providers.OSPlaces.Enabled = true` and supply
+an API key obtained from `os.uk/datahub`. Provider order in the config
+sets preference: the first provider with capability `FullAddress` wins
+over any `ValidateOnly` provider for the same postcode.
+
+---
+
 ## Development
 
 ### Project Structure

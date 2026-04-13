@@ -133,6 +133,47 @@ See `src/Apps/Sorcha.Agent/` for the agent CLI tool and `walkthroughs/Constructi
 
 ---
 
+## Open Participants & Late Binding (Feature 103)
+
+Citizen-facing walkthroughs (e.g. `HaipVerifiedCitizen`, `HaipDrivingLicence`)
+use the **open starting action** pattern: the first authenticated wallet
+to submit becomes the bound applicant for the life of the instance.
+This is the right pattern for any flow where the citizen / applicant is
+walking in off the street with no pre-existing participant record.
+
+Three rules enforce the contract end-to-end:
+
+1. The action carries `isStartingAction: true`. The validator skips the
+   strict wallet check for these and the runtime late-binds the first
+   submitter to the action's `Sender` participant. A second submission
+   from a different wallet is rejected.
+2. The participant referenced by `Action.Sender` on the open action MUST
+   have `Participant.WalletAddress = null` in the published blueprint.
+   Pre-baking a wallet is the foot-gun the publish-time guardrail
+   `VAL_BP_010` exists to catch.
+3. Walkthrough authors MUST NOT include the open participant in their
+   `$walletMap`. The correct shape is to omit the citizen / applicant
+   entry entirely and let the runtime late-bind:
+
+   ```powershell
+   # CORRECT for citizen-facing walkthroughs:
+   $walletMap = @{
+       "government-assessor" = $assessorWallet.Address
+       # "citizen" intentionally absent — late-bound at runtime
+   }
+   ```
+
+Credential-bootstrapped flows (Driving Licence requires a Verified
+Citizen credential) layer `credentialRequirements` on the open starting
+action. The HAIP presentation gate fires *before* the late-bind block,
+so only credential holders can become the bound applicant.
+
+See the `blueprint-builder` skill ("Open Participants & Late Binding"
+section) for the runtime details and the `verifiable-credentials` skill
+for the issuance side.
+
+---
+
 ## run-all.ps1
 
 Runs all walkthroughs in dependency order (Foundation → Single-Org → Multi-Org → Advanced):
