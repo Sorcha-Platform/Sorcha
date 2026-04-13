@@ -229,6 +229,8 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - First page: eligibility questions; routing on this action can route ineligible applicants to a terminal "Not Eligible" action
         - Final page: "Check Your Answers" — no new fields, signals a summary view to the renderer
         - Suggest `instanceReference` here — the generated reference becomes the citizen's application number
+        - **Leave the Applicant participant's `walletAddress` unset.** `IsStartingAction` is the "open" flag end-to-end: any wallet may submit, the runtime binds the first sender to the Applicant role on the Instance, and that binding is immutable for the rest of the workflow. Pre-binding a wallet at publish time defeats the open contract and rejects every real public submitter.
+        - **For credential-bootstrapped flows** (e.g. a Driving Licence application that requires a Verified Citizen credential), put the gate on the starting action's `credentialRequirements` — do NOT invent a new flag and do NOT pre-bind the participant. The HAIP presentation pipeline runs before late-binding, so the first holder of a valid credential becomes the bound applicant. Use this pattern whenever an existing credential should "bootstrap" a service rather than re-collecting identity from scratch.
 
         **Action 2 — Case Officer Review** (sender: CaseOfficer)
         - A new action because a different participant is now acting
