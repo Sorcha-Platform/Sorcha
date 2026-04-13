@@ -9,6 +9,7 @@
 @using Sorcha.UI.Core.Models.Forms
 @using Sorcha.UI.Core.Services.Forms
 
+@implements IDisposable
 @inject HttpClient Http
 @inject IFormSchemaService SchemaService
 @inject ILogger<PostcodeLookupRenderer> Logger
@@ -58,10 +59,10 @@
                    Variant="Variant.Text"
                    Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.Search"
-                   Disabled="@(IsDisabled || FormContext?.IsReadOnly == true || string.IsNullOrWhiteSpace(_value))"
+                   Disabled="@(IsDisabled || FormContext?.IsReadOnly == true || string.IsNullOrWhiteSpace(_value) || _isLookingUp)"
                    OnClick="OnFindAddressClickedAsync"
                    Class="mt-1">
-            Find address
+            @(_isLookingUp ? "Searching..." : "Find address")
         </MudButton>
     }
 
@@ -82,6 +83,14 @@
                     </MudListItem>
                 }
             </MudList>
+            <MudButton data-testid="postcode-dismiss-candidates"
+                       Variant="Variant.Text"
+                       Size="Size.Small"
+                       Color="Color.Default"
+                       OnClick="@(() => _candidates = null)"
+                       Class="mt-1">
+                Enter manually instead
+            </MudButton>
         </MudPaper>
     }
     else if (!string.IsNullOrEmpty(_metadataHint))
@@ -99,6 +108,12 @@
 
     private enum LookupMode { NoProvider, ValidateOnly, FullAddress }
 
+    // Capability constants — match the server-side AddressLookupCapability
+    // values exactly. Comparisons are case-insensitive to defend against
+    // minor wire-shape drift.
+    private const string CapabilityFullAddress = "FullAddress";
+    private const string CapabilityValidateOnly = "ValidateOnly";
+
     private string _value = string.Empty;
     private string _errorText = string.Empty;
     private bool _isRequired;
@@ -107,6 +122,8 @@
     private Color _adornmentColor = Color.Default;
     private string? _metadataHint;
     private List<AddressCandidate>? _candidates;
+    private bool _isLookingUp;
+    private readonly CancellationTokenSource _cts = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -129,27 +146,37 @@
         try
         {
             var providers = await Http.GetFromJsonAsync<List<ProviderInfo>>(
-                "/api/address-lookup/providers", JsonOptions);
+                "/api/address-lookup/providers", JsonOptions, _cts.Token);
 
             if (providers is not null && providers.Count > 0)
             {
                 // Prefer FullAddress over ValidateOnly. Only consider available providers.
                 var available = providers.Where(p => p.Available).ToList();
-                if (available.Any(p => p.Capability == "FullAddress"))
+                if (available.Any(p => string.Equals(p.Capability, CapabilityFullAddress, StringComparison.OrdinalIgnoreCase)))
                 {
                     _mode = LookupMode.FullAddress;
                 }
-                else if (available.Any(p => p.Capability == "ValidateOnly"))
+                else if (available.Any(p => string.Equals(p.Capability, CapabilityValidateOnly, StringComparison.OrdinalIgnoreCase)))
                 {
                     _mode = LookupMode.ValidateOnly;
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed before provider discovery finished — no-op.
         }
         catch (Exception ex)
         {
             Logger.LogDebug(ex, "Address lookup provider discovery failed; falling back to plain text");
             _mode = LookupMode.NoProvider;
         }
+    }
+
+    public void Dispose()
+    {
+        try { _cts.Cancel(); } catch { /* ignored */ }
+        _cts.Dispose();
     }
 
     private void OnValueChanged(string newValue)
@@ -190,12 +217,18 @@
 
     private async Task LookupAsync()
     {
+        // Concurrent-request guard: rapid clicks on "Find address" would
+        // otherwise race, and the last response to arrive (not the last
+        // request sent) could win — producing a stale candidate list.
+        if (_isLookingUp) return;
+        _isLookingUp = true;
         try
         {
             var response = await Http.PostAsJsonAsync(
                 "/api/address-lookup/postcode",
                 new { postcode = _value },
-                JsonOptions);
+                JsonOptions,
+                _cts.Token);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -204,7 +237,7 @@
                 return;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<LookupResult>(JsonOptions);
+            var result = await response.Content.ReadFromJsonAsync<LookupResult>(JsonOptions, _cts.Token);
             if (result is null || !result.IsValid)
             {
                 _metadataHint = "Postcode not recognised — enter your address manually.";
@@ -215,21 +248,32 @@
             _adornmentIcon = Icons.Material.Filled.CheckCircle;
             _adornmentColor = Color.Success;
 
-            if (result.Capability == "FullAddress" && result.Candidates is { Count: > 0 })
+            if (string.Equals(result.Capability, CapabilityFullAddress, StringComparison.OrdinalIgnoreCase)
+                && result.Candidates is { Count: > 0 })
             {
                 _candidates = result.Candidates;
                 _metadataHint = $"{result.Candidates.Count} address{(result.Candidates.Count == 1 ? string.Empty : "es")} found — select one below.";
             }
-            else if (result.Capability == "ValidateOnly" && result.Metadata is not null)
+            else if (string.Equals(result.Capability, CapabilityValidateOnly, StringComparison.OrdinalIgnoreCase)
+                && result.Metadata is not null)
             {
                 AutofillMetadata(result.Metadata);
                 _metadataHint = $"{result.Metadata.Town}{(string.IsNullOrEmpty(result.Metadata.Region) ? string.Empty : $", {result.Metadata.Region}")}";
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Component disposed mid-flight — no-op.
+            _candidates = null;
+        }
         catch (Exception ex)
         {
             Logger.LogDebug(ex, "Address lookup request failed");
             _candidates = null;
+        }
+        finally
+        {
+            _isLookingUp = false;
         }
     }
 

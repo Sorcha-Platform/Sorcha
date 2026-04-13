@@ -619,18 +619,20 @@ public class ActionExecutionService : IActionExecutionService
                 // landed in the credential as the nested objects themselves.
                 var haipClaims = BuildClaimsFromMappings(
                     actionDef.CredentialIssuanceConfig.ClaimMappings,
-                    mergedData);
+                    mergedData!);
+                // HAIP client expects non-nullable values; flatten before sending.
+                var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
                 _logger.LogInformation(
                     "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
                     actionDef.CredentialIssuanceConfig.CredentialType,
-                    string.Join(", ", haipClaims.Keys));
+                    string.Join(", ", haipClaimsForWire.Keys));
 
                 haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
                     request.SenderWallet,
                     instance.RegisterId,
                     actionDef.CredentialIssuanceConfig.CredentialType,
-                    haipClaims,
+                    haipClaimsForWire,
                     actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
                     cancellationToken);
 
@@ -1296,6 +1298,17 @@ public class ActionExecutionService : IActionExecutionService
     private Dictionary<string, object?> BuildClaimsFromMappings(
         IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
         IReadOnlyDictionary<string, object?> mergedData)
+        => BuildClaimsFromMappings(mappings, mergedData, _logger);
+
+    /// <summary>
+    /// Static logger-injected overload used by unit tests so the helper can
+    /// be exercised without needing the full <see cref="ActionExecutionService"/>
+    /// constructor graph.
+    /// </summary>
+    internal static Dictionary<string, object?> BuildClaimsFromMappings(
+        IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
+        IReadOnlyDictionary<string, object?> mergedData,
+        ILogger logger)
     {
         var claims = new Dictionary<string, object?>();
         if (mappings is null) return claims;
@@ -1308,7 +1321,7 @@ public class ActionExecutionService : IActionExecutionService
             }
             else
             {
-                _logger.LogWarning(
+                logger.LogWarning(
                     "Claim mapping source '{SourceField}' not found in action data; dropping claim '{ClaimName}' from credential",
                     mapping.SourceField, mapping.ClaimName);
             }
@@ -1406,7 +1419,12 @@ public class ActionExecutionService : IActionExecutionService
         // extraction walks the pointer segment-by-segment through nested
         // dictionaries and JsonElement objects. Missing segments log a
         // warning and skip the claim rather than failing the whole issue.
-        var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData);
+        var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!);
+        // Wallet client expects non-nullable values; the mapper preserves
+        // null only when the source field is itself null, which never
+        // happens in the issuance path because TryResolveJsonPointer drops
+        // null segments.
+        var claimsForWallet = claims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
         // Resolve recipient wallet address from participant ID
         var recipientWallet = senderWallet; // Default: issuer is also recipient
@@ -1487,7 +1505,7 @@ public class ActionExecutionService : IActionExecutionService
             var result = await _walletClient.IssueCredentialAsync(
                 issuerWalletAddress: senderWallet,
                 credentialType: config.CredentialType,
-                claims: claims,
+                claims: claimsForWallet,
                 recipientWallet: recipientWallet,
                 expiryDuration: config.ExpiryDuration,
                 disclosableClaims: config.Disclosable?.ToList(),

@@ -92,9 +92,13 @@ public class JsonPointerResolverTests
     }
 
     [Fact]
-    public void TryResolve_RootPointer_ReturnsFalse()
+    public void TryResolve_RootAndEmptyPointer_ReturnFalse()
     {
-        // "/" is the whole-document pointer — no use case for claim mapping.
+        // RFC 6901 strictly defines "" as the whole-document pointer and
+        // "/" as the single empty-string key. Neither has a use case for
+        // claim mapping, so the walker treats both as "no resolution" and
+        // returns false. This test pins the simplification so a future
+        // change doesn't accidentally start returning the root document.
         var root = new Dictionary<string, object?> { ["x"] = 1 };
         ActionExecutionService.TryResolveJsonPointer(root, "/", out _).Should().BeFalse();
         ActionExecutionService.TryResolveJsonPointer(root, string.Empty, out _).Should().BeFalse();
