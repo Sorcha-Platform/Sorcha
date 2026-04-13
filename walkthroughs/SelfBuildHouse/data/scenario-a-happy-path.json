@@ -13,8 +13,8 @@
   "planning": {
     "1": {
       "projectName": "Birchwood Cottage",
-      "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
-      "gridReference": "NH5130",
+      "siteAddress": "Plot 3, Lochside Road, Dalreoch, Strathcarron, SC6 3TU",
+      "gridReference": "SC5130",
       "plotSizeHectares": 0.25,
       "dwellingType": "detached",
       "storeys": 1,
@@ -25,7 +25,7 @@
       "existingLandUse": "garden-ground",
       "accessArrangement": "existing-access",
       "withinConservationArea": false,
-      "designStatement": "A single-storey timber-frame dwelling designed to sit sympathetically within the existing landscape of Lochside Road. The design draws on the local Highland vernacular — natural larch cladding, natural slate roof, and generous glazing oriented south toward Loch Ness. The low profile and single-storey form minimises visual impact on neighbouring properties. The plot is served by an existing vehicular access from Lochside Road and has adequate space for two off-street parking spaces and a turning area."
+      "designStatement": "A single-storey timber-frame dwelling designed to sit sympathetically within the existing landscape of Lochside Road. The design draws on the local Strathcarron vernacular — natural larch cladding, natural slate roof, and generous glazing oriented south toward Loch Morach. The low profile and single-storey form minimises visual impact on neighbouring properties. The plot is served by an existing vehicular access from Lochside Road and has adequate space for two off-street parking spaces and a turning area."
     },
     "2": {
       "soilClassification": "gravel",
@@ -69,7 +69,7 @@
         "Landscaping scheme to be submitted and approved within 3 months of occupation",
         "Construction hours: 08:00-19:00 Monday-Friday, 08:00-13:00 Saturday, no Sunday or bank holiday working"
       ],
-      "planningNotes": "Application for a single-storey dwelling on garden ground at Lochside Road. The site is within the settlement boundary of Drumnadrochit as defined in the Highland-wide Local Development Plan. The proposed design is sympathetic to the local vernacular and the single-storey form minimises visual impact. All statutory consultations returned positive responses. No neighbour objections received. The development complies with Policy 28 (Sustainable Design) and Policy 29 (Design Quality and Place Making). Recommended for approval with standard conditions."
+      "planningNotes": "Application for a single-storey dwelling on garden ground at Lochside Road. The site is within the settlement boundary of Dalreoch as defined in the Strathcarron Local Development Plan. The proposed design is sympathetic to the local vernacular and the single-storey form minimises visual impact. All statutory consultations returned positive responses. No neighbour objections received. The development complies with Policy 28 (Sustainable Design) and Policy 29 (Design Quality and Place Making). Recommended for approval with standard conditions."
     },
     "7": {
       "permitReference": "26/00142/FUL",
@@ -84,7 +84,7 @@
       ],
       "informatives": [
         "A separate building warrant will be required before construction commences",
-        "The applicant is advised to contact Scottish Water regarding water and drainage connections",
+        "The applicant is advised to contact Caledonian Water regarding water and drainage connections",
         "Party wall notices may be required if construction is within prescribed distances of neighbouring boundaries"
       ]
     }
@@ -92,7 +92,7 @@
   "warrant": {
     "1": {
       "planningPermitReference": "26/00142/FUL",
-      "siteAddress": "Plot 3, Lochside Road, Drumnadrochit, Inverness-shire, IV63 6TU",
+      "siteAddress": "Plot 3, Lochside Road, Dalreoch, Strathcarron, SC6 3TU",
       "constructionMethod": "timber-frame",
       "wallInsulationType": "mineral-wool",
       "heatingSystem": "air-source-heat-pump",
@@ -108,7 +108,7 @@
       "designSnowLoad": 0.6,
       "safetyFactorAchieved": 1.8,
       "euroCodeCompliance": true,
-      "engineerNotes": "Timber-frame structure designed to BS EN 1995-1-1 (Eurocode 5). Strip foundations at 600mm depth on gravel formation. Wind loading calculated per BS EN 1991-1-4 for Highland exposure. Snow loading per BS EN 1991-1-3 zone 3. All structural elements have adequate safety margins. Timber frame manufacturer's engineering package reviewed and approved."
+      "engineerNotes": "Timber-frame structure designed to BS EN 1995-1-1 (Eurocode 5). Strip foundations at 600mm depth on gravel formation. Wind loading calculated per BS EN 1991-1-4 for Strathcarron exposure. Snow loading per BS EN 1991-1-3 zone 3. All structural elements have adequate safety margins. Timber frame manufacturer's engineering package reviewed and approved."
     },
     "3": {
       "standard1Structure": "pass",

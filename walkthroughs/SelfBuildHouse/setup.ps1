@@ -13,12 +13,12 @@
 #
 # Organisations (5 private + public):
 #   1. (Public Org)                          — self-builder (citizen)
-#   2. Highland Council — Planning           — planning-officer (admin)
-#   3. Highland Council — Building Standards — building-standards-officer (admin)
-#                                            + building-inspector (team)
-#   4. Scottish Water                         — utilities-officer (admin)
-#   5. MacGregor Structural Engineers         — structural-engineer (admin)
-#   6. Glen Ecology Consultants               — ecologist (admin)
+#   2. Strathcarron Council — Planning           — planning-officer (admin)
+#   3. Strathcarron Council — Building Standards — building-standards-officer (admin)
+#                                                + building-inspector (team)
+#   4. Caledonian Water                           — utilities-officer (admin)
+#   5. Murchison Engineering                      — structural-engineer (admin)
+#   6. Heatherbank Environmental                  — ecologist (admin)
 #
 # Follows the ConstructionPermit multi-org setup pattern exactly.
 
@@ -50,22 +50,22 @@ $publicOrgId = "00000000-0000-0000-0000-000000000002"
 # ============================================================================
 
 $orgDefs = @(
-    @{ name = "Highland Council — Planning";           subdomain = "highland-planning"; desc = "Planning authority";                      adminRole = "planning-officer" }
-    @{ name = "Highland Council — Building Standards"; subdomain = "highland-bs";       desc = "Building control & standards";            adminRole = "building-standards-officer" }
-    @{ name = "Scottish Water";                         subdomain = "scottish-water";   desc = "Water & drainage consultee";              adminRole = "utilities-officer" }
-    @{ name = "MacGregor Structural Engineers";         subdomain = "macgregor";        desc = "Structural engineering consultancy";       adminRole = "structural-engineer" }
-    @{ name = "Glen Ecology Consultants";               subdomain = "glen-ecology";     desc = "Ecology, habitat, and species surveys";    adminRole = "ecologist" }
+    @{ name = "Strathcarron Council — Planning";           subdomain = "strathcarron-planning"; desc = "Planning authority";                      adminRole = "planning-officer" }
+    @{ name = "Strathcarron Council — Building Standards"; subdomain = "strathcarron-bs";       desc = "Building control & standards";            adminRole = "building-standards-officer" }
+    @{ name = "Caledonian Water";                           subdomain = "caledonian-water";     desc = "Water & drainage consultee";              adminRole = "utilities-officer" }
+    @{ name = "Murchison Engineering";                      subdomain = "murchison";            desc = "Structural engineering consultancy";       adminRole = "structural-engineer" }
+    @{ name = "Heatherbank Environmental";                  subdomain = "heatherbank";          desc = "Ecology, habitat, and species surveys";    adminRole = "ecologist" }
 )
 
 $userDefs = @(
     # Self-builder is a citizen — lives in the Public Org, not a private org admin.
     @{ role = "self-builder";               org = "public";          email = $secrets.selfBuilderEmail;      password = $secrets.selfBuilderPassword;      name = $secrets.selfBuilderName;         isOrgAdmin = $false; isCitizen = $true }
-    @{ role = "planning-officer";           org = "highland-planning"; email = $secrets.planningEmail;       password = $secrets.planningPassword;         name = $secrets.planningName;            isOrgAdmin = $true }
-    @{ role = "building-standards-officer"; org = "highland-bs";     email = $secrets.buildingStandardsEmail; password = $secrets.buildingStandardsPassword; name = $secrets.buildingStandardsName;  isOrgAdmin = $true }
-    @{ role = "building-inspector";         org = "highland-bs";     email = $secrets.buildingInspectorEmail; password = $secrets.buildingInspectorPassword; name = $secrets.buildingInspectorName;  isOrgAdmin = $false }
-    @{ role = "utilities-officer";          org = "scottish-water";  email = $secrets.utilitiesEmail;        password = $secrets.utilitiesPassword;        name = $secrets.utilitiesName;           isOrgAdmin = $true }
-    @{ role = "structural-engineer";        org = "macgregor";       email = $secrets.structuralEmail;       password = $secrets.structuralPassword;       name = $secrets.structuralName;          isOrgAdmin = $true }
-    @{ role = "ecologist";                  org = "glen-ecology";    email = $secrets.ecologistEmail;        password = $secrets.ecologistPassword;        name = $secrets.ecologistName;           isOrgAdmin = $true }
+    @{ role = "planning-officer";           org = "strathcarron-planning"; email = $secrets.planningEmail;       password = $secrets.planningPassword;         name = $secrets.planningName;            isOrgAdmin = $true }
+    @{ role = "building-standards-officer"; org = "strathcarron-bs";     email = $secrets.buildingStandardsEmail; password = $secrets.buildingStandardsPassword; name = $secrets.buildingStandardsName;  isOrgAdmin = $true }
+    @{ role = "building-inspector";         org = "strathcarron-bs";     email = $secrets.buildingInspectorEmail; password = $secrets.buildingInspectorPassword; name = $secrets.buildingInspectorName;  isOrgAdmin = $false }
+    @{ role = "utilities-officer";          org = "caledonian-water";  email = $secrets.utilitiesEmail;        password = $secrets.utilitiesPassword;        name = $secrets.utilitiesName;           isOrgAdmin = $true }
+    @{ role = "structural-engineer";        org = "murchison";       email = $secrets.structuralEmail;       password = $secrets.structuralPassword;       name = $secrets.structuralName;          isOrgAdmin = $true }
+    @{ role = "ecologist";                  org = "heatherbank";    email = $secrets.ecologistEmail;        password = $secrets.ecologistPassword;        name = $secrets.ecologistName;           isOrgAdmin = $true }
 )
 
 # ============================================================================
@@ -151,7 +151,7 @@ $orgs["public"] = $publicOrgId
 Write-WtStep "Step 6: Add Team Members"
 
 # Non-admin, non-citizen users need to be added to their target private org by
-# the sysadmin. Today that's just the building-inspector sharing Highland BS.
+# the sysadmin. Today that's just the building-inspector sharing Strathcarron BS.
 $teamMembers = $userDefs | Where-Object { -not $_.isOrgAdmin -and -not $_.isCitizen }
 foreach ($u in $teamMembers) {
     $orgId = $orgs[$u.org]
@@ -226,18 +226,18 @@ foreach ($u in $userDefs) {
 # ============================================================================
 Write-WtStep "Step 8: Create Registers (2)"
 
-# Planning register is owned by Highland Council — Planning (planning-officer).
+# Planning register is owned by Strathcarron Council — Planning (planning-officer).
 # Build the headers/user-id/wallet from the planning-officer's session so the
 # register is created under that user and their org is subscribed as Owner.
 $planningSession = $sessionCache["$($users['planning-officer'].email)|$($users['planning-officer'].organizationId)"]
 $planningOfficerJwt = Decode-SorchaJwt -Token $planningSession.Token
 $planningOwnerUserId = $planningOfficerJwt.sub
 
-Write-WtInfo "  Creating Highland Planning Register..."
+Write-WtInfo "  Creating Strathcarron Planning Register..."
 $planningRegister = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl -TenantUrl $env.TenantUrl `
-    -Name "Highland Planning Register" `
-    -Description "Planning applications, consultations, and decisions for the Highland Council area" `
+    -Name "Strathcarron Planning Register" `
+    -Description "Planning applications, consultations, and decisions for the Strathcarron Council area" `
     -TenantId $users["planning-officer"].organizationId `
     -OwnerUserId $planningOwnerUserId `
     -OwnerWalletAddress $users["planning-officer"].walletAddress `
@@ -245,17 +245,17 @@ $planningRegister = New-SorchaRegister `
     -Metadata @{ createdBy = "SelfBuildHouse/setup.ps1"; registerType = "planning" }
 Write-WtSuccess "  Planning Register: $($planningRegister.RegisterId)"
 
-# Building Standards register is owned by Highland Council — Building Standards
+# Building Standards register is owned by Strathcarron Council — Building Standards
 # (building-standards-officer).
 $bsSession = $sessionCache["$($users['building-standards-officer'].email)|$($users['building-standards-officer'].organizationId)"]
 $bsOfficerJwt = Decode-SorchaJwt -Token $bsSession.Token
 $bsOwnerUserId = $bsOfficerJwt.sub
 
-Write-WtInfo "  Creating Highland Building Standards Register..."
+Write-WtInfo "  Creating Strathcarron Building Standards Register..."
 $buildingRegister = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl -TenantUrl $env.TenantUrl `
-    -Name "Highland Building Standards Register" `
-    -Description "Building warrants, staged inspections, and completion certificates for the Highland Council area" `
+    -Name "Strathcarron Building Standards Register" `
+    -Description "Building warrants, staged inspections, and completion certificates for the Strathcarron Council area" `
     -TenantId $users["building-standards-officer"].organizationId `
     -OwnerUserId $bsOwnerUserId `
     -OwnerWalletAddress $users["building-standards-officer"].walletAddress `
@@ -276,8 +276,8 @@ foreach ($orgKey in $privateOrgKeys) {
     $orgId = $orgs[$orgKey]
 
     # Skip owners — they already have Owner subscriptions from finalize.
-    $isPlanningOwner = ($orgKey -eq "highland-planning")
-    $isBuildingOwner = ($orgKey -eq "highland-bs")
+    $isPlanningOwner = ($orgKey -eq "strathcarron-planning")
+    $isBuildingOwner = ($orgKey -eq "strathcarron-bs")
 
     if (-not $isPlanningOwner) {
         try {
@@ -285,7 +285,7 @@ foreach ($orgKey in $privateOrgKeys) {
                 -TenantUrl $env.TenantUrl `
                 -OrganizationId $orgId `
                 -RegisterId $planningRegister.RegisterId `
-                -RegisterName "Highland Planning Register" `
+                -RegisterName "Strathcarron Planning Register" `
                 -SubscriptionType "Public" `
                 -Headers $sysAdmin.Headers
         } catch {
@@ -299,7 +299,7 @@ foreach ($orgKey in $privateOrgKeys) {
                 -TenantUrl $env.TenantUrl `
                 -OrganizationId $orgId `
                 -RegisterId $buildingRegister.RegisterId `
-                -RegisterName "Highland Building Standards Register" `
+                -RegisterName "Strathcarron Building Standards Register" `
                 -SubscriptionType "Public" `
                 -Headers $sysAdmin.Headers
         } catch {

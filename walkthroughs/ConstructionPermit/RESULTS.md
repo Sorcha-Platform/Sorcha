@@ -67,8 +67,8 @@
 
 | Capability | Status | Notes |
 |------------|--------|-------|
-| Multi-org participation (4 orgs) | _TBD_ | Meridian, Apex, Riverside, Green Valley |
-| Same-org multi-user | _TBD_ | planning-officer + building-control = Riverside Council |
+| Multi-org participation (4 orgs) | _TBD_ | Stoniebridge, Murchison, Strathcarron, Heatherbank |
+| Same-org multi-user | _TBD_ | planning-officer + building-control = Strathcarron Council |
 | JSON Logic calculation (riskScore) | _TBD_ | (storeys × 1.5 + area/500) × type multiplier |
 | JSON Logic calculation (permitFee) | _TBD_ | max(250, value × 0.002 + area × 1.50) |
 | Conditional routing | _TBD_ | riskScore >= 7 → environmental review |

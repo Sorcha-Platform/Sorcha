@@ -3,10 +3,10 @@
   "description": "Multi-org construction permit approval — 4 orgs, 5 participants, 3 scenarios (low-risk, high-risk, rejection).",
   "category": "multi-org",
   "organizations": [
-    { "name": "Meridian Construction", "subdomain": "meridian-construction", "role": "contractor" },
-    { "name": "Apex Structural Engineers", "subdomain": "apex-structural", "role": "engineer" },
-    { "name": "Riverside Borough Council", "subdomain": "riverside-council", "role": "planning + building control" },
-    { "name": "Green Valley Environmental", "subdomain": "green-valley-env", "role": "environmental" }
+    { "name": "Stoniebridge Construction", "subdomain": "stoniebridge-construction", "role": "contractor" },
+    { "name": "Murchison Engineering", "subdomain": "murchison-engineering", "role": "engineer" },
+    { "name": "Strathcarron Council", "subdomain": "strathcarron-council", "role": "planning + building control" },
+    { "name": "Heatherbank Environmental", "subdomain": "heatherbank-env", "role": "environmental" }
   ],
   "secretsKey": "construction-permit",
   "requiresRegister": true,

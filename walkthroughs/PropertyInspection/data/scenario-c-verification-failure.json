@@ -1,0 +1,72 @@
+{
+  "name": "Scenario C: Operative Verification Failure (Re-allocation)",
+  "description": "Urgent lock repair — tenant rejects first operative (credential mismatch), re-allocated, then completed",
+  "path": "0 → 1 → 2(rejected) → 1 → 2(accepted) → 3 → 4 → 6",
+  "actions": {
+    "reportProblem": {
+      "tenantName": "Eilidh Drummond",
+      "contactPhone": "+44 1463 555 403",
+      "propertyAddress": {
+        "street": "3 Invercarron Row",
+        "town": "Invercarron",
+        "postcode": "SC2 5PA"
+      },
+      "description": "Front door lock mechanism has broken. The handle is hanging loose and the lock cylinder is visible. Door will not secure properly — can be pushed open from outside. I live alone and feel very unsafe.",
+      "category": "Other",
+      "urgencyDescription": "Urgent — door cannot be locked, I am a vulnerable adult living alone",
+      "accessNotes": "I will not open the door unless I can verify who is visiting. Please ensure operative has proper identification. Neighbour at number 5 (Mrs Campbell) has my spare key for emergencies."
+    },
+    "triageAllocateFirst": {
+      "severity": "Urgent",
+      "targetCompletionDate": "2026-04-14",
+      "requirements": [
+        "Replace lock mechanism (5-lever mortice deadlock BS3621)",
+        "Test lock operation from both sides",
+        "Provide tenant with new keys (x2)",
+        "Check door frame alignment — repair if needed"
+      ],
+      "allocationNotes": "Vulnerable adult, lives alone. Must verify operative identity before entry. Priority job.",
+      "assignedOperativeName": "Craig Dunbar"
+    },
+    "verifyOperativeRejected": {
+      "operativeVerified": false,
+      "verificationNotes": "Person at door does not match credential. Name on credential says Craig Dunbar but person gave different name. Refusing access."
+    },
+    "triageAllocateSecond": {
+      "severity": "Urgent",
+      "targetCompletionDate": "2026-04-14",
+      "requirements": [
+        "Replace lock mechanism (5-lever mortice deadlock BS3621)",
+        "Test lock operation from both sides",
+        "Provide tenant with new keys (x2)",
+        "Check door frame alignment — repair if needed"
+      ],
+      "allocationNotes": "RE-ALLOCATION: Previous operative could not be verified by tenant. Sending Jamie Crawford who has confirmed availability.",
+      "assignedOperativeName": "Jamie Crawford"
+    },
+    "verifyOperativeAccepted": {
+      "operativeVerified": true,
+      "verificationNotes": "Credential matches — Jamie Crawford, Stoniebridge Construction. Glad I could check."
+    },
+    "completeWork": {
+      "completedItems": [
+        "Replaced lock mechanism — fitted ERA 5-lever BS3621 mortice deadlock",
+        "Tested lock from inside and outside — smooth operation both sides",
+        "Provided tenant with 2 new keys, demonstrated operation",
+        "Checked door frame — slight misalignment corrected with hinge adjustment"
+      ],
+      "materialsUsed": "ERA 5-lever mortice deadlock BS3621, 3\" brass hinges x2 (frame adjustment)",
+      "hoursWorked": 2.0,
+      "deliveryNotes": "New BS3621 lock fitted and tested. Door frame realigned. Tenant has both keys and demonstrated she can operate the lock comfortably. Property is now secure."
+    },
+    "reviewCompletion": {
+      "decision": "Accepted",
+      "reviewNotes": "All four checklist items completed. BS3621 lock fitted as specified. Tenant confirmed she can operate the lock. Good job given the re-allocation complication."
+    },
+    "confirmSatisfaction": {
+      "satisfied": true,
+      "feedbackNotes": "Glad I could check who they were before opening the door. The new lock is much better than the old one. Feel much safer now.",
+      "rating": 5
+    }
+  }
+}

@@ -11,11 +11,11 @@ Autonomous actor definition files for the ConstructionPermit walkthrough. Each f
 
 | File | Role | Actions Handled |
 |------|------|----------------|
-| contractor.json | Site Manager (Meridian Construction) | Submit Application |
-| structural-engineer.json | Lead Engineer (Apex Structural) | Structural Assessment |
-| planning-officer.json | Planning Officer (Riverside Council) | Planning Review, Final Approval |
-| environmental-assessor.json | Environmental Consultant (Green Valley) | Environmental Impact Assessment |
-| building-control.json | Building Control Inspector (Riverside Council) | Building Control Inspection |
+| contractor.json | Site Manager (Stoniebridge Construction) | Submit Application |
+| structural-engineer.json | Lead Engineer (Murchison Engineering) | Structural Assessment |
+| planning-officer.json | Planning Officer (Strathcarron Council) | Planning Review, Final Approval |
+| environmental-assessor.json | Environmental Consultant (Heatherbank Environmental) | Environmental Impact Assessment |
+| building-control.json | Building Control Inspector (Strathcarron Council) | Building Control Inspection |
 
 ## Running All Actors
 

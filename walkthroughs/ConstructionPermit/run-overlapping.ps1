@@ -60,16 +60,16 @@ Write-WtSuccess "All 5 participants authenticated"
 
 # Define 10 instances with varied scenarios and custom project data
 $instances = @(
-    @{ id=1;  scenario="A"; label="Harbour View Apartments";      site="22 Marina Drive, Riverside, RS1 2CD";        type="residential"; value=450000;  area=650;  storeys=2; existing=$false }
-    @{ id=2;  scenario="B"; label="Riverside Tech Campus";        site="100 Innovation Park, Riverside, RS2 8JK";    type="commercial";  value=8000000; area=5000; storeys=10; existing=$true }
-    @{ id=3;  scenario="A"; label="Oak Meadow Cottages";          site="7 Meadow Lane, Riverside, RS4 3FG";          type="residential"; value=350000;  area=500;  storeys=2; existing=$false }
-    @{ id=4;  scenario="C"; label="Greenbelt Retail Park";        site="15 Country Road, Riverside, RS3 9MN";        type="commercial";  value=3000000; area=2000; storeys=5; existing=$false }
-    @{ id=5;  scenario="B"; label="Waterfront Office Complex";    site="88 Quayside Blvd, Riverside, RS2 1AB";       type="commercial";  value=6500000; area=4200; storeys=9; existing=$true }
-    @{ id=6;  scenario="A"; label="Cherry Blossom Terrace";       site="3 Garden Close, Riverside, RS1 7PQ";         type="residential"; value=600000;  area=900;  storeys=3; existing=$false }
-    @{ id=7;  scenario="C"; label="Parkside Warehouse Conversion";site="40 Industrial Estate, Riverside, RS3 4ST";   type="commercial";  value=1800000; area=1500; storeys=4; existing=$true }
-    @{ id=8;  scenario="B"; label="Central Library Extension";    site="1 Civic Square, Riverside, RS1 1AA";         type="commercial";  value=4500000; area=3000; storeys=7; existing=$true }
-    @{ id=9;  scenario="A"; label="Sunflower Court Bungalows";    site="12 Hilltop Avenue, Riverside, RS4 6UV";      type="residential"; value=280000;  area=400;  storeys=1; existing=$false }
-    @{ id=10; scenario="C"; label="Eastgate Shopping Centre";     site="50 Bypass Road, Riverside, RS3 2WX";         type="commercial";  value=2500000; area=1800; storeys=3; existing=$false }
+    @{ id=1;  scenario="A"; label="Harbour View Apartments";      site="22 Marina Drive, Carronbridge, SC1 2CD";        type="residential"; value=450000;  area=650;  storeys=2; existing=$false }
+    @{ id=2;  scenario="B"; label="Carronbridge Tech Campus";        site="100 Innovation Park, Carronbridge, SC2 8JK";    type="commercial";  value=8000000; area=5000; storeys=10; existing=$true }
+    @{ id=3;  scenario="A"; label="Oak Meadow Cottages";          site="7 Meadow Lane, Carronbridge, SC4 3FG";          type="residential"; value=350000;  area=500;  storeys=2; existing=$false }
+    @{ id=4;  scenario="C"; label="Greenbelt Retail Park";        site="15 Country Road, Carronbridge, SC3 9MN";        type="commercial";  value=3000000; area=2000; storeys=5; existing=$false }
+    @{ id=5;  scenario="B"; label="Waterfront Office Complex";    site="88 Quayside Blvd, Carronbridge, SC2 1AB";       type="commercial";  value=6500000; area=4200; storeys=9; existing=$true }
+    @{ id=6;  scenario="A"; label="Cherry Blossom Terrace";       site="3 Garden Close, Carronbridge, SC1 7PQ";         type="residential"; value=600000;  area=900;  storeys=3; existing=$false }
+    @{ id=7;  scenario="C"; label="Parkside Warehouse Conversion";site="40 Industrial Estate, Carronbridge, SC3 4ST";   type="commercial";  value=1800000; area=1500; storeys=4; existing=$true }
+    @{ id=8;  scenario="B"; label="Central Library Extension";    site="1 Civic Square, Carronbridge, SC1 1AA";         type="commercial";  value=4500000; area=3000; storeys=7; existing=$true }
+    @{ id=9;  scenario="A"; label="Sunflower Court Bungalows";    site="12 Hilltop Avenue, Carronbridge, SC4 6UV";      type="residential"; value=280000;  area=400;  storeys=1; existing=$false }
+    @{ id=10; scenario="C"; label="Eastgate Shopping Centre";     site="50 Bypass Road, Carronbridge, SC3 2WX";         type="commercial";  value=2500000; area=1800; storeys=3; existing=$false }
 )
 
 # Scenario definitions: expected action paths
@@ -85,14 +85,14 @@ $scenarioPayloads = @{
         "2" = @{ loadRating=4.5; foundationType="strip"; structuralGrade="B"; structuralNotes="Standard residential construction. Strip foundations adequate." }
         "3" = @{ zoningCompliant=$true; planningNotes="Within residential zone. Height within limits. Approved." }
         "5" = @{ structuralApproved=$true; fireCompliant=$true; accessCompliant=$true; inspectionNotes="All building regulations met." }
-        "6" = @{ approved=$true; permitNumber="RBC-2026-{0:D5}"; validUntil="2029-03-30"; conditions="Standard conditions apply." }
+        "6" = @{ approved=$true; permitNumber="SC-2026-{0:D5}"; validUntil="2029-03-30"; conditions="Standard conditions apply." }
     }
     "B" = @{
         "2" = @{ loadRating=8.2; foundationType="piled"; structuralGrade="A"; structuralNotes="Piled foundations for high-rise commercial. Steel frame with RC core." }
         "3" = @{ zoningCompliant=$true; planningNotes="Commercial zone approved. Risk score exceeds threshold — routing to environmental." }
         "4" = @{ environmentalImpact="medium"; mitigationRequired=$true; environmentalConditions="Noise mitigation and dust suppression required. SuDS attenuation." }
         "5" = @{ structuralApproved=$true; fireCompliant=$true; accessCompliant=$true; inspectionNotes="Exceeds minimums. Dual staircase, sprinklers, smoke ventilation." }
-        "6" = @{ approved=$true; permitNumber="RBC-2026-{0:D5}"; validUntil="2029-03-30"; conditions="Subject to environmental conditions." }
+        "6" = @{ approved=$true; permitNumber="SC-2026-{0:D5}"; validUntil="2029-03-30"; conditions="Subject to environmental conditions." }
     }
     "C" = @{
         "2" = @{ loadRating=5.0; foundationType="raft"; structuralGrade="B"; structuralNotes="Raft foundation suitable for commercial loading." }

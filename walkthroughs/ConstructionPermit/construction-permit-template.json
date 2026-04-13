@@ -30,31 +30,31 @@
       {
         "id": "contractor",
         "name": "Site Manager",
-        "organisation": "Meridian Construction",
+        "organisation": "Stoniebridge Construction",
         "description": "Submits building application with plans and site data"
       },
       {
         "id": "structural-engineer",
         "name": "Lead Engineer",
-        "organisation": "Apex Structural Engineers",
+        "organisation": "Murchison Engineering",
         "description": "Independent review of structural integrity, calculates risk score"
       },
       {
         "id": "planning-officer",
         "name": "Planning Officer",
-        "organisation": "Riverside Borough Council",
+        "organisation": "Strathcarron Council",
         "description": "Zoning review, conditional routing, and final approval with permit issuance"
       },
       {
         "id": "environmental-assessor",
         "name": "Environmental Consultant",
-        "organisation": "Green Valley Environmental",
+        "organisation": "Heatherbank Environmental",
         "description": "Environmental impact assessment for high-risk projects (conditional)"
       },
       {
         "id": "building-control",
         "name": "Building Control Inspector",
-        "organisation": "Riverside Borough Council",
+        "organisation": "Strathcarron Council",
         "description": "Technical inspection, compliance check, and permit fee calculation"
       }
     ],
@@ -720,7 +720,7 @@
                     {
                       "type": "TextLine",
                       "scope": "/permitNumber",
-                      "title": "Permit Number (e.g. RBC-2026-00142)"
+                      "title": "Permit Number (e.g. SC-2026-00142)"
                     },
                     {
                       "type": "DateTime",
@@ -746,23 +746,23 @@
     "properties": {
       "contractorWallet": {
         "type": "string",
-        "description": "Wallet address for the contractor (Meridian Construction)"
+        "description": "Wallet address for the contractor (Stoniebridge Construction)"
       },
       "structuralEngineerWallet": {
         "type": "string",
-        "description": "Wallet address for the structural engineer (Apex Structural Engineers)"
+        "description": "Wallet address for the structural engineer (Murchison Engineering)"
       },
       "planningOfficerWallet": {
         "type": "string",
-        "description": "Wallet address for the planning officer (Riverside Borough Council)"
+        "description": "Wallet address for the planning officer (Strathcarron Council)"
       },
       "environmentalAssessorWallet": {
         "type": "string",
-        "description": "Wallet address for the environmental assessor (Green Valley Environmental)"
+        "description": "Wallet address for the environmental assessor (Heatherbank Environmental)"
       },
       "buildingControlWallet": {
         "type": "string",
-        "description": "Wallet address for the building control inspector (Riverside Borough Council)"
+        "description": "Wallet address for the building control inspector (Strathcarron Council)"
       }
     },
     "required": [
@@ -785,8 +785,8 @@
         "environmentalAssessorWallet": "0xENVIRONMENTAL_ASSESSOR_WALLET",
         "buildingControlWallet": "0xBUILDING_CONTROL_WALLET",
         "scenario": {
-          "projectName": "Riverside Heights",
-          "siteAddress": "14 Waterfront Lane, Riverside, RS1 4AB",
+          "projectName": "Carronbridge Heights",
+          "siteAddress": "14 Waterfront Lane, Carronbridge, SC1 4AB",
           "buildingType": "residential",
           "estimatedValue": 500000,
           "grossFloorArea": 800,
@@ -805,8 +805,8 @@
         "environmentalAssessorWallet": "0xENVIRONMENTAL_ASSESSOR_WALLET",
         "buildingControlWallet": "0xBUILDING_CONTROL_WALLET",
         "scenario": {
-          "projectName": "Central Business Tower",
-          "siteAddress": "42 Commerce Street, Riverside, RS2 7GH",
+          "projectName": "Carronbridge Business Tower",
+          "siteAddress": "42 Commerce Street, Carronbridge, SC2 7GH",
           "buildingType": "commercial",
           "estimatedValue": 5000000,
           "grossFloorArea": 3500,
@@ -826,7 +826,7 @@
         "buildingControlWallet": "0xBUILDING_CONTROL_WALLET",
         "scenario": {
           "projectName": "Eastside Commercial Centre",
-          "siteAddress": "8 Industrial Way, Riverside, RS3 1KL",
+          "siteAddress": "8 Industrial Way, Carronbridge, SC3 1KL",
           "buildingType": "commercial",
           "estimatedValue": 2000000,
           "grossFloorArea": 1200,

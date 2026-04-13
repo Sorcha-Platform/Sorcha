@@ -8,15 +8,15 @@ A multi-organisation construction permit workflow demonstrating Sorcha's core ca
 
 ## The Scenario
 
-**Meridian Construction** submits a building application that flows through structural assessment, council planning review, optional environmental review (for high-risk builds), building control inspection, and final permit issuance.
+**Stoniebridge Construction** submits a building application that flows through structural assessment, council planning review, optional environmental review (for high-risk builds), building control inspection, and final permit issuance.
 
 | Organisation | Participant | Role |
 |---|---|---|
-| Meridian Construction | Site Manager | Submits building application |
-| Apex Structural Engineers | Lead Engineer | Structural assessment + risk score |
-| Riverside Borough Council | Planning Officer | Zoning review + final approval |
-| Riverside Borough Council | Building Control Inspector | Technical inspection + permit fee |
-| Green Valley Environmental | Environmental Consultant | Environmental impact (high-risk only) |
+| Stoniebridge Construction | Site Manager | Submits building application |
+| Murchison Engineering | Lead Engineer | Structural assessment + risk score |
+| Strathcarron Council | Planning Officer | Zoning review + final approval |
+| Strathcarron Council | Building Control Inspector | Technical inspection + permit fee |
+| Heatherbank Environmental | Environmental Consultant | Environmental impact (high-risk only) |
 
 ---
 
@@ -36,7 +36,7 @@ New users self-register on the public organisation. The walkthrough setup script
 
 ### 1.3 Organisation Selection
 
-Multi-org users select which organisation to sign in to. The contractor belongs to both the public org and Meridian Construction.
+Multi-org users select which organisation to sign in to. The contractor belongs to both the public org and Stoniebridge Construction.
 
 ![Organisation Selection](screenshots/setup-04-org-select.png)
 
@@ -60,7 +60,7 @@ The Construction Permit Approval blueprint defines 6 actions, 5 participants, co
 
 ### 1.7 Register
 
-The Construction Permit Register is the distributed ledger where all transactions are recorded. The register owner (Meridian Construction) creates it; other organisations subscribe.
+The Construction Permit Register is the distributed ledger where all transactions are recorded. The register owner (Stoniebridge Construction) creates it; other organisations subscribe.
 
 ![Registers](screenshots/setup-08-registers.png)
 
@@ -103,8 +103,8 @@ The walkthrough executes three scenarios against the published blueprint. Each s
 
 | Step | Action | Participant | Key Data |
 |---|---|---|---|
-| 1 | Submit Application | Site Manager (Meridian) | "Riverside Heights", 3 storeys, residential, 500k |
-| 2 | Structural Assessment | Lead Engineer (Apex) | Grade B, strip foundations, risk score **6.1** |
+| 1 | Submit Application | Site Manager (Stoniebridge) | "Carronbridge Heights", 3 storeys, residential, 500k |
+| 2 | Structural Assessment | Lead Engineer (Murchison) | Grade B, strip foundations, risk score **6.1** |
 | 3 | Planning Review | Planning Officer (Council) | Zoning compliant, routes to building control |
 | 4 | Building Control | Inspector (Council) | All compliant, permit fee **2,200** |
 | 5 | Final Approval | Planning Officer (Council) | **Approved** — Building Permit VC issued |
@@ -115,10 +115,10 @@ The walkthrough executes three scenarios against the published blueprint. Each s
 
 | Step | Action | Participant | Key Data |
 |---|---|---|---|
-| 1 | Submit Application | Site Manager (Meridian) | "Central Business Tower", 8 storeys, commercial, 5M |
-| 2 | Structural Assessment | Lead Engineer (Apex) | Grade A, piled foundations, risk score **22.8** |
+| 1 | Submit Application | Site Manager (Stoniebridge) | "Carronbridge Business Tower", 8 storeys, commercial, 5M |
+| 2 | Structural Assessment | Lead Engineer (Murchison) | Grade A, piled foundations, risk score **22.8** |
 | 3 | Planning Review | Planning Officer (Council) | Zoning compliant, routes to **environmental** |
-| 4 | Environmental Assessment | Consultant (Green Valley) | Medium impact, mitigation required |
+| 4 | Environmental Assessment | Consultant (Heatherbank) | Medium impact, mitigation required |
 | 5 | Building Control | Inspector (Council) | All compliant, permit fee **15,250** |
 | 6 | Final Approval | Planning Officer (Council) | **Approved** with environmental conditions |
 
@@ -128,8 +128,8 @@ The walkthrough executes three scenarios against the published blueprint. Each s
 
 | Step | Action | Participant | Key Data |
 |---|---|---|---|
-| 1 | Submit Application | Site Manager (Meridian) | "Eastside Commercial Centre", 4 storeys, commercial |
-| 2 | Structural Assessment | Lead Engineer (Apex) | Grade B, raft foundations |
+| 1 | Submit Application | Site Manager (Stoniebridge) | "Eastside Commercial Centre", 4 storeys, commercial |
+| 2 | Structural Assessment | Lead Engineer (Murchison) | Grade B, raft foundations |
 | 3 | Planning Review | Planning Officer (Council) | **Rejected** — Green Belt zone, height exceeds limit |
 
 ### New Submission View
@@ -140,25 +140,25 @@ The UI presents available blueprints published to subscribed registers. Users cl
 
 ### Action 1: Contractor Submits Application
 
-The contractor (Site Manager, Meridian Construction) fills in project details — name, address, building type, estimated value, floor area, and storeys — via a schema-driven form. The data is validated client-side against the blueprint's JSON Schema before submission.
+The contractor (Site Manager, Stoniebridge Construction) fills in project details — name, address, building type, estimated value, floor area, and storeys — via a schema-driven form. The data is validated client-side against the blueprint's JSON Schema before submission.
 
 ![Contractor Form](screenshots/action-01-contractor-form.png)
 
 ### Action 2: Structural Engineer Reviews
 
-After the contractor submits, Action 2 appears in the structural engineer's Pending Actions. The Lead Engineer (Apex Structural Engineers) sees the action card and clicks TAKE ACTION to provide their structural assessment — load rating, foundation type, structural grade, and notes. The system calculates a **risk score** (6.1 for this low-risk residential) that drives conditional routing downstream.
+After the contractor submits, Action 2 appears in the structural engineer's Pending Actions. The Lead Engineer (Murchison Engineering) sees the action card and clicks TAKE ACTION to provide their structural assessment — load rating, foundation type, structural grade, and notes. The system calculates a **risk score** (6.1 for this low-risk residential) that drives conditional routing downstream.
 
 ![Engineer Pending Actions](screenshots/action-02-engineer-pending.png)
 
 ### Action 3: Planning Officer Reviews
 
-The Planning Officer (Riverside Borough Council) receives Action 3 after the structural assessment. They review the application for zoning compliance. Because the risk score is below 7, the workflow routes directly to Building Control (Action 5), **skipping environmental review**.
+The Planning Officer (Strathcarron Council) receives Action 3 after the structural assessment. They review the application for zoning compliance. Because the risk score is below 7, the workflow routes directly to Building Control (Action 5), **skipping environmental review**.
 
 ![Planning Pending Actions](screenshots/action-03-planning-pending.png)
 
 ### Action 5: Building Control Inspection
 
-The Building Control Inspector (also Riverside Borough Council, but a different user) sees Action 5. They verify structural approval, fire compliance, and accessibility. The system calculates a **permit fee** (£2,200 for this residential build).
+The Building Control Inspector (also Strathcarron Council, but a different user) sees Action 5. They verify structural approval, fire compliance, and accessibility. The system calculates a **permit fee** (£2,200 for this residential build).
 
 ![Inspector Pending Actions](screenshots/action-05-inspector-pending.png)
 

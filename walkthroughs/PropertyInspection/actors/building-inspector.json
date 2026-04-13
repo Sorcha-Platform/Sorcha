@@ -1,0 +1,44 @@
+{
+  "actor": {
+    "name": "building-inspector",
+    "description": "Building Inspector — safety sign-off for Emergency severity jobs"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "{{roles.building-inspector.email}}",
+      "password": "$env:BUILDING_INSPECTOR_PASSWORD",
+      "organizationId": "{{roles.building-inspector.organizationId}}"
+    },
+    "walletAddress": "{{roles.building-inspector.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 20 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Safety Sign-Off",
+      "decision": "approve",
+      "payload": {
+        "structuralSafe": true,
+        "electricalSafe": true,
+        "gasSafe": true,
+        "complianceNotes": "Ceiling repair structurally sound. NICEIC electrical certificate confirms safe installation. No gas appliances affected. Property safe for habitation.",
+        "signOffDecision": "Pass"
+      }
+    }
+  ],
+  "resilience": {
+    "retryCount": 3,
+    "retryDelaySeconds": 2,
+    "circuitBreakerThreshold": 5,
+    "circuitBreakerDurationSeconds": 30
+  },
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/building-inspector-actions.jsonl"
+  }
+}
