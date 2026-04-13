@@ -229,7 +229,7 @@ Web app (microservices backend + Blazor WASM frontend):
 - [x] T084 [US4] Run `walkthroughs/HaipVerifiedCitizen/setup.ps1 -Profile gateway` against local Docker, then `run.ps1`, and capture the credential delivery output. Verify the SD-JWT VC contains all six claims (givenName, middleName, familyName, dateOfBirth, email, address) with correct values.
 - [x] T085 [US4] Run `walkthroughs/HaipDrivingLicence/setup.ps1 -Profile gateway` then `run.ps1` chained after T084 to verify the downstream credential bootstrap works end-to-end. The applicant should be late-bound by HAIP presentation of the VerifiedCitizenCredential issued in T084.
 - [ ] T086 [US4] Run T077 (`VerifiedCitizenV2E2ETests`) and verify all scenarios pass against Docker.
-- [ ] T087 [US4] Run the entire Verified Citizen v2 + Driving Licence chain against `n1.sorcha.dev` per the network-bootstrap skill. Reset n1, push the branch images via `docker-publish.yml`, redeploy, and run both walkthroughs in `n1` profile. Document the run in the PR description.
+- [x] T087 [US4] Run the entire Verified Citizen v2 + Driving Licence chain against `n1.sorcha.dev` per the network-bootstrap skill. Reset n1, push the branch images via `docker-publish.yml`, redeploy, and run both walkthroughs in `n1` profile. Document the run in the PR description.
 
 **Checkpoint**: User Story 4 ships. The Verified Citizen v2 blueprint runs end-to-end on local Docker and on n1. The credential is delivered to the citizen's HAIP wallet. The downstream Driving Licence service consumes the credential and binds the applicant via HAIP presentation. All four user stories are now shippable.
 
