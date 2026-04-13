@@ -164,11 +164,19 @@
             };
 
             var result = await WorkflowService.SubmitActionExecuteAsync(request);
-            if (result == null)
+            if (result is null || result.IsFailure)
             {
-                // Partial success: instance created but action failed
                 _submitting = false;
-                _loadError = $"Instance created ({instance.InstanceId[..Math.Min(8, instance.InstanceId.Length)]}...) but action execution failed. The action will appear in your Pending Actions.";
+                var instanceShort = instance.InstanceId[..Math.Min(8, instance.InstanceId.Length)];
+                if (result?.ErrorMessage is { Length: > 0 } message)
+                {
+                    var statusBit = result.ErrorStatusCode is > 0 ? $" ({result.ErrorStatusCode})" : string.Empty;
+                    _loadError = $"Instance created ({instanceShort}...) but action execution was rejected{statusBit}: {message}";
+                }
+                else
+                {
+                    _loadError = $"Instance created ({instanceShort}...) but action execution failed (no response from server).";
+                }
                 StateHasChanged();
                 return;
             }
