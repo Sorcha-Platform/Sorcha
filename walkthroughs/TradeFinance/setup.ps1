@@ -416,7 +416,10 @@ foreach ($regDef in $config.registers) {
     $ctx = $orgContexts[$ownerSubdomain]
     $registerId = $state.registers[$regShortName].id
 
-    # Build wallet map from all participants across all selected orgs
+    # Build wallet map from all participants across all selected orgs.
+    # Publish-SorchaBlueprint auto-skips any participant that is the sender
+    # of an open starting action (isStartingAction: true), so we don't need
+    # to filter the map here.
     $walletMap = @{}
     foreach ($w in $state.wallets.GetEnumerator()) {
         $walletMap[$w.Key] = $w.Value
