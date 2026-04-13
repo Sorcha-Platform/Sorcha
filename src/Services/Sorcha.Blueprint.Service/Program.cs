@@ -169,6 +169,8 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IInstanceBinding
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ICoreSchemaRepository,
     Sorcha.Blueprint.Service.Services.InMemoryCoreSchemaRepository>();
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.CoreSchemaSeedService>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ISchemaRefResolver,
+    Sorcha.Blueprint.Service.Services.SchemaRefResolver>();
 
 // Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
