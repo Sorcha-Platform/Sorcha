@@ -145,9 +145,43 @@ $govParticipant = Register-SorchaParticipant `
     -WalletUrl $sorchaEnv.WalletUrl `
     -OrganizationId $govOrgId `
     -WalletAddress $govWallet.Address `
-    -DisplayName "Government Admin" `
+    -DisplayName "Government Assessor" `
     -Headers $govSession.Headers
-Write-WtInfo "Participant registered"
+Write-WtInfo "Government assessor participant registered"
+
+# ============================================================================
+# Step 5b: Citizen — Login on Public Org, Wallet, Participant
+# ============================================================================
+# The citizen submits Action 1 of the blueprint (their own identity application)
+# from inside the platform. They need their own wallet under their own user
+# token so the action is signed by them — not by the government assessor or
+# the system admin. The verifiable credential issued by Action 2 still goes
+# to their EXTERNAL HAIP wallet via QR; this in-platform wallet is only used
+# to sign the in-platform application submission.
+Write-WtStep "Step 5b: Citizen — Login, Wallet, Participant"
+
+$citizenSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $citizenEmail `
+    -Password $citizenPassword `
+    -OrganizationId $publicOrgId
+
+$citizenWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Citizen Application Wallet" `
+    -Headers $citizenSession.Headers `
+    -FetchPublicKey
+
+Write-WtSuccess "Citizen wallet: $($citizenWallet.Address)"
+
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $publicOrgId `
+    -WalletAddress $citizenWallet.Address `
+    -DisplayName "Alice O'Brien" `
+    -Headers $citizenSession.Headers
+Write-WtInfo "Citizen participant registered in public org"
 
 # ============================================================================
 # Step 6: Provision Trust Anchor + Enrol as HAIP Issuer
@@ -193,13 +227,29 @@ $register = New-SorchaRegister `
 
 Write-WtSuccess "Register: $($register.RegisterId)"
 
+# Subscribe the public org so the citizen can see the register and submit
+# Action 1 from their own session. Owner subscription for the gov org is
+# created server-side by Register Service finalize (PR #258).
+try {
+    $null = New-SorchaRegisterSubscription `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -RegisterId $register.RegisterId `
+        -RegisterName "HAIP Identity Register" `
+        -SubscriptionType "Public" `
+        -Headers $sysAdmin.Headers
+} catch {
+    Write-WtWarn "Public org subscribe to identity register failed: $($_.Exception.Message)"
+}
+
 # ============================================================================
 # Step 8: Publish Blueprint
 # ============================================================================
 Write-WtStep "Step 8: Publish Blueprint"
 
 $walletMap = @{
-    "government-admin" = $govWallet.Address
+    "government-assessor" = $govWallet.Address
+    "citizen"             = $citizenWallet.Address
 }
 
 $blueprint = Publish-SorchaBlueprint `
@@ -225,10 +275,23 @@ $state = @{
     govOrgId     = $govOrgId
     govWalletAddress = $govWallet.Address
     govWalletPublicKey = $govWallet.PublicKey
+    publicOrgId  = $publicOrgId
+    citizenWalletAddress = $citizenWallet.Address
     registerId   = $register.RegisterId
     blueprintId  = $blueprint.BlueprintId
+    # walletDir is captured here at setup time so downstream walkthroughs
+    # (HaipDrivingLicence) don't read a null when they pull in this state file.
+    walletDir    = (Join-Path $scriptDir "wallet")
     roles = @{
+        # govAdmin retained as an alias so older state.json consumers continue
+        # to load — this is the same record as govAssessor below.
         govAdmin = @{
+            email = $govAdminEmail
+            password = $govAdminPassword
+            organizationId = $govOrgId
+            walletAddress = $govWallet.Address
+        }
+        govAssessor = @{
             email = $govAdminEmail
             password = $govAdminPassword
             organizationId = $govOrgId
@@ -237,6 +300,8 @@ $state = @{
         citizen = @{
             email = $citizenEmail
             password = $citizenPassword
+            organizationId = $publicOrgId
+            walletAddress = $citizenWallet.Address
         }
     }
     persona = @{
