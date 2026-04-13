@@ -26,43 +26,57 @@ $state = Get-Content -Path $stateFile -Raw | ConvertFrom-Json
 $walletDir = Join-Path $scriptDir "wallet"
 
 # ============================================================================
-# Step 1: Authenticate as Government Admin
+# Step 1: Authenticate as Citizen and Government Assessor
 # ============================================================================
-Write-WtStep "Step 1: Authenticate as Government Admin"
+# Two distinct identities are needed:
+#   - The citizen submits Action 1 (their own identity application) under
+#     their own user token, in the public org.
+#   - The government assessor submits Action 2 (review + issue VC) under the
+#     gov org admin token. Action 2 carries the credentialIssuanceConfig.
+Write-WtStep "Step 1: Authenticate as Citizen and Gov Assessor"
 
-$govSession = Connect-SorchaUser `
+$citizenSession = Connect-SorchaUser `
     -TenantUrl $state.tenantUrl `
-    -Email $state.roles.govAdmin.email `
-    -Password $state.roles.govAdmin.password `
-    -OrganizationId $state.roles.govAdmin.organizationId
+    -Email $state.roles.citizen.email `
+    -Password $state.roles.citizen.password `
+    -OrganizationId $state.roles.citizen.organizationId
+Write-WtSuccess "Authenticated as citizen ($($state.roles.citizen.email))"
 
-Write-WtSuccess "Authenticated as gov-admin"
+$assessorSession = Connect-SorchaUser `
+    -TenantUrl $state.tenantUrl `
+    -Email $state.roles.govAssessor.email `
+    -Password $state.roles.govAssessor.password `
+    -OrganizationId $state.roles.govAssessor.organizationId
+Write-WtSuccess "Authenticated as government-assessor"
 
 # ============================================================================
-# Step 2: Create Blueprint Instance
+# Step 2: Citizen Creates the Blueprint Instance
 # ============================================================================
-Write-WtStep "Step 2: Create Blueprint Instance"
+# The instance is created under the citizen's token because they're the
+# starting-action sender. tenantId reflects their org (public), so the
+# audit trail correctly attributes the application to them.
+Write-WtStep "Step 2: Citizen creates Blueprint Instance"
 
 $instanceBody = @{
     blueprintId = $state.blueprintId
     registerId  = $state.registerId
-    tenantId    = $state.govOrgId
+    tenantId    = $state.publicOrgId
     metadata    = @{ source = "walkthrough"; walkthrough = "HaipIdentityAttestation" }
 }
 
 $instance = Invoke-SorchaApi -Method POST `
     -Uri "$($state.blueprintUrl)/instances/" `
     -Body $instanceBody `
-    -Headers $govSession.Headers
+    -Headers $citizenSession.Headers
 
 $instanceId = $instance.id
 Write-WtSuccess "Instance created: $instanceId"
 if ($ShowJson) { $instance | ConvertTo-Json -Depth 5 | Write-Host }
 
 # ============================================================================
-# Step 3: Execute "Issue Identity Credential" Action
+# Step 3: Citizen Submits Identity Application (Action 1)
 # ============================================================================
-Write-WtStep "Step 3: Execute Issue Identity Credential Action"
+Write-WtStep "Step 3: Citizen submits Identity Application (Action 1)"
 
 $persona = $state.persona
 $payloadData = @{
@@ -80,22 +94,43 @@ $payloadData = @{
     }
 }
 
-$actionResponse = Invoke-SorchaAction `
+$null = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `
     -ActionId "1" `
     -BlueprintId $state.blueprintId `
+    -SenderWallet $state.citizenWalletAddress `
+    -RegisterId $state.registerId `
+    -Token $citizenSession.Token `
+    -PayloadData $payloadData
+
+# ============================================================================
+# Step 4: Government Assessor Reviews and Issues Credential (Action 2)
+# ============================================================================
+# Action 2 carries the credentialIssuanceConfig — submitting it triggers the
+# HAIP credential offer (OpenID4VCI pre-authorized code flow) and returns
+# the offerUri the citizen will scan with their external HAIP wallet.
+Write-WtStep "Step 4: Gov Assessor reviews and issues credential (Action 2)"
+
+$actionResponse = Invoke-SorchaAction `
+    -BlueprintUrl $state.blueprintUrl `
+    -InstanceId $instanceId `
+    -ActionId "2" `
+    -BlueprintId $state.blueprintId `
     -SenderWallet $state.govWalletAddress `
     -RegisterId $state.registerId `
-    -Token $govSession.Token `
-    -PayloadData $payloadData
+    -Token $assessorSession.Token `
+    -PayloadData @{
+        verificationDecision = "approved"
+        reviewerNotes        = "Identity verified against persona of record."
+    }
 
 if ($ShowJson) { $actionResponse | ConvertTo-Json -Depth 5 | Write-Host }
 
 # Extract credential offer URI from action response
 $credentialOffer = $actionResponse.credentialOffer
 if (-not $credentialOffer) {
-    Write-WtFail "Action response did not contain a credentialOffer. HAIP response pipeline may not be working."
+    Write-WtFail "Action 2 response did not contain a credentialOffer. HAIP response pipeline may not be working."
     exit 1
 }
 
@@ -108,9 +143,9 @@ $truncatedUri = $offerUri.Substring(0, [Math]::Min(80, $offerUri.Length))
 Write-WtInfo "Offer URI: $truncatedUri..."
 
 # ============================================================================
-# Step 4: sorcha-agent haip receive
+# Step 5: sorcha-agent haip receive (simulates citizen's external wallet)
 # ============================================================================
-Write-WtStep "Step 4: sorcha-agent haip receive"
+Write-WtStep "Step 5: sorcha-agent haip receive"
 
 $agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
 
@@ -121,9 +156,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ============================================================================
-# Step 5: Verify Credential
+# Step 6: Verify Credential
 # ============================================================================
-Write-WtStep "Step 5: Verify Credential"
+Write-WtStep "Step 6: Verify Credential"
 
 $credFile = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
 if (Test-Path $credFile) {

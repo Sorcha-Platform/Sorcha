@@ -162,14 +162,40 @@ $register = New-SorchaRegister `
 
 Write-WtSuccess "Register: $($register.RegisterId)"
 
+# Subscribe the public org so the citizen applicant can submit Action 1
+# from their own session.
+try {
+    $publicOrgId = "00000000-0000-0000-0000-000000000002"
+    $null = New-SorchaRegisterSubscription `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -RegisterId $register.RegisterId `
+        -RegisterName "HAIP Driving Licence Register" `
+        -SubscriptionType "Public" `
+        -Headers $sysAdmin.Headers
+} catch {
+    Write-WtWarn "Public org subscribe to licence register failed: $($_.Exception.Message)"
+}
+
 # ============================================================================
 # Step 7: Publish Blueprint
 # ============================================================================
 Write-WtStep "Step 7: Publish Blueprint"
 
+if (-not $idState.citizenWalletAddress) {
+    Write-WtFail "HaipIdentityAttestation state.json has no citizenWalletAddress — re-run that setup first."
+    exit 1
+}
+
 $walletMap = @{
     "council"   = $councilWallet.Address
-    "applicant" = $councilWallet.Address  # Placeholder — external wallet handles credential delivery
+    # The applicant is the same citizen from HaipIdentityAttestation. Using
+    # their actual wallet (not a placeholder of the council wallet) means
+    # Action 1 of the licence blueprint is correctly signed by the citizen
+    # under their own user token in run.ps1, and the in-platform audit trail
+    # ties the application back to the real applicant. The licence credential
+    # itself is still delivered to their EXTERNAL HAIP wallet via QR.
+    "applicant" = $idState.citizenWalletAddress
 }
 
 $blueprint = Publish-SorchaBlueprint `
@@ -194,6 +220,7 @@ $state = @{
     tenantId     = $tenantId
     councilOrgId = $councilOrgId
     councilWalletAddress = $councilWallet.Address
+    applicantWalletAddress = $idState.citizenWalletAddress
     registerId   = $register.RegisterId
     blueprintId  = $blueprint.BlueprintId
     identityStateFile = $identityState
@@ -204,6 +231,16 @@ $state = @{
             password = $councilAdminPassword
             organizationId = $councilOrgId
             walletAddress = $councilWallet.Address
+        }
+        # The applicant is the citizen from HaipIdentityAttestation. We
+        # reach back into that walkthrough's state to pull their credentials
+        # and org so run.ps1 can authenticate as them and sign Action 1
+        # under their own user token.
+        applicant = @{
+            email          = $idState.roles.citizen.email
+            password       = $idState.roles.citizen.password
+            organizationId = $idState.roles.citizen.organizationId
+            walletAddress  = $idState.citizenWalletAddress
         }
     }
 }
