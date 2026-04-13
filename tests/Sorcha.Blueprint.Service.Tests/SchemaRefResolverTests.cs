@@ -290,6 +290,32 @@ public class SchemaRefResolverTests
     }
 
     [Fact]
+    public void Flatten_NullInput_Throws()
+    {
+        var act = () => _sut.Flatten(null!);
+        act.Should().Throw<ArgumentNullException>().WithParameterName("rootSchema");
+    }
+
+    [Fact]
+    public void Flatten_PrimitiveStoredAsArray_Throws()
+    {
+        // Defensive: the repository accepts any JsonNode but core primitives
+        // are required to be objects. A primitive stored as an array (or
+        // value) must surface as a clear SchemaRefResolutionException, not
+        // a downstream cast failure.
+        _repo.Upsert(PostalAddressUri, JsonNode.Parse("[]")!);
+
+        var consumer = JsonNode.Parse($$"""
+            { "properties": { "address": { "$ref": "{{PostalAddressUri}}" } } }
+            """)!;
+
+        var act = () => _sut.Flatten(consumer);
+        act.Should().Throw<SchemaRefResolutionException>()
+           .WithMessage("*not a JSON object*")
+           .Where(ex => ex.RefUri == PostalAddressUri);
+    }
+
+    [Fact]
     public void Flatten_NestedSchemaWithNoRefs_ReturnsClone()
     {
         var consumer = JsonNode.Parse("""

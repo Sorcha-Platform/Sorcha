@@ -91,10 +91,11 @@ public sealed class SchemaRefResolver : ISchemaRefResolver
             {
                 ResolveCoreRefInPlace(obj, refUri, visiting);
                 // After resolution the object's contents are entirely from the
-                // component (with overrides reapplied). Recurse into the new
-                // children to flatten any nested refs the component itself
-                // declared. The component's own URI is already in `visiting`
-                // so a self-reference would be caught.
+                // component (with overrides reapplied). Add the URI to the
+                // visiting set BEFORE recursing into the inlined children so
+                // that any $ref back to this same URI within the inlined
+                // content is caught as a cycle by ResolveCoreRefInPlace's
+                // top-of-method check on the recursive call.
                 visiting.Add(refUri);
                 try
                 {
@@ -125,7 +126,8 @@ public sealed class SchemaRefResolver : ISchemaRefResolver
 
     private void FlattenChildren(JsonObject obj, HashSet<string> visiting)
     {
-        // Snapshot keys because resolution mutates child values.
+        // Snapshot keys because FlattenInPlace may reparent child nodes during
+        // resolution, which would invalidate a live enumerator over `obj`.
         foreach (var key in obj.Select(kvp => kvp.Key).ToList())
         {
             FlattenInPlace(obj[key], visiting);
