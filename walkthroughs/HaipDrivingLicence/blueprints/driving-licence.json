@@ -1,7 +1,7 @@
 {
   "id": "haip-driving-licence-v2",
   "title": "Driving Licence Application",
-  "description": "Citizen submits a driving licence application. Council verifies identity by requesting the applicant's VerifiedIdentityCredential via HAIP presentation (QR), then issues a DrivingLicenceCredential to the applicant's external HAIP wallet via HAIP credential offer (QR). Three-action workflow: applicant submits, council verifies, council issues.",
+  "description": "Citizen submits a driving licence application. Council verifies identity by requesting the applicant's VerifiedCitizenCredential via HAIP presentation (QR), then issues a DrivingLicenceCredential to the applicant's external HAIP wallet via HAIP credential offer (QR). Three-action workflow: applicant submits, council verifies, council issues.",
   "version": 2,
   "category": "licensing",
   "tags": ["haip", "driving-licence", "oid4vci", "oid4vp", "verifiable-credential", "external-wallet", "citizen-application"],
@@ -136,12 +136,12 @@
       {
         "id": 2,
         "title": "Verify Applicant Identity",
-        "description": "Council requests the applicant's VerifiedIdentityCredential from their external HAIP wallet. A QR code is displayed for the citizen to scan and present.",
+        "description": "Council requests the applicant's VerifiedCitizenCredential from their external HAIP wallet. A QR code is displayed for the citizen to scan and present.",
         "sender": "council",
         "requiredPriorActions": [1],
         "credentialRequirements": [
           {
-            "type": "VerifiedIdentityCredential",
+            "type": "VerifiedCitizenCredential",
             "presentationSource": "HaipExternalWallet",
             "requiredClaims": [
               { "claimName": "givenName" },

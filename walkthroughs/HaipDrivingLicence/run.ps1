@@ -135,7 +135,7 @@ $requestUri = "$($state.gatewayUrl)/api/v1/verifier/requests/$($presentationRequ
 
 & dotnet run --project $agentProject -- haip present `
     --request-uri $requestUri `
-    --credential "VerifiedIdentityCredential" `
+    --credential "VerifiedCitizenCredential" `
     --disclose "givenName,familyName,dateOfBirth" `
     --wallet-dir $walletDir
 
@@ -226,17 +226,17 @@ if ($LASTEXITCODE -ne 0) {
 # ============================================================================
 Write-WtStep "Step 9: Verify Wallet Contents"
 
-$identityCred = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
+$identityCred = Join-Path $walletDir "credentials/VerifiedCitizenCredential.sdjwt"
 $licenceCred = Join-Path $walletDir "credentials/DrivingLicenceCredential.sdjwt"
 
 $allPresent = (Test-Path $identityCred) -and (Test-Path $licenceCred)
 
 if ($allPresent) {
     Write-WtSuccess "Both credentials in wallet:"
-    Write-WtInfo "  VerifiedIdentityCredential: $((Get-Item $identityCred).Length) bytes"
+    Write-WtInfo "  VerifiedCitizenCredential: $((Get-Item $identityCred).Length) bytes"
     Write-WtInfo "  DrivingLicenceCredential:   $((Get-Item $licenceCred).Length) bytes"
 } else {
-    if (-not (Test-Path $identityCred)) { Write-WtFail "Missing: VerifiedIdentityCredential" }
+    if (-not (Test-Path $identityCred)) { Write-WtFail "Missing: VerifiedCitizenCredential" }
     if (-not (Test-Path $licenceCred))  { Write-WtFail "Missing: DrivingLicenceCredential" }
     exit 1
 }

@@ -66,8 +66,8 @@ Credential issuance and verification with external HAIP wallets via OpenID4VCI/O
 
 | Walkthrough | What It Tests |
 |-------------|--------------|
-| [HaipIdentityAttestation](./HaipIdentityAttestation/) | Government issues a VerifiedIdentityCredential to a citizen via the HAIP OID4VCI pre-authorized code flow. Tests trust anchor provisioning, org cert enrolment, credential offer creation, pre-auth code exchange, JWT proof of possession, SD-JWT VC issuance with cnf holder key binding and nested address disclosure. Uses `sorcha-agent haip receive`. |
-| [HaipDrivingLicence](./HaipDrivingLicence/) | Council verifies the citizen's identity credential via OID4VP direct_post, then issues a driving licence credential via OID4VCI. Tests the full HAIP round-trip: present credential with KB-JWT and selective disclosure → verify → issue new credential. Chains from HaipIdentityAttestation. Uses `sorcha-agent haip present` and `haip receive`. |
+| [HaipVerifiedCitizen](./HaipVerifiedCitizen/) | Government issues a VerifiedCitizenCredential to a citizen via the HAIP OID4VCI pre-authorized code flow. Tests trust anchor provisioning, org cert enrolment, credential offer creation, pre-auth code exchange, JWT proof of possession, SD-JWT VC issuance with cnf holder key binding and nested address disclosure. Uses `sorcha-agent haip receive`. |
+| [HaipDrivingLicence](./HaipDrivingLicence/) | Council verifies the citizen's identity credential via OID4VP direct_post, then issues a driving licence credential via OID4VCI. Tests the full HAIP round-trip: present credential with KB-JWT and selective disclosure → verify → issue new credential. Chains from HaipVerifiedCitizen. Uses `sorcha-agent haip present` and `haip receive`. |
 
 **Playwright screenshot tests:** `tests/Sorcha.UI.E2E.Tests/Docker/HaipWalkthroughScreenshotTests.cs` captures UI state after the HAIP walkthroughs run — admin, issuer, and citizen views of credentials, wallets, organisations, and presentation requests. Run the HAIP walkthroughs first, then execute the screenshot tests against the Docker stack.
 
@@ -262,7 +262,7 @@ walkthroughs/
 │
 ├── SelfBuildHouse/                    # Multi-Org — 6 orgs, 2 registers, VCs
 │
-├── HaipIdentityAttestation/           # HAIP — OID4VCI identity credential
+├── HaipVerifiedCitizen/           # HAIP — OID4VCI identity credential
 │   ├── setup.ps1
 │   ├── run.ps1
 │   ├── actors/citizen.json
