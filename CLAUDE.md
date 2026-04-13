@@ -1,4 +1,4 @@
-﻿# Sorcha
+# Sorcha
 
 A decentralised register platform for secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire.
 
