@@ -62,6 +62,10 @@
             <FileRenderer Control="Control" IsDisabled="_isDisabled" />
             break;
 
+        case ControlTypes.PostcodeLookup:
+            <PostcodeLookupRenderer Control="Control" IsDisabled="_isDisabled" />
+            break;
+
         default:
             <UnsupportedControlRenderer Control="Control" />
             break;

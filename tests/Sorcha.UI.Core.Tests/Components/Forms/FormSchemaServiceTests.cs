@@ -175,6 +175,53 @@ public class FormSchemaServiceTests
     // --- x-rule parsing (Feature 091) ---
 
     [Fact]
+    public void AutoGenerateForm_StringWithXAddressLookup_DispatchesToPostcodeLookup()
+    {
+        // Feature 103 US3: a string field carrying `x-address-lookup: true`
+        // should be routed to the PostcodeLookup control type regardless of
+        // format / maxLength. Siblings without the marker stay on TextLine.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "line1":    { "type": "string", "title": "Address line 1" },
+                "town":     { "type": "string", "title": "Town" },
+                "postcode": { "type": "string", "title": "Postcode", "x-address-lookup": true },
+                "country":  { "type": "string", "title": "Country" }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var postcode = form.Elements.FirstOrDefault(e => e.Scope == "/postcode");
+        postcode.Should().NotBeNull();
+        postcode!.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.PostcodeLookup);
+
+        form.Elements.First(e => e.Scope == "/line1").ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+        form.Elements.First(e => e.Scope == "/town").ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+        form.Elements.First(e => e.Scope == "/country").ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_XAddressLookupFalse_RemainsTextLine()
+    {
+        // Explicit `x-address-lookup: false` should NOT dispatch to postcode lookup.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "postcode": { "type": "string", "x-address-lookup": false }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.First(e => e.Scope == "/postcode").ControlType
+            .Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+    }
+
+    [Fact]
     public void AutoGenerateForm_PropertyWithXRule_PopulatesControlRule()
     {
         var schema = JsonDocument.Parse("""

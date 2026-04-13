@@ -181,5 +181,15 @@ public enum ControlTypes
     /// Dropdown selection list for choosing from predefined options
     /// </summary>
     [DataAnnotations.Display(Name = "Selection")]
-    Selection
+    Selection,
+
+    /// <summary>
+    /// Postcode input with address lookup. Dispatched when a string field
+    /// carries <c>x-address-lookup: true</c>. The renderer calls the Tenant
+    /// Service address lookup endpoints and autofills sibling address fields
+    /// from the selected provider. Falls back to plain text when no provider
+    /// is configured. Feature 103 US3.
+    /// </summary>
+    [DataAnnotations.Display(Name = "Postcode Lookup")]
+    PostcodeLookup
 }

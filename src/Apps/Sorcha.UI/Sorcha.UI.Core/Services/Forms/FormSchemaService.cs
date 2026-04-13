@@ -248,11 +248,23 @@ public class FormSchemaService : IFormSchemaService
         var hasEnum = schema.TryGetProperty("enum", out _);
         var format = schema.TryGetProperty("format", out var formatEl) ? formatEl.GetString() : null;
 
+        // Feature 103 US3: a string field carrying `x-address-lookup: true`
+        // dispatches to the postcode lookup control regardless of format /
+        // maxLength. The control falls back to plain text at runtime when no
+        // provider is configured, so we can route unconditionally here.
+        var hasAddressLookup =
+            schema.TryGetProperty("x-address-lookup", out var lookupEl) &&
+            lookupEl.ValueKind == JsonValueKind.True;
+
         ControlTypes controlType;
 
         if (hasEnum)
         {
             controlType = ControlTypes.Selection;
+        }
+        else if (hasAddressLookup && type == "string")
+        {
+            controlType = ControlTypes.PostcodeLookup;
         }
         else if (format is "date" or "date-time")
         {
