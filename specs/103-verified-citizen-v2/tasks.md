@@ -245,11 +245,11 @@ Web app (microservices backend + Blazor WASM frontend):
 - [ ] T091 [P] Update `src/Services/Sorcha.Tenant.Service/README.md` to describe the AddressLookup feature, hosted providers, and configuration.
 - [ ] T092 [P] Update `src/Services/Sorcha.Blueprint.Service/README.md` to describe the CoreSchemaSeedService, the SchemaRefResolver, and the InstanceBindingCache.
 - [ ] T093 Run a performance sanity check: the `sorcha.binding_cache.read_latency_ms` metric should show p99 < 10ms for cache-hit reads under a representative load (10 concurrent walkthrough runs). Capture in the PR.
-- [ ] T094 Run a regression sweep: execute every walkthrough under `walkthroughs/` (ConstructionPermit, SelfBuildHouse, HaipVerifiedCitizen, HaipDrivingLicence, etc.) for one cycle each against local Docker and verify none broke. Document results.
+- [x] T094 Run a regression sweep: execute every walkthrough under `walkthroughs/` (ConstructionPermit, SelfBuildHouse, HaipVerifiedCitizen, HaipDrivingLicence, etc.) for one cycle each against local Docker and verify none broke. Document results.
 - [ ] T095 [P] Run `dotnet test` for the entire solution and verify no regressions; coverage on new code is ≥85% per the constitution.
-- [ ] T096 Verify the `verifiable-credentials` skill, `walkthrough-builder` skill, and `blueprint-builder` skill cross-reference the v2 work appropriately. Add any missing cross-references found during the regression sweep.
+- [x] T096 Verify the `verifiable-credentials` skill, `walkthrough-builder` skill, and `blueprint-builder` skill cross-reference the v2 work appropriately. Add any missing cross-references found during the regression sweep.
 - [ ] T097 Run `quickstart.md` end-to-end as a checklist verification: a developer who has never seen this feature can follow the doc to add a new identity primitive, override layout, add a new address provider, and debug late binding.
-- [ ] T098 If anything tactical changed during implementation (endpoint auth, csproj packaging, x-address-lookup PR placement), update `docs/superpowers/specs/2026-04-13-verified-citizen-v2-design.md` § "Open questions for planning" to reflect the resolved decision.
+- [x] T098 If anything tactical changed during implementation (endpoint auth, csproj packaging, x-address-lookup PR placement), update `docs/superpowers/specs/2026-04-13-verified-citizen-v2-design.md` § "Open questions for planning" to reflect the resolved decision.
 
 ---
 

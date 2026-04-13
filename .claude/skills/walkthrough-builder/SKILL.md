@@ -119,7 +119,7 @@ $walletMap = @{
 }
 ```
 
-See the `blueprint-builder` skill's "Open Participants & Late Binding" section for the full contract. The publish-time guardrail (landing in the Verified Citizen v2 PR) will turn this from a runtime mystery into a publish error, but the shape rule still applies forever after.
+See the `blueprint-builder` skill's "Open Participants & Late Binding" section for the full contract. The publish-time guardrail `VAL_BP_010` (shipped in Feature 103 wave 2, PR #269) rejects the bad shape at publish time with an actionable error instead of surfacing a runtime mystery, and `Publish-SorchaBlueprint` in the walkthrough shared module auto-skips patching wallet addresses onto open-sender participants (Feature 103 wave 9) — so including them in `$walletMap` is harmless (the publish step silently omits them with a "Skipped X (open participant — late-bound at runtime)" log line). The shape rule still applies forever after, but walkthrough authors no longer have to remember to filter the map themselves.
 
 ### Step 3: Create Actor Definitions
 
