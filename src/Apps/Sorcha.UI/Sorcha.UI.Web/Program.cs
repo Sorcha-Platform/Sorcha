@@ -95,11 +95,20 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// URL rewriting: map /app/* to root for static web assets
+// URL rewriting: map /app/* to root for static web assets.
+// The Blazor WASM client (Sorcha.UI.Web.Client) is served under /app/ while
+// the marketing landing page lives at /. Files like the framework bundle,
+// scoped-CSS bundles, and content assets all live in wwwroot/, but the
+// browser requests them with the /app/ prefix. Each rewrite maps a
+// browser-visible /app/<path> back to the on-disk wwwroot/<path>.
 var rewriteOptions = new RewriteOptions()
     .AddRewrite(@"^app/_framework/(.*)$", "_framework/$1", skipRemainingRules: true)
     .AddRewrite(@"^app/_content/(.*)$", "_content/$1", skipRemainingRules: true)
     .AddRewrite(@"^app/Sorcha\.UI\.Web\.styles\.css$", "Sorcha.UI.Web.styles.css", skipRemainingRules: true)
+    // Blazor scoped-CSS bundle. The file name embeds a build-time content
+    // hash (Sorcha.UI.Web.Client.<hash>.bundle.scp.css) that changes with
+    // every build, so the rule has to match the pattern, not a literal name.
+    .AddRewrite(@"^app/(Sorcha\.UI\.Web\.Client\.[^/]+\.bundle\.scp\.css)$", "$1", skipRemainingRules: true)
     .AddRewrite(@"^app/appsettings\.(.*)$", "appsettings.$1", skipRemainingRules: true)
     .AddRewrite(@"^app/i18n/(.*)$", "i18n/$1", skipRemainingRules: true);
 app.UseRewriter(rewriteOptions);

@@ -5,7 +5,12 @@ namespace Sorcha.UI.Core.Models.Workflows;
 
 /// <summary>
 /// Result view model from submitting an action execution.
-/// Maps to ActionSubmissionResponse from the Blueprint Service.
+/// Maps to ActionSubmissionResponse from the Blueprint Service. When the
+/// blueprint service returns a non-success status code the WorkflowService
+/// returns an instance with <see cref="ErrorMessage"/> populated and
+/// <see cref="IsFailure"/> = true so the calling UI can show the actual
+/// server error rather than a generic "will appear in pending actions"
+/// message.
 /// </summary>
 public record ActionSubmissionResultViewModel
 {
@@ -14,6 +19,24 @@ public record ActionSubmissionResultViewModel
     public bool IsComplete { get; init; }
     public List<NextActionInfo>? NextActions { get; init; }
     public List<string>? Warnings { get; init; }
+
+    /// <summary>
+    /// Server-supplied error message when the submission was rejected with
+    /// a non-success status code. Null on success.
+    /// </summary>
+    public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// HTTP status code returned by the blueprint service when submission
+    /// failed. Null on success.
+    /// </summary>
+    public int? ErrorStatusCode { get; init; }
+
+    /// <summary>
+    /// True when the blueprint service rejected the submission. Mutually
+    /// exclusive with a populated <see cref="TransactionId"/>.
+    /// </summary>
+    public bool IsFailure => ErrorMessage is not null;
 
     /// <summary>
     /// Operation ID for async encryption tracking. Null for synchronous operations.

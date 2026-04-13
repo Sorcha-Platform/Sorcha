@@ -198,7 +198,19 @@ public class WorkflowService : IWorkflowService
             {
                 _logger.LogWarning("Failed to execute action {ActionId} on instance {InstanceId}: {StatusCode}",
                     request.ActionId, request.InstanceId, response.StatusCode);
-                return null;
+
+                // Read the body so the caller can show the real reason
+                // (sender wallet mismatch, schema validation, credential
+                // requirement not met, etc) rather than a generic "appears in
+                // pending actions" message that's almost always wrong for
+                // hard errors.
+                var errorMessage = await ReadServerErrorAsync(response, cancellationToken);
+                return new ActionSubmissionResultViewModel
+                {
+                    InstanceId = request.InstanceId,
+                    ErrorMessage = errorMessage,
+                    ErrorStatusCode = (int)response.StatusCode
+                };
             }
 
             return await response.Content.ReadFromJsonAsync<ActionSubmissionResultViewModel>(cancellationToken: cancellationToken);
@@ -206,7 +218,85 @@ public class WorkflowService : IWorkflowService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error executing action {ActionId} on instance {InstanceId}", request.ActionId, request.InstanceId);
-            return null;
+            return new ActionSubmissionResultViewModel
+            {
+                InstanceId = request.InstanceId,
+                ErrorMessage = ex.Message,
+                ErrorStatusCode = 0
+            };
+        }
+    }
+
+    /// <summary>
+    /// Best-effort extraction of a human-readable error from a non-success
+    /// response. Tries Problem Details first, then a generic { errors }
+    /// shape from FluentValidation, then the raw body.
+    /// </summary>
+    private static async Task<string> ReadServerErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim();
+            }
+
+            // RFC 7807 Problem Details
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (doc.RootElement.TryGetProperty("detail", out var detail) &&
+                        detail.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var s = detail.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) return s!;
+                    }
+
+                    if (doc.RootElement.TryGetProperty("errors", out var errors) &&
+                        errors.ValueKind == System.Text.Json.JsonValueKind.Array &&
+                        errors.GetArrayLength() > 0)
+                    {
+                        var first = errors[0];
+                        if (first.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            return first.GetString() ?? raw;
+                        }
+                        if (first.TryGetProperty("message", out var msg) &&
+                            msg.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            return msg.GetString() ?? raw;
+                        }
+                    }
+
+                    if (doc.RootElement.TryGetProperty("error", out var err))
+                    {
+                        if (err.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            return err.GetString() ?? raw;
+                        }
+                    }
+
+                    if (doc.RootElement.TryGetProperty("title", out var title) &&
+                        title.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        return title.GetString() ?? raw;
+                    }
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Not JSON — fall through and return the raw body.
+            }
+
+            // Truncate very long bodies so the toast/banner stays readable.
+            return raw.Length > 600 ? raw.Substring(0, 600) + "…" : raw;
+        }
+        catch (Exception)
+        {
+            return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim();
         }
     }
 
