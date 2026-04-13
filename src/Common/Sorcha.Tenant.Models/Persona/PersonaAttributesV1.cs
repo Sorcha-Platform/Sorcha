@@ -27,6 +27,15 @@ public sealed record PersonaAttributesV1
     /// <summary>Given (first) name.</summary>
     public string? GivenName { get; init; }
 
+    /// <summary>
+    /// Middle name. Optional — consumers that don't ask for a middle name leave
+    /// it null. Used by the <c>PersonName</c> core primitive
+    /// (<c>https://schemas.sorcha.dev/core/PersonName/v1</c>) for autofill.
+    /// Added by Feature 103 (Verified Citizen v2); non-destructive for existing
+    /// personas which continue to deserialise with <c>MiddleName = null</c>.
+    /// </summary>
+    public string? MiddleName { get; init; }
+
     /// <summary>Family (last) name.</summary>
     public string? FamilyName { get; init; }
 

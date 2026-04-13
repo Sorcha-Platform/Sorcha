@@ -1,0 +1,43 @@
+{
+  "$id": "https://schemas.sorcha.dev/core/EmailAddressList/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Email Addresses",
+  "description": "A list of email addresses with exactly one marked default. For single-email fields reference EmailAddress/v1 instead. Minimum 1, maximum 5 entries; exactly one entry must be marked default when the list is non-empty.",
+  "x-sections": [
+    {
+      "title": "Email Addresses",
+      "description": "You can add up to 5 email addresses. Pick one as the default — we'll use it for primary correspondence.",
+      "layout": "vertical",
+      "fields": ["emails"]
+    }
+  ],
+  "properties": {
+    "emails": {
+      "type": "array",
+      "title": "Email Addresses",
+      "minItems": 1,
+      "maxItems": 5,
+      "x-persona": "emails",
+      "items": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email Address",
+            "minLength": 3,
+            "maxLength": 254
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Default",
+            "default": false
+          }
+        },
+        "required": ["email", "isDefault"]
+      }
+    }
+  },
+  "required": ["emails"]
+}

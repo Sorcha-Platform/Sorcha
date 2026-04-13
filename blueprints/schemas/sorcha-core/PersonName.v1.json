@@ -1,0 +1,54 @@
+{
+  "$id": "https://schemas.sorcha.dev/core/PersonName/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Personal Name",
+  "description": "A person's name decomposed into given, middle, family, and full forms. Used by citizen-facing services that need to collect or display a person's legal name. Full name is optional — when omitted the renderer auto-derives it from the other fields.",
+  "x-sections": [
+    {
+      "title": "Name",
+      "description": "Your full legal name as it appears on official documents.",
+      "layout": "horizontal",
+      "fields": ["givenName", "middleName", "familyName"]
+    },
+    {
+      "title": "Preferred full name",
+      "description": "Optional — leave blank to auto-derive from the fields above.",
+      "layout": "vertical",
+      "fields": ["fullName"]
+    }
+  ],
+  "properties": {
+    "givenName": {
+      "type": "string",
+      "title": "Given Name",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-persona": "givenName",
+      "x-width": "third"
+    },
+    "middleName": {
+      "type": "string",
+      "title": "Middle Name",
+      "maxLength": 100,
+      "x-persona": "middleName",
+      "x-width": "third"
+    },
+    "familyName": {
+      "type": "string",
+      "title": "Family Name",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-persona": "familyName",
+      "x-width": "third"
+    },
+    "fullName": {
+      "type": "string",
+      "title": "Full Name",
+      "maxLength": 200,
+      "x-persona": "fullName",
+      "x-width": "full"
+    }
+  },
+  "required": ["givenName", "familyName"]
+}

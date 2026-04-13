@@ -128,6 +128,73 @@ public sealed class PersonaServiceTests : IDisposable
             Times.Once);
     }
 
+    // --- Feature 103 US2: MiddleName round-trip ---
+
+    [Fact]
+    public async Task ReplaceAsync_WithMiddleName_PropagatesToReadModel()
+    {
+        // Feature 103 US2: PersonaAttributesV1 gained an optional MiddleName
+        // field so the PersonName/v1 core primitive can autofill it. Verify
+        // the write-side value flows through ReplaceAsync into the returned
+        // read model and is retained in the encrypted plaintext the service
+        // hands to the crypto client.
+        byte[]? capturedPlaintext = null;
+        _crypto
+            .Setup(c => c.EncryptAsync(WalletAddress, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .Callback<string, byte[], CancellationToken>((_, plaintext, _) => capturedPlaintext = plaintext)
+            .ReturnsAsync(new PersonaCryptoRemoteResult(
+                Ciphertext: [1, 2, 3],
+                Nonce: new byte[24],
+                WrappedKeyRef: WalletAddress));
+
+        var payload = new PersonaAttributesV1
+        {
+            GivenName = "Alice",
+            MiddleName = "Maeve",
+            FamilyName = "O'Brien",
+            Emails = [new PersonaEmail("alice@example.com", true)],
+        };
+
+        var result = await _sut.ReplaceAsync(_userId, WalletAddress, payload);
+
+        result.GivenName!.Value.Should().Be("Alice");
+        result.MiddleName.Should().NotBeNull();
+        result.MiddleName!.Value.Should().Be("Maeve");
+        result.FamilyName!.Value.Should().Be("O'Brien");
+
+        // The plaintext handed to the crypto client must round-trip MiddleName.
+        // Property names use System.Text.Json's default camelCase policy.
+        capturedPlaintext.Should().NotBeNull();
+        var plaintextJson = System.Text.Encoding.UTF8.GetString(capturedPlaintext!);
+        plaintextJson.Should().Contain("\"middleName\"");
+        plaintextJson.Should().Contain("\"Maeve\"");
+    }
+
+    [Fact]
+    public async Task ReplaceAsync_WithoutMiddleName_ReadModelMiddleNameIsNull()
+    {
+        // Pre-Feature-103 personas and users who don't set a middle name
+        // must continue to read as MiddleName == null, not as an error.
+        _crypto
+            .Setup(c => c.EncryptAsync(WalletAddress, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PersonaCryptoRemoteResult(
+                Ciphertext: [1, 2, 3],
+                Nonce: new byte[24],
+                WrappedKeyRef: WalletAddress));
+
+        var payload = new PersonaAttributesV1
+        {
+            GivenName = "Ada",
+            FamilyName = "Lovelace",
+            // MiddleName intentionally omitted
+        };
+
+        var result = await _sut.ReplaceAsync(_userId, WalletAddress, payload);
+
+        result.GivenName!.Value.Should().Be("Ada");
+        result.MiddleName.Should().BeNull();
+    }
+
     [Fact]
     public async Task ReplaceAsync_NoWalletAddress_Throws409WalletNotProvisioned()
     {

@@ -154,6 +154,14 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 
+// Feature 103 US2: Core identity primitive library.
+// Seeds Sorcha core schema primitives from blueprints/schemas/sorcha-core/*.json
+// at startup so they are resolvable via JSON Schema $ref from consuming blueprints.
+// Contract: specs/103-verified-citizen-v2/contracts/identity-primitive-format.md
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.ICoreSchemaRepository,
+    Sorcha.Blueprint.Service.Services.InMemoryCoreSchemaRepository>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.CoreSchemaSeedService>();
+
 // Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();

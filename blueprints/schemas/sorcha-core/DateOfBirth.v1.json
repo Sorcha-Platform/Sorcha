@@ -1,0 +1,25 @@
+{
+  "$id": "https://schemas.sorcha.dev/core/DateOfBirth/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Date of Birth",
+  "description": "A person's date of birth. Constrained to the past via the Sorcha formatMaximum token 'today'. The renderer prevents future dates in the date picker; the validator rejects them on submission.",
+  "x-sections": [
+    {
+      "title": "Date of Birth",
+      "description": "Your date of birth as shown on official records.",
+      "layout": "vertical",
+      "fields": ["dateOfBirth"]
+    }
+  ],
+  "properties": {
+    "dateOfBirth": {
+      "type": "string",
+      "format": "date",
+      "title": "Date of Birth",
+      "formatMaximum": "today",
+      "x-persona": "dateOfBirth"
+    }
+  },
+  "required": ["dateOfBirth"]
+}

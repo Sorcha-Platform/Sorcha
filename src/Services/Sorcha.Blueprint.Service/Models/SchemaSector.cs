@@ -95,6 +95,13 @@ public sealed record SchemaSector
             DisplayName = "General Purpose",
             Description = "Cross-domain schemas for common data structures",
             Icon = "Icons.Material.Filled.Category"
+        },
+        new SchemaSector
+        {
+            Id = "core",
+            DisplayName = "Sorcha Core Primitives",
+            Description = "Platform-managed reusable identity primitives (name, DOB, email, postal address) referenced by blueprints via JSON Schema $ref",
+            Icon = "Icons.Material.Filled.Layers"
         }
     ];
 

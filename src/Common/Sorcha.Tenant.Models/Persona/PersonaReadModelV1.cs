@@ -18,6 +18,14 @@ public sealed record PersonaReadModelV1
     /// <summary>Given (first) name, wrapped with provenance.</summary>
     public PersonaAttribute<string>? GivenName { get; init; }
 
+    /// <summary>
+    /// Middle name, wrapped with provenance. Null for personas saved before
+    /// Feature 103 (Verified Citizen v2) introduced the field, and for users
+    /// who haven't set a middle name. Used by the <c>PersonName</c> core
+    /// primitive for autofill.
+    /// </summary>
+    public PersonaAttribute<string>? MiddleName { get; init; }
+
     /// <summary>Family (last) name, wrapped with provenance.</summary>
     public PersonaAttribute<string>? FamilyName { get; init; }
 

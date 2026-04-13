@@ -445,6 +445,7 @@ public sealed partial class PersonaService : IPersonaService
         return new PersonaReadModelV1
         {
             GivenName = Wrap(attrs.GivenName),
+            MiddleName = Wrap(attrs.MiddleName),
             FamilyName = Wrap(attrs.FamilyName),
             FullName = Wrap(attrs.FullName),
             DateOfBirth = WrapDate(attrs.DateOfBirth),
