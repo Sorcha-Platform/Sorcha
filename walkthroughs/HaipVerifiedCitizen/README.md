@@ -2,6 +2,8 @@
 
 Issues a **VerifiedCitizenCredential** to a citizen via the HAIP OpenID4VCI pre-authorized code flow. This is the first of two HAIP walkthroughs and must run before [HaipDrivingLicence](../HaipDrivingLicence/).
 
+> **v2 — Feature 103.** This walkthrough now uses the **Sorcha core identity primitive library**. The blueprint references `PersonName/v1`, `DateOfBirth/v1`, `EmailAddress/v1`, and `PostalAddress/v1` via JSON Schema `$ref` instead of inlining the schema. The `SchemaRefResolver` flattens the references at publish time so the validator and form renderer see a single self-contained schema. The credential issued by Action 2 includes the new `middleName` claim alongside the existing `givenName` / `familyName` / `fullName` / `dateOfBirth` / `email` / `address` claims; v1 consumers (e.g. HaipDrivingLicence) continue to work because middleName is selectively disclosable and not required.
+
 ## What It Tests
 
 - Trust anchor provisioning via `/api/v1/trust/tenants/{id}/provision`
@@ -12,6 +14,10 @@ Issues a **VerifiedCitizenCredential** to a citizen via the HAIP OpenID4VCI pre-
 - SD-JWT VC issuance with `cnf` holder key binding
 - Nested address disclosure (individual address fields as separate disclosable paths)
 - Credential storage in a local file-based wallet
+- **(v2)** Sorcha core primitive `$ref` resolution — the published blueprint contains no `$ref` markers; the in-flight blueprint references all five primitives via stable HTTPS URIs that the publish path flattens
+- **(v2)** Persona autofill against the new `middleName` field on `PersonaAttributesV1`
+- **(v2)** Open-participant late binding — the `citizen` participant has no pre-baked wallet; the runtime binds the public-org user who submits Action 1 (verified by the absence of `citizen` in `setup.ps1`'s `$walletMap`)
+- **(v2)** Publish-time `VAL_BP_010` guardrail — would reject the blueprint if `citizen` were ever pre-bound
 
 ## Prerequisites
 

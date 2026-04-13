@@ -78,16 +78,29 @@ if ($ShowJson) { $instance | ConvertTo-Json -Depth 5 | Write-Host }
 # ============================================================================
 Write-WtStep "Step 3: Citizen submits Identity Application (Action 1)"
 
+# Feature 103 v2: payload shape mirrors the nested core primitive structure.
+# Each top-level key matches a $ref'd primitive in the blueprint dataSchema:
+#   name    -> PersonName/v1   { givenName, middleName?, familyName, fullName? }
+#   dob     -> DateOfBirth/v1  { dateOfBirth }
+#   email   -> EmailAddress/v1 { email }
+#   address -> PostalAddress/v1 { line1, line2?, town, region?, postcode, country }
 $persona = $state.persona
 $payloadData = @{
-    givenName   = $persona.givenName
-    familyName  = $persona.familyName
-    fullName    = $persona.fullName
-    dateOfBirth = $persona.dateOfBirth
-    email       = $persona.defaultEmail
-    address     = @{
-        street   = $persona.defaultAddress.street
-        locality = $persona.defaultAddress.locality
+    name = @{
+        givenName  = $persona.givenName
+        middleName = $persona.middleName
+        familyName = $persona.familyName
+        fullName   = $persona.fullName
+    }
+    dob = @{
+        dateOfBirth = $persona.dateOfBirth
+    }
+    email = @{
+        email = $persona.defaultEmail
+    }
+    address = @{
+        line1    = $persona.defaultAddress.street
+        town     = $persona.defaultAddress.locality
         region   = $persona.defaultAddress.region
         postcode = $persona.defaultAddress.postcode
         country  = $persona.defaultAddress.country

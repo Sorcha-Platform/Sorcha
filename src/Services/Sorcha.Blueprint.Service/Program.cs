@@ -2435,13 +2435,92 @@ public class PublishService(
     IPublishedBlueprintStore publishedStore,
     Sorcha.ServiceClients.Register.IRegisterServiceClient? registerClient = null,
     StackExchange.Redis.IConnectionMultiplexer? redis = null,
+    Sorcha.Blueprint.Service.Services.ISchemaRefResolver? schemaRefResolver = null,
     ILogger<PublishService>? logger = null) : IPublishService
 {
     private readonly IBlueprintStore _blueprintStore = blueprintStore;
     private readonly IPublishedBlueprintStore _publishedStore = publishedStore;
     private readonly Sorcha.ServiceClients.Register.IRegisterServiceClient? _registerClient = registerClient;
     private readonly StackExchange.Redis.IConnectionMultiplexer? _redis = redis;
+    private readonly Sorcha.Blueprint.Service.Services.ISchemaRefResolver? _schemaRefResolver = schemaRefResolver;
     private readonly ILogger<PublishService>? _logger = logger;
+
+    /// <summary>
+    /// Walks every action's <c>DataSchemas</c> and replaces each
+    /// <see cref="System.Text.Json.JsonDocument"/> with a flattened version
+    /// where every Sorcha core <c>$ref</c> has been inlined. After this runs
+    /// the validator and the form renderer never see a primitive reference —
+    /// they see the fully-resolved schema. Mutates the supplied blueprint
+    /// in place.
+    /// </summary>
+    /// <remarks>
+    /// Called once at publish time so the immutable published snapshot
+    /// captures the flat form. The draft store is unchanged because the
+    /// caller does not write the mutated blueprint back. Failures bubble up
+    /// as <see cref="Sorcha.Blueprint.Service.Services.SchemaRefResolutionException"/>
+    /// and are converted to publish-time errors by the caller.
+    /// </remarks>
+    private void FlattenActionSchemas(BlueprintModel blueprint)
+    {
+        if (_schemaRefResolver is null) return;
+
+        var anyActionRewritten = false;
+
+        foreach (var action in blueprint.Actions)
+        {
+            if (action.DataSchemas is null) continue;
+
+            // Short-circuit: scan the raw JSON for "$ref" before paying the
+            // parse → flatten → re-serialise round trip. Blueprints that
+            // predate the primitive library (the vast majority) skip the
+            // resolver entirely and keep their existing JsonDocument
+            // instances, avoiding both the CPU cost and the IDisposable
+            // churn on every publish.
+            var schemaList = action.DataSchemas.ToList();
+            var actionNeedsFlatten = schemaList.Any(doc =>
+                doc.RootElement.GetRawText().Contains("\"$ref\"", StringComparison.Ordinal));
+
+            if (!actionNeedsFlatten) continue;
+
+            // Build the replacement list alongside a parallel track of the
+            // superseded originals so we can dispose exactly the right set.
+            // A null-node parse result (literal JSON `null` — pathological
+            // input) is passed through unchanged; we track it specially so
+            // we do NOT dispose the original in that case.
+            var flattened = new List<System.Text.Json.JsonDocument>(schemaList.Count);
+            var disposedOriginals = new List<System.Text.Json.JsonDocument>(schemaList.Count);
+            foreach (var schemaDoc in schemaList)
+            {
+                var raw = schemaDoc.RootElement.GetRawText();
+                var node = System.Text.Json.Nodes.JsonNode.Parse(raw);
+                if (node is null)
+                {
+                    flattened.Add(schemaDoc); // carried through — do NOT dispose
+                    continue;
+                }
+
+                var flatNode = _schemaRefResolver.Flatten(node);
+                flattened.Add(System.Text.Json.JsonDocument.Parse(flatNode.ToJsonString()));
+                disposedOriginals.Add(schemaDoc);
+            }
+
+            // Dispose superseded JsonDocuments before losing the last
+            // reference — JsonDocument owns pooled byte buffers.
+            foreach (var old in disposedOriginals)
+            {
+                old.Dispose();
+            }
+
+            action.DataSchemas = flattened;
+            anyActionRewritten = true;
+        }
+
+        if (anyActionRewritten)
+        {
+            _logger?.LogDebug(
+                "Flattened core primitive $refs in blueprint {BlueprintId}", blueprint.Id);
+        }
+    }
 
     public async Task<BlueprintValidationResult> ValidateAsync(string blueprintId)
     {
@@ -2473,6 +2552,25 @@ public class PublishService(
         if (blueprint is null)
         {
             return PublishResult.Failed("Blueprint not found");
+        }
+
+        // Feature 103 T041: flatten Sorcha core primitive $refs BEFORE
+        // validating, storing, or pushing to the register. After this step
+        // every action's dataSchema is fully self-contained — no downstream
+        // consumer (validator / register / form renderer) needs to know
+        // about the primitive library. A failure here surfaces as a
+        // publish-time error pointing at the unresolvable URI.
+        try
+        {
+            FlattenActionSchemas(blueprint);
+        }
+        catch (Sorcha.Blueprint.Service.Services.SchemaRefResolutionException ex)
+        {
+            _logger?.LogWarning(ex,
+                "Blueprint {BlueprintId} failed schema $ref flattening at publish time", blueprintId);
+            return PublishResult.Failed(
+                $"Schema $ref resolution failed: {ex.Message}" +
+                (ex.RefUri is not null ? $" (offending $ref: {ex.RefUri})" : string.Empty));
         }
 
         // Validate blueprint — cycle detections are warnings, not errors

@@ -1,22 +1,22 @@
 {
-  "id": "haip-verified-citizen-v1",
+  "id": "haip-verified-citizen-v2",
   "title": "HAIP Verified Citizen",
-  "description": "A citizen submits a verified-citizen application. A government assessor reviews the application, then issues a VerifiedCitizenCredential to the citizen's external HAIP wallet via the OpenID4VCI pre-authorized code flow (delivered as a QR code).",
-  "version": 1,
+  "description": "A citizen submits a verified-citizen application using the Sorcha core identity primitive library (PersonName, DateOfBirth, EmailAddress, PostalAddress). A government assessor reviews the application, then issues a VerifiedCitizenCredential to the citizen's external HAIP wallet via the OpenID4VCI pre-authorized code flow (delivered as a QR code). v2 introduced in Feature 103.",
+  "version": 2,
   "category": "identity",
-  "tags": ["haip", "verified-citizen", "identity", "oid4vci", "verifiable-credential", "external-wallet", "citizen-application"],
+  "tags": ["haip", "verified-citizen", "identity", "oid4vci", "verifiable-credential", "external-wallet", "citizen-application", "core-primitives"],
   "author": "Sorcha Team",
   "published": true,
   "template": {
     "id": "haip-verified-citizen",
     "title": "HAIP Verified Citizen",
-    "description": "Citizen submits identity details, government assessor reviews and issues a Verified Citizen credential to the citizen's external HAIP wallet.",
-    "version": 1,
+    "description": "Citizen submits identity details using shared core primitives, government assessor reviews and issues a Verified Citizen credential to the citizen's external HAIP wallet.",
+    "version": 2,
     "metadata": {
       "category": "Identity & Credentials",
       "complexity": "Simple",
       "actions": "2",
-      "features": "HAIP, OpenID4VCI, External Wallet, Verifiable Credential, Citizen Application",
+      "features": "HAIP, OpenID4VCI, External Wallet, Verifiable Credential, Citizen Application, Core Primitives",
       "sector": "Government"
     },
     "participants": [
@@ -37,7 +37,7 @@
       {
         "id": 1,
         "title": "Submit Verified Citizen Application",
-        "description": "Citizen submits their personal details for verification. The government assessor will review the application and, if approved, issue a VerifiedCitizenCredential.",
+        "description": "Citizen submits their personal details for verification. The government assessor will review the application and, if approved, issue a VerifiedCitizenCredential. Form fields are sourced from the Sorcha core primitive library so the same name/dob/email/address shape is used across every citizen-facing service.",
         "sender": "citizen",
         "isStartingAction": true,
         "dataSchemas": [
@@ -49,89 +49,42 @@
                 "title": "Your Name",
                 "description": "Your full legal name as it appears on official documents.",
                 "x-sections": [
-                  {
-                    "title": "Name",
-                    "layout": "horizontal",
-                    "fields": ["givenName", "familyName"]
-                  },
-                  {
-                    "title": "Full Name",
-                    "layout": "vertical",
-                    "fields": ["fullName"]
-                  }
+                  { "fields": ["name"] }
                 ]
               },
               {
-                "title": "Personal Details",
-                "description": "Date of birth and contact email.",
+                "title": "Date of Birth",
+                "description": "Your date of birth.",
                 "x-sections": [
-                  {
-                    "title": "Personal",
-                    "layout": "horizontal",
-                    "fields": ["dateOfBirth", "email"]
-                  }
+                  { "fields": ["dob"] }
+                ]
+              },
+              {
+                "title": "Contact",
+                "description": "We'll only use your email for correspondence about this application.",
+                "x-sections": [
+                  { "fields": ["email"] }
                 ]
               },
               {
                 "title": "Address",
-                "description": "Your current registered address.",
+                "description": "Your current registered address. Type your postcode and the rest will autofill where supported.",
                 "x-sections": [
-                  {
-                    "title": "Address",
-                    "layout": "vertical",
-                    "fields": ["address"]
-                  }
+                  { "fields": ["address"] }
                 ]
+              },
+              {
+                "title": "Check Your Answers",
+                "description": "Review the details before submitting. The government assessor will see exactly what you submit here."
               }
             ],
             "properties": {
-              "givenName": {
-                "type": "string",
-                "title": "Given Name",
-                "minLength": 1,
-                "maxLength": 100,
-                "x-persona": "givenName"
-              },
-              "familyName": {
-                "type": "string",
-                "title": "Family Name",
-                "minLength": 1,
-                "maxLength": 100,
-                "x-persona": "familyName"
-              },
-              "fullName": {
-                "type": "string",
-                "title": "Full Name",
-                "minLength": 1,
-                "maxLength": 200,
-                "x-persona": "fullName"
-              },
-              "dateOfBirth": {
-                "type": "string",
-                "format": "date",
-                "title": "Date of Birth",
-                "x-persona": "dateOfBirth"
-              },
-              "email": {
-                "type": "string",
-                "format": "email",
-                "title": "Email Address",
-                "x-persona": "defaultEmail"
-              },
-              "address": {
-                "type": "object",
-                "title": "Address",
-                "properties": {
-                  "street":   { "type": "string", "title": "Street" },
-                  "locality": { "type": "string", "title": "City/Town" },
-                  "region":   { "type": "string", "title": "Region/State" },
-                  "postcode": { "type": "string", "title": "Postcode" },
-                  "country":  { "type": "string", "title": "Country" }
-                },
-                "required": ["street", "locality", "country"]
-              }
+              "name":    { "$ref": "https://schemas.sorcha.dev/core/PersonName/v1" },
+              "dob":     { "$ref": "https://schemas.sorcha.dev/core/DateOfBirth/v1" },
+              "email":   { "$ref": "https://schemas.sorcha.dev/core/EmailAddress/v1" },
+              "address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" }
             },
-            "required": ["givenName", "familyName", "fullName", "dateOfBirth"]
+            "required": ["name", "dob", "email", "address"]
           }
         ],
         "disclosures": [
@@ -156,7 +109,7 @@
       {
         "id": 2,
         "title": "Review & Issue Verified Citizen Credential",
-        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedCitizenCredential is issued and delivered to the citizen's external HAIP wallet via a QR code (OpenID4VCI pre-authorized code flow).",
+        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedCitizenCredential is issued and delivered to the citizen's external HAIP wallet via a QR code (OpenID4VCI pre-authorized code flow). Claims are sourced from the v2 nested submission structure.",
         "sender": "government-assessor",
         "requiredPriorActions": [1],
         "dataSchemas": [
@@ -191,16 +144,17 @@
           "targetAudience": "HaipExternalWallet",
           "recipientParticipantId": "citizen",
           "claimMappings": [
-            { "claimName": "givenName",   "sourceField": "/givenName" },
-            { "claimName": "familyName",  "sourceField": "/familyName" },
-            { "claimName": "fullName",    "sourceField": "/fullName" },
-            { "claimName": "dateOfBirth", "sourceField": "/dateOfBirth" },
-            { "claimName": "email",       "sourceField": "/email" },
+            { "claimName": "givenName",   "sourceField": "/name/givenName" },
+            { "claimName": "middleName",  "sourceField": "/name/middleName" },
+            { "claimName": "familyName",  "sourceField": "/name/familyName" },
+            { "claimName": "fullName",    "sourceField": "/name/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
+            { "claimName": "email",       "sourceField": "/email/email" },
             { "claimName": "address",     "sourceField": "/address" }
           ],
           "disclosable": [
-            "givenName", "familyName", "fullName", "dateOfBirth", "email",
-            "/address/street", "/address/locality", "/address/region",
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/line1", "/address/line2", "/address/town", "/address/region",
             "/address/postcode", "/address/country"
           ]
         },
