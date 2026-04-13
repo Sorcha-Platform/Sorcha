@@ -154,6 +154,14 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 
+// Feature 103 US1: Redis read-through cache for per-instance participant bindings.
+// Hot-path lookup for Instance.ParticipantWallets during action execution.
+// Contract: specs/103-verified-citizen-v2/contracts/instance-binding-cache.md
+builder.Services.Configure<Sorcha.Blueprint.Service.Services.InstanceBindingCacheOptions>(
+    builder.Configuration.GetSection(Sorcha.Blueprint.Service.Services.InstanceBindingCacheOptions.SectionName));
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.IInstanceBindingCache,
+    Sorcha.Blueprint.Service.Services.InstanceBindingCache>();
+
 // Add Transaction Retrieval service (045 - Phase 9: Recipient Decryption)
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransactionRetrievalService,
     Sorcha.Blueprint.Service.Services.Implementation.TransactionRetrievalService>();
@@ -2643,6 +2651,38 @@ public class PublishService(
         if (startingActions.Count == 0)
         {
             warnings.Add("No action has IsStartingAction=true. The first action will be used as the implicit starting action.");
+        }
+
+        // Rule 6a (Feature 103, VAL_BP_010): Open-participant pre-binding guardrail.
+        //
+        // A participant referenced as the sender of an isStartingAction: true action
+        // MUST have walletAddress = null in the published blueprint. The runtime
+        // late-binds whichever wallet submits the first action to the participant role.
+        // Pre-baking a wallet defeats the open contract and produces a misleading
+        // "wallet not authorized" error at runtime from the strict equality check in
+        // ActionExecutionService.cs:196-216. This rule turns the foot-gun into a
+        // publish-time error.
+        //
+        // Contract: specs/103-verified-citizen-v2/contracts/validator-publish-errors.md
+        // Constant: Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound
+        foreach (var startingAction in startingActions)
+        {
+            if (string.IsNullOrWhiteSpace(startingAction.Sender)) continue;
+
+            var senderParticipant = blueprint.Participants?
+                .FirstOrDefault(p => string.Equals(p.Id, startingAction.Sender, StringComparison.OrdinalIgnoreCase));
+
+            if (senderParticipant is not null &&
+                !string.IsNullOrWhiteSpace(senderParticipant.WalletAddress))
+            {
+                errors.Add(
+                    $"[VAL_BP_010] Participant '{senderParticipant.Id}' is the sender of starting action " +
+                    $"{startingAction.Id} ('{startingAction.Title}') and must have a null walletAddress so the " +
+                    $"runtime can late-bind the first qualifying submitter to the participant role. " +
+                    $"Found walletAddress: '{senderParticipant.WalletAddress}'. " +
+                    $"To fix: remove the walletAddress field from the participant in the blueprint, OR " +
+                    $"if the participant should NOT be open, remove isStartingAction from the action.");
+            }
         }
 
         // Rule 7: Route targets and rejection targets must reference valid actions
