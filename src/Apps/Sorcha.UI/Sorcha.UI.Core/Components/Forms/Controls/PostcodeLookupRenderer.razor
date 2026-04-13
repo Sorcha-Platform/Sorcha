@@ -289,24 +289,38 @@
         if (FormContext is null) return;
 
         var parentScope = GetParentScope(Control.Scope);
-        FormContext.SetValue($"{parentScope}line1", candidate.Line1);
+        SetSiblingValue($"{parentScope}line1", candidate.Line1);
         if (!string.IsNullOrEmpty(candidate.Line2))
         {
-            FormContext.SetValue($"{parentScope}line2", candidate.Line2);
+            SetSiblingValue($"{parentScope}line2", candidate.Line2);
         }
-        FormContext.SetValue($"{parentScope}town", candidate.Town);
+        SetSiblingValue($"{parentScope}town", candidate.Town);
         if (!string.IsNullOrEmpty(candidate.Region))
         {
-            FormContext.SetValue($"{parentScope}region", candidate.Region);
+            SetSiblingValue($"{parentScope}region", candidate.Region);
         }
-        FormContext.SetValue($"{parentScope}postcode", candidate.Postcode);
-        FormContext.SetValue($"{parentScope}country", candidate.Country);
+        SetSiblingValue($"{parentScope}postcode", candidate.Postcode);
+        SetSiblingValue($"{parentScope}country", candidate.Country);
 
         _value = candidate.Postcode;
         _candidates = null;
         _metadataHint = $"Selected: {candidate.DisplayLabel}";
         _adornmentIcon = Icons.Material.Filled.CheckCircle;
         _adornmentColor = Color.Success;
+    }
+
+    /// <summary>
+    /// Writes a value to a sibling field and re-runs schema validation so
+    /// any prior "required but empty" errors are cleared. Without this the
+    /// sibling controls stay in their old error state until the user
+    /// manually focuses and blurs each field.
+    /// </summary>
+    private void SetSiblingValue(string scope, string value)
+    {
+        if (FormContext is null) return;
+        FormContext.SetValue(scope, value);
+        var errors = SchemaService.ValidateField(FormContext.DataSchema, scope, value);
+        FormContext.SetErrors(scope, errors);
     }
 
     private void AutofillMetadata(LookupMetadata metadata)
@@ -317,15 +331,15 @@
 
         if (!string.IsNullOrEmpty(metadata.Town))
         {
-            FormContext.SetValue($"{parentScope}town", metadata.Town);
+            SetSiblingValue($"{parentScope}town", metadata.Town);
         }
         if (!string.IsNullOrEmpty(metadata.Region))
         {
-            FormContext.SetValue($"{parentScope}region", metadata.Region);
+            SetSiblingValue($"{parentScope}region", metadata.Region);
         }
         if (!string.IsNullOrEmpty(metadata.Country))
         {
-            FormContext.SetValue($"{parentScope}country", metadata.Country);
+            SetSiblingValue($"{parentScope}country", metadata.Country);
         }
     }
 
@@ -384,8 +398,6 @@
         public string? Town { get; set; }
         public string? Region { get; set; }
         public string? Country { get; set; }
-        public double? Latitude { get; set; }
-        public double? Longitude { get; set; }
     }
 
     private sealed class AddressCandidate

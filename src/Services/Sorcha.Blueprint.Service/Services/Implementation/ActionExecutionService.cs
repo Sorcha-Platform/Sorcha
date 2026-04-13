@@ -620,7 +620,13 @@ public class ActionExecutionService : IActionExecutionService
                 var haipClaims = BuildClaimsFromMappings(
                     actionDef.CredentialIssuanceConfig.ClaimMappings,
                     mergedData!);
-                // HAIP client expects non-nullable values; flatten before sending.
+                // HAIP client expects non-nullable values. The null-forgiving
+                // operator below is safe because TryResolveJsonPointer returns
+                // false for null-valued segments, so BuildClaimsFromMappings
+                // never produces a null value. If that invariant is ever
+                // relaxed (e.g. to support explicitly-null optional fields),
+                // this projection must be updated to filter or coerce nulls
+                // before the wire call.
                 var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
                 _logger.LogInformation(
@@ -1434,10 +1440,11 @@ public class ActionExecutionService : IActionExecutionService
         // dictionaries and JsonElement objects. Missing segments log a
         // warning and skip the claim rather than failing the whole issue.
         var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!);
-        // Wallet client expects non-nullable values; the mapper preserves
-        // null only when the source field is itself null, which never
-        // happens in the issuance path because TryResolveJsonPointer drops
-        // null segments.
+        // Wallet client expects non-nullable values. Safe because
+        // TryResolveJsonPointer returns false on null-valued segments —
+        // BuildClaimsFromMappings never produces a null value. If that
+        // invariant is ever relaxed, this projection must filter or
+        // coerce nulls before the wire call.
         var claimsForWallet = claims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
         // Resolve recipient wallet address from participant ID
