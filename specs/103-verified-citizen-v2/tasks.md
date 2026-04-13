@@ -160,36 +160,36 @@ Web app (microservices backend + Blazor WASM frontend):
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T054 [P] [US3] Write `PostcodesIoProviderTests` in `tests/Sorcha.AddressLookup.Tests/Providers/PostcodesIoProviderTests.cs` covering: valid UK postcode returns ValidateOnly result with town/region; invalid postcode returns isValid=false; HTTP 404 from provider returns isValid=false; HTTP 500 returns availability false. Use `Microsoft.AspNetCore.TestHost` or a stubbed `HttpMessageHandler`. Tests MUST fail before T058.
-- [ ] T055 [P] [US3] Write `OsPlacesProviderTests` in `tests/Sorcha.AddressLookup.Tests/Providers/OsPlacesProviderTests.cs` covering: valid postcode returns FullAddress candidates; missing API key throws on construction; rate-limit response returns availability false; malformed candidate response logged and skipped. Tests MUST fail before T059.
-- [ ] T056 [P] [US3] Write `AddressLookupServiceTests` in `tests/Sorcha.AddressLookup.Tests/AddressLookupServiceTests.cs` covering: provider selection prefers FullAddress over ValidateOnly for the country; falls back when preferred provider is unavailable; returns "none" provider when no provider supports the country. Tests MUST fail before T060.
+- [x] T054 [P] [US3] Write `PostcodesIoProviderTests` in `tests/Sorcha.AddressLookup.Tests/Providers/PostcodesIoProviderTests.cs` covering: valid UK postcode returns ValidateOnly result with town/region; invalid postcode returns isValid=false; HTTP 404 from provider returns isValid=false; HTTP 500 returns availability false. Use `Microsoft.AspNetCore.TestHost` or a stubbed `HttpMessageHandler`. Tests MUST fail before T058.
+- [x] T055 [P] [US3] Write `OsPlacesProviderTests` in `tests/Sorcha.AddressLookup.Tests/Providers/OsPlacesProviderTests.cs` covering: valid postcode returns FullAddress candidates; missing API key throws on construction; rate-limit response returns availability false; malformed candidate response logged and skipped. Tests MUST fail before T059.
+- [x] T056 [P] [US3] Write `AddressLookupServiceTests` in `tests/Sorcha.AddressLookup.Tests/AddressLookupServiceTests.cs` covering: provider selection prefers FullAddress over ValidateOnly for the country; falls back when preferred provider is unavailable; returns "none" provider when no provider supports the country. Tests MUST fail before T060.
 - [ ] T057 [P] [US3] Write `AddressLookupEndpointsTests` in `tests/Sorcha.Tenant.Service.IntegrationTests/AddressLookupEndpointsTests.cs` covering both endpoints from `contracts/address-lookup-api.yaml`: POST /api/address-lookup/postcode happy path, 401 unauthenticated, 400 malformed postcode, 429 rate-limited; GET /api/address-lookup/providers returns provider info. Tests MUST fail before T062.
 
 ### Implementation for User Story 3
 
 #### 3a. Library scaffolding
 
-- [ ] T058 [P] [US3] Create new csproj `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` targeting net10.0, nullable enable, License header. Reference `Sorcha.ServiceDefaults`.
-- [ ] T059 [US3] Add `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` to the solution `Sorcha.sln`. (Sequential after T058 — depends on the csproj file existing.)
-- [ ] T060 [P] [US3] Create `src/Common/Sorcha.AddressLookup/IAddressLookupProvider.cs` defining the interface from research.md decision 11: `ProviderName`, `Capability`, `SupportedCountries`, `IsAvailableAsync`, `LookupAsync`.
-- [ ] T061 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupCapability.cs` enum: `ValidateOnly`, `FullAddress`.
-- [ ] T062 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupResult.cs` and `AddressCandidate.cs` records matching the shapes in `contracts/address-lookup-api.yaml`. Records should be JSON-serializable for the wire and consumable directly by the Tenant Service endpoints.
-- [ ] T063 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupProviderInfo.cs` value object matching the contracts schema.
+- [x] T058 [P] [US3] Create new csproj `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` targeting net10.0, nullable enable, License header. Reference `Sorcha.ServiceDefaults`.
+- [x] T059 [US3] Add `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` to the solution `Sorcha.sln`. (Sequential after T058 — depends on the csproj file existing.)
+- [x] T060 [P] [US3] Create `src/Common/Sorcha.AddressLookup/IAddressLookupProvider.cs` defining the interface from research.md decision 11: `ProviderName`, `Capability`, `SupportedCountries`, `IsAvailableAsync`, `LookupAsync`.
+- [x] T061 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupCapability.cs` enum: `ValidateOnly`, `FullAddress`.
+- [x] T062 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupResult.cs` and `AddressCandidate.cs` records matching the shapes in `contracts/address-lookup-api.yaml`. Records should be JSON-serializable for the wire and consumable directly by the Tenant Service endpoints.
+- [x] T063 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupProviderInfo.cs` value object matching the contracts schema.
 
 #### 3b. Providers
 
-- [ ] T064 [US3] Implement `src/Common/Sorcha.AddressLookup/Providers/PostcodesIoProvider.cs`. Constructor takes `HttpClient` (registered via IHttpClientFactory) + `ILogger<PostcodesIoProvider>`. ProviderName `"postcodes.io"`, Capability ValidateOnly, SupportedCountries `["GB"]`. `LookupAsync` calls `https://api.postcodes.io/postcodes/{postcode}`, parses validity + town + region + lat/long, returns `AddressLookupResult` with capability ValidateOnly. `IsAvailableAsync` does a HEAD or simple GET.
-- [ ] T065 [US3] Implement `src/Common/Sorcha.AddressLookup/Providers/OsPlacesProvider.cs`. Constructor takes `HttpClient`, `IOptions<OsPlacesOptions>` (ApiKey, BaseUrl), `ILogger<OsPlacesProvider>`. ProviderName `"os-places"`, Capability FullAddress, SupportedCountries `["GB"]`. `LookupAsync` calls OS Places API with the API key, parses candidates into `AddressCandidate` list. `IsAvailableAsync` checks API key presence + does a probe call.
-- [ ] T066 [US3] Implement `src/Common/Sorcha.AddressLookup/AddressLookupService.cs`. Constructor takes `IEnumerable<IAddressLookupProvider>` + `ILogger<AddressLookupService>`. Method `LookupAsync(postcode, countryHint, ct)` selects the most capable available provider for the country using the algorithm from research.md decision 11. Falls back gracefully to a "none" result.
+- [x] T064 [US3] Implement `src/Common/Sorcha.AddressLookup/Providers/PostcodesIoProvider.cs`. Constructor takes `HttpClient` (registered via IHttpClientFactory) + `ILogger<PostcodesIoProvider>`. ProviderName `"postcodes.io"`, Capability ValidateOnly, SupportedCountries `["GB"]`. `LookupAsync` calls `https://api.postcodes.io/postcodes/{postcode}`, parses validity + town + region + lat/long, returns `AddressLookupResult` with capability ValidateOnly. `IsAvailableAsync` does a HEAD or simple GET.
+- [x] T065 [US3] Implement `src/Common/Sorcha.AddressLookup/Providers/OsPlacesProvider.cs`. Constructor takes `HttpClient`, `IOptions<OsPlacesOptions>` (ApiKey, BaseUrl), `ILogger<OsPlacesProvider>`. ProviderName `"os-places"`, Capability FullAddress, SupportedCountries `["GB"]`. `LookupAsync` calls OS Places API with the API key, parses candidates into `AddressCandidate` list. `IsAvailableAsync` checks API key presence + does a probe call.
+- [x] T066 [US3] Implement `src/Common/Sorcha.AddressLookup/AddressLookupService.cs`. Constructor takes `IEnumerable<IAddressLookupProvider>` + `ILogger<AddressLookupService>`. Method `LookupAsync(postcode, countryHint, ct)` selects the most capable available provider for the country using the algorithm from research.md decision 11. Falls back gracefully to a "none" result.
 
 #### 3c. DI extensions
 
-- [ ] T067 [US3] Implement `src/Common/Sorcha.AddressLookup/ServiceCollectionExtensions.cs` with `AddSorchaAddressLookup(IServiceCollection services, IConfiguration config)`. Registers `AddressLookupService`, `PostcodesIoProvider` (always), and `OsPlacesProvider` (only when `Tenant:AddressLookup:OsPlaces:ApiKey` is configured). Use `IHttpClientFactory` for both providers.
+- [x] T067 [US3] Implement `src/Common/Sorcha.AddressLookup/ServiceCollectionExtensions.cs` with `AddSorchaAddressLookup(IServiceCollection services, IConfiguration config)`. Registers `AddressLookupService`, `PostcodesIoProvider` (always), and `OsPlacesProvider` (only when `Tenant:AddressLookup:OsPlaces:ApiKey` is configured). Use `IHttpClientFactory` for both providers.
 
 #### 3d. Tenant Service endpoints
 
-- [ ] T068 [US3] Create `src/Services/Sorcha.Tenant.Service/Endpoints/AddressLookupEndpoints.cs` mapping the two endpoints from `contracts/address-lookup-api.yaml`. Both auth-gated via the existing JWT bearer policy and rate-limited via `RateLimitPolicies.Api`. Use `.WithSummary()` / `.WithDescription()` / Scalar OpenAPI per the constitution.
-- [ ] T069 [US3] Wire `AddSorchaAddressLookup` into `src/Services/Sorcha.Tenant.Service/Program.cs` DI. Wire `MapAddressLookupEndpoints` into the endpoint mapping. Add `Tenant:AddressLookup:OsPlaces:ApiKey` to `appsettings.json` as a placeholder (empty string in dev; populated only in prod via secrets).
+- [x] T068 [US3] Create `src/Services/Sorcha.Tenant.Service/Endpoints/AddressLookupEndpoints.cs` mapping the two endpoints from `contracts/address-lookup-api.yaml`. Both auth-gated via the existing JWT bearer policy and rate-limited via `RateLimitPolicies.Api`. Use `.WithSummary()` / `.WithDescription()` / Scalar OpenAPI per the constitution.
+- [x] T069 [US3] Wire `AddSorchaAddressLookup` into `src/Services/Sorcha.Tenant.Service/Program.cs` DI. Wire `MapAddressLookupEndpoints` into the endpoint mapping. Add `Tenant:AddressLookup:OsPlaces:ApiKey` to `appsettings.json` as a placeholder (empty string in dev; populated only in prod via secrets).
 
 #### 3e. UI control + renderer dispatch
 

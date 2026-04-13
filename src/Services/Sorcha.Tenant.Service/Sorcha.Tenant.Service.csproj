@@ -43,6 +43,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.ServiceDefaults\Sorcha.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.AddressLookup\Sorcha.AddressLookup.csproj" />
   </ItemGroup>
 
 </Project>
