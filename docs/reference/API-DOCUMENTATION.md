@@ -762,6 +762,65 @@ email, `format: tel` → default phone, field name `dateOfBirth`/`dob`/`birthDat
 
 ---
 
+## Address Lookup API (Feature 103)
+
+Postcode-driven address autofill for citizen-facing forms. Hosted by the
+Tenant Service and routed through the API Gateway. Uses pluggable providers:
+**Postcodes.io** (UK, validate-only, default) and **OS Places** (UK, full
+address candidates, opt-in via API key). When no provider is reachable the
+`PostcodeLookupRenderer` gracefully degrades to a plain text input.
+
+### Endpoints (via API Gateway `/api/*`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET    | `/api/address-lookup/providers` | List configured providers, capabilities, and live availability |
+| POST   | `/api/address-lookup/postcode`  | Resolve a postcode (validate-only metadata or full-address candidate list) |
+
+### Request — POST `/api/address-lookup/postcode`
+
+```json
+{ "postcode": "D02 Y1K8" }
+```
+
+### Response — full-address provider
+
+```json
+{
+  "postcode": "D02 Y1K8",
+  "isValid": true,
+  "provider": "OSPlaces",
+  "capability": "FullAddress",
+  "candidates": [
+    { "line1": "42 Grafton Street", "town": "Dublin", "region": "Leinster",
+      "postcode": "D02 Y1K8", "country": "Ireland",
+      "displayLabel": "42 Grafton Street, Dublin, D02 Y1K8" }
+  ]
+}
+```
+
+### Response — validate-only provider
+
+```json
+{
+  "postcode": "EC1A 1BB",
+  "isValid": true,
+  "provider": "PostcodesIo",
+  "capability": "ValidateOnly",
+  "metadata": { "town": "London", "region": "Greater London", "country": "England",
+                "latitude": 51.5188, "longitude": -0.0991 }
+}
+```
+
+Both endpoints require Bearer authentication and apply the standard API
+rate-limit policy. Schemas declare `x-address-lookup: true` on a string
+property to opt the field into the renderer dispatch — the
+`PostcodeLookupRenderer` then writes back to sibling fields (`line1`,
+`line2`, `town`, `region`, `postcode`, `country`) on the parent scope when
+a candidate is selected.
+
+---
+
 ## Blueprint Service API
 
 ### Base Path: `/api/blueprints`

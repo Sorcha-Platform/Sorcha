@@ -28,9 +28,9 @@ Web app (microservices backend + Blazor WASM frontend):
 
 **Purpose**: Per-feature workspace prep. The repository, tooling, and CI are already configured.
 
-- [ ] T001 Verify local Sorcha dev environment is healthy by running `docker-compose up -d` and confirming Blueprint, Validator, Tenant, Wallet, Register, and UI services all reach Healthy state in the Aspire dashboard or via `docker compose ps`. Ensures the rest of the feature work has a working baseline.
-- [ ] T002 [P] Confirm `dotnet build` of the entire solution from `C:\Projects\Sorcha` completes with no warnings on a clean checkout of branch `103-verified-citizen-v2`. This is the cold-start baseline against which subsequent build runs are diffed.
-- [ ] T003 [P] Confirm `dotnet test --filter "Category=Smoke"` passes against the Docker stack so we know the existing test infrastructure is green before any new tests land.
+- [x] T001 Verify local Sorcha dev environment is healthy by running `docker-compose up -d` and confirming Blueprint, Validator, Tenant, Wallet, Register, and UI services all reach Healthy state in the Aspire dashboard or via `docker compose ps`. Ensures the rest of the feature work has a working baseline.
+- [x] T002 [P] Confirm `dotnet build` of the entire solution from `C:\Projects\Sorcha` completes with no warnings on a clean checkout of branch `103-verified-citizen-v2`. This is the cold-start baseline against which subsequent build runs are diffed.
+- [x] T003 [P] Confirm `dotnet test --filter "Category=Smoke"` passes against the Docker stack so we know the existing test infrastructure is green before any new tests land.
 
 ---
 
@@ -76,10 +76,10 @@ Web app (microservices backend + Blazor WASM frontend):
 - [x] T018 [US1] DI registration for `IInstanceBindingCache` + options in Blueprint Service `Program.cs`. Landed in PR #269.
 - [x] T019 [US1] Wire cache write-through into `ActionExecutionService` late-bind block. Read-path intentionally stays in-process (rationale in code). Landed in PR #269.
 - [x] T020 [US1] Publish-time guardrail rule 6a (`VAL_BP_010`) in Blueprint Service `ValidateBlueprint`. Landed in PR #269.
-- [ ] T021 [US1] Wire the new error code reserved in T004 into the validation engine at `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`. Ensure the error is emitted in the standard publish-error response shape with `code`, `severity`, `message`, `field`, `actionId`, `participantId`. (Depends on T004 + T020.)
+- [x] T021 [US1] Wire the new error code reserved in T004 into the validation engine at `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`. Ensure the error is emitted in the standard publish-error response shape with `code`, `severity`, `message`, `field`, `actionId`, `participantId`. (Depends on T004 + T020.)
 - [x] T022 [P] [US1] Add a new section to `CLAUDE.md` under "Critical Patterns" titled "Open Participants & Late Binding" that summarises the contract and cross-references the blueprint-builder skill, the design spec, and `contracts/validator-publish-errors.md`. ~15 lines max. (Landed as section #9 under Critical Patterns.)
-- [ ] T023 [US1] Run `tests/Sorcha.Blueprint.Service.Tests/InstanceBindingCacheTests.cs` (T005) and verify all six cases now pass after T017 + T019.
-- [ ] T024 [US1] Run `tests/Sorcha.Validator.Service.Tests/PublishGuardrailTests.cs` (T006) and verify all seven cases now pass after T020 + T021.
+- [x] T023 [US1] Run `tests/Sorcha.Blueprint.Service.Tests/InstanceBindingCacheTests.cs` (T005) and verify all six cases now pass after T017 + T019.
+- [x] T024 [US1] Run `tests/Sorcha.Validator.Service.Tests/PublishGuardrailTests.cs` (T006) and verify all seven cases now pass after T020 + T021.
 - [ ] T025 [US1] Run `tests/Sorcha.Blueprint.Service.IntegrationTests/LateBindingIntegrationTest.cs` (T007) and verify all four scenarios pass.
 - [ ] T026 [US1] Run `tests/Sorcha.UI.E2E.Tests/Docker/HaipVerifiedCitizenLateBindingTests.cs` (T008) against `docker-compose up -d` and verify the end-to-end Verified Citizen v1 walkthrough succeeds without `wallet not authorized` errors. (Depends on T009 + T017 + T019 + T020 + T021.)
 - [ ] T027 [US1] Verify the OpenTelemetry metrics emitted by `InstanceBindingCache` (`sorcha.binding_cache.requests`, `sorcha.binding_cache.read_latency_ms`, etc. per `contracts/instance-binding-cache.md` § Telemetry) are visible in the Aspire dashboard during the E2E test run. Capture a screenshot or text dump of the relevant metrics in the PR description.
@@ -140,9 +140,9 @@ Web app (microservices backend + Blazor WASM frontend):
 
 #### 2g. Validation pass
 
-- [ ] T049 [US2] Run `tests/Sorcha.Validator.Service.Tests/SchemaRefResolverTests.cs` (T028) and verify all cases pass after T040 + T044-T048.
-- [ ] T050 [US2] Run `tests/Sorcha.Validator.Service.Tests/SorchaDateTokenResolverTests.cs` (T029) and verify all cases pass after T038.
-- [ ] T051 [US2] Run `tests/Sorcha.Blueprint.Service.Tests/CoreSchemaSeedServiceTests.cs` (T030) and verify all cases pass after T037 + T044-T048.
+- [x] T049 [US2] Run `tests/Sorcha.Validator.Service.Tests/SchemaRefResolverTests.cs` (T028) and verify all cases pass after T040 + T044-T048.
+- [x] T050 [US2] Run `tests/Sorcha.Validator.Service.Tests/SorchaDateTokenResolverTests.cs` (T029) and verify all cases pass after T038.
+- [x] T051 [US2] Run `tests/Sorcha.Blueprint.Service.Tests/CoreSchemaSeedServiceTests.cs` (T030) and verify all cases pass after T037 + T044-T048.
 - [ ] T052 [US2] Run `tests/Sorcha.Tenant.Service.IntegrationTests/PersonaMiddleNameTests.cs` (T031) and verify the round-trip works end-to-end after T033 + T035.
 - [ ] T053 [US2] Run `tests/Sorcha.UI.E2E.Tests/Docker/IdentityPrimitiveRenderingTests.cs` (T032) and verify the rendering test passes against Docker after all of US2 lands.
 
@@ -193,16 +193,16 @@ Web app (microservices backend + Blazor WASM frontend):
 
 #### 3e. UI control + renderer dispatch
 
-- [ ] T070 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/PostcodeLookupField.razor` per quickstart.md and the design spec. Three states: no provider (plain text), ValidateOnly (postcode field with tick + town/region autofill), FullAddress (postcode field with "Find address" button → modal pick list → autofills siblings via JsonPointer-style lookup). Calls `/api/address-lookup/providers` once on init to determine state, calls `/api/address-lookup/postcode` on user action.
-- [ ] T071 [US3] Update `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` to dispatch a property carrying `x-address-lookup: true` to `PostcodeLookupField` instead of a plain text input. Preserve all other dispatch paths (file upload, persona autofill, etc).
-- [ ] T072 [US3] Add `data-testid` attributes to `PostcodeLookupField.razor` for `postcode-input`, `postcode-validate-tick`, `postcode-find-address-button`, `postcode-candidate-modal`, `postcode-candidate-{i}` per the `sorcha-ui` skill's data-testid convention. (Sequential after T070 — edits the same file.)
+- [x] T070 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/PostcodeLookupField.razor` per quickstart.md and the design spec. Three states: no provider (plain text), ValidateOnly (postcode field with tick + town/region autofill), FullAddress (postcode field with "Find address" button → modal pick list → autofills siblings via JsonPointer-style lookup). Calls `/api/address-lookup/providers` once on init to determine state, calls `/api/address-lookup/postcode` on user action.
+- [x] T071 [US3] Update `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` to dispatch a property carrying `x-address-lookup: true` to `PostcodeLookupField` instead of a plain text input. Preserve all other dispatch paths (file upload, persona autofill, etc).
+- [x] T072 [US3] Add `data-testid` attributes to `PostcodeLookupField.razor` for `postcode-input`, `postcode-validate-tick`, `postcode-find-address-button`, `postcode-candidate-modal`, `postcode-candidate-{i}` per the `sorcha-ui` skill's data-testid convention. (Sequential after T070 — edits the same file.)
 
 #### 3f. Validation pass
 
-- [ ] T073 [US3] Run all tests in `tests/Sorcha.AddressLookup.Tests/` (T054-T056) and verify they pass after T058-T067.
+- [x] T073 [US3] Run all tests in `tests/Sorcha.AddressLookup.Tests/` (T054-T056) and verify they pass after T058-T067.
 - [ ] T074 [US3] Run `tests/Sorcha.Tenant.Service.IntegrationTests/AddressLookupEndpointsTests.cs` (T057) and verify the endpoints work end-to-end after T068 + T069.
 - [ ] T075 [P] [US3] Write and run `tests/Sorcha.UI.E2E.Tests/Docker/PostcodeLookupFieldTests.cs` covering all five US3 acceptance scenarios from spec.md against Docker. Use Playwright via the existing `AuthenticatedDockerTestBase`.
-- [ ] T076 [P] [US3] Verify graceful degradation manually: stop Tenant Service, edit `appsettings.json` to remove all providers (or set Postcodes.io as unavailable), restart, render a form with `PostalAddress/v1`, confirm the postcode field renders as plain text with no lookup affordance and submission still works.
+- [x] T076 [P] [US3] Verify graceful degradation manually: stop Tenant Service, edit `appsettings.json` to remove all providers (or set Postcodes.io as unavailable), restart, render a form with `PostalAddress/v1`, confirm the postcode field renders as plain text with no lookup affordance and submission still works.
 
 **Checkpoint**: At this point, User Story 3 is fully functional and shippable as PR 3. The `PostcodeLookupField` renders correctly under all four states (no provider, ValidateOnly, FullAddress, error). Tenant Service hosts both endpoints. The library has full unit coverage.
 
@@ -226,8 +226,8 @@ Web app (microservices backend + Blazor WASM frontend):
 - [x] T081 [P] [US4] Update `walkthroughs/HaipDrivingLicence/blueprints/driving-licence.json` so its `credentialRequirements` for the VerifiedCitizenCredential reference any new claim names (notably `middleName`). This proves the v2 credential bootstraps the downstream service correctly.
 - [x] T082 [P] [US4] Update `walkthroughs/HaipDrivingLicence/run.ps1` if needed to align with the v2 credential claims. Should be minimal — v1 claims still work because middleName is additive.
 - [x] T083 [US4] Update `walkthroughs/HaipVerifiedCitizen/README.md` to describe the v2 flow, cross-reference the design and spec, and explain the open-participant late-binding contract for any human reading the walkthrough.
-- [ ] T084 [US4] Run `walkthroughs/HaipVerifiedCitizen/setup.ps1 -Profile gateway` against local Docker, then `run.ps1`, and capture the credential delivery output. Verify the SD-JWT VC contains all six claims (givenName, middleName, familyName, dateOfBirth, email, address) with correct values.
-- [ ] T085 [US4] Run `walkthroughs/HaipDrivingLicence/setup.ps1 -Profile gateway` then `run.ps1` chained after T084 to verify the downstream credential bootstrap works end-to-end. The applicant should be late-bound by HAIP presentation of the VerifiedCitizenCredential issued in T084.
+- [x] T084 [US4] Run `walkthroughs/HaipVerifiedCitizen/setup.ps1 -Profile gateway` against local Docker, then `run.ps1`, and capture the credential delivery output. Verify the SD-JWT VC contains all six claims (givenName, middleName, familyName, dateOfBirth, email, address) with correct values.
+- [x] T085 [US4] Run `walkthroughs/HaipDrivingLicence/setup.ps1 -Profile gateway` then `run.ps1` chained after T084 to verify the downstream credential bootstrap works end-to-end. The applicant should be late-bound by HAIP presentation of the VerifiedCitizenCredential issued in T084.
 - [ ] T086 [US4] Run T077 (`VerifiedCitizenV2E2ETests`) and verify all scenarios pass against Docker.
 - [ ] T087 [US4] Run the entire Verified Citizen v2 + Driving Licence chain against `n1.sorcha.dev` per the network-bootstrap skill. Reset n1, push the branch images via `docker-publish.yml`, redeploy, and run both walkthroughs in `n1` profile. Document the run in the PR description.
 
