@@ -3,7 +3,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "title": "Email Addresses",
-  "description": "A list of email addresses with exactly one marked default. For single-email fields reference EmailAddress/v1 instead. Minimum 1, maximum 5 entries; exactly one entry must be marked default when the list is non-empty.",
+  "description": "A list of email addresses with exactly one marked default. For single-email fields reference EmailAddress/v1 instead. Minimum 1, maximum 5 entries; exactly one entry must be marked default when the list is non-empty. NOTE: the 'exactly one default' constraint is cross-field and is enforced by the SchemaRefResolver at validation time (Feature 103 T039-T041), not by JSON Schema alone — the resolver rejects payloads where zero or more than one item has isDefault=true.",
   "x-sections": [
     {
       "title": "Email Addresses",

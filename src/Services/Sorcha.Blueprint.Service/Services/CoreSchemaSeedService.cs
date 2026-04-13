@@ -35,7 +35,7 @@ namespace Sorcha.Blueprint.Service.Services;
 /// resolve time with all primitives available.
 /// </para>
 /// </remarks>
-public class CoreSchemaSeedService : IHostedService
+internal sealed class CoreSchemaSeedService : IHostedService
 {
     private readonly ICoreSchemaRepository _repository;
     private readonly ILogger<CoreSchemaSeedService> _logger;
@@ -114,11 +114,30 @@ public class CoreSchemaSeedService : IHostedService
     /// so unit tests can reach it with handcrafted <see cref="JsonNode"/>
     /// trees without round-tripping to disk.
     /// </summary>
+    internal const string RequiredSchemaDialect = "https://json-schema.org/draft/2020-12/schema";
+
     internal static void ValidatePrimitive(JsonNode node, string fileName)
     {
         if (node is not JsonObject obj)
             throw new InvalidOperationException(
                 $"{Path.GetFileName(fileName)}: top-level value must be a JSON object");
+
+        // Rule 0: $schema dialect must be draft-2020-12. A primitive
+        // accidentally written against a different dialect (e.g. draft-7 with
+        // `exclusiveMaximum: true`) would load successfully but silently
+        // mis-validate at runtime. Fail loud at load time instead.
+        var schemaNode = obj["$schema"];
+        if (schemaNode is null)
+        {
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(fileName)}: missing '$schema' — all core primitives must declare '$schema': '{RequiredSchemaDialect}'");
+        }
+        var schemaDialect = schemaNode.GetValue<string>();
+        if (!string.Equals(schemaDialect, RequiredSchemaDialect, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(fileName)}: '$schema' must be '{RequiredSchemaDialect}' (got '{schemaDialect}')");
+        }
 
         // Rule 1: $id present and well-prefixed
         var idNode = obj["$id"]

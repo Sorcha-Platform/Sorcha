@@ -37,6 +37,28 @@ public class CoreSchemaSeedServiceTests
     }
 
     [Fact]
+    public void Validate_MissingSchemaDialect_Throws()
+    {
+        var node = BuildValidPrimitive("PostalAddress", "v1");
+        ((JsonObject)node).Remove("$schema");
+
+        var act = () => CoreSchemaSeedService.ValidatePrimitive(node, "PostalAddress.v1.json");
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*missing '$schema'*");
+    }
+
+    [Fact]
+    public void Validate_WrongSchemaDialect_Throws()
+    {
+        var node = BuildValidPrimitive("PostalAddress", "v1");
+        ((JsonObject)node)["$schema"] = "http://json-schema.org/draft-07/schema#";
+
+        var act = () => CoreSchemaSeedService.ValidatePrimitive(node, "PostalAddress.v1.json");
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*'$schema' must be*");
+    }
+
+    [Fact]
     public void Validate_MissingId_Throws()
     {
         var node = BuildValidPrimitive("PersonName", "v1");
@@ -218,6 +240,7 @@ public class CoreSchemaSeedServiceTests
         return new JsonObject
         {
             ["$id"] = $"https://schemas.sorcha.dev/core/{name}/{version}",
+            ["$schema"] = "https://json-schema.org/draft/2020-12/schema",
             ["type"] = "object",
             ["title"] = "Test Title",
             ["properties"] = new JsonObject
