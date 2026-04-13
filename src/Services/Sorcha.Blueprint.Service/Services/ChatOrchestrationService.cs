@@ -229,6 +229,15 @@ public class ChatOrchestrationService : IChatOrchestrationService
         - First page: eligibility questions; routing on this action can route ineligible applicants to a terminal "Not Eligible" action
         - Final page: "Check Your Answers" — no new fields, signals a summary view to the renderer
         - Suggest `instanceReference` here — the generated reference becomes the citizen's application number
+        - **Leave the Applicant participant's `walletAddress` unset.** `IsStartingAction` is the "open" flag end-to-end: any wallet may submit, the runtime binds the first sender to the Applicant role on the Instance, and that binding is immutable for the rest of the workflow. Pre-binding a wallet at publish time defeats the open contract and rejects every real public submitter.
+        - **For credential-bootstrapped flows** (e.g. a Driving Licence application that requires a Verified Citizen credential), put the gate on the starting action's `credentialRequirements` — do NOT invent a new flag and do NOT pre-bind the participant. The HAIP presentation pipeline runs before late-binding, so the first holder of a valid credential becomes the bound applicant. Use this pattern whenever an existing credential should "bootstrap" a service rather than re-collecting identity from scratch.
+        - **Reuse Sorcha core schema components for identity primitives.** When the citizen needs to provide their name, date of birth, email, or postal address, prefer `$ref` to the published core component over inlining the JSON Schema:
+          - `https://schemas.sorcha.dev/core/PersonName/v1` — given/middle/family/full name
+          - `https://schemas.sorcha.dev/core/DateOfBirth/v1` — date with `formatMaximum: "today"`
+          - `https://schemas.sorcha.dev/core/EmailAddress/v1` — single email
+          - `https://schemas.sorcha.dev/core/EmailAddressList/v1` — multi-email with default
+          - `https://schemas.sorcha.dev/core/PostalAddress/v1` — postal address with built-in postcode lookup
+          The components carry their own validation, layout, persona-autofill bindings, and (for postcode) address-lookup behaviour. The blueprint stays short and focused on the *novel* fields it actually owns, and the user gets the same beautiful form UX across every service. Do NOT inline `givenName` / `dateOfBirth` / `email` / postal address shapes when a core component exists.
 
         **Action 2 — Case Officer Review** (sender: CaseOfficer)
         - A new action because a different participant is now acting

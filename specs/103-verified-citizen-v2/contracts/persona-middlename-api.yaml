@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Persona API — middleName delta
+  version: "1.1.0"
+  description: |
+    Delta documentation for the existing Persona API (Feature 092 — Consumer Persona).
+    This feature adds an optional `middleName` field to `PersonaAttributesV1` so that
+    the new `PersonName/v1` identity primitive can autofill it.
+
+    The full Persona API contract is owned by Feature 092; only the changed shape is
+    documented here. No new endpoints are introduced — the change is a non-destructive
+    field addition to the existing `PUT /me/persona` request body and `GET /me/persona`
+    response body.
+
+paths:
+  /me/persona:
+    put:
+      summary: "[unchanged endpoint] Replace the current user's persona profile"
+      description: |
+        Existing endpoint. The only change in this feature is that the request DTO
+        `PersonaAttributesV1` now accepts an optional `middleName` field. Existing
+        callers that omit the field continue to work; the persona is upserted with
+        `middleName = null`.
+      operationId: putMyPersona
+      tags: [Persona]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonaAttributesV1'
+      responses:
+        '204':
+          description: Persona replaced
+
+    get:
+      summary: "[unchanged endpoint] Read the current user's persona profile"
+      description: |
+        Existing endpoint. The response shape now includes the optional `middleName`
+        field via the read-side wire model. Existing clients that do not know about
+        `middleName` will simply ignore it.
+      operationId: getMyPersona
+      tags: [Persona]
+      responses:
+        '200':
+          description: Persona profile (returns empty for new users — never 404)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonaReadModelV1'
+
+components:
+  schemas:
+    PersonaAttributesV1:
+      type: object
+      description: |
+        Full persona payload. Only the fields touched by this feature are documented
+        in detail; see Feature 092 for the complete shape.
+      properties:
+        givenName:
+          type: string
+          maxLength: 100
+        middleName:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: |
+            **NEW IN THIS FEATURE.** Optional middle name. Used by the `PersonName/v1`
+            identity primitive for autofill. Existing personas have `null` until the
+            citizen sets it.
+        familyName:
+          type: string
+          maxLength: 100
+        fullName:
+          type: string
+          maxLength: 200
+          nullable: true
+        dateOfBirth:
+          type: string
+          format: date
+          nullable: true
+        emails:
+          type: array
+          maxItems: 5
+          items:
+            type: object
+            properties:
+              email:
+                type: string
+                format: email
+              isDefault:
+                type: boolean
+        phones:
+          type: array
+          maxItems: 5
+        addresses:
+          type: array
+          maxItems: 5
+        nationalities:
+          type: array
+          maxItems: 5
+
+    PersonaReadModelV1:
+      type: object
+      description: |
+        Wire shape returned by GET. Each multi-value attribute has a `Default*` and
+        `All*` pair. Each value is wrapped in `PersonaAttribute<T>` carrying provenance.
+        Only fields touched by this feature are documented in detail.
+      properties:
+        givenName:
+          $ref: '#/components/schemas/PersonaAttributeOfString'
+        middleName:
+          $ref: '#/components/schemas/PersonaAttributeOfString'
+          description: |
+            **NEW IN THIS FEATURE.** Returned as a wrapped attribute alongside givenName
+            and familyName. May be null when the persona has not set a middle name.
+        familyName:
+          $ref: '#/components/schemas/PersonaAttributeOfString'
+        # ... other fields elided — owned by Feature 092
+
+    PersonaAttributeOfString:
+      type: object
+      nullable: true
+      properties:
+        value:
+          type: string
+        source:
+          type: string
+          enum: [SelfAsserted, VerifiedCredential]
+        verifiedBy:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          format: date-time

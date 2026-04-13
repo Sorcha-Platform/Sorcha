@@ -47,8 +47,33 @@ public class Participant : IEquatable<Participant>
     public string Organisation { get; set; } = string.Empty;
 
     /// <summary>
-    /// Wallet address of the participant (optional — resolved dynamically at execution time when absent)
+    /// Wallet address of the participant. Optional — when absent, the participant is
+    /// resolved dynamically at execution time via the late-binding block in
+    /// <c>ActionExecutionService.cs:309-332</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MUST be null for open participants.</b> A participant referenced as
+    /// <see cref="Action.Sender"/> of any action with <see cref="Action.IsStartingAction"/>
+    /// set to <c>true</c> MUST leave this property null in the published blueprint.
+    /// The publish-time guardrail <c>VAL_BP_010</c> (defined as
+    /// <c>Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
+    /// rejects publication otherwise.
+    /// </para>
+    /// <para>
+    /// Pre-baking a wallet here is a well-known foot-gun: the strict equality check
+    /// at <c>ActionExecutionService.cs:196-216</c> fires only when this property is
+    /// non-null, which then rejects every real public submitter with a misleading
+    /// "wallet not authorized" error. The fix is always to leave this property null
+    /// and let the runtime bind the first sender.
+    /// </para>
+    /// <para>
+    /// For closed / pre-registered participants (e.g. a government assessor,
+    /// a council officer, an internal reviewer), setting this property is the
+    /// correct shape — the strict equality check enforces that only that wallet
+    /// may submit the action.
+    /// </para>
+    /// </remarks>
     [DataAnnotations.MaxLength(100)]
     [JsonPropertyName("walletAddress")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

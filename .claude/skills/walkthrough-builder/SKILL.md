@@ -89,6 +89,38 @@ Publish-SorchaBlueprint -TemplatePath "./my-template.json" -WalletMap $walletMap
 $state | ConvertTo-Json -Depth 10 | Set-Content "state.json"
 ```
 
+#### Foot-gun: do NOT include open participants in `$walletMap`
+
+If the blueprint has a participant that is the sender of an `isStartingAction: true` action (a citizen, applicant, public submitter, etc.), that participant is **late-bound** at runtime — its `walletAddress` MUST be null in the published blueprint, and your `$walletMap` MUST NOT contain an entry for it.
+
+Including an open participant in `$walletMap` causes `Publish-SorchaBlueprint` to bake a `walletAddress` into the blueprint, which trips the strict equality check at `ActionExecutionService.cs:196-216` and rejects every real public submitter with:
+
+> `Wallet X is not authorized to execute action 1. This action requires participant 'citizen' with wallet 'Y'.`
+
+The error points at the wallet, not at the cause. The cause is your `$walletMap`.
+
+**Correct shape for HaipVerifiedCitizen-style walkthroughs:**
+
+```powershell
+# citizen is late-bound — DO NOT add it
+$walletMap = @{
+    assessor = $assessorWallet.Address
+    # citizen is intentionally absent
+}
+```
+
+**Correct shape for credential-bootstrapped flows (HaipDrivingLicence-style):**
+
+```powershell
+# applicant is late-bound by whoever presents a valid VerifiedCitizenCredential
+$walletMap = @{
+    council = $councilWallet.Address
+    # applicant is intentionally absent
+}
+```
+
+See the `blueprint-builder` skill's "Open Participants & Late Binding" section for the full contract. The publish-time guardrail (landing in the Verified Citizen v2 PR) will turn this from a runtime mystery into a publish error, but the shape rule still applies forever after.
+
 ### Step 3: Create Actor Definitions
 
 One JSON file per participant in `actors/`:

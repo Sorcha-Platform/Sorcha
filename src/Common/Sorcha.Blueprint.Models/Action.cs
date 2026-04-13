@@ -186,6 +186,32 @@ public class Action
     /// Whether this is a starting action that can initiate a workflow instance.
     /// At least one action in a blueprint must be a starting action.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Open-participant contract.</b> When this flag is <c>true</c>, the action is
+    /// <i>open</i>: any authenticated wallet may submit it, and the first qualifying
+    /// submitter is late-bound to the <see cref="Sender"/> participant for the life of
+    /// the instance (immutable re-binding thereafter). This is how citizen-facing
+    /// services accept a walk-in public user as the applicant without requiring a
+    /// pre-existing participant record.
+    /// </para>
+    /// <para>
+    /// <b>Author rule.</b> The participant referenced by <see cref="Sender"/> on a
+    /// starting action MUST have <see cref="Participant.WalletAddress"/> set to
+    /// <c>null</c> in the published blueprint. The publish-time guardrail
+    /// <c>VAL_BP_010</c> (defined as
+    /// <c>Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound</c>)
+    /// rejects publication otherwise.
+    /// </para>
+    /// <para>
+    /// See <c>ValidationEngine.cs:1027</c> (validator skips strict wallet check),
+    /// <c>ActionExecutionService.cs:297</c> (starting-action chain anchor), and
+    /// <c>ActionExecutionService.cs:309-332</c> (late-bind block that records the
+    /// binding on the Instance). Authoritative documentation:
+    /// <c>.claude/skills/blueprint-builder/SKILL.md</c> — "Open Participants &amp;
+    /// Late Binding".
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("isStartingAction")]
     public bool IsStartingAction { get; set; } = false;
 

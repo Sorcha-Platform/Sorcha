@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Address Lookup API
+  version: "1.0.0"
+  description: |
+    Postcode-driven address validation and autocomplete for Sorcha-built citizen-facing
+    services. Hosted in Tenant Service. Supports a pluggable provider abstraction with
+    graceful degradation: when no provider is configured for the user's country, the
+    form renderer falls back to plain text input.
+
+    All endpoints are auth-gated to public-org users (the form is only reached after
+    public-org sign-in) and rate-limited per user via the standard API rate limit
+    policy.
+
+servers:
+  - url: https://gateway.sorcha.dev/api/address-lookup
+    description: Production via API Gateway
+
+security:
+  - bearerAuth: []
+
+paths:
+  /postcode:
+    post:
+      summary: Look up a postcode and return validation metadata or full-address candidates
+      description: |
+        Accepts a postcode and an optional country hint. The platform selects the
+        most capable available provider for the country and returns either:
+        - **ValidateOnly** result: postcode validity + town/region/lat-long metadata
+        - **FullAddress** result: a list of address candidates the user can pick from
+
+        If no provider is available for the country, returns 200 with `isValid: false`
+        and `provider: "none"` so the renderer falls back to plain text input.
+      operationId: lookupPostcode
+      tags: [AddressLookup]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostcodeLookupRequest'
+      responses:
+        '200':
+          description: Lookup result (success or graceful-degradation result)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressLookupResult'
+        '400':
+          description: Invalid request (malformed postcode, missing field)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Not authenticated
+        '429':
+          description: Rate limit exceeded for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /providers:
+    get:
+      summary: List configured address lookup providers and their capabilities
+      description: |
+        Used by the form renderer to decide which control to show for an
+        x-address-lookup field. The renderer picks the most capable available
+        provider for the user's country, falling back through capability tiers
+        and finally to plain text.
+      operationId: listProviders
+      tags: [AddressLookup]
+      responses:
+        '200':
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AddressLookupProviderInfo'
+        '401':
+          description: Not authenticated
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PostcodeLookupRequest:
+      type: object
+      required: [postcode]
+      properties:
+        postcode:
+          type: string
+          minLength: 3
+          maxLength: 12
+          description: The postcode to look up. Whitespace and case are normalised by the platform.
+          example: "EH1 1YZ"
+        countryHint:
+          type: string
+          minLength: 2
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: ISO 3166-1 alpha-2 country code. Defaults to "GB" if omitted.
+          example: "GB"
+
+    AddressLookupResult:
+      type: object
+      required: [postcode, isValid, provider, capability]
+      properties:
+        postcode:
+          type: string
+          description: Normalised postcode
+          example: "EH1 1YZ"
+        isValid:
+          type: boolean
+          description: True iff the postcode is recognised by the provider. False when graceful degradation kicks in.
+        provider:
+          type: string
+          description: Provider name, or "none" when no provider was available
+          example: "postcodes.io"
+        capability:
+          $ref: '#/components/schemas/AddressLookupCapability'
+        metadata:
+          type: object
+          description: Validate-only metadata (present when capability is ValidateOnly)
+          properties:
+            town:
+              type: string
+              example: "Edinburgh"
+            region:
+              type: string
+              example: "Scotland"
+            country:
+              type: string
+              example: "GB"
+            latitude:
+              type: number
+              format: double
+            longitude:
+              type: number
+              format: double
+        candidates:
+          type: array
+          description: Full address candidates (present when capability is FullAddress)
+          items:
+            $ref: '#/components/schemas/AddressCandidate'
+
+    AddressCandidate:
+      type: object
+      required: [line1, town, postcode, country, displayLabel]
+      properties:
+        line1:
+          type: string
+          example: "EH1 House, 1 Royal Mile"
+        line2:
+          type: string
+          example: "Flat 4"
+        town:
+          type: string
+          example: "Edinburgh"
+        region:
+          type: string
+          example: "Midlothian"
+        postcode:
+          type: string
+          example: "EH1 1YZ"
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          example: "GB"
+        displayLabel:
+          type: string
+          description: Human-readable label for the picker UI
+          example: "Flat 4, EH1 House, 1 Royal Mile, Edinburgh, EH1 1YZ"
+
+    AddressLookupCapability:
+      type: string
+      enum: [ValidateOnly, FullAddress]
+      description: |
+        - **ValidateOnly**: provider can confirm postcode validity and return town/region metadata
+        - **FullAddress**: provider can return a list of full street addresses for the postcode
+
+    AddressLookupProviderInfo:
+      type: object
+      required: [name, capability, supportedCountries, available]
+      properties:
+        name:
+          type: string
+          example: "postcodes.io"
+        capability:
+          $ref: '#/components/schemas/AddressLookupCapability'
+        supportedCountries:
+          type: array
+          items:
+            type: string
+            pattern: '^[A-Z]{2}$'
+          example: ["GB"]
+        available:
+          type: boolean
+          description: Result of the most recent provider health check
+
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string

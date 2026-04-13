@@ -187,15 +187,23 @@ if (-not $idState.citizenWalletAddress) {
     exit 1
 }
 
+# Open-participant contract: the 'applicant' participant is the sender of
+# an isStartingAction: true action and therefore MUST NOT appear in the
+# wallet map. The runtime late-binds whichever wallet presents a valid
+# VerifiedCitizenCredential via HAIP — the credential requirement is the
+# gate. Pre-baking a wallet here defeats the late-binding contract and
+# produces a misleading "wallet not authorized" error at submission time.
+#
+# The applicant will still be the same citizen from HaipVerifiedCitizen in
+# practice, because that citizen holds the VerifiedCitizenCredential the
+# action requires; the difference is that the binding happens at runtime
+# via credential presentation rather than at publish time.
+#
+# See: .claude/skills/blueprint-builder/SKILL.md — "Open Participants & Late Binding"
+#      ActionExecutionService.cs:218-269 (credential gate) + 309-332 (late-bind)
 $walletMap = @{
-    "council"   = $councilWallet.Address
-    # The applicant is the same citizen from HaipVerifiedCitizen. Using
-    # their actual wallet (not a placeholder of the council wallet) means
-    # Action 1 of the licence blueprint is correctly signed by the citizen
-    # under their own user token in run.ps1, and the in-platform audit trail
-    # ties the application back to the real applicant. The licence credential
-    # itself is still delivered to their EXTERNAL HAIP wallet via QR.
-    "applicant" = $idState.citizenWalletAddress
+    "council" = $councilWallet.Address
+    # "applicant" is intentionally absent — late-bound via HAIP credential presentation.
 }
 
 $blueprint = Publish-SorchaBlueprint `

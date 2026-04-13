@@ -247,9 +247,19 @@ try {
 # ============================================================================
 Write-WtStep "Step 8: Publish Blueprint"
 
+# Open-participant contract: the 'citizen' participant is the sender of an
+# isStartingAction: true action and therefore MUST NOT appear in the wallet
+# map. The runtime late-binds whichever authenticated public-org user
+# submits Action 1 as the bound citizen for that instance. Pre-baking a
+# wallet here defeats the late-binding contract and produces a misleading
+# "wallet not authorized" error at submission time.
+#
+# See: .claude/skills/blueprint-builder/SKILL.md — "Open Participants & Late Binding"
+#      ActionExecutionService.cs:309-332 (late-bind block)
+#      specs/103-verified-citizen-v2/contracts/validator-publish-errors.md (VAL_BP_010)
 $walletMap = @{
     "government-assessor" = $govWallet.Address
-    "citizen"             = $citizenWallet.Address
+    # "citizen" is intentionally absent — late-bound at runtime.
 }
 
 $blueprint = Publish-SorchaBlueprint `

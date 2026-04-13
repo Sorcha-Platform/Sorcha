@@ -1,4 +1,4 @@
-﻿# Sorcha
+# Sorcha
 
 A decentralised register platform for secure, multi-participant data flow orchestration built on .NET 10 and .NET Aspire.
 
@@ -641,6 +641,26 @@ builder.AddRateLimiting();
 ```
 
 Default values are very relaxed (100k/min) for pre-release development. Tighten in `appsettings.Production.json`. Inject `IOptions<RateLimitSettings>` for non-HTTP rate limiting (e.g. wallet notifications, MCP server).
+
+### 9. Open Participants & Late Binding
+
+Citizen-facing services accept a walk-in public user as the applicant without requiring a pre-existing participant record. The contract lives in three places and must be honoured end-to-end:
+
+1. `Action.IsStartingAction = true` is the **open** flag. Any authenticated wallet may submit; the first qualifying submitter is late-bound to the action's `Sender` participant for the life of the instance. Re-binding is immutable — a second submission from a different wallet throws.
+2. The participant referenced by `Action.Sender` on a starting action MUST have `Participant.WalletAddress = null` in the published blueprint. Pre-baking a wallet is the foot-gun the publish-time guardrail **`VAL_BP_010`** exists to catch.
+3. Walkthrough authors MUST NOT include open participants in their `$walletMap`. The correct shape is to omit the citizen/applicant entry entirely and let the runtime late-bind.
+
+```powershell
+# CORRECT shape for citizen-facing walkthroughs:
+$walletMap = @{
+    "government-assessor" = $assessorWallet.Address
+    # "citizen" is intentionally absent — late-bound at runtime
+}
+```
+
+Credential-bootstrapped flows (e.g. Driving Licence requiring a Verified Citizen credential) layer `credentialRequirements` on the open starting action — the HAIP presentation gate fires *before* the late-bind block, so only credential holders become the bound applicant.
+
+Runtime source: `ValidationEngine.cs:1027` (validator skips strict wallet check for starting actions), `ActionExecutionService.cs:196-216` (strict check fires only when `WalletAddress` non-null), `ActionExecutionService.cs:309-332` (late-bind block, persisted via `IInstanceStore.UpdateAsync`). Authoritative documentation: `.claude/skills/blueprint-builder/SKILL.md` → "Open Participants & Late Binding" section. Feature design: `specs/103-verified-citizen-v2/`.
 
 ---
 
