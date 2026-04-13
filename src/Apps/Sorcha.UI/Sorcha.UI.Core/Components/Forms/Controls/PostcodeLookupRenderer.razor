@@ -175,7 +175,11 @@
 
     public void Dispose()
     {
-        try { _cts.Cancel(); } catch { /* ignored */ }
+        // CancellationTokenSource.Cancel() throws ObjectDisposedException
+        // if Dispose() was called concurrently from another path. Narrow
+        // the catch so unrelated bugs aren't swallowed.
+        try { _cts.Cancel(); }
+        catch (ObjectDisposedException) { /* already disposed */ }
         _cts.Dispose();
     }
 
@@ -234,6 +238,7 @@
             {
                 Logger.LogDebug("Address lookup returned {Status}", (int)response.StatusCode);
                 _candidates = null;
+                _metadataHint = null;
                 return;
             }
 
@@ -265,11 +270,13 @@
         {
             // Component disposed mid-flight — no-op.
             _candidates = null;
+            _metadataHint = null;
         }
         catch (Exception ex)
         {
             Logger.LogDebug(ex, "Address lookup request failed");
             _candidates = null;
+            _metadataHint = null;
         }
         finally
         {

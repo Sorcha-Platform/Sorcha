@@ -101,7 +101,7 @@ public class BuildClaimsFromMappingsTests
             x => x.Log(
                 LogLevel.Warning,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("/notThere") && v.ToString()!.Contains("missing")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("/notThere") && v.ToString()!.Contains("missing") && v.ToString()!.Contains("no value")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);

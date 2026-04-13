@@ -1321,8 +1321,14 @@ public class ActionExecutionService : IActionExecutionService
             }
             else
             {
+                // Note: the walker treats both "key missing" and "key present
+                // with null value" as unresolvable. The log message uses the
+                // neutral "no value at" phrasing so it's accurate for both
+                // cases. A null optional field (e.g. middleName) will produce
+                // this warning and a credential without that claim, which is
+                // the correct behaviour for issuance.
                 logger.LogWarning(
-                    "Claim mapping source '{SourceField}' not found in action data; dropping claim '{ClaimName}' from credential",
+                    "Claim mapping source '{SourceField}' has no value in action data; dropping claim '{ClaimName}' from credential",
                     mapping.SourceField, mapping.ClaimName);
             }
         }
@@ -1342,6 +1348,14 @@ public class ActionExecutionService : IActionExecutionService
     /// because the pointer walk of a single segment degenerates to a
     /// top-level lookup. RFC 6901 escape sequences (<c>~1</c> → <c>/</c>,
     /// <c>~0</c> → <c>~</c>) are unescaped per segment. Feature 103 US2/US4.
+    ///
+    /// <para><b>Deviations from RFC 6901:</b> the empty pointer <c>""</c>
+    /// (whole document) and the single-slash pointer <c>"/"</c> (key
+    /// <c>""</c>) are both treated as unresolvable and return <c>false</c>.
+    /// Neither has a use case for credential claim mapping, and conflating
+    /// them is the simpler contract for the call sites. Explicit-null
+    /// values are also treated as unresolvable so the issuance path drops
+    /// the claim rather than emitting a credential with a null attribute.</para>
     /// </remarks>
     internal static bool TryResolveJsonPointer(
         IReadOnlyDictionary<string, object?> root,
