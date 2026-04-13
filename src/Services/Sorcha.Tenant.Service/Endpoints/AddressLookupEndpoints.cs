@@ -60,6 +60,11 @@ public static class AddressLookupEndpoints
     }
 
     /// <summary>Request body for <c>POST /api/address-lookup/postcode</c>.</summary>
+    /// <remarks>
+    /// DataAnnotations on request bodies are NOT auto-enforced by Minimal APIs in
+    /// .NET 10, so the attributes below are documentation-and-OpenAPI-only. The
+    /// handler applies the same rules manually before calling the service.
+    /// </remarks>
     public sealed class PostcodeLookupRequest
     {
         /// <summary>The postcode to look up. Whitespace and case are normalised by the platform.</summary>
@@ -67,9 +72,9 @@ public static class AddressLookupEndpoints
         [StringLength(12, MinimumLength = 3)]
         public string Postcode { get; set; } = string.Empty;
 
-        /// <summary>Optional ISO 3166-1 alpha-2 country code. Defaults to GB when omitted.</summary>
+        /// <summary>Optional ISO 3166-1 alpha-2 country code. Defaults to GB when omitted. Case-insensitive — normalised to uppercase before selection.</summary>
         [StringLength(2, MinimumLength = 2)]
-        [RegularExpression("^[A-Z]{2}$")]
+        [RegularExpression("^[A-Za-z]{2}$")]
         public string? CountryHint { get; set; }
     }
 
@@ -78,15 +83,32 @@ public static class AddressLookupEndpoints
         AddressLookupService lookupService,
         CancellationToken cancellationToken)
     {
+        // Manual validation — Minimal APIs don't run DataAnnotations on request
+        // bodies automatically. Keep this in sync with the attributes on
+        // PostcodeLookupRequest above.
+        var errors = new Dictionary<string, string[]>();
+
         if (request is null || string.IsNullOrWhiteSpace(request.Postcode))
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["postcode"] = ["Postcode is required."]
-            });
+            errors["postcode"] = ["Postcode is required."];
+        }
+        else if (request.Postcode.Length is < 3 or > 12)
+        {
+            errors["postcode"] = ["Postcode length must be between 3 and 12 characters."];
         }
 
-        var result = await lookupService.LookupAsync(request.Postcode, request.CountryHint, cancellationToken);
+        var normalisedCountry = request?.CountryHint?.ToUpperInvariant();
+        if (normalisedCountry is not null && !System.Text.RegularExpressions.Regex.IsMatch(normalisedCountry, "^[A-Z]{2}$"))
+        {
+            errors["countryHint"] = ["CountryHint must be a 2-letter ISO 3166-1 alpha-2 code."];
+        }
+
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
+        var result = await lookupService.LookupAsync(request!.Postcode, normalisedCountry, cancellationToken);
         return Results.Ok(result);
     }
 

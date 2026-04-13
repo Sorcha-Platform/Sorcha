@@ -36,12 +36,16 @@ public sealed class PostcodesIoProvider : IAddressLookupProvider
     private static readonly string[] UkOnly = ["GB"];
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        PropertyNameCaseInsensitive = true
     };
+
+    private static readonly TimeSpan HealthCheckTtl = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<PostcodesIoProvider> _logger;
+    private readonly object _healthLock = new();
+    private DateTimeOffset _healthCheckedAt = DateTimeOffset.MinValue;
+    private bool _healthCachedValue;
 
     /// <summary>Initialises a new instance of the <see cref="PostcodesIoProvider"/> class.</summary>
     public PostcodesIoProvider(HttpClient httpClient, ILogger<PostcodesIoProvider> logger)
@@ -62,19 +66,35 @@ public sealed class PostcodesIoProvider : IAddressLookupProvider
     /// <inheritdoc />
     public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
     {
+        // TTL-cached result — the upstream API is hit at most once per
+        // HealthCheckTtl regardless of how many lookups happen in the window.
+        lock (_healthLock)
+        {
+            if (DateTimeOffset.UtcNow - _healthCheckedAt < HealthCheckTtl)
+            {
+                return _healthCachedValue;
+            }
+        }
+
+        bool result;
         try
         {
-            // Lightweight reachability check — postcodes.io supports
-            // /postcodes/{postcode}/validate which returns a single boolean.
             using var response = await _httpClient.GetAsync(
                 "postcodes/SW1A%201AA/validate", cancellationToken);
-            return response.IsSuccessStatusCode;
+            result = response.IsSuccessStatusCode;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogDebug(ex, "postcodes.io health check failed");
-            return false;
+            result = false;
         }
+
+        lock (_healthLock)
+        {
+            _healthCachedValue = result;
+            _healthCheckedAt = DateTimeOffset.UtcNow;
+        }
+        return result;
     }
 
     /// <inheritdoc />

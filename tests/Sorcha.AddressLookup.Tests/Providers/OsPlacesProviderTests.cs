@@ -90,7 +90,7 @@ public class OsPlacesProviderTests
     }
 
     [Fact]
-    public async Task LookupAsync_PropagatesApiKeyInQueryString()
+    public async Task LookupAsync_SendsApiKeyAsHeaderNotQueryString()
     {
         var handler = FakeHttpMessageHandler.Json(HttpStatusCode.OK, ValidResponse);
         var sut = NewSut(handler);
@@ -99,8 +99,11 @@ public class OsPlacesProviderTests
 
         handler.LastRequest.Should().NotBeNull();
         var url = handler.LastRequest!.RequestUri!.ToString();
-        url.Should().Contain($"key={TestApiKey}");
         url.Should().Contain("postcode=");
+        url.Should().NotContain("key=", "API key must not appear in the URL — use request header to keep it out of access logs");
+
+        handler.LastRequest.Headers.Should().Contain(h => h.Key == "key");
+        handler.LastRequest.Headers.GetValues("key").Should().ContainSingle().Which.Should().Be(TestApiKey);
     }
 
     [Fact]

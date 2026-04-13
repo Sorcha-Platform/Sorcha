@@ -33,11 +33,15 @@ public sealed class OsPlacesProvider : IAddressLookupProvider
     public const string HttpClientName = "Sorcha.AddressLookup.OsPlaces";
 
     private static readonly string[] UkOnly = ["GB"];
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOptions = new();
+    private static readonly TimeSpan HealthCheckTtl = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _httpClient;
     private readonly OsPlacesOptions _options;
     private readonly ILogger<OsPlacesProvider> _logger;
+    private readonly object _healthLock = new();
+    private DateTimeOffset _healthCheckedAt = DateTimeOffset.MinValue;
+    private bool _healthCachedValue;
 
     /// <summary>Initialises a new instance of the <see cref="OsPlacesProvider"/> class.</summary>
     public OsPlacesProvider(
@@ -55,6 +59,14 @@ public sealed class OsPlacesProvider : IAddressLookupProvider
                 $"{nameof(OsPlacesProvider)} requires an API key at '{OsPlacesOptions.SectionName}:ApiKey'. " +
                 "Do not register this provider when the key is absent — rely on the DI extension's key-presence check.");
         }
+
+        // Send the API key as a header rather than a query string parameter to
+        // keep it out of structured logs (gateway, load balancer, upstream
+        // access logs). OS Places accepts the key via either transport.
+        if (!_httpClient.DefaultRequestHeaders.Contains("key"))
+        {
+            _httpClient.DefaultRequestHeaders.Add("key", _options.ApiKey);
+        }
     }
 
     /// <inheritdoc />
@@ -69,19 +81,34 @@ public sealed class OsPlacesProvider : IAddressLookupProvider
     /// <inheritdoc />
     public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
     {
-        // A lightweight reachability check. OS Places doesn't expose a formal
-        // health endpoint, so we probe the postcode endpoint with a well-known
-        // valid postcode. A 2xx response = available; anything else = degraded.
+        // TTL-cached result — see PostcodesIoProvider for rationale. OS Places
+        // enforces a rate limit so caching health probes is especially important.
+        lock (_healthLock)
+        {
+            if (DateTimeOffset.UtcNow - _healthCheckedAt < HealthCheckTtl)
+            {
+                return _healthCachedValue;
+            }
+        }
+
+        bool result;
         try
         {
             using var response = await GetPostcodeAsync("SW1A 1AA", cancellationToken);
-            return response.IsSuccessStatusCode;
+            result = response.IsSuccessStatusCode;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogDebug(ex, "OS Places health check failed");
-            return false;
+            result = false;
         }
+
+        lock (_healthLock)
+        {
+            _healthCachedValue = result;
+            _healthCheckedAt = DateTimeOffset.UtcNow;
+        }
+        return result;
     }
 
     /// <inheritdoc />
@@ -159,7 +186,9 @@ public sealed class OsPlacesProvider : IAddressLookupProvider
 
     private Task<HttpResponseMessage> GetPostcodeAsync(string normalisedPostcode, CancellationToken ct)
     {
-        var url = $"postcode?postcode={Uri.EscapeDataString(normalisedPostcode)}&key={Uri.EscapeDataString(_options.ApiKey!)}";
+        // API key travels in the default request header (set in the constructor)
+        // so it never appears in access logs, reverse-proxy logs, or browser history.
+        var url = $"postcode?postcode={Uri.EscapeDataString(normalisedPostcode)}";
         return _httpClient.GetAsync(url, ct);
     }
 

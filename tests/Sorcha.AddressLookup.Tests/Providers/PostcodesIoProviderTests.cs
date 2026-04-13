@@ -130,4 +130,24 @@ public class PostcodesIoProviderTests
 
         available.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task IsAvailableAsync_RepeatedCallsWithinTtl_HitUpstreamOnlyOnce()
+    {
+        // The health check has a 30s TTL — repeated calls inside the window
+        // must reuse the cached result and NOT issue more HTTP probes. This
+        // is load-bearing for production: every postcode lookup goes through
+        // SelectProviderAsync which calls IsAvailableAsync first.
+        var handler = FakeHttpMessageHandler.Status(HttpStatusCode.OK);
+        var sut = NewSut(handler);
+
+        var first = await sut.IsAvailableAsync();
+        var second = await sut.IsAvailableAsync();
+        var third = await sut.IsAvailableAsync();
+
+        first.Should().BeTrue();
+        second.Should().BeTrue();
+        third.Should().BeTrue();
+        handler.CallCount.Should().Be(1, "health check is cached for 30s");
+    }
 }

@@ -50,16 +50,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAddressLookupProvider>(sp =>
             sp.GetRequiredService<PostcodesIoProvider>());
 
-        // Opt-in OS Places provider (requires API key).
-        services.Configure<OsPlacesOptions>(configuration.GetSection(OsPlacesOptions.SectionName));
+        // Opt-in OS Places provider (requires API key). Bind once into a
+        // local OsPlacesOptions so we make a single logical read of the section.
         var osPlacesSection = configuration.GetSection(OsPlacesOptions.SectionName);
-        var osPlacesApiKey = osPlacesSection["ApiKey"];
-        if (!string.IsNullOrWhiteSpace(osPlacesApiKey))
+        services.Configure<OsPlacesOptions>(osPlacesSection);
+        var osPlacesOptions = osPlacesSection.Get<OsPlacesOptions>() ?? new OsPlacesOptions();
+        if (!string.IsNullOrWhiteSpace(osPlacesOptions.ApiKey))
         {
-            var baseUrl = osPlacesSection["BaseUrl"] ?? "https://api.os.uk/search/places/v1/";
             services.AddHttpClient<OsPlacesProvider>(client =>
             {
-                client.BaseAddress = new Uri(baseUrl);
+                client.BaseAddress = new Uri(osPlacesOptions.BaseUrl);
                 client.Timeout = TimeSpan.FromSeconds(10);
             });
             services.AddSingleton<IAddressLookupProvider>(sp =>
