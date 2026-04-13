@@ -177,6 +177,40 @@ public class CoreSchemaSeedServiceTests
         all.Keys.Should().Contain(new[] { "a", "b" });
     }
 
+    [Fact]
+    public void Repository_Upsert_IsIdempotentAndLatestWins()
+    {
+        // Idempotency is load-bearing: the seed service re-runs on every
+        // startup and a second run must not duplicate entries. Last write wins.
+        var repo = new InMemoryCoreSchemaRepository();
+        var key = "https://schemas.sorcha.dev/core/PostalAddress/v1";
+
+        var first = BuildValidPrimitive("PostalAddress", "v1");
+        ((JsonObject)first)["description"] = "first";
+        repo.Upsert(key, first);
+
+        var second = BuildValidPrimitive("PostalAddress", "v1");
+        ((JsonObject)second)["description"] = "second";
+        repo.Upsert(key, second);
+
+        repo.GetAll().Count.Should().Be(1, "upsert must not duplicate entries on re-run");
+        repo.Get(key)!["description"]!.GetValue<string>().Should().Be("second", "last write wins");
+    }
+
+    [Fact]
+    public void Repository_Get_IsCaseSensitive()
+    {
+        // Per RFC 3986, JSON Schema $id URIs are case-sensitive. A wrong-case
+        // reference MUST miss rather than silently hit a near-match primitive.
+        var repo = new InMemoryCoreSchemaRepository();
+        var canonical = "https://schemas.sorcha.dev/core/PostalAddress/v1";
+        repo.Upsert(canonical, BuildValidPrimitive("PostalAddress", "v1"));
+
+        repo.Get(canonical).Should().NotBeNull();
+        repo.Get("https://schemas.sorcha.dev/core/postaladdress/v1").Should().BeNull();
+        repo.Get("HTTPS://SCHEMAS.SORCHA.DEV/CORE/PostalAddress/v1").Should().BeNull();
+    }
+
     // ----- helpers -----
 
     private static JsonNode BuildValidPrimitive(string name, string version)

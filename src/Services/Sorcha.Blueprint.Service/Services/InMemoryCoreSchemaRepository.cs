@@ -11,10 +11,16 @@ namespace Sorcha.Blueprint.Service.Services;
 /// Primitives are held as parsed <see cref="JsonNode"/> trees so the resolver
 /// can merge without re-parsing each time.
 /// </summary>
+/// <remarks>
+/// Keys are compared with <see cref="StringComparer.Ordinal"/> because JSON
+/// Schema <c>$id</c> URIs are case-sensitive per RFC 3986. A blueprint that
+/// references the wrong-case URI will correctly fail to resolve rather than
+/// silently hit a near-match primitive.
+/// </remarks>
 public sealed class InMemoryCoreSchemaRepository : ICoreSchemaRepository
 {
     private readonly ConcurrentDictionary<string, JsonNode> _store =
-        new(StringComparer.OrdinalIgnoreCase);
+        new(StringComparer.Ordinal);
 
     /// <inheritdoc />
     public JsonNode? Get(string id)
@@ -34,5 +40,5 @@ public sealed class InMemoryCoreSchemaRepository : ICoreSchemaRepository
 
     /// <inheritdoc />
     public IReadOnlyDictionary<string, JsonNode> GetAll() =>
-        new Dictionary<string, JsonNode>(_store, StringComparer.OrdinalIgnoreCase);
+        new Dictionary<string, JsonNode>(_store, StringComparer.Ordinal);
 }

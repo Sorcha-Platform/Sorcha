@@ -36,9 +36,11 @@ namespace Sorcha.Validator.Core.Tokens;
 /// </remarks>
 public static class SorchaDateTokenResolver
 {
-    // today | today[+-]N{D|M|Y}
+    // today | today[+-]N{D|M|Y} — N is bounded to 1-9999 so
+    // DateOnly.Add{Years|Months|Days} can never overflow. Any realistic cutoff
+    // (age gate, retention, validity window) fits inside 4 digits.
     private static readonly Regex TokenPattern = new(
-        @"^today(?:(?<sign>[+-])(?<n>\d+)(?<unit>[DMY]))?$",
+        @"^today(?:(?<sign>[+-])(?<n>\d{1,4})(?<unit>[DMY]))?$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -80,13 +82,29 @@ public static class SorchaDateTokenResolver
 
         var delta = sign == '+' ? n : -n;
 
-        return unit switch
+        // Date arithmetic is capped by DateOnly's 0001-01-01..9999-12-31 range.
+        // The regex allows up to 4-digit magnitudes which is enough for every
+        // realistic cutoff (age gates, retention windows), but large relative
+        // offsets can still push a near-boundary today past MinValue or
+        // MaxValue. Convert any overflow to a FormatException so callers see
+        // a single consistent failure mode for "invalid date token".
+        try
         {
-            'D' => today.AddDays(delta),
-            'M' => today.AddMonths(delta),
-            'Y' => today.AddYears(delta),
-            _ => throw new FormatException($"Unsupported date token unit '{unit}'")
-        };
+            return unit switch
+            {
+                'D' => today.AddDays(delta),
+                'M' => today.AddMonths(delta),
+                'Y' => today.AddYears(delta),
+                _ => throw new FormatException($"Unsupported date token unit '{unit}'")
+            };
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new FormatException(
+                $"Date token '{token}' produces a date outside the supported range " +
+                $"({DateOnly.MinValue:yyyy-MM-dd}..{DateOnly.MaxValue:yyyy-MM-dd}): {ex.Message}",
+                ex);
+        }
     }
 
     /// <summary>

@@ -74,10 +74,42 @@ public class SorchaDateTokenResolverTests
     [InlineData("2026/04/13")]              // wrong literal format
     [InlineData("13-04-2026")]              // wrong literal format
     [InlineData("")]                        // empty
+    [InlineData("today+99999Y")]            // 5-digit N exceeds the 1-4 bound
+    [InlineData("today-10000D")]            // 5-digit N exceeds the 1-4 bound
     public void Resolve_InvalidTokens_ThrowFormatException(string token)
     {
         var act = () => SorchaDateTokenResolver.Resolve(token, Today);
         act.Should().Throw<FormatException>();
+    }
+
+    [Fact]
+    public void Resolve_LargeButSafeMagnitude_ResolvesCorrectly()
+    {
+        // 2025 years before 2026-04-13 lands in year 1, the last representable
+        // year for DateOnly. Must not throw.
+        var act = () => SorchaDateTokenResolver.Resolve("today-2025Y", Today);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Resolve_DateOnlyOverflow_ThrowsFormatException()
+    {
+        // today-9999Y from 2026-04-13 underflows DateOnly.MinValue (0001-01-01).
+        // The regex allows the 4-digit magnitude but the arithmetic wrapper
+        // must convert the overflow to a FormatException so callers see a
+        // single consistent failure mode for "invalid date token".
+        var act = () => SorchaDateTokenResolver.Resolve("today-9999Y", Today);
+        act.Should().Throw<FormatException>()
+           .WithMessage("*outside the supported range*");
+    }
+
+    [Fact]
+    public void Resolve_DateOnlyOverflowFuture_ThrowsFormatException()
+    {
+        // today+9999Y from 2026-04-13 overflows DateOnly.MaxValue (9999-12-31).
+        var act = () => SorchaDateTokenResolver.Resolve("today+9999Y", Today);
+        act.Should().Throw<FormatException>()
+           .WithMessage("*outside the supported range*");
     }
 
     [Fact]

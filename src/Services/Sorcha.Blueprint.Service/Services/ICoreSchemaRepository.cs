@@ -27,6 +27,15 @@ public interface ICoreSchemaRepository
     /// Look up a primitive by its HTTPS <c>$id</c>. Returns <c>null</c> when
     /// unknown.
     /// </summary>
+    /// <remarks>
+    /// <b>Returned tree is the live stored reference, not a clone.</b>
+    /// <see cref="JsonNode"/> instances are mutable. The resolver (and any other
+    /// caller that merges, transcludes, or reshapes the primitive) MUST call
+    /// <see cref="JsonNode.DeepClone"/> on the result before mutating it.
+    /// Mutating the returned tree in place would corrupt subsequent resolutions
+    /// for the same primitive across the entire service instance. Lookups are
+    /// case-sensitive per RFC 3986 (JSON Schema <c>$id</c> URI semantics).
+    /// </remarks>
     JsonNode? Get(string id);
 
     /// <summary>
