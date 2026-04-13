@@ -1,0 +1,76 @@
+{
+  "$id": "https://schemas.sorcha.dev/core/PostalAddress/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Postal Address",
+  "description": "A structured postal address. The postcode field declares x-address-lookup so the form renderer dispatches the postcode lookup control when an address-lookup provider is configured, and falls back to plain text otherwise. Field widths are tuned for the wizard layout: line1/line2 full-width; town/region/postcode share a horizontal row (each third); country sits on its own row as half-width to leave room alongside address-lookup feedback UI.",
+  "x-sections": [
+    {
+      "title": "Street",
+      "description": "Your street address — house number, building name, or flat.",
+      "layout": "vertical",
+      "fields": ["line1", "line2"]
+    },
+    {
+      "title": "Locality",
+      "description": "Town or city, region (where applicable), and postcode.",
+      "layout": "horizontal",
+      "fields": ["town", "region", "postcode"]
+    },
+    {
+      "title": "Country",
+      "layout": "vertical",
+      "fields": ["country"]
+    }
+  ],
+  "properties": {
+    "line1": {
+      "type": "string",
+      "title": "Address line 1",
+      "minLength": 1,
+      "maxLength": 200,
+      "x-persona": "address.line1",
+      "x-width": "full"
+    },
+    "line2": {
+      "type": "string",
+      "title": "Address line 2",
+      "maxLength": 200,
+      "x-persona": "address.line2",
+      "x-width": "full"
+    },
+    "town": {
+      "type": "string",
+      "title": "Town or City",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-persona": "address.town",
+      "x-width": "third"
+    },
+    "region": {
+      "type": "string",
+      "title": "Region",
+      "maxLength": 100,
+      "x-persona": "address.region",
+      "x-width": "third"
+    },
+    "postcode": {
+      "type": "string",
+      "title": "Postcode",
+      "minLength": 1,
+      "maxLength": 12,
+      "x-persona": "address.postcode",
+      "x-address-lookup": true,
+      "x-width": "third"
+    },
+    "country": {
+      "type": "string",
+      "title": "Country",
+      "minLength": 2,
+      "maxLength": 100,
+      "x-persona": "address.country",
+      "x-width": "half"
+    }
+  },
+  "required": ["line1", "town", "postcode", "country"]
+}

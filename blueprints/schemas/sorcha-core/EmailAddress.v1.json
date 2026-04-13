@@ -1,0 +1,26 @@
+{
+  "$id": "https://schemas.sorcha.dev/core/EmailAddress/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "Email Address",
+  "description": "A single email address. For services that need multiple emails (with one default), reference EmailAddressList/v1 instead.",
+  "x-sections": [
+    {
+      "title": "Email Address",
+      "description": "We'll only use this address for correspondence about this service.",
+      "layout": "vertical",
+      "fields": ["email"]
+    }
+  ],
+  "properties": {
+    "email": {
+      "type": "string",
+      "format": "email",
+      "title": "Email Address",
+      "minLength": 3,
+      "maxLength": 254,
+      "x-persona": "defaultEmail"
+    }
+  },
+  "required": ["email"]
+}
