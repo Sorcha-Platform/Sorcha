@@ -101,26 +101,54 @@ public class FormSchemaService : IFormSchemaService
         if (schema is null)
             return errors;
 
-        var root = schema.RootElement;
+        ValidateDataRecursive(schema.RootElement, data, parentScope: string.Empty, errors);
+        return errors;
+    }
 
-        // Check required fields
-        if (root.TryGetProperty("required", out var required))
+    /// <summary>
+    /// Recursively validates a schema node against the flat compound-scope
+    /// data store. For each required field on the current node:
+    ///   - if the field is scalar, checks <c>data[{parentScope}/{field}]</c>
+    ///   - if the field is an object, recurses into the child schema with
+    ///     the new parent scope so nested requireds (Feature 103 primitives)
+    ///     are enforced correctly
+    /// </summary>
+    private void ValidateDataRecursive(
+        JsonElement schemaNode,
+        Dictionary<string, object?> data,
+        string parentScope,
+        Dictionary<string, List<string>> errors)
+    {
+        JsonElement? propsForLabels = schemaNode.TryGetProperty("properties", out var propsEl) &&
+                                      propsEl.ValueKind == JsonValueKind.Object
+            ? propsEl
+            : null;
+
+        // Required-field presence check
+        if (schemaNode.TryGetProperty("required", out var required) &&
+            required.ValueKind == JsonValueKind.Array)
         {
-            // Defensive: a schema can declare `required` without a `properties`
-            // block (e.g. allOf-composed schemas). When that happens, fall back
-            // to the humanised field name for labels rather than passing an
-            // Undefined JsonElement around.
-            JsonElement? propsForLabels = root.TryGetProperty("properties", out var propsEl) &&
-                                          propsEl.ValueKind == JsonValueKind.Object
-                ? propsEl
-                : null;
-
             foreach (var item in required.EnumerateArray())
             {
                 var fieldName = item.GetString();
-                if (fieldName is null) continue;
+                if (string.IsNullOrEmpty(fieldName)) continue;
 
-                var scope = "/" + fieldName;
+                var scope = parentScope + "/" + fieldName;
+
+                // If the child is object-typed, "presence" means at least
+                // one of its OWN required children has a value — we rely on
+                // the recursive step below to surface specific missing
+                // children.
+                var childSchema = propsForLabels?.TryGetProperty(fieldName, out var cs) == true ? cs : (JsonElement?)null;
+                if (childSchema is not null && childSchema.Value.TryGetProperty("type", out var typeEl) &&
+                    typeEl.GetString() == "object")
+                {
+                    // Object field: check nested requireds via recursion below.
+                    // Don't flag the parent as missing — the recursion will
+                    // produce precise errors on the missing leaves.
+                    continue;
+                }
+
                 if (!data.TryGetValue(scope, out var value) || IsEmptyValue(value))
                 {
                     var label = ResolveFieldLabel(propsForLabels, fieldName);
@@ -129,12 +157,21 @@ public class FormSchemaService : IFormSchemaService
             }
         }
 
-        // Validate each field against its schema
-        if (root.TryGetProperty("properties", out var properties))
+        // Recurse into object properties so nested schemas are validated too,
+        // AND run scalar value validation on every leaf that has a value.
+        if (propsForLabels is not null)
         {
-            foreach (var prop in properties.EnumerateObject())
+            foreach (var prop in propsForLabels.Value.EnumerateObject())
             {
-                var scope = "/" + prop.Name;
+                var scope = parentScope + "/" + prop.Name;
+                var childType = prop.Value.TryGetProperty("type", out var t) ? t.GetString() : null;
+
+                if (childType == "object")
+                {
+                    ValidateDataRecursive(prop.Value, data, scope, errors);
+                    continue;
+                }
+
                 if (data.TryGetValue(scope, out var value) && !IsEmptyValue(value))
                 {
                     var fieldErrors = ValidateFieldValue(prop.Value, value);
@@ -148,8 +185,6 @@ public class FormSchemaService : IFormSchemaService
                 }
             }
         }
-
-        return errors;
     }
 
     public List<string> ValidateField(JsonDocument? schema, string scope, object? value)
@@ -205,12 +240,38 @@ public class FormSchemaService : IFormSchemaService
         if (schema is null)
             return false;
 
-        var fieldName = NormalizeScope(scope).TrimStart('/').Split('/').First();
+        // Walk the JSON Pointer segment-by-segment so nested object
+        // primitives (Feature 103: /name/givenName against a
+        // PersonName/v1 reference) check the CORRECT required array
+        // — the one on the parent object, not the root.
+        var segments = NormalizeScope(scope).TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            return false;
 
-        if (schema.RootElement.TryGetProperty("required", out var required))
+        var current = schema.RootElement;
+        for (var i = 0; i < segments.Length; i++)
         {
-            return required.EnumerateArray()
-                .Any(r => r.GetString() == fieldName);
+            var segment = segments[i];
+            var isLast = i == segments.Length - 1;
+
+            if (isLast)
+            {
+                if (current.TryGetProperty("required", out var required) &&
+                    required.ValueKind == JsonValueKind.Array)
+                {
+                    if (required.EnumerateArray().Any(r => r.GetString() == segment))
+                        return true;
+                }
+                return false;
+            }
+
+            if (!current.TryGetProperty("properties", out var properties) ||
+                !properties.TryGetProperty(segment, out var nextSchema))
+            {
+                return false;
+            }
+
+            current = nextSchema;
         }
 
         return false;
@@ -234,17 +295,67 @@ public class FormSchemaService : IFormSchemaService
 
         foreach (var prop in properties.EnumerateObject())
         {
-            var control = InferControlFromSchema(prop.Name, prop.Value);
+            var control = InferControlFromSchema(prop.Name, prop.Value, parentScope: string.Empty);
             root.Elements.Add(control);
         }
 
         return root;
     }
 
-    private Control InferControlFromSchema(string propertyName, JsonElement schema)
+    /// <summary>
+    /// Builds a <see cref="Control"/> tree for one schema property.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For scalar properties (string / number / boolean / date) this emits a
+    /// single leaf Control with <c>Scope = {parentScope}/{propertyName}</c>.
+    /// </para>
+    /// <para>
+    /// For object-typed properties (Feature 103 core primitives like
+    /// <c>PersonName/v1</c>, <c>PostalAddress/v1</c>) this recurses into
+    /// <c>properties</c> and emits a VerticalLayout control whose
+    /// <c>Elements</c> are the nested leaves, each with a JSON-Pointer
+    /// compound scope (e.g. <c>/name/givenName</c>). The parent container
+    /// itself also carries the compound scope (<c>/name</c>) so
+    /// <see cref="Forms.SorchaFormRenderer"/>'s field lookup by field name
+    /// finds the whole subtree and the section renderer can dispatch it
+    /// inline.
+    /// </para>
+    /// </remarks>
+    private Control InferControlFromSchema(string propertyName, JsonElement schema, string parentScope)
     {
         var type = schema.TryGetProperty("type", out var typeEl) ? typeEl.GetString() : "string";
         var title = schema.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : HumanizeName(propertyName);
+        var scope = parentScope + "/" + propertyName;
+
+        // Object-typed properties recurse into their children. Feature 103
+        // ships four core primitives as schema objects (PersonName,
+        // DateOfBirth, EmailAddress, PostalAddress) — the form renderer
+        // needs nested controls so primitive-based fields actually render
+        // their child inputs.
+        if (type == "object" && schema.TryGetProperty("properties", out var childProps))
+        {
+            var group = new Control
+            {
+                ControlType = ControlTypes.Layout,
+                Layout = LayoutTypes.VerticalLayout,
+                // Suppress the nested title when rendered inside a section —
+                // the section already labels the grouping and a second header
+                // at the child level is visual noise. VerticalLayoutRenderer
+                // treats empty Title as "no heading" via IsNullOrEmpty.
+                Title = string.Empty,
+                Scope = scope,
+                Rule = TryParseXRule(schema)
+            };
+
+            foreach (var childProp in childProps.EnumerateObject())
+            {
+                group.Elements.Add(InferControlFromSchema(childProp.Name, childProp.Value, scope));
+            }
+
+            return group;
+        }
+
         var hasEnum = schema.TryGetProperty("enum", out _);
         var format = schema.TryGetProperty("format", out var formatEl) ? formatEl.GetString() : null;
 
@@ -285,7 +396,7 @@ public class FormSchemaService : IFormSchemaService
         {
             ControlType = controlType,
             Title = title ?? propertyName,
-            Scope = "/" + propertyName,
+            Scope = scope,
             Rule = TryParseXRule(schema)
         };
     }

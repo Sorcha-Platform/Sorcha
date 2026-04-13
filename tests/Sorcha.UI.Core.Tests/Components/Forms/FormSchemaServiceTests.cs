@@ -389,4 +389,132 @@ public class FormSchemaServiceTests
         var form = _sut.AutoGenerateForm(new[] { schema });
         form.Elements.First().Rule!.Effect.Should().Be(Sorcha.Blueprint.Models.RuleEffect.SHOW);
     }
+
+    // --- Object recursion (Feature 103) ---
+
+    [Fact]
+    public void AutoGenerateForm_ObjectProperty_EmitsLayoutWithChildLeaves()
+    {
+        // Feature 103 core primitives are schema objects with nested
+        // properties. The auto-generator must recurse and emit a Layout
+        // control whose Elements are the nested leaves with compound
+        // JSON Pointer scopes. A single TextLine for `/name` (the old
+        // behaviour) is a rendering bug because the value is a nested
+        // object, not a string.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "title": "Personal Name",
+                    "properties": {
+                        "givenName": { "type": "string", "title": "Given Name" },
+                        "familyName": { "type": "string", "title": "Family Name" }
+                    },
+                    "required": ["givenName", "familyName"]
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var nameControl = form.Elements.Single();
+        nameControl.Scope.Should().Be("/name");
+        nameControl.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.Layout);
+        nameControl.Layout.Should().Be(Sorcha.Blueprint.Models.LayoutTypes.VerticalLayout);
+        nameControl.Elements.Should().HaveCount(2);
+
+        var given = nameControl.Elements[0];
+        given.Scope.Should().Be("/name/givenName");
+        given.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+        given.Title.Should().Be("Given Name");
+
+        var family = nameControl.Elements[1];
+        family.Scope.Should().Be("/name/familyName");
+        family.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_ObjectWithDateChild_EmitsDateTimeLeaf()
+    {
+        // DateOfBirth/v1 is modelled as an object wrapper around a single
+        // dateOfBirth field. The wrapper must recurse and the inner date
+        // field should dispatch to DateTime, not TextLine.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "dob": {
+                    "type": "object",
+                    "properties": {
+                        "dateOfBirth": { "type": "string", "format": "date", "title": "Date of Birth" }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var dob = form.Elements.Single();
+        dob.Scope.Should().Be("/dob");
+        dob.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.Layout);
+        var child = dob.Elements.Single();
+        child.Scope.Should().Be("/dob/dateOfBirth");
+        child.ControlType.Should().Be(Sorcha.Blueprint.Models.ControlTypes.DateTime);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_ObjectWithPostcodeChild_DispatchesToPostcodeLookup()
+    {
+        // PostalAddress/v1 style: the object wrapper carries nested
+        // properties including a postcode with x-address-lookup.
+        // Recursion must pass the x-address-lookup dispatch through
+        // to the nested scope.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "properties": {
+                        "line1":    { "type": "string", "title": "Address line 1" },
+                        "postcode": { "type": "string", "title": "Postcode", "x-address-lookup": true }
+                    }
+                }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+
+        var address = form.Elements.Single();
+        address.Scope.Should().Be("/address");
+        var children = address.Elements;
+        children.First(c => c.Scope == "/address/line1").ControlType
+            .Should().Be(Sorcha.Blueprint.Models.ControlTypes.TextLine);
+        children.First(c => c.Scope == "/address/postcode").ControlType
+            .Should().Be(Sorcha.Blueprint.Models.ControlTypes.PostcodeLookup);
+    }
+
+    [Fact]
+    public void AutoGenerateForm_ScalarProperty_ScopeHasLeadingSlash()
+    {
+        // Regression guard: the pre-wave-10 output format used
+        // /<propertyName> for scalar leaves. Recursion changes added
+        // a parentScope parameter; the leaf behaviour must match.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "notes": { "type": "string", "title": "Notes" }
+            }
+        }
+        """);
+
+        var form = _sut.AutoGenerateForm(new[] { schema });
+        form.Elements.Single().Scope.Should().Be("/notes");
+    }
 }

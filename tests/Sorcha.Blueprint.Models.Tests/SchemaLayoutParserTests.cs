@@ -247,6 +247,74 @@ public class SchemaLayoutParserTests
     }
 
     [Fact]
+    public void Parse_XSectionsWithoutTitle_AcceptsUntitledSection()
+    {
+        // Feature 103: wizard pages in the Verified Citizen v2 blueprint
+        // use untitled section wrappers because the page title already
+        // labels the grouping. Previously TryParseSections silently
+        // dropped these, leaving the page with zero sections → zero
+        // fields rendered by the form. The walker should now survive
+        // an untitled section as long as it has a non-empty fields
+        // array.
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-sections": [
+                { "fields": ["name"] },
+                { "title": "", "fields": ["dob"] }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Sections.Should().NotBeNull().And.HaveCount(2);
+        result.Sections![0].Title.Should().BeNull();
+        result.Sections[0].Fields.Should().ContainSingle().Which.Should().Be("name");
+        result.Sections[1].Title.Should().BeNull();
+        result.Sections[1].Fields.Should().ContainSingle().Which.Should().Be("dob");
+    }
+
+    [Fact]
+    public void Parse_PageWithUntitledSection_RetainsSection()
+    {
+        // Regression test: the Verified Citizen v2 wizard pattern has
+        // each page containing a single untitled section with one
+        // field reference. This mirrors the exact shape of the live
+        // blueprint that triggered the bug.
+        var schema = Parse("""
+        {
+            "type": "object",
+            "x-pages": [
+                {
+                    "title": "Your Name",
+                    "description": "Your full legal name as it appears on official documents.",
+                    "x-sections": [
+                        { "fields": ["name"] }
+                    ]
+                },
+                {
+                    "title": "Date of Birth",
+                    "x-sections": [
+                        { "fields": ["dob"] }
+                    ]
+                }
+            ]
+        }
+        """);
+
+        var result = SchemaLayoutParser.Parse(schema);
+
+        result.Pages.Should().NotBeNull().And.HaveCount(2);
+        result.Pages![0].Title.Should().Be("Your Name");
+        result.Pages[0].Sections.Should().NotBeNull().And.HaveCount(1);
+        result.Pages[0].Sections![0].Title.Should().BeNull();
+        result.Pages[0].Sections[0].Fields.Should().ContainSingle().Which.Should().Be("name");
+        result.Pages[1].Sections.Should().NotBeNull().And.HaveCount(1);
+        result.Pages[1].Sections![0].Fields.Should().ContainSingle().Which.Should().Be("dob");
+    }
+
+    [Fact]
     public void Parse_NonObjectRoot_ReturnsEmptyLayout()
     {
         var schema = Parse("""[1, 2, 3]""");

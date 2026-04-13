@@ -230,7 +230,10 @@
         var body = !string.IsNullOrWhiteSpace(section.Help) ? section.Help! :
                    !string.IsNullOrWhiteSpace(section.Description) ? section.Description! : null;
 
-        return body is null ? null : new SectionHelp(section.Title, body);
+        // Section title may be null for untitled wrapper sections
+        // (Feature 103 pattern). Fall back to an empty string so the
+        // help panel still renders its body without a redundant header.
+        return body is null ? null : new SectionHelp(section.Title ?? string.Empty, body);
     }
 
     private static string Humanize(string fieldName)

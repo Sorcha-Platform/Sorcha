@@ -13,10 +13,14 @@ namespace Sorcha.Blueprint.Models;
 public sealed record BlueprintSectionDefinition
 {
     /// <summary>
-    /// Section heading rendered above the grouped fields. Required; 1-200 characters.
+    /// Optional section heading rendered above the grouped fields. When
+    /// omitted the section acts as an invisible wrapper that only groups
+    /// fields — useful in wizard pages where the page title already
+    /// labels the grouping and a redundant section heading would just
+    /// add visual noise.
     /// </summary>
     [JsonPropertyName("title")]
-    public required string Title { get; init; }
+    public string? Title { get; init; }
 
     /// <summary>
     /// Optional subtitle shown under the section heading.

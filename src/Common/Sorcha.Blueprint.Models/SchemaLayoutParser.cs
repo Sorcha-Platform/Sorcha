@@ -190,15 +190,21 @@ public static class SchemaLayoutParser
             if (sectionElement.ValueKind != JsonValueKind.Object)
                 continue;
 
-            if (!sectionElement.TryGetProperty("title", out var titleElement) ||
-                titleElement.ValueKind != JsonValueKind.String)
+            // Title is optional. Untitled sections are valid "invisible
+            // wrapper" groupings — common in wizard pages where the page
+            // title already labels the content and a redundant section
+            // heading would just add noise. Feature 103 Verified Citizen
+            // v2 uses this pattern throughout its x-pages.
+            string? title = null;
+            if (sectionElement.TryGetProperty("title", out var titleElement) &&
+                titleElement.ValueKind == JsonValueKind.String)
             {
-                continue;
+                var candidate = titleElement.GetString();
+                if (!string.IsNullOrWhiteSpace(candidate))
+                {
+                    title = candidate;
+                }
             }
-
-            var title = titleElement.GetString();
-            if (string.IsNullOrWhiteSpace(title))
-                continue;
 
             if (!sectionElement.TryGetProperty("fields", out var fieldsElement) ||
                 fieldsElement.ValueKind != JsonValueKind.Array)
