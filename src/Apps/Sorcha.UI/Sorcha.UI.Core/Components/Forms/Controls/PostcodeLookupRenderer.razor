@@ -175,8 +175,12 @@
         // For ValidateOnly mode we additionally call the lookup API on blur
         // to populate the sibling town/region fields. FullAddress mode waits
         // for the explicit "Find address" button so we don't hit the upstream
-        // API on every keystroke.
-        if (_mode == LookupMode.ValidateOnly && !string.IsNullOrWhiteSpace(_value))
+        // API on every keystroke. Skip the call entirely when schema
+        // validation has already rejected the postcode — the API round-trip
+        // would be wasted.
+        if (_mode == LookupMode.ValidateOnly
+            && !string.IsNullOrWhiteSpace(_value)
+            && errors.Count == 0)
         {
             await LookupAsync();
         }
@@ -196,6 +200,7 @@
             if (!response.IsSuccessStatusCode)
             {
                 Logger.LogDebug("Address lookup returned {Status}", (int)response.StatusCode);
+                _candidates = null;
                 return;
             }
 
@@ -203,6 +208,7 @@
             if (result is null || !result.IsValid)
             {
                 _metadataHint = "Postcode not recognised — enter your address manually.";
+                _candidates = null;
                 return;
             }
 
@@ -223,6 +229,7 @@
         catch (Exception ex)
         {
             Logger.LogDebug(ex, "Address lookup request failed");
+            _candidates = null;
         }
     }
 
@@ -330,7 +337,7 @@
         public double? Longitude { get; set; }
     }
 
-    public sealed class AddressCandidate
+    private sealed class AddressCandidate
     {
         public string Line1 { get; set; } = string.Empty;
         public string? Line2 { get; set; }

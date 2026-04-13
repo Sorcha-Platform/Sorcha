@@ -1286,29 +1286,18 @@ public class ActionExecutionService : IActionExecutionService
     }
 
     /// <summary>
-    /// Resolves a JSON Pointer (<c>/foo/bar/baz</c>) against a root dictionary
-    /// built from the action payload. Walks nested <see cref="Dictionary{TKey,TValue}"/>,
-    /// <see cref="IDictionary{TKey,TValue}"/>, and <see cref="JsonElement"/> nodes.
-    /// Returns <c>false</c> on any missing segment.
-    /// </summary>
-    /// <remarks>
-    /// Used by the claim-mapping extractor so that primitive-nested payloads
-    /// (e.g. <c>/name/givenName</c> for a PersonName/v1-backed submission)
-    /// resolve correctly. Flat paths (<c>/givenName</c>) continue to work
-    /// because the pointer walk of a single segment degenerates to a
-    /// top-level lookup. Feature 103 US2/US4.
-    /// </remarks>
-    /// <summary>
     /// Applies the credential issuance <c>ClaimMappings</c> list against the
     /// action's merged data, walking JSON Pointer <c>SourceField</c> paths so
     /// nested primitive values (Feature 103) resolve correctly. Shared by
     /// both the internal issuance path and the HAIP external-wallet path.
+    /// Missing mappings are logged at Warning level because a dropped claim
+    /// silently produces a credential with fewer attributes than expected.
     /// </summary>
-    private Dictionary<string, object> BuildClaimsFromMappings(
+    private Dictionary<string, object?> BuildClaimsFromMappings(
         IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
-        IReadOnlyDictionary<string, object> mergedData)
+        IReadOnlyDictionary<string, object?> mergedData)
     {
-        var claims = new Dictionary<string, object>();
+        var claims = new Dictionary<string, object?>();
         if (mappings is null) return claims;
 
         foreach (var mapping in mappings)
@@ -1319,28 +1308,49 @@ public class ActionExecutionService : IActionExecutionService
             }
             else
             {
-                _logger.LogDebug(
-                    "Claim mapping source '{SourceField}' not found in action data; skipping claim '{ClaimName}'",
+                _logger.LogWarning(
+                    "Claim mapping source '{SourceField}' not found in action data; dropping claim '{ClaimName}' from credential",
                     mapping.SourceField, mapping.ClaimName);
             }
         }
         return claims;
     }
 
+    /// <summary>
+    /// Resolves a JSON Pointer (<c>/foo/bar/baz</c>) against a root dictionary
+    /// built from the action payload. Walks nested <see cref="Dictionary{TKey,TValue}"/>,
+    /// <see cref="IDictionary{TKey,TValue}"/>, and <see cref="JsonElement"/> nodes.
+    /// Returns <c>false</c> on any missing segment.
+    /// </summary>
+    /// <remarks>
+    /// Used by the claim-mapping extractor so that primitive-nested payloads
+    /// (e.g. <c>/name/givenName</c> for a PersonName/v1-backed submission)
+    /// resolve correctly. Flat paths (<c>/givenName</c>) continue to work
+    /// because the pointer walk of a single segment degenerates to a
+    /// top-level lookup. RFC 6901 escape sequences (<c>~1</c> → <c>/</c>,
+    /// <c>~0</c> → <c>~</c>) are unescaped per segment. Feature 103 US2/US4.
+    /// </remarks>
     internal static bool TryResolveJsonPointer(
-        IReadOnlyDictionary<string, object> root,
+        IReadOnlyDictionary<string, object?> root,
         string jsonPointer,
-        out object value)
+        out object? value)
     {
-        value = null!;
+        value = null;
         if (string.IsNullOrEmpty(jsonPointer) || jsonPointer == "/")
         {
             return false;
         }
 
+        // RFC 6901: ~1 decodes to /, ~0 decodes to ~. Order matters:
+        // ~1 must be handled BEFORE ~0 to avoid double-unescape.
         var segments = jsonPointer
             .TrimStart('/')
             .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        for (var i = 0; i < segments.Length; i++)
+        {
+            segments[i] = segments[i].Replace("~1", "/").Replace("~0", "~");
+        }
 
         if (segments.Length == 0) return false;
 

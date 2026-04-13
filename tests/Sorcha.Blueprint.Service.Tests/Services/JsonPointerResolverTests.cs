@@ -24,10 +24,28 @@ public class JsonPointerResolverTests
             ["familyName"] = "O'Brien"
         };
 
-        var ok = ActionExecutionService.TryResolveJsonPointer(root!, "/givenName", out var v);
+        var ok = ActionExecutionService.TryResolveJsonPointer(root, "/givenName", out var v);
 
         ok.Should().BeTrue();
         v.Should().Be("Alice");
+    }
+
+    [Fact]
+    public void TryResolve_Rfc6901EscapeSequences_DecodedBeforeLookup()
+    {
+        // "/a/b" as a raw property name is written as "a~1b" per RFC 6901.
+        // The walker must unescape ~1 → / and ~0 → ~ before dictionary lookup.
+        var root = new Dictionary<string, object?>
+        {
+            ["weird/key"] = "slash-value",
+            ["tilde~key"] = "tilde-value"
+        };
+
+        ActionExecutionService.TryResolveJsonPointer(root, "/weird~1key", out var slashValue).Should().BeTrue();
+        slashValue.Should().Be("slash-value");
+
+        ActionExecutionService.TryResolveJsonPointer(root, "/tilde~0key", out var tildeValue).Should().BeTrue();
+        tildeValue.Should().Be("tilde-value");
     }
 
     [Fact]
@@ -43,10 +61,10 @@ public class JsonPointerResolverTests
             }
         };
 
-        ActionExecutionService.TryResolveJsonPointer(root!, "/name/givenName", out var given).Should().BeTrue();
+        ActionExecutionService.TryResolveJsonPointer(root, "/name/givenName", out var given).Should().BeTrue();
         given.Should().Be("Alice");
 
-        ActionExecutionService.TryResolveJsonPointer(root!, "/name/middleName", out var middle).Should().BeTrue();
+        ActionExecutionService.TryResolveJsonPointer(root, "/name/middleName", out var middle).Should().BeTrue();
         middle.Should().Be("Maeve");
     }
 
@@ -55,7 +73,7 @@ public class JsonPointerResolverTests
     {
         var root = new Dictionary<string, object?> { ["foo"] = "bar" };
 
-        var ok = ActionExecutionService.TryResolveJsonPointer(root!, "/missing", out var _);
+        var ok = ActionExecutionService.TryResolveJsonPointer(root, "/missing", out var _);
 
         ok.Should().BeFalse();
     }
@@ -68,7 +86,7 @@ public class JsonPointerResolverTests
             ["name"] = new Dictionary<string, object?> { ["givenName"] = "Alice" }
         };
 
-        var ok = ActionExecutionService.TryResolveJsonPointer(root!, "/name/missing", out var _);
+        var ok = ActionExecutionService.TryResolveJsonPointer(root, "/name/missing", out var _);
 
         ok.Should().BeFalse();
     }
@@ -78,8 +96,8 @@ public class JsonPointerResolverTests
     {
         // "/" is the whole-document pointer — no use case for claim mapping.
         var root = new Dictionary<string, object?> { ["x"] = 1 };
-        ActionExecutionService.TryResolveJsonPointer(root!, "/", out _).Should().BeFalse();
-        ActionExecutionService.TryResolveJsonPointer(root!, string.Empty, out _).Should().BeFalse();
+        ActionExecutionService.TryResolveJsonPointer(root, "/", out _).Should().BeFalse();
+        ActionExecutionService.TryResolveJsonPointer(root, string.Empty, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -94,7 +112,7 @@ public class JsonPointerResolverTests
         };
         var root = new Dictionary<string, object?> { ["address"] = address };
 
-        var ok = ActionExecutionService.TryResolveJsonPointer(root!, "/address", out var value);
+        var ok = ActionExecutionService.TryResolveJsonPointer(root, "/address", out var value);
 
         ok.Should().BeTrue();
         value.Should().BeSameAs(address);
@@ -114,10 +132,10 @@ public class JsonPointerResolverTests
             ["name"] = doc.RootElement.GetProperty("name")
         };
 
-        ActionExecutionService.TryResolveJsonPointer(root!, "/name/givenName", out var given).Should().BeTrue();
+        ActionExecutionService.TryResolveJsonPointer(root, "/name/givenName", out var given).Should().BeTrue();
         ((JsonElement)given!).GetString().Should().Be("Alice");
 
-        ActionExecutionService.TryResolveJsonPointer(root!, "/name/middleName", out var middle).Should().BeTrue();
+        ActionExecutionService.TryResolveJsonPointer(root, "/name/middleName", out var middle).Should().BeTrue();
         ((JsonElement)middle!).GetString().Should().Be("Maeve");
     }
 
@@ -135,7 +153,7 @@ public class JsonPointerResolverTests
             }
         };
 
-        ActionExecutionService.TryResolveJsonPointer(root!, "/a/b/c", out var value).Should().BeTrue();
+        ActionExecutionService.TryResolveJsonPointer(root, "/a/b/c", out var value).Should().BeTrue();
         value.Should().Be("deep");
     }
 }
