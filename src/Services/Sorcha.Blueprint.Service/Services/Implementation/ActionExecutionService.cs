@@ -331,6 +331,16 @@ public class ActionExecutionService : IActionExecutionService
         // specs/103-verified-citizen-v2/investigation-t014a.md — the Program.cs:883
         // legacy endpoint bypasses this path entirely but is not used by walkthroughs
         // or the UI.
+        //
+        // Design note (why the read-path here does NOT consult IInstanceBindingCache):
+        // the `instance` variable has already been hydrated from IInstanceStore at
+        // line 138. Reading `instance.ParticipantWallets` is a local in-memory
+        // dictionary lookup; a cache round-trip would be strictly slower. The cache
+        // exists for OTHER call sites that want to resolve a binding without loading
+        // the full Instance (e.g. a disclosure resolver or a SignalR notification
+        // dispatcher that only needs the participant→wallet map). Those consumers
+        // land in follow-up waves — this site writes through so the cache is warm
+        // for them.
         if (actionDef.IsStartingAction && !string.IsNullOrWhiteSpace(actionDef.Sender))
         {
             var senderParticipantId = actionDef.Sender;

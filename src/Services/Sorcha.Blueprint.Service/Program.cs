@@ -2664,7 +2664,13 @@ public class PublishService(
         // publish-time error.
         //
         // Contract: specs/103-verified-citizen-v2/contracts/validator-publish-errors.md
-        // Constant: Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound
+        // Canonical constant lives in Validator Service as
+        // Sorcha.Validator.Service.Models.ValidationErrorCodes.OpenParticipantPrebound.
+        // Blueprint Service does NOT reference Validator Service today, so we mirror
+        // the literal here. If the services ever share a contracts project, collapse
+        // these to one constant.
+        const string OpenParticipantPreboundCode = "VAL_BP_010";
+
         foreach (var startingAction in startingActions)
         {
             if (string.IsNullOrWhiteSpace(startingAction.Sender)) continue;
@@ -2676,7 +2682,7 @@ public class PublishService(
                 !string.IsNullOrWhiteSpace(senderParticipant.WalletAddress))
             {
                 errors.Add(
-                    $"[VAL_BP_010] Participant '{senderParticipant.Id}' is the sender of starting action " +
+                    $"[{OpenParticipantPreboundCode}] Participant '{senderParticipant.Id}' is the sender of starting action " +
                     $"{startingAction.Id} ('{startingAction.Title}') and must have a null walletAddress so the " +
                     $"runtime can late-bind the first qualifying submitter to the participant role. " +
                     $"Found walletAddress: '{senderParticipant.WalletAddress}'. " +

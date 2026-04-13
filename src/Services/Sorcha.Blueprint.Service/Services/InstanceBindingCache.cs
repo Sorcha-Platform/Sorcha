@@ -40,8 +40,6 @@ namespace Sorcha.Blueprint.Service.Services;
 /// </remarks>
 public sealed class InstanceBindingCache : IInstanceBindingCache
 {
-    private const string CacheKeySuffix = "instance:{0}:bindings";
-
     private static readonly ActivitySource ActivitySource =
         new("Sorcha.Blueprint.Service.InstanceBindingCache");
 
@@ -171,13 +169,10 @@ public sealed class InstanceBindingCache : IInstanceBindingCache
 
     // ------- private helpers -------
 
-    private string BuildKey(string instanceId)
-    {
-        var suffix = string.Format(CacheKeySuffix, instanceId);
-        return string.IsNullOrEmpty(_options.KeyPrefix)
-            ? suffix
-            : $"{_options.KeyPrefix}:{suffix}";
-    }
+    private string BuildKey(string instanceId) =>
+        string.IsNullOrEmpty(_options.KeyPrefix)
+            ? $"instance:{instanceId}:bindings"
+            : $"{_options.KeyPrefix}:instance:{instanceId}:bindings";
 
     private async Task TrySetCacheAsync(
         string key,
