@@ -86,7 +86,8 @@ public class VerifiedCitizenV2FormRenderTests : DockerTestBase
 
         if (string.IsNullOrEmpty(_blueprintId) ||
             string.IsNullOrEmpty(_registerId) ||
-            string.IsNullOrEmpty(_citizenEmail))
+            string.IsNullOrEmpty(_citizenEmail) ||
+            string.IsNullOrEmpty(_citizenPassword))
         {
             Assert.Ignore("Walkthrough state is missing required fields; re-run setup.ps1.");
         }

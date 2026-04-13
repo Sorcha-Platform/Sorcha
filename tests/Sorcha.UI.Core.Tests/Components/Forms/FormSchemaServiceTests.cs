@@ -517,4 +517,179 @@ public class FormSchemaServiceTests
         var form = _sut.AutoGenerateForm(new[] { schema });
         form.Elements.Single().Scope.Should().Be("/notes");
     }
+
+    // --- IsRequired nested path walking (Feature 103 wave 10) ---
+
+    [Fact]
+    public void IsRequired_NestedRequiredField_ReturnsTrue()
+    {
+        // PersonName/v1 declares `required: ["givenName", "familyName"]`
+        // on its OWN schema, not on the root. IsRequired must walk the
+        // JSON Pointer segment-by-segment and check the correct nested
+        // required array.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "properties": {
+                        "givenName": { "type": "string" },
+                        "middleName": { "type": "string" },
+                        "familyName": { "type": "string" }
+                    },
+                    "required": ["givenName", "familyName"]
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+
+        _sut.IsRequired(schema, "/name/givenName").Should().BeTrue();
+        _sut.IsRequired(schema, "/name/familyName").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsRequired_NestedOptionalField_ReturnsFalse()
+    {
+        // middleName is NOT in PersonName/v1's required array — it must
+        // return false even though the root's `required: ["name"]` might
+        // have been incorrectly inherited by pre-wave-10 code.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "properties": {
+                        "givenName": { "type": "string" },
+                        "middleName": { "type": "string" }
+                    },
+                    "required": ["givenName"]
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+
+        _sut.IsRequired(schema, "/name/middleName").Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsRequired_DeeplyNestedField_WalksAllSegments()
+    {
+        // Sanity check that the walker doesn't stop at depth 2.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "outer": {
+                    "type": "object",
+                    "properties": {
+                        "inner": {
+                            "type": "object",
+                            "properties": {
+                                "leaf": { "type": "string" }
+                            },
+                            "required": ["leaf"]
+                        }
+                    }
+                }
+            }
+        }
+        """);
+
+        _sut.IsRequired(schema, "/outer/inner/leaf").Should().BeTrue();
+    }
+
+    // --- ValidateData recursive validation (Feature 103 wave 10) ---
+
+    [Fact]
+    public void ValidateData_ObjectRequiredField_MissingNestedLeaf_ReturnsLeafError()
+    {
+        // Precise error location: the form data store uses compound
+        // scopes (/name/givenName), so a missing nested required field
+        // must surface at the nested scope, not the parent object.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "properties": {
+                        "givenName": { "type": "string", "title": "Given Name" },
+                        "familyName": { "type": "string", "title": "Family Name" }
+                    },
+                    "required": ["givenName", "familyName"]
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+
+        var data = new Dictionary<string, object?>
+        {
+            ["/name/givenName"] = "Alice"
+            // /name/familyName intentionally absent
+        };
+
+        var errors = _sut.ValidateData(schema, data);
+
+        errors.Should().ContainKey("/name/familyName");
+        errors["/name/familyName"].Should().Contain(e => e.Contains("required"));
+        // The top-level /name key must NOT appear as an error; recursion
+        // produces the precise leaf error instead.
+        errors.Should().NotContainKey("/name");
+    }
+
+    [Fact]
+    public void ValidateData_ObjectRequiredField_AllLeavesPresent_ReturnsNoErrors()
+    {
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "object",
+                    "properties": {
+                        "givenName": { "type": "string" },
+                        "familyName": { "type": "string" }
+                    },
+                    "required": ["givenName", "familyName"]
+                }
+            },
+            "required": ["name"]
+        }
+        """);
+
+        var data = new Dictionary<string, object?>
+        {
+            ["/name/givenName"] = "Alice",
+            ["/name/familyName"] = "O'Brien"
+        };
+
+        var errors = _sut.ValidateData(schema, data);
+        errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateData_TopLevelScalarRequired_StillDetectsMissing()
+    {
+        // Regression guard: the recursion refactor must not regress the
+        // original flat-schema required check.
+        var schema = JsonDocument.Parse("""
+        {
+            "type": "object",
+            "properties": {
+                "title": { "type": "string", "title": "Title" }
+            },
+            "required": ["title"]
+        }
+        """);
+
+        var errors = _sut.ValidateData(schema, new Dictionary<string, object?>());
+
+        errors.Should().ContainKey("/title");
+        errors["/title"].Should().Contain(e => e.Contains("required"));
+    }
 }

@@ -119,6 +119,12 @@ public class FormSchemaService : IFormSchemaService
         string parentScope,
         Dictionary<string, List<string>> errors)
     {
+        // Defensive: a schema can declare `required` without a `properties`
+        // block (e.g. allOf-composed schemas where the properties live on
+        // a sibling branch that this code path doesn't merge). When that
+        // happens, propsForLabels is null and ResolveFieldLabel falls back
+        // to a humanised field name rather than passing an Undefined
+        // JsonElement around.
         JsonElement? propsForLabels = schemaNode.TryGetProperty("properties", out var propsEl) &&
                                       propsEl.ValueKind == JsonValueKind.Object
             ? propsEl
