@@ -613,15 +613,32 @@ public class ActionExecutionService : IActionExecutionService
             if (actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
                 && _haipClient != null)
             {
+                // Feature 103: apply ClaimMappings here too. The HAIP path was
+                // previously passing mergedData unchanged, so nested primitive
+                // values (e.g. /name/givenName from a PersonName/v1 reference)
+                // landed in the credential as the nested objects themselves.
+                var haipClaims = BuildClaimsFromMappings(
+                    actionDef.CredentialIssuanceConfig.ClaimMappings,
+                    mergedData!);
+                // HAIP client expects non-nullable values. The null-forgiving
+                // operator below is safe because TryResolveJsonPointer returns
+                // false for null-valued segments, so BuildClaimsFromMappings
+                // never produces a null value. If that invariant is ever
+                // relaxed (e.g. to support explicitly-null optional fields),
+                // this projection must be updated to filter or coerce nulls
+                // before the wire call.
+                var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
+
                 _logger.LogInformation(
-                    "Routing credential issuance to HAIP service for external wallet: type={Type}",
-                    actionDef.CredentialIssuanceConfig.CredentialType);
+                    "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
+                    actionDef.CredentialIssuanceConfig.CredentialType,
+                    string.Join(", ", haipClaimsForWire.Keys));
 
                 haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
                     request.SenderWallet,
                     instance.RegisterId,
                     actionDef.CredentialIssuanceConfig.CredentialType,
-                    mergedData,
+                    haipClaimsForWire,
                     actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
                     cancellationToken);
 
@@ -1276,6 +1293,135 @@ public class ActionExecutionService : IActionExecutionService
             $"Transaction {txId} was not confirmed within {_confirmationOptions.Timeout.TotalSeconds}s for register {registerId}");
     }
 
+    /// <summary>
+    /// Applies the credential issuance <c>ClaimMappings</c> list against the
+    /// action's merged data, walking JSON Pointer <c>SourceField</c> paths so
+    /// nested primitive values (Feature 103) resolve correctly. Shared by
+    /// both the internal issuance path and the HAIP external-wallet path.
+    /// Missing mappings are logged at Warning level because a dropped claim
+    /// silently produces a credential with fewer attributes than expected.
+    /// </summary>
+    private Dictionary<string, object?> BuildClaimsFromMappings(
+        IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
+        IReadOnlyDictionary<string, object?> mergedData)
+        => BuildClaimsFromMappings(mappings, mergedData, _logger);
+
+    /// <summary>
+    /// Static logger-injected overload used by unit tests so the helper can
+    /// be exercised without needing the full <see cref="ActionExecutionService"/>
+    /// constructor graph.
+    /// </summary>
+    internal static Dictionary<string, object?> BuildClaimsFromMappings(
+        IEnumerable<Sorcha.Blueprint.Models.Credentials.ClaimMapping>? mappings,
+        IReadOnlyDictionary<string, object?> mergedData,
+        ILogger logger)
+    {
+        var claims = new Dictionary<string, object?>();
+        if (mappings is null) return claims;
+
+        foreach (var mapping in mappings)
+        {
+            if (TryResolveJsonPointer(mergedData, mapping.SourceField, out var value))
+            {
+                claims[mapping.ClaimName] = value;
+            }
+            else
+            {
+                // Note: the walker treats both "key missing" and "key present
+                // with null value" as unresolvable. The log message uses the
+                // neutral "no value at" phrasing so it's accurate for both
+                // cases. A null optional field (e.g. middleName) will produce
+                // this warning and a credential without that claim, which is
+                // the correct behaviour for issuance.
+                logger.LogWarning(
+                    "Claim mapping source '{SourceField}' has no value in action data; dropping claim '{ClaimName}' from credential",
+                    mapping.SourceField, mapping.ClaimName);
+            }
+        }
+        return claims;
+    }
+
+    /// <summary>
+    /// Resolves a JSON Pointer (<c>/foo/bar/baz</c>) against a root dictionary
+    /// built from the action payload. Walks nested <see cref="Dictionary{TKey,TValue}"/>,
+    /// <see cref="IDictionary{TKey,TValue}"/>, and <see cref="JsonElement"/> nodes.
+    /// Returns <c>false</c> on any missing segment.
+    /// </summary>
+    /// <remarks>
+    /// Used by the claim-mapping extractor so that primitive-nested payloads
+    /// (e.g. <c>/name/givenName</c> for a PersonName/v1-backed submission)
+    /// resolve correctly. Flat paths (<c>/givenName</c>) continue to work
+    /// because the pointer walk of a single segment degenerates to a
+    /// top-level lookup. RFC 6901 escape sequences (<c>~1</c> → <c>/</c>,
+    /// <c>~0</c> → <c>~</c>) are unescaped per segment. Feature 103 US2/US4.
+    ///
+    /// <para><b>Deviations from RFC 6901:</b> the empty pointer <c>""</c>
+    /// (whole document) and the single-slash pointer <c>"/"</c> (key
+    /// <c>""</c>) are both treated as unresolvable and return <c>false</c>.
+    /// Neither has a use case for credential claim mapping, and conflating
+    /// them is the simpler contract for the call sites. Explicit-null
+    /// values are also treated as unresolvable so the issuance path drops
+    /// the claim rather than emitting a credential with a null attribute.</para>
+    /// </remarks>
+    internal static bool TryResolveJsonPointer(
+        IReadOnlyDictionary<string, object?> root,
+        string jsonPointer,
+        out object? value)
+    {
+        value = null;
+        if (string.IsNullOrEmpty(jsonPointer) || jsonPointer == "/")
+        {
+            return false;
+        }
+
+        // RFC 6901: ~1 decodes to /, ~0 decodes to ~. Order matters:
+        // ~1 must be handled BEFORE ~0 to avoid double-unescape.
+        var segments = jsonPointer
+            .TrimStart('/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        for (var i = 0; i < segments.Length; i++)
+        {
+            segments[i] = segments[i].Replace("~1", "/").Replace("~0", "~");
+        }
+
+        if (segments.Length == 0) return false;
+
+        // First segment: look up in the root dictionary.
+        if (!root.TryGetValue(segments[0], out var current) || current is null)
+        {
+            return false;
+        }
+
+        // Subsequent segments: descend through nested structures.
+        for (var i = 1; i < segments.Length; i++)
+        {
+            current = DescendOneLevel(current, segments[i]);
+            if (current is null) return false;
+        }
+
+        value = current;
+        return true;
+    }
+
+    private static object? DescendOneLevel(object parent, string key)
+    {
+        switch (parent)
+        {
+            case IDictionary<string, object?> nullableDict:
+                return nullableDict.TryGetValue(key, out var v1) ? v1 : null;
+
+            case System.Collections.IDictionary plainDict:
+                return plainDict.Contains(key) ? plainDict[key] : null;
+
+            case JsonElement element when element.ValueKind == JsonValueKind.Object:
+                return element.TryGetProperty(key, out var child) ? (object)child : null;
+
+            default:
+                return null;
+        }
+    }
+
     private async Task<CredentialIssuanceResult?> IssueCredentialFromActionAsync(
         ActionModel actionDef,
         Dictionary<string, object> mergedData,
@@ -1285,19 +1431,21 @@ public class ActionExecutionService : IActionExecutionService
     {
         var config = actionDef.CredentialIssuanceConfig!;
 
-        // Map claims from action data using ClaimMappings
-        var claims = new Dictionary<string, object>();
-        if (config.ClaimMappings != null)
-        {
-            foreach (var mapping in config.ClaimMappings)
-            {
-                var sourceKey = mapping.SourceField.TrimStart('/');
-                if (mergedData.TryGetValue(sourceKey, out var value))
-                {
-                    claims[mapping.ClaimName] = value;
-                }
-            }
-        }
+        // Map claims from action data using ClaimMappings.
+        //
+        // Feature 103: sourceField is a JSON Pointer, so it may be either
+        // flat ("/givenName") or nested into a primitive value object
+        // ("/name/givenName" where name is a PersonName/v1 reference). The
+        // extraction walks the pointer segment-by-segment through nested
+        // dictionaries and JsonElement objects. Missing segments log a
+        // warning and skip the claim rather than failing the whole issue.
+        var claims = BuildClaimsFromMappings(config.ClaimMappings, mergedData!);
+        // Wallet client expects non-nullable values. Safe because
+        // TryResolveJsonPointer returns false on null-valued segments —
+        // BuildClaimsFromMappings never produces a null value. If that
+        // invariant is ever relaxed, this projection must filter or
+        // coerce nulls before the wire call.
+        var claimsForWallet = claims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
         // Resolve recipient wallet address from participant ID
         var recipientWallet = senderWallet; // Default: issuer is also recipient
@@ -1371,10 +1519,14 @@ public class ActionExecutionService : IActionExecutionService
 
         try
         {
+            _logger.LogDebug(
+                "Issuing {CredentialType} with {ClaimCount} claims: [{ClaimNames}]",
+                config.CredentialType, claims.Count, string.Join(", ", claims.Keys));
+
             var result = await _walletClient.IssueCredentialAsync(
                 issuerWalletAddress: senderWallet,
                 credentialType: config.CredentialType,
-                claims: claims,
+                claims: claimsForWallet,
                 recipientWallet: recipientWallet,
                 expiryDuration: config.ExpiryDuration,
                 disclosableClaims: config.Disclosable?.ToList(),
