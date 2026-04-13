@@ -2464,37 +2464,62 @@ public class PublishService(
     {
         if (_schemaRefResolver is null) return;
 
+        var anyActionRewritten = false;
+
         foreach (var action in blueprint.Actions)
         {
             if (action.DataSchemas is null) continue;
 
-            var flattened = new List<System.Text.Json.JsonDocument>();
-            var changed = false;
+            // Short-circuit: scan the raw JSON for "$ref" before paying the
+            // parse → flatten → re-serialise round trip. Blueprints that
+            // predate the primitive library (the vast majority) skip the
+            // resolver entirely and keep their existing JsonDocument
+            // instances, avoiding both the CPU cost and the IDisposable
+            // churn on every publish.
+            var schemaList = action.DataSchemas.ToList();
+            var actionNeedsFlatten = schemaList.Any(doc =>
+                doc.RootElement.GetRawText().Contains("\"$ref\"", StringComparison.Ordinal));
 
-            foreach (var schemaDoc in action.DataSchemas)
+            if (!actionNeedsFlatten) continue;
+
+            // Build the replacement list alongside a parallel track of the
+            // superseded originals so we can dispose exactly the right set.
+            // A null-node parse result (literal JSON `null` — pathological
+            // input) is passed through unchanged; we track it specially so
+            // we do NOT dispose the original in that case.
+            var flattened = new List<System.Text.Json.JsonDocument>(schemaList.Count);
+            var disposedOriginals = new List<System.Text.Json.JsonDocument>(schemaList.Count);
+            foreach (var schemaDoc in schemaList)
             {
-                var node = System.Text.Json.Nodes.JsonNode.Parse(schemaDoc.RootElement.GetRawText());
+                var raw = schemaDoc.RootElement.GetRawText();
+                var node = System.Text.Json.Nodes.JsonNode.Parse(raw);
                 if (node is null)
                 {
-                    flattened.Add(schemaDoc);
+                    flattened.Add(schemaDoc); // carried through — do NOT dispose
                     continue;
                 }
 
                 var flatNode = _schemaRefResolver.Flatten(node);
-                var flatDoc = System.Text.Json.JsonDocument.Parse(flatNode.ToJsonString());
-                flattened.Add(flatDoc);
-                changed = true;
+                flattened.Add(System.Text.Json.JsonDocument.Parse(flatNode.ToJsonString()));
+                disposedOriginals.Add(schemaDoc);
             }
 
-            if (changed)
+            // Dispose superseded JsonDocuments before losing the last
+            // reference — JsonDocument owns pooled byte buffers.
+            foreach (var old in disposedOriginals)
             {
-                action.DataSchemas = flattened;
+                old.Dispose();
             }
+
+            action.DataSchemas = flattened;
+            anyActionRewritten = true;
         }
 
-        _logger?.LogDebug(
-            "Flattened core primitive $refs in blueprint {BlueprintId} ({ActionCount} actions)",
-            blueprint.Id, blueprint.Actions.Count);
+        if (anyActionRewritten)
+        {
+            _logger?.LogDebug(
+                "Flattened core primitive $refs in blueprint {BlueprintId}", blueprint.Id);
+        }
     }
 
     public async Task<BlueprintValidationResult> ValidateAsync(string blueprintId)

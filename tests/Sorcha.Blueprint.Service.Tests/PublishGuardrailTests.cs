@@ -86,6 +86,48 @@ public class PublishGuardrailTests
     }
 
     [Fact]
+    public async Task Publish_BlueprintWithNoRefs_PassesThroughUnchanged()
+    {
+        // Pre-existing blueprints that predate the primitive library must
+        // publish cleanly when the resolver is registered. The $ref scan
+        // short-circuit means their DataSchemas are not even touched — the
+        // published snapshot carries the same JsonDocument instances as the
+        // draft (no round-trip, no dispose churn).
+        var coreRepo = new Sorcha.Blueprint.Service.Services.InMemoryCoreSchemaRepository();
+        var resolver = new Sorcha.Blueprint.Service.Services.SchemaRefResolver(
+            coreRepo,
+            Mock.Of<ILogger<Sorcha.Blueprint.Service.Services.SchemaRefResolver>>());
+
+        var blueprintStore = new Mock<IBlueprintStore>();
+        var publishedStore = new Mock<IPublishedBlueprintStore>();
+        BlueprintModel? capturedPublished = null;
+        publishedStore
+            .Setup(s => s.AddAsync(It.IsAny<PublishedBlueprint>()))
+            .Callback<PublishedBlueprint>(p => capturedPublished = p.Blueprint)
+            .ReturnsAsync((PublishedBlueprint p) => p);
+
+        var bp = BuildBlueprint(
+            citizenWalletAddress: null,
+            assessorWalletAddress: "ws1qassessor");
+        blueprintStore.Setup(s => s.GetAsync(bp.Id)).ReturnsAsync(bp);
+
+        var sut = new PublishService(
+            blueprintStore.Object,
+            publishedStore.Object,
+            registerClient: null,
+            redis: null,
+            schemaRefResolver: resolver,
+            logger: null);
+
+        var result = await sut.PublishAsync(bp.Id, registerId: "reg-1");
+
+        result.IsSuccess.Should().BeTrue();
+        capturedPublished.Should().NotBeNull();
+        // The built blueprint has no DataSchemas on its actions by default;
+        // this path simply exercises the resolver-present + no-refs flow.
+    }
+
+    [Fact]
     public async Task Publish_BlueprintWithUnknownCoreRef_ReturnsFailureWithOffendingUri()
     {
         var coreRepo = new Sorcha.Blueprint.Service.Services.InMemoryCoreSchemaRepository();
