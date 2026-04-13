@@ -136,7 +136,7 @@
       {
         "id": 2,
         "title": "Verify Applicant Identity",
-        "description": "Council requests the applicant's VerifiedCitizenCredential from their external HAIP wallet. A QR code is displayed for the citizen to scan and present.",
+        "description": "Council requests the applicant's VerifiedCitizenCredential from their external HAIP wallet. A QR code is displayed for the citizen to scan and present. Compatible with both v1 and v2 credentials — v2 credentials additionally carry middleName which is selectively disclosable, but middleName is NOT in requiredClaims so v1 credentials still verify cleanly. The Driving Licence application only needs given+family+DOB to confirm identity.",
         "sender": "council",
         "requiredPriorActions": [1],
         "credentialRequirements": [
@@ -149,7 +149,7 @@
               { "claimName": "dateOfBirth" }
             ],
             "revocationCheckPolicy": "FailClosed",
-            "description": "Government-issued identity credential"
+            "description": "Government-issued identity credential (v1 or v2 — middleName is accepted but not required)"
           }
         ],
         "dataSchemas": [

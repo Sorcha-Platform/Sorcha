@@ -315,9 +315,14 @@ $state = @{
         }
     }
     persona = @{
+        # Feature 103 v2: middleName added to exercise the new PersonaAttributesV1
+        # field via the PersonName/v1 core primitive. PersonName.fullName is left
+        # in place as the explicit override so consumers can compare auto-derive
+        # against author-supplied.
         givenName = "Alice"
+        middleName = "Maeve"
         familyName = "O'Brien"
-        fullName = "Alice O'Brien"
+        fullName = "Alice Maeve O'Brien"
         dateOfBirth = "1990-03-15"
         defaultEmail = $citizenEmail
         defaultAddress = @{

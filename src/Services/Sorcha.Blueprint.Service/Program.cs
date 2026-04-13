@@ -2435,13 +2435,67 @@ public class PublishService(
     IPublishedBlueprintStore publishedStore,
     Sorcha.ServiceClients.Register.IRegisterServiceClient? registerClient = null,
     StackExchange.Redis.IConnectionMultiplexer? redis = null,
+    Sorcha.Blueprint.Service.Services.ISchemaRefResolver? schemaRefResolver = null,
     ILogger<PublishService>? logger = null) : IPublishService
 {
     private readonly IBlueprintStore _blueprintStore = blueprintStore;
     private readonly IPublishedBlueprintStore _publishedStore = publishedStore;
     private readonly Sorcha.ServiceClients.Register.IRegisterServiceClient? _registerClient = registerClient;
     private readonly StackExchange.Redis.IConnectionMultiplexer? _redis = redis;
+    private readonly Sorcha.Blueprint.Service.Services.ISchemaRefResolver? _schemaRefResolver = schemaRefResolver;
     private readonly ILogger<PublishService>? _logger = logger;
+
+    /// <summary>
+    /// Walks every action's <c>DataSchemas</c> and replaces each
+    /// <see cref="System.Text.Json.JsonDocument"/> with a flattened version
+    /// where every Sorcha core <c>$ref</c> has been inlined. After this runs
+    /// the validator and the form renderer never see a primitive reference —
+    /// they see the fully-resolved schema. Mutates the supplied blueprint
+    /// in place.
+    /// </summary>
+    /// <remarks>
+    /// Called once at publish time so the immutable published snapshot
+    /// captures the flat form. The draft store is unchanged because the
+    /// caller does not write the mutated blueprint back. Failures bubble up
+    /// as <see cref="Sorcha.Blueprint.Service.Services.SchemaRefResolutionException"/>
+    /// and are converted to publish-time errors by the caller.
+    /// </remarks>
+    private void FlattenActionSchemas(BlueprintModel blueprint)
+    {
+        if (_schemaRefResolver is null) return;
+
+        foreach (var action in blueprint.Actions)
+        {
+            if (action.DataSchemas is null) continue;
+
+            var flattened = new List<System.Text.Json.JsonDocument>();
+            var changed = false;
+
+            foreach (var schemaDoc in action.DataSchemas)
+            {
+                var node = System.Text.Json.Nodes.JsonNode.Parse(schemaDoc.RootElement.GetRawText());
+                if (node is null)
+                {
+                    flattened.Add(schemaDoc);
+                    continue;
+                }
+
+                var flatNode = _schemaRefResolver.Flatten(node);
+                var flatDoc = System.Text.Json.JsonDocument.Parse(flatNode.ToJsonString());
+                flattened.Add(flatDoc);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                action.DataSchemas = flattened;
+            }
+        }
+
+        _logger?.LogDebug(
+            "Flattened core primitive $refs in blueprint {BlueprintId} ({ActionCount} actions)",
+            blueprint.Id, blueprint.Actions.Count);
+    }
 
     public async Task<BlueprintValidationResult> ValidateAsync(string blueprintId)
     {
@@ -2473,6 +2527,25 @@ public class PublishService(
         if (blueprint is null)
         {
             return PublishResult.Failed("Blueprint not found");
+        }
+
+        // Feature 103 T041: flatten Sorcha core primitive $refs BEFORE
+        // validating, storing, or pushing to the register. After this step
+        // every action's dataSchema is fully self-contained — no downstream
+        // consumer (validator / register / form renderer) needs to know
+        // about the primitive library. A failure here surfaces as a
+        // publish-time error pointing at the unresolvable URI.
+        try
+        {
+            FlattenActionSchemas(blueprint);
+        }
+        catch (Sorcha.Blueprint.Service.Services.SchemaRefResolutionException ex)
+        {
+            _logger?.LogWarning(ex,
+                "Blueprint {BlueprintId} failed schema $ref flattening at publish time", blueprintId);
+            return PublishResult.Failed(
+                $"Schema $ref resolution failed: {ex.Message}" +
+                (ex.RefUri is not null ? $" (offending $ref: {ex.RefUri})" : string.Empty));
         }
 
         // Validate blueprint — cycle detections are warnings, not errors
