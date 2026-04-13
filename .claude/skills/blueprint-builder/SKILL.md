@@ -176,6 +176,97 @@ The applicant doesn't authenticate as a pre-existing identity; they prove they h
 - **Don't rely on starting-action open semantics for sensitive roles.** If the starting participant should be restricted, *either* set their `walletAddress` (closed) *or* attach `credentialRequirements` (gated). Open + no requirements = anyone with a JWT can become that participant.
 - **Re-binding is immutable.** Once `instance.ParticipantWallets[citizen]` is set, attempting to submit again from a different wallet throws. If a workflow needs an applicant to "swap identity", that is a new instance.
 
+## Reusable Schema Components (Sorcha core library)
+
+> **Status:** Catalog and resolver land with the Verified Citizen v2 PR. This section is authoritative direction — once the PR ships, blueprints SHOULD prefer `$ref` to a core component over inlining identity primitives. Design spec: `docs/superpowers/specs/2026-04-13-verified-citizen-v2-design.md`.
+
+### Why
+
+Identity primitives (a person's name, date of birth, email, postal address) appear in every citizen-facing blueprint. Inlining the JSON Schema for them in each blueprint duplicates validation, layout, persona bindings, and address-lookup behaviour, and means each blueprint reinvents the form UX. The core library publishes them once with a stable URI and lets every blueprint `$ref` them.
+
+### Composition
+
+Use standard JSON Schema `$ref` with an HTTPS `$id`:
+
+```jsonc
+"properties": {
+  "name":    { "$ref": "https://schemas.sorcha.dev/core/PersonName/v1" },
+  "dob":     { "$ref": "https://schemas.sorcha.dev/core/DateOfBirth/v1" },
+  "email":   { "$ref": "https://schemas.sorcha.dev/core/EmailAddress/v1" },
+  "address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" }
+}
+```
+
+The validator pipeline flattens `$ref`s at resolve time — by the time the renderer or validator sees the schema, the referenced component's properties and layout have been inlined. The same `$id` later resolves to a `did:sorcha:register:.../schemas/core/...` once register publication ships; both forms are URIs, only the resolver changes.
+
+### Layout transclusion with override
+
+A component carries its own `x-pages`, `x-sections`, `x-introduction`, `x-width`. By default these transclude into the consuming schema at the point of `$ref`. The consuming blueprint can override layout by declaring extensions as siblings to the `$ref` (JSON Schema 2020-12 allows siblings to `$ref`).
+
+**Merge rule:**
+- **Child wins** for `x-pages` / `x-sections` / `x-introduction` / `x-width`
+- **Component wins** for `properties` / `required` / `type` (cannot be overridden inline — that would defeat reuse)
+
+Default usage (component's own layout):
+```jsonc
+"address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" }
+```
+
+Override with a compact one-row layout:
+```jsonc
+"address": {
+  "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1",
+  "x-sections": [
+    { "title": "Address", "layout": "horizontal", "fields": ["line1", "town", "postcode", "country"] }
+  ]
+}
+```
+
+### Initial component catalog
+
+| `$id` | Properties | Notes |
+|---|---|---|
+| `https://schemas.sorcha.dev/core/PersonName/v1` | `givenName`, `middleName?`, `familyName`, `fullName?` | Renderer auto-derives `fullName` when omitted. |
+| `https://schemas.sorcha.dev/core/DateOfBirth/v1` | `dateOfBirth: { format: date, formatMaximum: "today" }` | DoB must be in the past. |
+| `https://schemas.sorcha.dev/core/EmailAddress/v1` | `email: { format: email }` | Single email. |
+| `https://schemas.sorcha.dev/core/EmailAddressList/v1` | `emails: array of {email, isDefault}` | Min 1, max 5; exactly one default. |
+| `https://schemas.sorcha.dev/core/PostalAddress/v1` | `line1`, `line2?`, `town`, `region?`, `postcode`, `country` | Carries `x-address-lookup: true` on `postcode`; renderer dispatches a postcode lookup control when an address-lookup provider is configured. |
+
+### Persona bindings — declarative, not heuristic
+
+Components declare persona bindings explicitly via `x-persona` on each property:
+
+```jsonc
+"properties": {
+  "line1":    { "type": "string", "x-persona": "address.line1" },
+  "town":     { "type": "string", "x-persona": "address.town" },
+  "postcode": { "type": "string", "x-persona": "address.postcode" }
+}
+```
+
+`PersonaAutofillResolver` reads explicit `x-persona` first; falls back to name-heuristic matching for legacy blueprints that don't declare bindings. Prefer the explicit form for any new schema — it's more precise, survives field renames, and self-documents the autofill contract.
+
+### Date constraints — standard `formatMinimum` / `formatMaximum` with tokens
+
+Use the JSON Schema 2020-12 standard `formatMinimum` / `formatMaximum` keywords with a small Sorcha token vocabulary:
+
+| Token | Meaning |
+|---|---|
+| `today` | Current date in the user's timezone |
+| `today+{N}{D|M|Y}` | N days/months/years from today |
+| `today-{N}{D|M|Y}` | N days/months/years before today |
+
+Examples:
+- `DateOfBirth` — `formatMaximum: "today"` (must be in the past)
+- `AppointmentDate` — `formatMinimum: "today"` (must be in the future)
+- `AgeGate18` — `formatMaximum: "today-18Y"` (must be at least 18)
+
+A single helper substitutes tokens at evaluation time. The same component shape powers past-only, future-only, and age-gated date fields.
+
+### Don't reinvent these in your blueprint
+
+If your blueprint asks the user for a name, date of birth, email, or postal address, **`$ref` the core component** instead of inlining the JSON Schema. You get validation, layout, persona autofill, and (for postcode) address lookup for free, and your blueprint stays short and focused on the *novel* fields it actually owns.
+
 ## Blueprint Validation Rules
 
 1. **Participant references**: Every `action.sender` must reference a valid `participant.id`
