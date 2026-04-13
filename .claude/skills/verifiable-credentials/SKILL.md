@@ -183,7 +183,12 @@ SD-JWT compact form: `<issuer JWT>~<disclosure1>~<disclosure2>~...~<key binding 
 
 Actions carry credential configs as first-class fields (not an `x-*` schema extension). The real JSON shape uses `claimName` + `sourceField` on each mapping, and the set of selectively-disclosable claims is declared **once** on the config via the `disclosable` array.
 
-**Feature 103: nested source paths.** `sourceField` is a JSON Pointer, so it can resolve nested values from Sorcha core primitive references. A blueprint referencing `PersonName/v1` via `$ref` can map `/name/givenName`, `/name/familyName`, `/name/fullName` etc. directly — the `ActionExecutionService.BuildClaimsFromMappings` walker (used by both the internal issuance path and the HAIP external-wallet path) descends nested `Dictionary<string, object?>` and `JsonElement` structures and applies RFC 6901 `~1`/`~0` escape decoding. Missing source values are logged at `LogWarning` and the claim is dropped from the credential — silently issuing a credential with fewer attributes than the action promised is a correctness defect worth surfacing. See `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs:BuildClaimsFromMappings` and `TryResolveJsonPointer` for the walker, and `HaipVerifiedCitizen` for a worked example.
+**Feature 103: nested source paths.** `sourceField` is a JSON Pointer, so it can resolve nested values from Sorcha core primitive references.
+
+- A blueprint that references `PersonName/v1` via `$ref` can map `/name/givenName`, `/name/familyName`, `/name/fullName` etc. directly.
+- The `ActionExecutionService.BuildClaimsFromMappings` walker is used by both the internal issuance path and the HAIP external-wallet path. It descends nested `Dictionary<string, object?>` and `JsonElement` structures and applies RFC 6901 `~1` / `~0` escape decoding.
+- Missing source values are logged at `LogWarning` and the claim is dropped from the credential — silently issuing a credential with fewer attributes than the action promised is a correctness defect worth surfacing.
+- See `ActionExecutionService.BuildClaimsFromMappings` and `TryResolveJsonPointer` for the walker, and the `HaipVerifiedCitizen` walkthrough for a worked example.
 
 
 ```json
