@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# HaipIdentityAttestation — Setup
+# HaipVerifiedCitizen — Setup
 # Creates a Government Identity Authority org with admin user and wallet.
 # Provisions trust anchor and enrols the Government org as a HAIP issuer.
 # Creates a citizen user with persona data.
@@ -22,9 +22,9 @@ $ErrorActionPreference = "Stop"
 $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-Write-WtBanner "HaipIdentityAttestation — Setup"
+Write-WtBanner "HaipVerifiedCitizen — Setup"
 
-$secrets = Get-SorchaSecrets -WalkthroughName "haip-identity"
+$secrets = Get-SorchaSecrets -WalkthroughName "haip-verified-citizen"
 $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -217,7 +217,7 @@ Write-WtStep "Step 7: Create Register"
 $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "HAIP Identity Register" `
+    -Name "HAIP Verified Citizen Register" `
     -Description "Register for HAIP identity attestation workflows" `
     -TenantId $govOrgId `
     -OwnerUserId $govSession.UserId `
@@ -235,7 +235,7 @@ try {
         -TenantUrl $sorchaEnv.TenantUrl `
         -OrganizationId $publicOrgId `
         -RegisterId $register.RegisterId `
-        -RegisterName "HAIP Identity Register" `
+        -RegisterName "HAIP Verified Citizen Register" `
         -SubscriptionType "Public" `
         -Headers $sysAdmin.Headers
 } catch {
@@ -254,10 +254,10 @@ $walletMap = @{
 
 $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $sorchaEnv.BlueprintUrl `
-    -TemplatePath (Join-Path $scriptDir "blueprints/identity-attestation.json") `
+    -TemplatePath (Join-Path $scriptDir "blueprints/verified-citizen.json") `
     -WalletMap $walletMap `
     -Headers $govSession.Headers `
-    -IdPrefix "haip-identity" `
+    -IdPrefix "haip-verified-citizen" `
     -RegisterId $register.RegisterId
 
 Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
@@ -322,4 +322,4 @@ $state = @{
 
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
 Write-WtSuccess "State saved to $stateFile"
-Write-WtBanner "HaipIdentityAttestation — Setup Complete"
+Write-WtBanner "HaipVerifiedCitizen — Setup Complete"

@@ -49,7 +49,7 @@ $walkthroughs = @(
     @{ Name = "SelfBuildHouse"; Category = "Multi-Org"; HasSetupRun = $true }
 
     # HAIP (External Wallet) — must run in order (licence depends on identity)
-    @{ Name = "HaipIdentityAttestation"; Category = "HAIP"; HasSetupRun = $true }
+    @{ Name = "HaipVerifiedCitizen"; Category = "HAIP"; HasSetupRun = $true }
     @{ Name = "HaipDrivingLicence"; Category = "HAIP"; HasSetupRun = $true }
 )
 

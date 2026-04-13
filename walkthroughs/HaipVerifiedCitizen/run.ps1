@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sorcha Contributors
 #
-# HaipIdentityAttestation — Run
-# Issues a VerifiedIdentityCredential to the citizen via the HAIP OID4VCI flow.
+# HaipVerifiedCitizen — Run
+# Issues a VerifiedCitizenCredential to the citizen via the HAIP OID4VCI flow.
 # Creates a Blueprint instance, executes the issuance action, and uses
 # sorcha-agent haip receive to simulate an external HAIP wallet.
 
@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 $modulePath = Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) "modules/SorchaWalkthrough/SorchaWalkthrough.psm1"
 Import-Module $modulePath -Force
 
-Write-WtBanner "HaipIdentityAttestation — Run"
+Write-WtBanner "HaipVerifiedCitizen — Run"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
@@ -61,7 +61,7 @@ $instanceBody = @{
     blueprintId = $state.blueprintId
     registerId  = $state.registerId
     tenantId    = $state.publicOrgId
-    metadata    = @{ source = "walkthrough"; walkthrough = "HaipIdentityAttestation" }
+    metadata    = @{ source = "walkthrough"; walkthrough = "HaipVerifiedCitizen" }
 }
 
 $instance = Invoke-SorchaApi -Method POST `
@@ -160,7 +160,7 @@ if ($LASTEXITCODE -ne 0) {
 # ============================================================================
 Write-WtStep "Step 6: Verify Credential"
 
-$credFile = Join-Path $walletDir "credentials/VerifiedIdentityCredential.sdjwt"
+$credFile = Join-Path $walletDir "credentials/VerifiedCitizenCredential.sdjwt"
 if (Test-Path $credFile) {
     $credSize = (Get-Item $credFile).Length
     Write-WtSuccess "Credential stored: $credFile ($credSize bytes)"
@@ -175,5 +175,5 @@ $state | Add-Member -NotePropertyName "credentialPath" -NotePropertyValue $credF
 $state | Add-Member -NotePropertyName "walletDir" -NotePropertyValue $walletDir -Force
 $state | ConvertTo-Json -Depth 10 | Set-Content -Path $stateFile
 
-Write-WtBanner "HaipIdentityAttestation — Complete"
-Write-WtSuccess "VerifiedIdentityCredential issued to citizen wallet via Blueprint action"
+Write-WtBanner "HaipVerifiedCitizen — Complete"
+Write-WtSuccess "VerifiedCitizenCredential issued to citizen wallet via Blueprint action"

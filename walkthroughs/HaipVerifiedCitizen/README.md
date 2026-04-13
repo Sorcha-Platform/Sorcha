@@ -1,6 +1,6 @@
-# HAIP Identity Attestation Walkthrough
+# HAIP Verified Citizen Walkthrough
 
-Issues a **VerifiedIdentityCredential** to a citizen via the HAIP OpenID4VCI pre-authorized code flow. This is the first of two HAIP walkthroughs and must run before [HaipDrivingLicence](../HaipDrivingLicence/).
+Issues a **VerifiedCitizenCredential** to a citizen via the HAIP OpenID4VCI pre-authorized code flow. This is the first of two HAIP walkthroughs and must run before [HaipDrivingLicence](../HaipDrivingLicence/).
 
 ## What It Tests
 
@@ -24,10 +24,10 @@ Issues a **VerifiedIdentityCredential** to a citizen via the HAIP OpenID4VCI pre
 
 ```powershell
 # Setup: creates orgs, users, wallets, trust anchor
-pwsh walkthroughs/HaipIdentityAttestation/setup.ps1
+pwsh walkthroughs/HaipVerifiedCitizen/setup.ps1
 
 # Run: creates offer, exchanges pre-auth code, receives credential
-pwsh walkthroughs/HaipIdentityAttestation/run.ps1
+pwsh walkthroughs/HaipVerifiedCitizen/run.ps1
 ```
 
 ### Parameters
@@ -62,15 +62,15 @@ pwsh walkthroughs/HaipIdentityAttestation/run.ps1
 4. **Generates** (or loads) an ES256 holder key pair (P-256) stored in `wallet/holder-key.pem`
 5. **Builds** a JWT proof of possession binding the holder key to the `c_nonce` and issuer audience
 6. **Requests** the credential at the credential endpoint with the JWT proof
-7. **Stores** the issued SD-JWT VC in `wallet/credentials/VerifiedIdentityCredential.sdjwt`
+7. **Stores** the issued SD-JWT VC in `wallet/credentials/VerifiedCitizenCredential.sdjwt`
 
 ## Expected Output
 
 ```
 === Credential Received ===
-  Type:      VerifiedIdentityCredential
+  Type:      VerifiedCitizenCredential
   Issuer:    http://127.0.0.1/api/v1
-  Stored:    ./wallet/credentials/VerifiedIdentityCredential.sdjwt
+  Stored:    ./wallet/credentials/VerifiedCitizenCredential.sdjwt
   Token len: <length> chars
   cnf:       present
 ===========================
@@ -83,7 +83,7 @@ wallet/
 ├── holder-key.pem               # ES256 (P-256) private key
 ├── holder-key.jwk.json           # Public JWK for reference
 └── credentials/
-    └── VerifiedIdentityCredential.sdjwt   # Issued SD-JWT VC
+    └── VerifiedCitizenCredential.sdjwt   # Issued SD-JWT VC
 ```
 
 The credential contains selectively disclosable claims: `givenName`, `familyName`, `fullName`, `dateOfBirth`, `email`, and individual address fields (`street`, `locality`, `region`, `postcode`, `country`).
@@ -98,7 +98,7 @@ Run `docker-compose up -d` and wait for all containers to report healthy before 
 
 ### Secrets file missing
 ```
-ERROR: Cannot find secrets for 'haip-identity'
+ERROR: Cannot find secrets for 'haip-verified-citizen'
 ```
 Run `pwsh walkthroughs/initialize-secrets.ps1` to generate `.secrets/passwords.json`.
 

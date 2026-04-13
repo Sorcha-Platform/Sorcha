@@ -4,7 +4,7 @@
 #
 # HaipDrivingLicence — Setup
 # Creates a Council Licensing Authority org. Checks for identity credential
-# from HaipIdentityAttestation (runs it inline if missing).
+# from HaipVerifiedCitizen (runs it inline if missing).
 
 param(
     [ValidateSet('gateway', 'direct', 'aspire', 'n1')]
@@ -22,7 +22,7 @@ Write-WtBanner "HaipDrivingLicence — Setup"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stateFile = Join-Path $scriptDir "state.json"
-$identityDir = Join-Path (Split-Path -Parent $scriptDir) "HaipIdentityAttestation"
+$identityDir = Join-Path (Split-Path -Parent $scriptDir) "HaipVerifiedCitizen"
 $identityState = Join-Path $identityDir "state.json"
 
 # Skip if already set up
@@ -37,7 +37,7 @@ if ((Test-Path $stateFile) -and -not $Force) {
 Write-WtStep "Step 1: Check Identity Credential"
 
 if (-not (Test-Path $identityState)) {
-    Write-WtWarn "HaipIdentityAttestation not run — running it now"
+    Write-WtWarn "HaipVerifiedCitizen not run — running it now"
     & (Join-Path $identityDir "setup.ps1") -Profile $Profile -SkipHealthCheck:$SkipHealthCheck
     & (Join-Path $identityDir "run.ps1")
 }
@@ -183,13 +183,13 @@ try {
 Write-WtStep "Step 7: Publish Blueprint"
 
 if (-not $idState.citizenWalletAddress) {
-    Write-WtFail "HaipIdentityAttestation state.json has no citizenWalletAddress — re-run that setup first."
+    Write-WtFail "HaipVerifiedCitizen state.json has no citizenWalletAddress — re-run that setup first."
     exit 1
 }
 
 $walletMap = @{
     "council"   = $councilWallet.Address
-    # The applicant is the same citizen from HaipIdentityAttestation. Using
+    # The applicant is the same citizen from HaipVerifiedCitizen. Using
     # their actual wallet (not a placeholder of the council wallet) means
     # Action 1 of the licence blueprint is correctly signed by the citizen
     # under their own user token in run.ps1, and the in-platform audit trail
@@ -232,7 +232,7 @@ $state = @{
             organizationId = $councilOrgId
             walletAddress = $councilWallet.Address
         }
-        # The applicant is the citizen from HaipIdentityAttestation. We
+        # The applicant is the citizen from HaipVerifiedCitizen. We
         # reach back into that walkthrough's state to pull their credentials
         # and org so run.ps1 can authenticate as them and sign Action 1
         # under their own user token.

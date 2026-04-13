@@ -5,6 +5,6 @@
   },
   "haip": {
     "holderKeyAlgorithm": "ES256",
-    "walletDir": "../HaipIdentityAttestation/wallet"
+    "walletDir": "../HaipVerifiedCitizen/wallet"
   }
 }

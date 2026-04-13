@@ -1,17 +1,17 @@
 {
-  "id": "haip-identity-attestation-v2",
-  "title": "HAIP Identity Attestation",
-  "description": "A citizen submits an identity application. A government assessor reviews the application, then issues a VerifiedIdentityCredential to the citizen's external HAIP wallet via the OpenID4VCI pre-authorized code flow (delivered as a QR code).",
-  "version": 2,
+  "id": "haip-verified-citizen-v1",
+  "title": "HAIP Verified Citizen",
+  "description": "A citizen submits a verified-citizen application. A government assessor reviews the application, then issues a VerifiedCitizenCredential to the citizen's external HAIP wallet via the OpenID4VCI pre-authorized code flow (delivered as a QR code).",
+  "version": 1,
   "category": "identity",
-  "tags": ["haip", "identity", "oid4vci", "verifiable-credential", "external-wallet", "citizen-application"],
+  "tags": ["haip", "verified-citizen", "identity", "oid4vci", "verifiable-credential", "external-wallet", "citizen-application"],
   "author": "Sorcha Team",
   "published": true,
   "template": {
-    "id": "haip-identity-attestation",
-    "title": "HAIP Identity Attestation",
-    "description": "Citizen submits identity details, government assessor reviews and issues a verifiable credential to the citizen's external HAIP wallet.",
-    "version": 2,
+    "id": "haip-verified-citizen",
+    "title": "HAIP Verified Citizen",
+    "description": "Citizen submits identity details, government assessor reviews and issues a Verified Citizen credential to the citizen's external HAIP wallet.",
+    "version": 1,
     "metadata": {
       "category": "Identity & Credentials",
       "complexity": "Simple",
@@ -24,26 +24,26 @@
         "id": "citizen",
         "name": "Citizen",
         "organisation": "Public",
-        "description": "Submits an identity application and receives the verified identity credential via their external HAIP wallet"
+        "description": "Submits a verified-citizen application and receives the Verified Citizen credential via their external HAIP wallet"
       },
       {
         "id": "government-assessor",
         "name": "Government Assessor",
         "organisation": "Government Identity Authority",
-        "description": "Reviews citizen identity applications and issues VerifiedIdentityCredential on approval"
+        "description": "Reviews citizen identity applications and issues VerifiedCitizenCredential on approval"
       }
     ],
     "actions": [
       {
         "id": 1,
-        "title": "Submit Identity Application",
-        "description": "Citizen submits their personal details for verification. The government assessor will review the application and, if approved, issue a VerifiedIdentityCredential.",
+        "title": "Submit Verified Citizen Application",
+        "description": "Citizen submits their personal details for verification. The government assessor will review the application and, if approved, issue a VerifiedCitizenCredential.",
         "sender": "citizen",
         "isStartingAction": true,
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Submit your personal details so a government assessor can verify your identity. After review, the verified identity credential will be delivered to the wallet you scan the QR code with.",
+            "x-introduction": "Submit your personal details so a government assessor can verify your identity. After review, the Verified Citizen credential will be delivered to the wallet you scan the QR code with.",
             "x-pages": [
               {
                 "title": "Your Name",
@@ -155,14 +155,14 @@
       },
       {
         "id": 2,
-        "title": "Review & Issue Identity Credential",
-        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedIdentityCredential is issued and delivered to the citizen's external HAIP wallet via a QR code (OpenID4VCI pre-authorized code flow).",
+        "title": "Review & Issue Verified Citizen Credential",
+        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedCitizenCredential is issued and delivered to the citizen's external HAIP wallet via a QR code (OpenID4VCI pre-authorized code flow).",
         "sender": "government-assessor",
         "requiredPriorActions": [1],
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Review the citizen's submitted personal details against your records and approve or reject the application. On approval the verified identity credential is minted and offered to the citizen's external wallet.",
+            "x-introduction": "Review the citizen's submitted personal details against your records and approve or reject the application. On approval the Verified Citizen credential is minted and offered to the citizen's external wallet.",
             "x-sections": [
               {
                 "title": "Decision",
@@ -187,7 +187,7 @@
           }
         ],
         "credentialIssuanceConfig": {
-          "credentialType": "VerifiedIdentityCredential",
+          "credentialType": "VerifiedCitizenCredential",
           "targetAudience": "HaipExternalWallet",
           "recipientParticipantId": "citizen",
           "claimMappings": [
