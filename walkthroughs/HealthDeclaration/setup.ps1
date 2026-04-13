@@ -283,7 +283,9 @@ $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $env.BlueprintUrl `
     -TemplatePath $templatePath `
     -WalletMap @{
-        "patient"   = $patientWallet.Address
+        # patient is the open starting-action sender — Publish-SorchaBlueprint
+        # auto-skips open participants (Feature 103), so it's fine to pass it
+        # in the map, but we omit it here to make the intent explicit.
         "clinician" = $clinicianWallet.Address
     } `
     -Headers $patientAuth.Headers `

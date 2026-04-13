@@ -437,10 +437,10 @@ The spec is satisfied when:
 6. The `walletMap` in `HaipVerifiedCitizen/setup.ps1` no longer contains the `citizen` entry, and the walkthrough's `setup.ps1` + `run.ps1` complete cleanly against n1.
 7. End-to-end test on n1 runs the full Verified Citizen v2 flow without manual fix-up.
 
-## Open questions for planning
+## Open questions for planning — resolved
 
-- Address lookup endpoint auth: public (so anonymous submitters can use it during form fill) or auth-gated (so abuse is rate-limited per user)? Both are defensible; the planning phase decides.
-- Whether the `x-address-lookup` keyword belongs in PR 2 (with the components that use it) or PR 3 (with the lookup library). My lean: PR 2, since the renderer needs to *recognise* the keyword whether or not a provider is configured (graceful degradation).
-- Whether `Sorcha.AddressLookup` ships as a separate csproj or is folded into `Sorcha.Tenant.Service` directly. csproj if we expect a CLI consumer or test isolation; folded if Tenant is the only ever caller.
+- **Address lookup endpoint auth:** Resolved as **auth-gated**. Both endpoints (`GET /api/address-lookup/providers` and `POST /api/address-lookup/postcode`) require a Bearer JWT and apply the standard API rate-limit policy. The `PostcodeLookupRenderer` runs inside an authenticated form context, so the citizen is already signed in by the time the lookup fires.
+- **`x-address-lookup` keyword placement:** Resolved as **wave 4 (PR #271)** for the backing library + Tenant endpoints, and **wave 7 (PR #274)** for the UI dispatch. Splitting turned out to be natural: wave 4 could ship the library and endpoints independently, and wave 7 added the `FormSchemaService` dispatch logic plus `PostcodeLookupRenderer` once the backend was live. Graceful degradation (plain text when no provider) means wave 7 would have worked even if wave 4 had been deferred.
+- **`Sorcha.AddressLookup` as a separate csproj:** Resolved as **separate csproj**. Shipped as `src/Common/Sorcha.AddressLookup` with its own test project (`tests/Sorcha.AddressLookup.Tests`). The Tenant Service references it as a library. Separate csproj won the call because (a) it kept the provider abstraction isolated and testable without spinning up the full Tenant Service, and (b) a future CLI or internal batch caller can adopt it without pulling in Tenant dependencies.
 
-These are tactical, not architectural, and don't change the spec.
+All three questions were tactical; none changed the spec.

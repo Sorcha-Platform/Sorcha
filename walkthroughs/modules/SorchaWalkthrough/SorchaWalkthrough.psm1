@@ -1203,8 +1203,26 @@ function Publish-SorchaBlueprint {
     $templateJson = Get-Content -Path $TemplatePath -Raw | ConvertFrom-Json -Depth 30
     $blueprint = $templateJson.template
 
+    # Feature 103: identify open starting-action senders. The publish-time
+    # guardrail (VAL_BP_010) rejects any blueprint where an open starting
+    # action's sender participant has a non-null walletAddress — the
+    # participant must be late-bound to the first qualifying submitter at
+    # runtime. Auto-skip patching for these participants so walkthrough
+    # authors don't need to know this rule.
+    $openSenders = @()
+    foreach ($action in $blueprint.actions) {
+        if ($action.isStartingAction -and $action.sender) {
+            $openSenders += $action.sender
+        }
+    }
+    $openSenders = $openSenders | Sort-Object -Unique
+
     # Patch wallet addresses in-memory
     foreach ($participant in $blueprint.participants) {
+        if ($openSenders -contains $participant.id) {
+            Write-WtInfo "  Skipped $($participant.id) (open participant — late-bound at runtime)"
+            continue
+        }
         if ($WalletMap.ContainsKey($participant.id)) {
             $participant | Add-Member -NotePropertyName "walletAddress" -NotePropertyValue $WalletMap[$participant.id] -Force
             Write-WtInfo "  Patched $($participant.id) -> $($WalletMap[$participant.id])"
