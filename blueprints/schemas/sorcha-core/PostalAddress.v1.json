@@ -3,7 +3,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "title": "Postal Address",
-  "description": "A structured postal address. The postcode field declares x-address-lookup so the form renderer dispatches the postcode lookup control when an address-lookup provider is configured, and falls back to plain text otherwise.",
+  "description": "A structured postal address. The postcode field declares x-address-lookup so the form renderer dispatches the postcode lookup control when an address-lookup provider is configured, and falls back to plain text otherwise. Field widths are tuned for the wizard layout: line1/line2 full-width; town/region/postcode share a horizontal row (each third); country sits on its own row as half-width to leave room alongside address-lookup feedback UI.",
   "x-sections": [
     {
       "title": "Street",

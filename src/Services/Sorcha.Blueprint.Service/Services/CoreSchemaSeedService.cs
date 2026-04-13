@@ -158,6 +158,11 @@ internal sealed class CoreSchemaSeedService : IHostedService
             throw new InvalidOperationException(
                 $"{Path.GetFileName(fileName)}: '$id' path after the prefix must be '{{Name}}/v{{N}}' (got '{idSuffix}')");
         }
+        if (!System.Text.RegularExpressions.Regex.IsMatch(segments[1], @"^v\d+$"))
+        {
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(fileName)}: version segment must match 'v{{N}}' (got '{segments[1]}')");
+        }
         var expectedFileName = $"{segments[0]}.{segments[1]}.json";
         if (!string.Equals(Path.GetFileName(fileName), expectedFileName, StringComparison.Ordinal))
         {

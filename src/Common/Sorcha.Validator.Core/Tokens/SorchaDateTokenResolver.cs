@@ -67,7 +67,7 @@ public static class SorchaDateTokenResolver
         {
             throw new FormatException(
                 $"'{token}' is not a valid Sorcha date token or ISO-8601 date. " +
-                "Expected one of: 'today', 'today+NY', 'today-NM', 'today+ND', or 'YYYY-MM-DD'.");
+                "Expected 'today', 'today\u00B1N[D|M|Y]' (e.g. 'today-18Y', 'today+30D'), or 'YYYY-MM-DD'.");
         }
 
         // Bare 'today'

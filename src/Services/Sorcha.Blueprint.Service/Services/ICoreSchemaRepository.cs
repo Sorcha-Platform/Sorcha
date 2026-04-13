@@ -48,5 +48,14 @@ public interface ICoreSchemaRepository
     /// Enumerate every primitive currently registered. Used by diagnostics and
     /// the schema-library listing endpoint.
     /// </summary>
+    /// <remarks>
+    /// Same mutability rule as <see cref="Get"/>: the returned dictionary is a
+    /// new wrapper, but the <see cref="JsonNode"/> values are the live stored
+    /// references. Callers that inspect a primitive are fine; callers that
+    /// mutate one MUST <see cref="JsonNode.DeepClone"/> first. Diagnostics and
+    /// listing endpoints typically serialise, not mutate, so this is usually a
+    /// non-issue — but the warning is load-bearing for any future caller that
+    /// enumerates with intent to transform.
+    /// </remarks>
     IReadOnlyDictionary<string, JsonNode> GetAll();
 }
