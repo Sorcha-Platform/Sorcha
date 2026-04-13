@@ -4,6 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Sorcha.AddressLookup;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.Endpoints;
 using Sorcha.ServiceClients.Extensions;
@@ -112,6 +113,12 @@ builder.Services.AddHttpClient<Sorcha.Tenant.Service.Services.IPersonaCryptoClie
     client.BaseAddress = new Uri(walletBase);
 });
 
+// Feature 103 US3: address lookup service + providers. postcodes.io is
+// registered as the default-on provider (no key, no rate limit, MIT). OS
+// Places is conditionally registered when Tenant:AddressLookup:OsPlaces:ApiKey
+// is configured.
+builder.Services.AddSorchaAddressLookup(builder.Configuration);
+
 var app = builder.Build();
 
 // Run database migrations and seeding BEFORE app.Run() to prevent race conditions
@@ -170,6 +177,7 @@ app.MapPublicPasskeyEndpoints();
 app.MapServiceAuthEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapPersonaEndpoints();
+app.MapAddressLookupEndpoints();
 app.MapTotpEndpoints();
 app.MapIdpConfigurationEndpoints();
 app.MapOidcEndpoints();
