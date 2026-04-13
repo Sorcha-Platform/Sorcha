@@ -56,6 +56,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly IEncryptionOperationStore? _encryptionOperationStore;
     private readonly IHaipServiceClient? _haipClient;
     private readonly IActionStore _actionStore;
+    private readonly IInstanceBindingCache? _bindingCache;
     private readonly TransactionConfirmationOptions _confirmationOptions;
     private readonly bool _credentialStatusEmbeddingEnabled;
     private readonly ILogger<ActionExecutionService> _logger;
@@ -88,7 +89,8 @@ public class ActionExecutionService : IActionExecutionService
         IDisclosureGroupBuilder? disclosureGroupBuilder = null,
         Channel<EncryptionWorkItem>? encryptionChannel = null,
         IEncryptionOperationStore? encryptionOperationStore = null,
-        IHaipServiceClient? haipClient = null)
+        IHaipServiceClient? haipClient = null,
+        IInstanceBindingCache? bindingCache = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
@@ -110,6 +112,7 @@ public class ActionExecutionService : IActionExecutionService
         _encryptionChannel = encryptionChannel;
         _encryptionOperationStore = encryptionOperationStore;
         _haipClient = haipClient;
+        _bindingCache = bindingCache;
 
         // Feature 093 US2: read the CredentialStatus:EnableEmbedding flag. When false,
         // ActionExecutionService skips the pre-signing status list allocation and
@@ -306,13 +309,44 @@ public class ActionExecutionService : IActionExecutionService
             accumulatedState = accumulatedState with { PreviousTransactionId = blueprintTxId };
         }
 
-        // 5d. Starting action participant binding — bind sender wallet to participant role
+        // 5d. Starting action participant binding — bind sender wallet to participant role.
+        //
+        // Feature 103 US1: this is the canonical late-binding block for open
+        // starting actions. The contract is:
+        //   - IsStartingAction = true on an action means the participant named by
+        //     actionDef.Sender is OPEN and may be late-bound by the first submitter.
+        //   - The participant's WalletAddress in the blueprint MUST be null at publish
+        //     time (enforced by the VAL_BP_010 publish-time guardrail). When the
+        //     blueprint instead pre-binds the participant, the strict-equality check
+        //     at lines 196-216 above would reject every real public submitter before
+        //     this block even runs.
+        //   - Once bound, the binding is immutable for the life of the instance.
+        //
+        // Persistence: the binding is written through to BOTH the authoritative
+        // IInstanceStore (via UpdateAsync below — this is the source of truth, and
+        // the Validator service's chain conformance check rebuilds it from the
+        // signed Action transaction on the ledger if ever needed) AND the Redis
+        // read-through cache (via IInstanceBindingCache.SetAsync — performance layer
+        // only; failure is non-fatal). See T014a investigation:
+        // specs/103-verified-citizen-v2/investigation-t014a.md — the Program.cs:883
+        // legacy endpoint bypasses this path entirely but is not used by walkthroughs
+        // or the UI.
+        //
+        // Design note (why the read-path here does NOT consult IInstanceBindingCache):
+        // the `instance` variable has already been hydrated from IInstanceStore at
+        // line 138. Reading `instance.ParticipantWallets` is a local in-memory
+        // dictionary lookup; a cache round-trip would be strictly slower. The cache
+        // exists for OTHER call sites that want to resolve a binding without loading
+        // the full Instance (e.g. a disclosure resolver or a SignalR notification
+        // dispatcher that only needs the participant→wallet map). Those consumers
+        // land in follow-up waves — this site writes through so the cache is warm
+        // for them.
         if (actionDef.IsStartingAction && !string.IsNullOrWhiteSpace(actionDef.Sender))
         {
             var senderParticipantId = actionDef.Sender;
             if (instance.ParticipantWallets.TryGetValue(senderParticipantId, out var boundWallet))
             {
-                // Already bound — verify it's the same wallet (FR-008: immutable binding)
+                // Already bound — verify it's the same wallet (FR-004: immutable binding)
                 if (!string.Equals(boundWallet, request.SenderWallet, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException(
@@ -322,9 +356,20 @@ public class ActionExecutionService : IActionExecutionService
             }
             else
             {
-                // Bind sender wallet to participant role
+                // Bind sender wallet to participant role. Persist authoritatively to the
+                // instance store first, then write through to the cache.
                 instance.ParticipantWallets[senderParticipantId] = request.SenderWallet;
                 await _instanceStore.UpdateAsync(instance, cancellationToken);
+
+                // Write-through to the Redis cache — best-effort, never fails the caller.
+                if (_bindingCache is not null)
+                {
+                    await _bindingCache.SetAsync(
+                        instanceId,
+                        instance.ParticipantWallets,
+                        cancellationToken);
+                }
+
                 _logger.LogInformation(
                     "Bound wallet {Wallet} to participant '{ParticipantId}' for instance {InstanceId}",
                     request.SenderWallet, senderParticipantId, instanceId);
