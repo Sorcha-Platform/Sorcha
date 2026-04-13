@@ -68,13 +68,14 @@ Web app (microservices backend + Blazor WASM frontend):
 - [ ] T011 [P] [US1] Audit the remaining walkthroughs under `walkthroughs/` for any other instances of pre-binding open participants. For each match, either fix the walletMap (if the participant is genuinely open) or document why it's intentionally pre-bound. Produce a one-paragraph audit note in the PR description.
 - [ ] T012 [P] [US1] Add an XML doc summary on `Action.IsStartingAction` in `src/Common/Sorcha.Blueprint.Models/Action.cs` lines 186-190 documenting that this flag is the open contract: any wallet may submit; first sender becomes the bound participant; participant `walletAddress` MUST be null at publish time. Cross-reference `Participant.cs:50-55`.
 - [ ] T013 [P] [US1] Update the XML doc summary on `Participant.WalletAddress` in `src/Common/Sorcha.Blueprint.Models/Participant.cs` lines 50-55 to be more emphatic: a non-null wallet on a participant referenced by a starting action is REJECTED at publish time by `VAL_BP_010`. Cross-reference the contract file.
-- [ ] T014 [US1] Verify that `IInstanceStore.UpdateAsync` is actually called and persists in the live action-submission code path. Read `src/Services/Sorcha.Blueprint.Service/Program.cs` around line 883 (action submission endpoint) and `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs:309-332` (late-bind block). If a gap exists between the two paths (the Explore agent flagged this as half-built), close it. If no gap exists, document the path with a code comment so this can't be re-flagged later. Capture findings in the PR description.
+- [ ] T014a [US1] **Investigate** whether `IInstanceStore.UpdateAsync` is actually called and persists in the live action-submission code path. Read `src/Services/Sorcha.Blueprint.Service/Program.cs` around line 883 (action submission endpoint) and trace through to `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs:309-332` (late-bind block). Document the call path in a short written report committed to the PR description: either "persistence path is intact — here is the trace" or "persistence gap found at file:line — here is the nature of the gap". This task is investigation only; any fix work happens in T014b. Time-box: 2 hours.
+- [ ] T014b [US1] **Close any persistence gap** identified by T014a. If T014a reports "path intact", this task reduces to adding a single code comment above `ActionExecutionService.cs:327` confirming the persistence contract with a cross-reference to `contracts/instance-binding-cache.md`. If T014a reports a gap, this task implements the missing persistence call and adds an integration test to `tests/Sorcha.Blueprint.Service.IntegrationTests/InstancePersistenceRegressionTest.cs` that would have caught the gap. Scope is conditional on T014a's findings; PR reviewer must confirm the match.
 - [ ] T015 [P] [US1] Create `src/Services/Sorcha.Blueprint.Service/Services/InstanceBindingCacheOptions.cs` defining `TTL` (default 1h), `KeyPrefix` (read from Redis options). Bind via the standard `IOptions<T>` pattern.
 - [ ] T016 [P] [US1] Create `src/Services/Sorcha.Blueprint.Service/Services/IInstanceBindingCache.cs` interface with three methods: `GetAsync(instanceId, ct) → Dictionary<string,string>?`, `SetAsync(instanceId, bindings, ct)`, `InvalidateAsync(instanceId, ct)`.
 - [ ] T017 [US1] Implement `src/Services/Sorcha.Blueprint.Service/Services/InstanceBindingCache.cs` per `contracts/instance-binding-cache.md`. Constructor takes `IConnectionMultiplexer`, `IInstanceStore`, `IRegisterServiceClient`, `IOptions<InstanceBindingCacheOptions>`, `ILogger<InstanceBindingCache>`. Three-tier read path: cache → instance store → ledger replay. Sliding TTL on read. Fire-and-forget write failure semantics. OpenTelemetry metrics per the contract.
 - [ ] T018 [US1] Register `IInstanceBindingCache` and `InstanceBindingCacheOptions` in DI in `src/Services/Sorcha.Blueprint.Service/Program.cs`. Use `builder.Services.AddSingleton<IInstanceBindingCache, InstanceBindingCache>()` and `builder.Services.Configure<InstanceBindingCacheOptions>(...)`.
 - [ ] T019 [US1] Wire `IInstanceBindingCache` into `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs`. Inject in the constructor, replace direct dictionary reads at lines 313 and 326 with `await _bindingCache.GetAsync(...)` for reads and `await _bindingCache.SetAsync(...)` for writes after the existing `_instanceStore.UpdateAsync` call. Preserve all existing log statements and the immutability check.
-- [ ] T020 [P] [US1] Implement the publish-time guardrail rule in `src/Services/Sorcha.Blueprint.Service/Program.cs` next to the existing Rule 6 starting-action validation around line 2640-2700. New rule: for each `Action` where `IsStartingAction == true && !string.IsNullOrWhiteSpace(Sender)`, look up the participant by id; if `!string.IsNullOrWhiteSpace(participant.WalletAddress)`, add a `VAL_BP_010` error with the message template from `contracts/validator-publish-errors.md`.
+- [ ] T020 [US1] Implement the publish-time guardrail rule in `src/Services/Sorcha.Blueprint.Service/Program.cs` next to the existing Rule 6 starting-action validation around line 2640-2700. New rule: for each `Action` where `IsStartingAction == true && !string.IsNullOrWhiteSpace(Sender)`, look up the participant by id; if `!string.IsNullOrWhiteSpace(participant.WalletAddress)`, add a `VAL_BP_010` error with the message template from `contracts/validator-publish-errors.md`. (Sequential after T018 — both tasks edit `Program.cs`, but in non-overlapping line ranges: T018 edits the DI registration block near the top; T020 edits the publish validation block around line 2640. Still must be committed sequentially to avoid merge conflicts.)
 - [ ] T021 [US1] Wire the new error code reserved in T004 into the validation engine at `src/Services/Sorcha.Validator.Service/Services/ValidationEngine.cs`. Ensure the error is emitted in the standard publish-error response shape with `code`, `severity`, `message`, `field`, `actionId`, `participantId`. (Depends on T004 + T020.)
 - [ ] T022 [P] [US1] Add a new section to `CLAUDE.md` under "Critical Patterns" titled "Open Participants & Late Binding" that summarises the contract and cross-references the blueprint-builder skill, the design spec, and `contracts/validator-publish-errors.md`. ~15 lines max.
 - [ ] T023 [US1] Run `tests/Sorcha.Blueprint.Service.Tests/InstanceBindingCacheTests.cs` (T005) and verify all six cases now pass after T017 + T019.
@@ -169,7 +170,7 @@ Web app (microservices backend + Blazor WASM frontend):
 #### 3a. Library scaffolding
 
 - [ ] T058 [P] [US3] Create new csproj `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` targeting net10.0, nullable enable, License header. Reference `Sorcha.ServiceDefaults`.
-- [ ] T059 [P] [US3] Add `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` to the solution `Sorcha.sln`.
+- [ ] T059 [US3] Add `src/Common/Sorcha.AddressLookup/Sorcha.AddressLookup.csproj` to the solution `Sorcha.sln`. (Sequential after T058 — depends on the csproj file existing.)
 - [ ] T060 [P] [US3] Create `src/Common/Sorcha.AddressLookup/IAddressLookupProvider.cs` defining the interface from research.md decision 11: `ProviderName`, `Capability`, `SupportedCountries`, `IsAvailableAsync`, `LookupAsync`.
 - [ ] T061 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupCapability.cs` enum: `ValidateOnly`, `FullAddress`.
 - [ ] T062 [P] [US3] Create `src/Common/Sorcha.AddressLookup/AddressLookupResult.cs` and `AddressCandidate.cs` records matching the shapes in `contracts/address-lookup-api.yaml`. Records should be JSON-serializable for the wire and consumable directly by the Tenant Service endpoints.
@@ -194,7 +195,7 @@ Web app (microservices backend + Blazor WASM frontend):
 
 - [ ] T070 [US3] Create `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/PostcodeLookupField.razor` per quickstart.md and the design spec. Three states: no provider (plain text), ValidateOnly (postcode field with tick + town/region autofill), FullAddress (postcode field with "Find address" button → modal pick list → autofills siblings via JsonPointer-style lookup). Calls `/api/address-lookup/providers` once on init to determine state, calls `/api/address-lookup/postcode` on user action.
 - [ ] T071 [US3] Update `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` to dispatch a property carrying `x-address-lookup: true` to `PostcodeLookupField` instead of a plain text input. Preserve all other dispatch paths (file upload, persona autofill, etc).
-- [ ] T072 [P] [US3] Add `data-testid` attributes to `PostcodeLookupField.razor` for `postcode-input`, `postcode-validate-tick`, `postcode-find-address-button`, `postcode-candidate-modal`, `postcode-candidate-{i}` per the `sorcha-ui` skill's data-testid convention.
+- [ ] T072 [US3] Add `data-testid` attributes to `PostcodeLookupField.razor` for `postcode-input`, `postcode-validate-tick`, `postcode-find-address-button`, `postcode-candidate-modal`, `postcode-candidate-{i}` per the `sorcha-ui` skill's data-testid convention. (Sequential after T070 — edits the same file.)
 
 #### 3f. Validation pass
 
@@ -282,9 +283,9 @@ Web app (microservices backend + Blazor WASM frontend):
 ### Parallel Opportunities
 
 - **Setup**: T002, T003 are [P] within Phase 1.
-- **US1**: Tests T005-T008 are all [P]. Within implementation, T011-T013 are [P], T015-T016 are [P], T020 is [P] with T015-T019, T022 is [P] with everything else.
+- **US1**: Tests T005-T008 are all [P]. Within implementation, T011-T013 are [P] (different files); T015-T016 are [P] (different new files); T022 is [P] with everything else (CLAUDE.md, no other US1 task touches it). T014a → T014b is sequential (T014b is conditional on T014a's findings). T020 is sequential after T018 because both edit `Program.cs`.
 - **US2**: All four test tasks T028-T031 are [P]. Within implementation, T036 + T038 are [P]; T044-T048 (the five primitive files) are all [P]; T039 is [P] with T038.
-- **US3**: All four test tasks T054-T057 are [P]. Within implementation, T058-T063 (scaffolding) are all [P]; T064 + T065 are [P] (different providers); T072 is [P] with the renderer work; T075 + T076 are [P].
+- **US3**: All four test tasks T054-T057 are [P]. Within implementation, T058 + T060-T063 (scaffolding) are all [P] — six different new files; T059 (add to sln) is sequential after T058 and therefore NOT [P]; T064 + T065 (different providers, different new files) are naturally parallel and could be marked [P] at execution time even though the file only lists them sequentially; T072 is sequential after T070 because both edit `PostcodeLookupField.razor`; T075 + T076 are [P].
 - **US4**: T081 + T082 are [P] (different files in HaipDrivingLicence).
 - **Polish**: T088-T092 are all [P]; T095 is [P] with T094.
 
@@ -391,18 +392,18 @@ With multiple developers:
 |---|---|---|---|
 | Phase 1 — Setup | — | 3 | — |
 | Phase 2 — Foundational | — | 1 | — |
-| Phase 3 — US1 | Open starting actions | 23 | Yes (T005-T008) |
+| Phase 3 — US1 | Open starting actions | 24 (T014 split into T014a + T014b) | Yes (T005-T008) |
 | Phase 4 — US2 | Identity primitives | 26 | Yes (T028-T032) |
 | Phase 5 — US3 | Address lookup | 23 | Yes (T054-T057, T075) |
 | Phase 6 — US4 | Verified Citizen v2 | 11 | Yes (T077) |
 | Phase 7 — Polish | — | 11 | — |
-| **Total** | | **98** | |
+| **Total** | | **99** | |
 
 | Story | Tasks | Parallel-marked | Independent test |
 |---|---|---|---|
-| US1 | 23 | 9 | Run HaipVerifiedCitizen v1 walkthrough end-to-end after the walletMap fix; submission must succeed |
+| US1 | 24 | 8 | Run HaipVerifiedCitizen v1 walkthrough end-to-end after the walletMap fix; submission must succeed |
 | US2 | 26 | 13 | Reference any core primitive from a throwaway blueprint and verify rendering / validation / autofill |
-| US3 | 23 | 11 | Render PostalAddress/v1 with various provider configurations; verify graceful degradation |
+| US3 | 23 | 9 | Render PostalAddress/v1 with various provider configurations; verify graceful degradation |
 | US4 | 11 | 2 | Run VerifiedCitizenV2E2ETests end-to-end against Docker and n1 |
 
 **Suggested MVP scope**: US1 only (Phase 3). Ships the bug fix that motivated this entire feature plus the supporting infrastructure to keep the contract safe.
