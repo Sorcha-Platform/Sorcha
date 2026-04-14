@@ -576,7 +576,7 @@ public class ValidationEngine : IValidationEngine
                     // strict about unknown keywords and throws "Unknown keywords (x-pages)
                     // are disallowed for this dialect" when they appear at the schema root.
                     var schemaText = StripCustomExtensionKeywords(schemaDoc.RootElement);
-                    jsonSchema = JsonSchema.FromText(schemaText);
+                    jsonSchema = GetOrParseActionSchema(schemaText);
                 }
                 catch (Exception ex)
                 {
@@ -1389,6 +1389,39 @@ public class ValidationEngine : IValidationEngine
 
     private static Json.Schema.JsonSchema? _participantSchema;
     private static readonly object _schemaLock = new();
+
+    /// <summary>
+    /// Content-addressed cache of parsed blueprint action data schemas.
+    /// <para>
+    /// JsonSchema.Net's <see cref="Json.Schema.JsonSchema.FromText(string)"/> eagerly
+    /// registers any sub-schema with an <c>$id</c> in the process-global
+    /// <c>SchemaRegistry.Global</c>. Feature 103 wave 6's <c>SchemaRefResolver</c> flattens
+    /// the core identity primitives (<c>PersonName.v1</c>, <c>DateOfBirth.v1</c>,
+    /// <c>EmailAddress.v1</c>, <c>PostalAddress.v1</c>) into action schemas, and those
+    /// primitives carry stable <c>$id</c> URIs. Parsing the same flattened schema twice
+    /// from two different transactions therefore trips the library's
+    /// "Overwriting registered schemas is not permitted" error.
+    /// </para>
+    /// <para>
+    /// This cache guarantees <see cref="Json.Schema.JsonSchema.FromText(string)"/> is called
+    /// exactly once per unique schema text within a validator process lifetime. The key is
+    /// a SHA-256 of the stripped schema text, so republishes with changed content
+    /// naturally miss the cache and get a fresh parse. The value is wrapped in
+    /// <see cref="Lazy{T}"/> with <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/>
+    /// to guarantee exactly-once parsing even under concurrent transaction validation.
+    /// </para>
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, Lazy<Json.Schema.JsonSchema>> _actionSchemaCache = new();
+
+    private static Json.Schema.JsonSchema GetOrParseActionSchema(string schemaText)
+    {
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(schemaText));
+        var key = Convert.ToHexString(hashBytes);
+        var lazy = _actionSchemaCache.GetOrAdd(key, _ => new Lazy<Json.Schema.JsonSchema>(
+            () => Json.Schema.JsonSchema.FromText(schemaText),
+            LazyThreadSafetyMode.ExecutionAndPublication));
+        return lazy.Value;
+    }
 
     private static Json.Schema.JsonSchema GetParticipantSchema()
     {
