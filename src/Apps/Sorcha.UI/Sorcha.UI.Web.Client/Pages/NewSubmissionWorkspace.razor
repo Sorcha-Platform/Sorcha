@@ -11,6 +11,7 @@
 @using Sorcha.UI.Core.Models.Wallet
 @using Sorcha.UI.Core.Models.Workflows
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Wallet
 @inject NavigationStateService NavState
 @inject IBlueprintApiService BlueprintApiService
@@ -158,10 +159,13 @@
                 return;
             }
 
-            // Step 2: Execute starting action
-            var payloadData = submission.Data.ToDictionary(
-                kvp => kvp.Key.TrimStart('/'),
-                kvp => kvp.Value ?? (object)string.Empty);
+            // Step 2: Execute starting action.
+            // FormContext stores values keyed by JSON Pointer scopes like
+            // "/name/givenName". Assemble them into a nested dictionary via
+            // FormPayloadBuilder so the validator sees the correct nested
+            // shape for v2 blueprints that flatten core identity primitives
+            // (PersonName, DateOfBirth, EmailAddress, PostalAddress).
+            var payloadData = FormPayloadBuilder.BuildNested(submission.Data);
 
             var request = new ActionExecuteRequest
             {
