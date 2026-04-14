@@ -451,6 +451,24 @@ public class ActionExecutionService : IActionExecutionService
         //     step 9d because it depends on the built transaction context.
         CreateOfferResult? haipOfferResult = null;
         if (actionDef.CredentialIssuanceConfig != null
+            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet)
+        {
+            if (_haipClient is null)
+            {
+                // HAIP-targeted issuance without a registered HAIP client is a
+                // misconfiguration: the action expects an external-wallet offer
+                // but no service is available to mint one. Surface this in
+                // observability so deployment-time gaps don't silently produce
+                // empty claim actions downstream.
+                _logger.LogError(
+                    "Action {ActionId} on blueprint {BlueprintId} declares TargetAudience=HaipExternalWallet " +
+                    "but no IHaipClient is registered. HAIP offer will not be minted; downstream claim " +
+                    "action (if any) will have an empty credentialOffer seed and will fall back to the " +
+                    "default form renderer. Check service registration.",
+                    actionDef.Id, blueprint.Id);
+            }
+        }
+        if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
             && _haipClient != null)
         {
@@ -1125,6 +1143,20 @@ public class ActionExecutionService : IActionExecutionService
             // issuer name) are the blueprint author's responsibility — they ship
             // as literals on the claim action's schema defaults so they can be
             // localised per blueprint. The service only emits protocol fields.
+            //
+            // Defensive: if the HAIP service returned a result with an empty
+            // credential_offer_uri, that's a contract violation — the downstream
+            // claim action would silently fall through to the default form
+            // renderer (via the resolver's IsNullOrWhiteSpace guard) with no
+            // user-facing error. Throw loudly instead.
+            if (string.IsNullOrWhiteSpace(haipOfferResult.CredentialOfferUri))
+            {
+                throw new InvalidOperationException(
+                    "HAIP service returned a credential offer with an empty CredentialOfferUri. " +
+                    "This indicates a contract violation in the HAIP service — downstream claim " +
+                    "actions cannot render without the offer URI.");
+            }
+
             var haipNode = new JsonObject
             {
                 ["credential_offer_uri"] = haipOfferResult.CredentialOfferUri,

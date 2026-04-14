@@ -389,8 +389,12 @@
                 { x => x.LocalWalletAddress, walletAddress }
             };
             var claimOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+            // Use the action name as the dialog shell title — the dialog
+            // no longer renders its own <TitleContent>, so this is shown
+            // once in the overlay chrome. The card inside renders the same
+            // name as its primary header for the citizen.
             dialog = await DialogService.ShowAsync<Components.Credentials.CredentialClaimDialog>(
-                "Claim credential", claimParams, claimOptions);
+                action.ActionName, claimParams, claimOptions);
         }
         else
         {
@@ -420,7 +424,8 @@
             };
             result = DialogResult.Ok(adapted);
         }
-        else if (result is { Canceled: false, Data: string decision } && decision == "reject")
+        else if (result is { Canceled: false, Data: string decision }
+                 && decision == Components.Credentials.CredentialClaimDialog.RejectResult)
         {
             // Decline path from either dialog — fire the reject endpoint and remove the action.
             try

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
@@ -131,7 +132,7 @@ public class WorkflowService : IWorkflowService
         /// Prepopulated payload seeded by a previous action's Route.OutputMapping.
         /// Feature 104 wave 14a.
         /// </summary>
-        public System.Text.Json.Nodes.JsonObject? PrepopulatedPayload { get; init; }
+        public JsonObject? PrepopulatedPayload { get; init; }
     }
 
     public async Task<WorkflowInstanceViewModel?> CreateInstanceAsync(string blueprintId, string registerId, CancellationToken cancellationToken = default)
