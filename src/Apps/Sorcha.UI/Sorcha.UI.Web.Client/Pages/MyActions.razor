@@ -421,13 +421,15 @@
         // matching ActionForm's own convention.
         if (result is { Canceled: false, Data: FormSubmission cardSubmission })
         {
+            // Assemble the flat JSON-Pointer-keyed FormContext data into a
+            // nested dictionary so v2 blueprints that flatten core primitives
+            // (PersonName, DateOfBirth, EmailAddress, PostalAddress) pass
+            // validator schema validation. See FormPayloadBuilder.
             var adapted = new ActionSubmissionViewModel
             {
                 ActionId = action.ActionId,
                 InstanceId = action.InstanceId,
-                Data = cardSubmission.Data.ToDictionary(
-                    kvp => kvp.Key.TrimStart('/'),
-                    kvp => kvp.Value ?? (object)string.Empty)
+                Data = FormPayloadBuilder.BuildNested(cardSubmission.Data)
             };
             result = DialogResult.Ok(adapted);
         }
