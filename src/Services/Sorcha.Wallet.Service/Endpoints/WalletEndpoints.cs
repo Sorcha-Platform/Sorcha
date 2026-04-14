@@ -155,6 +155,25 @@ public static class WalletEndpoints
             .Produces<IEnumerable<WalletDto>>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status401Unauthorized);
 
+        // GET /api/v1/wallets/by-owner/{ownerId} - List wallets owned by a specific user
+        // Service-to-service lookup used by Blueprint Service (and any other service that needs
+        // to resolve a user's wallets without depending on a stale wallet_address JWT claim).
+        // Requires a service principal token — never exposed to end users.
+        walletGroup.MapGet("/by-owner/{ownerId}", ListWalletsByOwner)
+            .WithName("ListWalletsByOwner")
+            .WithSummary("List wallets owned by a specific user (service only)")
+            .WithDescription(
+                "Returns all active wallets owned by the specified user id (the NameIdentifier / "
+                + "sub claim used as Owner on wallet creation). Intended for service-to-service lookups "
+                + "such as the Blueprint Service's pending-actions query, which must resolve a user's "
+                + "wallets without relying on the `wallet_address` JWT claim (that claim is populated at "
+                + "login/refresh time and can be stale or absent for users whose wallets were created "
+                + "after the current token was issued).")
+            .RequireAuthorization(Microsoft.Extensions.Hosting.AuthorizationPolicies.RequireService)
+            .Produces<IEnumerable<WalletDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
+
         // GET /api/v1/wallets/{address} - Get wallet by address
         walletGroup.MapGet("/{address}", GetWallet)
             .WithName("GetWallet")
@@ -560,6 +579,33 @@ public static class WalletEndpoints
 
         var wallets = await walletManager.GetWalletsByOwnerAsync(owner, tenant, cancellationToken);
 
+        return Results.Ok(wallets.Select(w => w.ToDto()));
+    }
+
+    /// <summary>
+    /// List wallets owned by a specific user id (service principal lookup).
+    /// </summary>
+    /// <remarks>
+    /// This is the service-to-service twin of <see cref="ListWallets"/>. Where
+    /// <see cref="ListWallets"/> reads the owner from the calling user's
+    /// <c>NameIdentifier</c> claim, this variant takes the owner as a route
+    /// parameter so a service principal can resolve any user's wallets —
+    /// required by Blueprint Service's pending-actions query, which must
+    /// operate even when the consumer's JWT has no <c>wallet_address</c> claim
+    /// (e.g. because the wallet was created after their current token was
+    /// issued and no refresh has happened since).
+    /// </remarks>
+    private static async Task<IResult> ListWalletsByOwner(
+        string ownerId,
+        HttpContext context,
+        WalletManager walletManager,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ownerId))
+            return Results.BadRequest(new { error = "ownerId is required" });
+
+        var tenant = GetCurrentTenant(context);
+        var wallets = await walletManager.GetWalletsByOwnerAsync(ownerId, tenant, cancellationToken);
         return Results.Ok(wallets.Select(w => w.ToDto()));
     }
 

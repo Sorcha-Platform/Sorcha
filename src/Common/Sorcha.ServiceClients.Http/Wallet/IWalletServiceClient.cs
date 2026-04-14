@@ -246,6 +246,27 @@ public interface IWalletServiceClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists wallets owned by a specific user (service-to-service lookup).
+    /// </summary>
+    /// <remarks>
+    /// Resolves the caller's user id (the <c>Owner</c> field on wallets,
+    /// populated from <c>NameIdentifier</c> / <c>sub</c> on wallet creation)
+    /// without requiring the caller to hold a <c>wallet_address</c> JWT claim.
+    /// Used by the Blueprint Service's pending-actions query so that a
+    /// consumer whose token was issued before they created their first wallet
+    /// still sees their pending actions after the wallet exists. Calls
+    /// <c>GET /api/v1/wallets/by-owner/{ownerId}</c> and requires a service
+    /// principal token — the endpoint enforces the <c>RequireService</c>
+    /// authorisation policy.
+    /// </remarks>
+    /// <param name="ownerId">User id (the wallet's <c>Owner</c> value).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Zero or more wallets belonging to the owner.</returns>
+    Task<IReadOnlyList<WalletInfo>> GetWalletsByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a new wallet
     /// </summary>
     /// <param name="name">Wallet name</param>
