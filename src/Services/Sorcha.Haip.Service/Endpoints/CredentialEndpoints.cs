@@ -116,14 +116,17 @@ public static class CredentialEndpoints
         try
         {
             var jwk = holderJwk.Value;
-            if (jwk.TryGetProperty("kty", out var ktyProp) && ktyProp.GetString() == "EC"
-                && jwk.TryGetProperty("crv", out var crvProp) && crvProp.GetString() == "P-256"
+            var kty = jwk.TryGetProperty("kty", out var ktyProp) ? ktyProp.GetString() : null;
+            var crv = jwk.TryGetProperty("crv", out var crvProp) ? crvProp.GetString() : null;
+
+            var proofParts2 = request.Proof.Jwt.Split('.');
+            var signingInput = Encoding.ASCII.GetBytes($"{proofParts2[0]}.{proofParts2[1]}");
+            var signature = Base64Url.DecodeFromChars(proofParts2[2]);
+
+            if (kty == "EC" && crv == "P-256"
                 && jwk.TryGetProperty("x", out var xProp) && jwk.TryGetProperty("y", out var yProp))
             {
-                var proofParts2 = request.Proof.Jwt.Split('.');
-                var signingInput = Encoding.ASCII.GetBytes($"{proofParts2[0]}.{proofParts2[1]}");
-                var signature = Base64Url.DecodeFromChars(proofParts2[2]);
-
+                // ES256 / P-256 — sorcha-agent path
                 var xBytes = Base64Url.DecodeFromChars(xProp.GetString()!);
                 var yBytes = Base64Url.DecodeFromChars(yProp.GetString()!);
 
@@ -139,12 +142,33 @@ public static class CredentialEndpoints
                     return Results.BadRequest(new { error = "invalid_proof", error_description = "JWT proof signature verification failed" });
                 }
             }
+            else if (kty == "OKP" && crv == "Ed25519"
+                && jwk.TryGetProperty("x", out var edXProp))
+            {
+                // EdDSA / Ed25519 — local Sorcha wallet path (Feature 103 wave 13).
+                // Sorcha wallets are typically ED25519, so the holder JWK
+                // for "Receive on this device" needs an OKP/Ed25519 verifier.
+                var publicKey = Base64Url.DecodeFromChars(edXProp.GetString()!);
+                if (publicKey.Length != 32)
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = "invalid_proof",
+                        error_description = "Ed25519 public key must be 32 bytes"
+                    });
+                }
+
+                if (!Sodium.PublicKeyAuth.VerifyDetached(signature, signingInput, publicKey))
+                {
+                    return Results.BadRequest(new { error = "invalid_proof", error_description = "JWT proof signature verification failed" });
+                }
+            }
             else
             {
                 return Results.BadRequest(new
                 {
                     error = "invalid_proof",
-                    error_description = "Only EC P-256 JWKs are supported for proof verification"
+                    error_description = "Supported JWK shapes: EC P-256 (ES256) and OKP Ed25519 (EdDSA)"
                 });
             }
         }

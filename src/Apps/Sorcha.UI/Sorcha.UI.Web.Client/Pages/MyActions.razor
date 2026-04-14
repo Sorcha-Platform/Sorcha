@@ -418,7 +418,11 @@
                             { x => x.OfferId, offer.OfferId },
                             { x => x.CredentialType, offer.CredentialType },
                             { x => x.IssuerName, offer.IssuerName },
-                            { x => x.ExpiresAt, offer.ExpiresAt }
+                            { x => x.ExpiresAt, offer.ExpiresAt },
+                            // Wave 13: pass the action's signing wallet so
+                            // the QR card offers the "Receive on this
+                            // device" alternative path.
+                            { x => x.LocalWalletAddress, walletAddress }
                         };
                         var offerOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
                         await DialogService.ShowAsync<Components.Credentials.CredentialOfferQrDialog>(

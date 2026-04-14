@@ -94,6 +94,7 @@ public class BlueprintDbContext : DbContext
             entity.Property(e => e.CurrentActionIds).HasColumnType("jsonb");
             entity.Property(e => e.ParticipantWallets).HasColumnType("jsonb");
             entity.Property(e => e.AccumulatedData).HasColumnType("jsonb");
+            entity.Property(e => e.PendingActionPayloads).HasColumnType("jsonb");
             entity.Property(e => e.ActiveBranches).HasColumnType("jsonb");
             entity.Property(e => e.Metadata).HasColumnType("jsonb");
             entity.Property(e => e.Version).IsConcurrencyToken();

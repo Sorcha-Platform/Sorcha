@@ -423,6 +423,9 @@
             Determine the next participant and action in the workflow.
             </summary>
         </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutionEngine.DetermineRoutingWithMappingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Text.Json.Nodes.JsonObject,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
         <member name="M:Sorcha.Blueprint.Engine.Implementation.ExecutionEngine.ApplyDisclosures(System.Collections.Generic.Dictionary{System.String,System.Object},Sorcha.Blueprint.Models.Action)">
             <summary>
             Create disclosure results for all participants based on the action's
@@ -546,6 +549,48 @@
             - empty arrays/collections
             </remarks>
         </member>
+        <member name="T:Sorcha.Blueprint.Engine.Implementation.JsonPointerHelper">
+            <summary>
+            Minimal RFC 6901 JSON Pointer resolver/setter for use by the routing engine
+            when evaluating <see cref="P:Sorcha.Blueprint.Models.Route.OutputMapping"/> entries.
+            </summary>
+            <remarks>
+            Supports:
+            <list type="bullet">
+              <item>Root pointer ("") — whole document.</item>
+              <item>Nested object paths — "/foo/bar".</item>
+              <item>Array indices — "/items/0" reads position 0.</item>
+              <item>RFC 6901 escaping — "~0" → "~", "~1" → "/".</item>
+            </list>
+            Does NOT support RFC 6902 patch semantics, "-" array append, or URI fragment form.
+            Introduced in Feature 104 wave 14a.
+            </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.JsonPointerHelper.TryResolve(System.Text.Json.Nodes.JsonNode,System.String,System.Text.Json.Nodes.JsonNode@)">
+            <summary>
+            Attempts to resolve the given JSON Pointer against the source document.
+            Returns true if the path was fully traversed; false if any segment was
+            missing. Absent paths are expected to be common and produce a silent skip
+            in the caller rather than an error.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.JsonPointerHelper.TrySet(System.Text.Json.Nodes.JsonObject,System.String,System.Text.Json.Nodes.JsonNode)">
+            <summary>
+            Attempts to set the given JSON Pointer on the target object, creating
+            intermediate object nodes as needed. Array writes and root replacement are
+            not supported in v1. Returns true on success, false on invalid pointer.
+            </summary>
+            <remarks>
+            The source value is deep-cloned before being written so that the caller
+            can mutate the source document without affecting previously-set targets.
+            </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.JsonPointerHelper.IsValidPointer(System.String)">
+            <summary>
+            Validates that a string is a syntactically well-formed JSON Pointer
+            (RFC 6901 simple form). Empty string is valid (root).
+            </summary>
+        </member>
         <member name="T:Sorcha.Blueprint.Engine.Implementation.RoutingEngine">
             <summary>
             Routing engine that determines the next action and participant in a workflow.
@@ -563,10 +608,21 @@
             Routes (if defined) take precedence over legacy Condition-based routing.
             </summary>
         </member>
-        <member name="M:Sorcha.Blueprint.Engine.Implementation.RoutingEngine.EvaluateRoutes(System.Collections.Generic.Dictionary{System.Int32,Sorcha.Blueprint.Models.Action},System.Collections.Generic.List{Sorcha.Blueprint.Models.Route},System.Collections.Generic.Dictionary{System.String,System.Object})">
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.RoutingEngine.DetermineNextWithMappingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Text.Json.Nodes.JsonObject,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.RoutingEngine.EvaluateRoutes(System.Collections.Generic.Dictionary{System.Int32,Sorcha.Blueprint.Models.Action},System.Collections.Generic.List{Sorcha.Blueprint.Models.Route},System.Collections.Generic.Dictionary{System.String,System.Object},System.Text.Json.Nodes.JsonObject)">
             <summary>
             Evaluates Route-based routing: iterates routes in order,
             first matching condition wins, default route used as fallback.
+            </summary>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Implementation.RoutingEngine.EvaluateOutputMapping(Sorcha.Blueprint.Models.Route,System.Text.Json.Nodes.JsonObject)">
+            <summary>
+            Evaluates <see cref="P:Sorcha.Blueprint.Models.Route.OutputMapping"/> against the provided output source
+            document and returns per-next-action prepopulated payloads. Returns null when
+            the route declares no mapping, the source is null, or the route has no next actions.
+            Absent source paths are silently skipped per Feature 104 wave 14a design.
             </summary>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Implementation.RoutingEngine.BuildRoutingResult(System.Collections.Generic.Dictionary{System.Int32,Sorcha.Blueprint.Models.Action},Sorcha.Blueprint.Models.Route,System.Collections.Generic.Dictionary{System.String,System.Object})">
@@ -827,6 +883,27 @@
             <remarks>
             Useful for testing routing logic in the designer
             before publishing a blueprint.
+            </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine.DetermineRoutingWithMappingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Text.Json.Nodes.JsonObject,System.Threading.CancellationToken)">
+            <summary>
+            Determine routing and additionally evaluate <see cref="P:Sorcha.Blueprint.Models.Route.OutputMapping"/>
+            against the supplied output source document, returning per-next-action
+            prepopulated payloads on <see cref="P:Sorcha.Blueprint.Engine.Models.RoutingResult.PendingPayloads"/>.
+            </summary>
+            <param name="blueprint">The blueprint definition.</param>
+            <param name="currentAction">The current action.</param>
+            <param name="data">The action data used for routing condition evaluation.</param>
+            <param name="outputSource">
+            Source document for output-mapping resolution (RFC 6901 JSON Pointer).
+            Expected top-level keys: <c>payload</c>, <c>calculations</c>, and optionally
+            <c>haip</c>. May be null to disable payload carry-forward.
+            </param>
+            <param name="ct">Cancellation token.</param>
+            <returns>Routing decision with optional prepopulated payloads for next actions.</returns>
+            <remarks>
+            Introduced in Feature 104 wave 14a. When <paramref name="outputSource"/> is
+            null, this method behaves identically to <see cref="M:Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine.DetermineRoutingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Threading.CancellationToken)"/>.
             </remarks>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Interfaces.IExecutionEngine.ApplyDisclosures(System.Collections.Generic.Dictionary{System.String,System.Object},Sorcha.Blueprint.Models.Action)">
@@ -1095,6 +1172,28 @@
             - Success: Next action and participant determined
             - Complete: No conditions matched (workflow finished)
             - Error: Condition matched but next action not found
+            </remarks>
+        </member>
+        <member name="M:Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine.DetermineNextWithMappingAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Text.Json.Nodes.JsonObject,System.Threading.CancellationToken)">
+            <summary>
+            Determine the next action(s) and additionally evaluate Route.OutputMapping
+            entries against an output source document, populating RoutingResult.PendingPayloads
+            with prepopulated payloads for each next action.
+            </summary>
+            <param name="blueprint">The blueprint definition containing all actions.</param>
+            <param name="currentAction">The action that was just completed.</param>
+            <param name="data">The action data used to evaluate routing conditions.</param>
+            <param name="outputSource">
+            Source document for OutputMapping evaluation. Expected top-level keys are
+            <c>payload</c>, <c>calculations</c>, and optionally <c>haip</c>. JSON Pointers
+            in Route.OutputMapping are evaluated against this document. May be null,
+            in which case no payload carry-forward is performed (backward compatible).
+            </param>
+            <param name="ct">Cancellation token.</param>
+            <remarks>
+            Introduced in Feature 104 wave 14a. When <paramref name="outputSource"/> is
+            null, this method behaves identically to <see cref="M:Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine.DetermineNextAsync(Sorcha.Blueprint.Models.Blueprint,Sorcha.Blueprint.Models.Action,System.Collections.Generic.Dictionary{System.String,System.Object},System.Threading.CancellationToken)"/>.
+            Absent source paths are silently skipped (not an error).
             </remarks>
         </member>
         <member name="T:Sorcha.Blueprint.Engine.Interfaces.ISchemaValidator">
@@ -1685,6 +1784,19 @@
             <summary>
             True when multiple next actions exist (parallel branch execution).
             </summary>
+        </member>
+        <member name="P:Sorcha.Blueprint.Engine.Models.RoutingResult.PendingPayloads">
+            <summary>
+            Per-next-action prepopulated payloads derived from the matched route's
+            <see cref="P:Sorcha.Blueprint.Models.Route.OutputMapping"/>. Null when the
+            matched route declares no mapping. Key is the next action ID, value is
+            the JSON object to seed into the instance's pending action payload store.
+            </summary>
+            <remarks>
+            Transient carrier between <see cref="T:Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine"/>
+            and the action execution service. Not persisted on RoutingResult itself.
+            Introduced in Feature 104 wave 14a.
+            </remarks>
         </member>
         <member name="M:Sorcha.Blueprint.Engine.Models.RoutingResult.Complete">
             <summary>

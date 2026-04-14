@@ -70,6 +70,13 @@ public class InstanceEntity
     public string? AccumulatedData { get; set; }
 
     /// <summary>
+    /// Prepopulated action payloads (keyed by action ID) seeded by
+    /// <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/> on previous
+    /// action execution, stored as JSONB. Introduced in Feature 104 wave 14a.
+    /// </summary>
+    public string? PendingActionPayloads { get; set; }
+
+    /// <summary>
     /// Active execution branches stored as JSONB.
     /// </summary>
     public string? ActiveBranches { get; set; }

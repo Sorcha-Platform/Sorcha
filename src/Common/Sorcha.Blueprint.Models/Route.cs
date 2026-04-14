@@ -62,4 +62,27 @@ public class Route
     [JsonPropertyName("branchDeadline")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? BranchDeadline { get; set; }
+
+    /// <summary>
+    /// Optional map from source JSON Pointer (in the current action's execution
+    /// result document) to target JSON Pointer (in the next action's starting
+    /// payload). Evaluated when this route fires during action execution. Absent
+    /// source paths are silently skipped. Applies to every next action listed in
+    /// <see cref="NextActionIds"/>.
+    /// </summary>
+    /// <remarks>
+    /// The source document available for mapping is:
+    /// <code>
+    /// {
+    ///   "payload":      &lt;submitted action payload&gt;,
+    ///   "calculations": &lt;engine calculate-step output&gt;,
+    ///   "haip":         &lt;HAIP mint output when present&gt;
+    /// }
+    /// </code>
+    /// Both keys and values MUST be valid JSON Pointer strings (RFC 6901),
+    /// leading slash required. Introduced in Feature 104 wave 14a.
+    /// </remarks>
+    [JsonPropertyName("outputMapping")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? OutputMapping { get; set; }
 }

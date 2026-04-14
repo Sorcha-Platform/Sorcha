@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics;
+using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Engine;
 using Sorcha.Blueprint.Engine.Interfaces;
 using Sorcha.Blueprint.Engine.Models;
@@ -19,6 +21,7 @@ namespace Sorcha.Blueprint.Engine.Implementation;
 /// </remarks>
 public class RoutingEngine : IRoutingEngine
 {
+    private static readonly ActivitySource ActivitySource = new("Sorcha.Blueprint.Engine.Routing");
     private readonly IJsonLogicEvaluator _evaluator;
 
     public RoutingEngine(IJsonLogicEvaluator evaluator)
@@ -30,10 +33,19 @@ public class RoutingEngine : IRoutingEngine
     /// Determine the next action and participant based on routing conditions.
     /// Routes (if defined) take precedence over legacy Condition-based routing.
     /// </summary>
-    public async Task<RoutingResult> DetermineNextAsync(
+    public Task<RoutingResult> DetermineNextAsync(
         Sorcha.Blueprint.Models.Blueprint blueprint,
         Sorcha.Blueprint.Models.Action currentAction,
         Dictionary<string, object> data,
+        CancellationToken ct = default)
+        => DetermineNextWithMappingAsync(blueprint, currentAction, data, outputSource: null, ct);
+
+    /// <inheritdoc />
+    public async Task<RoutingResult> DetermineNextWithMappingAsync(
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        Sorcha.Blueprint.Models.Action currentAction,
+        Dictionary<string, object> data,
+        JsonObject? outputSource,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(blueprint);
@@ -47,7 +59,7 @@ public class RoutingEngine : IRoutingEngine
         var routes = currentAction.Routes?.ToList();
         if (routes != null && routes.Count > 0)
         {
-            return EvaluateRoutes(actionIndex, routes, data);
+            return EvaluateRoutes(actionIndex, routes, data, outputSource);
         }
 
         // Legacy: Condition-based routing via Participants
@@ -61,7 +73,8 @@ public class RoutingEngine : IRoutingEngine
     private RoutingResult EvaluateRoutes(
         Dictionary<int, Sorcha.Blueprint.Models.Action> actionIndex,
         List<Route> routes,
-        Dictionary<string, object> data)
+        Dictionary<string, object> data,
+        JsonObject? outputSource)
     {
         Route? defaultRoute = null;
 
@@ -84,18 +97,88 @@ public class RoutingEngine : IRoutingEngine
             var result = _evaluator.Evaluate(route.Condition, data);
             if (IsTruthy(result))
             {
-                return BuildRoutingResult(actionIndex, route, data);
+                var routingResult = BuildRoutingResult(actionIndex, route, data);
+                routingResult.PendingPayloads = EvaluateOutputMapping(route, outputSource);
+                return routingResult;
             }
         }
 
         // Use default route if no conditions matched
         if (defaultRoute != null)
         {
-            return BuildRoutingResult(actionIndex, defaultRoute, data);
+            var routingResult = BuildRoutingResult(actionIndex, defaultRoute, data);
+            routingResult.PendingPayloads = EvaluateOutputMapping(defaultRoute, outputSource);
+            return routingResult;
         }
 
         // No routes matched
         return RoutingResult.Complete();
+    }
+
+    /// <summary>
+    /// Evaluates <see cref="Route.OutputMapping"/> against the provided output source
+    /// document and returns per-next-action prepopulated payloads. Returns null when
+    /// the route declares no mapping, the source is null, or the route has no next actions.
+    /// Absent source paths are silently skipped per Feature 104 wave 14a design.
+    /// </summary>
+    private static IReadOnlyDictionary<int, JsonObject>? EvaluateOutputMapping(
+        Route route,
+        JsonObject? outputSource)
+    {
+        var mapping = route.OutputMapping;
+        if (mapping == null || mapping.Count == 0 || outputSource == null)
+        {
+            return null;
+        }
+
+        var nextActionIds = route.NextActionIds?.ToList() ?? [];
+        if (nextActionIds.Count == 0)
+        {
+            return null;
+        }
+
+        using var activity = ActivitySource.StartActivity("blueprint.routing.output_mapping.evaluate");
+        activity?.SetTag("route.id", route.Id);
+        activity?.SetTag("mapping.entry_count", mapping.Count);
+        activity?.SetTag("next_action_count", nextActionIds.Count);
+
+        // Build the seed once; deep-clone per next action to avoid shared mutable state
+        var template = new JsonObject();
+        var appliedEntries = 0;
+
+        foreach (var (sourcePointer, targetPointer) in mapping)
+        {
+            if (!JsonPointerHelper.TryResolve(outputSource, sourcePointer, out var sourceValue))
+            {
+                // Absent source — silently skip per spec
+                continue;
+            }
+
+            if (!JsonPointerHelper.TrySet(template, targetPointer, sourceValue))
+            {
+                // Invalid target pointer — skip rather than abort routing
+                continue;
+            }
+
+            appliedEntries++;
+        }
+
+        activity?.SetTag("mapping.applied_entries", appliedEntries);
+
+        if (appliedEntries == 0)
+        {
+            return null;
+        }
+
+        // Deep-clone the template for each next action so they don't share mutable state
+        var result = new Dictionary<int, JsonObject>(capacity: nextActionIds.Count);
+        foreach (var nextId in nextActionIds)
+        {
+            var cloned = JsonNode.Parse(template.ToJsonString()) as JsonObject ?? new JsonObject();
+            result[nextId] = cloned;
+        }
+
+        return result;
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
+
 namespace Sorcha.Blueprint.Service.Models;
 
 /// <summary>
@@ -53,4 +55,12 @@ public class PendingActionSummary
 
     /// <summary>When the notification was created.</summary>
     public required DateTimeOffset ReceivedAt { get; init; }
+
+    /// <summary>
+    /// Prepopulated payload seeded for this action by a previous action's
+    /// <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>. Null when
+    /// no seed data is attached. Consumers (e.g. MyActions.razor) pass this
+    /// to the form renderer as initial state. Feature 104 wave 14a.
+    /// </summary>
+    public JsonObject? PrepopulatedPayload { get; init; }
 }

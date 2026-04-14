@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
+
 namespace Sorcha.Blueprint.Service.Models;
 
 /// <summary>
@@ -107,6 +109,30 @@ public class Instance
     /// Keys are flattened field names; later actions override earlier ones.
     /// </summary>
     public Dictionary<string, object> AccumulatedData { get; set; } = new();
+
+    /// <summary>
+    /// Prepopulated payload data seeded per pending action ID when a previous
+    /// action's <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/> carried
+    /// data forward. Keyed by action ID; value is the JSON object to merge with
+    /// the action submission before validation (submission wins on key collision).
+    /// Entries are removed atomically with the action's resolution (complete,
+    /// reject, or expire). Empty for actions that receive no carry-forward data.
+    /// </summary>
+    /// <remarks>
+    /// Persisted alongside <see cref="AccumulatedData"/> as a plaintext
+    /// <c>jsonb</c> column in PostgreSQL via <c>EfCoreInstanceStore</c> —
+    /// see wave 14a research decision 1 for the rationale.
+    /// <para>
+    /// <b>Wave 14b prerequisite:</b> the credential claim flow will persist
+    /// an OpenID4VCI <c>pre_authorized_code</c> in this field. That code is a
+    /// short-lived bearer token and MUST be encrypted at rest before wave 14b
+    /// ships — either by wrapping it through the existing disclosure pipeline
+    /// or by adding an at-rest encryption layer to the instance state columns.
+    /// Tracked as an open planning question in specs/104-credential-claim-action/plan.md.
+    /// </para>
+    /// Introduced in Feature 104.
+    /// </remarks>
+    public Dictionary<int, JsonObject> PendingActionPayloads { get; set; } = new();
 }
 
 /// <summary>
