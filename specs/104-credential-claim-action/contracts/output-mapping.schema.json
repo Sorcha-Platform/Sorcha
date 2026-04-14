@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/route-output-mapping-v1.json",
+  "title": "Route OutputMapping",
+  "description": "Optional mapping from JSON Pointer paths in the current action's execution result to JSON Pointer paths in the next action's prepopulated payload. Absent sources are silently skipped.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "string",
+    "pattern": "^/([^/~]|~[01])*(/([^/~]|~[01])*)*$",
+    "description": "Target JSON Pointer into the next action's starting payload."
+  },
+  "propertyNames": {
+    "pattern": "^/([^/~]|~[01])*(/([^/~]|~[01])*)*$"
+  },
+  "examples": [
+    {
+      "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+      "/haip/display":              "/credentialOffer/display",
+      "/haip/expires_at":           "/credentialOffer/expires_at"
+    }
+  ]
+}

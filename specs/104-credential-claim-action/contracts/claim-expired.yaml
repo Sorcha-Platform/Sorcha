@@ -1,0 +1,108 @@
+openapi: 3.1.0
+info:
+  title: Sorcha Blueprint Service — Credential Claim Expire
+  version: 1.0.0
+  description: |
+    Client-side trigger endpoint for transitioning an expired credential claim
+    action to the Failed state with an audit trail on the register. Added in
+    Feature 104 Wave 14.
+
+paths:
+  /api/blueprint/instances/{instanceId}/actions/{actionId}/claim-expired:
+    post:
+      summary: Mark a credential claim action as failed due to offer expiry
+      description: |
+        Fires when the citizen's CredentialClaimCard detects that the credential
+        offer's expires_at timestamp has passed. Writes a failure transaction
+        for the action and removes the seed payload atomically.
+
+        The endpoint validates that:
+        * The action exists and is in a pending state.
+        * The action's data schema contains an x-credential-offer field.
+        * The credential offer's expires_at is strictly less than the current
+          server time at evaluation.
+        * The authenticated caller's wallet matches the action's late-bound
+          sender wallet.
+      operationId: expireCredentialClaim
+      tags: [credential-claim]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: actionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimExpiredRequest'
+      responses:
+        '200':
+          description: Action transitioned to Failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimExpiredResponse'
+        '400':
+          description: Action is not a credential claim action, or the offer is not yet expired
+        '401':
+          description: JWT missing or invalid
+        '403':
+          description: JWT wallet does not match the action's sender wallet
+        '404':
+          description: Instance or action not found
+        '409':
+          description: Action is already in a terminal state
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ClaimExpiredRequest:
+      type: object
+      required: [senderWallet, registerAddress, reason]
+      properties:
+        senderWallet:
+          type: string
+          description: The citizen's wallet address (must match the action's late-bound sender)
+          example: ws1q8tuvvdykly8n0fy5jkuu8cjw0fu0p6jl5rp9gxy...
+        registerAddress:
+          type: string
+          description: The register address the blueprint instance belongs to
+        reason:
+          type: string
+          enum: [expired]
+          description: Must be literal "expired" for v1
+
+    ClaimExpiredResponse:
+      type: object
+      required: [instanceId, actionId, newState, reason, sealedAt]
+      properties:
+        instanceId:
+          type: string
+          format: uuid
+        actionId:
+          type: string
+        newState:
+          type: string
+          enum: [Failed]
+        reason:
+          type: string
+          enum: [expired]
+        sealedAt:
+          type: string
+          format: date-time
