@@ -2806,7 +2806,80 @@ public class PublishService(
         // declared on at least one of the route's next actions. This prevents
         // blueprint authors from writing mappings to fields that don't exist on
         // the receiving action.
+        //
+        // Rule 7b (Feature 104, VAL_BP_012 / WARN_BP_006): x-credential-offer
+        // extension rules — it may only appear on object-typed schema fields,
+        // and when present the object should declare credential_offer_uri as
+        // required (warning, not error).
         const string OutputMappingTargetCode = "VAL_BP_011";
+        const string CredentialOfferTypeCode = "VAL_BP_012";
+        const string CredentialOfferRequiredWarning = "WARN_BP_006";
+
+        // Walk every schema on every action looking for x-credential-offer
+        foreach (var action in blueprint.Actions)
+        {
+            if (action.DataSchemas is null) continue;
+            foreach (var schemaDoc in action.DataSchemas)
+            {
+                try
+                {
+                    var root = schemaDoc.RootElement;
+                    if (root.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                    if (!root.TryGetProperty("properties", out var propsEl) ||
+                        propsEl.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+                    foreach (var prop in propsEl.EnumerateObject())
+                    {
+                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+                        // Skip properties that don't carry the extension
+                        if (!prop.Value.TryGetProperty("x-credential-offer", out var coEl)) continue;
+                        if (coEl.ValueKind != System.Text.Json.JsonValueKind.True) continue;
+
+                        // VAL_BP_012: must be on an object-typed field
+                        var typeStr = prop.Value.TryGetProperty("type", out var typeEl) &&
+                                      typeEl.ValueKind == System.Text.Json.JsonValueKind.String
+                            ? typeEl.GetString()
+                            : null;
+                        if (typeStr != "object")
+                        {
+                            errors.Add(
+                                $"[{CredentialOfferTypeCode}] Action {action.Id} ('{action.Title}'): Field '{prop.Name}' " +
+                                $"carries 'x-credential-offer: true' but is not an object-typed field (found type: '{typeStr ?? "(missing)"}'). " +
+                                $"The credential-offer renderer requires an object field with credential_offer_uri inside.");
+                            continue;
+                        }
+
+                        // WARN_BP_006: credential_offer_uri should be required
+                        var hasRequiredUri = false;
+                        if (prop.Value.TryGetProperty("required", out var requiredEl) &&
+                            requiredEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            foreach (var reqItem in requiredEl.EnumerateArray())
+                            {
+                                if (reqItem.ValueKind == System.Text.Json.JsonValueKind.String &&
+                                    reqItem.GetString() == "credential_offer_uri")
+                                {
+                                    hasRequiredUri = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!hasRequiredUri)
+                        {
+                            warnings.Add(
+                                $"[{CredentialOfferRequiredWarning}] Action {action.Id} ('{action.Title}'): Field '{prop.Name}' " +
+                                $"is marked 'x-credential-offer: true' but does not declare 'credential_offer_uri' in its required list. " +
+                                $"The credential claim card cannot render without the offer URI — add it to required to fail fast at publish time.");
+                        }
+                    }
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Malformed schema — other rules will surface this
+                }
+            }
+        }
 
         foreach (var action in blueprint.Actions)
         {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
@@ -91,7 +92,8 @@ public class WorkflowService : IWorkflowService
                 Description = s.Summary ?? string.Empty,
                 Priority = s.Urgency ?? "normal",
                 AssignedAt = s.ReceivedAt,
-                DueAt = s.Deadline
+                DueAt = s.Deadline,
+                PrepopulatedPayload = s.PrepopulatedPayload
             }).ToList();
         }
         catch (Exception ex)
@@ -125,6 +127,12 @@ public class WorkflowService : IWorkflowService
         public DateTimeOffset? Deadline { get; init; }
         public string RegisterId { get; init; } = string.Empty;
         public DateTimeOffset ReceivedAt { get; init; }
+
+        /// <summary>
+        /// Prepopulated payload seeded by a previous action's Route.OutputMapping.
+        /// Feature 104 wave 14a.
+        /// </summary>
+        public JsonObject? PrepopulatedPayload { get; init; }
     }
 
     public async Task<WorkflowInstanceViewModel?> CreateInstanceAsync(string blueprintId, string registerId, CancellationToken cancellationToken = default)

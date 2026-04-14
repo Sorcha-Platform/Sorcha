@@ -1,21 +1,21 @@
 {
   "id": "haip-driving-licence-v2",
   "title": "Driving Licence Application",
-  "description": "Citizen submits a driving licence application. Council verifies identity by requesting the applicant's VerifiedCitizenCredential via HAIP presentation (QR), then issues a DrivingLicenceCredential to the applicant's external HAIP wallet via HAIP credential offer (QR). Three-action workflow: applicant submits, council verifies, council issues.",
-  "version": 2,
+  "description": "Citizen submits a driving licence application. Council verifies identity by requesting the applicant's VerifiedCitizenCredential via HAIP presentation (QR), then issues a DrivingLicenceCredential. From v3 the credential is delivered back to the applicant as a dedicated Claim Credential action in their My Actions queue — the citizen clicks Claim to land the credential in their local wallet, or scans the QR to load it into an external HAIP wallet. Four-action workflow: applicant submits, council verifies, council issues, applicant claims.",
+  "version": 3,
   "category": "licensing",
-  "tags": ["haip", "driving-licence", "oid4vci", "oid4vp", "verifiable-credential", "external-wallet", "citizen-application"],
+  "tags": ["haip", "driving-licence", "oid4vci", "oid4vp", "verifiable-credential", "credential-claim", "citizen-application"],
   "author": "Sorcha Team",
   "published": true,
   "template": {
     "id": "haip-driving-licence",
     "title": "Driving Licence Application",
-    "description": "Citizen submits a driving licence application. Council verifies identity via HAIP and issues the licence.",
-    "version": 2,
+    "description": "Citizen submits a driving licence application, council verifies identity via HAIP and issues the licence, applicant claims the licence via a dedicated pending action.",
+    "version": 3,
     "metadata": {
       "category": "Licensing & Permits",
       "complexity": "Standard",
-      "actions": "3",
+      "actions": "4",
       "features": "HAIP, OpenID4VCI, OpenID4VP, External Wallet, Verifiable Credential, Citizen Application",
       "sector": "Government"
     },
@@ -226,10 +226,82 @@
         ],
         "routes": [
           {
-            "id": "complete",
+            "id": "to-claim",
+            "nextActionIds": [4],
+            "isDefault": true,
+            "description": "Licence issued — hand off to applicant for claim",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Claim your Driving Licence",
+        "description": "Your driving licence credential is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP-compatible wallet. Declining will cancel the claim and no credential will be issued.",
+        "sender": "applicant",
+        "requiredPriorActions": [3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "title": "Credential Offer",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical OpenID4VCI offer URI (openid-credential-offer://...)"
+                  },
+                  "credential_type": {
+                    "type": "string",
+                    "description": "The credential type to be issued"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the credential offer expires and can no longer be claimed"
+                  },
+                  "offer_id": {
+                    "type": "string",
+                    "description": "HAIP offer identifier for status polling"
+                  }
+                },
+                "required": ["credential_offer_uri"]
+              },
+              "claimed_at": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Claimed at",
+                "description": "Set by the client when the citizen clicks Claim"
+              }
+            },
+            "required": ["credentialOffer"]
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "applicant",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "claimed-terminal",
             "nextActionIds": [],
             "isDefault": true,
-            "description": "Workflow complete after licence issued"
+            "description": "Licence claimed — workflow complete"
           }
         ]
       }

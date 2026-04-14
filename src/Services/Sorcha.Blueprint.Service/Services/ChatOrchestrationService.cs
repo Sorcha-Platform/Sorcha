@@ -105,11 +105,11 @@ public class ChatOrchestrationService : IChatOrchestrationService
 
         **Privacy & Routing:**
         - `set_disclosure` — Control who sees what data (JSON Pointer paths)
-        - `add_routing` — Add conditional routing logic
+        - `add_routing` — Add conditional routing logic (supports `outputMapping` for carrying data from one action's execution result into the next action's prepopulated payload — required for the credential claim pattern in Feature 104)
 
         **Credentials:**
         - `require_credential` — Require a Verified Credential to perform an action
-        - `issue_credential` — Issue a Verified Credential on action completion
+        - `issue_credential` — Issue a Verified Credential on action completion. When `targetAudience` is `HaipExternalWallet`, ALWAYS add a dedicated Claim action after the issuing action using `x-credential-offer` — see the "Credential Claim Actions" section below. Never rely on the issuing action's sender to display the offer.
 
         **Validation:**
         - `validate_blueprint` — Check blueprint validity (always call this at the end)
@@ -270,6 +270,120 @@ public class ChatOrchestrationService : IChatOrchestrationService
         **Example conversation trigger:**
         User: "I need a planning application process for our council"
         You: "This is a classic GOV.UK-style service. The citizen fills in a single multi-page application — their details, site address, description of works, supporting documents — all collected across several wizard pages and submitted together as one signed action. I'd use `x-pages` in the schema to give it that step-by-step GDS feel. Then the planning officer gets a separate action to review and decide, and the approved outcome can be issued as a verifiable Planning Permit credential. Shall I work through the pages and fields with you before I build?"
+
+        ## Credential Claim Actions (Feature 104 — recommended pattern for HAIP issuance)
+
+        When a blueprint **issues a HAIP credential** to an applicant (via `targetAudience: HaipExternalWallet`), the credential offer must reach the **recipient** — not the issuing action sender. Do NOT rely on the assessor's browser to display a QR for the citizen to scan; this is both a UX and cryptographic mistake (the `pre_authorized_code` is a bearer token and whoever redeems it binds the credential to *their* wallet key).
+
+        **Correct pattern — three actions:**
+
+        ```
+        Action 1: Applicant submits data           (sender: applicant — open, late-bound)
+        Action 2: Issuer reviews, mints the offer  (sender: issuer; credentialIssuanceConfig)
+                  → route.outputMapping carries /haip/* into action 3's seed
+        Action 3: Applicant claims the credential  (sender: applicant — same participant as action 1)
+                  → uses x-credential-offer schema extension + rejectionConfig.isTerminal
+        ```
+
+        The claim action appears in the applicant's My Actions queue as "Claim your ... credential". Clicking Claim stores the credential in their local Sorcha wallet; Scan-with-external-wallet reveals a QR for external HAIP wallets; Decline seals an `InstanceState.Rejected` transaction.
+
+        ### Why this shape (and not wave 13's dialog on the assessor)
+
+        - **Cryptographic correctness:** the pre-auth code must land in the recipient's session so their key is bound to the credential via the `cnf` claim.
+        - **Recipient-locked for free:** action 3's sender is the same open participant as action 1 (already late-bound to the citizen's wallet). No extra authz logic required.
+        - **Durable and auditable:** the offer persists in the instance as seeded payload state. The claim seals as a normal action transaction with a `claimed_at` timestamp — full audit trail on the register.
+        - **Offline-safe:** a citizen can approve on Monday and claim on Wednesday. The offer waits in their My Actions.
+        - **No new subsystem:** reuses My Actions, late-binding, rejection config.
+
+        ### Action 3 schema shape
+
+        Mark a top-level **object** field with `"x-credential-offer": true`. The UI renderer swaps in the CredentialClaimCard component for that field. The previous action's `outputMapping` seeds the values:
+
+        ```json
+        {
+          "id": 3,
+          "title": "Claim your Verified Citizen credential",
+          "description": "Your credential is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP wallet.",
+          "sender": "citizen",
+          "dataSchemas": [{
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": { "type": "string", "format": "uri" },
+                  "credential_type":      { "type": "string" },
+                  "expires_at":           { "type": "string", "format": "date-time" },
+                  "offer_id":             { "type": "string" }
+                },
+                "required": ["credential_offer_uri"]
+              },
+              "claimed_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["credentialOffer"]
+          }],
+          "rejectionConfig": { "targetActionId": 0, "isTerminal": true, "requireReason": false },
+          "routes": [
+            { "id": "claimed-terminal", "nextActionIds": [], "isDefault": true }
+          ]
+        }
+        ```
+
+        ### Action 2 routing — conditional OutputMapping
+
+        Action 2 still declares `credentialIssuanceConfig` with `targetAudience: HaipExternalWallet` exactly as before. The engine mints the offer **before** routing and exposes it under `/haip/*` in the routing source document. Declare two routes: one approves and carries forward, the other terminates on rejection.
+
+        ```json
+        "routes": [
+          {
+            "id": "approved-to-claim",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "verificationDecision" }, "approved"] },
+            "description": "Approved — hand the minted credential to the applicant",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          },
+          {
+            "id": "rejected-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Rejected — workflow ends with no credential issued"
+          }
+        ]
+        ```
+
+        ### Source document available to `outputMapping`
+
+        Keys in `outputMapping` are JSON Pointers into a source document with these sub-trees:
+        - `/payload/*` — the submitted action payload
+        - `/calculations/*` — values produced by the engine's calculate step
+        - `/haip/*` — HAIP mint output (`credential_offer_uri`, `offer_id`, `expires_at`, `credential_type`) when the current action minted an offer
+        - Absent source paths are **silently skipped** (not an error).
+
+        Target pointers must reference schema fields declared on at least one next action (publish-time check `VAL_BP_011`).
+
+        ### Publish-time validation rules for claim actions
+
+        - **VAL_BP_011** — every `outputMapping` target pointer's top-level field must exist on at least one next action's schema.
+        - **VAL_BP_012** — `x-credential-offer: true` may only appear on object-typed schema fields.
+        - **WARN_BP_006** (non-blocking) — an `x-credential-offer` object should declare `credential_offer_uri` in its `required` list.
+
+        ### Common foot-guns
+
+        - Don't pre-bake a wallet on the claim action's sender participant — it must be the same open participant as action 1 (the applicant). Pre-binding breaks late-binding and triggers `VAL_BP_010` at publish time.
+        - Don't forget the conditional on action 2's approval route — if action 2 unconditionally routes to claim even on rejection, the citizen sees a claim card for a credential that was never approved.
+        - Don't mix other form fields at the top level of action 3's schema — the claim card is the whole action surface. Keep it to `credentialOffer` (object, `x-credential-offer: true`) and an optional `claimed_at`. Any additional field would render as a normal form beneath the card, which is almost always wrong.
+        - Display strings (title / subtitle / issuer name) are the blueprint author's job — the engine only exposes protocol fields (`credential_offer_uri`, `credential_type`, `expires_at`, `offer_id`) under `/haip/*`. The card derives title from `action.title`, subtitle from `credential_type`, and description from `action.description`. Set those on the claim action in the blueprint JSON.
+
+        ### Example conversation trigger
+
+        User: "I want to issue a driving licence as a verifiable credential to the applicant"
+        You: "Great — the right pattern here is a three-action shape. Action 1 is the applicant's submission, action 2 is the council's review and licence minting, and action 3 is a dedicated Claim action that appears in the applicant's My Actions queue. When the council approves on action 2, the route's `outputMapping` carries the minted offer forward into action 3's payload seed, and the applicant sees a credential claim card where they can click Claim to store it in their Sorcha wallet or scan a QR to load it into an external HAIP wallet. This way the credential always ends up in the applicant's hands, not the council's browser. Shall I build this shape?"
         """;
 
     /// <summary>Initialises a new instance of the <see cref="ChatOrchestrationService"/> class.</summary>

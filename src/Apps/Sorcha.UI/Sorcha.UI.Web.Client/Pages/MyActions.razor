@@ -15,7 +15,9 @@
 @using Sorcha.UI.Core.Components.Workflows
 @using Sorcha.UI.Core.Models.Credentials
 @using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Forms
 @using Sorcha.UI.Core.Services.Wallet
+@using Sorcha.UI.Core.Models.Forms
 @inject IWorkflowService WorkflowService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
@@ -370,14 +372,85 @@
             }
         }
 
-        var parameters = new DialogParameters
+        // Feature 104 wave 14b — if this pending action carries a prepopulated
+        // credential offer payload (via Route.OutputMapping on the previous
+        // action), render the CredentialClaimCard dialog instead of the
+        // default form. Falls through to the form for all non-claim actions.
+        var offerInfo = CredentialOfferSchemaResolver.TryResolve(action.DataSchema, action.PrepopulatedPayload);
+
+        IDialogReference dialog;
+        if (offerInfo is not null)
         {
-            ["Action"] = action,
-            ["WalletAddress"] = walletAddress
-        };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
-        var dialog = await DialogService.ShowAsync<ActionForm>("Execute Action", parameters, options);
+            var claimParams = new DialogParameters<Components.Credentials.CredentialClaimDialog>
+            {
+                { x => x.Offer, offerInfo },
+                { x => x.Title, action.ActionName },
+                { x => x.Description, action.Description },
+                { x => x.LocalWalletAddress, walletAddress }
+            };
+            var claimOptions = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+            // Use the action name as the dialog shell title — the dialog
+            // no longer renders its own <TitleContent>, so this is shown
+            // once in the overlay chrome. The card inside renders the same
+            // name as its primary header for the citizen.
+            dialog = await DialogService.ShowAsync<Components.Credentials.CredentialClaimDialog>(
+                action.ActionName, claimParams, claimOptions);
+        }
+        else
+        {
+            var parameters = new DialogParameters
+            {
+                ["Action"] = action,
+                ["WalletAddress"] = walletAddress
+            };
+            var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+            dialog = await DialogService.ShowAsync<ActionForm>("Execute Action", parameters, options);
+        }
         var result = await dialog.Result;
+
+        // Handle the CredentialClaimDialog FormSubmission shape — convert it to
+        // the ActionSubmissionViewModel the existing execution path expects.
+        // The card's FormSubmission.Data uses leading-slash JSON Pointer keys,
+        // matching ActionForm's own convention.
+        if (result is { Canceled: false, Data: FormSubmission cardSubmission })
+        {
+            var adapted = new ActionSubmissionViewModel
+            {
+                ActionId = action.ActionId,
+                InstanceId = action.InstanceId,
+                Data = cardSubmission.Data.ToDictionary(
+                    kvp => kvp.Key.TrimStart('/'),
+                    kvp => kvp.Value ?? (object)string.Empty)
+            };
+            result = DialogResult.Ok(adapted);
+        }
+        else if (result is { Canceled: false, Data: string decision }
+                 && decision == Components.Credentials.CredentialClaimDialog.RejectResult)
+        {
+            // Decline path from either dialog — fire the reject endpoint and remove the action.
+            try
+            {
+                var rejected = await WorkflowService.RejectActionAsync(
+                    action.InstanceId, action.ActionId, "declined");
+                if (rejected)
+                {
+                    Snackbar.Add("Action declined", Severity.Info);
+                    _actions.Remove(action);
+                    RebuildGroups();
+                    StateHasChanged();
+                }
+                else
+                {
+                    Snackbar.Add("Failed to decline action. Please try again.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error rejecting action {ActionId}", action.ActionId);
+                Snackbar.Add("An error occurred while declining the action.", Severity.Error);
+            }
+            return;
+        }
 
         if (result is { Canceled: false, Data: ActionSubmissionViewModel submission })
         {
