@@ -77,7 +77,6 @@ public class GenesisConfigFallbackTests
         {
             RegisterId = registerId,
             Name = "PolicyTest",
-            TenantId = "tenant-1",
             RegisterPolicy = new RegisterPolicy
             {
                 Version = 1,
@@ -138,7 +137,6 @@ public class GenesisConfigFallbackTests
         {
             RegisterId = registerId,
             Name = "LegacyRegister",
-            TenantId = "tenant-1",
             // RegisterPolicy is null (pre-Feature 048 register)
             Attestations = new List<RegisterAttestation>()
         };
@@ -209,7 +207,6 @@ public class GenesisConfigFallbackTests
         {
             RegisterId = registerId,
             Name = "EnumTest",
-            TenantId = "tenant-1",
             RegisterPolicy = new RegisterPolicy
             {
                 Version = 2,
@@ -240,8 +237,7 @@ public class GenesisConfigFallbackTests
         var register = new Sorcha.Register.Models.Register
         {
             Id = registerId,
-            Name = controlRecord.Name,
-            TenantId = controlRecord.TenantId
+            Name = controlRecord.Name
         };
 
         _registerClientMock

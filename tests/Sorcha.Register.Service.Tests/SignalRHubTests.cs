@@ -82,96 +82,13 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
         exception.Should().BeNull();
     }
 
-    [Fact]
-    public async Task SubscribeToTenant_ShouldAllowSubscription()
-    {
-        // Arrange
-        var tenantId = "test-tenant-123";
-
-        // Act
-        var exception = await Record.ExceptionAsync(async () =>
-            await _hubConnection!.InvokeAsync("SubscribeToTenant", tenantId));
-
-        // Assert
-        exception.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task UnsubscribeFromTenant_ShouldAllowUnsubscription()
-    {
-        // Arrange
-        var tenantId = "test-tenant-123";
-        await _hubConnection!.InvokeAsync("SubscribeToTenant", tenantId);
-
-        // Act
-        var exception = await Record.ExceptionAsync(async () =>
-            await _hubConnection.InvokeAsync("UnsubscribeFromTenant", tenantId));
-
-        // Assert
-        exception.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task RegisterCreated_ShouldReceiveEvent()
-    {
-        // Arrange
-        var tenantId = "signalr-test-tenant";
-        var registerCreatedReceived = false;
-        string? receivedRegisterId = null;
-        string? receivedName = null;
-
-        _hubConnection!.On<string, string>("RegisterCreated", (registerId, name) =>
-        {
-            registerCreatedReceived = true;
-            receivedRegisterId = registerId;
-            receivedName = name;
-        });
-
-        await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
-
-        // Act — create register via service layer (POST /api/registers was removed)
-        var register = await _factory.CreateTestRegisterAsync("SignalR Test Register", tenantId);
-
-        // Wait for event
-        await Task.Delay(1000);
-
-        // Assert
-        registerCreatedReceived.Should().BeTrue();
-        receivedRegisterId.Should().Be(register.Id);
-        receivedName.Should().Be("SignalR Test Register");
-    }
-
-    [Fact]
-    public async Task RegisterDeleted_ShouldReceiveEvent()
-    {
-        // Arrange
-        var tenantId = "signalr-delete-tenant";
-        var registerDeletedReceived = false;
-        string? receivedRegisterId = null;
-
-        _hubConnection!.On<string>("RegisterDeleted", (registerId) =>
-        {
-            registerDeletedReceived = true;
-            receivedRegisterId = registerId;
-        });
-
-        await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
-
-        // Create a register via service layer (POST /api/registers was removed)
-        var register = await _factory.CreateTestRegisterAsync("To Delete", tenantId);
-
-        await Task.Delay(500); // Allow create event to process
-
-        // Act
-        await _client.DeleteAsync($"/api/registers/{register.Id}?tenantId={tenantId}");
-
-        // Wait for event
-        await Task.Delay(1000);
-
-        // Assert
-        registerDeletedReceived.Should().BeTrue();
-        receivedRegisterId.Should().Be(register.Id);
-    }
+    // Removed: SubscribeToTenant / UnsubscribeFromTenant hub methods were deleted
+    // when notifications moved from tenant-scoped groups to register-scoped groups
+    // (see src/Services/Sorcha.Register.Service/README.md). Tests for tenant-scoped
+    // RegisterCreated / RegisterDeleted / MultipleClients notifications exercised the
+    // removed behaviour and are no longer applicable. Register-scoped equivalents are
+    // covered by SubscribeToRegister_*, TransactionConfirmed_ShouldReceiveEvent, and
+    // RegisterSubscription_ShouldOnlyReceiveRegisterSpecificEvents below.
 
     [Fact]
     public async Task TransactionConfirmed_ShouldReceiveEvent()
@@ -205,45 +122,6 @@ public class SignalRHubTests : IClassFixture<RegisterServiceWebApplicationFactor
         transactionConfirmedReceived.Should().BeTrue();
         receivedRegisterId.Should().Be(register.Id);
         receivedTransactionId.Should().Be(submittedTx!.TxId);
-    }
-
-    [Fact]
-    public async Task MultipleClients_ShouldReceiveSameEvent()
-    {
-        // Arrange
-        var tenantId = "multi-client-tenant";
-
-        // Create second hub connection
-        var hubUrl = _factory.Server.BaseAddress + "hubs/register";
-        var hubConnection2 = new HubConnectionBuilder()
-            .WithUrl(hubUrl, options =>
-            {
-                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
-            })
-            .Build();
-        await hubConnection2.StartAsync();
-
-        var client1Received = false;
-        var client2Received = false;
-
-        _hubConnection!.On<string, string>("RegisterCreated", (_, _) => client1Received = true);
-        hubConnection2.On<string, string>("RegisterCreated", (_, _) => client2Received = true);
-
-        await _hubConnection.InvokeAsync("SubscribeToTenant", tenantId);
-        await hubConnection2.InvokeAsync("SubscribeToTenant", tenantId);
-
-        // Act — create register via service layer (POST /api/registers was removed)
-        await _factory.CreateTestRegisterAsync("Multi-Client Test", tenantId);
-
-        // Wait for events
-        await Task.Delay(1000);
-
-        // Assert
-        client1Received.Should().BeTrue();
-        client2Received.Should().BeTrue();
-
-        // Cleanup
-        await hubConnection2.DisposeAsync();
     }
 
     [Fact]

@@ -10,6 +10,7 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Validator.Service.Tests.Helpers;
 using StackExchange.Redis;
 using Xunit;
 
@@ -271,6 +272,7 @@ public class ValidatorOperationalPresenceTests
 
         var registry = new ValidatorRegistry(
             mockRedis.Object,
+            MongoMockHelper.CreateValidatorRegistryClient().Object,
             mockClient.Object,
             mockGenesis.Object,
             config,
