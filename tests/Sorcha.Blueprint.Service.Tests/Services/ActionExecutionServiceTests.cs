@@ -73,7 +73,7 @@ public class ActionExecutionServiceTests
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
             _mockLogger.Object,
-            Mock.Of<IConfiguration>());
+            new ConfigurationBuilder().Build());
     }
 
     #region Constructor Tests
@@ -95,7 +95,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -275,7 +275,7 @@ public class ActionExecutionServiceTests
                 null!,
                 _mockExecutionEngine.Object,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -295,7 +295,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 null!,
                 _mockLogger.Object,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     [Fact]
@@ -315,7 +315,7 @@ public class ActionExecutionServiceTests
                 _mockActionStore.Object,
                 _mockExecutionEngine.Object,
                 null!,
-                Mock.Of<IConfiguration>()));
+                new ConfigurationBuilder().Build()));
     }
 
     #endregion
@@ -454,7 +454,7 @@ public class ActionExecutionServiceTests
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
             _mockLogger.Object,
-            Mock.Of<IConfiguration>());
+            new ConfigurationBuilder().Build());
 
         Assert.NotNull(service);
     }
