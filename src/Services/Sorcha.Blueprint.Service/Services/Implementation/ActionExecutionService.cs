@@ -467,32 +467,30 @@ public class ActionExecutionService : IActionExecutionService
                     "default form renderer. Check service registration.",
                     actionDef.Id, blueprint.Id);
             }
-        }
-        if (actionDef.CredentialIssuanceConfig != null
-            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
-            && _haipClient != null)
-        {
-            var haipClaims = BuildClaimsFromMappings(
-                actionDef.CredentialIssuanceConfig.ClaimMappings,
-                mergedData!);
-            var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
+            else
+            {
+                var haipClaims = BuildClaimsFromMappings(
+                    actionDef.CredentialIssuanceConfig.ClaimMappings,
+                    mergedData!);
+                var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
 
-            _logger.LogInformation(
-                "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
-                actionDef.CredentialIssuanceConfig.CredentialType,
-                string.Join(", ", haipClaimsForWire.Keys));
+                _logger.LogInformation(
+                    "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
+                    actionDef.CredentialIssuanceConfig.CredentialType,
+                    string.Join(", ", haipClaimsForWire.Keys));
 
-            haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
-                request.SenderWallet,
-                instance.RegisterId,
-                actionDef.CredentialIssuanceConfig.CredentialType,
-                haipClaimsForWire,
-                actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
-                cancellationToken);
+                haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
+                    request.SenderWallet,
+                    instance.RegisterId,
+                    actionDef.CredentialIssuanceConfig.CredentialType,
+                    haipClaimsForWire,
+                    actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
+                    cancellationToken);
 
-            _logger.LogInformation(
-                "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
-                haipOfferResult.OfferId, haipOfferResult.ExpiresAt);
+                _logger.LogInformation(
+                    "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
+                    haipOfferResult.OfferId, haipOfferResult.ExpiresAt);
+            }
         }
 
         // 9. Evaluate routing conditions to determine next action(s).

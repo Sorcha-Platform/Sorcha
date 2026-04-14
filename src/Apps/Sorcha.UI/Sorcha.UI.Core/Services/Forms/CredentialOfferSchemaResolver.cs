@@ -59,7 +59,15 @@ public static class CredentialOfferSchemaResolver
             if (!prepopulatedPayload.TryGetPropertyValue(prop.Name, out var seededNode)) continue;
             if (seededNode is not JsonObject seededObj) continue;
 
-            var offerUri = seededObj["credential_offer_uri"]?.GetValue<string>();
+            // JsonNode.GetValue<string>() throws InvalidOperationException when
+            // the node's runtime type doesn't match — e.g. a malformed seed
+            // where credential_offer_uri arrives as a number or object. The
+            // seed comes from an external HAIP service via Route.OutputMapping,
+            // so we can't assume it's well-typed. Use the value-type gate
+            // instead so a malformed node surfaces as a skipped field (and the
+            // caller falls through to the default renderer) rather than an
+            // uncaught exception on the citizen's screen.
+            var offerUri = TryGetString(seededObj, "credential_offer_uri");
             if (string.IsNullOrWhiteSpace(offerUri))
             {
                 // FR-022 prerequisite — no point rendering the card without a URI.
@@ -68,10 +76,10 @@ public static class CredentialOfferSchemaResolver
                 continue;
             }
 
-            var credentialType = seededObj["credential_type"]?.GetValue<string>();
-            var offerId = seededObj["offer_id"]?.GetValue<string>();
+            var credentialType = TryGetString(seededObj, "credential_type");
+            var offerId = TryGetString(seededObj, "offer_id");
             DateTimeOffset? expiresAt = null;
-            var expiresAtRaw = seededObj["expires_at"]?.GetValue<string>();
+            var expiresAtRaw = TryGetString(seededObj, "expires_at");
             if (!string.IsNullOrWhiteSpace(expiresAtRaw) &&
                 DateTimeOffset.TryParse(expiresAtRaw, out var parsed))
             {
@@ -87,6 +95,25 @@ public static class CredentialOfferSchemaResolver
                 RawCredentialOffer: seededObj);
         }
 
+        return null;
+    }
+
+    /// <summary>
+    /// Type-safe string extraction from a <see cref="JsonObject"/> property.
+    /// Returns null if the property is absent, null, or not a string-typed
+    /// <see cref="JsonValue"/>. Never throws on a type mismatch — callers
+    /// depend on this for defensive seed parsing.
+    /// </summary>
+    private static string? TryGetString(JsonObject obj, string propertyName)
+    {
+        if (!obj.TryGetPropertyValue(propertyName, out var node) || node is null)
+        {
+            return null;
+        }
+        if (node is JsonValue value && value.TryGetValue(out string? s))
+        {
+            return s;
+        }
         return null;
     }
 }
