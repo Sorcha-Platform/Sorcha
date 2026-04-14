@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.Reflection;
 using FluentAssertions;
 using Json.Schema;
 using Sorcha.Validator.Service.Services;
@@ -56,15 +55,6 @@ public class ValidationEngineSchemaCacheTests
         """;
     }
 
-    private static JsonSchema InvokeGetOrParseActionSchema(string schemaText)
-    {
-        var method = typeof(ValidationEngine).GetMethod(
-            "GetOrParseActionSchema",
-            BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("GetOrParseActionSchema not found");
-        return (JsonSchema)method.Invoke(null, new object[] { schemaText })!;
-    }
-
     [Fact]
     public void JsonSchemaFromText_CalledTwiceWithSameIdSchema_ThrowsOnSecondCall_RegressionProof()
     {
@@ -93,8 +83,8 @@ public class ValidationEngineSchemaCacheTests
         var unique = Guid.NewGuid().ToString("N");
         var schemaText = MakeFlattenedSchemaWithIdPrimitive(unique);
 
-        var first = InvokeGetOrParseActionSchema(schemaText);
-        var second = InvokeGetOrParseActionSchema(schemaText);
+        var first = ValidationEngine.GetOrParseActionSchema(schemaText);
+        var second = ValidationEngine.GetOrParseActionSchema(schemaText);
 
         first.Should().NotBeNull();
         second.Should().BeSameAs(first,
@@ -109,8 +99,8 @@ public class ValidationEngineSchemaCacheTests
         var schemaA = MakeFlattenedSchemaWithIdPrimitive(unique1);
         var schemaB = MakeFlattenedSchemaWithIdPrimitive(unique2);
 
-        var parsedA = InvokeGetOrParseActionSchema(schemaA);
-        var parsedB = InvokeGetOrParseActionSchema(schemaB);
+        var parsedA = ValidationEngine.GetOrParseActionSchema(schemaA);
+        var parsedB = ValidationEngine.GetOrParseActionSchema(schemaB);
 
         parsedA.Should().NotBeSameAs(parsedB,
             "different schema text must yield a fresh cache entry so blueprint republishes with changed content get reparsed");

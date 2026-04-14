@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -1410,12 +1411,18 @@ public class ValidationEngine : IValidationEngine
     /// <see cref="Lazy{T}"/> with <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/>
     /// to guarantee exactly-once parsing even under concurrent transaction validation.
     /// </para>
+    /// <para>
+    /// The cache is intentionally unbounded. In practice the number of distinct action
+    /// schemas in any validator process is bounded by the set of live blueprint versions,
+    /// which is small and finite. If this ever becomes a memory concern, add a size cap
+    /// with LRU eviction keyed by last-access time.
+    /// </para>
     /// </summary>
     private static readonly ConcurrentDictionary<string, Lazy<Json.Schema.JsonSchema>> _actionSchemaCache = new();
 
-    private static Json.Schema.JsonSchema GetOrParseActionSchema(string schemaText)
+    internal static Json.Schema.JsonSchema GetOrParseActionSchema(string schemaText)
     {
-        var hashBytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(schemaText));
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(schemaText));
         var key = Convert.ToHexString(hashBytes);
         var lazy = _actionSchemaCache.GetOrAdd(key, _ => new Lazy<Json.Schema.JsonSchema>(
             () => Json.Schema.JsonSchema.FromText(schemaText),
