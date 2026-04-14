@@ -333,6 +333,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Sorcha.UI.Core.Services.Persona.IPersonaService,
             Sorcha.UI.Core.Services.Persona.PersonaService>();
 
+        // Address Lookup Client — required by PostcodeLookupRenderer. Must use
+        // AuthenticatedHttpMessageHandler so the user's JWT is attached;
+        // otherwise YARP's RequireAuthenticated policy rejects the request at
+        // the gateway with a 401 before it reaches tenant-service.
+        services.AddScoped<Sorcha.UI.Core.Services.AddressLookup.IAddressLookupClient>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<Sorcha.UI.Core.Services.AddressLookup.AddressLookupHttpClient>>();
+            return new Sorcha.UI.Core.Services.AddressLookup.AddressLookupHttpClient(httpClient, logger);
+        });
+
         // Persona autofill resolver — pure function, singleton.
         services.AddSingleton<Sorcha.UI.Core.Services.Forms.PersonaAutofillResolver>();
 
