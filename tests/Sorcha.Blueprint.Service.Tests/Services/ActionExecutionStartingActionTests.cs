@@ -74,7 +74,7 @@ public class ActionExecutionStartingActionTests
             _mockActionStore.Object,
             _mockExecutionEngine.Object,
             _mockLogger.Object,
-            Mock.Of<IConfiguration>());
+            new ConfigurationBuilder().Build());
     }
 
     [Fact]
