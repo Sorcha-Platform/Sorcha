@@ -338,7 +338,14 @@
                     // previously showed the same "HAIP Verified Citizen" card
                     // twice — or N times for N re-runs. Group by Title and
                     // keep the highest Version; break ties by BlueprintId
-                    // (timestamp suffix sorts newest last lexicographically).
+                    // descending so the newest timestamp (lexicographically
+                    // largest) wins.
+                    //
+                    // TODO: this is a client-side workaround. The real fix
+                    // is server-side — either the Blueprint Service should
+                    // expose a "latest version per title" query, or the
+                    // publish path should supersede prior versions on the
+                    // same title. Tracking as a follow-up.
                     .GroupBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
                     .Select(g => g
                         .OrderByDescending(s => s.Version)

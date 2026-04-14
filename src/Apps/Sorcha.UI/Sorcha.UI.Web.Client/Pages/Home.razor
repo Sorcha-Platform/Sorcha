@@ -173,12 +173,14 @@ else
        service degradation) are surfaced only to users who can act on
        them. Citizens have no agency over infrastructure health, so
        showing them a "Peer network health is 0.0%" warning on the
-       welcome page is misleading and adds anxiety for nothing. *@
-    <AuthorizeView Roles="Administrator,SystemAdmin,OrganizationAdmin">
-        <Authorized Context="alertsAuthContext">
-            <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
-        </Authorized>
-    </AuthorizeView>
+       welcome page is misleading and adds anxiety for nothing. We
+       drive visibility from _canSeeAdminDashboard instead of wrapping
+       in an AuthorizeView so the role check lives in one place
+       (OnInitializedAsync). *@
+    @if (_canSeeAdminDashboard)
+    {
+        <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
+    }
 
     @if (_isRefreshing)
     {
