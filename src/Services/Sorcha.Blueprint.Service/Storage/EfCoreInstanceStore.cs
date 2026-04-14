@@ -292,7 +292,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 return instance.CurrentActionIds.Select(actionId =>
                 {
                     var actionTitle = $"Action {actionId}";
-                    System.Text.Json.JsonElement? dataSchema = null;
+                    JsonElement? dataSchema = null;
 
                     if (blueprint != null && actionResolver != null)
                     {
@@ -311,6 +311,17 @@ public class EfCoreInstanceStore : IInstanceStore
                             // on a null schema and the UI falls through to a generic
                             // empty form. Wave 14b shipped this gap — fixing it here so
                             // the claim card finally renders in the browser.
+                            //
+                            // Actions may declare multiple schemas, but the client-side
+                            // CredentialOfferSchemaResolver only inspects the first to
+                            // detect the x-credential-offer extension. Multi-schema
+                            // actions are not a wave 14b use-case; revisit this
+                            // projection if that assumption ever changes.
+                            //
+                            // RootElement.Clone() is required — JsonElement shares memory
+                            // with its parent JsonDocument and becomes invalid once the
+                            // document is disposed. Without Clone() this would corrupt
+                            // at runtime in a hard-to-reproduce way.
                             var firstSchemaDoc = actionDef.DataSchemas?.FirstOrDefault();
                             if (firstSchemaDoc is not null)
                             {
