@@ -220,7 +220,18 @@
         try
         {
             var result = await AddressLookup.LookupPostcodeAsync(_value, _cts.Token);
-            if (result is null || !result.IsValid)
+            if (result is null)
+            {
+                // Transient upstream failure (non-2xx / network / deserialise).
+                // Match the pre-typed-client behaviour: silent no-op so a 503
+                // or 429 from the provider doesn't mislead the user into
+                // thinking their postcode is wrong. Schema validation will
+                // still catch a genuinely malformed postcode on blur.
+                _candidates = null;
+                _metadataHint = null;
+                return;
+            }
+            if (!result.IsValid)
             {
                 _metadataHint = "Postcode not recognised — enter your address manually.";
                 _candidates = null;
