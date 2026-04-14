@@ -119,8 +119,18 @@ public class Instance
     /// reject, or expire). Empty for actions that receive no carry-forward data.
     /// </summary>
     /// <remarks>
-    /// Persisted alongside <see cref="AccumulatedData"/> as plaintext JSON in
-    /// MongoDB — see wave 14a research decision 1. Introduced in Feature 104.
+    /// Persisted alongside <see cref="AccumulatedData"/> as a plaintext
+    /// <c>jsonb</c> column in PostgreSQL via <c>EfCoreInstanceStore</c> —
+    /// see wave 14a research decision 1 for the rationale.
+    /// <para>
+    /// <b>Wave 14b prerequisite:</b> the credential claim flow will persist
+    /// an OpenID4VCI <c>pre_authorized_code</c> in this field. That code is a
+    /// short-lived bearer token and MUST be encrypted at rest before wave 14b
+    /// ships — either by wrapping it through the existing disclosure pipeline
+    /// or by adding an at-rest encryption layer to the instance state columns.
+    /// Tracked as an open planning question in specs/104-credential-claim-action/plan.md.
+    /// </para>
+    /// Introduced in Feature 104.
     /// </remarks>
     public Dictionary<int, JsonObject> PendingActionPayloads { get; set; } = new();
 }

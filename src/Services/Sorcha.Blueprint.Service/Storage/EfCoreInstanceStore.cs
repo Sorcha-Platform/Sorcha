@@ -551,7 +551,13 @@ public class EfCoreInstanceStore : IInstanceStore
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to deserialize PendingActionPayloads JSON: {Json}", json);
+            // Do NOT log the raw JSON — wave 14b will persist short-lived
+            // OpenID4VCI pre_authorized_code values here and we must not leak
+            // them to log sinks on parse failure. Log length only.
+            _logger.LogWarning(
+                ex,
+                "Failed to deserialize PendingActionPayloads JSON (length {Length})",
+                json.Length);
             return new Dictionary<int, JsonObject>();
         }
     }

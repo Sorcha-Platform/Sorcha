@@ -1119,6 +1119,16 @@ public class ActionExecutionService : IActionExecutionService
     /// routing pipeline) into a <see cref="JsonNode"/> tree suitable for
     /// JSON Pointer traversal by the output-mapping evaluator.
     /// </summary>
+    /// <remarks>
+    /// Failure modes are non-fatal: a value that cannot round-trip through
+    /// System.Text.Json (circular references, unsupported types) or produces
+    /// invalid JSON results in a null return and a logged warning rather than
+    /// aborting the action execution. The caller substitutes an empty
+    /// <see cref="JsonObject"/> so routing proceeds with an absent source —
+    /// which simply causes any <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>
+    /// entries pointing into the unconvertible branch to be silently skipped,
+    /// the same as if the data were not present.
+    /// </remarks>
     private static JsonNode? ConvertToJsonNode(object? value)
     {
         if (value is null)
@@ -1126,11 +1136,22 @@ public class ActionExecutionService : IActionExecutionService
             return null;
         }
 
-        // Round-trip through System.Text.Json — slower than a hand-rolled
-        // converter but handles nested dicts, lists, JsonElements, primitives,
-        // and records uniformly.
-        var json = JsonSerializer.Serialize(value);
-        return JsonNode.Parse(json);
+        try
+        {
+            // Round-trip through System.Text.Json — slower than a hand-rolled
+            // converter but handles nested dicts, lists, JsonElements, primitives,
+            // and records uniformly.
+            var json = JsonSerializer.Serialize(value);
+            return JsonNode.Parse(json);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+        {
+            // Preserve the engine's ability to proceed when a single value in the
+            // source document can't be serialised. OutputMapping entries that
+            // reference the affected subtree will resolve as absent and be silently
+            // skipped per FR-004.
+            return null;
+        }
     }
 
     private async Task<Dictionary<string, object>?> EvaluateCalculationsAsync(
