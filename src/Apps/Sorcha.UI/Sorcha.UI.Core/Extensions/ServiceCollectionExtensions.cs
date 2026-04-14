@@ -260,6 +260,19 @@ public static class ServiceCollectionExtensions
             return new HaipOfferService(httpClient, logger);
         });
 
+        // Feature 103 wave 13: HAIP Local Receive Service — drives the
+        // OpenID4VCI pre-authorized-code flow with the user's Sorcha wallet
+        // as holder, so the resulting SD-JWT VC lands in the wallet's
+        // local credential store and surfaces in the My Credentials page.
+        services.AddScoped<IHaipLocalReceiveService>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var logger = sp.GetRequiredService<ILogger<HaipLocalReceiveService>>();
+            return new HaipLocalReceiveService(httpClient, logger);
+        });
+
         // QR Presentation Service (no HTTP needed — generates locally)
         services.AddScoped<IQrPresentationService, QrPresentationService>();
 
