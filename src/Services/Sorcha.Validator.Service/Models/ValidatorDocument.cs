@@ -10,7 +10,13 @@ namespace Sorcha.Validator.Service.Models;
 /// MongoDB document for durable validator storage.
 /// Maps between <see cref="ValidatorInfo"/> and the MongoDB collection.
 /// </summary>
-internal class ValidatorDocument
+/// <remarks>
+/// Public so that test fixtures can create <c>Mock&lt;IMongoCollection&lt;ValidatorDocument&gt;&gt;</c>
+/// via Castle DynamicProxy. Castle generates proxies in a separate strong-named assembly
+/// (<c>DynamicProxyGenAssembly2</c>) that cannot see types marked <c>internal</c> even when
+/// <c>InternalsVisibleTo</c> is set for the direct test assembly.
+/// </remarks>
+public class ValidatorDocument
 {
     [BsonId]
     public string Id { get; set; } = string.Empty;
