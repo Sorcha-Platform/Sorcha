@@ -143,15 +143,19 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
             var signingInput = Encoding.ASCII.GetBytes($"{headerB64}.{payloadB64}");
 
             // The Wallet Service /sign endpoint takes base64 transaction
-            // data and produces a base64 signature. IsPreHashed=false means
-            // the service will hash the input internally and sign the hash;
-            // for raw JWS we need raw-data signing (no extra hash). Sorcha
-            // wallets sign the raw bytes with PublicKeyAuth.SignDetached
-            // when IsPreHashed=false on a non-hashed payload.
+            // data and produces a base64 signature. IsPreHashed=true tells
+            // the wallet to sign the transactionData bytes directly without
+            // applying an additional SHA-256 pre-hash (see
+            // TransactionService.SignTransactionAsync lines 53-56). Ed25519's
+            // internal hashing (SHA-512 inside EdDSA) handles the raw JWS
+            // signing input correctly, and the HAIP verifier uses
+            // Sodium.PublicKeyAuth.VerifyDetached against the raw bytes — so
+            // we MUST skip the wallet's extra SHA-256 to produce a signature
+            // that verifies.
             var signRequest = new SignRequest
             {
                 TransactionData = Convert.ToBase64String(signingInput),
-                IsPreHashed = false
+                IsPreHashed = true
             };
             var signResponse = await _httpClient.PostAsJsonAsync(
                 $"/api/v1/wallets/{walletAddress}/sign", signRequest, JsonOptions, ct);
@@ -268,7 +272,7 @@ public sealed class HaipLocalReceiveService : IHaipLocalReceiveService
         if (!offer.TryGetProperty("grants", out var grants)) return null;
         foreach (var grant in grants.EnumerateObject())
         {
-            if (grant.Name.Contains("pre-authorized_code", StringComparison.Ordinal) &&
+            if (grant.Name == "urn:ietf:params:oauth:grant-type:pre-authorized_code" &&
                 grant.Value.TryGetProperty("pre-authorized_code", out var code))
             {
                 return code.GetString();

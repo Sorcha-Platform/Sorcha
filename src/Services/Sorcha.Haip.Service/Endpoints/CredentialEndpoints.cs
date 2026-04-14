@@ -81,9 +81,14 @@ public static class CredentialEndpoints
             });
         }
 
-        // Parse the JWT proof to extract the c_nonce and holder key
+        // Parse the JWT proof to extract the c_nonce, holder key, signing
+        // input, and signature bytes. Everything that depends on the JWT
+        // structure is computed here, under a single length guard, so later
+        // code can access segments without reparsing.
         JsonElement proofPayload;
         JsonElement? holderJwk;
+        byte[] signingInput;
+        byte[] signature;
         try
         {
             var proofParts = request.Proof.Jwt.Split('.');
@@ -100,6 +105,10 @@ public static class CredentialEndpoints
             // Parse payload for nonce
             var payloadBytes = Base64Url.DecodeFromChars(proofParts[1]);
             proofPayload = JsonSerializer.Deserialize<JsonElement>(payloadBytes);
+
+            // Compute the signing input + decoded signature for later verification.
+            signingInput = Encoding.ASCII.GetBytes($"{proofParts[0]}.{proofParts[1]}");
+            signature = Base64Url.DecodeFromChars(proofParts[2]);
         }
         catch (Exception ex)
         {
@@ -118,10 +127,6 @@ public static class CredentialEndpoints
             var jwk = holderJwk.Value;
             var kty = jwk.TryGetProperty("kty", out var ktyProp) ? ktyProp.GetString() : null;
             var crv = jwk.TryGetProperty("crv", out var crvProp) ? crvProp.GetString() : null;
-
-            var proofParts2 = request.Proof.Jwt.Split('.');
-            var signingInput = Encoding.ASCII.GetBytes($"{proofParts2[0]}.{proofParts2[1]}");
-            var signature = Base64Url.DecodeFromChars(proofParts2[2]);
 
             if (kty == "EC" && crv == "P-256"
                 && jwk.TryGetProperty("x", out var xProp) && jwk.TryGetProperty("y", out var yProp))
