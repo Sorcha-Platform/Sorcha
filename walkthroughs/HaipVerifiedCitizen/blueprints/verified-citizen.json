@@ -1,22 +1,22 @@
 {
   "id": "haip-verified-citizen-v2",
   "title": "HAIP Verified Citizen",
-  "description": "A citizen submits a verified-citizen application using the Sorcha core identity primitive library (PersonName, DateOfBirth, EmailAddress, PostalAddress). A government assessor reviews the application, then issues a VerifiedCitizenCredential to the citizen's external HAIP wallet via the OpenID4VCI pre-authorized code flow (delivered as a QR code). v2 introduced in Feature 103.",
-  "version": 2,
+  "description": "A citizen submits a verified-citizen application using the Sorcha core identity primitive library (PersonName, DateOfBirth, EmailAddress, PostalAddress). A government assessor reviews the application, then issues a VerifiedCitizenCredential. From v3 the credential is delivered back to the citizen as a dedicated Claim Credential action in their My Actions queue — the citizen clicks Claim to land the credential in their local wallet, or scans the QR to load it into an external HAIP wallet. v2 introduced in Feature 103; three-action claim flow added in Feature 104 wave 14b.",
+  "version": 3,
   "category": "identity",
-  "tags": ["haip", "verified-citizen", "identity", "oid4vci", "verifiable-credential", "external-wallet", "citizen-application", "core-primitives"],
+  "tags": ["haip", "verified-citizen", "identity", "oid4vci", "verifiable-credential", "credential-claim", "citizen-application", "core-primitives"],
   "author": "Sorcha Team",
   "published": true,
   "template": {
     "id": "haip-verified-citizen",
     "title": "HAIP Verified Citizen",
-    "description": "Citizen submits identity details using shared core primitives, government assessor reviews and issues a Verified Citizen credential to the citizen's external HAIP wallet.",
-    "version": 2,
+    "description": "Citizen submits identity details using shared core primitives, government assessor reviews and issues a Verified Citizen credential, and the citizen claims the credential via a dedicated pending action.",
+    "version": 3,
     "metadata": {
       "category": "Identity & Credentials",
       "complexity": "Simple",
-      "actions": "2",
-      "features": "HAIP, OpenID4VCI, External Wallet, Verifiable Credential, Citizen Application, Core Primitives",
+      "actions": "3",
+      "features": "HAIP, OpenID4VCI, External Wallet, Verifiable Credential, Citizen Claim Action, Core Primitives",
       "sector": "Government"
     },
     "participants": [
@@ -24,7 +24,7 @@
         "id": "citizen",
         "name": "Citizen",
         "organisation": "Public",
-        "description": "Submits a verified-citizen application and receives the Verified Citizen credential via their external HAIP wallet"
+        "description": "Submits a verified-citizen application and claims the Verified Citizen credential into their local or external HAIP wallet"
       },
       {
         "id": "government-assessor",
@@ -43,7 +43,7 @@
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Submit your personal details so a government assessor can verify your identity. After review, the Verified Citizen credential will be delivered to the wallet you scan the QR code with.",
+            "x-introduction": "Submit your personal details so a government assessor can verify your identity. After review, the Verified Citizen credential will appear in your My Actions queue for you to claim.",
             "x-pages": [
               {
                 "title": "Your Name",
@@ -109,13 +109,13 @@
       {
         "id": 2,
         "title": "Review & Issue Verified Citizen Credential",
-        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedCitizenCredential is issued and delivered to the citizen's external HAIP wallet via a QR code (OpenID4VCI pre-authorized code flow). Claims are sourced from the v2 nested submission structure.",
+        "description": "Government assessor reviews the citizen's submitted application. On approval, a VerifiedCitizenCredential is minted via the HAIP service and routed forward to action 3 (the citizen's Claim Credential action) via Route.OutputMapping. Claims are sourced from the v2 nested submission structure.",
         "sender": "government-assessor",
         "requiredPriorActions": [1],
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Review the citizen's submitted personal details against your records and approve or reject the application. On approval the Verified Citizen credential is minted and offered to the citizen's external wallet.",
+            "x-introduction": "Review the citizen's submitted personal details against your records and approve or reject the application. On approval the Verified Citizen credential is minted and made available to the citizen as a Claim Credential action in their My Actions queue.",
             "x-sections": [
               {
                 "title": "Decision",
@@ -170,10 +170,88 @@
         ],
         "routes": [
           {
-            "id": "complete",
+            "id": "approved-to-claim",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "verificationDecision" }, "approved"] },
+            "description": "Approved — deliver the minted credential to the citizen's Claim Credential pending action",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          },
+          {
+            "id": "rejected-terminal",
             "nextActionIds": [],
             "isDefault": true,
-            "description": "Workflow complete after credential issued"
+            "description": "Rejected — workflow ends with no credential issued"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Claim your Verified Citizen credential",
+        "description": "Your Verified Citizen credential is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP-compatible wallet. Declining will cancel the claim and no credential will be issued.",
+        "sender": "citizen",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "title": "Credential Offer",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical OpenID4VCI offer URI (openid-credential-offer://...)"
+                  },
+                  "credential_type": {
+                    "type": "string",
+                    "description": "The credential type to be issued"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the credential offer expires and can no longer be claimed"
+                  },
+                  "offer_id": {
+                    "type": "string",
+                    "description": "HAIP offer identifier for status polling"
+                  }
+                },
+                "required": ["credential_offer_uri"]
+              },
+              "claimed_at": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Claimed at",
+                "description": "Set by the client when the citizen clicks Claim"
+              }
+            },
+            "required": ["credentialOffer"]
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "claimed-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential claimed — workflow complete"
           }
         ]
       }

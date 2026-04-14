@@ -444,11 +444,44 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
+        // 8b. HAIP credential mint (Feature 097 + Feature 104 wave 14b).
+        //     Moved to run BEFORE routing so the minted offer data can be
+        //     carried forward to the claim action via Route.OutputMapping.
+        //     Internal Sorcha issuance (issuedCredential) still runs later at
+        //     step 9d because it depends on the built transaction context.
+        CreateOfferResult? haipOfferResult = null;
+        if (actionDef.CredentialIssuanceConfig != null
+            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
+            && _haipClient != null)
+        {
+            var haipClaims = BuildClaimsFromMappings(
+                actionDef.CredentialIssuanceConfig.ClaimMappings,
+                mergedData!);
+            var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
+
+            _logger.LogInformation(
+                "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
+                actionDef.CredentialIssuanceConfig.CredentialType,
+                string.Join(", ", haipClaimsForWire.Keys));
+
+            haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
+                request.SenderWallet,
+                instance.RegisterId,
+                actionDef.CredentialIssuanceConfig.CredentialType,
+                haipClaimsForWire,
+                actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
+                cancellationToken);
+
+            _logger.LogInformation(
+                "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
+                haipOfferResult.OfferId, haipOfferResult.ExpiresAt);
+        }
+
         // 9. Evaluate routing conditions to determine next action(s).
         //    Build the output source document for Route.OutputMapping evaluation
-        //    (Feature 104 wave 14a). Payload and calculations are always present;
-        //    HAIP mint output is attached in wave 14b when it runs.
-        var outputSource = BuildOutputMappingSource(request.PayloadData, calculations);
+        //    (Feature 104 wave 14a). Payload, calculations, and (when present)
+        //    HAIP mint output are exposed under /payload, /calculations, /haip.
+        var outputSource = BuildOutputMappingSource(request.PayloadData, calculations, haipOfferResult, actionDef);
         var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
 
         // 9a. Build payload that includes calculated values so they persist in the transaction
@@ -645,54 +678,18 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
-        // 9d. Issue credential if action has issuance configuration
+        // 9d. Issue internal Sorcha credential if configured (non-HAIP path).
+        //     The HAIP path has already run at step 8b (moved before routing in
+        //     Feature 104 wave 14b so Route.OutputMapping can carry offer data
+        //     forward to a claim action). The internal path remains here
+        //     because it builds a register transaction from the merged state.
         CredentialIssuanceResult? issuedCredential = null;
-        CreateOfferResult? haipOfferResult = null;
-        if (actionDef.CredentialIssuanceConfig != null)
+        if (actionDef.CredentialIssuanceConfig != null
+            && actionDef.CredentialIssuanceConfig.TargetAudience != TargetAudience.HaipExternalWallet)
         {
-            // Feature 097: Route HAIP-path issuance through the HAIP service
-            if (actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.HaipExternalWallet
-                && _haipClient != null)
-            {
-                // Feature 103: apply ClaimMappings here too. The HAIP path was
-                // previously passing mergedData unchanged, so nested primitive
-                // values (e.g. /name/givenName from a PersonName/v1 reference)
-                // landed in the credential as the nested objects themselves.
-                var haipClaims = BuildClaimsFromMappings(
-                    actionDef.CredentialIssuanceConfig.ClaimMappings,
-                    mergedData!);
-                // HAIP client expects non-nullable values. The null-forgiving
-                // operator below is safe because TryResolveJsonPointer returns
-                // false for null-valued segments, so BuildClaimsFromMappings
-                // never produces a null value. If that invariant is ever
-                // relaxed (e.g. to support explicitly-null optional fields),
-                // this projection must be updated to filter or coerce nulls
-                // before the wire call.
-                var haipClaimsForWire = haipClaims.ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
-
-                _logger.LogInformation(
-                    "Routing credential issuance to HAIP service for external wallet: type={Type}, claims=[{ClaimNames}]",
-                    actionDef.CredentialIssuanceConfig.CredentialType,
-                    string.Join(", ", haipClaimsForWire.Keys));
-
-                haipOfferResult = await _haipClient.CreateCredentialOfferAsync(
-                    request.SenderWallet,
-                    instance.RegisterId,
-                    actionDef.CredentialIssuanceConfig.CredentialType,
-                    haipClaimsForWire,
-                    actionDef.CredentialIssuanceConfig.Disclosable?.ToList(),
-                    cancellationToken);
-
-                _logger.LogInformation(
-                    "HAIP credential offer created: offerId={OfferId}, expiresAt={ExpiresAt}",
-                    haipOfferResult.OfferId, haipOfferResult.ExpiresAt);
-            }
-            else
-            {
-                // Internal Sorcha issuance path (existing behaviour)
-                issuedCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
-            }
+            // Internal Sorcha issuance path (existing behaviour)
+            issuedCredential = await IssueCredentialFromActionAsync(
+                actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
         }
 
         // 10. Build transaction
@@ -1096,13 +1093,15 @@ public class ActionExecutionService : IActionExecutionService
 
     /// <summary>
     /// Builds the output source JsonObject for <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>
-    /// evaluation. Shape: <c>{ "payload": {...}, "calculations": {...} }</c>.
-    /// HAIP mint output (when present) is attached by the caller before routing
-    /// under the <c>haip</c> key — not yet wired in wave 14a. Feature 104.
+    /// evaluation. Shape: <c>{ "payload": {...}, "calculations": {...}, "haip": {...}? }</c>.
+    /// The <c>haip</c> key is present only when the current action minted an
+    /// OpenID4VCI credential offer via the HAIP service (Feature 104 wave 14b).
     /// </summary>
     private static JsonObject BuildOutputMappingSource(
         IReadOnlyDictionary<string, object> payloadData,
-        IReadOnlyDictionary<string, object>? calculations)
+        IReadOnlyDictionary<string, object>? calculations,
+        CreateOfferResult? haipOfferResult = null,
+        ActionModel? actionDef = null)
     {
         var source = new JsonObject();
 
@@ -1110,6 +1109,37 @@ public class ActionExecutionService : IActionExecutionService
         // consistently get JsonNode values regardless of the input object types.
         source["payload"] = ConvertToJsonNode(payloadData) ?? new JsonObject();
         source["calculations"] = ConvertToJsonNode(calculations ?? new Dictionary<string, object>()) ?? new JsonObject();
+
+        if (haipOfferResult is not null)
+        {
+            // Expose the HAIP mint output under /haip/* so the Verified Citizen v2
+            // blueprint can declare routes like
+            //   "outputMapping": {
+            //     "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+            //     "/haip/credential_type":      "/credentialOffer/credential_type",
+            //     "/haip/expires_at":           "/credentialOffer/expires_at"
+            //   }
+            // and carry the offer into the claim action's prepopulated payload.
+            //
+            // Human-readable display strings (title / subtitle / description /
+            // issuer name) are the blueprint author's responsibility — they ship
+            // as literals on the claim action's schema defaults so they can be
+            // localised per blueprint. The service only emits protocol fields.
+            var haipNode = new JsonObject
+            {
+                ["credential_offer_uri"] = haipOfferResult.CredentialOfferUri,
+                ["offer_id"] = haipOfferResult.OfferId.ToString(),
+                ["expires_at"] = haipOfferResult.ExpiresAt.ToString("O")
+            };
+
+            var issuanceConfig = actionDef?.CredentialIssuanceConfig;
+            if (issuanceConfig is not null)
+            {
+                haipNode["credential_type"] = issuanceConfig.CredentialType;
+            }
+
+            source["haip"] = haipNode;
+        }
 
         return source;
     }

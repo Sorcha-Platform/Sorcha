@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Sorcha.UI.Core.Models.Workflows;
@@ -40,6 +41,13 @@ public record PendingActionViewModel
     public DateTimeOffset AssignedAt { get; init; }
     public DateTimeOffset? DueAt { get; init; }
     public System.Text.Json.JsonElement? DataSchema { get; init; }
+
+    /// <summary>
+    /// Prepopulated payload seeded by a previous action's Route.OutputMapping
+    /// (Feature 104 wave 14a). Null when no seed is attached. For credential
+    /// claim actions this carries the minted HAIP offer data.
+    /// </summary>
+    public JsonObject? PrepopulatedPayload { get; init; }
 }
 
 /// <summary>
