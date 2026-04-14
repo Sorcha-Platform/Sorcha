@@ -19,6 +19,7 @@
 @using Sorcha.UI.Core.Services.Wallet
 @using Sorcha.UI.Core.Models.Forms
 @inject IWorkflowService WorkflowService
+@inject IBlueprintApiService BlueprintApiService
 @inject IWalletApiService WalletService
 @inject IWalletPreferenceService WalletPreferenceService
 @inject ActionsHubConnection ActionsHub
@@ -347,12 +348,18 @@
         var wallets = await WalletService.GetWalletsAsync();
         var walletAddress = await WalletPreferenceService.GetSmartDefaultAsync(wallets) ?? string.Empty;
 
-        // Fetch blueprint to get action schema for form rendering
-        if (action.DataSchema is null && !string.IsNullOrEmpty(action.BlueprintId))
+        // Fetch blueprint to get action schema for form rendering.
+        // Use the PUBLISHED-blueprint endpoint via IBlueprintApiService — the
+        // pre-existing WorkflowService.GetBlueprintAsync path /api/blueprints/{id}
+        // 404s for published blueprints and left the form dialog empty. The
+        // published path is /api/actions/{wallet}/{register}/blueprints/{id}.
+        if (action.DataSchema is null && !string.IsNullOrEmpty(action.BlueprintId)
+            && !string.IsNullOrEmpty(action.RegisterId) && !string.IsNullOrEmpty(walletAddress))
         {
             try
             {
-                var blueprint = await WorkflowService.GetBlueprintAsync(action.BlueprintId);
+                var blueprint = await BlueprintApiService.GetPublishedBlueprintDetailAsync(
+                    walletAddress, action.RegisterId, action.BlueprintId);
                 if (blueprint != null)
                 {
                     var actionDef = blueprint.Actions.FirstOrDefault(a => a.Id.ToString() == action.ActionId);
