@@ -497,8 +497,11 @@ public class WalletServiceClient : IWalletServiceClient
                 JsonOptions, cancellationToken);
             return wallets ?? (IReadOnlyList<WalletInfo>)Array.Empty<WalletInfo>();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Cancellation is caller-initiated (tab close, request abort)
+            // and must propagate cleanly rather than be logged as an error
+            // and turned into a silent empty list.
             _logger.LogError(ex, "Failed to list wallets for owner {OwnerId}", ownerId);
             return Array.Empty<WalletInfo>();
         }

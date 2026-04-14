@@ -28,11 +28,10 @@ public static class ActionEndpoints
             HttpContext httpContext,
             IInstanceStore instanceStore,
             IWalletServiceClient walletClient,
-            ILoggerFactory loggerFactory,
+            ILogger<ActionEndpointsLogCategory> logger,
             int page = 1,
             int pageSize = 20) =>
         {
-            var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.Endpoints.ActionEndpoints");
             var walletAddresses = await ResolveUserWalletAddressesAsync(
                 httpContext, walletClient, logger, httpContext.RequestAborted);
 
@@ -49,6 +48,16 @@ public static class ActionEndpoints
             // allowed. We over-fetch each wallet up to pageUpperBound so
             // the final interleaved sort + skip + take yields a correct
             // page even if one wallet is ahead of another in the ordering.
+            //
+            // NOTE: The merged pagination is approximate for users with
+            // multiple wallets. If any single wallet has more than
+            // pageUpperBound items, items beyond that ceiling will never
+            // appear in the merged result on deeper pages. For the
+            // primary use case — consumers with a single wallet — this
+            // is exact. A proper multi-wallet query would fan out at
+            // the store layer and do server-side merge-sort; tracked
+            // for a future iteration when multi-wallet consumer flows
+            // become load-bearing.
             var mergedItems = new List<PendingActionSummary>();
             var totalCount = 0;
             foreach (var wallet in walletAddresses)
@@ -108,9 +117,8 @@ public static class ActionEndpoints
             HttpContext httpContext,
             IInstanceStore instanceStore,
             IWalletServiceClient walletClient,
-            ILoggerFactory loggerFactory) =>
+            ILogger<ActionEndpointsLogCategory> logger) =>
         {
-            var logger = loggerFactory.CreateLogger("Sorcha.Blueprint.Service.Endpoints.ActionEndpoints");
             var walletAddresses = await ResolveUserWalletAddressesAsync(
                 httpContext, walletClient, logger, httpContext.RequestAborted);
 
@@ -184,17 +192,28 @@ public static class ActionEndpoints
 
             return wallets.Select(w => w.Address).Where(a => !string.IsNullOrEmpty(a)).ToArray();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Non-fatal: surface an empty list so the endpoint still returns
             // a clean 200 rather than cascading a 500 to the user. The user
             // will see "no pending actions" which is the same visible
             // outcome as before this fix — the upside is that when the
             // wallet service IS reachable the list now populates correctly.
+            // Cancellation is explicitly NOT caught here — tab-close / abort
+            // must propagate cleanly so ASP.NET's request pipeline can short
+            // circuit without a bogus 200 response.
             logger.LogWarning(ex,
                 "Failed to resolve wallet addresses for user {UserId} via Wallet Service fallback; returning empty list",
                 userId);
             return Array.Empty<string>();
         }
     }
+
+    /// <summary>
+    /// Marker type for <see cref="ILogger{T}"/> categorisation. Kept internal
+    /// and purpose-only so the log category is stable and obvious in Serilog
+    /// output, and so the action endpoints don't need to resolve
+    /// <c>ILoggerFactory</c> just to create a named logger.
+    /// </summary>
+    internal sealed class ActionEndpointsLogCategory { }
 }
