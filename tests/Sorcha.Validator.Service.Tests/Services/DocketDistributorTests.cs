@@ -78,6 +78,20 @@ public class DocketDistributorTests
     }
 
     [Fact]
+    public void Constructor_NullReceiptGenerator_ThrowsArgumentNullException()
+    {
+        var act = () => new DocketDistributor(
+            _peerClientMock.Object,
+            _registerClientMock.Object,
+            null!,
+            _configMock.Object,
+            _loggerMock.Object);
+
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("receiptGenerator");
+    }
+
+    [Fact]
     public void Constructor_NullLogger_ThrowsArgumentNullException()
     {
         var act = () => new DocketDistributor(
