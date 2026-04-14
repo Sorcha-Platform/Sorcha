@@ -160,6 +160,13 @@ public class InMemoryInstanceStore : IInstanceStore
                 // per-action participant assignment, so we include actions where this wallet
                 // is a participant in the instance. This is a best-effort filter; production
                 // storage will join with blueprint action definitions for exact matching.
+                //
+                // DataSchema is intentionally NOT populated on this store — the in-memory
+                // store has no access to blueprint definitions, so downstream tests that
+                // exercise the Feature 104 wave 14b claim-card dispatch path via
+                // `CredentialOfferSchemaResolver.TryResolve` will see null here and silently
+                // skip the claim-card branch. Use EfCoreInstanceStore (or seed DataSchema
+                // manually on the PendingActionSummary) for any such integration test.
                 return i.CurrentActionIds.Select(actionId => new PendingActionSummary
                 {
                     InstanceId = i.Id,

@@ -93,7 +93,8 @@ public class WorkflowService : IWorkflowService
                 Priority = s.Urgency ?? "normal",
                 AssignedAt = s.ReceivedAt,
                 DueAt = s.Deadline,
-                PrepopulatedPayload = s.PrepopulatedPayload
+                PrepopulatedPayload = s.PrepopulatedPayload,
+                DataSchema = s.DataSchema
             }).ToList();
         }
         catch (Exception ex)
@@ -133,6 +134,16 @@ public class WorkflowService : IWorkflowService
         /// Feature 104 wave 14a.
         /// </summary>
         public JsonObject? PrepopulatedPayload { get; init; }
+
+        /// <summary>
+        /// First <c>DataSchema</c> declared on the blueprint action, populated
+        /// server-side by the pending-actions projection. Required by the
+        /// Feature 104 wave 14b claim-card dispatcher
+        /// (<see cref="Sorcha.UI.Core.Services.Forms.CredentialOfferSchemaResolver"/>)
+        /// so it can detect the <c>x-credential-offer: true</c> extension.
+        /// Null when the action has no declared schema.
+        /// </summary>
+        public System.Text.Json.JsonElement? DataSchema { get; init; }
     }
 
     public async Task<WorkflowInstanceViewModel?> CreateInstanceAsync(string blueprintId, string registerId, CancellationToken cancellationToken = default)
