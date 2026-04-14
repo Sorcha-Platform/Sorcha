@@ -292,12 +292,30 @@ public class EfCoreInstanceStore : IInstanceStore
                 return instance.CurrentActionIds.Select(actionId =>
                 {
                     var actionTitle = $"Action {actionId}";
+                    System.Text.Json.JsonElement? dataSchema = null;
+
                     if (blueprint != null && actionResolver != null)
                     {
                         var actionDef = actionResolver.GetActionDefinition(blueprint, actionId.ToString());
-                        if (actionDef != null && !string.IsNullOrEmpty(actionDef.Title))
+                        if (actionDef != null)
                         {
-                            actionTitle = actionDef.Title;
+                            if (!string.IsNullOrEmpty(actionDef.Title))
+                            {
+                                actionTitle = actionDef.Title;
+                            }
+
+                            // Surface the first declared DataSchema so the client-side
+                            // pending-actions dispatcher can detect Feature 104 wave 14b
+                            // claim actions via the x-credential-offer schema extension.
+                            // Without this the CredentialOfferSchemaResolver short-circuits
+                            // on a null schema and the UI falls through to a generic
+                            // empty form. Wave 14b shipped this gap — fixing it here so
+                            // the claim card finally renders in the browser.
+                            var firstSchemaDoc = actionDef.DataSchemas?.FirstOrDefault();
+                            if (firstSchemaDoc is not null)
+                            {
+                                dataSchema = firstSchemaDoc.RootElement.Clone();
+                            }
                         }
                     }
 
@@ -318,7 +336,8 @@ public class EfCoreInstanceStore : IInstanceStore
                         TransactionId = instance.LastTransactionId ?? string.Empty,
                         NavigationPath = $"/blueprints/{instance.BlueprintId}/instances/{instance.Id}/actions/{actionId}",
                         ReceivedAt = instance.UpdatedAt,
-                        PrepopulatedPayload = seededPayload
+                        PrepopulatedPayload = seededPayload,
+                        DataSchema = dataSchema
                     };
                 });
             })

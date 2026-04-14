@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Sorcha.Blueprint.Service.Models;
@@ -63,4 +64,23 @@ public class PendingActionSummary
     /// to the form renderer as initial state. Feature 104 wave 14a.
     /// </summary>
     public JsonObject? PrepopulatedPayload { get; init; }
+
+    /// <summary>
+    /// The first <c>DataSchema</c> defined on the blueprint action, as a
+    /// <see cref="JsonElement"/>. Used by the client-side pending-actions
+    /// dispatcher (<c>MyActions.razor</c> → <c>CredentialOfferSchemaResolver</c>)
+    /// to decide whether this action is a Feature 104 wave 14b credential
+    /// claim action by inspecting the schema for the <c>x-credential-offer: true</c>
+    /// extension on a top-level object field. Null when the action has no
+    /// declared schema.
+    /// <para>
+    /// Without this field the claim card cannot render — the resolver
+    /// short-circuits on a null schema and the caller falls through to the
+    /// generic ActionForm dialog with an empty Form section. Wave 14b
+    /// shipped without wiring this through <c>/api/actions/pending</c>, so
+    /// the claim card only worked in the <c>NewSubmissionWorkspace</c>
+    /// direct path where the schema was fetched separately.
+    /// </para>
+    /// </summary>
+    public JsonElement? DataSchema { get; init; }
 }
