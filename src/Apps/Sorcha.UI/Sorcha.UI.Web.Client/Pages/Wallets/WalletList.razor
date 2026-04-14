@@ -73,7 +73,12 @@
     {
         try
         {
-            defaultWalletAddress = await WalletPreferenceService.GetDefaultWalletAsync();
+            // Use GetSmartDefaultAsync so the default star is always
+            // visible — if the user has never explicitly set a default,
+            // the service falls back to the first wallet in the list.
+            // This matches the Dashboard wallet resolution and stops the
+            // "10 wallets, no default" confusion from wave 11 audit.
+            defaultWalletAddress = await WalletPreferenceService.GetSmartDefaultAsync(wallets);
         }
         catch
         {

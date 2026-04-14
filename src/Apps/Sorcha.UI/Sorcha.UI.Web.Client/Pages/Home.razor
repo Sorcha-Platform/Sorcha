@@ -169,8 +169,16 @@ else
         </Authorized>
     </AuthorizeView>
 
-    @* Alerts Panel *@
-    <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
+    @* Alerts Panel — operational alerts (peer health, validator quorum,
+       service degradation) are surfaced only to users who can act on
+       them. Citizens have no agency over infrastructure health, so
+       showing them a "Peer network health is 0.0%" warning on the
+       welcome page is misleading and adds anxiety for nothing. *@
+    <AuthorizeView Roles="Administrator,SystemAdmin,OrganizationAdmin">
+        <Authorized Context="alertsAuthContext">
+            <AlertsPanel Alerts="@_visibleAlerts" OnRefresh="RefreshAlertsAsync" />
+        </Authorized>
+    </AuthorizeView>
 
     @if (_isRefreshing)
     {
@@ -180,7 +188,7 @@ else
     @* Quick Actions *@
     <MudText Typo="Typo.h6" Class="mb-2">@Loc.T("dashboard.quickActions")</MudText>
     <MudStack Row="true" Spacing="2" Class="mb-6">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="my-workflows"
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="new-submissions"
                    StartIcon="@Icons.Material.Filled.PostAdd">
             @Loc.T("nav.newSubmission")
         </MudButton>
@@ -206,8 +214,10 @@ else
         </AuthorizeView>
     </MudStack>
 
-    @* Error State Display *@
-    @if (!_stats.IsLoaded && !_isLoading)
+    @* Error State Display — only for admin viewers who actually request
+       the stats. Citizens never load the stats endpoint, so "stats not
+       loaded" for them is not an error, just a not-applicable state. *@
+    @if (_canSeeAdminDashboard && !_stats.IsLoaded && !_isLoading)
     {
         <MudAlert Severity="Severity.Warning" Class="mb-4">
             @Loc.T("dashboard.statsError") <a href="wallets" class="mud-alert-link">@Loc.T("dashboard.viewWallets")</a>
@@ -228,6 +238,7 @@ else
     private bool _isLoading = true;
     private bool _isRefreshing;
     private bool _hasDefaultWallet;
+    private bool _canSeeAdminDashboard;
     private string _displayName = string.Empty;
     private System.Timers.Timer? _refreshTimer;
     private bool _disposed;
@@ -239,13 +250,23 @@ else
         // Get display name from auth state (already verified by [Authorize] + AuthorizeRouteView)
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         _displayName = GetDisplayName(authState.User);
+        // Operational alerts + admin-scoped dashboard stats are only
+        // fetched for users in admin roles — citizens don't see the
+        // AlertsPanel or the admin stat grid, so polling those endpoints
+        // for them just produces 401 noise in the console.
+        _canSeeAdminDashboard = authState.User.IsInRole("Administrator")
+                                || authState.User.IsInRole("SystemAdmin")
+                                || authState.User.IsInRole("OrganizationAdmin");
 
         var wallets = await WalletApi.GetWalletsAsync();
         var defaultWallet = await WalletPreferences.GetSmartDefaultAsync(wallets);
         _hasDefaultWallet = defaultWallet is not null;
 
-        _stats = await DashboardService.GetDashboardStatsAsync();
-        await LoadAlertsAsync();
+        if (_canSeeAdminDashboard)
+        {
+            _stats = await DashboardService.GetDashboardStatsAsync();
+            await LoadAlertsAsync();
+        }
         _isLoading = false;
 
         StartAutoRefresh();
@@ -262,6 +283,8 @@ else
     private async Task RefreshDashboardAsync()
     {
         if (_disposed) return;
+        if (!_canSeeAdminDashboard) return;
+
         _isRefreshing = true;
         StateHasChanged();
 

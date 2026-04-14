@@ -331,6 +331,19 @@
                             StartingActionDescription = startingAction?.Description
                         };
                     })
+                    // Feature 103 wave 11: collapse duplicate blueprint versions
+                    // by Title. Re-running the walkthrough setup publishes a
+                    // fresh blueprint with a timestamped id (e.g.
+                    // haip-verified-citizen-20260413232917), so the catalogue
+                    // previously showed the same "HAIP Verified Citizen" card
+                    // twice — or N times for N re-runs. Group by Title and
+                    // keep the highest Version; break ties by BlueprintId
+                    // (timestamp suffix sorts newest last lexicographically).
+                    .GroupBy(s => s.Title, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g
+                        .OrderByDescending(s => s.Version)
+                        .ThenByDescending(s => s.BlueprintId, StringComparer.Ordinal)
+                        .First())
                     .ToList();
 
                 if (startables.Count > 0)
