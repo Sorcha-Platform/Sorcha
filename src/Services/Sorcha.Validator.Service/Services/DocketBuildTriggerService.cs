@@ -558,13 +558,14 @@ public class DocketBuildTriggerService : BackgroundService
                         // /api/register/query/wallets/{address}/transactions
                         // queries against. Falling back to base64url(PublicKey)
                         // produced strings that never matched a wallet lookup
-                        // — see wave 11 audit for the empty-tx-list bug.
-                        SenderWallet = firstSig switch
-                        {
-                            { SignedBy: { Length: > 0 } addr } => addr,
-                            { PublicKey: var pk } => Base64Url.EncodeToString(pk),
-                            _ => "system"
-                        },
+                        // — see wave 11 audit for the empty-tx-list bug. Use
+                        // IsNullOrWhiteSpace (not Length > 0) to align with
+                        // DocketSerializer.GetSenderWallet's whitespace guard.
+                        SenderWallet = firstSig != null
+                            ? (!string.IsNullOrWhiteSpace(firstSig.SignedBy)
+                                ? firstSig.SignedBy
+                                : Base64Url.EncodeToString(firstSig.PublicKey))
+                            : "system",
                         Signature = firstSig != null
                             ? Base64Url.EncodeToString(firstSig.SignatureValue)
                             : string.Empty,
