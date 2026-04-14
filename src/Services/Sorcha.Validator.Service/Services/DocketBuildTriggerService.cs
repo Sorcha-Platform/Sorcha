@@ -552,9 +552,19 @@ public class DocketBuildTriggerService : BackgroundService
                         RegisterId = t.RegisterId,
                         PrevTxId = t.PreviousTransactionId ?? string.Empty,
                         TimeStamp = t.CreatedAt.UtcDateTime,
-                        SenderWallet = firstSig != null
-                            ? Base64Url.EncodeToString(firstSig.PublicKey)
-                            : "system",
+                        // Wave 12: prefer Signature.SignedBy (bech32 wallet
+                        // address from the Wallet Service) so the persisted
+                        // SenderWallet field stays in the same format that
+                        // /api/register/query/wallets/{address}/transactions
+                        // queries against. Falling back to base64url(PublicKey)
+                        // produced strings that never matched a wallet lookup
+                        // — see wave 11 audit for the empty-tx-list bug.
+                        SenderWallet = firstSig switch
+                        {
+                            { SignedBy: { Length: > 0 } addr } => addr,
+                            { PublicKey: var pk } => Base64Url.EncodeToString(pk),
+                            _ => "system"
+                        },
                         Signature = firstSig != null
                             ? Base64Url.EncodeToString(firstSig.SignatureValue)
                             : string.Empty,
