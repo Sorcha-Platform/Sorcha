@@ -218,6 +218,7 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 | UX-004 | Auditor role access review — determine read-only access scope | P2 | 4h | 📋 | Auditors currently have no nav items for Registers/Participants; decide if read-only access needed |
 | UX-005 | Dashboard org-scoped stats for multi-tenant deployments | P2 | 8h | 📋 | Currently global counts; need per-org stats for Consumer/Auditor users |
 | UX-006 | Public block explorer — unauthenticated register/transaction browsing | P2 | 16h | 📋 | Future feature — shares layout with authenticated app |
+| UX-007 | Public user page load hits Administrator/SystemAdmin-only endpoint | P2 | 4h | 📋 | Observed 2026-04-14 on n1 — browser console shows `Authorization failed. RolesAuthorizationRequirement:User.IsInRole must be true for one of the following roles: (Administrator|SystemAdmin)` during a Consumer's first page load. Some page-load call in the Blazor client is reaching an admin-only endpoint that a public-org Consumer role should never touch. Identify the culprit (likely a shared layout service that fans out to admin-scoped APIs without a role guard), gate the call behind a role check, and silence the console warning. Not blocking but pollutes the log and points at a latent authorization boundary bug. |
 
 ---
 
