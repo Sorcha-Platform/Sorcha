@@ -307,6 +307,37 @@ If your blueprint asks the user for a name, date of birth, email, or postal addr
 }
 ```
 
+### Route with OutputMapping (Payload Carry-Forward) — Feature 104
+
+A route MAY carry data from the current action's execution result into the next action's **prepopulated payload** via `outputMapping`. This is a general-purpose primitive — any blueprint can use it to hand data off between actions without the recipient re-entering it.
+
+```json
+{
+  "id": "approved-to-claim",
+  "nextActionIds": [3],
+  "condition": { "==": [{ "var": "verificationDecision" }, "approved"] },
+  "outputMapping": {
+    "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+    "/haip/credential_type":      "/credentialOffer/credential_type",
+    "/haip/expires_at":           "/credentialOffer/expires_at"
+  }
+}
+```
+
+**How it works:**
+- Keys are JSON Pointers into the **source document** produced by the current action's execution. Available sub-trees:
+  - `/payload/*` — the submitted action payload
+  - `/calculations/*` — values produced by the engine's calculate step
+  - `/haip/*` — HAIP credential offer output (`credential_offer_uri`, `offer_id`, `expires_at`, `credential_type`) when the current action declared `credentialIssuanceConfig.targetAudience = HaipExternalWallet`
+- Values are JSON Pointers into the **target** — the next action's prepopulated starting payload. Intermediate object nodes are created as needed.
+- Absent source paths are **silently skipped** (not an error) — authors can map optional fields without adding conditionals.
+- The seed is merged with the recipient's submission on execute — submitted fields win on key collision.
+- Seed persists across page reloads and is cleared atomically when the action resolves (complete, reject, or expire).
+
+**Publish-time validation:**
+- `VAL_BP_011` — every target JSON Pointer's top-level field MUST exist in at least one `DataSchema` of at least one next action. Writing to fields that aren't declared on the receiving action is a publish error.
+- Both source and target pointers MUST begin with `/` (RFC 6901).
+
 ## Route Precedence
 
 Route-based routing (via `Action.Routes`) takes precedence over legacy condition-based routing (via `Action.Participants`). Always use `routes` for new blueprints.
@@ -332,6 +363,127 @@ Route-based routing (via `Action.Routes`) takes precedence over legacy condition
 ```json
 { "type": "number", "minimum": 0, "title": "Amount" }
 ```
+
+## Credential Claim Actions (Feature 104 — wave 14b)
+
+When a blueprint **issues a HAIP credential**, the credential offer must reach the **recipient**, not the issuing action sender. The correct pattern is a three-action shape:
+
+```
+Action 1: Applicant submits data        (sender: applicant — open, late-bound)
+Action 2: Issuer reviews, mints offer    (sender: issuer; declares credentialIssuanceConfig)
+          → route.outputMapping carries /haip/* into action 3's payload seed
+Action 3: Applicant claims credential    (sender: applicant; same participant as action 1)
+          → uses x-credential-offer schema extension
+```
+
+The claim action renders as a **CredentialClaimCard** in the applicant's *My Actions* queue with Claim / Scan-with-external-wallet / Decline buttons. Clicking Claim calls `HaipLocalReceiveService` to redeem the pre-authorized code against the citizen's local Sorcha wallet. Scan-QR reveals an embedded QR for external HAIP wallets. Decline seals an `InstanceState.Rejected` transaction via `RejectionConfig.IsTerminal = true`.
+
+**Why this shape** (not the wave 13 assessor-side QR dialog):
+- Cryptographic correctness: the OpenID4VCI `pre_authorized_code` is a bearer token; whoever redeems it binds the credential to *their* key via the `cnf` claim. Landing the code in the assessor's browser binds the credential to the wrong wallet. Routing it through the claim action via `outputMapping` + participant late-binding ensures only the applicant's wallet can redeem.
+- Recipient-locked for free: action 3's sender is the same open participant as action 1, already late-bound to the citizen's wallet. No extra authz logic required.
+- Durable and auditable: the offer persists as seeded payload state; the claim is sealed to the register as a normal action transaction with a `claimed_at` timestamp.
+- Reuses existing infrastructure: My Actions queue, open-participant late-binding, rejection config — no new notification channel.
+
+### Action 3 schema — `x-credential-offer` extension
+
+Mark a top-level **object** field with `"x-credential-offer": true`. The UI renderer detects the extension on a pending action and swaps in the credential claim card instead of the default form. The blueprint declares the shape; the previous action's `outputMapping` seeds the values.
+
+```json
+{
+  "id": 3,
+  "title": "Claim your Verified Citizen credential",
+  "description": "Your credential is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP wallet.",
+  "sender": "citizen",
+  "requiredPriorActions": [2],
+  "dataSchemas": [
+    {
+      "type": "object",
+      "properties": {
+        "credentialOffer": {
+          "type": "object",
+          "title": "Credential Offer",
+          "x-credential-offer": true,
+          "properties": {
+            "credential_offer_uri": {
+              "type": "string",
+              "format": "uri",
+              "description": "Canonical OpenID4VCI offer URI"
+            },
+            "credential_type": { "type": "string" },
+            "expires_at":      { "type": "string", "format": "date-time" },
+            "offer_id":        { "type": "string" }
+          },
+          "required": ["credential_offer_uri"]
+        },
+        "claimed_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Claimed at",
+          "description": "Set by the client when the citizen clicks Claim"
+        }
+      },
+      "required": ["credentialOffer"]
+    }
+  ],
+  "rejectionConfig": {
+    "targetActionId": 0,
+    "isTerminal": true,
+    "requireReason": false
+  },
+  "disclosures": [
+    { "participantAddress": "citizen", "dataPointers": ["/*"] }
+  ],
+  "routes": [
+    {
+      "id": "claimed-terminal",
+      "nextActionIds": [],
+      "isDefault": true,
+      "description": "Credential claimed — workflow complete"
+    }
+  ]
+}
+```
+
+### Action 2 — route mapping
+
+The issuing action (action 2) must route **conditionally** to the claim action on approval and terminate on rejection. Declare both routes and include `outputMapping` only on the approval route:
+
+```json
+"routes": [
+  {
+    "id": "approved-to-claim",
+    "nextActionIds": [3],
+    "condition": { "==": [{ "var": "verificationDecision" }, "approved"] },
+    "description": "Approved — hand the minted credential to the applicant",
+    "outputMapping": {
+      "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+      "/haip/credential_type":      "/credentialOffer/credential_type",
+      "/haip/expires_at":           "/credentialOffer/expires_at",
+      "/haip/offer_id":             "/credentialOffer/offer_id"
+    }
+  },
+  {
+    "id": "rejected-terminal",
+    "nextActionIds": [],
+    "isDefault": true,
+    "description": "Rejected — workflow ends with no credential issued"
+  }
+]
+```
+
+Action 2 still declares `credentialIssuanceConfig` with `targetAudience: HaipExternalWallet` exactly as before — the engine mints the offer pre-routing and exposes it under `/haip/*` in the routing source document so the mapping can pick it up.
+
+### Publish-time validation for claim actions
+
+- **VAL_BP_012** (error): `x-credential-offer: true` may only appear on **object**-typed schema fields. Scalar or array fields are rejected.
+- **WARN_BP_006** (non-blocking warning): an `x-credential-offer` object should declare `credential_offer_uri` in its `required` list — the claim card cannot render without the URI, so declaring it required fails fast at publish time.
+
+### Foot-guns
+
+- **Don't pre-bake a wallet on the claim action's sender participant** — action 3's sender must be the same open-participant as action 1 (the applicant). If the blueprint pre-binds a wallet to that participant, the late-binding mechanism breaks and `VAL_BP_010` fires at publish time.
+- **Don't forget the conditional on action 2's approval route** — if action 2 unconditionally routes to the claim action even on rejection, the citizen gets a claim card for a credential that was never approved.
+- **Display strings are the blueprint author's job, not the engine's** — the engine only exposes protocol fields (`credential_offer_uri`, `credential_type`, `expires_at`, `offer_id`) under `/haip/*`. Title / subtitle / issuer name come from the action's `title`, the blueprint's participants, and the `credential_type` value. Localise them in the blueprint JSON.
+- **The claim card is the whole action surface** — don't mix other form fields at the top level of action 3's schema. Keep the schema to `credentialOffer` (object, `x-credential-offer: true`) and an optional `claimed_at`. Additional fields would render as a normal form beneath the card, which is almost always wrong.
 
 ## Template Wrapper
 
