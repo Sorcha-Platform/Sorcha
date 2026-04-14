@@ -119,14 +119,40 @@ public static class DocketSerializer
     }
 
     /// <summary>
-    /// Extracts sender wallet from transaction signatures or metadata.
+    /// Extracts the sender wallet address (bech32) from a transaction.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Wallet Service populates <see cref="Signature.SignedBy"/> with the
+    /// canonical bech32 wallet address (e.g. <c>ws11qpgd645h...</c>) when it
+    /// signs a transaction. Blueprint Service plumbs that field through the
+    /// gRPC submission contract, and ValidationEndpoints copies it onto the
+    /// validator's <see cref="Signature"/> model. Use it directly so the
+    /// persisted <c>TransactionModel.SenderWallet</c> stays in the same
+    /// address format that <c>GET /api/register/query/wallets/{address}/transactions</c>
+    /// queries against.
+    /// </para>
+    /// <para>
+    /// Falling back to <c>Base64Url.EncodeToString(PublicKey)</c> here was
+    /// the wave 11 audit bug: the resulting string is the raw public key
+    /// bytes in base64url, which never matches a bech32 wallet address, so
+    /// every "My Transactions" lookup returned empty. We keep the raw-key
+    /// fallback as a last resort for edge cases where SignedBy is missing
+    /// (e.g. legacy genesis transactions) but it should never be hit on a
+    /// healthy submission path.
+    /// </para>
+    /// </remarks>
     private static string GetSenderWallet(Transaction tx)
     {
-        // Try to get sender from first signature's public key
         if (tx.Signatures.Count > 0)
         {
-            return Base64Url.EncodeToString(tx.Signatures[0].PublicKey);
+            var first = tx.Signatures[0];
+            if (!string.IsNullOrWhiteSpace(first.SignedBy))
+            {
+                return first.SignedBy;
+            }
+            // Fallback: raw-key encoding. Will not match bech32 lookups.
+            return Base64Url.EncodeToString(first.PublicKey);
         }
         return string.Empty;
     }
