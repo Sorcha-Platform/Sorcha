@@ -33,9 +33,13 @@ public class RegisterCreationPolicyTests
     public RegisterCreationPolicyTests()
     {
         _mockLogger = new Mock<ILogger<RegisterCreationOrchestrator>>();
+        // See RegisterCreationOrchestratorTests for why all four ctor args are passed:
+        // Moq's reflection-based proxy construction cannot use C# default parameter values.
         var mockRegisterManager = new Mock<RegisterManager>(
             Mock.Of<Sorcha.Register.Core.Storage.IRegisterRepository>(),
-            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>());
+            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>(),
+            null!,
+            null!);
         var mockTransactionManager = new Mock<TransactionManager>(
             Mock.Of<Sorcha.Register.Core.Storage.IRegisterRepository>(),
             Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>());

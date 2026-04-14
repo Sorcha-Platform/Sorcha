@@ -41,9 +41,16 @@ public class RegisterCreationOrchestratorTests
     public RegisterCreationOrchestratorTests()
     {
         _mockLogger = new Mock<ILogger<RegisterCreationOrchestrator>>();
+        // RegisterManager's ctor takes two required and two optional parameters
+        // (ISubscriptionServiceClient?, ILogger<RegisterManager>?). Default parameter
+        // values are a compile-time feature — Moq uses reflection via Castle DynamicProxy,
+        // which requires every parameter to be supplied explicitly. Passing nulls for the
+        // optionals matches the production default behaviour.
         _mockRegisterManager = new Mock<RegisterManager>(
             Mock.Of<Sorcha.Register.Core.Storage.IRegisterRepository>(),
-            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>());
+            Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>(),
+            null!,
+            null!);
         _mockTransactionManager = new Mock<TransactionManager>(
             Mock.Of<Sorcha.Register.Core.Storage.IRegisterRepository>(),
             Mock.Of<Sorcha.Register.Core.Events.IEventPublisher>());
