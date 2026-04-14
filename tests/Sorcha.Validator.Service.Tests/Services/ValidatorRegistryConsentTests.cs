@@ -13,6 +13,7 @@ using Sorcha.ServiceClients.Register;
 using Sorcha.Validator.Service.Configuration;
 using Sorcha.Validator.Service.Services;
 using Sorcha.Validator.Service.Services.Interfaces;
+using Sorcha.Validator.Service.Tests.Helpers;
 
 namespace Sorcha.Validator.Service.Tests.Services;
 
@@ -99,6 +100,7 @@ public class ValidatorRegistryConsentTests
 
         _registry = new ValidatorRegistry(
             _redisMock.Object,
+            MongoMockHelper.CreateValidatorRegistryClient().Object,
             _registerClientMock.Object,
             _genesisConfigMock.Object,
             Options.Create(_config),

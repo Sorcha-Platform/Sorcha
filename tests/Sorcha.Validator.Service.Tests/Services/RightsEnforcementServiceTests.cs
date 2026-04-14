@@ -40,7 +40,6 @@ public class RightsEnforcementServiceTests
             {
                 RegisterId = "test-register",
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations = members.Select(m => new RegisterAttestation
                 {
@@ -68,7 +67,6 @@ public class RightsEnforcementServiceTests
             {
                 RegisterId = "test-register",
                 Name = "Test",
-                TenantId = "t1",
                 CreatedAt = DateTimeOffset.UtcNow,
                 Attestations = []
             },
