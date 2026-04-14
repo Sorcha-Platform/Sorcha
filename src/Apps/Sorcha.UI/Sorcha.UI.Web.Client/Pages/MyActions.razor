@@ -429,7 +429,7 @@
             {
                 ActionId = action.ActionId,
                 InstanceId = action.InstanceId,
-                Data = Sorcha.UI.Core.Services.Forms.FormPayloadBuilder.BuildNested(cardSubmission.Data)
+                Data = FormPayloadBuilder.BuildNested(cardSubmission.Data)
             };
             result = DialogResult.Ok(adapted);
         }

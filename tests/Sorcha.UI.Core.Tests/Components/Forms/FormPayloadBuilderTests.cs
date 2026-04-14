@@ -129,6 +129,15 @@ public class FormPayloadBuilderTests
     }
 
     [Fact]
+    public void BuildNested_NullInput_ThrowsArgumentNullException()
+    {
+        var act = () => FormPayloadBuilder.BuildNested(null!);
+
+        act.Should().Throw<ArgumentNullException>()
+            .WithParameterName("flatPointerKeyed");
+    }
+
+    [Fact]
     public void BuildNested_MultipleWritesToSameObject_BothSurvive()
     {
         var flat = new Dictionary<string, object?>

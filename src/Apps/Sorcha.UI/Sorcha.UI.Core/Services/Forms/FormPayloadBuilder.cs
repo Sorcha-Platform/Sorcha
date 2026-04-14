@@ -72,7 +72,6 @@ public static class FormPayloadBuilder
         if (string.IsNullOrEmpty(trimmed)) return;
 
         var segments = trimmed.Split('/');
-        if (segments.Length == 0) return;
 
         var current = root;
         for (var i = 0; i < segments.Length - 1; i++)
