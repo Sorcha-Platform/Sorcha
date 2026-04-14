@@ -2800,6 +2800,14 @@ public class PublishService(
         }
 
         // Rule 7: Route targets and rejection targets must reference valid actions
+        //
+        // Rule 7a (Feature 104, VAL_BP_011): If a Route declares an OutputMapping,
+        // every target JSON Pointer must resolve to a top-level schema field
+        // declared on at least one of the route's next actions. This prevents
+        // blueprint authors from writing mappings to fields that don't exist on
+        // the receiving action.
+        const string OutputMappingTargetCode = "VAL_BP_011";
+
         foreach (var action in blueprint.Actions)
         {
             if (action.Routes != null)
@@ -2813,6 +2821,84 @@ public class PublishService(
                             if (!actionIds.Contains(targetId))
                             {
                                 errors.Add($"Action {action.Id} ('{action.Title}'): Route '{route.Id}' references non-existent action {targetId}");
+                            }
+                        }
+                    }
+
+                    // Rule 7a: OutputMapping target JSON Pointer must resolve to a
+                    // top-level schema property on at least one next action.
+                    if (route.OutputMapping != null && route.OutputMapping.Count > 0)
+                    {
+                        var nextIds = route.NextActionIds?.ToList() ?? new List<int>();
+                        foreach (var kvp in route.OutputMapping)
+                        {
+                            var sourcePointer = kvp.Key;
+                            var targetPointer = kvp.Value;
+
+                            // Both pointers MUST be non-empty and start with '/' (RFC 6901)
+                            if (string.IsNullOrEmpty(sourcePointer) || sourcePointer[0] != '/')
+                            {
+                                errors.Add(
+                                    $"[{OutputMappingTargetCode}] Action {action.Id} ('{action.Title}'): Route '{route.Id}' " +
+                                    $"OutputMapping has an invalid source JSON Pointer '{sourcePointer}' (must begin with '/')");
+                                continue;
+                            }
+                            if (string.IsNullOrEmpty(targetPointer) || targetPointer[0] != '/')
+                            {
+                                errors.Add(
+                                    $"[{OutputMappingTargetCode}] Action {action.Id} ('{action.Title}'): Route '{route.Id}' " +
+                                    $"OutputMapping has an invalid target JSON Pointer '{targetPointer}' (must begin with '/')");
+                                continue;
+                            }
+
+                            // Extract the top-level target field from the pointer (first segment)
+                            var firstSlash = targetPointer.IndexOf('/', 1);
+                            var topLevelField = firstSlash < 0
+                                ? targetPointer[1..]
+                                : targetPointer[1..firstSlash];
+                            // RFC 6901 unescape for the top-level key
+                            topLevelField = topLevelField.Replace("~1", "/").Replace("~0", "~");
+
+                            // Check that at least one next action has this top-level field in any of its DataSchemas
+                            var fieldIsDeclared = false;
+                            foreach (var nextId in nextIds)
+                            {
+                                var nextAction = blueprint.Actions.FirstOrDefault(a => a.Id == nextId);
+                                if (nextAction?.DataSchemas == null)
+                                {
+                                    continue;
+                                }
+
+                                foreach (var schemaDoc in nextAction.DataSchemas)
+                                {
+                                    try
+                                    {
+                                        var root = schemaDoc.RootElement;
+                                        if (root.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                                            root.TryGetProperty("properties", out var propsElement) &&
+                                            propsElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                                            propsElement.TryGetProperty(topLevelField, out _))
+                                        {
+                                            fieldIsDeclared = true;
+                                            break;
+                                        }
+                                    }
+                                    catch (System.Text.Json.JsonException)
+                                    {
+                                        // Malformed schema — skip; other rules will surface this
+                                    }
+                                }
+
+                                if (fieldIsDeclared) break;
+                            }
+
+                            if (!fieldIsDeclared)
+                            {
+                                errors.Add(
+                                    $"[{OutputMappingTargetCode}] Action {action.Id} ('{action.Title}'): Route '{route.Id}' " +
+                                    $"OutputMapping target '{targetPointer}' refers to field '{topLevelField}' which is not declared " +
+                                    $"on any DataSchema of the next action(s) [{string.Join(", ", nextIds)}]. " +
+                                    $"Fix: add the field to the target action's schema, or remove the mapping entry.");
                             }
                         }
                     }

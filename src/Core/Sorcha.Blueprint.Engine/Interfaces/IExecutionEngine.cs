@@ -92,6 +92,32 @@ public interface IExecutionEngine
         CancellationToken ct = default);
 
     /// <summary>
+    /// Determine routing and additionally evaluate <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>
+    /// against the supplied output source document, returning per-next-action
+    /// prepopulated payloads on <see cref="RoutingResult.PendingPayloads"/>.
+    /// </summary>
+    /// <param name="blueprint">The blueprint definition.</param>
+    /// <param name="currentAction">The current action.</param>
+    /// <param name="data">The action data used for routing condition evaluation.</param>
+    /// <param name="outputSource">
+    /// Source document for output-mapping resolution (RFC 6901 JSON Pointer).
+    /// Expected top-level keys: <c>payload</c>, <c>calculations</c>, and optionally
+    /// <c>haip</c>. May be null to disable payload carry-forward.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Routing decision with optional prepopulated payloads for next actions.</returns>
+    /// <remarks>
+    /// Introduced in Feature 104 wave 14a. When <paramref name="outputSource"/> is
+    /// null, this method behaves identically to <see cref="DetermineRoutingAsync"/>.
+    /// </remarks>
+    Task<RoutingResult> DetermineRoutingWithMappingAsync(
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        Sorcha.Blueprint.Models.Action currentAction,
+        Dictionary<string, object> data,
+        System.Text.Json.Nodes.JsonObject? outputSource,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Apply disclosure rules from the action without full execution.
     /// </summary>
     /// <param name="data">The action data.</param>

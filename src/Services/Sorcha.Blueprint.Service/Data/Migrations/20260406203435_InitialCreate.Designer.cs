@@ -268,6 +268,9 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     b.Property<string>("ParticipantWallets")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("PendingActionPayloads")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("RegisterId")
                         .IsRequired()
                         .HasColumnType("text");

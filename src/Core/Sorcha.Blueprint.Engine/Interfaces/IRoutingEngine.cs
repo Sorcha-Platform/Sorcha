@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
 using Sorcha.Blueprint.Engine.Models;
 using Sorcha.Blueprint.Models;
 
@@ -58,5 +59,32 @@ public interface IRoutingEngine
         Sorcha.Blueprint.Models.Blueprint blueprint,
         Sorcha.Blueprint.Models.Action currentAction,
         Dictionary<string, object> data,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Determine the next action(s) and additionally evaluate Route.OutputMapping
+    /// entries against an output source document, populating RoutingResult.PendingPayloads
+    /// with prepopulated payloads for each next action.
+    /// </summary>
+    /// <param name="blueprint">The blueprint definition containing all actions.</param>
+    /// <param name="currentAction">The action that was just completed.</param>
+    /// <param name="data">The action data used to evaluate routing conditions.</param>
+    /// <param name="outputSource">
+    /// Source document for OutputMapping evaluation. Expected top-level keys are
+    /// <c>payload</c>, <c>calculations</c>, and optionally <c>haip</c>. JSON Pointers
+    /// in Route.OutputMapping are evaluated against this document. May be null,
+    /// in which case no payload carry-forward is performed (backward compatible).
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <remarks>
+    /// Introduced in Feature 104 wave 14a. When <paramref name="outputSource"/> is
+    /// null, this method behaves identically to <see cref="DetermineNextAsync"/>.
+    /// Absent source paths are silently skipped (not an error).
+    /// </remarks>
+    Task<RoutingResult> DetermineNextWithMappingAsync(
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        Sorcha.Blueprint.Models.Action currentAction,
+        Dictionary<string, object> data,
+        JsonObject? outputSource,
         CancellationToken ct = default);
 }

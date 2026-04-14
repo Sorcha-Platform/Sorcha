@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
+
 namespace Sorcha.Blueprint.Service.Models;
 
 /// <summary>
@@ -107,6 +109,20 @@ public class Instance
     /// Keys are flattened field names; later actions override earlier ones.
     /// </summary>
     public Dictionary<string, object> AccumulatedData { get; set; } = new();
+
+    /// <summary>
+    /// Prepopulated payload data seeded per pending action ID when a previous
+    /// action's <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/> carried
+    /// data forward. Keyed by action ID; value is the JSON object to merge with
+    /// the action submission before validation (submission wins on key collision).
+    /// Entries are removed atomically with the action's resolution (complete,
+    /// reject, or expire). Empty for actions that receive no carry-forward data.
+    /// </summary>
+    /// <remarks>
+    /// Persisted alongside <see cref="AccumulatedData"/> as plaintext JSON in
+    /// MongoDB — see wave 14a research decision 1. Introduced in Feature 104.
+    /// </remarks>
+    public Dictionary<int, JsonObject> PendingActionPayloads { get; set; } = new();
 }
 
 /// <summary>

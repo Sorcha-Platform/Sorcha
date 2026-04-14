@@ -115,6 +115,21 @@ public class ExecutionEngine : IExecutionEngine
         return await _routingEngine.DetermineNextAsync(blueprint, action, data, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<RoutingResult> DetermineRoutingWithMappingAsync(
+        Sorcha.Blueprint.Models.Blueprint blueprint,
+        Sorcha.Blueprint.Models.Action action,
+        Dictionary<string, object> data,
+        System.Text.Json.Nodes.JsonObject? outputSource,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(blueprint);
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(data);
+
+        return await _routingEngine.DetermineNextWithMappingAsync(blueprint, action, data, outputSource, ct);
+    }
+
     /// <summary>
     /// Create disclosure results for all participants based on the action's
     /// disclosure definitions.

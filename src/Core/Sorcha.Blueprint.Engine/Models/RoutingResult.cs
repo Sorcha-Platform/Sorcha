@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Nodes;
+
 namespace Sorcha.Blueprint.Engine.Models;
 
 /// <summary>
@@ -99,6 +101,19 @@ public class RoutingResult
     /// True when multiple next actions exist (parallel branch execution).
     /// </summary>
     public bool IsParallel { get; set; }
+
+    /// <summary>
+    /// Per-next-action prepopulated payloads derived from the matched route's
+    /// <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>. Null when the
+    /// matched route declares no mapping. Key is the next action ID, value is
+    /// the JSON object to seed into the instance's pending action payload store.
+    /// </summary>
+    /// <remarks>
+    /// Transient carrier between <see cref="Sorcha.Blueprint.Engine.Interfaces.IRoutingEngine"/>
+    /// and the action execution service. Not persisted on RoutingResult itself.
+    /// Introduced in Feature 104 wave 14a.
+    /// </remarks>
+    public IReadOnlyDictionary<int, JsonObject>? PendingPayloads { get; set; }
 
     /// <summary>
     /// Creates a routing result for workflow completion.

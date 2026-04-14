@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -127,6 +128,7 @@ public class EfCoreInstanceStore : IInstanceStore
         entity.LastTransactionId = instance.LastTransactionId;
         entity.CompletedActionCount = instance.CompletedActionCount;
         entity.AccumulatedData = SerializeJson(instance.AccumulatedData);
+        entity.PendingActionPayloads = SerializePendingActionPayloads(instance.PendingActionPayloads);
         entity.ActiveBranches = SerializeJson(instance.ActiveBranches);
         entity.Metadata = SerializeJson(instance.Metadata);
         entity.Version = instance.Version;
@@ -299,6 +301,11 @@ public class EfCoreInstanceStore : IInstanceStore
                         }
                     }
 
+                    // Surface any prepopulated seed payload for this action so
+                    // the UI can render it without a second round trip.
+                    // Feature 104 wave 14a (FR-006).
+                    instance.PendingActionPayloads.TryGetValue(actionId, out var seededPayload);
+
                     return new PendingActionSummary
                     {
                         InstanceId = instance.Id,
@@ -310,7 +317,8 @@ public class EfCoreInstanceStore : IInstanceStore
                         RegisterId = instance.RegisterId,
                         TransactionId = instance.LastTransactionId ?? string.Empty,
                         NavigationPath = $"/blueprints/{instance.BlueprintId}/instances/{instance.Id}/actions/{actionId}",
-                        ReceivedAt = instance.UpdatedAt
+                        ReceivedAt = instance.UpdatedAt,
+                        PrepopulatedPayload = seededPayload
                     };
                 });
             })
@@ -396,6 +404,7 @@ public class EfCoreInstanceStore : IInstanceStore
             LastTransactionId = instance.LastTransactionId,
             CompletedActionCount = instance.CompletedActionCount,
             AccumulatedData = SerializeJson(instance.AccumulatedData),
+            PendingActionPayloads = SerializePendingActionPayloads(instance.PendingActionPayloads),
             ActiveBranches = SerializeJson(instance.ActiveBranches),
             Metadata = SerializeJson(instance.Metadata),
             Version = instance.Version,
@@ -431,6 +440,7 @@ public class EfCoreInstanceStore : IInstanceStore
                 CompletedActionCount = entity.CompletedActionCount,
                 AccumulatedData = DeserializeJson<Dictionary<string, object>>(entity.AccumulatedData)
                                   ?? new Dictionary<string, object>(),
+                PendingActionPayloads = DeserializePendingActionPayloads(entity.PendingActionPayloads),
                 ActiveBranches = DeserializeJson<List<Branch>>(entity.ActiveBranches) ?? [],
                 Metadata = metadata,
                 Version = entity.Version,
@@ -471,6 +481,78 @@ public class EfCoreInstanceStore : IInstanceStore
         {
             _logger.LogWarning(ex, "Failed to deserialize JSON: {Json}", json);
             return default;
+        }
+    }
+
+    /// <summary>
+    /// Serialises the <see cref="Instance.PendingActionPayloads"/> dictionary
+    /// to a JSON object whose property names are the integer action IDs.
+    /// Returns null when the dictionary is null or empty so that the JSONB
+    /// column stores SQL NULL rather than "{}". Feature 104 wave 14a.
+    /// </summary>
+    private static string? SerializePendingActionPayloads(Dictionary<int, JsonObject>? payloads)
+    {
+        if (payloads is null || payloads.Count == 0)
+        {
+            return null;
+        }
+
+        var obj = new JsonObject();
+        foreach (var (actionId, value) in payloads)
+        {
+            // Deep-clone via round-trip so the serialised form is not coupled to the caller's node
+            var cloned = value is null ? null : JsonNode.Parse(value.ToJsonString());
+            obj[actionId.ToString(System.Globalization.CultureInfo.InvariantCulture)] = cloned;
+        }
+
+        return obj.ToJsonString();
+    }
+
+    /// <summary>
+    /// Deserialises <see cref="Instance.PendingActionPayloads"/> from JSONB.
+    /// Expects an object whose property names are integer action IDs. Unknown
+    /// or non-integer keys are ignored. Feature 104 wave 14a.
+    /// </summary>
+    private Dictionary<int, JsonObject> DeserializePendingActionPayloads(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+        {
+            return new Dictionary<int, JsonObject>();
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is not JsonObject obj)
+            {
+                return new Dictionary<int, JsonObject>();
+            }
+
+            var result = new Dictionary<int, JsonObject>(capacity: obj.Count);
+            foreach (var kvp in obj)
+            {
+                if (!int.TryParse(kvp.Key, System.Globalization.CultureInfo.InvariantCulture, out var actionId))
+                {
+                    continue;
+                }
+                if (kvp.Value is not JsonObject value)
+                {
+                    continue;
+                }
+                // Clone so the caller cannot mutate the parsed tree and affect other readers
+                var cloned = JsonNode.Parse(value.ToJsonString()) as JsonObject;
+                if (cloned != null)
+                {
+                    result[actionId] = cloned;
+                }
+            }
+
+            return result;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize PendingActionPayloads JSON: {Json}", json);
+            return new Dictionary<int, JsonObject>();
         }
     }
 

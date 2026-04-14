@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet;
@@ -376,7 +377,43 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
-        // 6. Validate input data against schema
+        // 6a. Merge any prepopulated payload seeded by a previous action's
+        //     Route.OutputMapping into the submitted payload BEFORE validation.
+        //     Submitted values take precedence on key collision (FR-007).
+        //     Feature 104 wave 14a.
+        var seedActionId = actionDef.Id;
+        if (instance.PendingActionPayloads.TryGetValue(seedActionId, out var seedPayload)
+            && seedPayload is not null
+            && seedPayload.Count > 0)
+        {
+            var mergedPayloadData = new Dictionary<string, object>(request.PayloadData.Count + seedPayload.Count);
+
+            // Start with seeded fields
+            foreach (var kvp in seedPayload)
+            {
+                if (kvp.Value is null)
+                {
+                    continue;
+                }
+                // Deep-clone the node so mutations in later engine stages don't
+                // bleed back into the stored seed.
+                var cloned = JsonNode.Parse(kvp.Value.ToJsonString());
+                if (cloned is not null)
+                {
+                    mergedPayloadData[kvp.Key] = cloned;
+                }
+            }
+
+            // Overlay submitted fields (submission wins on collision)
+            foreach (var kvp in request.PayloadData)
+            {
+                mergedPayloadData[kvp.Key] = kvp.Value;
+            }
+
+            request = request with { PayloadData = mergedPayloadData };
+        }
+
+        // 6b. Validate input data against schema
         var validationResult = await ValidateActionDataAsync(actionDef, request.PayloadData, cancellationToken);
         if (!validationResult.IsValid)
         {
@@ -407,8 +444,12 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
-        // 9. Evaluate routing conditions to determine next action(s)
-        var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, cancellationToken);
+        // 9. Evaluate routing conditions to determine next action(s).
+        //    Build the output source document for Route.OutputMapping evaluation
+        //    (Feature 104 wave 14a). Payload and calculations are always present;
+        //    HAIP mint output is attached in wave 14b when it runs.
+        var outputSource = BuildOutputMappingSource(request.PayloadData, calculations);
+        var routingResult = await EvaluateRoutingAsync(blueprint, actionDef, mergedData, outputSource, cancellationToken);
 
         // 9a. Build payload that includes calculated values so they persist in the transaction
         //     and are available during state reconstruction for subsequent actions' routing
@@ -1014,11 +1055,14 @@ public class ActionExecutionService : IActionExecutionService
         BlueprintModel blueprint,
         ActionModel action,
         Dictionary<string, object> mergedData,
+        JsonObject? outputSource,
         CancellationToken cancellationToken)
     {
-        // Delegate to the Blueprint Engine for JSON Logic routing
-        var engineResult = await _executionEngine.DetermineRoutingAsync(
-            blueprint, action, mergedData, cancellationToken);
+        // Delegate to the Blueprint Engine for JSON Logic routing, passing the
+        // output source document so Route.OutputMapping entries (if any) can be
+        // evaluated in the same pass. Feature 104 wave 14a.
+        var engineResult = await _executionEngine.DetermineRoutingWithMappingAsync(
+            blueprint, action, mergedData, outputSource, cancellationToken);
 
         // Build action index once for O(1) lookups during mapping
         var actionIndex = Sorcha.Blueprint.Engine.BlueprintExtensions.BuildActionIndex(blueprint);
@@ -1045,8 +1089,48 @@ public class ActionExecutionService : IActionExecutionService
         return new RoutingResult
         {
             NextActions = nextActions,
-            IsParallel = engineResult.IsParallel
+            IsParallel = engineResult.IsParallel,
+            PendingPayloads = engineResult.PendingPayloads
         };
+    }
+
+    /// <summary>
+    /// Builds the output source JsonObject for <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>
+    /// evaluation. Shape: <c>{ "payload": {...}, "calculations": {...} }</c>.
+    /// HAIP mint output (when present) is attached by the caller before routing
+    /// under the <c>haip</c> key — not yet wired in wave 14a. Feature 104.
+    /// </summary>
+    private static JsonObject BuildOutputMappingSource(
+        IReadOnlyDictionary<string, object> payloadData,
+        IReadOnlyDictionary<string, object>? calculations)
+    {
+        var source = new JsonObject();
+
+        // Serialise payload and calculations through System.Text.Json so we
+        // consistently get JsonNode values regardless of the input object types.
+        source["payload"] = ConvertToJsonNode(payloadData) ?? new JsonObject();
+        source["calculations"] = ConvertToJsonNode(calculations ?? new Dictionary<string, object>()) ?? new JsonObject();
+
+        return source;
+    }
+
+    /// <summary>
+    /// Converts a loosely-typed .NET dictionary/value (as produced by the
+    /// routing pipeline) into a <see cref="JsonNode"/> tree suitable for
+    /// JSON Pointer traversal by the output-mapping evaluator.
+    /// </summary>
+    private static JsonNode? ConvertToJsonNode(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        // Round-trip through System.Text.Json — slower than a hand-rolled
+        // converter but handles nested dicts, lists, JsonElements, primitives,
+        // and records uniformly.
+        var json = JsonSerializer.Serialize(value);
+        return JsonNode.Parse(json);
     }
 
     private async Task<Dictionary<string, object>?> EvaluateCalculationsAsync(
@@ -1193,6 +1277,10 @@ public class ActionExecutionService : IActionExecutionService
         // Remove completed action from current actions
         instance.CurrentActionIds.Remove(completedActionId);
 
+        // Remove the consumed seed payload (if any) atomically with the
+        // state change. Feature 104 wave 14a (FR-008).
+        instance.PendingActionPayloads.Remove(completedActionId);
+
         // Add next actions
         foreach (var nextAction in routingResult.NextActions)
         {
@@ -1213,6 +1301,27 @@ public class ActionExecutionService : IActionExecutionService
                         State = BranchState.Active
                     });
                 }
+            }
+        }
+
+        // Seed prepopulated payloads for next actions from Route.OutputMapping
+        // evaluation (if any). Feature 104 wave 14a (FR-002, FR-003).
+        if (routingResult.PendingPayloads is { Count: > 0 } pendingPayloads)
+        {
+            foreach (var (actionId, payload) in pendingPayloads)
+            {
+                if (payload is null || payload.Count == 0)
+                {
+                    continue;
+                }
+                // Deep clone so the engine's transient object is insulated
+                // from any subsequent mutation of the persisted seed.
+                var cloned = JsonNode.Parse(payload.ToJsonString()) as JsonObject;
+                if (cloned is null)
+                {
+                    continue;
+                }
+                instance.PendingActionPayloads[actionId] = cloned;
             }
         }
 
@@ -1882,6 +1991,13 @@ public class RoutingResult
 {
     public List<NextAction> NextActions { get; init; } = [];
     public bool IsParallel { get; init; }
+
+    /// <summary>
+    /// Per-next-action prepopulated payloads derived from the matched route's
+    /// <see cref="Sorcha.Blueprint.Models.Route.OutputMapping"/>. Null when the
+    /// matched route declares no mapping. Feature 104 wave 14a.
+    /// </summary>
+    public IReadOnlyDictionary<int, JsonObject>? PendingPayloads { get; init; }
 }
 
 /// <summary>

@@ -90,6 +90,7 @@ namespace Sorcha.Blueprint.Service.Data.Migrations
                     LastTransactionId = table.Column<string>(type: "text", nullable: true),
                     CompletedActionCount = table.Column<int>(type: "integer", nullable: false),
                     AccumulatedData = table.Column<string>(type: "jsonb", nullable: true),
+                    PendingActionPayloads = table.Column<string>(type: "jsonb", nullable: true),
                     ActiveBranches = table.Column<string>(type: "jsonb", nullable: true),
                     Metadata = table.Column<string>(type: "jsonb", nullable: true),
                     Version = table.Column<int>(type: "integer", nullable: false),
