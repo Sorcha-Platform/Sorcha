@@ -471,6 +471,42 @@ public class WalletServiceClient : IWalletServiceClient
         }
     }
 
+    public async Task<IReadOnlyList<WalletInfo>> GetWalletsByOwnerAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ownerId))
+            return Array.Empty<WalletInfo>();
+
+        try
+        {
+            _logger.LogDebug("Listing wallets for owner {OwnerId}", ownerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
+
+            var response = await _httpClient.GetAsync(
+                $"/api/v1/wallets/by-owner/{Uri.EscapeDataString(ownerId)}", cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return Array.Empty<WalletInfo>();
+            }
+
+            response.EnsureSuccessStatusCode();
+            var wallets = await response.Content.ReadFromJsonAsync<List<WalletInfo>>(
+                JsonOptions, cancellationToken);
+            return wallets ?? (IReadOnlyList<WalletInfo>)Array.Empty<WalletInfo>();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Cancellation is caller-initiated (tab close, request abort)
+            // and must propagate cleanly rather than be logged as an error
+            // and turned into a silent empty list.
+            _logger.LogError(ex, "Failed to list wallets for owner {OwnerId}", ownerId);
+            return Array.Empty<WalletInfo>();
+        }
+    }
+
     public async Task<WalletInfo> CreateWalletAsync(
         string name,
         string algorithm,
