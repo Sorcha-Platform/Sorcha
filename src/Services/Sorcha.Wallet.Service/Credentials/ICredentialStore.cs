@@ -37,6 +37,22 @@ public interface ICredentialStore
     Task<bool> UpdateStatusAsync(string credentialId, CredentialStatus status, CancellationToken ct = default);
 
     /// <summary>
+    /// Feature 106 — transitions a credential's status and returns the updated row.
+    /// Throws <see cref="InvalidOperationException"/> on disallowed state-machine transitions
+    /// (enforces invariants INV-1 through INV-4 from <c>data-model.md §2</c>). Returns
+    /// <c>null</c> if the credential does not exist or does not belong to the given wallet.
+    /// </summary>
+    /// <remarks>
+    /// Callers (the holder accept/decline PATCH endpoint) should surface the exception as
+    /// <c>409 Conflict</c>.
+    /// </remarks>
+    Task<CredentialEntity?> PatchStatusAsync(
+        string walletAddress,
+        string credentialId,
+        CredentialStatus newStatus,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Finds credentials matching the specified type and optional filters.
     /// </summary>
     Task<IReadOnlyList<CredentialEntity>> MatchAsync(

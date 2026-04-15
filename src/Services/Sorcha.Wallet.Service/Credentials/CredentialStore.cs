@@ -123,6 +123,46 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
+    public async Task<CredentialEntity?> PatchStatusAsync(
+        string walletAddress,
+        string credentialId,
+        CredentialStatus newStatus,
+        CancellationToken ct = default)
+    {
+        var credential = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+
+        if (credential is null)
+            return null;
+
+        if (!string.Equals(credential.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Idempotent no-op (data-model INV-2 discussion): patching to the same status
+        // is a successful no-op, not an error.
+        if (credential.Status == newStatus)
+            return credential;
+
+        if (!IsValidTransition(credential.Status, newStatus))
+        {
+            // Surface the exact transition so the 409 Conflict response can tell the
+            // holder UI what went wrong (e.g. clicked Accept on an already-Declined row).
+            throw new InvalidOperationException(
+                $"invalid-transition: {credential.Status} → {newStatus}");
+        }
+
+        var previousStatus = credential.Status;
+        credential.Status = newStatus;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Credential {CredentialId} status patched: {PreviousStatus} → {NewStatus}",
+            credentialId, previousStatus, newStatus);
+
+        return credential;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CredentialEntity>> MatchAsync(
         string walletAddress,
         string? type = null,

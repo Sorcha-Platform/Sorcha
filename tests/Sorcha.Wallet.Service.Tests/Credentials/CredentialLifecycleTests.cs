@@ -242,4 +242,90 @@ public class CredentialLifecycleTests : IDisposable
         var consumed = await _store.RecordPresentationAsync("cred-1");
         consumed.Should().BeFalse();
     }
+
+    // ===== Feature 106 Wave C — PatchStatusAsync state machine =====
+
+    [Fact]
+    public async Task PatchStatusAsync_PendingAcceptance_To_Active_Succeeds()
+    {
+        var cred = CreateCredential(status: CredentialStatus.PendingAcceptance);
+        await _store.StoreAsync(cred);
+
+        var result = await _store.PatchStatusAsync("wallet-1", "cred-1", CredentialStatus.Active);
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(CredentialStatus.Active);
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_PendingAcceptance_To_Declined_Succeeds()
+    {
+        var cred = CreateCredential(status: CredentialStatus.PendingAcceptance);
+        await _store.StoreAsync(cred);
+
+        var result = await _store.PatchStatusAsync("wallet-1", "cred-1", CredentialStatus.Declined);
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(CredentialStatus.Declined);
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_IdempotentNoOp_Succeeds()
+    {
+        // Accept twice — second call is a no-op, not a 409.
+        var cred = CreateCredential(status: CredentialStatus.Active);
+        await _store.StoreAsync(cred);
+
+        var result = await _store.PatchStatusAsync("wallet-1", "cred-1", CredentialStatus.Active);
+
+        result.Should().NotBeNull();
+        result!.Status.Should().Be(CredentialStatus.Active);
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_Active_To_PendingAcceptance_Throws()
+    {
+        // INV-4: once accepted, cannot return to pending.
+        var cred = CreateCredential(status: CredentialStatus.Active);
+        await _store.StoreAsync(cred);
+
+        var act = async () =>
+            await _store.PatchStatusAsync("wallet-1", "cred-1", CredentialStatus.PendingAcceptance);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*invalid-transition*");
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_Declined_To_Active_Throws()
+    {
+        // INV-3: declined is terminal.
+        var cred = CreateCredential(status: CredentialStatus.Declined);
+        await _store.StoreAsync(cred);
+
+        var act = async () =>
+            await _store.PatchStatusAsync("wallet-1", "cred-1", CredentialStatus.Active);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*invalid-transition*");
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_WrongWallet_ReturnsNull()
+    {
+        var cred = CreateCredential(status: CredentialStatus.PendingAcceptance);
+        await _store.StoreAsync(cred);
+
+        var result = await _store.PatchStatusAsync("wallet-OTHER", "cred-1", CredentialStatus.Active);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PatchStatusAsync_NotFound_ReturnsNull()
+    {
+        var result = await _store.PatchStatusAsync("wallet-1", "does-not-exist", CredentialStatus.Active);
+
+        result.Should().BeNull();
+    }
 }
