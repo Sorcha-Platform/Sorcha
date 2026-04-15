@@ -17,7 +17,7 @@ public class CredentialMatcherTests
         string id, string type, string issuer,
         Dictionary<string, object>? claims = null,
         DateTimeOffset? expiresAt = null,
-        string status = "Active")
+        CredentialStatus status = CredentialStatus.Active)
     {
         return new CredentialEntity
         {
@@ -192,7 +192,7 @@ public class CredentialMatcherTests
 
         var credentials = new List<CredentialEntity>
         {
-            CreateCredential("cred-1", "LicenseCredential", "issuer", status: "Revoked")
+            CreateCredential("cred-1", "LicenseCredential", "issuer", status: CredentialStatus.Revoked)
         };
 
         var result = _matcher.Match(requirements, credentials);

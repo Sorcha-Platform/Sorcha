@@ -54,4 +54,13 @@ public record InboundActionEvent
 
     /// <summary>True if detected during recovery mode.</summary>
     public bool IsRecoveryEvent { get; init; }
+
+    /// <summary>
+    /// Feature 106: When populated, the transaction carried a recipient-addressed
+    /// credential disclosure which the Wallet Service's <c>IInboundCredentialDetector</c>
+    /// extracted and persisted locally as <c>CredentialStatus.PendingAcceptance</c>.
+    /// Holder UIs can use this id to deep-link straight to the credential claim card.
+    /// Null for ordinary action notifications that did not seal a credential.
+    /// </summary>
+    public string? CredentialOfferId { get; init; }
 }

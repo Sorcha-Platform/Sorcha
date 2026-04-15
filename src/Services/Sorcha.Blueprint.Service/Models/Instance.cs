@@ -133,6 +133,15 @@ public class Instance
     /// Introduced in Feature 104.
     /// </remarks>
     public Dictionary<int, JsonObject> PendingActionPayloads { get; set; } = new();
+
+    /// <summary>
+    /// Feature 106: marks this instance as a read-only mirror reconstructed by the
+    /// <c>InstanceMirrorReconstructor</c> from peer-synced transactions rather than
+    /// a locally-executed authoritative instance. The normal
+    /// <c>IInstanceStore.UpdateAsync</c> path MUST reject writes when this flag is
+    /// set; mirror mutations go through the dedicated mirror-write path.
+    /// </summary>
+    public bool IsReadOnlyMirror { get; set; }
 }
 
 /// <summary>

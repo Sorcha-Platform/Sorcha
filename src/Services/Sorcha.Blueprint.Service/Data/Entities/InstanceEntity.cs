@@ -105,4 +105,14 @@ public class InstanceEntity
     /// Timestamp when the instance completed, if applicable.
     /// </summary>
     public DateTimeOffset? CompletedAt { get; set; }
+
+    /// <summary>
+    /// Feature 106: marks this row as a read-only mirror reconstructed from peer-sync
+    /// observations rather than a locally-executed instance. When true, the normal
+    /// <c>IInstanceStore.UpdateAsync</c> path MUST reject writes — mirror rows are only
+    /// mutated via the dedicated <c>UpdateMirrorAsync</c> path invoked by the
+    /// <c>InstanceMirrorReconstructor</c> background service. See
+    /// <c>specs/106-register-native-credentials/contracts/instance-mirror-reconstructor.md</c>.
+    /// </summary>
+    public bool IsReadOnlyMirror { get; internal set; }
 }

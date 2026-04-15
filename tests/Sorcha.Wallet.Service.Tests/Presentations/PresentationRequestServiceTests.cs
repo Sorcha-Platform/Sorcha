@@ -8,6 +8,7 @@ using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
 using Sorcha.Wallet.Service.Services;
+using Sorcha.Wallet.Core.Domain.Entities;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 
 namespace Sorcha.Wallet.Service.Tests.Presentations;
@@ -385,7 +386,7 @@ public class PresentationRequestServiceTests
     {
         var request = await _service.CreateRequestAsync(CreateTestDto());
         var cred = CreateTestCredential("cred-1", "ChemicalHandlingLicense", "did:sorcha:w:hse");
-        cred.Status = "Revoked";
+        cred.Status = CredentialStatus.Revoked;
 
         _storeMock
             .Setup(s => s.GetByIdAsync("cred-1", It.IsAny<CancellationToken>()))
@@ -801,7 +802,7 @@ public class PresentationRequestServiceTests
         WalletAddress = "wallet-1",
         ClaimsJson = claimsJson ?? """{"class":"CategoryB","permitNumber":"HSE-2026-001"}""",
         RawToken = "eyJhbGciOiJFZERTQSJ9.test",
-        Status = "Active",
+        Status = CredentialStatus.Active,
         IssuedAt = DateTimeOffset.UtcNow.AddDays(-30),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
     };

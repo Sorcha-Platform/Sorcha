@@ -57,7 +57,7 @@ public class CredentialMatcher
                 continue;
 
             // Status check
-            if (credential.Status != "Active")
+            if (credential.Status != CredentialStatus.Active)
                 continue;
 
             // Claim constraints check

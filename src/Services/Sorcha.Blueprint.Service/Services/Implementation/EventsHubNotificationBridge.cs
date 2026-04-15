@@ -24,6 +24,8 @@ namespace Sorcha.Blueprint.Service.Services.Implementation;
 public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
 {
     private const string PubSubChannel = "wallet:notifications";
+    // Feature 106 Wave C — credential status transitions published by the Wallet Service.
+    private const string CredentialStatusChannel = "wallet:credential-status";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -55,14 +57,23 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("EventsHubNotificationBridge starting — subscribing to {Channel}", PubSubChannel);
+        _logger.LogInformation(
+            "EventsHubNotificationBridge starting — subscribing to {Channel} and {CredentialChannel}",
+            PubSubChannel, CredentialStatusChannel);
 
         _subscriber = _redis.GetSubscriber();
         await _subscriber.SubscribeAsync(
             RedisChannel.Literal(PubSubChannel),
             async (_, message) => await HandleNotificationAsync(message));
 
-        _logger.LogInformation("EventsHubNotificationBridge started — listening on {Channel}", PubSubChannel);
+        // Feature 106 Wave C — parallel subscription for credential status transitions.
+        await _subscriber.SubscribeAsync(
+            RedisChannel.Literal(CredentialStatusChannel),
+            async (_, message) => await HandleCredentialStatusAsync(message));
+
+        _logger.LogInformation(
+            "EventsHubNotificationBridge started — listening on {Channel} + {CredentialChannel}",
+            PubSubChannel, CredentialStatusChannel);
     }
 
     /// <inheritdoc />
@@ -73,6 +84,7 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         if (_subscriber is not null)
         {
             await _subscriber.UnsubscribeAsync(RedisChannel.Literal(PubSubChannel));
+            await _subscriber.UnsubscribeAsync(RedisChannel.Literal(CredentialStatusChannel));
         }
 
         _logger.LogInformation("EventsHubNotificationBridge stopped");
@@ -141,6 +153,49 @@ public sealed class EventsHubNotificationBridge : IHostedService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to process notification from {Channel}", PubSubChannel);
+        }
+    }
+
+    /// <summary>
+    /// Feature 106 Wave C — forwards a <see cref="CredentialStatusChangedEvent"/>
+    /// from the Wallet Service's <c>wallet:credential-status</c> channel to the
+    /// holder's SignalR group so MyCredentials and MyActions can refresh without
+    /// polling.
+    /// </summary>
+    private async Task HandleCredentialStatusAsync(RedisValue message)
+    {
+        if (message.IsNullOrEmpty)
+            return;
+
+        try
+        {
+            var json = message.ToString();
+            var evt = JsonSerializer.Deserialize<CredentialStatusChangedEvent>(json, JsonOptions);
+            if (evt is null)
+            {
+                _logger.LogWarning("Received null event from {Channel}", CredentialStatusChannel);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(evt.UserId))
+            {
+                _logger.LogDebug(
+                    "CredentialStatusChangedEvent for credential {CredentialId} has no UserId — skipping SignalR fanout",
+                    evt.CredentialId);
+                return;
+            }
+
+            var userGroup = $"user:{evt.UserId}";
+            await _hubContext.Clients.Group(userGroup)
+                .SendAsync("CredentialStatusChanged", evt);
+
+            _logger.LogDebug(
+                "Forwarded CredentialStatusChanged {CredentialId} {Previous}\u2192{New} to group {Group}",
+                evt.CredentialId, evt.PreviousStatus, evt.NewStatus, userGroup);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process notification from {Channel}", CredentialStatusChannel);
         }
     }
 

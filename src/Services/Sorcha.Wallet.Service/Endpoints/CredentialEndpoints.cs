@@ -10,10 +10,13 @@ using Microsoft.AspNetCore.Mvc;
 
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
+using Sorcha.ServiceClients.Models;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
+
+using StackExchange.Redis;
 
 namespace Sorcha.Wallet.Service.Endpoints;
 
@@ -114,6 +117,22 @@ public static class CredentialEndpoints
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Feature 106 Wave C — holder accept/decline PATCH endpoint.
+        // Separate from the legacy /status endpoint above so it can enforce the
+        // Feature 106 state machine (PendingAcceptance → Active / Declined) without
+        // breaking existing SorchaInternal callers.
+        credentialGroup.MapPatch("/{credentialId}", PatchCredentialStatus)
+            .WithName("PatchCredentialStatus")
+            .WithSummary("Holder accept or decline a pending credential (Feature 106)")
+            .WithDescription(
+                "Transitions a credential's status under the Feature 106 state machine. " +
+                "Valid transitions: PendingAcceptance \u2192 Active (accept), PendingAcceptance \u2192 Declined (decline). " +
+                "Returns 409 Conflict on disallowed transitions.")
+            .Produces<CredentialEntity>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
         credentialGroup.MapPost("/issue", IssueCredential)
             .WithName("IssueCredential")
             .WithSummary("Issue a new credential using the wallet's signing key")
@@ -129,11 +148,44 @@ public static class CredentialEndpoints
     private static async Task<IResult> ListCredentials(
         string walletAddress,
         ICredentialStore store,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery(Name = "status")] string? statusFilter = null)
     {
+        // Feature 106 — optional ?status= query parameter.
+        //   omitted       → backward-compat default: Active only
+        //   Active, etc.  → filter by exact status
+        //   All           → include every status (Active + PendingAcceptance + Declined + ...)
+        //   invalid value → 400 Bad Request with allowed values listed
+        CredentialStatus? requested = null;
+        var includeAll = false;
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+        {
+            if (string.Equals(statusFilter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                includeAll = true;
+            }
+            else if (Enum.TryParse<CredentialStatus>(statusFilter, ignoreCase: true, out var parsed))
+            {
+                requested = parsed;
+            }
+            else
+            {
+                return Results.BadRequest(new
+                {
+                    error = $"Invalid status filter '{statusFilter}'. Allowed: Active, Expired, Revoked, Suspended, PendingAcceptance, Declined, Consumed, All."
+                });
+            }
+        }
+
         var credentials = await store.GetByWalletAsync(walletAddress, cancellationToken);
 
-        var response = credentials.Select(c => new
+        IEnumerable<CredentialEntity> filtered = includeAll
+            ? credentials
+            : requested.HasValue
+                ? credentials.Where(c => c.Status == requested.Value)
+                : credentials.Where(c => c.Status == CredentialStatus.Active);
+
+        var response = filtered.Select(c => new
         {
             c.Id,
             c.Type,
@@ -141,7 +193,9 @@ public static class CredentialEndpoints
             c.SubjectDid,
             c.IssuedAt,
             c.ExpiresAt,
-            c.Status
+            c.Status,
+            c.IssuanceBlueprintId,
+            c.IssuanceTxId,
         });
 
         return Results.Ok(response);
@@ -233,7 +287,7 @@ public static class CredentialEndpoints
             IssuedAt = request.IssuedAt,
             ExpiresAt = request.ExpiresAt,
             RawToken = request.RawToken,
-            Status = "Active",
+            Status = CredentialStatus.Active,
             IssuanceTxId = request.IssuanceTxId,
             IssuanceBlueprintId = request.IssuanceBlueprintId,
             WalletAddress = walletAddress,
@@ -254,7 +308,16 @@ public static class CredentialEndpoints
         });
     }
 
-    private static readonly HashSet<string> AllowedStatusValues = ["Active", "Suspended", "Revoked", "Consumed"];
+    // Feature 106 note: PendingAcceptance and Declined are NOT valid targets via this legacy
+    // status-update endpoint. Holder accept/decline for register-native credentials uses the
+    // PATCH /api/v1/wallets/{walletAddress}/credentials/{credentialId} endpoint added by Wave C.
+    private static readonly HashSet<CredentialStatus> AllowedClientStatusTargets =
+    [
+        CredentialStatus.Active,
+        CredentialStatus.Suspended,
+        CredentialStatus.Revoked,
+        CredentialStatus.Consumed
+    ];
 
     private static async Task<IResult> UpdateCredentialStatus(
         string walletAddress,
@@ -263,8 +326,11 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        if (!AllowedStatusValues.Contains(request.Status))
+        if (!Enum.TryParse<CredentialStatus>(request.Status, ignoreCase: false, out var targetStatus)
+            || !AllowedClientStatusTargets.Contains(targetStatus))
+        {
             return Results.BadRequest(new { error = $"Invalid status value: {request.Status}. Allowed: Active, Suspended, Revoked, Consumed" });
+        }
 
         var credential = await store.GetByIdAsync(credentialId, cancellationToken);
 
@@ -272,19 +338,139 @@ public static class CredentialEndpoints
             return Results.NotFound();
 
         var previousStatus = credential.Status;
-        var updated = await store.UpdateStatusAsync(credentialId, request.Status, cancellationToken);
+        var updated = await store.UpdateStatusAsync(credentialId, targetStatus, cancellationToken);
 
         if (!updated)
-            return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {request.Status}" });
+            return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {targetStatus}" });
 
         return Results.Ok(new
         {
             credentialId,
-            previousStatus,
-            newStatus = request.Status,
+            previousStatus = previousStatus.ToString(),
+            newStatus = targetStatus.ToString(),
             updatedAt = DateTimeOffset.UtcNow
         });
     }
+
+    // Feature 106 Wave C — holder accept/decline PATCH endpoint
+    // POST body: { "status": "Active" }  → accept a pending credential
+    //            { "status": "Declined" } → decline a pending credential
+    // Only the Feature 106 transitions are permitted via this endpoint; other status
+    // targets (Revoked, Suspended, etc.) continue to use the legacy /status endpoint.
+    private static readonly HashSet<CredentialStatus> Feature106HolderTransitions =
+    [
+        CredentialStatus.Active,
+        CredentialStatus.Declined,
+    ];
+
+    private static async Task<IResult> PatchCredentialStatus(
+        string walletAddress,
+        string credentialId,
+        [FromBody] UpdateStatusRequest request,
+        ICredentialStore store,
+        IConnectionMultiplexer redis,
+        IWalletRepository walletRepository,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken = default)
+    {
+        var logger = loggerFactory.CreateLogger("Sorcha.Wallet.Service.Endpoints.PatchCredentialStatus");
+
+        if (!Enum.TryParse<CredentialStatus>(request.Status, ignoreCase: false, out var targetStatus)
+            || !Feature106HolderTransitions.Contains(targetStatus))
+        {
+            return Results.BadRequest(new
+            {
+                error = $"Invalid holder transition target '{request.Status}'. Allowed: Active (accept), Declined (decline)."
+            });
+        }
+
+        // Read previous status for the SignalR event (needed BEFORE the patch runs).
+        var existing = await store.GetByIdAsync(credentialId, cancellationToken);
+        if (existing is null
+            || !string.Equals(existing.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.NotFound();
+        }
+
+        var previousStatus = existing.Status;
+
+        CredentialEntity? updated;
+        try
+        {
+            updated = await store.PatchStatusAsync(walletAddress, credentialId, targetStatus, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogInformation(
+                "Rejected invalid Feature 106 transition for credential {CredentialId}: {Message}",
+                credentialId, ex.Message);
+            return Results.Conflict(new
+            {
+                error = "invalid-transition",
+                from = previousStatus.ToString(),
+                to = targetStatus.ToString(),
+            });
+        }
+
+        if (updated is null)
+            return Results.NotFound();
+
+        // Resolve the owning user id so the SignalR bridge can route to the right group.
+        // Best-effort — event publishing is non-fatal. If the wallet record is missing
+        // (shouldn't happen since PatchStatusAsync just succeeded) we skip the publish
+        // rather than fail the PATCH.
+        string? userId = null;
+        try
+        {
+            var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
+            userId = wallet?.Owner;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to resolve wallet owner for {WalletAddress} while publishing CredentialStatusChangedEvent",
+                walletAddress);
+        }
+
+        try
+        {
+            var evt = new CredentialStatusChangedEvent
+            {
+                WalletAddress = walletAddress,
+                CredentialId = credentialId,
+                CredentialType = updated.Type,
+                PreviousStatus = previousStatus.ToString(),
+                NewStatus = updated.Status.ToString(),
+                ChangedAt = DateTimeOffset.UtcNow,
+                UserId = userId,
+            };
+
+            var subscriber = redis.GetSubscriber();
+            var json = JsonSerializer.Serialize(evt, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            });
+            await subscriber.PublishAsync(
+                RedisChannel.Literal(Feature106CredentialStatusChannel),
+                json);
+        }
+        catch (Exception ex)
+        {
+            // Publishing is best-effort — the authoritative state is already persisted.
+            logger.LogWarning(ex,
+                "Failed to publish CredentialStatusChangedEvent for credential {CredentialId}",
+                credentialId);
+        }
+
+        return Results.Ok(updated);
+    }
+
+    /// <summary>
+    /// Redis pub/sub channel for Feature 106 credential status transitions.
+    /// Consumed by <c>EventsHubNotificationBridge</c> in Blueprint Service and
+    /// forwarded to the holder's SignalR group as <c>CredentialStatusChanged</c>.
+    /// </summary>
+    public const string Feature106CredentialStatusChannel = "wallet:credential-status";
 
     private static async Task<IResult> IssueCredential(
         string walletAddress,
@@ -411,7 +597,7 @@ public static class CredentialEndpoints
             IssuedAt = issuedAt,
             ExpiresAt = expiresAt,
             RawToken = token.RawToken,
-            Status = "Active",
+            Status = CredentialStatus.Active,
             IssuanceBlueprintId = request.IssuanceBlueprintId,
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -437,7 +623,7 @@ public static class CredentialEndpoints
                     IssuedAt = issuedAt,
                     ExpiresAt = expiresAt,
                     RawToken = token.RawToken,
-                    Status = "Active",
+                    Status = CredentialStatus.Active,
                     IssuanceBlueprintId = request.IssuanceBlueprintId,
                     WalletAddress = request.RecipientWallet,
                     CreatedAt = DateTimeOffset.UtcNow,

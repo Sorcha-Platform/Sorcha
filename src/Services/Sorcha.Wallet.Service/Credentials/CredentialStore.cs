@@ -13,10 +13,13 @@ namespace Sorcha.Wallet.Service.Credentials;
 /// </summary>
 public class CredentialStore : ICredentialStore
 {
-    private static readonly Dictionary<string, HashSet<string>> ValidTransitions = new()
+    private static readonly Dictionary<CredentialStatus, HashSet<CredentialStatus>> ValidTransitions = new()
     {
-        ["Active"] = new() { "Suspended", "Revoked", "Consumed" },
-        ["Suspended"] = new() { "Active", "Revoked" },
+        [CredentialStatus.Active] = new() { CredentialStatus.Suspended, CredentialStatus.Revoked, CredentialStatus.Consumed, CredentialStatus.Expired },
+        [CredentialStatus.Suspended] = new() { CredentialStatus.Active, CredentialStatus.Revoked },
+        // Feature 106: inbound register-native credentials start in PendingAcceptance and
+        // transition to Active (holder accept), Declined (holder decline), or Expired (lazy).
+        [CredentialStatus.PendingAcceptance] = new() { CredentialStatus.Active, CredentialStatus.Declined, CredentialStatus.Expired },
     };
 
     private readonly WalletDbContext _db;
@@ -95,7 +98,7 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateStatusAsync(string credentialId, string status, CancellationToken ct = default)
+    public async Task<bool> UpdateStatusAsync(string credentialId, CredentialStatus status, CancellationToken ct = default)
     {
         var credential = await _db.Credentials
             .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
@@ -120,6 +123,46 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
+    public async Task<CredentialEntity?> PatchStatusAsync(
+        string walletAddress,
+        string credentialId,
+        CredentialStatus newStatus,
+        CancellationToken ct = default)
+    {
+        var credential = await _db.Credentials
+            .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
+
+        if (credential is null)
+            return null;
+
+        if (!string.Equals(credential.WalletAddress, walletAddress, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Idempotent no-op (data-model INV-2 discussion): patching to the same status
+        // is a successful no-op, not an error.
+        if (credential.Status == newStatus)
+            return credential;
+
+        if (!IsValidTransition(credential.Status, newStatus))
+        {
+            // Surface the exact transition so the 409 Conflict response can tell the
+            // holder UI what went wrong (e.g. clicked Accept on an already-Declined row).
+            throw new InvalidOperationException(
+                $"invalid-transition: {credential.Status} → {newStatus}");
+        }
+
+        var previousStatus = credential.Status;
+        credential.Status = newStatus;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Credential {CredentialId} status patched: {PreviousStatus} → {NewStatus}",
+            credentialId, previousStatus, newStatus);
+
+        return credential;
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CredentialEntity>> MatchAsync(
         string walletAddress,
         string? type = null,
@@ -127,7 +170,7 @@ public class CredentialStore : ICredentialStore
         CancellationToken ct = default)
     {
         var query = _db.Credentials
-            .Where(c => c.WalletAddress == walletAddress && c.Status == "Active");
+            .Where(c => c.WalletAddress == walletAddress && c.Status == CredentialStatus.Active);
 
         if (!string.IsNullOrWhiteSpace(type))
         {
@@ -155,7 +198,7 @@ public class CredentialStore : ICredentialStore
         var credential = await _db.Credentials
             .FirstOrDefaultAsync(c => c.Id == credentialId, ct);
 
-        if (credential == null || credential.Status != "Active")
+        if (credential == null || credential.Status != CredentialStatus.Active)
             return false;
 
         credential.PresentationCount++;
@@ -170,7 +213,7 @@ public class CredentialStore : ICredentialStore
 
         if (consumed)
         {
-            credential.Status = "Consumed";
+            credential.Status = CredentialStatus.Consumed;
             _logger.LogInformation("Credential consumed after presentation: {CredentialId} Policy={UsagePolicy} Count={Count}",
                 credentialId, credential.UsagePolicy, credential.PresentationCount);
         }
@@ -185,8 +228,14 @@ public class CredentialStore : ICredentialStore
         return consumed;
     }
 
-    private static bool IsValidTransition(string currentStatus, string targetStatus)
+    private static bool IsValidTransition(CredentialStatus currentStatus, CredentialStatus targetStatus)
     {
+        if (currentStatus == targetStatus)
+        {
+            // Idempotent writes are permitted as no-ops (data-model.md §2 INV-2 discussion).
+            return true;
+        }
+
         if (ValidTransitions.TryGetValue(currentStatus, out var allowed))
         {
             return allowed.Contains(targetStatus);
@@ -207,11 +256,11 @@ public class CredentialStore : ICredentialStore
 
         foreach (var credential in credentials)
         {
-            if (credential.Status == "Active"
+            if ((credential.Status == CredentialStatus.Active || credential.Status == CredentialStatus.PendingAcceptance)
                 && credential.ExpiresAt.HasValue
                 && credential.ExpiresAt.Value < now)
             {
-                credential.Status = "Expired";
+                credential.Status = CredentialStatus.Expired;
                 changed = true;
             }
         }

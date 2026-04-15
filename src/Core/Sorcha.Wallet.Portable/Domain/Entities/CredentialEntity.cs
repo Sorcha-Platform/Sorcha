@@ -1,7 +1,52 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json.Serialization;
+
 namespace Sorcha.Wallet.Core.Domain.Entities;
+
+/// <summary>
+/// Lifecycle status of a credential held in a Sorcha wallet. See
+/// <c>specs/106-register-native-credentials/data-model.md §2</c> for the full state machine and
+/// invariants INV-1 through INV-4 enforced by <c>ICredentialRepository.PatchStatusAsync</c>.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum CredentialStatus
+{
+    /// <summary>The credential is valid and presentable.</summary>
+    Active = 0,
+
+    /// <summary>Embedded <c>notValidAfter</c> has passed. Terminal.</summary>
+    Expired = 1,
+
+    /// <summary>Issuer revoked via status list. Terminal.</summary>
+    Revoked = 2,
+
+    /// <summary>Temporarily suspended by the issuer. May transition back to <see cref="Active"/>.</summary>
+    Suspended = 3,
+
+    /// <summary>
+    /// Feature 106: Inbound credential has been detected and stored by the Wallet Service but the
+    /// holder has not yet accepted it. Initial state for register-native deliveries. Transitions
+    /// to <see cref="Active"/> on accept, <see cref="Declined"/> on decline, or <see cref="Expired"/>
+    /// if the embedded <c>notValidAfter</c> passes before the holder acts.
+    /// </summary>
+    PendingAcceptance = 4,
+
+    /// <summary>
+    /// Feature 106: Holder explicitly declined a <see cref="PendingAcceptance"/> credential. The
+    /// row is retained for audit (INV-3) until the holder issues an explicit
+    /// <c>DELETE /api/v1/wallets/{address}/credentials/{id}</c>. Terminal.
+    /// </summary>
+    Declined = 5,
+
+    /// <summary>
+    /// Single-use or limited-use credential whose presentation budget has been exhausted.
+    /// Pre-existing behaviour preserved from <c>CredentialStore.RecordPresentationAsync</c>.
+    /// Terminal.
+    /// </summary>
+    Consumed = 6
+}
 
 /// <summary>
 /// EF Core entity for stored verifiable credentials in a wallet.
@@ -49,9 +94,10 @@ public class CredentialEntity
     public required string RawToken { get; set; }
 
     /// <summary>
-    /// Credential status: Active, Revoked, Expired.
+    /// Credential lifecycle status. Persisted as its string name via EF value conversion.
+    /// See <see cref="CredentialStatus"/> for allowed transitions.
     /// </summary>
-    public required string Status { get; set; }
+    public required CredentialStatus Status { get; set; }
 
     /// <summary>
     /// Ledger transaction ID that recorded the issuance event.

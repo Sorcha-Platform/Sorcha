@@ -30,8 +30,10 @@ public class CredentialApiService : ICredentialApiService
     {
         try
         {
+            // Feature 106 — request All so PendingAcceptance + Declined rows land alongside
+            // Active/Expired/Revoked. The MyCredentials page splits them client-side into tabs.
             var response = await _httpClient.GetAsync(
-                $"/api/v1/wallets/{walletAddress}/credentials", ct);
+                $"/api/v1/wallets/{walletAddress}/credentials?status=All", ct);
 
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -293,7 +295,11 @@ public class CredentialApiService : ICredentialApiService
             SubjectDid = item.SubjectDid ?? string.Empty,
             Status = item.Status ?? CredentialStatus.Active,
             IssuedAt = item.IssuedAt,
-            ExpiresAt = item.ExpiresAt
+            ExpiresAt = item.ExpiresAt,
+            IssuanceBlueprintId = item.IssuanceBlueprintId,
+            // Feature 106 — rows with the new PendingAcceptance status flow into
+            // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
+            IsPending = string.Equals(item.Status, CredentialStatus.PendingAcceptance, StringComparison.Ordinal),
         };
 
         vm.AvailableActions = GetAvailableActions(vm.Status);
@@ -383,6 +389,11 @@ public class CredentialApiService : ICredentialApiService
         public DateTimeOffset IssuedAt { get; set; }
         public DateTimeOffset? ExpiresAt { get; set; }
         public string? Status { get; set; }
+
+        // Feature 106 — deep-link fields for MyCredentials PENDING tab and
+        // the holder accept/decline orchestration.
+        public string? IssuanceBlueprintId { get; set; }
+        public string? IssuanceTxId { get; set; }
     }
 
     private class CredentialDetailResponse
@@ -436,17 +447,18 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
-    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
-    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
-    // Until backend is updated, these methods will return false (status 400).
+    // Feature 106 Wave E — holder accept path. Hits the Feature 106 PATCH endpoint
+    // (without the /status suffix) which enforces the PendingAcceptance → Active
+    // state-machine transition and fans out a CredentialStatusChangedEvent over
+    // SignalR so parallel holder sessions stay in sync.
     public async Task<bool> AcceptCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
         try
         {
             var response = await _httpClient.PatchAsJsonAsync(
-                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
-                new { Status = CredentialStatus.Active }, ct);
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}",
+                new { Status = nameof(CredentialStatus.Active) }, ct);
 
             return response.IsSuccessStatusCode;
         }
@@ -459,17 +471,17 @@ public class CredentialApiService : ICredentialApiService
     }
 
     /// <inheritdoc/>
-    // TODO: Pending/Declined status support requires Wallet Service endpoint update.
-    // Currently the PATCH status endpoint supports Active/Suspended/Revoked/Consumed.
-    // Until backend is updated, these methods will return false (status 400).
+    // Feature 106 Wave E — holder decline path. Same endpoint as accept; the server
+    // routes the transition through CredentialStore.PatchStatusAsync which enforces
+    // the state machine and retains the row for audit (data-model INV-3).
     public async Task<bool> DeclineCredentialAsync(
         string walletAddress, string credentialId, CancellationToken ct = default)
     {
         try
         {
             var response = await _httpClient.PatchAsJsonAsync(
-                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}/status",
-                new { Status = CredentialStatus.Declined }, ct);
+                $"/api/v1/wallets/{Uri.EscapeDataString(walletAddress)}/credentials/{Uri.EscapeDataString(credentialId)}",
+                new { Status = nameof(CredentialStatus.Declined) }, ct);
 
             return response.IsSuccessStatusCode;
         }

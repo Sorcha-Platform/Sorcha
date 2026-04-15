@@ -13,6 +13,7 @@ using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
 using Sorcha.Wallet.Service.Services;
+using Sorcha.Wallet.Core.Domain.Entities;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 
 namespace Sorcha.Wallet.Service.Tests.Presentations;
@@ -397,7 +398,7 @@ public class PresentationRequestVerificationTests
         WalletAddress = "wallet-1",
         ClaimsJson = claimsJson ?? """{"class":"CategoryB"}""",
         RawToken = "eyJhbGciOiJFZERTQSJ9.test",
-        Status = "Active",
+        Status = CredentialStatus.Active,
         IssuedAt = DateTimeOffset.UtcNow.AddDays(-30),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-30)
     };
