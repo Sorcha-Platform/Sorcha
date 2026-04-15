@@ -51,6 +51,11 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IOrgRecover
 // Feature 047: Notification metrics (T047 — observability)
 builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.NotificationMetrics>();
 
+// Feature 106: Inbound credential detection (Wave B)
+builder.Services.AddSingleton<Sorcha.Wallet.Service.Services.Implementation.InboundCredentialDetectorMetrics>();
+builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.IInboundCredentialDetector,
+    Sorcha.Wallet.Service.Services.Implementation.InboundCredentialDetector>();
+
 // Feature 047: Digest notification batching (US5)
 builder.Services.AddHostedService<Sorcha.Wallet.Service.Services.Implementation.NotificationDigestWorker>();
 

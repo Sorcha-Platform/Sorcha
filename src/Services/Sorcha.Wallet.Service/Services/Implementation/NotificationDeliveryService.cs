@@ -32,6 +32,7 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
     private readonly INotificationPreferenceProvider _preferenceProvider;
     private readonly NotificationMetrics _metrics;
     private readonly IConnectionMultiplexer _redis;
+    private readonly IInboundCredentialDetector? _credentialDetector;
     private readonly ILogger<NotificationDeliveryService> _logger;
 
     public NotificationDeliveryService(
@@ -40,13 +41,15 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         INotificationPreferenceProvider preferenceProvider,
         NotificationMetrics metrics,
         IConnectionMultiplexer redis,
-        ILogger<NotificationDeliveryService> logger)
+        ILogger<NotificationDeliveryService> logger,
+        IInboundCredentialDetector? credentialDetector = null)
     {
         _walletRepository = walletRepository;
         _rateLimiter = rateLimiter;
         _preferenceProvider = preferenceProvider;
         _metrics = metrics;
         _redis = redis;
+        _credentialDetector = credentialDetector;
         _logger = logger;
     }
 
@@ -81,6 +84,33 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
         var userId = wallet.Owner;
         var tenantId = wallet.Tenant;
 
+        // Step 2b: Feature 106 — inbound credential detection.
+        // Runs BEFORE preference check so holders always get their pending credential
+        // persisted to the local wallet store regardless of notification preferences.
+        // The detector is idempotent (dedup by credential id), never throws, and returns
+        // a non-null extract only when a register-native credential was just persisted.
+        InboundCredentialExtract? credentialExtract = null;
+        if (_credentialDetector is not null)
+        {
+            try
+            {
+                credentialExtract = await _credentialDetector.TryExtractAsync(
+                    recipientAddress, transactionId, registerId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // The detector is contracted to never throw — catch-all defends against
+                // implementation drift so a detector bug never breaks notification delivery.
+                _logger.LogError(ex,
+                    "InboundCredentialDetector threw for wallet {Wallet} tx {TxId} — delivery will proceed without credential enrichment",
+                    recipientAddress, transactionId);
+            }
+        }
+
         // Step 2: Check notification preferences
         var prefs = await _preferenceProvider.GetPreferencesAsync(userId, cancellationToken);
 
@@ -111,8 +141,8 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
             WalletId = Guid.Empty, // Wallet entity uses string Address as PK, not a Guid
             UserId = userId,
             TenantId = tenantId,
-            BlueprintId = blueprintId,
-            InstanceId = instanceId,
+            BlueprintId = blueprintId ?? credentialExtract?.BlueprintId,
+            InstanceId = instanceId ?? credentialExtract?.InstanceId,
             ActionId = actionId,
             NextActionId = nextActionId,
             SenderAddress = senderAddress,
@@ -120,7 +150,8 @@ public sealed class NotificationDeliveryService : INotificationDeliveryService
             RegisterId = registerId,
             DocketNumber = docketNumber,
             Timestamp = timestamp,
-            IsRecoveryEvent = isRecovery
+            IsRecoveryEvent = isRecovery,
+            CredentialOfferId = credentialExtract?.CredentialId,
         };
 
         // Step 3: Route based on preference and rate limit
