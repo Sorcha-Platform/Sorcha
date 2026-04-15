@@ -56,7 +56,7 @@ This adds an extra layer of protection by requiring approval before publishing.
 
 ## Step 5: Verify the Workflow File
 
-The workflow file has been created at [.github/workflows/cryptography-nuget.yml](../.github/workflows/cryptography-nuget.yml).
+The workflow file has been created at [.github/workflows/nuget-publish.yml](../../.github/workflows/nuget-publish.yml).
 
 It will trigger when:
 - Code is pushed to `main` or `master` branch
@@ -66,7 +66,7 @@ It will trigger when:
 
 ## Step 6: Update Package Version
 
-Before publishing, ensure the version in [src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj](../src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj) is correct:
+Before publishing, ensure the version in [src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj](../../src/Common/Sorcha.Cryptography/Sorcha.Cryptography.csproj) is correct:
 
 ```xml
 <Version>2.0.0</Version>

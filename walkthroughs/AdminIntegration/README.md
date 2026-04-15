@@ -329,10 +329,8 @@ Services__Admin__Url: http://sorcha-admin:80  # Added to api-gateway
 
 ## Related Documentation
 
-- Main walkthrough: [../BlueprintStorageBasic/README.md](../BlueprintStorageBasic/README.md)
 - Docker Compose: [../../docker-compose.yml](../../docker-compose.yml)
 - API Gateway: [../../src/Services/Sorcha.ApiGateway/](../../src/Services/Sorcha.ApiGateway/)
-- Admin Application: [../../src/Apps/Sorcha.Admin/](../../src/Apps/Sorcha.Admin/)
 
 ---
 

@@ -361,7 +361,7 @@ After completing this walkthrough:
 
 ## References
 
-- [Sorcha CLI Documentation](../../docs/CLI.md)
+- [Sorcha CLI Documentation](../../src/Apps/Sorcha.Cli/README.md)
 - [Register Service Spec](../../.specify/specs/sorcha-register-service.md)
 - [RegisterCreationOrchestrator.cs](../../src/Services/Sorcha.Register.Service/Services/RegisterCreationOrchestrator.cs)
 - [RegisterCommands.cs](../../src/Apps/Sorcha.Cli/Commands/RegisterCommands.cs)

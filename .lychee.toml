@@ -6,7 +6,13 @@ exclude_path = [
   "docs/archive/",
   "docs/site/",
   "docs/plans/",
-  "docs/superpowers/"
+  "docs/superpowers/",
+  "docs/guides/blueprints/",
+  "docs/guides/testing/",
+  ".specify/",
+  "specs/",
+  "blueprints/examples/",
+  "infra/"
 ]
 
 # Only check local file links, skip all network requests

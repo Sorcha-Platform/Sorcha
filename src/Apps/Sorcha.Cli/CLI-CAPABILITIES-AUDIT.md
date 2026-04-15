@@ -357,7 +357,7 @@ sorcha peer get --peer-id <id> [--show-metrics]
 ### **Created Documentation:**
 1. ✅ [DEV-WORKFLOW.md](DEV-WORKFLOW.md) - Development workflow guide
 2. ✅ [CLI-CAPABILITIES-AUDIT.md](CLI-CAPABILITIES-AUDIT.md) - This file
-3. ✅ [scripts/rebuild-cli.ps1](../../scripts/rebuild-cli.ps1) - Development rebuild script
+3. ✅ [scripts/rebuild-cli.ps1](../../../scripts/rebuild-cli.ps1) - Development rebuild script
 4. ✅ README.md (exists, needs update)
 
 ### **Missing Documentation:**

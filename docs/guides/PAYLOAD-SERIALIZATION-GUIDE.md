@@ -439,10 +439,9 @@ var payload = new Dictionary<string, object>
 
 ## See Also
 
-- [Transaction Test Harness](../walkthroughs/PerformanceBenchmark/TransactionTest/README.md) - Working C# implementation
-- [Solution Summary](../walkthroughs/PerformanceBenchmark/SOLUTION-SUMMARY.md) - Detailed problem analysis
-- [Validator Service API](./VALIDATOR-API.md) - API documentation
-- [Transaction Model](./TRANSACTION-MODEL.md) - Data structure reference
+- [Transaction Test Harness](../../walkthroughs/PerformanceBenchmark/TransactionTest/README.md) - Working C# implementation
+- [Solution Summary](../../walkthroughs/PerformanceBenchmark/SOLUTION-SUMMARY.md) - Detailed problem analysis
+- [Validator Service Design](../reference/validator-service-design.md) - Validator architecture reference
 
 ---
 
