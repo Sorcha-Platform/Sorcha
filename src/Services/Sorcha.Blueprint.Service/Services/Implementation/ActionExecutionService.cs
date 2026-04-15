@@ -493,6 +493,59 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
+        // 8c. Feature 106 — mint a register-native credential for SorchaLocalWallet
+        //     target audience BEFORE routing and disclosure. The freshly minted credential
+        //     is sealed into the recipient-addressed disclosure group at step 9b so it
+        //     rides the existing encryption pipeline and peer-replicates to the holder's
+        //     Wallet Service (which extracts it via Wave B inbound credential detection).
+        //
+        //     Runtime error codes:
+        //       VAL_RUNTIME_CRED_001 — recipient wallet not resolvable (late-binding not yet run)
+        //       VAL_RUNTIME_CRED_002 — credential mint failed
+        //       VAL_RUNTIME_CRED_003 — encryption of the sealed credential failed (raised at step 9d)
+        //
+        //     Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
+        CredentialIssuanceResult? localWalletCredential = null;
+        string? localWalletRecipient = null;
+        if (actionDef.CredentialIssuanceConfig != null
+            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.SorchaLocalWallet)
+        {
+            var recipientId = actionDef.CredentialIssuanceConfig.RecipientParticipantId;
+            if (string.IsNullOrWhiteSpace(recipientId)
+                || !instance.ParticipantWallets.TryGetValue(recipientId, out localWalletRecipient)
+                || string.IsNullOrEmpty(localWalletRecipient))
+            {
+                throw new InvalidOperationException(
+                    $"[VAL_RUNTIME_CRED_001] SorchaLocalWallet issuance for action {actionDef.Id} requires " +
+                    $"recipient participant '{recipientId}' to be bound to a wallet on the instance. " +
+                    $"Ensure the recipient has submitted a prior action or is pre-bound in the published blueprint.");
+            }
+
+            try
+            {
+                localWalletCredential = await IssueCredentialFromActionAsync(
+                    actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    $"[VAL_RUNTIME_CRED_002] SorchaLocalWallet credential mint failed for action {actionDef.Id}: {ex.Message}",
+                    ex);
+            }
+
+            if (localWalletCredential is null)
+            {
+                throw new InvalidOperationException(
+                    $"[VAL_RUNTIME_CRED_002] SorchaLocalWallet credential mint returned null for action {actionDef.Id}. " +
+                    $"The Wallet Service IssueCredentialAsync path reported no result — check Wallet Service logs.");
+            }
+
+            _logger.LogInformation(
+                "Minted SorchaLocalWallet credential {CredentialId} (type {Type}) for recipient {Recipient}. " +
+                "Will seal into the action's recipient-addressed disclosure group.",
+                localWalletCredential.CredentialId, localWalletCredential.Type, localWalletRecipient);
+        }
+
         // 9. Evaluate routing conditions to determine next action(s).
         //    Build the output source document for Route.OutputMapping evaluation
         //    (Feature 104 wave 14a). Payload, calculations, and (when present)
@@ -519,6 +572,34 @@ public class ActionExecutionService : IActionExecutionService
         if (disclosedPayloads.Count == 0 && payloadWithCalculations.Count > 0)
         {
             disclosedPayloads[request.SenderWallet] = payloadWithCalculations;
+        }
+
+        // 9b-bis. Feature 106 — seal the SorchaLocalWallet credential into the recipient's
+        //         disclosure group so it rides the encryption pipeline and peer-replicates.
+        //         If a blueprint-defined disclosure for the recipient already exists, the
+        //         credential is merged into it under the /credential key; otherwise a new
+        //         recipient entry is created. Wave B's InboundCredentialDetector on the
+        //         holder's Wallet Service extracts from this exact shape.
+        if (localWalletCredential is not null && !string.IsNullOrEmpty(localWalletRecipient))
+        {
+            if (!disclosedPayloads.TryGetValue(localWalletRecipient, out var recipientFields))
+            {
+                recipientFields = new Dictionary<string, object>();
+                disclosedPayloads[localWalletRecipient] = recipientFields;
+            }
+
+            recipientFields["/credential"] = new Dictionary<string, object>
+            {
+                ["credentialId"] = localWalletCredential.CredentialId,
+                ["credentialType"] = localWalletCredential.Type,
+                ["issuerDid"] = localWalletCredential.IssuerDid,
+                ["subjectDid"] = localWalletCredential.SubjectDid,
+                ["issuedAt"] = localWalletCredential.IssuedAt,
+                ["expiresAt"] = (object?)localWalletCredential.ExpiresAt ?? string.Empty,
+                ["rawToken"] = localWalletCredential.RawToken,
+                ["issuanceBlueprintId"] = instance.BlueprintId,
+                ["issuanceInstanceId"] = instanceId,
+            };
         }
 
         // 9c. Check register DevMode — skip encryption for DevMode registers
@@ -680,8 +761,13 @@ public class ActionExecutionService : IActionExecutionService
 
                 if (!encryptionResult.Success)
                 {
+                    // Feature 106: when the SorchaLocalWallet credential was sealed into the
+                    // disclosed payloads, an encryption failure here means the holder will not
+                    // receive the credential via peer sync. Surface with VAL_RUNTIME_CRED_003 so
+                    // operators can tell this apart from generic encryption errors.
+                    var errorCode = localWalletCredential != null ? "[VAL_RUNTIME_CRED_003] " : string.Empty;
                     throw new InvalidOperationException(
-                        $"Encryption failed for recipient {encryptionResult.FailedRecipient}: {encryptionResult.Error}");
+                        $"{errorCode}Encryption failed for recipient {encryptionResult.FailedRecipient}: {encryptionResult.Error}");
                 }
 
                 if (encryptionResult.SkippedRecipients.Count > 0)
@@ -697,11 +783,14 @@ public class ActionExecutionService : IActionExecutionService
         // 9d. Issue internal Sorcha credential if configured (non-HAIP path).
         //     The HAIP path has already run at step 8b (moved before routing in
         //     Feature 104 wave 14b so Route.OutputMapping can carry offer data
-        //     forward to a claim action). The internal path remains here
-        //     because it builds a register transaction from the merged state.
-        CredentialIssuanceResult? issuedCredential = null;
+        //     forward to a claim action). The SorchaLocalWallet path has already run
+        //     at step 8c (Feature 106) so the credential could be sealed into a
+        //     recipient-addressed disclosure. The internal SorchaInternal path
+        //     remains here because it builds a register transaction from the merged
+        //     state alongside the legacy direct-write behaviour.
+        CredentialIssuanceResult? issuedCredential = localWalletCredential;
         if (actionDef.CredentialIssuanceConfig != null
-            && actionDef.CredentialIssuanceConfig.TargetAudience != TargetAudience.HaipExternalWallet)
+            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.SorchaInternal)
         {
             // Internal Sorcha issuance path (existing behaviour)
             issuedCredential = await IssueCredentialFromActionAsync(

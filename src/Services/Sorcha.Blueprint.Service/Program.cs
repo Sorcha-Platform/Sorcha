@@ -2881,6 +2881,89 @@ public class PublishService(
             }
         }
 
+        // Rule 7c (Feature 106): credentialIssuanceConfig.targetAudience == SorchaLocalWallet
+        // guardrails for register-native credential delivery.
+        //
+        //   VAL_BP_CRED_001  — hard error, recipientParticipantId must resolve to a
+        //                      participant declared on the blueprint. The runtime cannot
+        //                      late-bind an unknown recipient at issuance time.
+        //   WARN_BP_CRED_002 — non-blocking warning, action does not declare an explicit
+        //                      recipient disclosure group so the engine will synthesise one
+        //                      at mint time. Authors can silence by adding a disclosure.
+        //   VAL_BP_CRED_003  — hard error, any action routed from a SorchaLocalWallet
+        //                      issuance must have RejectionConfig.IsTerminal == true so the
+        //                      holder's decline path seals a clean terminal rejection.
+        //
+        // Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
+        const string SorchaLocalWalletRecipientCode = "VAL_BP_CRED_001";
+        const string SorchaLocalWalletImplicitDisclosureWarning = "WARN_BP_CRED_002";
+        const string SorchaLocalWalletRejectNotTerminalCode = "VAL_BP_CRED_003";
+
+        foreach (var action in blueprint.Actions)
+        {
+            var issuance = action.CredentialIssuanceConfig;
+            if (issuance is null) continue;
+            if (issuance.TargetAudience != Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaLocalWallet)
+                continue;
+
+            // VAL_BP_CRED_001 — recipientParticipantId must resolve
+            var recipientId = issuance.RecipientParticipantId;
+            if (string.IsNullOrWhiteSpace(recipientId))
+            {
+                errors.Add(
+                    $"[{SorchaLocalWalletRecipientCode}] Action {action.Id} ('{action.Title}'): " +
+                    $"credentialIssuanceConfig.targetAudience is 'SorchaLocalWallet' but recipientParticipantId is missing. " +
+                    $"Feature 106 requires the recipient participant to be declared explicitly so the engine can " +
+                    $"resolve the holder wallet at mint time.");
+            }
+            else
+            {
+                var recipient = blueprint.Participants?
+                    .FirstOrDefault(p => string.Equals(p.Id, recipientId, StringComparison.OrdinalIgnoreCase));
+                if (recipient is null)
+                {
+                    errors.Add(
+                        $"[{SorchaLocalWalletRecipientCode}] Action {action.Id} ('{action.Title}'): " +
+                        $"credentialIssuanceConfig.recipientParticipantId '{recipientId}' does not match any " +
+                        $"participant declared on this blueprint. SorchaLocalWallet delivery requires the recipient " +
+                        $"to be a known participant so the engine can look up the holder wallet via late-binding.");
+                }
+            }
+
+            // WARN_BP_CRED_002 — non-blocking, missing explicit recipient disclosure group
+            var hasExplicitDisclosure = action.Disclosures?.Any(d =>
+                d.ParticipantAddress != null &&
+                string.Equals(d.ParticipantAddress, recipientId, StringComparison.OrdinalIgnoreCase)) == true;
+            if (!hasExplicitDisclosure)
+            {
+                warnings.Add(
+                    $"[{SorchaLocalWalletImplicitDisclosureWarning}] Action {action.Id} ('{action.Title}'): " +
+                    $"credentialIssuanceConfig.targetAudience is 'SorchaLocalWallet' but no explicit disclosure " +
+                    $"targets recipient participant '{recipientId}'. The engine will synthesise a default recipient " +
+                    $"disclosure at mint time — add an explicit disclosure to silence this warning and control the " +
+                    $"carried payload shape.");
+            }
+
+            // VAL_BP_CRED_003 — any action reachable from a SorchaLocalWallet issuing action via its routes
+            // MUST have RejectionConfig.IsTerminal == true so the holder decline flow seals a clean terminal
+            // rejection. We check each routed next action; missing or non-terminal rejection fails publish.
+            var nextIds = action.Routes?.SelectMany(r => r.NextActionIds ?? Enumerable.Empty<int>()).Distinct().ToList()
+                ?? new List<int>();
+            foreach (var nextId in nextIds)
+            {
+                var nextAction = blueprint.Actions.FirstOrDefault(a => a.Id == nextId);
+                if (nextAction is null) continue; // route-target check handled elsewhere
+                if (nextAction.RejectionConfig is null || !nextAction.RejectionConfig.IsTerminal)
+                {
+                    errors.Add(
+                        $"[{SorchaLocalWalletRejectNotTerminalCode}] Action {nextAction.Id} ('{nextAction.Title}'): " +
+                        $"Is a routed next action from SorchaLocalWallet issuance action {action.Id} ('{action.Title}'), " +
+                        $"but rejectionConfig.isTerminal is not true. The holder decline flow requires a terminal " +
+                        $"rejection on the accept action — set rejectionConfig: {{ isTerminal: true }} on this action.");
+                }
+            }
+        }
+
         foreach (var action in blueprint.Actions)
         {
             if (action.Routes != null)
