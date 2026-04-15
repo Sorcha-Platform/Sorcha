@@ -37,7 +37,7 @@ public class CredentialStoreTests : IDisposable
         string walletAddress = "wallet-1",
         string type = "LicenseCredential",
         string issuerDid = "did:sorcha:issuer:gov",
-        string status = "Active",
+        CredentialStatus status = CredentialStatus.Active,
         DateTimeOffset? expiresAt = null)
     {
         return new CredentialEntity
@@ -76,12 +76,12 @@ public class CredentialStoreTests : IDisposable
         await _store.StoreAsync(credential);
 
         var updated = CreateCredential();
-        updated.Status = "Revoked";
+        updated.Status = CredentialStatus.Revoked;
         await _store.StoreAsync(updated);
 
         var stored = await _db.Credentials.FindAsync("cred-1");
         stored.Should().NotBeNull();
-        stored!.Status.Should().Be("Revoked");
+        stored!.Status.Should().Be(CredentialStatus.Revoked);
     }
 
     [Fact]
@@ -95,9 +95,9 @@ public class CredentialStoreTests : IDisposable
     [Fact]
     public async Task GetByWalletAsync_ReturnsAllStatuses()
     {
-        await _store.StoreAsync(CreateCredential("cred-1", status: "Active"));
-        await _store.StoreAsync(CreateCredential("cred-2", status: "Revoked"));
-        await _store.StoreAsync(CreateCredential("cred-3", status: "Active"));
+        await _store.StoreAsync(CreateCredential("cred-1", status: CredentialStatus.Active));
+        await _store.StoreAsync(CreateCredential("cred-2", status: CredentialStatus.Revoked));
+        await _store.StoreAsync(CreateCredential("cred-3", status: CredentialStatus.Active));
 
         var results = await _store.GetByWalletAsync("wallet-1");
 
@@ -243,7 +243,7 @@ internal class TestCredentialDbContext : WalletDbContext
             entity.Property(e => e.SubjectDid).IsRequired();
             entity.Property(e => e.ClaimsJson).IsRequired();
             entity.Property(e => e.RawToken).IsRequired();
-            entity.Property(e => e.Status).IsRequired().HasDefaultValue("Active");
+            entity.Property(e => e.Status).IsRequired().HasConversion<string>().HasDefaultValue(CredentialStatus.Active);
             entity.Property(e => e.WalletAddress).IsRequired();
         });
     }

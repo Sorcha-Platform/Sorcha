@@ -31,9 +31,10 @@ public interface ICredentialStore
     Task<bool> DeleteAsync(string credentialId, CancellationToken ct = default);
 
     /// <summary>
-    /// Updates the status of a credential (e.g., "Active" → "Revoked").
+    /// Updates the status of a credential (e.g., Active → Revoked). Enforces the state machine
+    /// defined on <see cref="CredentialStatus"/>; returns false on disallowed transitions.
     /// </summary>
-    Task<bool> UpdateStatusAsync(string credentialId, string status, CancellationToken ct = default);
+    Task<bool> UpdateStatusAsync(string credentialId, CredentialStatus status, CancellationToken ct = default);
 
     /// <summary>
     /// Finds credentials matching the specified type and optional filters.

@@ -102,5 +102,15 @@ public enum TargetAudience
     SorchaInternal = 0,
 
     /// <summary>External HAIP wallet — credential issued via OpenID4VCI pre-authorized code flow.</summary>
-    HaipExternalWallet = 1
+    HaipExternalWallet = 1,
+
+    /// <summary>
+    /// Register-native delivery to an on-platform Sorcha wallet (Feature 106). The engine mints
+    /// an SD-JWT VC bound to the holder wallet's public key, encrypts it via
+    /// <c>EncryptionPipelineService</c> (X25519 wrap + XChaCha20-Poly1305 AEAD), and seals it into
+    /// the issuing action's transaction as a recipient-addressed disclosure. The credential
+    /// peer-replicates through the register sync and is detected by the holder's Wallet Service
+    /// regardless of whether the holder lives on the same node as the issuer.
+    /// </summary>
+    SorchaLocalWallet = 2
 }

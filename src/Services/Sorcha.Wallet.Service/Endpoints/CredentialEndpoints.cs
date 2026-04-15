@@ -233,7 +233,7 @@ public static class CredentialEndpoints
             IssuedAt = request.IssuedAt,
             ExpiresAt = request.ExpiresAt,
             RawToken = request.RawToken,
-            Status = "Active",
+            Status = CredentialStatus.Active,
             IssuanceTxId = request.IssuanceTxId,
             IssuanceBlueprintId = request.IssuanceBlueprintId,
             WalletAddress = walletAddress,
@@ -254,7 +254,16 @@ public static class CredentialEndpoints
         });
     }
 
-    private static readonly HashSet<string> AllowedStatusValues = ["Active", "Suspended", "Revoked", "Consumed"];
+    // Feature 106 note: PendingAcceptance and Declined are NOT valid targets via this legacy
+    // status-update endpoint. Holder accept/decline for register-native credentials uses the
+    // PATCH /api/v1/wallets/{walletAddress}/credentials/{credentialId} endpoint added by Wave C.
+    private static readonly HashSet<CredentialStatus> AllowedClientStatusTargets =
+    [
+        CredentialStatus.Active,
+        CredentialStatus.Suspended,
+        CredentialStatus.Revoked,
+        CredentialStatus.Consumed
+    ];
 
     private static async Task<IResult> UpdateCredentialStatus(
         string walletAddress,
@@ -263,8 +272,11 @@ public static class CredentialEndpoints
         ICredentialStore store,
         CancellationToken cancellationToken = default)
     {
-        if (!AllowedStatusValues.Contains(request.Status))
+        if (!Enum.TryParse<CredentialStatus>(request.Status, ignoreCase: false, out var targetStatus)
+            || !AllowedClientStatusTargets.Contains(targetStatus))
+        {
             return Results.BadRequest(new { error = $"Invalid status value: {request.Status}. Allowed: Active, Suspended, Revoked, Consumed" });
+        }
 
         var credential = await store.GetByIdAsync(credentialId, cancellationToken);
 
@@ -272,16 +284,16 @@ public static class CredentialEndpoints
             return Results.NotFound();
 
         var previousStatus = credential.Status;
-        var updated = await store.UpdateStatusAsync(credentialId, request.Status, cancellationToken);
+        var updated = await store.UpdateStatusAsync(credentialId, targetStatus, cancellationToken);
 
         if (!updated)
-            return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {request.Status}" });
+            return Results.BadRequest(new { error = $"Invalid status transition from {previousStatus} to {targetStatus}" });
 
         return Results.Ok(new
         {
             credentialId,
-            previousStatus,
-            newStatus = request.Status,
+            previousStatus = previousStatus.ToString(),
+            newStatus = targetStatus.ToString(),
             updatedAt = DateTimeOffset.UtcNow
         });
     }
@@ -411,7 +423,7 @@ public static class CredentialEndpoints
             IssuedAt = issuedAt,
             ExpiresAt = expiresAt,
             RawToken = token.RawToken,
-            Status = "Active",
+            Status = CredentialStatus.Active,
             IssuanceBlueprintId = request.IssuanceBlueprintId,
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -437,7 +449,7 @@ public static class CredentialEndpoints
                     IssuedAt = issuedAt,
                     ExpiresAt = expiresAt,
                     RawToken = token.RawToken,
-                    Status = "Active",
+                    Status = CredentialStatus.Active,
                     IssuanceBlueprintId = request.IssuanceBlueprintId,
                     WalletAddress = request.RecipientWallet,
                     CreatedAt = DateTimeOffset.UtcNow,

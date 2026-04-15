@@ -494,7 +494,8 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.Status)
                 .IsRequired()
                 .HasMaxLength(50)
-                .HasDefaultValue("Active");
+                .HasConversion<string>()
+                .HasDefaultValue(CredentialStatus.Active);
 
             entity.Property(e => e.IssuanceTxId)
                 .HasMaxLength(200);

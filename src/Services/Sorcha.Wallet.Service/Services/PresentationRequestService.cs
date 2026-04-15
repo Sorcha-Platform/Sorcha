@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.ServiceClients.Did;
+using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Service.Credentials;
 using Sorcha.Wallet.Service.Models;
@@ -367,13 +368,14 @@ public class PresentationRequestService : IPresentationRequestService
         }
 
         // 5. Status check (active)
-        if (credential.Status != "Active")
+        if (credential.Status != CredentialStatus.Active)
         {
+            var statusName = credential.Status.ToString();
             errors.Add(new VerificationError
             {
                 RequirementType = request.CredentialType,
-                FailureReason = credential.Status,
-                Message = $"Credential has been {credential.Status.ToLowerInvariant()} by issuer"
+                FailureReason = statusName,
+                Message = $"Credential has been {statusName.ToLowerInvariant()} by issuer"
             });
         }
 

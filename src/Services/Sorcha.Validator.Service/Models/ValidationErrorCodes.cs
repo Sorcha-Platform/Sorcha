@@ -26,4 +26,36 @@ public static class ValidationErrorCodes
     /// See also <c>.claude/skills/blueprint-builder/SKILL.md</c> — "Open Participants &amp; Late Binding".
     /// </remarks>
     public const string OpenParticipantPrebound = "VAL_BP_010";
+
+    // ---- Feature 106: Register-native credential delivery ----
+
+    /// <summary>
+    /// Blueprint publish rejected: an action declares
+    /// <c>credentialIssuanceConfig.targetAudience == SorchaLocalWallet</c> but its
+    /// <c>recipientParticipantId</c> does not resolve to a participant declared on
+    /// the blueprint. The publish-time check runs before the blueprint is sealed so
+    /// authors get fast feedback rather than a runtime failure at issuance.
+    /// </summary>
+    /// <remarks>
+    /// Contract: <c>specs/106-register-native-credentials/contracts/credential-issuance-config.md</c>.
+    /// </remarks>
+    public const string SorchaLocalWalletRecipientUnknown = "VAL_BP_CRED_001";
+
+    /// <summary>
+    /// Blueprint publish <b>warning</b> (non-blocking): an action with
+    /// <c>targetAudience == SorchaLocalWallet</c> does not declare an explicit
+    /// recipient disclosure group for the credential payload, so the engine will
+    /// synthesise a default one at mint time. Authors may ignore this warning or
+    /// add an explicit disclosure to silence it.
+    /// </summary>
+    public const string SorchaLocalWalletImplicitDisclosure = "WARN_BP_CRED_002";
+
+    /// <summary>
+    /// Blueprint publish rejected: an action routes from a
+    /// <c>SorchaLocalWallet</c> credential issuance into a next action whose
+    /// <c>RejectionConfig.IsTerminal</c> is not set to <c>true</c>. Accept/decline
+    /// flows require a clean terminal rejection path; non-terminal rejection on
+    /// the accept action produces an ambiguous instance state.
+    /// </summary>
+    public const string SorchaLocalWalletRejectNotTerminal = "VAL_BP_CRED_003";
 }

@@ -79,6 +79,7 @@ internal class TestRecoveryDbContext : WalletDbContext
         modelBuilder.Entity<CredentialEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).HasConversion<string>();
         });
 
         // Feature 083: OrgMasterKey configuration
