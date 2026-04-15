@@ -22,7 +22,7 @@ Set up your account using passkeys or social login.
 
 ### Developers
 Build on the Sorcha platform.
-- **[API Documentation](/openapi)** — Interactive Scalar API explorer
+- **API Documentation** — Interactive Scalar API explorer at `http://localhost/openapi` (when running locally)
 - **[Getting Started](#getting-started)** — Development environment setup
 - **[Guides](#guides)** — Feature-specific integration guides
 - **[Reference](#reference)** — Architecture, status, and specifications
