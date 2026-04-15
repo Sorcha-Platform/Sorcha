@@ -179,6 +179,10 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.ITransac
 // Feature 047: Redis pub/sub → SignalR EventsHub bridge for inbound action notifications (US2)
 builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.EventsHubNotificationBridge>();
 
+// Feature 106 Wave D — cross-node instance mirror reconstructor
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructorMetrics>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.InstanceMirrorReconstructor>();
+
 // Orphan chunk cleanup — removes file metadata records with no confirmed parent transaction
 builder.Services.Configure<Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions>(
     builder.Configuration.GetSection(Sorcha.Blueprint.Service.Models.OrphanChunkCleanupOptions.SectionName));
