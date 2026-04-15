@@ -348,7 +348,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
     /// literal "/credential" key. Some serialisers may emit it as "credential"
     /// after RFC 6901 unescape round-tripping; accept both.
     /// </summary>
-    private static JsonElement? FindCredentialField(JsonElement payload)
+    internal static JsonElement? FindCredentialField(JsonElement payload)
     {
         if (payload.ValueKind != JsonValueKind.Object)
             return null;
@@ -368,7 +368,7 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
         return null;
     }
 
-    private static InboundCredentialExtract? TryParseExtract(JsonElement credential, string txId)
+    internal static InboundCredentialExtract? TryParseExtract(JsonElement credential, string txId)
     {
         var id = credential.TryGetProperty("credentialId", out var idEl) ? idEl.GetString() : null;
         var type = credential.TryGetProperty("credentialType", out var typeEl) ? typeEl.GetString() : null;
