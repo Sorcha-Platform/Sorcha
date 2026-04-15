@@ -588,18 +588,23 @@ public class ActionExecutionService : IActionExecutionService
                 disclosedPayloads[localWalletRecipient] = recipientFields;
             }
 
-            recipientFields["/credential"] = new Dictionary<string, object>
+            // claude-review PR#294: do NOT coerce ExpiresAt to empty string when null.
+            // The detector's TryGetDateTimeOffset fallback on "" gives the right outcome
+            // only by accident; let the serialiser emit null (or omit the key) so the
+            // read path stays deterministic.
+            var credentialDict = new Dictionary<string, object?>
             {
                 ["credentialId"] = localWalletCredential.CredentialId,
                 ["credentialType"] = localWalletCredential.Type,
                 ["issuerDid"] = localWalletCredential.IssuerDid,
                 ["subjectDid"] = localWalletCredential.SubjectDid,
                 ["issuedAt"] = localWalletCredential.IssuedAt,
-                ["expiresAt"] = (object?)localWalletCredential.ExpiresAt ?? string.Empty,
+                ["expiresAt"] = localWalletCredential.ExpiresAt,
                 ["rawToken"] = localWalletCredential.RawToken,
                 ["issuanceBlueprintId"] = instance.BlueprintId,
                 ["issuanceInstanceId"] = instanceId,
             };
+            recipientFields["/credential"] = credentialDict;
         }
 
         // 9c. Check register DevMode — skip encryption for DevMode registers

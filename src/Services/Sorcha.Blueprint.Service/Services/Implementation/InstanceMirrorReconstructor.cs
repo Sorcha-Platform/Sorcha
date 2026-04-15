@@ -200,21 +200,34 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         }
 
         // Probe each candidate — if none are locally registered, skip.
-        var localWallets = new List<string>();
-        foreach (var wallet in candidateWallets)
+        // claude-review PR#294: parallelise with a bounded semaphore so a wide
+        // recipient set doesn't issue N blocking HTTP calls in sequence. The
+        // concurrency cap protects the Wallet Service from thundering-herd on
+        // high-volume dockets.
+        const int MaxConcurrentProbes = 10;
+        using var probeSemaphore = new SemaphoreSlim(MaxConcurrentProbes);
+        var probeTasks = candidateWallets.Select(async wallet =>
         {
+            await probeSemaphore.WaitAsync(ct);
             try
             {
                 var info = await walletClient.GetWalletAsync(wallet, ct);
-                if (info is not null)
-                    localWallets.Add(wallet);
+                return info is not null ? wallet : null;
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex,
                     "InstanceMirrorReconstructor: wallet probe failed for {Wallet}", wallet);
+                return null;
             }
-        }
+            finally
+            {
+                probeSemaphore.Release();
+            }
+        }).ToList();
+
+        var probeResults = await Task.WhenAll(probeTasks);
+        var localWallets = probeResults.Where(w => w is not null).Cast<string>().ToList();
 
         if (localWallets.Count == 0)
         {
@@ -236,6 +249,18 @@ public sealed class InstanceMirrorReconstructor : BackgroundService
         // with the wallet addresses keyed by themselves so GetPendingActionsByWalletAsync
         // can still match them. A richer blueprint-aware reconstruction can be
         // bolted on later without changing the persistence shape.
+        //
+        // ⚠️ TODO(feature-106-follow-up): self-keying breaks role-based routing on
+        // the mirror. Any action dispatch that resolves by participant id instead
+        // of wallet address will fail to find the participant. Two options:
+        //   (a) thread participant ids through TransactionMetaData at write time
+        //       and read them here for a structurally valid mirror, or
+        //   (b) fetch the blueprint on this node and walk its participants to
+        //       reverse-map wallet → participant id when the blueprint has
+        //       pre-bound wallets.
+        // Acceptable for MVP because MyCredentials PENDING tab and the
+        // GetPendingActionsByWalletAsync query both match on wallet address
+        // directly. Tracked as a known gap in specs/106-register-native-credentials.
         var nextAction = tx.MetaData?.NextActionId;
         var mirror = new Instance
         {
