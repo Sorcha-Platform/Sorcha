@@ -29,6 +29,13 @@ public class CredentialCardViewModel
     /// <summary>Whether the credential is awaiting acceptance by the holder.</summary>
     public bool IsPending { get; set; }
 
+    /// <summary>
+    /// Feature 106 — blueprint id of the issuing flow. Populated from the
+    /// Wallet Service credential list response so the MyCredentials PENDING
+    /// tab can deep-link into the originating instance on accept.
+    /// </summary>
+    public string? IssuanceBlueprintId { get; set; }
+
     /// <summary>Name of the blueprint that produced this credential, if applicable.</summary>
     public string? OriginatingBlueprintName { get; set; }
 
