@@ -349,7 +349,7 @@ curl -s http://localhost:$PORT/health | jq
 - Docker Compose Documentation: https://docs.docker.com/compose/
 - .NET Docker Best Practices: https://learn.microsoft.com/dotnet/core/docker/
 - Sorcha Architecture: [docs/architecture.md](../reference/architecture.md)
-- Walkthrough Testing: [walkthroughs/README.md](../walkthroughs/README.md)
+- Walkthrough Testing: [walkthroughs/README.md](../../walkthroughs/README.md)
 
 ---
 

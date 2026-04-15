@@ -351,9 +351,8 @@ After completing this walkthrough:
 
 ### Related Walkthroughs
 
-- [BlueprintStorageBasic](../BlueprintStorageBasic/) - Create and upload blueprints
-- [UserWalletCreation](../UserWalletCreation/) - Create users and wallets
 - [RegisterCreationFlow](../RegisterCreationFlow/) - Work with the distributed ledger
+- [ConstructionPermit](../ConstructionPermit/) - Multi-org workflow with encrypted fields
 
 ---
 

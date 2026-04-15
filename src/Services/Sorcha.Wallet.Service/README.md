@@ -576,7 +576,7 @@ wallet-service:
 - [ ] Confirm private keys are never logged
 - [ ] Set up key rotation policies in your HSM provider
 
-For detailed HSM configuration, see: [Hardware Cryptographic Storage Feature Spec](../../specs/001-hardware-crypto-enclaves/spec.md)
+For detailed HSM configuration, see: [Hardware Cryptographic Storage Feature Spec](../../../specs/001-hardware-crypto-enclaves/spec.md)
 
 ### Access Control
 
@@ -1004,7 +1004,7 @@ JWT Bearer required. The calling wallet must be the owner or hold a delegated ac
 - **Specification**: [.specify/specs/sorcha-wallet-service.md](../../../.specify/specs/sorcha-wallet-service.md)
 - **API Reference**: [Scalar UI](https://localhost:7084/scalar)
 - **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
-- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
+- **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
 - **BIP39 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 - **BIP44 Standard**: [Bitcoin BIPs](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki)
 - **OpenAPI Spec**: `https://localhost:7084/openapi/v1.json`
@@ -1013,7 +1013,7 @@ JWT Bearer required. The calling wallet must be the owner or hold a delegated ac
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
 
 ---
 

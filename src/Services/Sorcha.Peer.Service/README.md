@@ -973,8 +973,8 @@ Enable detailed logging:
 
 ## Resources
 
-- **Architecture**: [docs/architecture.md](../../docs/reference/architecture.md)
-- **Development Status**: [docs/development-status.md](../../docs/reference/development-status.md)
+- **Architecture**: [docs/architecture.md](../../../docs/reference/architecture.md)
+- **Development Status**: [docs/development-status.md](../../../docs/reference/development-status.md)
 - **gRPC Documentation**: https://grpc.io/docs/languages/csharp/
 - **MongoDB .NET Driver**: https://www.mongodb.com/docs/drivers/csharp/
 - **Polly Resilience**: https://www.pollydocs.org/
@@ -1079,7 +1079,7 @@ Enable detailed logging:
 
 ## License
 
-Apache License 2.0 - See [LICENSE](../../LICENSE) for details.
+Apache License 2.0 - See [LICENSE](../../../LICENSE) for details.
 
 ---
 

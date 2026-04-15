@@ -396,6 +396,6 @@ docker-compose up -d
 ## Related Documentation
 
 - [Blueprint Builder Skill](../../.claude/skills/blueprint-builder/)
-- [Verifiable Credentials](../../docs/verifiable-credentials.md)
+- [Verifiable Credentials](../../CLAUDE.md#verifiable-credentials)
 - [SelfBuildHouse Walkthrough](../SelfBuildHouse/) — 6-org, 2-register advanced variant with cross-register VCs
 - [CLAUDE.md](../../CLAUDE.md) — project conventions

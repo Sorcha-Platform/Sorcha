@@ -342,5 +342,5 @@ echo "<access_token>" | jwt decode -
 - [JWT Standard (RFC 7519)](https://tools.ietf.org/html/rfc7519)
 - [OAuth 2.0 (RFC 6749)](https://tools.ietf.org/html/rfc6749)
 - [.NET JWT Bearer Authentication](https://learn.microsoft.com/aspnet/core/security/authentication/)
-- [Sorcha Service Defaults](../src/Common/Sorcha.ServiceDefaults/JwtAuthenticationExtensions.cs)
-- [Tenant Service Token Issuance](../src/Services/Sorcha.Tenant.Service/Services/TokenService.cs)
+- [Sorcha Service Defaults](../../src/Common/Sorcha.ServiceDefaults/JwtAuthenticationExtensions.cs)
+- [Tenant Service Token Issuance](../../src/Services/Sorcha.Tenant.Service/Services/TokenService.cs)

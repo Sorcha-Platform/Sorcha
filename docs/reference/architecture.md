@@ -617,7 +617,6 @@ Provide blockchain consensus and validation in a secured environment with access
 
 **Related Documentation:**
 - [Validator Service Design](validator-service-design.md)
-- [Validator Service Implementation Plan](validator-service-implementation-plan.md)
 - [Validator Service Quick Reference](VALIDATOR-SERVICE-QUICK-REFERENCE.md)
 
 **Architectural Note (Updated 2025-11-16):**

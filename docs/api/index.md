@@ -6,27 +6,22 @@ The Sorcha API is documented with OpenAPI 3.0 and browsable via [Scalar UI](http
 
 When running locally: [http://localhost/openapi](http://localhost/openapi)
 
-## Downloads
+## Per-Service Specs
 
-| Resource | Description |
-|----------|-------------|
-| [Aggregated OpenAPI Spec](./openapi-aggregated.json) | Combined spec for all services |
-| [Postman Collection](./sorcha-postman-collection.json) | Import into Postman for quick testing |
+OpenAPI specs are served live by each service at `/openapi/v1.json`. When running locally via Docker or Aspire:
 
-### Per-Service Specs
-
-| Service | Spec |
-|---------|------|
-| Blueprint | [openapi-blueprint.json](./openapi-blueprint.json) |
-| Tenant | [openapi-tenant.json](./openapi-tenant.json) |
-| Wallet | [openapi-wallet.json](./openapi-wallet.json) |
-| Register | [openapi-register.json](./openapi-register.json) |
-| Peer | [openapi-peer.json](./openapi-peer.json) |
+| Service | Scalar UI | OpenAPI JSON |
+|---------|-----------|-------------|
+| Blueprint | `http://localhost/openapi` | `/api/blueprint/openapi/v1.json` |
+| Tenant | `http://localhost/openapi` | `/api/tenant/openapi/v1.json` |
+| Wallet | `http://localhost/openapi` | `/api/wallet/openapi/v1.json` |
+| Register | `http://localhost/openapi` | `/api/register/openapi/v1.json` |
+| Peer | `http://localhost/openapi` | `/api/peer/openapi/v1.json` |
 
 ## Importing into Postman
 
-1. Download the [Postman Collection](./sorcha-postman-collection.json)
-2. Open Postman → Import → Upload File
+1. Copy the OpenAPI JSON URL for the service you want to explore
+2. Open Postman → Import → Link → Paste the URL
 3. Set the `baseUrl` variable to your gateway URL (default: `http://localhost`)
 4. Use the login endpoint to get an `accessToken`, then set it in the collection variables
 
