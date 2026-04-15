@@ -150,7 +150,7 @@ dotnet user-secrets set "JwtSettings:SigningKey" "$(cat jwt_private.pem)" --proj
 dotnet user-secrets set "ConnectionStrings:Password" "dev_password123" --project src/Services/Sorcha.Tenant.Service
 ```
 
-For detailed secrets management guide, see [specs/001-tenant-auth/secrets-setup.md](../../../specs/001-tenant-auth/secrets-setup.md).
+For detailed secrets management, see the Authentication Setup guide in `docs/guides/AUTHENTICATION-SETUP.md`.
 
 ### 3. Start Dependencies
 
@@ -860,13 +860,9 @@ redis-cli ping  # Should return: PONG
 
 ## Resources
 
-- **Original Specification**: [specs/001-tenant-auth/spec.md](../../../specs/001-tenant-auth/spec.md)
-- **Org Identity Admin Spec (054)**: [specs/054-org-identity-admin/spec.md](../../../specs/054-org-identity-admin/spec.md)
-- **054 Design Document**: [docs/plans/2026-03-08-org-identity-admin-design.md](../../../docs/plans/2026-03-08-org-identity-admin-design.md)
-- **Implementation Plan**: [specs/001-tenant-auth/plan.md](../../../specs/001-tenant-auth/plan.md)
-- **Secrets Setup**: [specs/001-tenant-auth/secrets-setup.md](../../../specs/001-tenant-auth/secrets-setup.md)
-- **Quickstart Guide**: [specs/001-tenant-auth/quickstart.md](../../../specs/001-tenant-auth/quickstart.md)
-- **API Contracts**: [specs/001-tenant-auth/contracts/](../../../specs/001-tenant-auth/contracts/)
+- **Authentication Setup**: [docs/guides/AUTHENTICATION-SETUP.md](../../../docs/guides/AUTHENTICATION-SETUP.md)
+- **Architecture**: [docs/reference/architecture.md](../../../docs/reference/architecture.md)
+- **Development Status**: [docs/reference/development-status.md](../../../docs/reference/development-status.md)
 
 ---
 
