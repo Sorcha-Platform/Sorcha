@@ -79,4 +79,20 @@ public sealed record InboundCredentialExtract
 
     /// <summary>Blueprint instance id, when known.</summary>
     public string? InstanceId { get; init; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Action id of the credential issuance action.
+    /// </summary>
+    public string? ActionId { get; init; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Action id of the holder's claim action, determined by
+    /// the routing result at issuance time.
+    /// </summary>
+    public string? ClaimActionId { get; init; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Register id where the issuance transaction was sealed.
+    /// </summary>
+    public string? RegisterId { get; init; }
 }

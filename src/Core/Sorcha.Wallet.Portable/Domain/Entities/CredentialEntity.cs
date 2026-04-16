@@ -110,6 +110,31 @@ public class CredentialEntity
     public string? IssuanceBlueprintId { get; set; }
 
     /// <summary>
+    /// Feature 106 SC-003: Blueprint instance ID of the issuing flow. Used by the holder
+    /// accept/decline orchestration to execute Action 3 on the correct instance.
+    /// </summary>
+    public string? IssuanceInstanceId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Action ID of the issuance action (e.g. "2").
+    /// </summary>
+    public string? IssuanceActionId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Action ID of the holder's claim action (e.g. "3").
+    /// This is the action the holder executes to accept or reject the credential.
+    /// Determined by the routing result at issuance time.
+    /// </summary>
+    public string? ClaimActionId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003: Register ID where the issuance transaction was sealed.
+    /// Used by the holder accept/decline orchestration to submit the acceptance
+    /// or rejection transaction to the correct register.
+    /// </summary>
+    public string? RegisterId { get; set; }
+
+    /// <summary>
     /// The wallet address this credential is stored under.
     /// </summary>
     public required string WalletAddress { get; set; }
