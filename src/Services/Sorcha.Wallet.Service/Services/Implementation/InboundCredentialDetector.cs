@@ -217,6 +217,10 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
                 Status = CredentialStatus.PendingAcceptance,
                 IssuanceTxId = transactionId,
                 IssuanceBlueprintId = extract.BlueprintId,
+                IssuanceInstanceId = extract.InstanceId,
+                IssuanceActionId = extract.ActionId,
+                ClaimActionId = extract.ClaimActionId,
+                RegisterId = extract.RegisterId,
                 WalletAddress = walletAddress,
                 CreatedAt = DateTimeOffset.UtcNow,
             };
@@ -398,6 +402,9 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
 
         var blueprintId = credential.TryGetProperty("issuanceBlueprintId", out var bpEl) ? bpEl.GetString() : null;
         var instanceId = credential.TryGetProperty("issuanceInstanceId", out var instEl) ? instEl.GetString() : null;
+        var actionId = credential.TryGetProperty("issuanceActionId", out var actEl) ? actEl.GetString() : null;
+        var claimActionId = credential.TryGetProperty("claimActionId", out var claimEl) ? claimEl.GetString() : null;
+        var credRegisterId = credential.TryGetProperty("registerId", out var regEl) ? regEl.GetString() : null;
 
         // Persist the full credential JSON as ClaimsJson so the holder UI can render it.
         // The writer doesn't currently seal a pre-extracted claims bag — rawToken is the
@@ -416,6 +423,9 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
             TransactionId = txId,
             BlueprintId = blueprintId,
             InstanceId = instanceId,
+            ActionId = actionId,
+            ClaimActionId = claimActionId,
+            RegisterId = credRegisterId,
         };
     }
 

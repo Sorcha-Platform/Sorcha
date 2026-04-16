@@ -297,6 +297,10 @@ public class CredentialApiService : ICredentialApiService
             IssuedAt = item.IssuedAt,
             ExpiresAt = item.ExpiresAt,
             IssuanceBlueprintId = item.IssuanceBlueprintId,
+            IssuanceInstanceId = item.IssuanceInstanceId,
+            IssuanceActionId = item.IssuanceActionId,
+            ClaimActionId = item.ClaimActionId,
+            RegisterId = item.RegisterId,
             // Feature 106 — rows with the new PendingAcceptance status flow into
             // the MyCredentials PENDING tab via CredentialCardViewModel.IsPending.
             IsPending = string.Equals(item.Status, CredentialStatus.PendingAcceptance, StringComparison.Ordinal),
@@ -394,6 +398,12 @@ public class CredentialApiService : ICredentialApiService
         // the holder accept/decline orchestration.
         public string? IssuanceBlueprintId { get; set; }
         public string? IssuanceTxId { get; set; }
+
+        // Feature 106 SC-003 — metadata for Action 3 execute on accept/decline.
+        public string? IssuanceInstanceId { get; set; }
+        public string? IssuanceActionId { get; set; }
+        public string? ClaimActionId { get; set; }
+        public string? RegisterId { get; set; }
     }
 
     private class CredentialDetailResponse

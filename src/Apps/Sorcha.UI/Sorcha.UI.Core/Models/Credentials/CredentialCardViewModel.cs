@@ -36,6 +36,28 @@ public class CredentialCardViewModel
     /// </summary>
     public string? IssuanceBlueprintId { get; set; }
 
+    /// <summary>
+    /// Feature 106 SC-003 — instance id of the issuing flow. Used by accept/decline
+    /// to execute Action 3 on the correct blueprint instance.
+    /// </summary>
+    public string? IssuanceInstanceId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003 — action id of the issuance action.
+    /// </summary>
+    public string? IssuanceActionId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003 — action id of the holder's claim action (e.g. "3").
+    /// This is the action the holder executes to accept or reject the credential.
+    /// </summary>
+    public string? ClaimActionId { get; set; }
+
+    /// <summary>
+    /// Feature 106 SC-003 — register id where the issuance transaction was sealed.
+    /// </summary>
+    public string? RegisterId { get; set; }
+
     /// <summary>Name of the blueprint that produced this credential, if applicable.</summary>
     public string? OriginatingBlueprintName { get; set; }
 

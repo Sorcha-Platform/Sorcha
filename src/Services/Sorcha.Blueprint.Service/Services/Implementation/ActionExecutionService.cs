@@ -603,6 +603,9 @@ public class ActionExecutionService : IActionExecutionService
                 ["rawToken"] = localWalletCredential.RawToken,
                 ["issuanceBlueprintId"] = instance.BlueprintId,
                 ["issuanceInstanceId"] = instanceId,
+                ["issuanceActionId"] = actionId.ToString(),
+                ["claimActionId"] = routingResult.NextActions.FirstOrDefault()?.ActionId.ToString(),
+                ["registerId"] = instance.RegisterId,
             };
             recipientFields["/credential"] = credentialDict;
         }

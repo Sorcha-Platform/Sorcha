@@ -196,6 +196,10 @@ public static class CredentialEndpoints
             c.Status,
             c.IssuanceBlueprintId,
             c.IssuanceTxId,
+            c.IssuanceInstanceId,
+            c.IssuanceActionId,
+            c.ClaimActionId,
+            c.RegisterId,
         });
 
         return Results.Ok(response);

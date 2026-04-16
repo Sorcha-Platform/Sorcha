@@ -57,7 +57,10 @@ public class InboundCredentialDetectorShapeTests
         "expiresAt": "2027-04-15T10:30:00+00:00",
         "rawToken": "eyJhbGciOiJFZERTQSJ9.test.token",
         "issuanceBlueprintId": "haip-verified-citizen-v2-1.0.0",
-        "issuanceInstanceId": "instance-9a9f4c9f-round-trip"
+        "issuanceInstanceId": "instance-9a9f4c9f-round-trip",
+        "issuanceActionId": "2",
+        "claimActionId": "3",
+        "registerId": "af7b1040-register-round-trip"
       }
     }
     """;
@@ -92,6 +95,9 @@ public class InboundCredentialDetectorShapeTests
         extract.TransactionId.Should().Be("tx-round-trip");
         extract.BlueprintId.Should().Be("haip-verified-citizen-v2-1.0.0");
         extract.InstanceId.Should().Be("instance-9a9f4c9f-round-trip");
+        extract.ActionId.Should().Be("2");
+        extract.ClaimActionId.Should().Be("3");
+        extract.RegisterId.Should().Be("af7b1040-register-round-trip");
     }
 
     [Fact]
@@ -172,5 +178,8 @@ public class InboundCredentialDetectorShapeTests
         extract!.ExpiresAt.Should().BeNull();
         extract.BlueprintId.Should().BeNull();
         extract.InstanceId.Should().BeNull();
+        extract.ActionId.Should().BeNull();
+        extract.ClaimActionId.Should().BeNull();
+        extract.RegisterId.Should().BeNull();
     }
 }

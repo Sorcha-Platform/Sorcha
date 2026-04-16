@@ -503,6 +503,18 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.IssuanceBlueprintId)
                 .HasMaxLength(200);
 
+            entity.Property(e => e.IssuanceInstanceId)
+                .HasMaxLength(200);
+
+            entity.Property(e => e.IssuanceActionId)
+                .HasMaxLength(50);
+
+            entity.Property(e => e.ClaimActionId)
+                .HasMaxLength(50);
+
+            entity.Property(e => e.RegisterId)
+                .HasMaxLength(200);
+
             entity.Property(e => e.WalletAddress)
                 .IsRequired()
                 .HasMaxLength(200);
