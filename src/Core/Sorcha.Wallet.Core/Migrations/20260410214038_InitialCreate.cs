@@ -30,6 +30,7 @@ namespace Sorcha.Wallet.Core.Migrations
                     RawToken = table.Column<string>(type: "text", nullable: false),
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false, defaultValue: "Active"),
                     IssuanceTxId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    IssuerOrgName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     IssuanceBlueprintId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     IssuanceInstanceId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     IssuanceActionId = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),

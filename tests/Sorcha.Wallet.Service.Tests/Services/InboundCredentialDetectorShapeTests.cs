@@ -52,6 +52,7 @@ public class InboundCredentialDetectorShapeTests
         "credentialId": "urn:uuid:feature-106-round-trip-test-1",
         "credentialType": "VerifiedCitizenCredential",
         "issuerDid": "did:sorcha:org:ws11qgovernment",
+        "issuerOrgName": "Government Identity Authority",
         "subjectDid": "did:sorcha:wallet:ws11qcitizen",
         "issuedAt": "2026-04-15T10:30:00+00:00",
         "expiresAt": "2027-04-15T10:30:00+00:00",
@@ -89,6 +90,7 @@ public class InboundCredentialDetectorShapeTests
         extract!.CredentialId.Should().Be("urn:uuid:feature-106-round-trip-test-1");
         extract.CredentialType.Should().Be("VerifiedCitizenCredential");
         extract.IssuerDid.Should().Be("did:sorcha:org:ws11qgovernment");
+        extract.IssuerOrgName.Should().Be("Government Identity Authority");
         extract.RawToken.Should().Be("eyJhbGciOiJFZERTQSJ9.test.token");
         extract.IssuedAt.Should().Be(new DateTimeOffset(2026, 4, 15, 10, 30, 0, TimeSpan.Zero));
         extract.ExpiresAt.Should().Be(new DateTimeOffset(2027, 4, 15, 10, 30, 0, TimeSpan.Zero));
@@ -176,6 +178,7 @@ public class InboundCredentialDetectorShapeTests
 
         extract.Should().NotBeNull();
         extract!.ExpiresAt.Should().BeNull();
+        extract.IssuerOrgName.Should().BeNull();
         extract.BlueprintId.Should().BeNull();
         extract.InstanceId.Should().BeNull();
         extract.ActionId.Should().BeNull();

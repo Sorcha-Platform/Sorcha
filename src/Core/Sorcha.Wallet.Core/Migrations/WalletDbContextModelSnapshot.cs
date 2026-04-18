@@ -45,6 +45,10 @@ namespace Sorcha.Wallet.Core.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("IssuerOrgName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("IssuanceBlueprintId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");

@@ -500,6 +500,9 @@ public class WalletDbContext : DbContext
             entity.Property(e => e.IssuanceTxId)
                 .HasMaxLength(200);
 
+            entity.Property(e => e.IssuerOrgName)
+                .HasMaxLength(200);
+
             entity.Property(e => e.IssuanceBlueprintId)
                 .HasMaxLength(200);
 

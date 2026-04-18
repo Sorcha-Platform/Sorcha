@@ -291,7 +291,8 @@ public class CredentialApiService : ICredentialApiService
             CredentialId = item.Id ?? string.Empty,
             Type = item.Type ?? string.Empty,
             IssuerDid = item.IssuerDid ?? string.Empty,
-            IssuerName = ExtractIssuerName(item.IssuerDid),
+            IssuerName = item.IssuerOrgName ?? ExtractIssuerName(item.IssuerDid),
+            IssuerOrgName = item.IssuerOrgName,
             SubjectDid = item.SubjectDid ?? string.Empty,
             Status = item.Status ?? CredentialStatus.Active,
             IssuedAt = item.IssuedAt,
@@ -393,6 +394,9 @@ public class CredentialApiService : ICredentialApiService
         public DateTimeOffset IssuedAt { get; set; }
         public DateTimeOffset? ExpiresAt { get; set; }
         public string? Status { get; set; }
+
+        // Issuer identity
+        public string? IssuerOrgName { get; set; }
 
         // Feature 106 — deep-link fields for MyCredentials PENDING tab and
         // the holder accept/decline orchestration.

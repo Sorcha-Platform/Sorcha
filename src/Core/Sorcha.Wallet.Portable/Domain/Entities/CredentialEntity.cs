@@ -107,6 +107,13 @@ public class CredentialEntity
     /// <summary>
     /// Blueprint ID of the blueprint flow that issued this credential.
     /// </summary>
+    /// <summary>
+    /// Human-readable name of the issuing organisation (e.g. "Government Identity Authority").
+    /// Captured from the issuer's JWT org_name claim at mint time and sealed into the
+    /// register disclosure so holders see the org name without a cross-node lookup.
+    /// </summary>
+    public string? IssuerOrgName { get; set; }
+
     public string? IssuanceBlueprintId { get; set; }
 
     /// <summary>

@@ -161,6 +161,7 @@ public interface IWalletServiceClient
         int? statusListIndex = null,
         string? statusListPurpose = null,
         bool skipRecipientStore = false,
+        string? issuerOrgName = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
