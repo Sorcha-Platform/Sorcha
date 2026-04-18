@@ -493,11 +493,13 @@ public class ActionExecutionService : IActionExecutionService
             }
         }
 
-        // 8c. Feature 106 — mint a register-native credential for SorchaLocalWallet
-        //     target audience BEFORE routing and disclosure. The freshly minted credential
-        //     is sealed into the recipient-addressed disclosure group at step 9b so it
-        //     rides the existing encryption pipeline and peer-replicates to the holder's
-        //     Wallet Service (which extracts it via Wave B inbound credential detection).
+        // 8c. Feature 106 — mint a register-native credential for on-platform wallets
+        //     (SorchaLocalWallet or deprecated SorchaInternal) BEFORE routing and disclosure.
+        //     The freshly minted credential is sealed into the recipient-addressed disclosure
+        //     group at step 9b so it rides the existing encryption pipeline and peer-replicates
+        //     to the holder's Wallet Service (which extracts it via Wave B inbound credential
+        //     detection). This is the ONLY delivery path for on-platform credentials — direct
+        //     wallet writes are never used because they break on multi-node deployments.
         //
         //     Runtime error codes:
         //       VAL_RUNTIME_CRED_001 — recipient wallet not resolvable (late-binding not yet run)
@@ -508,7 +510,8 @@ public class ActionExecutionService : IActionExecutionService
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
         if (actionDef.CredentialIssuanceConfig != null
-            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.SorchaLocalWallet)
+            && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
+                or TargetAudience.SorchaInternal)
         {
             var recipientId = actionDef.CredentialIssuanceConfig.RecipientParticipantId;
             if (string.IsNullOrWhiteSpace(recipientId)
@@ -791,19 +794,10 @@ public class ActionExecutionService : IActionExecutionService
         // 9d. Issue internal Sorcha credential if configured (non-HAIP path).
         //     The HAIP path has already run at step 8b (moved before routing in
         //     Feature 104 wave 14b so Route.OutputMapping can carry offer data
-        //     forward to a claim action). The SorchaLocalWallet path has already run
-        //     at step 8c (Feature 106) so the credential could be sealed into a
-        //     recipient-addressed disclosure. The internal SorchaInternal path
-        //     remains here because it builds a register transaction from the merged
-        //     state alongside the legacy direct-write behaviour.
+        //     forward to a claim action). Step 8c now handles both SorchaLocalWallet
+        //     AND the deprecated SorchaInternal — all on-platform credentials go
+        //     through the register disclosure path for multi-node correctness.
         CredentialIssuanceResult? issuedCredential = localWalletCredential;
-        if (actionDef.CredentialIssuanceConfig != null
-            && actionDef.CredentialIssuanceConfig.TargetAudience == TargetAudience.SorchaInternal)
-        {
-            // Internal Sorcha issuance path (existing behaviour)
-            issuedCredential = await IssueCredentialFromActionAsync(
-                actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
-        }
 
         // 10. Build transaction
         BuiltTransaction transaction;

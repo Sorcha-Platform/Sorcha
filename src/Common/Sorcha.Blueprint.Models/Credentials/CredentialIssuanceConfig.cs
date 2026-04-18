@@ -98,7 +98,13 @@ public class CredentialIssuanceConfig
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TargetAudience
 {
-    /// <summary>Internal Sorcha participant — credential written to Sorcha wallet.</summary>
+    /// <summary>
+    /// Deprecated: maps to <see cref="SorchaLocalWallet"/> at runtime. Originally wrote
+    /// the credential directly to the recipient's wallet on the same node, bypassing the
+    /// register — which breaks on multi-node deployments. Use <see cref="SorchaLocalWallet"/>
+    /// for all on-platform credential delivery.
+    /// </summary>
+    [Obsolete("Use SorchaLocalWallet instead. SorchaInternal bypasses the register and breaks on multi-node.")]
     SorchaInternal = 0,
 
     /// <summary>External HAIP wallet — credential issued via OpenID4VCI pre-authorized code flow.</summary>
