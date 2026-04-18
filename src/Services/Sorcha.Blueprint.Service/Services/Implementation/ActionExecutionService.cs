@@ -1821,6 +1821,7 @@ public class ActionExecutionService : IActionExecutionService
                 statusListUrl: preAllocatedStatusListUrl,
                 statusListIndex: preAllocatedStatusListIndex,
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
+                skipRecipientStore: config.TargetAudience == TargetAudience.SorchaLocalWallet,
                 cancellationToken: cancellationToken);
 
             return result;
