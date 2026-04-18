@@ -610,8 +610,11 @@ public static class CredentialEndpoints
         };
         await store.StoreAsync(issuerEntity, cancellationToken);
 
-        // 7. Store copy in recipient's wallet (if different and exists)
-        if (!string.Equals(walletAddress, request.RecipientWallet, StringComparison.OrdinalIgnoreCase))
+        // 7. Store copy in recipient's wallet (if different and exists).
+        //    Feature 106: Skip for SorchaLocalWallet — the credential arrives via the
+        //    register disclosure and InboundCredentialDetector as PendingAcceptance.
+        if (!request.SkipRecipientStore
+            && !string.Equals(walletAddress, request.RecipientWallet, StringComparison.OrdinalIgnoreCase))
         {
             var recipientWallet = await walletRepository.GetByAddressAsync(
                 request.RecipientWallet, cancellationToken: cancellationToken);
@@ -713,6 +716,14 @@ public class IssueCredentialRequest
     /// are provided and this field is left null.
     /// </summary>
     public string? StatusListPurpose { get; init; }
+
+    /// <summary>
+    /// Feature 106: When true, the credential is stored only in the issuer's wallet — not
+    /// in the recipient's. Used for SorchaLocalWallet delivery where the credential should
+    /// arrive via the register disclosure (InboundCredentialDetector) as PendingAcceptance,
+    /// not be pre-stored as Active on the same node.
+    /// </summary>
+    public bool SkipRecipientStore { get; init; }
 }
 
 /// <summary>
