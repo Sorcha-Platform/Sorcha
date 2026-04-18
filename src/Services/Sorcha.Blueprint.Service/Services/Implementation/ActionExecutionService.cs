@@ -509,6 +509,7 @@ public class ActionExecutionService : IActionExecutionService
         //     Contract: specs/106-register-native-credentials/contracts/credential-issuance-config.md
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
+        var issuerOrgName = caller?.FindFirst("org_name")?.Value;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)
@@ -527,7 +528,7 @@ public class ActionExecutionService : IActionExecutionService
             try
             {
                 localWalletCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, cancellationToken);
+                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, cancellationToken);
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
@@ -604,6 +605,7 @@ public class ActionExecutionService : IActionExecutionService
                 ["issuedAt"] = localWalletCredential.IssuedAt,
                 ["expiresAt"] = localWalletCredential.ExpiresAt,
                 ["rawToken"] = localWalletCredential.RawToken,
+                ["issuerOrgName"] = issuerOrgName,
                 ["issuanceBlueprintId"] = instance.BlueprintId,
                 ["issuanceInstanceId"] = instanceId,
                 ["issuanceActionId"] = actionId.ToString(),
@@ -1708,6 +1710,7 @@ public class ActionExecutionService : IActionExecutionService
         Dictionary<string, object> mergedData,
         string senderWallet,
         Instance instance,
+        string? issuerOrgName,
         CancellationToken cancellationToken)
     {
         var config = actionDef.CredentialIssuanceConfig!;
@@ -1815,7 +1818,8 @@ public class ActionExecutionService : IActionExecutionService
                 statusListUrl: preAllocatedStatusListUrl,
                 statusListIndex: preAllocatedStatusListIndex,
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
-                skipRecipientStore: config.TargetAudience == TargetAudience.SorchaLocalWallet,
+                skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
+                issuerOrgName: issuerOrgName,
                 cancellationToken: cancellationToken);
 
             return result;

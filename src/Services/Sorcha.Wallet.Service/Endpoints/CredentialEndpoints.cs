@@ -194,6 +194,7 @@ public static class CredentialEndpoints
             c.IssuedAt,
             c.ExpiresAt,
             c.Status,
+            c.IssuerOrgName,
             c.IssuanceBlueprintId,
             c.IssuanceTxId,
             c.IssuanceInstanceId,
@@ -603,6 +604,7 @@ public static class CredentialEndpoints
             RawToken = token.RawToken,
             Status = CredentialStatus.Active,
             IssuanceBlueprintId = request.IssuanceBlueprintId,
+            IssuerOrgName = request.IssuerOrgName,
             WalletAddress = walletAddress,
             CreatedAt = DateTimeOffset.UtcNow,
             StatusListUrl = request.StatusListUrl,
@@ -724,6 +726,12 @@ public class IssueCredentialRequest
     /// not be pre-stored as Active on the same node.
     /// </summary>
     public bool SkipRecipientStore { get; init; }
+
+    /// <summary>
+    /// Human-readable name of the issuing organisation. Captured from the issuer's
+    /// JWT org_name claim at action execution time.
+    /// </summary>
+    public string? IssuerOrgName { get; init; }
 }
 
 /// <summary>

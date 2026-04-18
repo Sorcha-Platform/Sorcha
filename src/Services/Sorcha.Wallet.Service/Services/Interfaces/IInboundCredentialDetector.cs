@@ -55,6 +55,9 @@ public sealed record InboundCredentialExtract
     /// <summary>Raw SD-JWT VC token as extracted from the disclosure.</summary>
     public required string RawToken { get; init; }
 
+    /// <summary>Human-readable name of the issuing organisation.</summary>
+    public string? IssuerOrgName { get; init; }
+
     /// <summary>Serialised JSON of the credential claims.</summary>
     public required string ClaimsJson { get; init; }
 
