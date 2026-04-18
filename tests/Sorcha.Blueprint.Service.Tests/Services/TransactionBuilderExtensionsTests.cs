@@ -201,4 +201,41 @@ public class TransactionBuilderExtensionsTests
         result.ActionId.Should().BeEmpty();
         result.Metadata!["instanceId"].Should().BeEmpty();
     }
+
+    [Fact]
+    public void ToTransactionSubmission_WithRecipientsWallets_MapsToSubmission()
+    {
+        var tx = CreateTestTransaction();
+        tx.RecipientsWallets = ["ws11qalice", "ws11qbob"];
+        var signResult = CreateTestSignResult();
+
+        var result = tx.ToTransactionSubmission(signResult);
+
+        result.RecipientsWallets.Should().NotBeNull();
+        result.RecipientsWallets.Should().BeEquivalentTo(["ws11qalice", "ws11qbob"]);
+    }
+
+    [Fact]
+    public void ToTransactionSubmission_WithEmptyRecipientsWallets_MapsToNull()
+    {
+        var tx = CreateTestTransaction();
+        tx.RecipientsWallets = [];
+        var signResult = CreateTestSignResult();
+
+        var result = tx.ToTransactionSubmission(signResult);
+
+        result.RecipientsWallets.Should().BeNull();
+    }
+
+    [Fact]
+    public void ToTransactionSubmission_DefaultRecipientsWallets_MapsToNull()
+    {
+        var tx = CreateTestTransaction();
+        // RecipientsWallets defaults to empty list
+        var signResult = CreateTestSignResult();
+
+        var result = tx.ToTransactionSubmission(signResult);
+
+        result.RecipientsWallets.Should().BeNull();
+    }
 }

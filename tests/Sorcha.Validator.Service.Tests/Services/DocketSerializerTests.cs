@@ -170,6 +170,50 @@ public class DocketSerializerTests
         model.Transactions[1].TxId.Should().Be("tx-2");
     }
 
+    [Fact]
+    public void ToRegisterModel_MapsRecipientsWallets()
+    {
+        // Arrange
+        var docket = CreateValidDocket();
+        var tx = CreateTransaction("tx-with-recipients");
+        tx = new Transaction
+        {
+            TransactionId = tx.TransactionId,
+            RegisterId = tx.RegisterId,
+            BlueprintId = tx.BlueprintId,
+            ActionId = tx.ActionId,
+            Payload = tx.Payload,
+            PayloadHash = tx.PayloadHash,
+            CreatedAt = tx.CreatedAt,
+            Signatures = tx.Signatures,
+            Metadata = tx.Metadata,
+            RecipientsWallets = ["ws11qalice", "ws11qbob"]
+        };
+        docket.Transactions.Add(tx);
+
+        // Act
+        var model = DocketSerializer.ToRegisterModel(docket);
+
+        // Assert
+        model.Transactions.Should().HaveCount(1);
+        model.Transactions[0].RecipientsWallets.Should().BeEquivalentTo(["ws11qalice", "ws11qbob"]);
+    }
+
+    [Fact]
+    public void ToRegisterModel_NullRecipientsWallets_MapsToEmptyList()
+    {
+        // Arrange — CreateTransaction does not set RecipientsWallets (defaults to null)
+        var docket = CreateDocketWithTransactions();
+
+        // Act
+        var model = DocketSerializer.ToRegisterModel(docket);
+
+        // Assert
+        model.Transactions.Should().HaveCount(2);
+        model.Transactions[0].RecipientsWallets.Should().BeEmpty();
+        model.Transactions[1].RecipientsWallets.Should().BeEmpty();
+    }
+
     #endregion
 
     #region Round Trip Tests

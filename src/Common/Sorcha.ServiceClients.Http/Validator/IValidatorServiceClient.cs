@@ -54,6 +54,12 @@ public record TransactionSubmission
     /// Must equal sender's last sequence number + 1 on the target register.
     /// </summary>
     public long SequenceNumber { get; init; }
+
+    /// <summary>
+    /// Recipient wallet addresses. Populated from disclosure group recipients so the
+    /// Register Service can route docket-sealed transactions to recipient Wallet Services.
+    /// </summary>
+    public List<string>? RecipientsWallets { get; init; }
 }
 
 /// <summary>

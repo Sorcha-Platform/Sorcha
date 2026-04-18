@@ -77,7 +77,8 @@ public static class ValidationEndpoints
                 SequenceNumber = (ulong)request.SequenceNumber,
                 PreviousTransactionId = request.PreviousTransactionId,
                 Priority = request.Priority,
-                Metadata = request.Metadata ?? new Dictionary<string, string>()
+                Metadata = request.Metadata ?? new Dictionary<string, string>(),
+                RecipientsWallets = request.RecipientsWallets
             };
 
             // Participant transactions have no blueprint/action context — use a sentinel
@@ -224,6 +225,13 @@ public record ValidateTransactionRequest
     /// Must equal sender's last sequence number + 1 on the target register.
     /// </summary>
     public long SequenceNumber { get; init; }
+
+    /// <summary>
+    /// Recipient wallet addresses extracted from disclosure groups at transaction
+    /// build time. Passed through to the Register Service so docket-sealed
+    /// transactions can be routed to recipient Wallet Services.
+    /// </summary>
+    public List<string>? RecipientsWallets { get; init; }
 }
 
 /// <summary>
