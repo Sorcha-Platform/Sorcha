@@ -4,6 +4,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Extensions;
 using Sorcha.UI.Core.Models.Common;
 using Sorcha.UI.Core.Models.Workflows;
 
@@ -39,7 +40,7 @@ public class WorkflowService : IWorkflowService
                 return new PaginatedList<WorkflowInstanceViewModel>();
             }
 
-            var result = await response.Content.ReadFromJsonAsync<PaginatedList<WorkflowInstanceViewModel>>(cancellationToken: cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<PaginatedList<WorkflowInstanceViewModel>>(JsonDefaults.Api, cancellationToken: cancellationToken);
             return result ?? new PaginatedList<WorkflowInstanceViewModel>();
         }
         catch (Exception ex)
@@ -77,7 +78,7 @@ public class WorkflowService : IWorkflowService
                 return [];
             }
 
-            var result = await response.Content.ReadFromJsonAsync<PendingActionsResponse>(cancellationToken: cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<PendingActionsResponse>(JsonDefaults.Api, cancellationToken: cancellationToken);
             if (result?.Items is null || result.Items.Count == 0) return [];
 
             return result.Items.Select(s => new PendingActionViewModel
@@ -161,7 +162,7 @@ public class WorkflowService : IWorkflowService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<WorkflowInstanceViewModel>(cancellationToken: cancellationToken);
+            return await response.Content.ReadFromJsonAsync<WorkflowInstanceViewModel>(JsonDefaults.Api, cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {
@@ -232,7 +233,7 @@ public class WorkflowService : IWorkflowService
                 };
             }
 
-            return await response.Content.ReadFromJsonAsync<ActionSubmissionResultViewModel>(cancellationToken: cancellationToken);
+            return await response.Content.ReadFromJsonAsync<ActionSubmissionResultViewModel>(JsonDefaults.Api, cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {
