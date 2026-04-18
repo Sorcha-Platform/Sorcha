@@ -2907,7 +2907,19 @@ public class PublishService(
         {
             var issuance = action.CredentialIssuanceConfig;
             if (issuance is null) continue;
-            if (issuance.TargetAudience != Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaLocalWallet)
+
+            // SorchaInternal is deprecated — warn blueprint authors to migrate
+            if (issuance.TargetAudience == Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaInternal)
+            {
+                warnings.Add(
+                    $"[WARN_BP_CRED_DEPRECATED] Action {action.Id} ('{action.Title}'): " +
+                    $"targetAudience 'SorchaInternal' is deprecated and will be removed in a future release. " +
+                    $"Use 'SorchaLocalWallet' instead. SorchaInternal is treated as SorchaLocalWallet at runtime.");
+            }
+
+            // Apply SorchaLocalWallet validation to both SorchaLocalWallet and deprecated SorchaInternal
+            if (issuance.TargetAudience is not (Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaLocalWallet
+                or Sorcha.Blueprint.Models.Credentials.TargetAudience.SorchaInternal))
                 continue;
 
             // VAL_BP_CRED_001 — recipientParticipantId must resolve
