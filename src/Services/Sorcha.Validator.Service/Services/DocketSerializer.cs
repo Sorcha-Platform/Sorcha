@@ -103,6 +103,7 @@ public static class DocketSerializer
                             PayloadSize = (ulong)(tx.PayloadJson?.Length ?? 0),
                             ContentEncoding = "base64url"
                         }],
+                    RecipientsWallets = tx.RecipientsWallets ?? [],
                     MetaData = new Sorcha.Register.Models.TransactionMetaData
                     {
                         RegisterId = tx.RegisterId,

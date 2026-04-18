@@ -100,6 +100,14 @@ public class Transaction
     /// </summary>
     public string? PreviousTransactionId { get; init; }
 
+    // Recipients
+    /// <summary>
+    /// Wallet addresses of transaction recipients. Extracted from disclosure group
+    /// wrappedKeys at transaction build time. Used by the Register Service to route
+    /// docket-sealed transactions to recipient Wallet Services for inbound detection.
+    /// </summary>
+    public List<string>? RecipientsWallets { get; init; }
+
     // Metadata
     /// <summary>
     /// Extensible key-value metadata

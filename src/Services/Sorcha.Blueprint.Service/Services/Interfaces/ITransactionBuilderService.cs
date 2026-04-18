@@ -186,13 +186,22 @@ public static class TransactionBuilderServiceExtensions
         // with deterministic options. The Validator re-canonicalizes with the same options to verify.
         var payloadHash = txId;
 
+        // Extract recipient wallet addresses from the disclosed payloads dictionary.
+        // In dev-mode (plaintext), the dictionary keys are the wallet addresses
+        // that each payload is disclosed to.
+        var recipients = disclosedPayloads.Keys
+            .Where(w => !string.IsNullOrEmpty(w))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         return Task.FromResult(new BuiltTransaction
         {
             TransactionData = transactionData,
             TxId = txId,
             PayloadHash = payloadHash,
             RegisterId = instance.RegisterId,
-            Metadata = metadata
+            Metadata = metadata,
+            RecipientsWallets = recipients
         });
     }
 
@@ -264,13 +273,25 @@ public static class TransactionBuilderServiceExtensions
         // with deterministic options. The Validator re-canonicalizes with the same options to verify.
         var payloadHash = txId;
 
+        // Extract recipient wallet addresses from the encrypted disclosure groups.
+        // Each wrappedKey entry is a wallet that can decrypt the group — these are
+        // the transaction's recipients and must be set so the Register Service's
+        // InboundTransactionRouter can notify their Wallet Services on docket seal.
+        var recipients = encryptedGroups
+            .SelectMany(g => g.WrappedKeys)
+            .Select(wk => wk.WalletAddress)
+            .Where(w => !string.IsNullOrEmpty(w))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         return Task.FromResult(new BuiltTransaction
         {
             TransactionData = transactionData,
             TxId = txId,
             PayloadHash = payloadHash,
             RegisterId = instance.RegisterId,
-            Metadata = metadata
+            Metadata = metadata,
+            RecipientsWallets = recipients
         });
     }
 
@@ -371,6 +392,13 @@ public class BuiltTransaction
     public string SenderWallet { get; set; } = string.Empty;
 
     /// <summary>
+    /// Recipient wallet addresses extracted from disclosure groups. Used by the
+    /// Register Service's InboundTransactionRouter to notify recipient Wallet
+    /// Services when the transaction is sealed in a docket.
+    /// </summary>
+    public List<string> RecipientsWallets { get; set; } = [];
+
+    /// <summary>
     /// The signature (populated after signing)
     /// </summary>
     public byte[]? Signature { get; set; }
@@ -412,6 +440,7 @@ public class BuiltTransaction
             CreatedAt = DateTimeOffset.UtcNow,
             PreviousTransactionId = Metadata.GetValueOrDefault("previousTxId")?.ToString(),
             SequenceNumber = sequenceNumber,
+            RecipientsWallets = RecipientsWallets.Count > 0 ? RecipientsWallets : null,
             Metadata = new Dictionary<string, string>
             {
                 ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
