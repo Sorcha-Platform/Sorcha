@@ -1,0 +1,221 @@
+{
+  "id": "assured-person-v1",
+  "title": "Assured Person",
+  "description": "A citizen submits an identity application using core primitives (PersonName, DateOfBirth, EmailAddress, PostalAddress). A government assessor reviews and issues an AssuredPersonCredential delivered directly to the citizen's Sorcha wallet via register-native delivery (SorchaLocalWallet). The credential appears in the citizen's My Credentials PENDING tab — no QR code, no external wallet, no OpenID4VCI round-trip. Feature 106 register-native credential delivery.",
+  "version": 1,
+  "category": "identity",
+  "tags": ["identity", "assured-person", "sorcha-local-wallet", "register-native", "verifiable-credential", "citizen-application", "core-primitives", "feature-106"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "assured-person",
+    "title": "Assured Person",
+    "description": "Citizen submits identity details, government assessor reviews and issues an AssuredPersonCredential delivered directly to the citizen's Sorcha wallet via the register. The citizen accepts or declines from their My Credentials page.",
+    "version": 1,
+    "metadata": {
+      "category": "Identity & Credentials",
+      "complexity": "Simple",
+      "actions": "3",
+      "features": "SorchaLocalWallet, Register-Native Delivery, Verifiable Credential, Core Primitives",
+      "sector": "Government"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Citizen",
+        "organisation": "Public",
+        "description": "Submits an identity application. The issued credential is delivered directly to their Sorcha wallet — no external wallet or QR code needed."
+      },
+      {
+        "id": "government-assessor",
+        "name": "Government Assessor",
+        "organisation": "Government Identity Authority",
+        "description": "Reviews citizen identity applications and issues AssuredPersonCredential on approval"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Identity Application",
+        "description": "Submit your personal details for verification. After review, the Assured Person credential will be delivered directly to your Sorcha wallet.",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Submit your personal details so a government assessor can verify your identity. After approval, the credential will appear in your My Credentials page for you to accept.",
+            "x-pages": [
+              {
+                "title": "Your Name",
+                "description": "Your full legal name as it appears on official documents.",
+                "x-sections": [
+                  { "fields": ["name"] }
+                ]
+              },
+              {
+                "title": "Date of Birth",
+                "description": "Your date of birth.",
+                "x-sections": [
+                  { "fields": ["dob"] }
+                ]
+              },
+              {
+                "title": "Contact",
+                "description": "We'll only use your email for correspondence about this application.",
+                "x-sections": [
+                  { "fields": ["email"] }
+                ]
+              },
+              {
+                "title": "Address",
+                "description": "Your current registered address.",
+                "x-sections": [
+                  { "fields": ["address"] }
+                ]
+              },
+              {
+                "title": "Check Your Answers",
+                "description": "Review the details before submitting. The government assessor will see exactly what you submit here."
+              }
+            ],
+            "properties": {
+              "name":    { "$ref": "https://schemas.sorcha.dev/core/PersonName/v1" },
+              "dob":     { "$ref": "https://schemas.sorcha.dev/core/DateOfBirth/v1" },
+              "email":   { "$ref": "https://schemas.sorcha.dev/core/EmailAddress/v1" },
+              "address": { "$ref": "https://schemas.sorcha.dev/core/PostalAddress/v1" }
+            },
+            "required": ["name", "dob", "email", "address"]
+          }
+        ],
+        "disclosures": [
+          {
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "government-assessor",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-review",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Application submitted — pending assessor review"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Review & Issue Assured Person Credential",
+        "description": "Government assessor reviews the citizen's application. On approval, an AssuredPersonCredential is minted and sealed directly into the citizen's register-addressed disclosure group. The credential arrives in the citizen's wallet automatically via the InboundCredentialDetector — no OpenID4VCI, no QR code.",
+        "sender": "government-assessor",
+        "requiredPriorActions": [1],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Review the citizen's submitted personal details against your records and approve or reject the application. On approval the Assured Person credential is delivered directly to the citizen's Sorcha wallet.",
+            "x-sections": [
+              {
+                "title": "Decision",
+                "description": "Approval state and supporting notes for the audit trail.",
+                "layout": "vertical",
+                "fields": ["verificationDecision", "reviewerNotes"]
+              }
+            ],
+            "properties": {
+              "verificationDecision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": ["approved", "rejected"]
+              },
+              "reviewerNotes": {
+                "type": "string",
+                "title": "Reviewer Notes",
+                "maxLength": 500
+              }
+            },
+            "required": ["verificationDecision"]
+          }
+        ],
+        "credentialIssuanceConfig": {
+          "credentialType": "AssuredPersonCredential",
+          "targetAudience": "SorchaLocalWallet",
+          "recipientParticipantId": "citizen",
+          "claimMappings": [
+            { "claimName": "givenName",   "sourceField": "/name/givenName" },
+            { "claimName": "middleName",  "sourceField": "/name/middleName" },
+            { "claimName": "familyName",  "sourceField": "/name/familyName" },
+            { "claimName": "fullName",    "sourceField": "/name/fullName" },
+            { "claimName": "dateOfBirth", "sourceField": "/dob/dateOfBirth" },
+            { "claimName": "email",       "sourceField": "/email/email" },
+            { "claimName": "address",     "sourceField": "/address" }
+          ],
+          "disclosable": [
+            "givenName", "middleName", "familyName", "fullName", "dateOfBirth", "email",
+            "/address/line1", "/address/line2", "/address/town", "/address/region",
+            "/address/postcode", "/address/country"
+          ]
+        },
+        "disclosures": [
+          {
+            "participantAddress": "government-assessor",
+            "dataPointers": ["/*"]
+          },
+          {
+            "participantAddress": "citizen",
+            "dataPointers": ["/verificationDecision", "/reviewerNotes"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "approved-to-accept",
+            "nextActionIds": [3],
+            "condition": { "==": [{ "var": "verificationDecision" }, "approved"] },
+            "description": "Approved — credential sealed into register disclosure for citizen's wallet"
+          },
+          {
+            "id": "rejected-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Rejected — workflow ends with no credential issued"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Accept Assured Person Credential",
+        "description": "Your Assured Person credential has been delivered to your wallet. Accept to activate it, or decline to reject it. This action is executed automatically when you click Accept or Decline in your My Credentials page.",
+        "sender": "citizen",
+        "requiredPriorActions": [2],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          {
+            "participantAddress": "citizen",
+            "dataPointers": ["/*"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "accepted-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Credential accepted — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}

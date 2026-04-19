@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using ServiceClients::Sorcha.Register.Service.Grpc;
 using ServiceClients::Sorcha.ServiceClients.Grpc;
+using Sorcha.ServiceClients.Register;
 using Sorcha.Wallet.Service.Services.Implementation;
 using Xunit;
 using FluentAssertions;
@@ -17,6 +18,7 @@ namespace Sorcha.Wallet.Service.Tests.Services;
 public class AddressRegistrationServiceTests
 {
     private readonly Mock<IRegisterAddressClient> _mockClient;
+    private readonly Mock<IRegisterServiceClient> _mockRegisterServiceClient;
     private readonly Mock<ILogger<AddressRegistrationService>> _mockLogger;
     private readonly AddressRegistrationService _service;
 
@@ -26,10 +28,12 @@ public class AddressRegistrationServiceTests
     public AddressRegistrationServiceTests()
     {
         _mockClient = new Mock<IRegisterAddressClient>();
+        _mockRegisterServiceClient = new Mock<IRegisterServiceClient>();
         _mockLogger = new Mock<ILogger<AddressRegistrationService>>();
 
         _service = new AddressRegistrationService(
             _mockClient.Object,
+            _mockRegisterServiceClient.Object,
             _mockLogger.Object);
     }
 
@@ -40,14 +44,21 @@ public class AddressRegistrationServiceTests
     [Fact]
     public void Constructor_NullClient_ThrowsArgumentNullException()
     {
-        var act = () => new AddressRegistrationService(null!, _mockLogger.Object);
+        var act = () => new AddressRegistrationService(null!, _mockRegisterServiceClient.Object, _mockLogger.Object);
         act.Should().Throw<ArgumentNullException>().WithParameterName("registerAddressClient");
+    }
+
+    [Fact]
+    public void Constructor_NullRegisterServiceClient_ThrowsArgumentNullException()
+    {
+        var act = () => new AddressRegistrationService(_mockClient.Object, null!, _mockLogger.Object);
+        act.Should().Throw<ArgumentNullException>().WithParameterName("registerServiceClient");
     }
 
     [Fact]
     public void Constructor_NullLogger_ThrowsArgumentNullException()
     {
-        var act = () => new AddressRegistrationService(_mockClient.Object, null!);
+        var act = () => new AddressRegistrationService(_mockClient.Object, _mockRegisterServiceClient.Object, null!);
         act.Should().Throw<ArgumentNullException>().WithParameterName("logger");
     }
 

@@ -583,6 +583,7 @@ public class DocketBuildTriggerService : BackgroundService
                                 ContentEncoding = "base64url"
                             }
                         },
+                        RecipientsWallets = t.RecipientsWallets ?? new List<string>(),
                         MetaData = new Sorcha.Register.Models.TransactionMetaData
                         {
                             RegisterId = t.RegisterId,

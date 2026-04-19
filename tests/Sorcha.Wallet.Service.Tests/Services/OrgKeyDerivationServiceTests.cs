@@ -15,6 +15,7 @@ using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Portable;
 using Sorcha.Wallet.Service.Services.Implementation;
+using Sorcha.Wallet.Service.Services.Interfaces;
 using Xunit;
 using WalletEntity = Sorcha.Wallet.Core.Domain.Entities.Wallet;
 
@@ -26,6 +27,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
     private readonly Mock<IOrgKeyProtectionProvider> _protectionProviderMock;
     private readonly Mock<ICryptoModule> _cryptoModuleMock;
     private readonly Mock<IWalletUtilities> _walletUtilitiesMock;
+    private readonly Mock<IAddressRegistrationService> _addressRegistrationMock;
     private readonly Mock<ILogger<OrgKeyDerivationService>> _loggerMock;
     private readonly OrgKeyDerivationService _sut;
 
@@ -42,6 +44,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
         _protectionProviderMock = new Mock<IOrgKeyProtectionProvider>();
         _cryptoModuleMock = new Mock<ICryptoModule>();
         _walletUtilitiesMock = new Mock<IWalletUtilities>();
+        _addressRegistrationMock = new Mock<IAddressRegistrationService>();
         _loggerMock = new Mock<ILogger<OrgKeyDerivationService>>();
 
         // Setup default mocks
@@ -82,6 +85,7 @@ public class OrgKeyDerivationServiceTests : IDisposable
             _protectionProviderMock.Object,
             _cryptoModuleMock.Object,
             _walletUtilitiesMock.Object,
+            _addressRegistrationMock.Object,
             _loggerMock.Object);
     }
 

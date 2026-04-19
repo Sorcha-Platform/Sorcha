@@ -80,7 +80,7 @@ public static class ServiceCollectionExtensions
             o.Address = new Uri(
                 configuration["ServiceClients:RegisterService:GrpcAddress"]
                 ?? "https+http://register-service");
-        });
+        }).AddServiceDiscovery();
         services.AddSingleton<IRegisterAddressClient, RegisterAddressClient>();
 
         services.AddGrpcClient<WalletNotificationService.WalletNotificationServiceClient>(
@@ -89,7 +89,7 @@ public static class ServiceCollectionExtensions
             o.Address = new Uri(
                 configuration["ServiceClients:WalletService:GrpcAddress"]
                 ?? "https+http://wallet-service");
-        });
+        }).AddServiceDiscovery();
         services.AddSingleton<IWalletNotificationClient, WalletNotificationClient>();
 
         services.AddGrpcClient<DocketSyncService.DocketSyncServiceClient>(
@@ -98,7 +98,7 @@ public static class ServiceCollectionExtensions
             o.Address = new Uri(
                 configuration["ServiceClients:PeerService:GrpcAddress"]
                 ?? "https+http://peer-service");
-        });
+        }).AddServiceDiscovery();
         services.AddSingleton<IDocketSyncClient, DocketSyncClient>();
 
         return services;

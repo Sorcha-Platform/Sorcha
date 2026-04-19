@@ -184,6 +184,11 @@ services:
       ServiceAuth__Scopes: "registers:write registers:read"
       ServiceClients__TenantService__Address: http://tenant-service:8080
       ServiceClients__RegisterService__Address: http://register-service:8080
+      # Explicit gRPC address for IRegisterAddressClient (Feature 106 bloom hook fan-out).
+      # Port 5001 is the dedicated HTTP/2 gRPC endpoint; port 8080 is HTTP/1.1 REST only.
+      # h2c cleartext can't multiplex with HTTP/1.1 on a single Kestrel port because it
+      # requires ALPN which requires TLS.
+      ServiceClients__RegisterService__GrpcAddress: http://register-service:5001
       ServiceClients__BlueprintService__Address: http://blueprint-service:8080
       OrgKeyProtection__EncryptionKey: "dGhpcy1pcy1hLTMyLWJ5dGUtdGVzdC1rZXkh"
       # Encryption Provider Configuration
@@ -241,10 +246,17 @@ services:
       RegisterStorage__MongoDB__CreateIndexesOnStartup: "true"
       ServiceClients__WalletService__Address: http://sorcha-wallet-service:8080
       ServiceClients__WalletService__UseGrpc: "false"
+      # Explicit gRPC addresses (Feature 106). Port 5001 is HTTP/2-only for gRPC;
+      # port 8080 is HTTP/1.1 REST only. h2c cleartext can't share a Kestrel port
+      # with HTTP/1.1 without TLS/ALPN, so services bind two ports. The "https+http://"
+      # default from service-discovery isn't registered in this topology and would
+      # throw "No address resolver configured for the scheme 'https+http'" anyway.
+      ServiceClients__WalletService__GrpcAddress: http://sorcha-wallet-service:5001
       ServiceClients__ValidatorService__Address: http://sorcha-validator-service:8080
       ServiceClients__ValidatorService__UseGrpc: "false"
       ServiceClients__PeerService__Address: http://sorcha-peer-service:5000
       ServiceClients__PeerService__HttpAddress: http://sorcha-peer-service:8080
+      ServiceClients__PeerService__GrpcAddress: http://sorcha-peer-service:5000
       # System wallet signing (for blueprint publish, governance Control TXs)
       SystemWalletSigning__ValidatorId: docker-register-1
       # Service-to-service auth for Wallet Service calls

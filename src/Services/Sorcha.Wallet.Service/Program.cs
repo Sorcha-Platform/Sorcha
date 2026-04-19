@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Sorcha.Wallet.Service.Extensions;
 using Sorcha.Wallet.Service.Endpoints;
 using Sorcha.Wallet.Service.GrpcServices;
@@ -8,6 +9,20 @@ using Sorcha.Wallet.Service.Services;
 using Sorcha.ServiceClients.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Kestrel on plaintext HTTP can't multiplex HTTP/1.1 + HTTP/2 on one port
+// because h2c needs ALPN which needs TLS. Bind REST on the main HTTP port and
+// gRPC on a dedicated HTTP/2-only port. Same pattern as Peer.Service.
+var httpPort = int.TryParse(Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS"), out var envHttpPort) ? envHttpPort : 8080;
+var grpcPort = builder.Configuration.GetValue<int>("Kestrel:GrpcPort", 5001);
+builder.WebHost.ConfigureKestrel(opts =>
+{
+    opts.ListenAnyIP(httpPort, lo => lo.Protocols = HttpProtocols.Http1);
+    opts.ListenAnyIP(grpcPort, lo => lo.Protocols = HttpProtocols.Http2);
+});
+// Clear ASPNETCORE_URLS so our explicit Listen bindings aren't appended to
+// default HTTP/1.1 endpoints that would miss HTTP/2 entirely.
+builder.WebHost.UseUrls();
 
 // Add Aspire service defaults (health checks, OpenTelemetry, service discovery)
 builder.AddServiceDefaults();

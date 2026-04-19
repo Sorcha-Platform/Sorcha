@@ -12,6 +12,7 @@ using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Services.Interfaces;
 using Sorcha.Wallet.Portable;
+using Sorcha.Wallet.Service.Services.Interfaces;
 
 namespace Sorcha.Wallet.Service.Services.Implementation;
 
@@ -25,6 +26,7 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
     private readonly IOrgKeyProtectionProvider _protectionProvider;
     private readonly ICryptoModule _cryptoModule;
     private readonly IWalletUtilities _walletUtilities;
+    private readonly IAddressRegistrationService _addressRegistration;
     private readonly ILogger<OrgKeyDerivationService> _logger;
 
     /// <summary>
@@ -34,18 +36,21 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
     /// <param name="protectionProvider">Key protection provider for seed encryption.</param>
     /// <param name="cryptoModule">Cryptographic module for key generation.</param>
     /// <param name="walletUtilities">Wallet address utilities.</param>
+    /// <param name="addressRegistration">Bloom filter fan-out for newly created local addresses (Feature 106 hook C).</param>
     /// <param name="logger">Logger instance.</param>
     public OrgKeyDerivationService(
         WalletDbContext db,
         IOrgKeyProtectionProvider protectionProvider,
         ICryptoModule cryptoModule,
         IWalletUtilities walletUtilities,
+        IAddressRegistrationService addressRegistration,
         ILogger<OrgKeyDerivationService> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _protectionProvider = protectionProvider ?? throw new ArgumentNullException(nameof(protectionProvider));
         _cryptoModule = cryptoModule ?? throw new ArgumentNullException(nameof(cryptoModule));
         _walletUtilities = walletUtilities ?? throw new ArgumentNullException(nameof(walletUtilities));
+        _addressRegistration = addressRegistration ?? throw new ArgumentNullException(nameof(addressRegistration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -222,6 +227,24 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
                 "Derived {Usage} key for user {UserId} in organisation {OrganizationId} at path {Path}",
                 usage, userId, organizationId, path);
 
+            // Feature 106 hook C: announce the org-derived wallet address to all register bloom
+            // filters. Fire-and-forget — bloom is a cache and its update must never fail the key
+            // derivation transaction. Startup-rebuild reconciles any missed registrations.
+            var derivedWalletAddress = walletAddress;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _addressRegistration.NotifyLocalAddressCreatedAsync(derivedWalletAddress, CancellationToken.None);
+                }
+                catch (Exception bloomEx)
+                {
+                    _logger.LogWarning(bloomEx,
+                        "Bloom fan-out failed for org-derived address {Address}; startup rebuild will reconcile.",
+                        derivedWalletAddress);
+                }
+            });
+
             return new DerivedKeyResult(
                 derivedKeyRecord.Id,
                 walletAddress,
@@ -373,6 +396,22 @@ public class OrgKeyDerivationService : IOrgKeyDerivationService
             _logger.LogInformation(
                 "Rotated {Usage} key for user {UserId} in organisation {OrganizationId} from index {OldIndex} to {NewIndex}",
                 oldRecord.KeyUsage, oldRecord.UserId, oldRecord.OrganizationId, oldRecord.KeyIndex, newKeyIndex);
+
+            // Feature 106 hook C: announce the new rotated address to all register bloom filters.
+            var rotatedWalletAddress = walletAddress;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _addressRegistration.NotifyLocalAddressCreatedAsync(rotatedWalletAddress, CancellationToken.None);
+                }
+                catch (Exception bloomEx)
+                {
+                    _logger.LogWarning(bloomEx,
+                        "Bloom fan-out failed for rotated org-derived address {Address}; startup rebuild will reconcile.",
+                        rotatedWalletAddress);
+                }
+            });
 
             return new DerivedKeyResult(
                 newRecord.Id,
