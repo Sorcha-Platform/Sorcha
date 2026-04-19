@@ -214,6 +214,13 @@ try {
 # ============================================================================
 Write-WtStep "Step 7: Create Register"
 
+# DevMode: the citizen applicant is an open/late-bound participant and is
+# deliberately NOT published to the register (anonymous by design). That means
+# Action 2 has no resolvable recipient key for the citizen wallet, so the
+# encryption pipeline would drop to plaintext regardless. Making DevMode
+# explicit declares this intent to the runtime and to InboundCredentialDetector,
+# which only parses plaintext /credential shapes on DevMode registers as a
+# security posture (plaintext on a prod register is a signal to drop, not read).
 $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
@@ -223,9 +230,29 @@ $register = New-SorchaRegister `
     -OwnerUserId $govSession.UserId `
     -OwnerWalletAddress $govWallet.Address `
     -Headers $govSession.Headers `
-    -TenantUrl $sorchaEnv.TenantUrl
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -DevMode
 
 Write-WtSuccess "Register: $($register.RegisterId)"
+
+# Publish the government assessor participant record to the register so its
+# public key is resolvable for any non-citizen encryption flows (Feature 083).
+# The citizen applicant is intentionally omitted — they remain anonymous and
+# are late-bound at Action 1 submission. Action 2's credential issuance to the
+# citizen rides the DevMode plaintext path.
+try {
+    $null = Publish-SorchaParticipant `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $govOrgId `
+        -RegisterId $register.RegisterId `
+        -ParticipantName "Government Assessor" `
+        -OrganizationName "Government Identity Authority" `
+        -WalletAddress $govWallet.Address `
+        -PublicKey $govWallet.PublicKey `
+        -Headers $govSession.Headers
+} catch {
+    Write-WtWarn "Government participant publish failed: $($_.Exception.Message)"
+}
 
 # Subscribe the public org so the citizen can see the register and submit
 # Action 1 from their own session. Owner subscription for the gov org is

@@ -998,6 +998,12 @@ function New-SorchaRegister {
         Authorization headers.
     .PARAMETER Metadata
         Optional metadata hashtable.
+    .PARAMETER DevMode
+        When set, creates the register with devMode=true so payloads are stored as
+        plaintext with disclosure filtering applied at read time. Use for flows
+        that have anonymous/late-bound recipients whose keys cannot be published
+        (e.g. the HaipVerifiedCitizen walkthrough). Dev mode is a one-way switch —
+        it can be disabled via the DisableDevMode endpoint but never re-enabled.
     .RETURNS
         Hashtable with RegisterId, GenesisTransactionId.
     #>
@@ -1016,7 +1022,8 @@ function New-SorchaRegister {
         # the Public Org is subscribed as "Public" immediately after finalize
         # so consumer-persona and public-discovery flows have access by default.
         [string]$TenantUrl,
-        [switch]$SkipPublicOrgSubscription
+        [switch]$SkipPublicOrgSubscription,
+        [switch]$DevMode
     )
 
     # Idempotency short-circuit: if the caller's current identity is already
@@ -1068,6 +1075,11 @@ function New-SorchaRegister {
             }
         )
         metadata = $defaultMeta
+    }
+
+    if ($DevMode) {
+        $initiateBody.devMode = $true
+        Write-WtInfo "  DevMode: enabled (payloads stored plaintext)"
     }
 
     $initiateResponse = Invoke-SorchaApi -Method POST `
