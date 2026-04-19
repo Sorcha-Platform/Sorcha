@@ -94,50 +94,55 @@ public static class NestedDisclosure
             }
         }
 
-        // Process each parent object, inserting _sd arrays at the correct depth
+        // Process each parent container. The container may be an object (nested
+        // field disclosure → _sd array) or an array (element disclosure → each
+        // requested index is replaced with a {"...": digest} placeholder).
         foreach (var (parentPath, leafEntries) in pathsByParent)
         {
             var parentSegments = ParsePointer(parentPath);
-            // Navigate INTO the parent object (all segments, not to the parent-of-parent)
-            var parentObj = NavigateInto(processedClaims, parentSegments);
-            if (parentObj == null)
+            var parentContainer = NavigateIntoContainer(processedClaims, parentSegments);
+            if (parentContainer is null)
                 continue;
 
-            var nestedSdDigests = new List<string>();
-
-            foreach (var (leafSegment, fullPath) in leafEntries)
+            if (parentContainer is Dictionary<string, object> parentDict)
             {
-                // Check if this is an array index
-                if (int.TryParse(leafSegment, out var arrayIndex) &&
-                    parentObj.TryGetValue(leafSegment, out var arrayValue) &&
-                    arrayValue is List<object> array &&
-                    arrayIndex >= 0 && arrayIndex < array.Count)
+                // Object container: extract named fields into a local _sd array.
+                var nestedSdDigests = new List<string>();
+                foreach (var (leafSegment, _) in leafEntries)
                 {
-                    // Array element disclosure — two-element format per SD-JWT §5.2.4
-                    var disclosure = CreateArrayElementDisclosure(array[arrayIndex]);
-                    disclosures.Add(disclosure);
-                    nestedSdDigests.Add(ComputeDigest(disclosure));
-                }
-                else if (parentObj.TryGetValue(leafSegment, out var leafValue))
-                {
-                    // Object property disclosure
+                    if (!parentDict.TryGetValue(leafSegment, out var leafValue))
+                        continue;
                     var disclosure = CreateDisclosure(leafSegment, leafValue);
                     disclosures.Add(disclosure);
                     nestedSdDigests.Add(ComputeDigest(disclosure));
-                    parentObj.Remove(leafSegment);
+                    parentDict.Remove(leafSegment);
+                }
+
+                if (nestedSdDigests.Count > 0)
+                {
+                    if (parentDict.TryGetValue("_sd", out var existingSd) && existingSd is List<string> existing)
+                        existing.AddRange(nestedSdDigests);
+                    else
+                        parentDict["_sd"] = nestedSdDigests;
                 }
             }
-
-            if (nestedSdDigests.Count > 0)
+            else if (parentContainer is List<object> parentArray)
             {
-                // Merge with any existing _sd array at this level
-                if (parentObj.TryGetValue("_sd", out var existingSd) && existingSd is List<string> existingList)
+                // Array container: replace each requested index with a placeholder
+                // {"...": digest} object and emit a 2-element [salt, value] disclosure.
+                // Per SD-JWT §5.2.4 — preserves the array length for non-disclosed
+                // elements while hiding the disclosable ones cryptographically.
+                foreach (var (leafSegment, _) in leafEntries)
                 {
-                    existingList.AddRange(nestedSdDigests);
-                }
-                else
-                {
-                    parentObj["_sd"] = nestedSdDigests;
+                    if (!int.TryParse(leafSegment, out var idx))
+                        continue;
+                    if (idx < 0 || idx >= parentArray.Count)
+                        continue;
+
+                    var disclosure = CreateArrayElementDisclosure(parentArray[idx]);
+                    disclosures.Add(disclosure);
+                    var digest = ComputeDigest(disclosure);
+                    parentArray[idx] = new Dictionary<string, object> { ["..."] = digest };
                 }
             }
         }
@@ -188,7 +193,12 @@ public static class NestedDisclosure
 
     // --- Private helpers ---
 
-    private static string[] ParsePointer(string pointer)
+    /// <summary>
+    /// Parses an RFC 6901 JSON Pointer into its unescaped segments. Exposed
+    /// internally so <see cref="SdJwtService"/> can reuse the same parser
+    /// when correlating array-element paths to placeholder digests.
+    /// </summary>
+    internal static string[] ParsePointer(string pointer)
     {
         if (string.IsNullOrEmpty(pointer) || pointer == "/")
             return [];
@@ -198,6 +208,64 @@ public static class NestedDisclosure
         return pointer.Split('/').Where(s => s.Length > 0)
             .Select(s => s.Replace("~1", "/").Replace("~0", "~"))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Navigates into the claim tree following all segments. Returns either a
+    /// <see cref="Dictionary{TKey, TValue}"/> (object container) or a
+    /// <see cref="List{T}"/> of <see cref="object"/> (array container) at the
+    /// final depth, or null if the path does not resolve. Arrays cause
+    /// <see cref="NavigateInto"/> to return null; this helper exists so array
+    /// disclosures (<c>/qualifications/1</c>) can resolve to the backing list.
+    /// </summary>
+    private static object? NavigateIntoContainer(Dictionary<string, object> root, string[] segments)
+    {
+        object current = root;
+        foreach (var segment in segments)
+        {
+            if (current is Dictionary<string, object> dict)
+            {
+                if (!dict.TryGetValue(segment, out var child))
+                    return null;
+                var materialised = MaterialiseJsonElement(child);
+                if (materialised is null)
+                    return null;
+                current = materialised;
+            }
+            else if (current is List<object> list)
+            {
+                if (!int.TryParse(segment, out var idx))
+                    return null;
+                if (idx < 0 || idx >= list.Count)
+                    return null;
+                var materialised = MaterialiseJsonElement(list[idx]);
+                if (materialised is null)
+                    return null;
+                current = materialised;
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return current;
+    }
+
+    /// <summary>
+    /// Lazily materialises a JsonElement container into Dictionary/List so
+    /// subsequent navigation can mutate it. Non-container values are returned
+    /// unchanged.
+    /// </summary>
+    private static object? MaterialiseJsonElement(object value)
+    {
+        if (value is JsonElement elem)
+        {
+            if (elem.ValueKind == JsonValueKind.Object)
+                return JsonElementToDict(elem);
+            if (elem.ValueKind == JsonValueKind.Array)
+                return elem.EnumerateArray().Select(e => (object)ConvertJsonElementToObject(e)).ToList();
+        }
+        return value;
     }
 
     /// <summary>

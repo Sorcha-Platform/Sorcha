@@ -300,7 +300,7 @@ public class SdJwtService : ISdJwtService
         var jwtPart = parts[0];
         var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
 
-        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
+        var selectedDisclosures = SelectDisclosures(jwtPart, allDisclosures, claimsToDisclose);
 
         // Build presentation: jwt~selected_disclosure1~selected_disclosure2~[kb-jwt]
         var presentationParts = new List<string> { jwtPart };
@@ -357,7 +357,7 @@ public class SdJwtService : ISdJwtService
         var jwtPart = parts[0];
         var allDisclosures = parts.Length > 1 ? parts[1..] : Array.Empty<string>();
 
-        var selectedDisclosures = SelectDisclosures(allDisclosures, claimsToDisclose);
+        var selectedDisclosures = SelectDisclosures(jwtPart, allDisclosures, claimsToDisclose);
 
         // Build the presentation prefix (everything before the KB-JWT)
         var presentationParts = new List<string> { jwtPart };
@@ -558,26 +558,81 @@ public class SdJwtService : ISdJwtService
 
     /// <summary>
     /// Selects disclosures that match the caller's disclosure request.
-    /// Handles both top-level claim names and JSON Pointer paths by extracting
-    /// the leaf segment from each pointer path.
+    /// Handles three shapes:
+    /// <list type="bullet">
+    ///   <item>Top-level names like <c>name</c> → match against the claim-name
+    ///   field of 3-element disclosures.</item>
+    ///   <item>Nested object JSON Pointers like <c>/address/locality</c> →
+    ///   match leaf segment against 3-element disclosure names.</item>
+    ///   <item>Array-element JSON Pointers like <c>/qualifications/1</c> →
+    ///   navigate the JWT payload to the placeholder slot, extract the digest,
+    ///   then select the single 2-element disclosure whose hash matches. This
+    ///   closes the TODO(094) that previously dumped every array-element
+    ///   disclosure into the presentation (full-array disclosure by accident).</item>
+    /// </list>
     /// </summary>
-    private static List<string> SelectDisclosures(string[] allDisclosures, IEnumerable<string> claimsToDisclose)
+    private static List<string> SelectDisclosures(
+        string jwtPart,
+        string[] allDisclosures,
+        IEnumerable<string> claimsToDisclose)
     {
-        // Build a set of names to match against disclosure name fields.
-        // For JSON Pointer paths like "/address/locality", extract the leaf "locality".
-        // For top-level names like "name", use as-is.
-        var matchNames = new HashSet<string>();
+        // Split the requests into those that refer to object fields (by name or
+        // nested pointer) and those that refer to array elements (trailing numeric
+        // segment pointing at an array slot). We can't just inspect the leaf
+        // segment — an object key could be numeric ("2024" as a property name) —
+        // so we resolve each path against the JWT payload below.
+        var objectFieldNames = new HashSet<string>(StringComparer.Ordinal);
+        var pointerPaths = new List<string>();
         foreach (var entry in claimsToDisclose)
         {
+            if (string.IsNullOrWhiteSpace(entry))
+                continue;
             if (entry.StartsWith('/'))
-            {
-                var lastSlash = entry.LastIndexOf('/');
-                if (lastSlash >= 0 && lastSlash < entry.Length - 1)
-                    matchNames.Add(entry[(lastSlash + 1)..]);
-            }
+                pointerPaths.Add(entry);
             else
+                objectFieldNames.Add(entry);
+        }
+
+        // Hash every disclosure once so we can look up by digest without
+        // rehashing per request. Two-element disclosures need this to correlate
+        // with array placeholders; three-element ones fall through to the name
+        // path but still benefit from the pre-computed hash when the caller
+        // passes the same path in multiple forms.
+        var digestToDisclosure = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var disclosure in allDisclosures)
+        {
+            if (string.IsNullOrWhiteSpace(disclosure))
+                continue;
+            var digest = ComputeDisclosureDigest(disclosure);
+            digestToDisclosure.TryAdd(digest, disclosure);
+        }
+
+        // Resolve every pointer path against the JWT payload. If it lands on an
+        // array-element placeholder, record the digest; if it lands on an object
+        // field, fall back to leaf-name matching (for 3-element disclosures).
+        var arrayDigestRequests = new HashSet<string>(StringComparer.Ordinal);
+        if (pointerPaths.Count > 0)
+        {
+            var payloadRoot = TryExtractPayloadRoot(jwtPart);
+            foreach (var path in pointerPaths)
             {
-                matchNames.Add(entry);
+                var segments = NestedDisclosure.ParsePointer(path);
+                if (segments.Length == 0)
+                    continue;
+
+                var placeholderDigest = payloadRoot.HasValue
+                    ? ResolveArrayPlaceholderDigest(payloadRoot.Value, segments)
+                    : null;
+                if (placeholderDigest is not null)
+                {
+                    arrayDigestRequests.Add(placeholderDigest);
+                }
+                else
+                {
+                    // Object-field disclosure — match by leaf name against
+                    // 3-element [salt, name, value] disclosures below.
+                    objectFieldNames.Add(segments[^1]);
+                }
             }
         }
 
@@ -592,21 +647,20 @@ public class SdJwtService : ISdJwtService
                 var disclosureJson = Base64UrlDecode(disclosure);
                 var disclosureArray = JsonSerializer.Deserialize<JsonElement[]>(disclosureJson);
 
-                // Three-element disclosure: [salt, name, value]
                 if (disclosureArray is { Length: 3 })
                 {
+                    // Object-field disclosure [salt, name, value].
                     var claimName = disclosureArray[1].GetString();
-                    if (claimName != null && matchNames.Contains(claimName))
+                    if (claimName is not null && objectFieldNames.Contains(claimName))
                         selected.Add(disclosure);
                 }
-                // Two-element disclosure: [salt, value] — array element.
-                // TODO(094): Array element selection currently includes all array disclosures.
-                // When array-element disclosure is wired end-to-end (spec 097/098),
-                // correlate requested indices against {"...": digest} placeholders
-                // in the parent array to select only the requested elements.
                 else if (disclosureArray is { Length: 2 })
                 {
-                    selected.Add(disclosure);
+                    // Array-element disclosure [salt, value]. Only include if the
+                    // caller explicitly asked for this element's placeholder slot.
+                    var digest = ComputeDisclosureDigest(disclosure);
+                    if (arrayDigestRequests.Contains(digest))
+                        selected.Add(disclosure);
                 }
             }
             catch
@@ -616,6 +670,95 @@ public class SdJwtService : ISdJwtService
         }
 
         return selected;
+    }
+
+    /// <summary>
+    /// Decodes the JWT payload segment from a compact-serialised JWT prefix.
+    /// Returns null on any parse failure — callers fall back to name-only
+    /// disclosure matching when the payload is unreadable.
+    /// </summary>
+    private static JsonElement? TryExtractPayloadRoot(string jwtPart)
+    {
+        try
+        {
+            var segments = jwtPart.Split('.');
+            if (segments.Length < 2)
+                return null;
+            var payloadBytes = Base64UrlDecode(segments[1]);
+            var doc = JsonDocument.Parse(payloadBytes);
+            return doc.RootElement.Clone();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Walks the payload following <paramref name="segments"/>. Returns the
+    /// <c>"..."</c> digest if the final step lands on an array element that
+    /// is an SD-JWT placeholder object <c>{"...": "&lt;digest&gt;"}</c>. Returns
+    /// null for any other terminal shape (object field, scalar, missing path).
+    /// </summary>
+    private static string? ResolveArrayPlaceholderDigest(JsonElement root, string[] segments)
+    {
+        var current = root;
+        for (var i = 0; i < segments.Length; i++)
+        {
+            if (current.ValueKind == JsonValueKind.Object)
+            {
+                if (!current.TryGetProperty(segments[i], out var next))
+                    return null;
+                current = next;
+            }
+            else if (current.ValueKind == JsonValueKind.Array)
+            {
+                if (!int.TryParse(segments[i], System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out var idx))
+                    return null;
+                var length = current.GetArrayLength();
+                if (idx < 0 || idx >= length)
+                    return null;
+                // Navigate to the indexed element.
+                var arrIdx = 0;
+                JsonElement? child = null;
+                foreach (var item in current.EnumerateArray())
+                {
+                    if (arrIdx == idx)
+                    {
+                        child = item;
+                        break;
+                    }
+                    arrIdx++;
+                }
+                if (child is null)
+                    return null;
+                current = child.Value;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        if (current.ValueKind != JsonValueKind.Object)
+            return null;
+
+        // Exactly one property named "..." whose value is a string digest.
+        string? digest = null;
+        var propertyCount = 0;
+        foreach (var prop in current.EnumerateObject())
+        {
+            propertyCount++;
+            if (propertyCount > 1)
+                return null;
+            if (prop.Name != "...")
+                return null;
+            if (prop.Value.ValueKind != JsonValueKind.String)
+                return null;
+            digest = prop.Value.GetString();
+        }
+        return string.IsNullOrEmpty(digest) ? null : digest;
     }
 
     /// <summary>

@@ -28,13 +28,13 @@ public static class CredentialEndpoints
             .WithTags("HAIP Credential")
             .WithSummary("Issue a credential to an external HAIP wallet")
             .WithDescription(
-                "Accepts a JWT proof of possession from the wallet, validates it against the c_nonce, " +
-                "mints an SD-JWT VC with cnf binding to the wallet's holder key, and returns it.")
+                "Accepts a Bearer access token (correlating to a credential offer), a JWT proof of " +
+                "possession from the wallet, and returns a minted SD-JWT VC bound to the wallet's " +
+                "holder key via cnf.")
             .Produces<object>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status501NotImplemented)
-            .AllowAnonymous(); // TODO(097): require Bearer token once token store is wired
+            .AllowAnonymous(); // Bearer token is required; validated inline so we can return OAuth-style error bodies rather than a blank 401 from the auth middleware.
     }
 
     private static async Task<IResult> IssueCredential(
@@ -50,15 +50,64 @@ public static class CredentialEndpoints
     {
         var logger = loggerFactory.CreateLogger("Sorcha.Haip.Service.Endpoints.CredentialEndpoints");
 
+        // Require a Bearer access token and correlate it to a credential offer.
+        // OpenID4VCI §7.2: the credential endpoint MUST reject requests without a
+        // valid access token. The fallback-to-defaults behaviour we had before
+        // would silently issue a "SorchaCredential" to any caller — security gap.
+        var authHeader = httpContext.Request.Headers.Authorization.ToString();
+        if (string.IsNullOrWhiteSpace(authHeader) ||
+            !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new
+            {
+                error = "invalid_token",
+                error_description = "Bearer access token is required",
+            }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var bearerToken = authHeader["Bearer ".Length..].Trim();
+        var offerId = await tokenStore.LookupAsync(bearerToken, ct);
+        if (!offerId.HasValue)
+        {
+            return Results.Json(new
+            {
+                error = "invalid_token",
+                error_description = "Access token is invalid or expired",
+            }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var offer = offerService.GetOffer(offerId.Value);
+        if (offer is null)
+        {
+            // Token is valid but the offer has been evicted from the store —
+            // treat as an expired token rather than silently issuing.
+            return Results.Json(new
+            {
+                error = "invalid_token",
+                error_description = "Offer for this access token has expired",
+            }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
         // Validate format
-        // TODO: Validate request.Vct against credentials_supported when offer → token
-        // correlation is wired (requires AccessTokenStore.LookupAsync integration).
         if (request.Format != "vc+sd-jwt")
         {
             return Results.BadRequest(new
             {
                 error = "unsupported_credential_format",
                 error_description = $"Format '{request.Format}' is not supported. Use 'vc+sd-jwt'."
+            });
+        }
+
+        // Validate vct (credential type) matches the offer. The wallet must request
+        // exactly the credential type that was offered — issuing a different type
+        // would break the trust chain from the offer → token → minted credential.
+        if (!string.IsNullOrWhiteSpace(request.Vct)
+            && !string.Equals(request.Vct, offer.CredentialType, StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                error = "unsupported_credential_type",
+                error_description = $"Requested vct '{request.Vct}' does not match the offer ('{offer.CredentialType}')",
             });
         }
 
@@ -257,42 +306,14 @@ public static class CredentialEndpoints
         var issuerUrl = configuration.GetValue<string>("Haip:IssuerUrl")
             ?? "https://sorcha.example/haip";
 
-        // Look up the offer via the access token to get real claims
-        var bearerToken = httpContext.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
-        var offerId = !string.IsNullOrEmpty(bearerToken)
-            ? await tokenStore.LookupAsync(bearerToken, ct)
-            : null;
-
-        Dictionary<string, object> claims;
-        List<string> disclosablePaths;
-        string credentialType;
-
-        if (offerId.HasValue)
-        {
-            var offer = offerService.GetOffer(offerId.Value);
-            if (offer != null)
-            {
-                claims = offer.Claims;
-                disclosablePaths = offer.DisclosablePaths;
-                credentialType = offer.CredentialType;
-                logger.LogInformation("Resolved offer {OfferId}: type={Type}, claims={Count}",
-                    offerId, credentialType, claims.Count);
-            }
-            else
-            {
-                claims = new Dictionary<string, object> { ["type"] = "SorchaCredential" };
-                disclosablePaths = new List<string>();
-                credentialType = "SorchaCredential";
-                logger.LogWarning("Offer {OfferId} not found in store — using default claims", offerId);
-            }
-        }
-        else
-        {
-            claims = new Dictionary<string, object> { ["type"] = "SorchaCredential" };
-            disclosablePaths = new List<string>();
-            credentialType = "SorchaCredential";
-            logger.LogWarning("No bearer token or offer correlation — using default claims");
-        }
+        // Use the offer resolved above — every branch below is guaranteed to have
+        // a valid offer because the Bearer / lookup gates already rejected the
+        // unauthenticated and expired-token cases.
+        var claims = offer.Claims;
+        var disclosablePaths = offer.DisclosablePaths;
+        var credentialType = offer.CredentialType;
+        logger.LogInformation("Resolved offer {OfferId}: type={Type}, claims={Count}",
+            offerId, credentialType, claims.Count);
 
         try
         {

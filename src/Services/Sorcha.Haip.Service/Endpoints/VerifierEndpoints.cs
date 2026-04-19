@@ -105,7 +105,7 @@ public static class VerifierEndpoints
     private static async Task<IResult> GetRequestObject(
         Guid requestId,
         PresentationRequestStore store,
-        IConfiguration configuration,
+        RequestObjectSigner signer,
         CancellationToken ct)
     {
         var request = await store.GetAsync(requestId, ct);
@@ -115,10 +115,17 @@ public static class VerifierEndpoints
         if (request.ExpiresAt < DateTimeOffset.UtcNow)
             return Results.Json(new { error = "Presentation request has expired" }, statusCode: 410);
 
-        // Build the Request Object payload per OpenID4VP
-        // TODO(098): Sign this as a JWT with the verifier's key for production HAIP compliance
-        var requestObject = new Dictionary<string, object>
+        // Build the Request Object payload per OpenID4VP.
+        // iat is mandatory for signed Request Objects (RFC 9101 §10.8 — CSRF window).
+        // iss is the verifier's identifier — same value as client_id for now; spec 096
+        // will swap this to the verifier's DID / x509_san_uri.
+        var nowSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var requestObjectPayload = new Dictionary<string, object>
         {
+            ["iss"] = request.ClientId,
+            ["aud"] = "https://self-issued.me/v2",
+            ["iat"] = nowSeconds,
+            ["exp"] = request.ExpiresAt.ToUnixTimeSeconds(),
             ["response_type"] = "vp_token",
             ["response_mode"] = "direct_post",
             ["response_uri"] = request.ResponseUri,
@@ -153,7 +160,13 @@ public static class VerifierEndpoints
             }
         };
 
-        return Results.Json(requestObject);
+        // HAIP 1.0 §6.1 and RFC 9101 §4 require the Request Object to be a signed JWT
+        // with typ="oauth-authz-req+jwt". Wallets refuse to act on an unsigned JSON body.
+        var requestObjectJwt = signer.Sign(requestObjectPayload);
+
+        // Content type per RFC 9101 §4: application/oauth-authz-req+jwt. Wallets use this
+        // to distinguish a signed Request Object from an unsigned JSON request.
+        return Results.Text(requestObjectJwt, contentType: "application/oauth-authz-req+jwt");
     }
 
     private static async Task<IResult> HandleDirectPost(
