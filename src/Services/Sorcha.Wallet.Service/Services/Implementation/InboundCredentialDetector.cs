@@ -129,55 +129,33 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
                 return null;
             }
 
-            // 3. Only encrypted transactions carry recipient-addressed disclosure groups.
-            //    Dev-mode/plaintext transactions never seal Feature 106 credentials.
+            // 3. Fork on payload shape:
+            //    - `contentEncoding == "encrypted"`: walk encryptedPayloads → decrypt our group → find /credential
+            //    - otherwise: only parse when the register is DevMode=true, then walk
+            //      payloads[walletAddress] → find /credential. Plaintext on a non-DevMode
+            //      register is a security signal (encryption skipped because recipient keys
+            //      couldn't be resolved) and we must NOT parse such transactions.
             var contentEncoding = txJson.TryGetProperty("contentEncoding", out var ceEl)
                 ? ceEl.GetString()
                 : null;
-            if (!string.Equals(contentEncoding, "encrypted", StringComparison.OrdinalIgnoreCase))
+            var isEncrypted = string.Equals(contentEncoding, "encrypted", StringComparison.OrdinalIgnoreCase);
+
+            JsonElement? credentialField;
+            if (isEncrypted)
             {
-                _metrics.RecordSkippedNoRecipientDisclosure();
-                return null;
+                credentialField = await TryFindEncryptedCredentialAsync(
+                    walletAddress, txJson, transactionId, cancellationToken);
+            }
+            else
+            {
+                credentialField = await TryFindDevModePlaintextCredentialAsync(
+                    walletAddress, registerId, txJson, transactionId, cancellationToken);
             }
 
-            // 4. Walk the encrypted payload groups looking for one whose wrappedKeys contains
-            //    our wallet address. This matches the FileReassemblyService pattern exactly.
-            if (!txJson.TryGetProperty("encryptedPayloads", out var groupsEl)
-                || groupsEl.ValueKind != JsonValueKind.Array)
-            {
-                _metrics.RecordSkippedNoRecipientDisclosure();
-                return null;
-            }
-
-            JsonElement? decryptedPayload = null;
-            foreach (var group in groupsEl.EnumerateArray())
-            {
-                var decrypted = await TryDecryptGroupForWalletAsync(
-                    walletAddress, group, transactionId, cancellationToken);
-                if (decrypted is not null)
-                {
-                    decryptedPayload = decrypted;
-                    break;
-                }
-            }
-
-            if (decryptedPayload is null)
-            {
-                // Either none of the groups target us, OR every group we tried failed to decrypt.
-                // The distinction matters for metrics — TryDecryptGroupForWalletAsync counts
-                // decrypt failures internally; a bare null here means no group targeted us.
-                _metrics.RecordSkippedNoRecipientDisclosure();
-                return null;
-            }
-
-            // 5. Look for the Feature 106 `/credential` shape in the decrypted payload.
-            //    The writer at ActionExecutionService step 9b-bis puts the credential under
-            //    a literal "/credential" field. camelCase fallback isn't required because
-            //    the JSON is serialised with the literal pointer key.
-            var credentialField = FindCredentialField(decryptedPayload.Value);
             if (credentialField is null)
             {
-                _metrics.RecordSkippedNoRecipientDisclosure();
+                // All skip counters are recorded inside the Try* helpers; a null return here
+                // is already accounted for. Nothing more to do.
                 return null;
             }
 
@@ -252,6 +230,99 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
             sw.Stop();
             _metrics.RecordExtractionLatency(sw.Elapsed.TotalMilliseconds);
         }
+    }
+
+    /// <summary>
+    /// Encrypted path: walks the transaction's <c>encryptedPayloads</c> array, finds
+    /// the first group that targets <paramref name="walletAddress"/> (via
+    /// <see cref="TryDecryptGroupForWalletAsync"/>), and extracts the <c>/credential</c>
+    /// field from the decrypted payload. Records the appropriate skip counters on miss.
+    /// </summary>
+    private async Task<JsonElement?> TryFindEncryptedCredentialAsync(
+        string walletAddress,
+        JsonElement txJson,
+        string transactionId,
+        CancellationToken cancellationToken)
+    {
+        if (!txJson.TryGetProperty("encryptedPayloads", out var groupsEl)
+            || groupsEl.ValueKind != JsonValueKind.Array)
+        {
+            _metrics.RecordSkippedNoRecipientDisclosure();
+            return null;
+        }
+
+        foreach (var group in groupsEl.EnumerateArray())
+        {
+            var decrypted = await TryDecryptGroupForWalletAsync(
+                walletAddress, group, transactionId, cancellationToken);
+            if (decrypted is null)
+            {
+                continue;
+            }
+
+            var field = FindCredentialField(decrypted.Value);
+            if (field is not null)
+            {
+                return field;
+            }
+        }
+
+        // Either no group targeted us, every targeted group failed to decrypt (those
+        // increment SkippedDecryptFailed internally), or a group decrypted but carried
+        // no /credential shape. All three collapse to "no recipient disclosure" for us.
+        _metrics.RecordSkippedNoRecipientDisclosure();
+        return null;
+    }
+
+    /// <summary>
+    /// Plaintext path (Feature 106 DevMode): when the register is in DevMode the
+    /// writer emits payloads as a flat <c>{ "payloads": { walletAddress: { ... } } }</c>
+    /// dictionary — see the plaintext branch of
+    /// <c>ITransactionBuilderService.BuildActionTransactionAsync</c>. This helper looks
+    /// up our wallet's entry and extracts the <c>/credential</c> shape.
+    /// <para>
+    /// SECURITY: plaintext transactions on non-DevMode registers are dropped. Such
+    /// transactions only occur when the encryption pipeline could not resolve recipient
+    /// keys (Feature 083 publishing gap or similar) — treating them as credentials would
+    /// silently downgrade the DAD guarantee. Returning null on that path is intentional.
+    /// </para>
+    /// </summary>
+    private async Task<JsonElement?> TryFindDevModePlaintextCredentialAsync(
+        string walletAddress,
+        string registerId,
+        JsonElement txJson,
+        string transactionId,
+        CancellationToken cancellationToken)
+    {
+        bool registerDevMode;
+        try
+        {
+            var register = await _registerClient.GetRegisterAsync(registerId, cancellationToken);
+            registerDevMode = register?.DevMode ?? false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "InboundCredentialDetector: failed to resolve register {RegisterId} DevMode flag for plaintext tx {TxId} — skipping",
+                registerId, transactionId);
+            _metrics.RecordSkippedNoRecipientDisclosure();
+            return null;
+        }
+
+        if (!registerDevMode)
+        {
+            _metrics.RecordSkippedNoRecipientDisclosure();
+            return null;
+        }
+
+        var field = FindPlaintextCredentialForWallet(txJson, walletAddress);
+        if (field is null)
+        {
+            _metrics.RecordSkippedNoRecipientDisclosure();
+            return null;
+        }
+
+        return field;
     }
 
     /// <summary>
@@ -343,6 +414,39 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
                 _metrics.RecordSkippedDecryptFailed();
                 return null;
             }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// DevMode plaintext shape: the writer emits a top-level
+    /// <c>"payloads": { walletAddress: { "/credential": { ... } } }</c> dictionary
+    /// (see <c>ITransactionBuilderService.BuildActionTransactionAsync</c> non-encrypted
+    /// branch). Look up our wallet's entry, case-insensitively, and delegate to
+    /// <see cref="FindCredentialField"/> for the actual shape match.
+    /// </summary>
+    internal static JsonElement? FindPlaintextCredentialForWallet(JsonElement txJson, string walletAddress)
+    {
+        if (!txJson.TryGetProperty("payloads", out var payloadsEl)
+            || payloadsEl.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var prop in payloadsEl.EnumerateObject())
+        {
+            if (!string.Equals(prop.Name, walletAddress, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (prop.Value.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return FindCredentialField(prop.Value);
         }
 
         return null;
