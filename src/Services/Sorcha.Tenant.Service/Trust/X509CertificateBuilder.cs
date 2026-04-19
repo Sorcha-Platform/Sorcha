@@ -98,6 +98,17 @@ public static class X509CertificateBuilder
         request.CertificateExtensions.Add(
             new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
 
+        // CRL Distribution Points (RFC 5280 §4.2.1.13). Strict X.509 validators
+        // require this extension to perform revocation checks — without it the
+        // chain walker has no way to locate the CRL, which silently downgrades
+        // the revocation guarantee to "no check".
+        if (!string.IsNullOrWhiteSpace(crlDistributionPoint))
+        {
+            request.CertificateExtensions.Add(
+                CertificateRevocationListBuilder.BuildCrlDistributionPointExtension(
+                    new[] { crlDistributionPoint }));
+        }
+
         // Serial number
         var serialBytes = RandomNumberGenerator.GetBytes(16);
         serialBytes[0] &= 0x7F; // Ensure positive

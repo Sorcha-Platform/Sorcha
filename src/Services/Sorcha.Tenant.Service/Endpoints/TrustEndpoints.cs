@@ -61,6 +61,31 @@ public static class TrustEndpoints
             .Produces<CertChainResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
             .AllowAnonymous();
+
+        // Org cert revocation — requires auth (Feature 096 US4)
+        group.MapPost("/tenants/{tenantId}/orgs/{orgWalletAddress}/revoke", RevokeOrgCert)
+            .WithName("RevokeOrgCert")
+            .WithSummary("Revoke an organisation certificate")
+            .WithDescription(
+                "Marks the organisation certificate as revoked and regenerates the tenant CRL. " +
+                "Subsequent CRL fetches will include the revoked serial. Idempotent.")
+            .Produces<OrgCertEnrolmentResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .RequireAuthorization("RequireAdministrator");
+
+        // CRL — public, cacheable (Feature 096 US4, Category 5 gap closure)
+        group.MapGet("/tenants/{tenantId}/crl", GetTenantCrl)
+            .WithName("GetTenantCrl")
+            .WithSummary("Get the tenant's Certificate Revocation List (DER)")
+            .WithDescription(
+                "Returns the DER-encoded signed CRL for the tenant root CA. Served as " +
+                "application/pkix-crl with a Cache-Control max-age aligned to the CRL's nextUpdate. " +
+                "Public endpoint — strict X.509 validators embed the CDP URL in org certs and fetch " +
+                "this endpoint during chain validation.")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pkix-crl")
+            .Produces(StatusCodes.Status404NotFound)
+            .AllowAnonymous();
     }
 
     private static async Task<IResult> ProvisionTrustAnchor(
@@ -156,6 +181,58 @@ public static class TrustEndpoints
             RootCertBase64 = Convert.ToBase64String(chain.Value.RootCertDer)
         });
     }
+
+    private static async Task<IResult> RevokeOrgCert(
+        string tenantId,
+        string orgWalletAddress,
+        [FromBody] RevokeOrgCertRequest? request,
+        ITrustProvider trustProvider,
+        CancellationToken ct)
+    {
+        try
+        {
+            var enrolment = await trustProvider.RevokeOrgCertAsync(
+                tenantId, orgWalletAddress, request?.Reason, ct);
+
+            return Results.Ok(new OrgCertEnrolmentResponse
+            {
+                OrgWalletAddress = enrolment.OrgWalletAddress,
+                SerialNumber = enrolment.SerialNumber,
+                SubjectDn = enrolment.SubjectDn,
+                SanUri = enrolment.SanUri,
+                NotBefore = enrolment.NotBefore,
+                NotAfter = enrolment.NotAfter,
+                CertificateBase64 = Convert.ToBase64String(enrolment.CertificateDer),
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> GetTenantCrl(
+        string tenantId,
+        ITrustProvider trustProvider,
+        HttpContext httpContext,
+        CancellationToken ct)
+    {
+        var crl = await trustProvider.GetOrPublishCrlAsync(tenantId, ct);
+        if (crl is null)
+        {
+            return Results.NotFound(new
+            {
+                error = $"Tenant '{tenantId}' has no provisioned root CA — provision before fetching CRL",
+            });
+        }
+
+        // Cache-Control aligned to nextUpdate — strict validators expect caches to
+        // expire at the same instant the CRL declares stale.
+        var maxAge = Math.Max(60, (int)(crl.NextUpdate - DateTimeOffset.UtcNow).TotalSeconds);
+        httpContext.Response.Headers.CacheControl = $"public, max-age={maxAge}";
+
+        return Results.Bytes(crl.CrlDer, "application/pkix-crl");
+    }
 }
 
 /// <summary>Response for trust anchor provisioning.</summary>
@@ -194,4 +271,15 @@ public class CertChainResponse
 {
     public required string OrgCertBase64 { get; init; }
     public required string RootCertBase64 { get; init; }
+}
+
+/// <summary>Request to revoke an organisation certificate.</summary>
+public class RevokeOrgCertRequest
+{
+    /// <summary>
+    /// Optional human-readable revocation reason (e.g. "keyCompromise",
+    /// "cessationOfOperation"). Stored for audit; not yet surfaced in the
+    /// CRL entry extensions.
+    /// </summary>
+    public string? Reason { get; init; }
 }

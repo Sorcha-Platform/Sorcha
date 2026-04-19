@@ -170,4 +170,53 @@ public class X509CertificateBuilderTests
         var isValid = chain.Build(orgCert);
         isValid.Should().BeTrue("org cert should verify against the root CA");
     }
+
+    [Fact]
+    public void BuildOrgCert_CrlDistributionPoints_EmbedsCdpExtension()
+    {
+        // Feature 096 US4: strict X.509 validators require the CDP extension to
+        // locate the CRL for revocation checks. Prior to this PR the param was
+        // silently ignored — this test locks the behaviour.
+        var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot(
+            "ES256", "CN=Test Root CA");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+        var crlUrl = "https://test.example/api/v1/trust/tenants/t1/crl";
+
+        var (orgCertDer, _) = X509CertificateBuilder.BuildOrgCert(
+            rootCertDer, rootPrivateKey, orgPublicKey,
+            "CN=Test Org", "did:sorcha:org:ws1qtest123",
+            crlDistributionPoint: crlUrl);
+
+        using var orgCert = X509CertificateLoader.LoadCertificate(orgCertDer);
+        var cdp = orgCert.Extensions
+            .FirstOrDefault(e => e.Oid?.Value == "2.5.29.31");
+        cdp.Should().NotBeNull("CRL Distribution Points (OID 2.5.29.31) must be present");
+
+        // The CRL URL is ASCII-encoded inside the extension's ASN.1 sequence.
+        var bytes = cdp!.RawData;
+        var asText = System.Text.Encoding.ASCII.GetString(bytes);
+        asText.Should().Contain(crlUrl,
+            "CDP extension must carry the CRL URL the Tenant Service advertises");
+    }
+
+    [Fact]
+    public void BuildOrgCert_NoCdpSupplied_OmitsExtension()
+    {
+        var (rootCertDer, rootPrivateKey, _) = X509CertificateBuilder.BuildSelfSignedRoot(
+            "ES256", "CN=Test Root CA");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+
+        var (orgCertDer, _) = X509CertificateBuilder.BuildOrgCert(
+            rootCertDer, rootPrivateKey, orgPublicKey,
+            "CN=Test Org", "did:sorcha:org:ws1qtest123",
+            crlDistributionPoint: null);
+
+        using var orgCert = X509CertificateLoader.LoadCertificate(orgCertDer);
+        var hasCdp = orgCert.Extensions.Any(e =>
+            e.Oid is not null && e.Oid.Value == "2.5.29.31");
+        hasCdp.Should().BeFalse(
+            "CDP extension must be omitted when no URL supplied — strict validators treat a bogus CDP worse than a missing one");
+    }
 }
