@@ -46,6 +46,7 @@ builder.Services.AddSingleton<HaipCredentialMinter>();
 // Feature 098: HAIP verifier services
 builder.Services.AddSingleton<PresentationRequestStore>();
 builder.Services.AddSingleton<HaipPresentationVerifier>();
+builder.Services.AddSingleton<RequestObjectSigner>();
 
 var app = builder.Build();
 

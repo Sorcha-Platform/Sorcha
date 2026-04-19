@@ -431,6 +431,128 @@ public class SdJwtNestedDisclosureTests
     }
 
     [Fact]
+    public async Task ArrayElementDisclosure_SelectsOnlyRequestedIndex()
+    {
+        // Feature 094 TODO(094) regression test: requesting /qualifications/1 must
+        // select only the disclosure whose digest appears at that placeholder slot.
+        // Prior behaviour dumped every 2-element disclosure into the presentation,
+        // silently leaking elements the holder did not intend to disclose.
+        var (privateKey, publicKey) = GenerateP256KeyPair();
+
+        var claims = new Dictionary<string, object>
+        {
+            ["name"] = "Alice",
+            ["qualifications"] = new List<object>
+            {
+                new Dictionary<string, object> { ["type"] = "Plumbing" },
+                new Dictionary<string, object> { ["type"] = "Engineering" },
+                new Dictionary<string, object> { ["type"] = "Medicine" },
+            },
+        };
+
+        var token = await _service.CreateTokenAsync(
+            claims,
+            disclosableClaims: ["/qualifications/0", "/qualifications/1", "/qualifications/2"],
+            issuer: "did:sorcha:org:gov",
+            subject: "did:sorcha:w:alice",
+            signingKey: privateKey,
+            algorithm: "ES256");
+
+        // Disclose ONLY index 1.
+        var presentation = await _service.CreatePresentationAsync(
+            token.RawToken,
+            claimsToDisclose: ["/qualifications/1"]);
+
+        presentation.SelectedDisclosures.Should().HaveCount(1,
+            "only the single requested array-element disclosure must be selected");
+
+        // Decode the one disclosure and confirm it carries the Engineering element.
+        var raw = presentation.SelectedDisclosures[0];
+        var decoded = JsonSerializer.Deserialize<JsonElement[]>(
+            Base64Url.DecodeFromChars(raw));
+        decoded.Should().NotBeNull();
+        decoded!.Should().HaveCount(2, "array-element disclosures are [salt, value]");
+        var value = decoded[1];
+        value.GetProperty("type").GetString().Should().Be("Engineering");
+
+        // Verifying the presentation end-to-end must still succeed.
+        var verified = await _service.VerifyPresentationAsync(
+            presentation.RawPresentation, publicKey, "ES256");
+        verified.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ArrayElementDisclosure_RequestingNoElements_YieldsEmptyDisclosureList()
+    {
+        // The caller may legitimately want to present only public fields; no array
+        // elements disclosed means the selected list must be empty — NOT every
+        // 2-element disclosure in the token (the prior bug).
+        var (privateKey, _) = GenerateP256KeyPair();
+
+        var claims = new Dictionary<string, object>
+        {
+            ["publicField"] = "always-visible",
+            ["qualifications"] = new List<object>
+            {
+                new Dictionary<string, object> { ["type"] = "Plumbing" },
+                new Dictionary<string, object> { ["type"] = "Engineering" },
+            },
+        };
+
+        var token = await _service.CreateTokenAsync(
+            claims,
+            disclosableClaims: ["/qualifications/0", "/qualifications/1"],
+            issuer: "did:sorcha:org:gov",
+            subject: "did:sorcha:w:alice",
+            signingKey: privateKey,
+            algorithm: "ES256");
+
+        var presentation = await _service.CreatePresentationAsync(
+            token.RawToken,
+            claimsToDisclose: Array.Empty<string>());
+
+        presentation.SelectedDisclosures.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ArrayElementDisclosure_MixedWithTopLevelNameRequest_SelectsBoth()
+    {
+        // Top-level "name" + /qualifications/1 in one presentation. Both disclosures
+        // must be selected, nothing else.
+        var (privateKey, publicKey) = GenerateP256KeyPair();
+
+        var claims = new Dictionary<string, object>
+        {
+            ["name"] = "Alice",
+            ["qualifications"] = new List<object>
+            {
+                new Dictionary<string, object> { ["type"] = "Plumbing" },
+                new Dictionary<string, object> { ["type"] = "Engineering" },
+            },
+        };
+
+        var token = await _service.CreateTokenAsync(
+            claims,
+            disclosableClaims: ["name", "/qualifications/0", "/qualifications/1"],
+            issuer: "did:sorcha:org:gov",
+            subject: "did:sorcha:w:alice",
+            signingKey: privateKey,
+            algorithm: "ES256");
+
+        var presentation = await _service.CreatePresentationAsync(
+            token.RawToken,
+            claimsToDisclose: ["name", "/qualifications/1"]);
+
+        presentation.SelectedDisclosures.Should().HaveCount(2);
+
+        var verified = await _service.VerifyPresentationAsync(
+            presentation.RawPresentation, publicKey, "ES256");
+        verified.IsValid.Should().BeTrue();
+        verified.Claims.Should().ContainKey("name");
+        verified.Claims["name"].Should().Be("Alice");
+    }
+
+    [Fact]
     public async Task ExistingBlueprints_TopLevelNameKeyed_WorkIdentically()
     {
         // FR-021: Existing blueprints with top-level name-keyed disclosables
