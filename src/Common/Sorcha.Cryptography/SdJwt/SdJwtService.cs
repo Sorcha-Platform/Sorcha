@@ -34,10 +34,11 @@ public class SdJwtService : ISdJwtService
         byte[] signingKey,
         string algorithm,
         DateTimeOffset? expiresAt = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk: null, expiresAt, cancellationToken);
+            algorithm, holderJwk: null, expiresAt, x5cChain, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -50,10 +51,11 @@ public class SdJwtService : ISdJwtService
         string algorithm,
         JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null)
     {
         return CreateTokenCoreAsync(claims, disclosableClaims, issuer, subject, signingKey,
-            algorithm, holderJwk, expiresAt, cancellationToken);
+            algorithm, holderJwk, expiresAt, x5cChain, cancellationToken);
     }
 
     private Task<SdJwtToken> CreateTokenCoreAsync(
@@ -65,6 +67,7 @@ public class SdJwtService : ISdJwtService
         string algorithm,
         JsonElement? holderJwk,
         DateTimeOffset? expiresAt,
+        IReadOnlyList<byte[]>? x5cChain,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(claims);
@@ -154,6 +157,13 @@ public class SdJwtService : ISdJwtService
             ["alg"] = MapAlgorithm(algorithm),
             ["typ"] = "vc+sd-jwt"
         };
+
+        // Feature 096 US3 — x5c chain, if the caller supplied one. RFC 7515 §4.1.6
+        // mandates base64 (NOT base64url) encoding for x5c entries.
+        if (x5cChain is { Count: > 0 })
+        {
+            header["x5c"] = x5cChain.Select(Convert.ToBase64String).ToArray();
+        }
 
         // Sign the JWT
         var headerB64 = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header));

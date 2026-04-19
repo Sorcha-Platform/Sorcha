@@ -25,6 +25,13 @@ public interface ISdJwtService
     /// <param name="signingKey">Private key bytes for signing (algorithm determined by key type).</param>
     /// <param name="algorithm">Signing algorithm (e.g., "EdDSA", "ES256", "RS256").</param>
     /// <param name="expiresAt">Optional expiration timestamp.</param>
+    /// <param name="x5cChain">
+    /// Feature 096 US3 — optional X.509 certificate chain (leaf first) to embed
+    /// in the JWS header's <c>x5c</c> array per RFC 7515 §4.1.6. When supplied,
+    /// verifiers can validate the issuer key against a trust anchor without DID
+    /// resolution. Each entry is raw DER bytes; the header encodes them as
+    /// base64 (not base64url).
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created SD-JWT token with all disclosures.</returns>
     Task<SdJwtToken> CreateTokenAsync(
@@ -35,7 +42,8 @@ public interface ISdJwtService
         byte[] signingKey,
         string algorithm,
         DateTimeOffset? expiresAt = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null);
 
     /// <summary>
     /// Creates a new SD-JWT VC token with selective disclosure and holder key binding (cnf).
@@ -48,6 +56,7 @@ public interface ISdJwtService
     /// <param name="algorithm">Signing algorithm (e.g., "EdDSA", "ES256", "RS256").</param>
     /// <param name="holderJwk">Holder's public key in JWK form, embedded as the <c>cnf.jwk</c> claim.</param>
     /// <param name="expiresAt">Optional expiration timestamp.</param>
+    /// <param name="x5cChain">Feature 096 US3 — optional X.509 chain for the JWS header.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created SD-JWT token with cnf claim and all disclosures.</returns>
     Task<SdJwtToken> CreateTokenAsync(
@@ -59,7 +68,8 @@ public interface ISdJwtService
         string algorithm,
         JsonElement holderJwk,
         DateTimeOffset? expiresAt = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<byte[]>? x5cChain = null);
 
     /// <summary>
     /// Verifies an SD-JWT token's signature, structure, and extracts all disclosed claims.
