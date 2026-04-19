@@ -57,21 +57,9 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
-// Org cert chain provider — fetched by the IssueCredential endpoint to embed
-// the issuer's X.509 chain in the JWS x5c header for HAIP-path credentials.
-//
-// Registered as a singleton: TrustServiceClient holds an internal 5-min cache;
-// transient registration would discard the cache between requests and turn every
-// issuance into a Tenant Service round-trip. The HttpClient is owned by the
-// IHttpClientFactory infrastructure (created via the named "trust-service"
-// binding below) so we keep the per-handler lifecycle while still pinning the
-// client+cache as a singleton.
-//
-// NOTE: the HttpClient is captured once at singleton creation, so mTLS cert
-// rotation on the Tenant Service end requires a Wallet Service restart to be
-// picked up. Acceptable today (cert rotation is operator-driven and rare);
-// revisit by injecting IHttpClientFactory into a thin wrapper if rotation
-// cadence becomes faster than restarts.
+// Singleton TrustServiceClient — its 5-min cert cache must survive across
+// requests, so the HttpClient is captured once. mTLS cert rotation on the
+// Tenant Service therefore requires a Wallet Service restart.
 builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
