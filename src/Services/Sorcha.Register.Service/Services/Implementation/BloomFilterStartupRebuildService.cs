@@ -40,17 +40,25 @@ namespace Sorcha.Register.Service.Services.Implementation;
 public sealed class BloomFilterStartupRebuildService : BackgroundService
 {
     private readonly IServiceProvider _services;
+    private readonly IBloomFilterRebuilder _rebuilder;
     private readonly ILogger<BloomFilterStartupRebuildService> _logger;
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// Initialises a new instance of <see cref="BloomFilterStartupRebuildService"/>.
     /// </summary>
+    /// <remarks>
+    /// <see cref="IBloomFilterRebuilder"/> is a singleton and constructor-injected.
+    /// <see cref="IServiceProvider"/> stays for resolving scoped dependencies
+    /// (<c>RegisterManager</c>, <see cref="ILocalAddressIndex"/>) inside the rebuild loop.
+    /// </remarks>
     public BloomFilterStartupRebuildService(
         IServiceProvider services,
+        IBloomFilterRebuilder rebuilder,
         ILogger<BloomFilterStartupRebuildService> logger)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _rebuilder = rebuilder ?? throw new ArgumentNullException(nameof(rebuilder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -71,7 +79,6 @@ public sealed class BloomFilterStartupRebuildService : BackgroundService
         await using var scope = _services.CreateAsyncScope();
         var registerManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
         var addressIndex = scope.ServiceProvider.GetRequiredService<ILocalAddressIndex>();
-        var rebuilder = scope.ServiceProvider.GetRequiredService<IBloomFilterRebuilder>();
 
         IReadOnlyList<Sorcha.Register.Models.Register> registers;
         try
@@ -120,7 +127,7 @@ public sealed class BloomFilterStartupRebuildService : BackgroundService
                     "Bloom startup-rebuild: rebuilding register {RegisterId} (current={Count})",
                     registerId, stats?.AddressCount ?? 0);
 
-                var newStats = await rebuilder.RebuildAsync(registerId, stoppingToken);
+                var newStats = await _rebuilder.RebuildAsync(registerId, stoppingToken);
 
                 rebuilt++;
                 _logger.LogInformation(

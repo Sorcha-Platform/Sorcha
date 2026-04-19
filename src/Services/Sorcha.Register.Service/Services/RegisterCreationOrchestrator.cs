@@ -469,12 +469,10 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
 
         _logger.LogInformation("Register {RegisterId} set to Online", register.Id);
 
-        // Feature 106: Initialise the bloom filter for this register so any pre-existing
-        // local wallets are immediately routable on inbound transactions. Without this
-        // fan-in, addresses created before the register existed stay invisible to the
-        // InboundTransactionRouter until the next BloomFilterStartupRebuildService pass
-        // (i.e. the next service restart). Failures are non-fatal — the next startup
-        // pass or admin /rebuild-index will reconcile.
+        // Without this rebuild, addresses provisioned before register creation
+        // stay invisible to InboundTransactionRouter until the next
+        // BloomFilterStartupRebuildService pass (i.e. the next service restart).
+        // Failures are non-fatal — startup-rebuild or /rebuild-index reconciles.
         try
         {
             var bloomStats = await _bloomFilterRebuilder.RebuildAsync(register.Id, cancellationToken);
