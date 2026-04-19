@@ -11,6 +11,10 @@
     <!-- gRPC dependencies (HTTP packages come transitively from ServiceClients.Http) -->
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Grpc.Net.ClientFactory" />
+    <!-- Service discovery resolver for https+http:// URIs used by Aspire.
+         Without this, gRPC clients throw
+         "No address resolver configured for the scheme 'https+http'" at call time. -->
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
     <PackageReference Include="Grpc.Tools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -13,8 +13,23 @@ using Sorcha.Cryptography.Utilities;
 using Sorcha.ServiceClients.Extensions;
 using Sorcha.Register.Storage.MongoDB;
 using Sorcha.Register.Storage.Redis;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Kestrel on plaintext HTTP can't multiplex HTTP/1.1 + HTTP/2 on one port
+// (h2c needs ALPN, which needs TLS). Bind REST on 8080 and gRPC on a
+// dedicated HTTP/2-only port for ValidatorGrpcService.
+{
+    var httpPort = int.TryParse(Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS"), out var envHttpPort) ? envHttpPort : 8080;
+    var grpcPort = builder.Configuration.GetValue<int>("Kestrel:GrpcPort", 5001);
+    builder.WebHost.ConfigureKestrel(opts =>
+    {
+        opts.ListenAnyIP(httpPort, lo => lo.Protocols = HttpProtocols.Http1);
+        opts.ListenAnyIP(grpcPort, lo => lo.Protocols = HttpProtocols.Http2);
+    });
+    builder.WebHost.UseUrls();
+}
 
 // Add service defaults (OpenTelemetry, health checks, service discovery)
 builder.AddServiceDefaults();

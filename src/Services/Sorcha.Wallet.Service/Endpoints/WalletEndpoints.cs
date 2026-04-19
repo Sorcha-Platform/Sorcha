@@ -18,6 +18,7 @@ using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Domain.Enums;
 using Sorcha.Wallet.Core.Domain.ValueObjects;
 using Sorcha.Wallet.Core.Services.Implementation;
+using Sorcha.Wallet.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Participant;
 using Sorcha.ServiceClients.Wallet.Models;
 using Sorcha.Wallet.Service.Mappers;
@@ -441,6 +442,23 @@ public static class WalletEndpoints
                 {
                     // Can't use scoped logger here if scope creation itself failed
                     Console.Error.WriteLine($"Auto-link failed for wallet {walletAddress}: {autoLinkEx.Message}");
+                }
+            });
+
+            // Feature 106 hook A: announce primary wallet address to all register bloom filters.
+            // Fire-and-forget via a fresh scope — bloom is a cache and its update must never
+            // fail the wallet create. Startup-rebuild on the Register Service reconciles gaps.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var svc = scope.ServiceProvider.GetRequiredService<IAddressRegistrationService>();
+                    await svc.NotifyLocalAddressCreatedAsync(walletAddress, CancellationToken.None);
+                }
+                catch (Exception bloomEx)
+                {
+                    Console.Error.WriteLine($"Bloom fan-out failed for wallet {walletAddress}: {bloomEx.Message}");
                 }
             });
 
@@ -1002,6 +1020,7 @@ public static class WalletEndpoints
         string address,
         [FromBody] RegisterDerivedAddressRequest request,
         WalletManager walletManager,
+        IServiceScopeFactory serviceScopeFactory,
         ILogger<Program> logger,
         CancellationToken cancellationToken = default)
     {
@@ -1027,6 +1046,23 @@ public static class WalletEndpoints
             logger.LogInformation(
                 "Successfully registered address {DerivedAddress} at path {Path}",
                 request.DerivedAddress, request.DerivationPath);
+
+            // Feature 106 hook B: announce BIP44-derived child address to all register bloom filters.
+            // Fire-and-forget via a fresh scope; startup-rebuild reconciles failures.
+            var derivedAddr = walletAddress.Address;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = serviceScopeFactory.CreateAsyncScope();
+                    var svc = scope.ServiceProvider.GetRequiredService<IAddressRegistrationService>();
+                    await svc.NotifyLocalAddressCreatedAsync(derivedAddr, CancellationToken.None);
+                }
+                catch (Exception bloomEx)
+                {
+                    Console.Error.WriteLine($"Bloom fan-out failed for derived address {derivedAddr}: {bloomEx.Message}");
+                }
+            });
 
             return Results.Created($"/api/v1/wallets/{address}/addresses/{walletAddress.Id}", dto);
         }

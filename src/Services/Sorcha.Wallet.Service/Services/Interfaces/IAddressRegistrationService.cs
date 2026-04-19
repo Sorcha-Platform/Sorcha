@@ -29,4 +29,22 @@ public interface IAddressRegistrationService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if removal/rebuild was triggered.</returns>
     Task<bool> RemoveAddressAsync(string address, string registerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Announces a newly created local wallet address to every register's bloom filter.
+    /// Called from wallet-create / address-derive / org-key-derive paths so the
+    /// Register Service's InboundTransactionRouter can match local recipients on
+    /// docket-sealed transactions.
+    /// </summary>
+    /// <remarks>
+    /// This method swallows all failures and logs them as warnings; bloom registration
+    /// is a best-effort cache update and must not fail the caller's wallet-create
+    /// operation. The Register Service's startup-rebuild hosted service reconciles
+    /// any addresses missed here by iterating <c>IWalletRepository.GetAllPagedAsync</c>.
+    /// Policy is <b>Option B</b>: the address is added to every register discovered
+    /// via <see cref="Sorcha.ServiceClients.Register.IRegisterServiceClient.GetInternalRegistersAsync"/>.
+    /// </remarks>
+    /// <param name="address">The newly created wallet address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task NotifyLocalAddressCreatedAsync(string address, CancellationToken cancellationToken = default);
 }

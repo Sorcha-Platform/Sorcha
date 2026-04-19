@@ -26,8 +26,23 @@ using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.Validator.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Kestrel on plaintext HTTP can't multiplex HTTP/1.1 + HTTP/2 on one port
+// (h2c needs ALPN, which needs TLS). Bind REST on 8080 and gRPC on a
+// dedicated HTTP/2-only port for RegisterAddressGrpcService.
+{
+    var httpPort = int.TryParse(Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS"), out var envHttpPort) ? envHttpPort : 8080;
+    var grpcPort = builder.Configuration.GetValue<int>("Kestrel:GrpcPort", 5001);
+    builder.WebHost.ConfigureKestrel(opts =>
+    {
+        opts.ListenAnyIP(httpPort, lo => lo.Protocols = HttpProtocols.Http1);
+        opts.ListenAnyIP(grpcPort, lo => lo.Protocols = HttpProtocols.Http2);
+    });
+    builder.WebHost.UseUrls();
+}
 
 // Add service defaults (OpenTelemetry, health checks, service discovery)
 builder.AddServiceDefaults();
@@ -187,6 +202,11 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocal
     Sorcha.Register.Service.Services.Implementation.RedisBloomFilterAddressIndex>();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
     Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
+
+// Feature 106 startup-rebuild: reconcile bloom filters on boot in case Redis was wiped
+// or hooks failed during normal wallet creation. Non-blocking — runs as a hosted service
+// on a startup delay and never blocks ASP.NET startup.
+builder.Services.AddHostedService<Sorcha.Register.Service.Services.Implementation.BloomFilterStartupRebuildService>();
 
 // Feature 047: Inbound routing metrics (T047 — observability)
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Implementation.InboundRoutingMetrics>();
