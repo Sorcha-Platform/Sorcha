@@ -564,14 +564,32 @@ public static class CredentialEndpoints
                 ? "revocation"
                 : request.StatusListPurpose!;
 
-            claims["credentialStatus"] = new Dictionary<string, object>
+            // Feature 095 US3: HAIP-path callers select the IETF shape so external
+            // wallets can read status via IETF Token Status List semantics; internal
+            // callers keep the W3C shape to preserve spec 093 behaviour. Exactly one
+            // shape is embedded per credential — callers cannot opt into both.
+            if (request.StatusClaimForm == Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList)
             {
-                ["id"] = $"{request.StatusListUrl}#{request.StatusListIndex.Value}",
-                ["type"] = "BitstringStatusListEntry",
-                ["statusPurpose"] = purpose,
-                ["statusListIndex"] = request.StatusListIndex.Value.ToString(),
-                ["statusListCredential"] = request.StatusListUrl!
-            };
+                claims["status"] = new Dictionary<string, object>
+                {
+                    ["status_list"] = new Dictionary<string, object>
+                    {
+                        ["uri"] = request.StatusListUrl!,
+                        ["idx"] = request.StatusListIndex.Value,
+                    },
+                };
+            }
+            else
+            {
+                claims["credentialStatus"] = new Dictionary<string, object>
+                {
+                    ["id"] = $"{request.StatusListUrl}#{request.StatusListIndex.Value}",
+                    ["type"] = "BitstringStatusListEntry",
+                    ["statusPurpose"] = purpose,
+                    ["statusListIndex"] = request.StatusListIndex.Value.ToString(),
+                    ["statusListCredential"] = request.StatusListUrl!
+                };
+            }
         }
 
         var token = await sdJwtService.CreateTokenAsync(
@@ -718,6 +736,18 @@ public class IssueCredentialRequest
     /// are provided and this field is left null.
     /// </summary>
     public string? StatusListPurpose { get; init; }
+
+    /// <summary>
+    /// Feature 095 US3 — selects which status-list claim shape to embed in the
+    /// signed SD-JWT payload. Defaults to the spec 093 W3C form; HAIP-path callers
+    /// set <see cref="Sorcha.Wallet.Service.Models.StatusClaimForm.IetfTokenStatusList"/>
+    /// so external wallets can read the status via IETF semantics
+    /// (<c>status.status_list.uri</c> + <c>idx</c>). Requires
+    /// <see cref="StatusListUrl"/> and <see cref="StatusListIndex"/> to be set;
+    /// when the allocation is absent this field is ignored (no claim embedded).
+    /// </summary>
+    public Sorcha.Wallet.Service.Models.StatusClaimForm StatusClaimForm { get; init; }
+        = Sorcha.Wallet.Service.Models.StatusClaimForm.W3cBitstringStatusListEntry;
 
     /// <summary>
     /// Feature 106: When true, the credential is stored only in the issuer's wallet — not

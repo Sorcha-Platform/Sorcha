@@ -23,6 +23,7 @@ public class HaipPresentationVerifier
 {
     private readonly ISdJwtService _sdJwtService;
     private readonly IDidResolverRegistry? _didResolver;
+    private readonly IetfTokenStatusListChecker? _ietfStatusChecker;
     private readonly ILogger<HaipPresentationVerifier> _logger;
 
     // Trusted root certificates for x5c chain validation.
@@ -32,11 +33,13 @@ public class HaipPresentationVerifier
     public HaipPresentationVerifier(
         ISdJwtService sdJwtService,
         ILogger<HaipPresentationVerifier> logger,
-        IDidResolverRegistry? didResolver = null)
+        IDidResolverRegistry? didResolver = null,
+        IetfTokenStatusListChecker? ietfStatusChecker = null)
     {
         _sdJwtService = sdJwtService ?? throw new ArgumentNullException(nameof(sdJwtService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _didResolver = didResolver;
+        _ietfStatusChecker = ietfStatusChecker;
     }
 
     /// <summary>
@@ -104,7 +107,7 @@ public class HaipPresentationVerifier
             result.VerifiedClaims = sdJwtResult.Claims;
 
             // Step 4: Check credential status (IETF or W3C claim)
-            var statusResult = CheckStatus(sdJwtResult.Claims);
+            var statusResult = await CheckStatusAsync(sdJwtResult.Claims, ct);
             result.StatusCheckResult = statusResult;
             if (statusResult is "Revoked" or "Suspended")
             {
@@ -276,26 +279,155 @@ public class HaipPresentationVerifier
     }
 
     /// <summary>
-    /// Checks credential status from the verified claims.
-    /// Returns "Active", "Revoked", "Suspended", or null (no status claim).
+    /// Feature 095 US4 — resolves a credential's lifecycle status by reading the
+    /// <c>status.status_list</c> claim (IETF, preferred) or <c>credentialStatus</c>
+    /// claim (W3C, fallback), fetching the referenced status list endpoint, and
+    /// reading the bit at the allocated index. Returns:
+    /// <list type="bullet">
+    ///   <item><c>"Active"</c> — bit is 0 or the credential carries no status claim.</item>
+    ///   <item><c>"Revoked"</c> / <c>"Suspended"</c> — bit is 1. Purpose disambiguation
+    ///   comes from the W3C <c>statusPurpose</c> field when present; IETF lists default
+    ///   to <c>Revoked</c> (bits=1 semantic).</item>
+    ///   <item>null — no claim present, caller treats as Active per FR-010 policy.</item>
+    ///   <item><c>"Unknown"</c> — claim was present but the endpoint was unreachable
+    ///   or unverifiable. Non-fatal by design — lets the orchestrator decide whether
+    ///   to fail-open.</item>
+    /// </list>
     /// </summary>
-    private string? CheckStatus(Dictionary<string, object> claims)
+    private async Task<string?> CheckStatusAsync(Dictionary<string, object> claims, CancellationToken ct)
     {
-        // IETF status.status_list or W3C credentialStatus
-        if (claims.ContainsKey("status") || claims.ContainsKey("credentialStatus"))
+        // IETF claim takes precedence over W3C per spec 095 US4.
+        var (ietfUri, ietfIdx) = TryExtractIetfStatusList(claims);
+        if (ietfUri is not null && ietfIdx.HasValue)
         {
-            // Full implementation would fetch the status list endpoint,
-            // verify the JWT, decompress the bitstring, and read the bit.
-            // The BitstringStatusListChecker in Blueprint.Engine handles
-            // the W3C path; the IETF path uses IetfTokenStatusListSerializer.
-            // For now, return "Active" — the status list infrastructure
-            // from spec 095 is available but requires an HttpClient to
-            // fetch the endpoint, which is a cross-service call.
-            _logger.LogInformation("Credential has status claim — returning Active (full status list fetch not wired)");
-            return "Active";
+            if (_ietfStatusChecker is null)
+            {
+                _logger.LogWarning(
+                    "Credential carries IETF status claim but IetfTokenStatusListChecker is not wired — returning Unknown");
+                return "Unknown";
+            }
+
+            var bit = await _ietfStatusChecker.CheckBitAsync(ietfUri, ietfIdx.Value, ct);
+            return bit switch
+            {
+                StatusListBit.NotSet => "Active",
+                StatusListBit.Set => "Revoked",
+                _ => "Unknown",
+            };
         }
 
+        var (w3cUri, w3cIdx, w3cPurpose) = TryExtractW3cCredentialStatus(claims);
+        if (w3cUri is not null && w3cIdx.HasValue)
+        {
+            if (_ietfStatusChecker is null)
+            {
+                _logger.LogWarning(
+                    "Credential carries W3C status claim but IetfTokenStatusListChecker is not wired — returning Unknown");
+                return "Unknown";
+            }
+
+            // The W3C endpoint also serves a signed JWT envelope in this codebase's
+            // deployment — the IETF checker's fetch+decompress path accepts either.
+            // When the backing raw bitstring differs (pre-095 W3C-only deployments),
+            // this will return Unknown and the caller falls back to server-side.
+            var bit = await _ietfStatusChecker.CheckBitAsync(w3cUri, w3cIdx.Value, ct);
+            return bit switch
+            {
+                StatusListBit.NotSet => "Active",
+                StatusListBit.Set => string.Equals(w3cPurpose, "suspension", StringComparison.OrdinalIgnoreCase)
+                    ? "Suspended"
+                    : "Revoked",
+                _ => "Unknown",
+            };
+        }
+
+        // No status claim at all — treat as Active by default (pre-spec-093 credentials).
         return null;
+    }
+
+    /// <summary>
+    /// Reads the IETF <c>status.status_list</c> claim into a (uri, idx) pair.
+    /// Returns (null, null) when the claim is absent or malformed.
+    /// </summary>
+    private static (string? Uri, int? Idx) TryExtractIetfStatusList(Dictionary<string, object> claims)
+    {
+        if (!claims.TryGetValue("status", out var statusRaw) || statusRaw is null)
+            return (null, null);
+        if (!TryGetObjectProperty(statusRaw, "status_list", out var statusList))
+            return (null, null);
+        var uri = TryReadString(statusList, "uri");
+        var idx = TryReadInt(statusList, "idx");
+        return (uri, idx);
+    }
+
+    /// <summary>
+    /// Reads the W3C <c>credentialStatus</c> claim into a (uri, idx, purpose)
+    /// tuple. <c>statusListCredential</c> maps to uri; <c>statusListIndex</c>
+    /// maps to idx (may be a string or number in the wire form).
+    /// </summary>
+    private static (string? Uri, int? Idx, string? Purpose) TryExtractW3cCredentialStatus(
+        Dictionary<string, object> claims)
+    {
+        if (!claims.TryGetValue("credentialStatus", out var raw) || raw is null)
+            return (null, null, null);
+        var uri = TryReadString(raw, "statusListCredential");
+        var idx = TryReadInt(raw, "statusListIndex");
+        var purpose = TryReadString(raw, "statusPurpose");
+        return (uri, idx, purpose);
+    }
+
+    private static bool TryGetObjectProperty(object container, string name, out object value)
+    {
+        if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v) && v is not null)
+        {
+            value = v;
+            return true;
+        }
+        if (container is JsonElement element && element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var prop))
+        {
+            value = prop;
+            return true;
+        }
+        value = null!;
+        return false;
+    }
+
+    private static string? TryReadString(object container, string name)
+    {
+        if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v))
+            return v?.ToString();
+        if (container is JsonElement element && element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var prop))
+            return prop.ValueKind == JsonValueKind.String ? prop.GetString() : prop.ToString();
+        return null;
+    }
+
+    private static int? TryReadInt(object container, string name)
+    {
+        if (container is Dictionary<string, object> dict && dict.TryGetValue(name, out var v))
+        {
+            return v switch
+            {
+                int i => i,
+                long l => (int)l,
+                double d => (int)d,
+                string s when int.TryParse(s, out var parsed) => parsed,
+                JsonElement jEl => ReadJsonInt(jEl),
+                _ => null,
+            };
+        }
+        if (container is JsonElement element && element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(name, out var prop))
+            return ReadJsonInt(prop);
+        return null;
+
+        static int? ReadJsonInt(JsonElement el) => el.ValueKind switch
+        {
+            JsonValueKind.Number when el.TryGetInt32(out var n) => n,
+            JsonValueKind.String when int.TryParse(el.GetString(), out var n) => n,
+            _ => null,
+        };
     }
 
     private static byte[]? ExtractPublicKeyFromJwk(JsonElement jwk)

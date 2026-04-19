@@ -48,6 +48,14 @@ builder.Services.AddSingleton<PresentationRequestStore>();
 builder.Services.AddSingleton<HaipPresentationVerifier>();
 builder.Services.AddSingleton<RequestObjectSigner>();
 
+// Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
+// backed so the underlying connection pool is shared and timeouts are governed
+// by the standard .NET HTTP resilience pipeline.
+builder.Services.AddHttpClient<IetfTokenStatusListChecker>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
 var app = builder.Build();
 
 // OpenAPI and Scalar UI
