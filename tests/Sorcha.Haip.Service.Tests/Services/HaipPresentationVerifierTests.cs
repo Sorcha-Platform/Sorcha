@@ -22,6 +22,35 @@ public class HaipPresentationVerifierTests
 {
     private readonly SdJwtService _sdJwtService = new();
 
+    // --- Feature 096 US6 — revocation mode configurability ---
+
+    [Fact]
+    public void Constructor_DefaultRevocationMode_IsNoCheck()
+    {
+        // Default preserves pre-096 behaviour — unit tests that use self-signed
+        // chains with unreachable CDP URLs must not fail on BCL CRL fetch.
+        var verifier = new HaipPresentationVerifier(
+            _sdJwtService, Mock.Of<ILogger<HaipPresentationVerifier>>());
+
+        verifier.RevocationMode.Should().Be(X509RevocationMode.NoCheck);
+    }
+
+    [Fact]
+    public void Constructor_RevocationModeOverride_IsApplied()
+    {
+        // Production deployments pass Online when Haip:VerifyRevocation=true at
+        // DI wiring time. The field-level value must round-trip from the ctor.
+        var verifier = new HaipPresentationVerifier(
+            _sdJwtService,
+            Mock.Of<ILogger<HaipPresentationVerifier>>(),
+            didResolver: null,
+            ietfStatusChecker: null,
+            revocationMode: X509RevocationMode.Online);
+
+        verifier.RevocationMode.Should().Be(X509RevocationMode.Online);
+    }
+
+
     private static (byte[] privateKey, byte[] publicKey) GenerateP256KeyPair()
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);

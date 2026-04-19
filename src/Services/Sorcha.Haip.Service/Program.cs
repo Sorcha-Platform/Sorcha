@@ -47,11 +47,19 @@ builder.Services.AddSingleton<HaipCredentialMinter>();
 builder.Services.AddSingleton<PresentationRequestStore>();
 builder.Services.AddSingleton<HaipPresentationVerifier>(sp =>
 {
+    // Feature 096 US6 — deployments with reachable CRL endpoints opt in with
+    // Haip:VerifyRevocation=true. Default off so the chain walk doesn't block
+    // on dead CDP URLs in test/dev environments.
+    var revocationMode = builder.Configuration.GetValue<bool>("Haip:VerifyRevocation")
+        ? System.Security.Cryptography.X509Certificates.X509RevocationMode.Online
+        : System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
+
     var verifier = new HaipPresentationVerifier(
         sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
         sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
         sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>(),
-        sp.GetService<IetfTokenStatusListChecker>());
+        sp.GetService<IetfTokenStatusListChecker>(),
+        revocationMode);
 
     // Feature 096 US6 — load trusted root CA certs from config. Deployments
     // list them under `Haip:TrustedRootCertificates` as base64-DER strings.

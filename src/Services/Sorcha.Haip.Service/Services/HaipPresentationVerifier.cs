@@ -24,6 +24,7 @@ public class HaipPresentationVerifier
     private readonly ISdJwtService _sdJwtService;
     private readonly IDidResolverRegistry? _didResolver;
     private readonly IetfTokenStatusListChecker? _ietfStatusChecker;
+    private readonly X509RevocationMode _revocationMode;
     private readonly ILogger<HaipPresentationVerifier> _logger;
 
     // Trusted root certificates for x5c chain validation.
@@ -34,13 +35,20 @@ public class HaipPresentationVerifier
         ISdJwtService sdJwtService,
         ILogger<HaipPresentationVerifier> logger,
         IDidResolverRegistry? didResolver = null,
-        IetfTokenStatusListChecker? ietfStatusChecker = null)
+        IetfTokenStatusListChecker? ietfStatusChecker = null,
+        X509RevocationMode revocationMode = X509RevocationMode.NoCheck)
     {
         _sdJwtService = sdJwtService ?? throw new ArgumentNullException(nameof(sdJwtService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _didResolver = didResolver;
         _ietfStatusChecker = ietfStatusChecker;
+        _revocationMode = revocationMode;
     }
+
+    /// <summary>
+    /// Exposes the effective revocation mode — used by tests and diagnostics.
+    /// </summary>
+    internal X509RevocationMode RevocationMode => _revocationMode;
 
     /// <summary>
     /// Adds a trusted root certificate for x5c chain validation.
@@ -259,7 +267,20 @@ public class HaipPresentationVerifier
         if (certs.Count == 0) return false;
 
         using var chain = new X509Chain();
-        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        // Feature 096 US6 completion — revocation mode defaults to NoCheck for
+        // unit-test friendliness (CDP URLs in tests point at unreachable domains)
+        // but production deployments set Haip:VerifyRevocation=true at DI wiring
+        // time so chain.Build fetches CRLs from the CDP extension embedded in
+        // org certs by the Tenant Service. ExcludeRoot skips the self-signed
+        // tenant root — it has no CRL issuer and will always read as unknown.
+        chain.ChainPolicy.RevocationMode = _revocationMode;
+        if (_revocationMode != X509RevocationMode.NoCheck)
+        {
+            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+            // 30s is generous enough for a single CDP fetch but tight enough
+            // that a slow CRL endpoint doesn't block the verifier indefinitely.
+            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(30);
+        }
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
 
         foreach (var root in _trustedRoots)
