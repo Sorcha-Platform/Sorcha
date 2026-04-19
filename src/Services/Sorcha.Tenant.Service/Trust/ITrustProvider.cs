@@ -43,4 +43,29 @@ public interface ITrustProvider
         string tenantId,
         string orgWalletAddress,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 096 US4 — revokes an organisation certificate. Marks the
+    /// enrolment with <see cref="OrgCertEnrolment.RevokedAt"/>, records the
+    /// revocation reason, and regenerates the tenant CRL so future verifiers
+    /// see the new serial. Idempotent — revoking an already-revoked cert is
+    /// a no-op that returns the current enrolment.
+    /// </summary>
+    Task<OrgCertEnrolment> RevokeOrgCertAsync(
+        string tenantId,
+        string orgWalletAddress,
+        string? reason = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 096 US4 — returns the tenant's current CRL, regenerating it
+    /// when the cached copy is past its <c>NextUpdate</c>. Returns null when
+    /// the tenant has no provisioned root CA (no point publishing a CRL
+    /// without a signer). Always regenerates after a revocation even if the
+    /// cached copy is fresh — the revocation path calls this through
+    /// <see cref="RevokeOrgCertAsync"/>.
+    /// </summary>
+    Task<TenantCrl?> GetOrPublishCrlAsync(
+        string tenantId,
+        CancellationToken ct = default);
 }

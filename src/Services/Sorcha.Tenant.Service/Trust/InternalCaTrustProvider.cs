@@ -17,10 +17,16 @@ public class InternalCaTrustProvider : ITrustProvider
     private readonly ConcurrentDictionary<string, TenantRootCa> _roots = new();
     private readonly ConcurrentDictionary<string, byte[]> _rootPrivateKeys = new();
     private readonly ConcurrentDictionary<string, OrgCertEnrolment> _orgCerts = new();
+    private readonly ConcurrentDictionary<string, TenantCrl> _crls = new();
+    // Monotonic CRL version counter per tenant — RFC 5280 requires crlNumber to
+    // strictly increase across all CRLs issued under a given CA, independent of
+    // whether the cache still holds the previous copy.
+    private readonly ConcurrentDictionary<string, int> _crlCounters = new();
     private readonly ILogger<InternalCaTrustProvider> _logger;
     private readonly string _defaultAlgorithm;
     private readonly int _defaultCaValidityYears;
     private readonly int _defaultOrgCertValidityYears;
+    private readonly int _crlRefreshHours;
     private readonly string _trustBaseUrl;
 
     /// <summary>
@@ -34,6 +40,7 @@ public class InternalCaTrustProvider : ITrustProvider
         _defaultAlgorithm = configuration.GetValue<string>("Trust:DefaultCaAlgorithm") ?? "ES256";
         _defaultCaValidityYears = configuration.GetValue<int>("Trust:DefaultCaValidityYears", 10);
         _defaultOrgCertValidityYears = configuration.GetValue<int>("Trust:DefaultOrgCertValidityYears", 3);
+        _crlRefreshHours = configuration.GetValue<int>("Trust:CrlRefreshHours", 24);
         _trustBaseUrl = configuration.GetValue<string>("Trust:BaseUrl")
             ?? "https://sorcha.example/api/v1/trust";
     }
@@ -170,5 +177,88 @@ public class InternalCaTrustProvider : ITrustProvider
 
         return Task.FromResult<(byte[], byte[])?>(
             (enrolment.CertificateDer, rootCa.CertificateDer));
+    }
+
+    /// <inheritdoc />
+    public Task<OrgCertEnrolment> RevokeOrgCertAsync(
+        string tenantId,
+        string orgWalletAddress,
+        string? reason = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(orgWalletAddress);
+
+        var key = $"{tenantId}:{orgWalletAddress}";
+        if (!_orgCerts.TryGetValue(key, out var enrolment))
+            throw new InvalidOperationException(
+                $"No org cert to revoke for {orgWalletAddress} under tenant {tenantId}");
+
+        // Idempotent — already revoked returns current state.
+        if (enrolment.RevokedAt != null)
+        {
+            _logger.LogInformation(
+                "Org cert {Serial} for {OrgWallet} already revoked at {RevokedAt}",
+                enrolment.SerialNumber, orgWalletAddress, enrolment.RevokedAt);
+            return Task.FromResult(enrolment);
+        }
+
+        enrolment.RevokedAt = DateTimeOffset.UtcNow;
+        enrolment.RevocationReason = reason;
+        _orgCerts[key] = enrolment;
+
+        // Force CRL regeneration so the next fetch sees the new serial. Clearing
+        // the cache is the minimum — GetOrPublishCrlAsync rebuilds on miss.
+        _crls.TryRemove(tenantId, out _);
+
+        _logger.LogInformation(
+            "Revoked org cert {Serial} for {OrgWallet} under tenant {TenantId}: {Reason}",
+            enrolment.SerialNumber, orgWalletAddress, tenantId, reason ?? "(no reason)");
+
+        return Task.FromResult(enrolment);
+    }
+
+    /// <inheritdoc />
+    public Task<TenantCrl?> GetOrPublishCrlAsync(string tenantId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        if (!_roots.TryGetValue(tenantId, out var rootCa))
+            return Task.FromResult<TenantCrl?>(null);
+        if (!_rootPrivateKeys.TryGetValue(tenantId, out var rootPrivateKey))
+            return Task.FromResult<TenantCrl?>(null);
+
+        // Use cached copy if still fresh.
+        if (_crls.TryGetValue(tenantId, out var cached)
+            && cached.NextUpdate > DateTimeOffset.UtcNow)
+        {
+            return Task.FromResult<TenantCrl?>(cached);
+        }
+
+        // Collect all revoked serials for this tenant.
+        var revoked = _orgCerts.Values
+            .Where(e => e.TenantId == tenantId && e.RevokedAt.HasValue)
+            .Select(e => (e.SerialNumber, e.RevokedAt!.Value))
+            .ToList();
+
+        var crlNumber = _crlCounters.AddOrUpdate(tenantId, 1, (_, prev) => prev + 1);
+        var (crlDer, nextUpdate) = TenantCrlBuilder.Build(
+            rootCa.CertificateDer, rootPrivateKey, revoked, crlNumber, _crlRefreshHours);
+
+        var crl = new TenantCrl
+        {
+            TenantId = tenantId,
+            CrlDer = crlDer,
+            Version = crlNumber,
+            LastUpdated = DateTimeOffset.UtcNow,
+            NextUpdate = nextUpdate,
+        };
+        _crls[tenantId] = crl;
+
+        _logger.LogInformation(
+            "Published CRL v{Version} for tenant {TenantId} with {Count} revoked entries (next update {NextUpdate})",
+            crlNumber, tenantId, revoked.Count, nextUpdate);
+
+        return Task.FromResult<TenantCrl?>(crl);
     }
 }

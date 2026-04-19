@@ -112,6 +112,143 @@ public class InternalCaTrustProviderTests
             .WithMessage("*no provisioned trust anchor*");
     }
 
+    // -----------------------------------------------------------------------
+    // Feature 096 US4 — CRL + revocation
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetOrPublishCrl_BeforeProvisioning_ReturnsNull()
+    {
+        var crl = await _provider.GetOrPublishCrlAsync("never-provisioned");
+        crl.Should().BeNull("cannot sign a CRL without a root CA");
+    }
+
+    [Fact]
+    public async Task GetOrPublishCrl_AfterProvision_ReturnsSignedEmptyCrl()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+
+        var crl = await _provider.GetOrPublishCrlAsync("tenant-1");
+
+        crl.Should().NotBeNull();
+        crl!.CrlDer.Should().NotBeEmpty();
+        crl.Version.Should().Be(1);
+        crl.NextUpdate.Should().BeAfter(DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task GetOrPublishCrl_SecondCallWithinTtl_ReturnsCached()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+        var first = await _provider.GetOrPublishCrlAsync("tenant-1");
+        var second = await _provider.GetOrPublishCrlAsync("tenant-1");
+
+        first!.Version.Should().Be(second!.Version,
+            "CRL must be cached until nextUpdate — no unnecessary regeneration");
+        first.LastUpdated.Should().Be(second.LastUpdated);
+    }
+
+    [Fact]
+    public async Task RevokeOrgCert_MarksRevoked_AndCrlVersionIncrements()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+        var enrolment = await _provider.IssueOrgCertAsync(
+            "tenant-1", "ws1qorg123", orgPublicKey, "Test Organisation");
+        var crlBefore = await _provider.GetOrPublishCrlAsync("tenant-1");
+
+        var revoked = await _provider.RevokeOrgCertAsync(
+            "tenant-1", "ws1qorg123", reason: "keyCompromise");
+
+        revoked.RevokedAt.Should().NotBeNull();
+        revoked.RevocationReason.Should().Be("keyCompromise");
+
+        var crlAfter = await _provider.GetOrPublishCrlAsync("tenant-1");
+        crlAfter!.Version.Should().Be(crlBefore!.Version + 1,
+            "revocation must bump the CRL number so strict verifiers detect the update");
+    }
+
+    [Fact]
+    public async Task RevokeOrgCert_Idempotent_SecondCallNoOp()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+        await _provider.IssueOrgCertAsync("tenant-1", "ws1qorg123", orgPublicKey, "Test Org");
+
+        var first = await _provider.RevokeOrgCertAsync("tenant-1", "ws1qorg123", "keyCompromise");
+        var second = await _provider.RevokeOrgCertAsync("tenant-1", "ws1qorg123", "different-reason");
+
+        second.RevokedAt.Should().Be(first.RevokedAt, "second revoke must not reset the timestamp");
+        second.RevocationReason.Should().Be("keyCompromise", "reason is frozen on first revoke");
+    }
+
+    [Fact]
+    public async Task RevokeOrgCert_NoEnrolment_Throws()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+
+        var act = () => _provider.RevokeOrgCertAsync("tenant-1", "never-enrolled");
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task GetOrgCertChain_AfterRevoke_ReturnsNull()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+        await _provider.IssueOrgCertAsync("tenant-1", "ws1qorg123", orgPublicKey, "Test Org");
+
+        await _provider.RevokeOrgCertAsync("tenant-1", "ws1qorg123");
+
+        var chain = await _provider.GetOrgCertChainAsync("tenant-1", "ws1qorg123");
+        chain.Should().BeNull("revoked certs MUST NOT be served to the Wallet Service for new credentials");
+    }
+
+    [Fact]
+    public async Task GetOrPublishCrl_AfterRevocation_IncludesSerialNumber()
+    {
+        await _provider.ProvisionTrustAnchorAsync("tenant-1");
+        using var orgEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var orgPublicKey = orgEcdsa.ExportSubjectPublicKeyInfo();
+        var enrolment = await _provider.IssueOrgCertAsync(
+            "tenant-1", "ws1qorg123", orgPublicKey, "Test Org");
+
+        await _provider.RevokeOrgCertAsync("tenant-1", "ws1qorg123");
+        var crl = await _provider.GetOrPublishCrlAsync("tenant-1");
+
+        // Decode the CRL and confirm it carries the revoked serial.
+        crl.Should().NotBeNull();
+        var decoded = new System.Security.Cryptography.X509Certificates.CertificateRevocationListBuilder();
+        var parsed = System.Security.Cryptography.X509Certificates.CertificateRevocationListBuilder
+            .Load(crl!.CrlDer, out var currentCrlNumber);
+        parsed.Should().NotBeNull();
+        currentCrlNumber.Should().Be(crl.Version);
+
+        // Round-trip: rebuild the CRL with the same entries and verify the DER shape.
+        // Simplest check — the revoked serial must appear somewhere in the DER bytes.
+        var serialBytes = Convert.FromHexString(enrolment.SerialNumber);
+        IndexOfSequence(crl.CrlDer, serialBytes).Should().BeGreaterThanOrEqualTo(0,
+            "revoked serial number must be present in the signed CRL bytes");
+    }
+
+    private static int IndexOfSequence(byte[] haystack, byte[] needle)
+    {
+        for (var i = 0; i <= haystack.Length - needle.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < needle.Length; j++)
+            {
+                if (haystack[i + j] != needle[j]) { match = false; break; }
+            }
+            if (match) return i;
+        }
+        return -1;
+    }
+
     [Fact]
     public async Task GetOrgCertChain_AfterEnrolment_ReturnsBothCerts()
     {
