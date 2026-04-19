@@ -45,7 +45,42 @@ builder.Services.AddSingleton<HaipCredentialMinter>();
 
 // Feature 098: HAIP verifier services
 builder.Services.AddSingleton<PresentationRequestStore>();
-builder.Services.AddSingleton<HaipPresentationVerifier>();
+builder.Services.AddSingleton<HaipPresentationVerifier>(sp =>
+{
+    var verifier = new HaipPresentationVerifier(
+        sp.GetRequiredService<Sorcha.Cryptography.SdJwt.ISdJwtService>(),
+        sp.GetRequiredService<ILogger<HaipPresentationVerifier>>(),
+        sp.GetService<Sorcha.ServiceClients.Did.IDidResolverRegistry>(),
+        sp.GetService<IetfTokenStatusListChecker>());
+
+    // Feature 096 US6 — load trusted root CA certs from config. Deployments
+    // list them under `Haip:TrustedRootCertificates` as base64-DER strings.
+    // Without at least one root, x5c chain validation will reject every cert.
+    var configuredRoots = builder.Configuration
+        .GetSection("Haip:TrustedRootCertificates")
+        .Get<string[]>() ?? Array.Empty<string>();
+    var logger = sp.GetRequiredService<ILogger<HaipPresentationVerifier>>();
+    foreach (var rootBase64 in configuredRoots)
+    {
+        if (string.IsNullOrWhiteSpace(rootBase64))
+            continue;
+        try
+        {
+            var der = Convert.FromBase64String(rootBase64);
+            var cert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
+            verifier.AddTrustedRoot(cert);
+            logger.LogInformation(
+                "Loaded trusted root CA into HAIP verifier: {Subject} (NotAfter={NotAfter})",
+                cert.Subject, cert.NotAfter);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to load a Haip:TrustedRootCertificates entry — skipping and continuing");
+        }
+    }
+    return verifier;
+});
 builder.Services.AddSingleton<RequestObjectSigner>();
 
 // Feature 095 US4: status list fetch for the verifier. Registered as HttpClient-
