@@ -57,16 +57,28 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
-// Feature 096 US3: org cert chain provider — fetched by the IssueCredential endpoint
-// to embed the issuer's X.509 chain in the JWS x5c header for HAIP-path credentials.
-// Reads the Tenant Service address from ServiceClients:TenantService:Address (Aspire wiring).
-builder.Services.AddHttpClient<Sorcha.ServiceClients.Trust.IOrgCertChainProvider,
-    Sorcha.ServiceClients.Trust.TrustServiceClient>((sp, http) =>
+// Org cert chain provider — fetched by the IssueCredential endpoint to embed
+// the issuer's X.509 chain in the JWS x5c header for HAIP-path credentials.
+//
+// Registered as a singleton: TrustServiceClient holds an internal 5-min cache;
+// transient registration would discard the cache between requests and turn every
+// issuance into a Tenant Service round-trip. The HttpClient is owned by the
+// IHttpClientFactory infrastructure (created via the named "trust-service"
+// binding below) so we keep the per-handler lifecycle while still pinning the
+// client+cache as a singleton.
+builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
     var address = config["ServiceClients:TenantService:Address"]
         ?? "https+http://tenant-service";
     http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+});
+builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.IOrgCertChainProvider>(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
+    var http = factory.CreateClient("trust-service");
+    var logger = sp.GetRequiredService<ILogger<Sorcha.ServiceClients.Trust.TrustServiceClient>>();
+    return new Sorcha.ServiceClients.Trust.TrustServiceClient(http, logger);
 });
 
 // Feature 060: Wallet recovery services

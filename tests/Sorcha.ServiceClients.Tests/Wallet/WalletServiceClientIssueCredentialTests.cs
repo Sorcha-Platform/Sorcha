@@ -87,6 +87,11 @@ public class WalletServiceClientIssueCredentialTests
         // Backward-compat: pre-096-US3 callers (and internal callers without a JWT
         // org context) MUST keep working; the field should be omitted entirely so the
         // server-side IssueCredentialRequest deserialiser leaves TenantId null.
+        //
+        // This guarantee depends on WalletServiceClient using
+        // JsonSerializerOptions { DefaultIgnoreCondition = WhenWritingNull } —
+        // verified at the static field declaration. If that ever changes, this
+        // assertion becomes the canary.
         string? capturedBody = null;
         var handler = new Mock<HttpMessageHandler>();
         handler.Protected()

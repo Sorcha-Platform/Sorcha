@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.ServiceClients.Models;
+using Sorcha.ServiceClients.Trust;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
@@ -486,7 +487,7 @@ public static class CredentialEndpoints
         ICredentialStore store,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken = default,
-        Sorcha.ServiceClients.Trust.IOrgCertChainProvider? orgCertChainProvider = null)
+        IOrgCertChainProvider? orgCertChainProvider = null)
     {
         // 1. Get the issuer wallet
         var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
@@ -593,10 +594,9 @@ public static class CredentialEndpoints
             }
         }
 
-        // Feature 096 US3: when the caller supplies a tenant id and the wallet service
-        // has an IOrgCertChainProvider registered, embed the org cert chain in the JWS
-        // x5c header so external HAIP verifiers can validate against the tenant trust
-        // anchor. Failures degrade silently to DID-only verifiability.
+        // Embed the org cert chain in the JWS x5c header when the caller supplies
+        // a tenant id. Absence of either the provider or the tenant id falls back
+        // to DID-only verifiability — the existing Sorcha-internal default.
         var x5cChain = await Credentials.IssueCredentialChainResolver.ResolveChainAsync(
             orgCertChainProvider,
             request.TenantId,
