@@ -12,11 +12,15 @@
     Path to state.json. Default: auto-detected.
 .PARAMETER TimeoutMinutes
     Maximum wait time. Default: 10
+.PARAMETER AI
+    Use AI-powered actors (Claude) instead of rules-based actors.
+    Requires ANTHROPIC_API_KEY environment variable.
 #>
 param(
     [string]$Profile = "gateway",
     [string]$StatePath,
-    [int]$TimeoutMinutes = 10
+    [int]$TimeoutMinutes = 10,
+    [switch]$AI
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,11 +44,22 @@ $state = Get-Content $StatePath -Raw | ConvertFrom-Json
 $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck
 $blueprintUrl = $sorchaEnv.BlueprintUrl
 
+$agentMode = if ($AI) { "AI" } else { "Rules" }
+
 Write-Host "`n=== TradeFinance Agent Launcher ===" -ForegroundColor Cyan
 Write-Host "Profile: $Profile"
+Write-Host "Mode: $agentMode" -ForegroundColor $(if ($AI) { "Magenta" } else { "White" })
 Write-Host "Procurement Register: $($state.registers.'sme-trade-register'.id)"
 Write-Host "Finance Register: $($state.registers.'trade-finance-register'.id)"
 Write-Host "Timeout: ${TimeoutMinutes}m`n"
+
+if ($AI) {
+    if (-not $env:ANTHROPIC_API_KEY) {
+        Write-Error "ANTHROPIC_API_KEY environment variable is required for AI mode. Set it with: `$env:ANTHROPIC_API_KEY = 'sk-ant-...'"
+        exit 1
+    }
+    Write-Host "  ANTHROPIC_API_KEY: set" -ForegroundColor Green
+}
 
 # --- Create Blueprint Instances ---
 Write-Host "--- Creating Blueprint Instances ---" -ForegroundColor Green
@@ -118,13 +133,14 @@ if (-not (Test-Path $agentProject)) {
     exit 1
 }
 
+$suffix = if ($AI) { "-ai" } else { "" }
 $actorFiles = @(
-    "procurement-mgr.json",
-    "sales-mgr.json",
-    "site-mgr.json",
-    "finance-director.json",
-    "assessment-svc.json",
-    "credit-analyst.json"
+    "procurement-mgr$suffix.json",
+    "sales-mgr$suffix.json",
+    "site-mgr$suffix.json",
+    "finance-director$suffix.json",
+    "assessment-svc$suffix.json",
+    "credit-analyst$suffix.json"
 )
 
 $logsDir = Join-Path $walkthroughDir "logs"
