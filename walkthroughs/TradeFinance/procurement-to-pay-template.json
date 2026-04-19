@@ -607,6 +607,7 @@
         "description": "Sales manager raises an invoice for the delivered goods, including line item totals, VAT, and payment terms. The supplier cost breakdown is private to the supplier and finance director only.",
         "sender": "sales-mgr",
         "requiredPriorActions": [4],
+        "rejectionConfig": { "isTerminal": true },
         "dataSchemas": [
           {
             "type": "object",

@@ -73,35 +73,35 @@ $headers = @{ Authorization = "Bearer $($loginResult.Token)" }
 
 # Procurement instance
 Write-Host "  Creating procurement-to-pay instance..."
-$procInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/" `
+$procInstance = Invoke-SorchaApi -Method POST -Uri "$blueprintUrl/instances/" `
     -Headers $headers -Body @{
         blueprintId  = $state.blueprints.'procurement-to-pay'.id
         registerId   = $state.registers.'sme-trade-register'.id
         tenantId     = $adminRole.organizationId
         metadata     = @{ source = "agent-walkthrough"; scenario = "golden-path" }
     }
-if (-not $procInstance?.id) {
+if (-not $procInstance -or -not $procInstance.id) {
     Write-Error "Failed to create procurement instance."
     exit 1
 }
 Write-Host "  Procurement instance: $($procInstance.id)" -ForegroundColor Cyan
 
-# Finance instance (use finance register owner's admin)
-$funderRole = $state.roles.'finance-director'
+# Finance instance (use finance register owner: credit-analyst at ScotTrade)
+$funderRole = $state.roles.'credit-analyst'
 $funderLogin = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
     -Email $funderRole.email -Password $funderRole.password `
     -OrganizationId $funderRole.organizationId
 $funderHeaders = @{ Authorization = "Bearer $($funderLogin.Token)" }
 
 Write-Host "  Creating invoice finance instance..."
-$financeInstance = Invoke-SorchaApi -Method POST -Url "$blueprintUrl/instances/" `
+$financeInstance = Invoke-SorchaApi -Method POST -Uri "$blueprintUrl/instances/" `
     -Headers $funderHeaders -Body @{
         blueprintId  = $state.blueprints.'invoice-finance'.id
         registerId   = $state.registers.'trade-finance-register'.id
         tenantId     = $funderRole.organizationId
         metadata     = @{ source = "agent-walkthrough"; scenario = "golden-path" }
     }
-if (-not $financeInstance?.id) {
+if (-not $financeInstance -or -not $financeInstance.id) {
     Write-Error "Failed to create finance instance."
     exit 1
 }
