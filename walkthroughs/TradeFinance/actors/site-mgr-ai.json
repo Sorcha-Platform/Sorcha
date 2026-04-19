@@ -1,0 +1,36 @@
+{
+  "actor": {
+    "name": "site-mgr-ai",
+    "description": "AI-powered site manager using Claude to generate contextual responses (Cairngorm Construction)"
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registers.sme-trade-register.id}}",
+    "credentials": {
+      "email": "{{roles.site-mgr.email}}",
+      "password": "$env:SITE_MGR_PASSWORD",
+      "organizationId": "{{roles.site-mgr.organizationId}}"
+    },
+    "walletAddress": "{{roles.site-mgr.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 20 }
+  },
+  "mode": "ai",
+  "ai": {
+    "promptFile": "./prompts/site-mgr-ai.md",
+    "model": "claude-sonnet-4-6",
+    "temperature": 0.3
+  },
+  "resilience": {
+    "retryCount": 3,
+    "retryDelaySeconds": 2,
+    "circuitBreakerThreshold": 5,
+    "circuitBreakerDurationSeconds": 30
+  },
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/site-mgr-ai-actions.jsonl"
+  }
+}
