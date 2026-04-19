@@ -8,6 +8,11 @@ on:
     branches: [master]
     paths:
       - 'docs/site/**'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/index.html'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.css'
+      - 'src/Apps/Sorcha.UI/Sorcha.UI.Web/wwwroot/landing.js'
+      - 'scripts/copy-landing-to-site.js'
+      - '.github/workflows/gh-pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +33,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Copy landing page from Sorcha.UI
+        run: node scripts/copy-landing-to-site.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
