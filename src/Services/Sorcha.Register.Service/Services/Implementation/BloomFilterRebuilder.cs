@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Grpc;
@@ -34,7 +36,7 @@ public sealed class BloomFilterRebuilder : IBloomFilterRebuilder
             registerId, activeOnly: true, cancellationToken);
 
         var stats = await _addressIndex.RebuildAsync(
-            registerId, ExtractAddresses(addresses), cancellationToken);
+            registerId, ExtractAddresses(addresses, cancellationToken), cancellationToken);
 
         _logger.LogInformation(
             "Bloom rebuild for register {RegisterId}: {AddressCount} addresses indexed.",
@@ -43,9 +45,11 @@ public sealed class BloomFilterRebuilder : IBloomFilterRebuilder
         return stats;
     }
 
-    private static async IAsyncEnumerable<string> ExtractAddresses(IAsyncEnumerable<LocalAddressEntry> entries)
+    private static async IAsyncEnumerable<string> ExtractAddresses(
+        IAsyncEnumerable<LocalAddressEntry> entries,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var entry in entries)
+        await foreach (var entry in entries.WithCancellation(cancellationToken))
         {
             if (!string.IsNullOrEmpty(entry.Address))
             {
