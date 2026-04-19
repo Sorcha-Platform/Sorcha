@@ -510,6 +510,10 @@ public class ActionExecutionService : IActionExecutionService
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
         var issuerOrgName = caller?.FindFirst("org_name")?.Value;
+        // Feature 096 US3: thread the caller's org_id (tenant id) through to the
+        // Wallet Service so it can fetch the org cert chain for the JWS x5c header.
+        // Null when the caller has no org context — keeps Sorcha-internal callers working.
+        var issuerTenantId = caller?.FindFirst("org_id")?.Value;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet
                 or TargetAudience.SorchaInternal)
@@ -528,7 +532,7 @@ public class ActionExecutionService : IActionExecutionService
             try
             {
                 localWalletCredential = await IssueCredentialFromActionAsync(
-                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, cancellationToken);
+                    actionDef, mergedData, request.SenderWallet, instance, issuerOrgName, issuerTenantId, cancellationToken);
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
@@ -1711,6 +1715,7 @@ public class ActionExecutionService : IActionExecutionService
         string senderWallet,
         Instance instance,
         string? issuerOrgName,
+        string? issuerTenantId,
         CancellationToken cancellationToken)
     {
         var config = actionDef.CredentialIssuanceConfig!;
@@ -1820,6 +1825,7 @@ public class ActionExecutionService : IActionExecutionService
                 statusListPurpose: preAllocatedStatusListUrl != null ? "revocation" : null,
                 skipRecipientStore: config.TargetAudience is TargetAudience.SorchaLocalWallet or TargetAudience.SorchaInternal,
                 issuerOrgName: issuerOrgName,
+                tenantId: issuerTenantId,
                 cancellationToken: cancellationToken);
 
             return result;

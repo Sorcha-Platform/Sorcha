@@ -485,7 +485,8 @@ public static class CredentialEndpoints
         ISdJwtService sdJwtService,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Sorcha.ServiceClients.Trust.IOrgCertChainProvider? orgCertChainProvider = null)
     {
         // 1. Get the issuer wallet
         var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
@@ -592,6 +593,17 @@ public static class CredentialEndpoints
             }
         }
 
+        // Feature 096 US3: when the caller supplies a tenant id and the wallet service
+        // has an IOrgCertChainProvider registered, embed the org cert chain in the JWS
+        // x5c header so external HAIP verifiers can validate against the tenant trust
+        // anchor. Failures degrade silently to DID-only verifiability.
+        var x5cChain = await Credentials.IssueCredentialChainResolver.ResolveChainAsync(
+            orgCertChainProvider,
+            request.TenantId,
+            walletAddress,
+            logger,
+            cancellationToken);
+
         var token = await sdJwtService.CreateTokenAsync(
             claims,
             request.DisclosableClaims,
@@ -600,7 +612,8 @@ public static class CredentialEndpoints
             privateKey,
             wallet.Algorithm,
             expiresAt,
-            cancellationToken);
+            cancellationToken,
+            x5cChain);
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
@@ -762,6 +775,17 @@ public class IssueCredentialRequest
     /// JWT org_name claim at action execution time.
     /// </summary>
     public string? IssuerOrgName { get; init; }
+
+    /// <summary>
+    /// Feature 096 US3 — tenant id (org_id Guid as string) used to fetch the
+    /// issuer's X.509 certificate chain from the Tenant Service trust client. When
+    /// supplied AND the wallet service has an <c>IOrgCertChainProvider</c>
+    /// registered, the resulting chain is embedded in the JWS <c>x5c</c> header so
+    /// external HAIP verifiers can validate the issuer key against the tenant
+    /// trust anchor without DID resolution. Null falls back to DID-only
+    /// verifiability (the existing Sorcha-internal default).
+    /// </summary>
+    public string? TenantId { get; init; }
 }
 
 /// <summary>
