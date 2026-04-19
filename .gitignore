@@ -215,6 +215,11 @@ docs/services/wallet-service.md
 docs/services/validator-service.md
 docs/services/peer-service.md
 
+# Landing page — generated from Sorcha.UI by scripts/copy-landing-to-site.js
+docs/site/index.html
+docs/site/landing.css
+docs/site/landing.js
+
 # Playwright
 /test-results/
 /playwright-report/
