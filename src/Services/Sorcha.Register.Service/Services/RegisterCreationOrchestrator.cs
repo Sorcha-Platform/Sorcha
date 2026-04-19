@@ -10,6 +10,7 @@ using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Constants;
 using Sorcha.Register.Models.Enums;
+using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
@@ -33,6 +34,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     private readonly IPendingRegistrationStore _pendingStore;
     private readonly IPeerServiceClient _peerClient;
     private readonly ITenantSubscriptionClient _tenantSubscriptionClient;
+    private readonly IBloomFilterRebuilder _bloomFilterRebuilder;
 
     private readonly TimeSpan _pendingExpirationTime = TimeSpan.FromMinutes(5);
     private readonly JsonSerializerOptions _canonicalJsonOptions;
@@ -48,7 +50,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         ISystemWalletSigningService signingService,
         IPendingRegistrationStore pendingStore,
         IPeerServiceClient peerClient,
-        ITenantSubscriptionClient tenantSubscriptionClient)
+        ITenantSubscriptionClient tenantSubscriptionClient,
+        IBloomFilterRebuilder bloomFilterRebuilder)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _registerManager = registerManager ?? throw new ArgumentNullException(nameof(registerManager));
@@ -61,6 +64,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
         _tenantSubscriptionClient = tenantSubscriptionClient ?? throw new ArgumentNullException(nameof(tenantSubscriptionClient));
+        _bloomFilterRebuilder = bloomFilterRebuilder ?? throw new ArgumentNullException(nameof(bloomFilterRebuilder));
 
         // Configure JSON serialization for canonical form
         // UnsafeRelaxedJsonEscaping ensures characters like '+' in DateTimeOffset and base64
@@ -464,6 +468,26 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         register = await _registerManager.UpdateRegisterStatusAsync(register.Id, RegisterStatus.Online, cancellationToken);
 
         _logger.LogInformation("Register {RegisterId} set to Online", register.Id);
+
+        // Feature 106: Initialise the bloom filter for this register so any pre-existing
+        // local wallets are immediately routable on inbound transactions. Without this
+        // fan-in, addresses created before the register existed stay invisible to the
+        // InboundTransactionRouter until the next BloomFilterStartupRebuildService pass
+        // (i.e. the next service restart). Failures are non-fatal — the next startup
+        // pass or admin /rebuild-index will reconcile.
+        try
+        {
+            var bloomStats = await _bloomFilterRebuilder.RebuildAsync(register.Id, cancellationToken);
+            _logger.LogInformation(
+                "Initialised bloom filter for new register {RegisterId} with {AddressCount} addresses.",
+                register.Id, bloomStats.AddressCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to initialise bloom filter for new register {RegisterId}; reconciliation deferred to next startup-rebuild or admin /rebuild-index.",
+                register.Id);
+        }
 
         // Notify Peer Service to advertise register if requested (fire-and-forget)
         if (pending.Advertise)

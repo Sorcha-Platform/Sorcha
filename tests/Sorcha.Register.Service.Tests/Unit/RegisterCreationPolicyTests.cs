@@ -11,6 +11,7 @@ using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Service.Services;
+using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
@@ -76,7 +77,8 @@ public class RegisterCreationPolicyTests
             mockSigningService.Object,
             _mockPendingStore.Object,
             mockPeerClient.Object,
-            Mock.Of<ITenantSubscriptionClient>());
+            Mock.Of<ITenantSubscriptionClient>(),
+            Mock.Of<IBloomFilterRebuilder>());
     }
 
     [Fact]

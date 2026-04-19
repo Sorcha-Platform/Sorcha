@@ -12,6 +12,7 @@ using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Models.Enums;
 using Sorcha.Register.Service.Services;
+using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
@@ -36,6 +37,7 @@ public class RegisterCreationOrchestratorTests
     private readonly Mock<IPendingRegistrationStore> _mockPendingStore;
     private readonly Mock<IPeerServiceClient> _mockPeerClient;
     private readonly Mock<ITenantSubscriptionClient> _mockTenantSubscriptionClient;
+    private readonly Mock<IBloomFilterRebuilder> _mockBloomFilterRebuilder;
     private readonly RegisterCreationOrchestrator _orchestrator;
 
     public RegisterCreationOrchestratorTests()
@@ -127,6 +129,11 @@ public class RegisterCreationOrchestratorTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
+        _mockBloomFilterRebuilder = new Mock<IBloomFilterRebuilder>();
+        _mockBloomFilterRebuilder
+            .Setup(b => b.RebuildAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BloomFilterStats(0, 1024, 3, DateTimeOffset.UtcNow));
+
         _orchestrator = new RegisterCreationOrchestrator(
             _mockLogger.Object,
             _mockRegisterManager.Object,
@@ -138,7 +145,8 @@ public class RegisterCreationOrchestratorTests
             _mockSigningService.Object,
             _mockPendingStore.Object,
             _mockPeerClient.Object,
-            _mockTenantSubscriptionClient.Object);
+            _mockTenantSubscriptionClient.Object,
+            _mockBloomFilterRebuilder.Object);
     }
 
     #region InitiateAsync Tests
@@ -637,6 +645,138 @@ public class RegisterCreationOrchestratorTests
         var act = async () => await _orchestrator.FinalizeAsync(finalizeRequest);
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("*Invalid signature*");
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_ShouldRebuildBloomFilterForNewRegister()
+    {
+        // Wallet-create fans out to existing registers via hooks A/B/C, but a fresh
+        // register has no fan-in path — without an explicit rebuild here, any wallet
+        // that existed before the register is created stays invisible to the
+        // InboundTransactionRouter until the next service restart triggers
+        // BloomFilterStartupRebuildService. This test pins the contract: every
+        // successful register creation MUST trigger a rebuild for the new register.
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Bloom Fan-In Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Bloom Fan-In Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        await _orchestrator.FinalizeAsync(finalizeRequest);
+
+        _mockBloomFilterRebuilder.Verify(
+            b => b.RebuildAsync(initiateResponse.RegisterId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_BloomRebuildFailure_ShouldNotFailFinalize()
+    {
+        // Bloom rebuild is a best-effort initialisation — a failure (Redis down,
+        // wallet service unreachable, transient gRPC error) MUST not roll back a
+        // successful register creation. The next BloomFilterStartupRebuildService
+        // pass or admin /rebuild-index call will reconcile.
+        var initiateRequest = new InitiateRegisterCreationRequest
+        {
+            Name = "Bloom Resilience Register",
+            Owners = new List<OwnerInfo>
+            {
+                new() { UserId = "user-001", WalletId = "wallet-001" }
+            }
+        };
+
+        _mockHashProvider
+            .Setup(h => h.ComputeHash(It.IsAny<byte[]>(), HashType.SHA256))
+            .Returns(new byte[32]);
+
+        var initiateResponse = await _orchestrator.InitiateAsync(initiateRequest);
+
+        var signedAttestations = initiateResponse.AttestationsToSign.Select(a => new SignedAttestation
+        {
+            AttestationData = a.AttestationData,
+            PublicKey = Convert.ToBase64String(new byte[32]),
+            Signature = Convert.ToBase64String(new byte[64]),
+            Algorithm = SignatureAlgorithm.ED25519
+        }).ToList();
+
+        var finalizeRequest = new FinalizeRegisterCreationRequest
+        {
+            RegisterId = initiateResponse.RegisterId,
+            Nonce = initiateResponse.Nonce,
+            SignedAttestations = signedAttestations
+        };
+
+        _mockCryptoModule
+            .Setup(c => c.VerifyAsync(
+                It.IsAny<byte[]>(), It.IsAny<byte[]>(), It.IsAny<byte>(),
+                It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CryptoStatus.Success);
+
+        _mockRegisterManager
+            .Setup(m => m.CreateRegisterAsync(
+                It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(),
+                It.IsAny<RegisterPurpose>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = initiateResponse.RegisterId,
+                Name = "Bloom Resilience Register",
+                CreatedAt = DateTime.UtcNow
+            });
+
+        _mockBloomFilterRebuilder
+            .Setup(b => b.RebuildAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("redis down"));
+
+        var act = async () => await _orchestrator.FinalizeAsync(finalizeRequest);
+
+        var response = await act.Should().NotThrowAsync();
+        response.Subject.RegisterId.Should().Be(initiateResponse.RegisterId);
+        response.Subject.Status.Should().Be("created");
     }
 
     #endregion
