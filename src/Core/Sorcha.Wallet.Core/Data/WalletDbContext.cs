@@ -467,7 +467,13 @@ public class WalletDbContext : DbContext
         {
             entity.ToTable("Credentials");
 
-            entity.HasKey(e => e.Id);
+            // Feature 106 fix — composite PK (Id, WalletAddress). A single credential
+            // lives in BOTH issuer and recipient wallets (issuer: audit/Active; recipient:
+            // PendingAcceptance → Active/Declined). On single-node deployments both rows
+            // land in the same DB; the prior Id-only PK blocked the detector's recipient
+            // insert with a PK conflict and the `already stored` dedup short-circuit
+            // masked the failure.
+            entity.HasKey(e => new { e.Id, e.WalletAddress });
 
             entity.Property(e => e.Id)
                 .HasMaxLength(500);

@@ -60,12 +60,39 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <inheritdoc />
+    public async Task<CredentialEntity?> GetByIdForWalletAsync(
+        string credentialId, string walletAddress, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(credentialId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(walletAddress);
+
+        var credential = await _db.Credentials
+            .FirstOrDefaultAsync(
+                c => c.Id == credentialId && c.WalletAddress == walletAddress, ct);
+
+        if (credential != null)
+        {
+            await ExpireStaleCredentialsAsync([credential], ct);
+        }
+
+        return credential;
+    }
+
+    /// <inheritdoc />
     public async Task StoreAsync(CredentialEntity credential, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(credential);
 
+        // Feature 106 fix — use composite (Id, WalletAddress) lookup. Two rows with
+        // the same credential id are legitimate when the issuer audit row and the
+        // recipient PendingAcceptance row live in the same DB (single-node dev or
+        // co-located issuer/recipient wallets). Prior Id-only lookup would SetValues
+        // over the issuer's row when storing the recipient's copy — silently
+        // corrupting the audit trail.
         var existing = await _db.Credentials
-            .FirstOrDefaultAsync(c => c.Id == credential.Id, ct);
+            .FirstOrDefaultAsync(
+                c => c.Id == credential.Id && c.WalletAddress == credential.WalletAddress,
+                ct);
 
         if (existing != null)
         {

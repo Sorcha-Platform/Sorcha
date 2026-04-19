@@ -123,7 +123,7 @@ namespace Sorcha.Wallet.Core.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id", "WalletAddress");
 
                     b.HasIndex("IssuerDid")
                         .HasDatabaseName("IX_Credentials_IssuerDid");

@@ -170,13 +170,18 @@ public sealed class InboundCredentialDetector : IInboundCredentialDetector
                 return null;
             }
 
-            // 7. Dedup by credential id (INV-1) — persisting is idempotent on replay.
-            var existing = await _credentialStore.GetByIdAsync(extract.CredentialId, cancellationToken);
+            // 7. Dedup by (credentialId, walletAddress) (INV-1) — persisting is idempotent on
+            //    replay. MUST be wallet-scoped: on single-node deployments the issuer audit
+            //    row lives under the issuer wallet with the same credential id, and the
+            //    prior Id-only dedup would skip the recipient-side insert entirely (the
+            //    n1 Feature 106 bug surfaced at deploy time).
+            var existing = await _credentialStore.GetByIdForWalletAsync(
+                extract.CredentialId, walletAddress, cancellationToken);
             if (existing is not null)
             {
                 _logger.LogDebug(
-                    "InboundCredentialDetector: credential {CredentialId} already stored — skipping duplicate",
-                    extract.CredentialId);
+                    "InboundCredentialDetector: credential {CredentialId} already stored for wallet {Wallet} — skipping duplicate",
+                    extract.CredentialId, walletAddress);
                 _metrics.RecordSkippedDuplicate();
                 return null;
             }
