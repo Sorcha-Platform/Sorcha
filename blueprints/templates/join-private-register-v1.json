@@ -1,0 +1,92 @@
+{
+  "id": "join-private-register-v1",
+  "title": "Join Private Register",
+  "description": "Records the lifecycle of a private-register invitation on the system register: a source organisation creates an invitation for a target organisation, and the target records acceptance on-ledger so every node in the network can audit the subscription decision.",
+  "version": 1,
+  "category": "governance",
+  "tags": ["governance", "invitation", "private-register"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "@context": "https://sorcha.dev/blueprints/v1",
+    "id": "join-private-register-v1",
+    "title": "Join Private Register",
+    "description": "Records the lifecycle of a private-register invitation on the system register.",
+    "version": 1,
+    "participants": [
+      { "id": "sourceOrg", "name": "Inviting Organisation", "organisation": "Register Owner" },
+      { "id": "targetOrg", "name": "Target Organisation", "organisation": "Invitee" }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Create Invitation",
+        "sender": "sourceOrg",
+        "isStartingAction": true,
+        "schema": {
+          "type": "object",
+          "required": ["invitationId", "registerId", "sourceOrgDid", "targetOrgDid", "nonce", "expiresAt"],
+          "properties": {
+            "invitationId":  { "type": "string", "description": "UUID of this invitation." },
+            "registerId":    { "type": "string", "pattern": "^[a-f0-9]{32}$", "description": "32-char hex register ID being shared." },
+            "sourceOrgDid":  { "type": "string", "description": "did:sorcha:org:{walletAddress} of the inviting org." },
+            "targetOrgDid":  { "type": "string", "description": "did:sorcha:org:{walletAddress} of the target org." },
+            "registerName":  { "type": ["string", "null"], "description": "Display name at create time (audit)." },
+            "nonce":         { "type": "string", "description": "Single-use nonce that the acceptance action must reference." },
+            "expiresAt":     { "type": "string", "format": "date-time", "description": "ISO-8601 UTC expiry." }
+          }
+        },
+        "routes": [
+          { "id": "to-accept-or-expire", "nextActionIds": [1], "isDefault": true }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Accept Invitation",
+        "sender": "targetOrg",
+        "schema": {
+          "type": "object",
+          "required": ["invitationId", "registerId", "nonce"],
+          "properties": {
+            "invitationId":  { "type": "string", "description": "Must equal the invitationId recorded in Action 0." },
+            "registerId":    { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+            "nonce":         { "type": "string", "description": "MUST match the nonce from Action 0; consumed here." },
+            "acceptedAt":    { "type": "string", "format": "date-time" }
+          }
+        },
+        "routes": []
+      }
+    ],
+    "metadata": {
+      "category": "governance",
+      "type": "join-private-register",
+      "isSystem": "true",
+      "hasCycles": "false"
+    }
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": [
+    {
+      "name": "Typical invitation flow",
+      "description": "Source org creates invitation, target org accepts within 14 days.",
+      "actionPayloads": {
+        "0": {
+          "invitationId": "00000000-0000-0000-0000-000000000001",
+          "registerId": "aebf26362e079087571ac0932d4db973",
+          "sourceOrgDid": "did:sorcha:org:ws1qsource",
+          "targetOrgDid": "did:sorcha:org:ws1qtarget",
+          "registerName": "Shared Procurement Register",
+          "nonce": "11111111-2222-3333-4444-555555555555",
+          "expiresAt": "2026-04-30T00:00:00Z"
+        },
+        "1": {
+          "invitationId": "00000000-0000-0000-0000-000000000001",
+          "registerId": "aebf26362e079087571ac0932d4db973",
+          "nonce": "11111111-2222-3333-4444-555555555555",
+          "acceptedAt": "2026-04-20T09:30:00Z"
+        }
+      }
+    }
+  ]
+}

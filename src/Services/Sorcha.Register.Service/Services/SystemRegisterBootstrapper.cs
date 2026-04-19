@@ -386,7 +386,16 @@ public class SystemRegisterBootstrapper : BackgroundService
         SystemRegisterService systemRegisterService,
         CancellationToken cancellationToken)
     {
-        var blueprints = new[] { "register-creation-v1", "register-governance-v1", "create-organisation-v1" };
+        var blueprints = new[]
+        {
+            "register-creation-v1",
+            "register-governance-v1",
+            "create-organisation-v1",
+            // Spec master Phase 2 US11 — audit-trail blueprint for private-register
+            // invitation lifecycle. Must be published before the first acceptance so
+            // RegisterInvitationService can submit an instance against it.
+            "join-private-register-v1",
+        };
 
         foreach (var blueprintId in blueprints)
         {
