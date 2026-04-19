@@ -8,22 +8,9 @@ using Sorcha.ServiceClients.Trust;
 namespace Sorcha.Wallet.Service.Credentials;
 
 /// <summary>
-/// Resolves the X.509 certificate chain for the JWS <c>x5c</c> header on
-/// HAIP-path credential issuance.
+/// Resolves the X.509 cert chain for the JWS <c>x5c</c> header on HAIP issuance;
+/// returns null on any provider failure (degrades to DID-only verifiability).
 /// </summary>
-/// <remarks>
-/// <para>
-/// Extracted from <c>CredentialEndpoints.IssueCredential</c> so the chain-fetch
-/// decision rules (no provider → null, blank tenant → null, provider failure →
-/// null) can be tested in isolation and shared with future issuance paths.
-/// </para>
-/// <para>
-/// The endpoint must never fail credential issuance because the trust client
-/// failed — the absence of an <c>x5c</c> header degrades the credential to
-/// DID-only verifiability, which is the documented Sorcha-internal default. The
-/// resolver therefore swallows provider exceptions and returns null.
-/// </para>
-/// </remarks>
 public static class IssueCredentialChainResolver
 {
     /// <summary>
@@ -52,10 +39,14 @@ public static class IssueCredentialChainResolver
             var chain = await provider.GetChainForAsync(tenantId, issuerWallet, cancellationToken);
             return chain?.AsJwsChain();
         }
+        catch (OperationCanceledException)
+        {
+            // Caller cancellation must propagate — never silently issue a
+            // credential without x5c when the request was abandoned.
+            throw;
+        }
         catch (Exception ex)
         {
-            // Issuance must not fail because of a trust-service hiccup. The
-            // missing x5c header degrades the credential to DID-only verifiability.
             logger.LogWarning(ex,
                 "Cert chain fetch failed for tenant {TenantId} issuer {IssuerWallet}; issuing credential without x5c header.",
                 tenantId, issuerWallet);

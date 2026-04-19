@@ -57,15 +57,19 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificationDeliveryService,
     Sorcha.Wallet.Service.Services.Implementation.NotificationDeliveryService>();
 
-// Singleton TrustServiceClient — its 5-min cert cache must survive across
-// requests, so the HttpClient is captured once. mTLS cert rotation on the
-// Tenant Service therefore requires a Wallet Service restart.
+// Singleton TrustServiceClient — 5-min cert cache must survive across requests,
+// so the HttpClient is captured once. PooledConnectionLifetime caps connection
+// age at 2 min so DNS / mTLS rotation lands via connection recycling.
 builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
     var address = config["ServiceClients:TenantService:Address"]
         ?? "https+http://tenant-service";
     http.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+})
+.ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.SocketsHttpHandler
+{
+    PooledConnectionLifetime = TimeSpan.FromMinutes(2),
 });
 builder.Services.AddSingleton<Sorcha.ServiceClients.Trust.IOrgCertChainProvider>(sp =>
 {

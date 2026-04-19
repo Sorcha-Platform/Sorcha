@@ -117,4 +117,27 @@ public class IssueCredentialChainResolverTests
 
         result.Should().BeNull();
     }
+
+    [Fact]
+    public async Task ResolveChainAsync_ProviderThrowsOperationCanceled_Rethrows()
+    {
+        // OperationCanceledException must NOT be swallowed — silently issuing a
+        // credential without x5c when the caller has abandoned the request would
+        // produce an unverifiable artifact under timeout/disconnect scenarios.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var provider = new Mock<IOrgCertChainProvider>();
+        provider.Setup(p => p.GetChainForAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var act = async () => await IssueCredentialChainResolver.ResolveChainAsync(
+            provider: provider.Object,
+            tenantId: TenantId,
+            issuerWallet: IssuerWallet,
+            logger: NullLogger.Instance,
+            cancellationToken: cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
 }
