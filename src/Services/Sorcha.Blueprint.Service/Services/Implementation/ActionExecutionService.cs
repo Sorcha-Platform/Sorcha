@@ -510,8 +510,6 @@ public class ActionExecutionService : IActionExecutionService
         CredentialIssuanceResult? localWalletCredential = null;
         string? localWalletRecipient = null;
         var issuerOrgName = caller?.FindFirst("org_name")?.Value;
-        // Threaded to the Wallet Service for the x5c JWS header lookup. Null when
-        // the caller has no org context — preserves the Sorcha-internal default.
         var issuerTenantId = caller?.FindFirst("org_id")?.Value;
         if (actionDef.CredentialIssuanceConfig != null
             && actionDef.CredentialIssuanceConfig.TargetAudience is TargetAudience.SorchaLocalWallet

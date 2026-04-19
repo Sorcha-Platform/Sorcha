@@ -8,8 +8,8 @@ using Sorcha.ServiceClients.Trust;
 namespace Sorcha.Wallet.Service.Credentials;
 
 /// <summary>
-/// Feature 096 US3 — resolves the X.509 certificate chain for the JWS <c>x5c</c>
-/// header on HAIP-path credential issuance.
+/// Resolves the X.509 certificate chain for the JWS <c>x5c</c> header on
+/// HAIP-path credential issuance.
 /// </summary>
 /// <remarks>
 /// <para>

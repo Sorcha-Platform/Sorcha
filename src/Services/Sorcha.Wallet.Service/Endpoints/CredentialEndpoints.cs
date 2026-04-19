@@ -486,8 +486,8 @@ public static class CredentialEndpoints
         ISdJwtService sdJwtService,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken = default,
-        IOrgCertChainProvider? orgCertChainProvider = null)
+        IOrgCertChainProvider? orgCertChainProvider = null,
+        CancellationToken cancellationToken = default)
     {
         // 1. Get the issuer wallet
         var wallet = await walletRepository.GetByAddressAsync(walletAddress, cancellationToken: cancellationToken);
@@ -777,13 +777,13 @@ public class IssueCredentialRequest
     public string? IssuerOrgName { get; init; }
 
     /// <summary>
-    /// Feature 096 US3 — tenant id (org_id Guid as string) used to fetch the
-    /// issuer's X.509 certificate chain from the Tenant Service trust client. When
-    /// supplied AND the wallet service has an <c>IOrgCertChainProvider</c>
-    /// registered, the resulting chain is embedded in the JWS <c>x5c</c> header so
-    /// external HAIP verifiers can validate the issuer key against the tenant
-    /// trust anchor without DID resolution. Null falls back to DID-only
-    /// verifiability (the existing Sorcha-internal default).
+    /// Tenant id (org_id Guid as string) used to fetch the issuer's X.509
+    /// certificate chain from the Tenant Service trust client. When supplied AND
+    /// the wallet service has an <c>IOrgCertChainProvider</c> registered, the
+    /// resulting chain is embedded in the JWS <c>x5c</c> header so external HAIP
+    /// verifiers can validate the issuer key against the tenant trust anchor
+    /// without DID resolution. Null falls back to DID-only verifiability (the
+    /// existing Sorcha-internal default).
     /// </summary>
     public string? TenantId { get; init; }
 }

@@ -66,6 +66,12 @@ builder.Services.AddScoped<Sorcha.Wallet.Service.Services.Interfaces.INotificati
 // IHttpClientFactory infrastructure (created via the named "trust-service"
 // binding below) so we keep the per-handler lifecycle while still pinning the
 // client+cache as a singleton.
+//
+// NOTE: the HttpClient is captured once at singleton creation, so mTLS cert
+// rotation on the Tenant Service end requires a Wallet Service restart to be
+// picked up. Acceptable today (cert rotation is operator-driven and rare);
+// revisit by injecting IHttpClientFactory into a thin wrapper if rotation
+// cadence becomes faster than restarts.
 builder.Services.AddHttpClient("trust-service", (sp, http) =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
