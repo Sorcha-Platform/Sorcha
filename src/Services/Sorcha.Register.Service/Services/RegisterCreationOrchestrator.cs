@@ -469,16 +469,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
 
         _logger.LogInformation("Register {RegisterId} set to Online", register.Id);
 
-        // Without this rebuild, addresses provisioned before register creation
-        // stay invisible to InboundTransactionRouter until the next
-        // BloomFilterStartupRebuildService pass (i.e. the next service restart).
-        // Failures are non-fatal — startup-rebuild or /rebuild-index reconciles.
-        //
-        // Bounded wait: a slow Wallet Service must not stall the FinalizeAsync
-        // response indefinitely. 10s is generous for the streaming address load
-        // (typical case: 0–10 wallets at register creation time) while still
-        // keeping the worst-case latency tight. The catch swallows the resulting
-        // TaskCanceledException so finalize still succeeds.
+        // Best-effort fan-in; 10s timeout caps wallet-svc latency.
         using var bloomCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bloomCts.CancelAfter(TimeSpan.FromSeconds(10));
         try
@@ -488,7 +479,11 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
                 "Initialised bloom filter for new register {RegisterId} with {AddressCount} addresses.",
                 register.Id, bloomStats.AddressCount);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is OperationCanceledException
+                                      or global::Grpc.Core.RpcException
+                                      or IOException
+                                      or InvalidOperationException
+                                      or TimeoutException)
         {
             _logger.LogWarning(ex,
                 "Failed to initialise bloom filter for new register {RegisterId}; reconciliation deferred to next startup-rebuild or admin /rebuild-index.",
