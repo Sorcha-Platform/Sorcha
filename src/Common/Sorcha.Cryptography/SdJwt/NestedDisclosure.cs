@@ -146,44 +146,285 @@ public static class NestedDisclosure
     }
 
     /// <summary>
-    /// Reconstructs disclosed claims from a mix of top-level and nested disclosures,
-    /// merging them into a unified claims dictionary.
+    /// Reconstructs the disclosed claims tree from an SD-JWT payload and the
+    /// raw disclosures carried in the presentation. Implements the verifier
+    /// algorithm from IETF SD-JWT §7.1:
+    /// <list type="number">
+    ///   <item>Hash each raw disclosure to build a digest → disclosed-value map.</item>
+    ///   <item>Walk the payload tree. At every object, replace each digest in the
+    ///   local <c>_sd</c> array with its matching object-field disclosure and merge
+    ///   at the SAME depth (so <c>/address/locality</c> lands inside <c>address</c>,
+    ///   not at the root).</item>
+    ///   <item>At every array, replace <c>{"...": digest}</c> placeholders with the
+    ///   matching array-element disclosure value. Placeholders with no matching
+    ///   disclosure are dropped (cryptographically hidden).</item>
+    ///   <item>Strip <c>_sd</c> and <c>_sd_alg</c> from the output. JWT-standard
+    ///   claims (<c>iss</c>, <c>sub</c>, <c>iat</c>, <c>exp</c>, <c>cnf</c>) are
+    ///   dropped — callers extract those from <c>basePayload</c> directly.</item>
+    /// </list>
     /// </summary>
-    /// <remarks>
-    /// WARNING: This method currently places nested disclosures at the top level
-    /// (e.g., "locality" instead of "address.locality"). It does not walk nested
-    /// _sd digests to inject values at the correct depth. This is a known gap
-    /// from PR #226 review item #2. The method is not called from any production
-    /// path — SdJwtService.VerifyTokenAsync uses its own disclosure parsing.
-    /// Fix required before nested selective disclosure is used end-to-end.
-    /// </remarks>
-    /// <param name="basePayload">The JWT payload (may contain nested _sd arrays).</param>
-    /// <param name="disclosures">Decoded disclosure arrays.</param>
-    /// <returns>Merged claims dictionary.</returns>
+    /// <param name="basePayload">The JWT payload (may contain nested <c>_sd</c> arrays).</param>
+    /// <param name="rawDisclosures">
+    /// Base64url-encoded disclosure strings exactly as they appear in the tilde-
+    /// separated presentation (no padding, no JWT signature suffix). Both the
+    /// 3-element object-field form <c>[salt, name, value]</c> and the 2-element
+    /// array-element form <c>[salt, value]</c> are supported. Malformed entries
+    /// are silently skipped; they cannot cause a throw.
+    /// </param>
+    /// <returns>
+    /// Merged claims dictionary at the correct tree depth. Objects become
+    /// <see cref="Dictionary{TKey, TValue}"/>, arrays become <see cref="List{T}"/>,
+    /// scalars are converted to their CLR equivalent.
+    /// </returns>
     public static Dictionary<string, object> Reconstruct(
         Dictionary<string, JsonElement> basePayload,
-        List<(string salt, string name, object value)> disclosures)
+        IEnumerable<string> rawDisclosures)
     {
-        var result = new Dictionary<string, object>();
-        var reservedClaims = new HashSet<string> { "iss", "sub", "iat", "exp", "_sd", "_sd_alg", "cnf" };
+        ArgumentNullException.ThrowIfNull(basePayload);
+        ArgumentNullException.ThrowIfNull(rawDisclosures);
 
-        // Add non-reserved, non-_sd claims from payload
-        foreach (var (key, value) in basePayload)
+        var digestMap = new Dictionary<string, DecodedDisclosure>(StringComparer.Ordinal);
+        foreach (var raw in rawDisclosures)
         {
-            if (reservedClaims.Contains(key))
+            if (string.IsNullOrWhiteSpace(raw))
                 continue;
-
-            result[key] = ConvertAndMergeDisclosures(value, disclosures);
+            if (!TryDecodeDisclosure(raw, out var decoded))
+                continue;
+            var digest = ComputeDigest(raw);
+            // Duplicate digests would indicate a malformed presentation; keep the first.
+            digestMap.TryAdd(digest, decoded);
         }
 
-        // Add top-level disclosures
-        foreach (var (_, name, value) in disclosures)
+        // JWT-standard claims belong to the envelope, not the application claims.
+        // Callers who need them read them directly off basePayload.
+        var envelopeClaims = new HashSet<string>(StringComparer.Ordinal)
         {
-            if (!result.ContainsKey(name))
-                result[name] = value;
+            "iss", "sub", "iat", "exp", "cnf", "_sd", "_sd_alg",
+        };
+
+        var result = new Dictionary<string, object>(StringComparer.Ordinal);
+
+        // Walk application-level properties, recursing through the tree.
+        foreach (var (key, value) in basePayload)
+        {
+            if (envelopeClaims.Contains(key))
+                continue;
+
+            var processed = ProcessElement(value, digestMap);
+            if (processed is not null)
+                result[key] = processed;
+        }
+
+        // Resolve top-level _sd digests INTO the result (same depth = root).
+        if (basePayload.TryGetValue("_sd", out var topLevelSd)
+            && topLevelSd.ValueKind == JsonValueKind.Array)
+        {
+            ApplyObjectSdDigests(result, topLevelSd, digestMap);
         }
 
         return result;
+    }
+
+    // --- Reconstruct tree walk ---
+
+    /// <summary>
+    /// Recursively walks a single JSON element, resolving nested <c>_sd</c>
+    /// digests and array-element disclosure placeholders against
+    /// <paramref name="digestMap"/>. Returns the reconstructed subtree as a
+    /// CLR object (Dictionary / List / primitive).
+    /// </summary>
+    private static object? ProcessElement(
+        JsonElement element,
+        IReadOnlyDictionary<string, DecodedDisclosure> digestMap)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+            {
+                var dict = new Dictionary<string, object>(StringComparer.Ordinal);
+
+                // First pass: copy through all non-envelope properties.
+                foreach (var prop in element.EnumerateObject())
+                {
+                    if (prop.Name is "_sd" or "_sd_alg")
+                        continue;
+                    var child = ProcessElement(prop.Value, digestMap);
+                    if (child is not null)
+                        dict[prop.Name] = child;
+                }
+
+                // Second pass: resolve this object's _sd array AT this depth.
+                if (element.TryGetProperty("_sd", out var sdArray)
+                    && sdArray.ValueKind == JsonValueKind.Array)
+                {
+                    ApplyObjectSdDigests(dict, sdArray, digestMap);
+                }
+
+                return dict;
+            }
+
+            case JsonValueKind.Array:
+            {
+                var list = new List<object?>();
+                foreach (var item in element.EnumerateArray())
+                {
+                    // Array-element placeholder: { "...": "<digest>" }.
+                    // Per SD-JWT §5.2.4 the key is the literal three-dot string.
+                    if (TryReadArrayPlaceholder(item, out var placeholderDigest))
+                    {
+                        if (digestMap.TryGetValue(placeholderDigest, out var disclosed)
+                            && disclosed.Name is null)
+                        {
+                            // 2-element [salt, value] disclosure — inject the value at
+                            // this index, recursing so an object value with further
+                            // nested _sd also resolves.
+                            list.Add(ProcessDisclosedValue(disclosed.Value, digestMap));
+                        }
+                        // else: placeholder remains hidden — drop it from output.
+                        continue;
+                    }
+
+                    list.Add(ProcessElement(item, digestMap));
+                }
+                return list;
+            }
+
+            case JsonValueKind.String:
+                return element.GetString() ?? string.Empty;
+            case JsonValueKind.Number:
+                return element.TryGetInt64(out var l) ? l : element.GetDouble();
+            case JsonValueKind.True:
+                return true;
+            case JsonValueKind.False:
+                return false;
+            case JsonValueKind.Null:
+                return null;
+            default:
+                return element.GetRawText();
+        }
+    }
+
+    /// <summary>
+    /// Injects object-field disclosures whose digests appear in the supplied
+    /// <c>_sd</c> array into <paramref name="target"/> at this depth.
+    /// Two-element array disclosures are ignored here — they only make sense
+    /// inside arrays, not object <c>_sd</c> slots.
+    /// </summary>
+    private static void ApplyObjectSdDigests(
+        Dictionary<string, object> target,
+        JsonElement sdArray,
+        IReadOnlyDictionary<string, DecodedDisclosure> digestMap)
+    {
+        foreach (var digestEl in sdArray.EnumerateArray())
+        {
+            if (digestEl.ValueKind != JsonValueKind.String)
+                continue;
+            var digest = digestEl.GetString();
+            if (string.IsNullOrEmpty(digest))
+                continue;
+            if (!digestMap.TryGetValue(digest, out var disclosed))
+                continue;
+            if (disclosed.Name is null)
+                continue; // array-element disclosure in an object slot — malformed
+
+            var processed = ProcessDisclosedValue(disclosed.Value, digestMap);
+            if (processed is not null)
+                target[disclosed.Name] = processed;
+        }
+    }
+
+    /// <summary>
+    /// Recursively resolves any further <c>_sd</c> or array placeholders that
+    /// live inside the disclosed value itself. This covers the "entire address
+    /// is disclosable and contains its own nested _sd" shape where one
+    /// disclosure transitively unlocks more.
+    /// </summary>
+    private static object? ProcessDisclosedValue(
+        JsonElement? value,
+        IReadOnlyDictionary<string, DecodedDisclosure> digestMap)
+    {
+        if (value is null)
+            return null;
+        return ProcessElement(value.Value, digestMap);
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="element"/> is an SD-JWT array-element
+    /// placeholder object with exactly one property keyed <c>"..."</c> whose
+    /// value is a digest string.
+    /// </summary>
+    private static bool TryReadArrayPlaceholder(JsonElement element, out string digest)
+    {
+        digest = string.Empty;
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        string? found = null;
+        var propertyCount = 0;
+        foreach (var prop in element.EnumerateObject())
+        {
+            propertyCount++;
+            if (propertyCount > 1)
+                return false;
+            if (prop.Name != "...")
+                return false;
+            if (prop.Value.ValueKind != JsonValueKind.String)
+                return false;
+            found = prop.Value.GetString();
+        }
+
+        if (propertyCount == 1 && !string.IsNullOrEmpty(found))
+        {
+            digest = found;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Decoded disclosure shape. <see cref="Name"/> is null for the 2-element
+    /// array-element form; set for the 3-element object-field form.
+    /// </summary>
+    private sealed record DecodedDisclosure(string Salt, string? Name, JsonElement? Value);
+
+    /// <summary>
+    /// Decodes a base64url disclosure string into the (salt, name, value)
+    /// tuple. Returns false on any parse error — disclosures that fail to
+    /// decode are silently skipped, matching the spec's guidance that the
+    /// verifier must never throw on attacker-controlled input.
+    /// </summary>
+    private static bool TryDecodeDisclosure(string raw, out DecodedDisclosure decoded)
+    {
+        decoded = null!;
+        try
+        {
+            var bytes = Base64Url.DecodeFromChars(raw);
+            using var doc = JsonDocument.Parse(bytes);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return false;
+
+            var items = doc.RootElement;
+            var len = items.GetArrayLength();
+            if (len == 3)
+            {
+                var salt = items[0].GetString() ?? string.Empty;
+                var name = items[1].GetString();
+                decoded = new DecodedDisclosure(salt, name, items[2].Clone());
+                return true;
+            }
+            if (len == 2)
+            {
+                var salt = items[0].GetString() ?? string.Empty;
+                decoded = new DecodedDisclosure(salt, null, items[1].Clone());
+                return true;
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // --- Private helpers ---
@@ -253,25 +494,6 @@ public static class NestedDisclosure
             JsonValueKind.Array => element.EnumerateArray().Select(ConvertJsonElementToObject).ToList(),
             _ => element.GetRawText()
         };
-    }
-
-    private static object ConvertAndMergeDisclosures(JsonElement value,
-        List<(string salt, string name, object value)> disclosures)
-    {
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            var dict = new Dictionary<string, object>();
-            foreach (var prop in value.EnumerateObject())
-            {
-                if (prop.Name == "_sd")
-                    continue; // Skip _sd arrays in nested objects — disclosures handle these
-
-                dict[prop.Name] = ConvertAndMergeDisclosures(prop.Value, disclosures);
-            }
-            return dict;
-        }
-
-        return ConvertJsonElementToObject(value);
     }
 
     private static string CreateDisclosure(string claimName, object claimValue)
