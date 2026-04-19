@@ -202,6 +202,8 @@ builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.ILocal
     Sorcha.Register.Service.Services.Implementation.RedisBloomFilterAddressIndex>();
 builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter,
     Sorcha.Register.Service.Services.Implementation.InboundTransactionRouter>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.Interfaces.IBloomFilterRebuilder,
+    Sorcha.Register.Service.Services.Implementation.BloomFilterRebuilder>();
 
 // Feature 106 startup-rebuild: reconcile bloom filters on boot in case Redis was wiped
 // or hooks failed during normal wallet creation. Non-blocking — runs as a hosted service

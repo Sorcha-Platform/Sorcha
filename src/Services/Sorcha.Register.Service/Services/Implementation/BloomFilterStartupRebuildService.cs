@@ -5,16 +5,14 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Service.Services.Interfaces;
-using Sorcha.ServiceClients.Grpc;
-using Sorcha.Wallet.Service.Grpc;
 
 namespace Sorcha.Register.Service.Services.Implementation;
 
 /// <summary>
 /// Background service that runs once on startup to ensure each register's bloom
 /// filter has at least one address indexed. If the params hash for a register is
-/// missing or has <c>address_count == 0</c>, the service rebuilds it from the
-/// peer Wallet Service via the existing <c>GetAllLocalAddresses</c> gRPC stream.
+/// missing or has <c>address_count == 0</c>, the service rebuilds it via
+/// <see cref="IBloomFilterRebuilder"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,9 +31,7 @@ namespace Sorcha.Register.Service.Services.Implementation;
 ///   <item>Iterates every register known to <see cref="RegisterManager"/>.</item>
 ///   <item>Skips registers whose bloom already reports a non-zero
 ///         <c>address_count</c> in <see cref="ILocalAddressIndex.GetStatsAsync"/>.</item>
-///   <item>For empty/missing blooms, calls
-///         <see cref="ILocalAddressIndex.RebuildAsync"/> with the address stream
-///         from the Wallet Service.</item>
+///   <item>For empty/missing blooms, delegates to <see cref="IBloomFilterRebuilder"/>.</item>
 ///   <item>Failures are logged and skipped — the service does not throw on
 ///         individual register failures and never blocks ASP.NET startup.</item>
 /// </list>
@@ -44,17 +40,25 @@ namespace Sorcha.Register.Service.Services.Implementation;
 public sealed class BloomFilterStartupRebuildService : BackgroundService
 {
     private readonly IServiceProvider _services;
+    private readonly IBloomFilterRebuilder _rebuilder;
     private readonly ILogger<BloomFilterStartupRebuildService> _logger;
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// Initialises a new instance of <see cref="BloomFilterStartupRebuildService"/>.
     /// </summary>
+    /// <remarks>
+    /// <see cref="IBloomFilterRebuilder"/> is a singleton and constructor-injected.
+    /// <see cref="IServiceProvider"/> stays for resolving scoped dependencies
+    /// (<c>RegisterManager</c>, <see cref="ILocalAddressIndex"/>) inside the rebuild loop.
+    /// </remarks>
     public BloomFilterStartupRebuildService(
         IServiceProvider services,
+        IBloomFilterRebuilder rebuilder,
         ILogger<BloomFilterStartupRebuildService> logger)
     {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _rebuilder = rebuilder ?? throw new ArgumentNullException(nameof(rebuilder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -75,7 +79,6 @@ public sealed class BloomFilterStartupRebuildService : BackgroundService
         await using var scope = _services.CreateAsyncScope();
         var registerManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
         var addressIndex = scope.ServiceProvider.GetRequiredService<ILocalAddressIndex>();
-        var walletClient = scope.ServiceProvider.GetRequiredService<IWalletNotificationClient>();
 
         IReadOnlyList<Sorcha.Register.Models.Register> registers;
         try
@@ -124,11 +127,7 @@ public sealed class BloomFilterStartupRebuildService : BackgroundService
                     "Bloom startup-rebuild: rebuilding register {RegisterId} (current={Count})",
                     registerId, stats?.AddressCount ?? 0);
 
-                var addresses = walletClient.GetAllLocalAddressesAsync(
-                    registerId, activeOnly: true, stoppingToken);
-
-                var newStats = await addressIndex.RebuildAsync(
-                    registerId, ExtractAddresses(addresses), stoppingToken);
+                var newStats = await _rebuilder.RebuildAsync(registerId, stoppingToken);
 
                 rebuilt++;
                 _logger.LogInformation(
@@ -147,17 +146,5 @@ public sealed class BloomFilterStartupRebuildService : BackgroundService
         _logger.LogInformation(
             "Bloom startup-rebuild complete: {Rebuilt} rebuilt, {Skipped} already populated, {Failed} failed (of {Total}).",
             rebuilt, skipped, failed, registers.Count);
-    }
-
-    private static async IAsyncEnumerable<string> ExtractAddresses(
-        IAsyncEnumerable<LocalAddressEntry> entries)
-    {
-        await foreach (var entry in entries)
-        {
-            if (!string.IsNullOrEmpty(entry.Address))
-            {
-                yield return entry.Address;
-            }
-        }
     }
 }

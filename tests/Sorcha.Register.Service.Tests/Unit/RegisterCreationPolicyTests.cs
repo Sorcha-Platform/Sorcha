@@ -11,6 +11,7 @@ using Sorcha.Cryptography.Interfaces;
 using Sorcha.Register.Core.Managers;
 using Sorcha.Register.Models;
 using Sorcha.Register.Service.Services;
+using Sorcha.Register.Service.Services.Interfaces;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.SystemWallet;
 using Sorcha.ServiceClients.Validator;
@@ -50,6 +51,14 @@ public class RegisterCreationPolicyTests
         var mockSigningService = new Mock<ISystemWalletSigningService>();
         _mockPendingStore = new Mock<IPendingRegistrationStore>();
         var mockPeerClient = new Mock<IPeerServiceClient>();
+        // Explicit Setup so a policy test that reaches FinalizeAsync sees a real
+        // BloomFilterStats. Without it Mock.Of returns null Task and the
+        // orchestrator's catch-all swallows the resulting NullReferenceException
+        // — passing tests would mask broken setup.
+        var mockBloomRebuilder = new Mock<IBloomFilterRebuilder>();
+        mockBloomRebuilder
+            .Setup(b => b.RebuildAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BloomFilterStats(0, 1024, 3, DateTimeOffset.UtcNow));
 
         // Default hash provider returns deterministic bytes
         _mockHashProvider
@@ -76,7 +85,8 @@ public class RegisterCreationPolicyTests
             mockSigningService.Object,
             _mockPendingStore.Object,
             mockPeerClient.Object,
-            Mock.Of<ITenantSubscriptionClient>());
+            Mock.Of<ITenantSubscriptionClient>(),
+            mockBloomRebuilder.Object);
     }
 
     [Fact]
