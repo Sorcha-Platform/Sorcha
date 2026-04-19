@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sorcha.Blueprint.Models.Credentials;
 using Sorcha.Cryptography.SdJwt;
 using Sorcha.ServiceClients.Models;
+using Sorcha.ServiceClients.Trust;
 using Sorcha.Wallet.Core.Domain.Entities;
 using Sorcha.Wallet.Core.Repositories.Interfaces;
 using Sorcha.Wallet.Core.Services.Interfaces;
@@ -485,6 +486,7 @@ public static class CredentialEndpoints
         ISdJwtService sdJwtService,
         ICredentialStore store,
         ILoggerFactory loggerFactory,
+        IOrgCertChainProvider? orgCertChainProvider = null,
         CancellationToken cancellationToken = default)
     {
         // 1. Get the issuer wallet
@@ -592,6 +594,16 @@ public static class CredentialEndpoints
             }
         }
 
+        // Embed the org cert chain in the JWS x5c header when the caller supplies
+        // a tenant id. Absence of either the provider or the tenant id falls back
+        // to DID-only verifiability — the existing Sorcha-internal default.
+        var x5cChain = await Credentials.IssueCredentialChainResolver.ResolveChainAsync(
+            orgCertChainProvider,
+            request.TenantId,
+            walletAddress,
+            logger,
+            cancellationToken);
+
         var token = await sdJwtService.CreateTokenAsync(
             claims,
             request.DisclosableClaims,
@@ -600,7 +612,8 @@ public static class CredentialEndpoints
             privateKey,
             wallet.Algorithm,
             expiresAt,
-            cancellationToken);
+            cancellationToken,
+            x5cChain);
 
         // 5. Generate credential ID
         var credentialId = $"urn:uuid:{Guid.NewGuid()}";
@@ -762,6 +775,17 @@ public class IssueCredentialRequest
     /// JWT org_name claim at action execution time.
     /// </summary>
     public string? IssuerOrgName { get; init; }
+
+    /// <summary>
+    /// Tenant id (org_id Guid as string) used to fetch the issuer's X.509
+    /// certificate chain from the Tenant Service trust client. When supplied AND
+    /// the wallet service has an <c>IOrgCertChainProvider</c> registered, the
+    /// resulting chain is embedded in the JWS <c>x5c</c> header so external HAIP
+    /// verifiers can validate the issuer key against the tenant trust anchor
+    /// without DID resolution. Null falls back to DID-only verifiability (the
+    /// existing Sorcha-internal default).
+    /// </summary>
+    public string? TenantId { get; init; }
 }
 
 /// <summary>

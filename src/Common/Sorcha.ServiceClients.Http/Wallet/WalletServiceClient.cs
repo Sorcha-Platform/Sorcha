@@ -296,6 +296,7 @@ public class WalletServiceClient : IWalletServiceClient
         string? statusListPurpose = null,
         bool skipRecipientStore = false,
         string? issuerOrgName = null,
+        string? tenantId = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -318,7 +319,8 @@ public class WalletServiceClient : IWalletServiceClient
                 statusListIndex,
                 statusListPurpose,
                 skipRecipientStore,
-                issuerOrgName
+                issuerOrgName,
+                tenantId
             };
 
             var response = await _httpClient.PostAsJsonAsync(
