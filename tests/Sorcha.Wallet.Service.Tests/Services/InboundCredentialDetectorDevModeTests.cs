@@ -161,7 +161,8 @@ public class InboundCredentialDetectorDevModeTests
         fixture.ArrangePlaintextTransaction(PlaintextTxBody);
         fixture.ArrangeRegisterDevMode(true);
         fixture.CredentialStoreMock
-            .Setup(s => s.GetByIdAsync("urn:uuid:feature-106-devmode-test-1", It.IsAny<CancellationToken>()))
+            .Setup(s => s.GetByIdForWalletAsync(
+                "urn:uuid:feature-106-devmode-test-1", WalletAddress, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CredentialEntity
             {
                 Id = "urn:uuid:feature-106-devmode-test-1",

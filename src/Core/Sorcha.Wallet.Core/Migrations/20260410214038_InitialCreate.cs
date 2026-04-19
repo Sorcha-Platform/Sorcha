@@ -47,7 +47,7 @@ namespace Sorcha.Wallet.Core.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Credentials", x => x.Id);
+                    table.PrimaryKey("PK_Credentials", x => new { x.Id, x.WalletAddress });
                 });
 
             migrationBuilder.CreateTable(

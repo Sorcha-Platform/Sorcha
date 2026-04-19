@@ -16,9 +16,21 @@ public interface ICredentialStore
     Task<IReadOnlyList<CredentialEntity>> GetByWalletAsync(string walletAddress, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets a credential by its ID.
+    /// Gets a credential by its ID. Returns the first match across wallets — use
+    /// <see cref="GetByIdForWalletAsync"/> when a specific wallet's copy is required
+    /// (e.g. Feature 106 InboundCredentialDetector dedup, where both issuer and
+    /// recipient hold rows with the same credential id on single-node deployments).
     /// </summary>
     Task<CredentialEntity?> GetByIdAsync(string credentialId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Feature 106 — returns the row keyed on <c>(credentialId, walletAddress)</c>,
+    /// or null if this wallet has no copy of the credential yet. Used by the
+    /// InboundCredentialDetector to dedup against its own prior inserts without
+    /// tripping on the issuer's audit row.
+    /// </summary>
+    Task<CredentialEntity?> GetByIdForWalletAsync(
+        string credentialId, string walletAddress, CancellationToken ct = default);
 
     /// <summary>
     /// Stores a new credential.
