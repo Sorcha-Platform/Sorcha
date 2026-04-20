@@ -381,6 +381,7 @@ foreach ($regDef in $config.registers) {
         -OwnerUserId $ctx.AdminUserId `
         -OwnerWalletAddress $ownerWalletAddress `
         -Headers $ctx.Headers `
+        -DevMode `
         -Metadata @{ createdBy = "TradeFinance/setup.ps1"; registerType = $regDef.ownerOrg }
 
     $state.registers[$regShortName] = @{
