@@ -63,7 +63,9 @@ $issued = (Get-Date).ToString("yyyy-MM-dd")
 $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
 [Environment]::SetEnvironmentVariable("DLA_ISSUED_DATE",    $issued)
 [Environment]::SetEnvironmentVariable("DLA_EXPIRY_DATE",    $expiry)
-[Environment]::SetEnvironmentVariable("DLA_LICENCE_NUMBER", "DL-SC-$(Get-Random -Maximum 99999)")
+# Zero-padded 5-digit serial so every licence has the same format
+# regardless of Get-Random's output magnitude.
+[Environment]::SetEnvironmentVariable("DLA_LICENCE_NUMBER", ("DL-SC-{0:D5}" -f (Get-Random -Maximum 100000)))
 
 # ---------- Agents ----------
 $actors = @(
@@ -124,9 +126,17 @@ if ($running.Count -gt 0) {
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 $allOk = $true
 foreach ($p in $processes) {
-    $status = if ($p.Process.HasExited) {
-        if ($p.Process.ExitCode -eq 0) { "OK" } else { "ERROR (exit $($p.Process.ExitCode))"; $allOk = $false }
-    } else { "KILLED (timeout)"; $allOk = $false }
+    if ($p.Process.HasExited) {
+        if ($p.Process.ExitCode -eq 0) {
+            $status = "OK"
+        } else {
+            $status = "ERROR (exit $($p.Process.ExitCode))"
+            $allOk = $false
+        }
+    } else {
+        $status = "KILLED (timeout)"
+        $allOk = $false
+    }
     Write-Host "  $($p.Name): $status"
 }
 
