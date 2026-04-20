@@ -37,4 +37,17 @@ public sealed record BlueprintPageDefinition
     /// </summary>
     [JsonPropertyName("x-sections")]
     public List<BlueprintSectionDefinition>? Sections { get; init; }
+
+    /// <summary>
+    /// Parsed <c>x-review</c> extension when present. A page carrying a
+    /// review extension is rendered read-only via
+    /// <c>ReviewSummaryRenderer</c>; field rendering is suppressed. Feature
+    /// 107 Assured Identity v1. Null when the page is a normal form page.
+    /// </summary>
+    /// <remarks>
+    /// Not exported to JSON — consumed by the renderer only. The parsed
+    /// extension is populated by <see cref="SchemaLayoutParser"/>.
+    /// </remarks>
+    [JsonIgnore]
+    public XReviewExtension? ReviewExtension { get; init; }
 }

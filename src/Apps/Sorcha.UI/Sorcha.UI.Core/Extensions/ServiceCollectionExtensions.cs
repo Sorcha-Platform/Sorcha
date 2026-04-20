@@ -67,6 +67,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFormSchemaService, FormSchemaService>();
         services.AddScoped<IFormSigningService, FormSigningService>();
 
+        // Feature 107 — client-side portrait token resizer for `x-file.embedAs`
+        // fields. The interop is scoped (holds a lazy IJSObjectReference);
+        // the resizer itself is stateless quality-stepping over that interop.
+        services.AddScoped<IPhotoTokenResizerInterop, BrowserPhotoTokenResizerInterop>();
+        services.AddScoped<PhotoTokenResizer>();
+
+        // Review-summary data source — pure shape over FormContext, stateless.
+        services.AddSingleton<ReviewSummaryDataSource>();
+
         // Wallet preference service (server-backed with localStorage migration)
         services.AddScoped<IWalletPreferenceService>(sp =>
         {

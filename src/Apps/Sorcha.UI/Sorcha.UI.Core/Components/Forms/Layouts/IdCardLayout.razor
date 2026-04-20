@@ -1,0 +1,162 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Models.Forms
+
+@* Feature 107 Assured Identity v1 — styled credential-card layout. One
+   component renders citizen draft (Edit/Submit), assessor pending
+   (Approve/Reject), and wallet-detail (no actions) states by changing
+   the watermark enum and the FooterActions render fragment supplied
+   from the parent. *@
+
+<div class="id-card"
+     data-theme="@ThemeAttribute"
+     data-watermark="@WatermarkAttribute">
+
+    <div class="id-card-header">
+        <div class="id-card-header-text">
+            <div class="id-card-issuer">Issued by @Config.IssuerName</div>
+            <div class="id-card-credential-name">@Config.CredentialName</div>
+        </div>
+        <div class="id-card-accent-dot"></div>
+    </div>
+
+    @if (Config.Watermark != IdCardWatermark.None)
+    {
+        <div class="id-card-watermark">@Config.Watermark.ToString().ToUpperInvariant()</div>
+    }
+
+    <div class="id-card-body">
+        <div class="id-card-portrait">
+            @if (_portraitDataUri is not null)
+            {
+                <img src="@_portraitDataUri" alt="Holder portrait" />
+            }
+            else
+            {
+                <div class="id-card-portrait-placeholder">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Large" />
+                </div>
+            }
+        </div>
+
+        <div class="id-card-details">
+            @foreach (var cardSection in Config.Sections)
+            {
+                <div class="id-card-section">
+                    <div class="id-card-section-header">
+                        <span class="id-card-section-title">@cardSection.Title</span>
+                        @if (Config.Editable)
+                        {
+                            <MudButton Size="Size.Small"
+                                       Variant="Variant.Text"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => HandleEdit(cardSection.OriginatingPageIndex))"
+                                       StartIcon="@Icons.Material.Filled.Edit">
+                                Edit
+                            </MudButton>
+                        }
+                    </div>
+                    <dl class="id-card-fields">
+                        @foreach (var pointer in cardSection.FieldPointers)
+                        {
+                            <div class="id-card-field">
+                                <dt>@FormatLabel(pointer)</dt>
+                                <dd>@FormatValue(Config.FieldValues.GetValueOrDefault(pointer))</dd>
+                            </div>
+                        }
+                    </dl>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (FooterActions is not null)
+    {
+        <div class="id-card-footer">
+            @FooterActions
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required IdCardLayoutConfig Config { get; set; }
+    [Parameter] public EventCallback<int> OnEditSection { get; set; }
+    [Parameter] public RenderFragment? FooterActions { get; set; }
+
+    private string? _portraitDataUri;
+
+    protected override void OnParametersSet()
+    {
+        // Portrait rendering: if a tokenImageBase64 value landed in the
+        // review context (FileRenderer resize pipeline), surface it as the
+        // card's photo. The exact pointer depends on the field name but
+        // the convention is `<fieldPointer>/tokenImageBase64`.
+        _portraitDataUri = null;
+        foreach (var (key, value) in Config.FieldValues)
+        {
+            if (key.EndsWith("/tokenImageBase64", StringComparison.Ordinal) &&
+                value is string base64 &&
+                !string.IsNullOrEmpty(base64))
+            {
+                _portraitDataUri = $"data:image/jpeg;base64,{base64}";
+                break;
+            }
+        }
+    }
+
+    private string ThemeAttribute => Config.ColourTheme switch
+    {
+        XReviewColourTheme.IdentityNavy => "identity-navy",
+        XReviewColourTheme.LicencePink => "licence-pink",
+        _ => "identity-navy"
+    };
+
+    private string WatermarkAttribute => Config.Watermark switch
+    {
+        IdCardWatermark.Draft => "draft",
+        IdCardWatermark.Pending => "pending",
+        IdCardWatermark.Issued => "issued",
+        _ => "none"
+    };
+
+    private async Task HandleEdit(int pageIndex)
+    {
+        if (OnEditSection.HasDelegate)
+        {
+            await OnEditSection.InvokeAsync(pageIndex);
+        }
+    }
+
+    /// <summary>Render a JSON-pointer leaf as a human label ("/givenName" → "Given name").</summary>
+    private static string FormatLabel(string pointer)
+    {
+        var leaf = pointer.TrimStart('/');
+        var lastSlash = leaf.LastIndexOf('/');
+        if (lastSlash >= 0) leaf = leaf[(lastSlash + 1)..];
+        if (string.IsNullOrEmpty(leaf)) return pointer;
+
+        // camelCase → "Camel case"
+        var chars = new System.Text.StringBuilder();
+        for (var i = 0; i < leaf.Length; i++)
+        {
+            var c = leaf[i];
+            if (i == 0) chars.Append(char.ToUpperInvariant(c));
+            else if (char.IsUpper(c)) { chars.Append(' '); chars.Append(char.ToLowerInvariant(c)); }
+            else chars.Append(c);
+        }
+        return chars.ToString();
+    }
+
+    private static string FormatValue(object? value)
+    {
+        if (value is null) return "—";
+        return value switch
+        {
+            string s when string.IsNullOrWhiteSpace(s) => "—",
+            string s => s,
+            _ => value.ToString() ?? "—"
+        };
+    }
+}

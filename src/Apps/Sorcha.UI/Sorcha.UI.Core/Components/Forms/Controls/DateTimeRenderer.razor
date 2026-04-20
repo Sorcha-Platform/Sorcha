@@ -17,6 +17,8 @@
                Error="@(!string.IsNullOrEmpty(_errorText))"
                Variant="Variant.Outlined"
                Margin="Margin.Dense"
+               MinDate="@_minDate"
+               MaxDate="@_maxDate"
                DateFormat="yyyy-MM-dd" />
 
 @code {
@@ -25,6 +27,8 @@
     [Parameter] public bool IsDisabled { get; set; }
 
     private DateTime? _dateValue;
+    private DateTime? _minDate;
+    private DateTime? _maxDate;
     private string _errorText = string.Empty;
     private bool _isRequired;
 
@@ -38,7 +42,38 @@
             _dateValue = dt;
         }
 
+        // Feature 107 — resolve formatMinimum / formatMaximum Sorcha date
+        // tokens into concrete client-side bounds so the picker cannot
+        // select past a DoB cutoff. Server-side validator remains the
+        // authoritative gate; this is a UX convenience.
+        ResolvePickerBounds();
+
         UpdateErrors();
+    }
+
+    private void ResolvePickerBounds()
+    {
+        _minDate = null;
+        _maxDate = null;
+
+        if (FormContext?.DataSchema is null) return;
+
+        var propertySchema = SchemaService.GetSchemaForScope(FormContext.DataSchema, Control.Scope);
+        if (propertySchema is null) return;
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+
+        if (DateTimeFieldBoundResolver.TryResolveBound(propertySchema.Value, "formatMinimum", today, out var minBound)
+            && minBound is { } min)
+        {
+            _minDate = min.ToDateTime(TimeOnly.MinValue);
+        }
+
+        if (DateTimeFieldBoundResolver.TryResolveBound(propertySchema.Value, "formatMaximum", today, out var maxBound)
+            && maxBound is { } max)
+        {
+            _maxDate = max.ToDateTime(TimeOnly.MinValue);
+        }
     }
 
     private void OnDateChanged(DateTime? newDate)

@@ -1607,6 +1607,26 @@ public class ActionExecutionService : IActionExecutionService
         {
             if (TryResolveJsonPointer(mergedData, mapping.SourceField, out var value))
             {
+                // Feature 107 — server is the authoritative size gate for
+                // embedded portrait token images. A base64 string >27_000
+                // chars means either the client-side resizer was bypassed
+                // or the source photo is too detailed; either way the
+                // credential should not carry an oversized claim. Drop the
+                // claim, log the warning, and continue with the rest of
+                // the credential so issuance does not abort.
+                if (IsPortraitTokenMapping(mapping.SourceField) &&
+                    value is string portraitBase64 &&
+                    portraitBase64.Length > PortraitTokenMaxBase64Chars)
+                {
+                    logger.LogWarning(
+                        "Portrait token for claim '{ClaimName}' exceeded the {MaxChars}-char base64 bound " +
+                        "({ActualChars} chars); dropping claim and issuing credential without portrait. " +
+                        "Warning code: {WarningCode}",
+                        mapping.ClaimName, PortraitTokenMaxBase64Chars, portraitBase64.Length,
+                        "WARN_CRED_PORTRAIT_OVERSIZE_001");
+                    continue;
+                }
+
                 claims[mapping.ClaimName] = value;
             }
             else
@@ -1624,6 +1644,24 @@ public class ActionExecutionService : IActionExecutionService
         }
         return claims;
     }
+
+    /// <summary>
+    /// Bound from <c>specs/107-assured-identity-v1/contracts/portrait-claim-format.md</c>:
+    /// a 240×320 JPEG at the token spec's 20KB raw target produces ~27KB
+    /// when base64-encoded (raw × 1.37). The gate applies to the
+    /// base64-encoded length, which is what actually ships in the SD-JWT.
+    /// </summary>
+    private const int PortraitTokenMaxBase64Chars = 27_000;
+
+    /// <summary>
+    /// Treats any claim mapping whose source pointer ends in
+    /// <c>/tokenImageBase64</c> as a portrait token subject to the size
+    /// gate. This ties the gate to schema convention rather than claim
+    /// name, so future credential types that embed tokenised images reuse
+    /// the gate without any change here.
+    /// </summary>
+    private static bool IsPortraitTokenMapping(string sourceField) =>
+        sourceField.EndsWith("/tokenImageBase64", StringComparison.Ordinal);
 
     /// <summary>
     /// Resolves a JSON Pointer (<c>/foo/bar/baz</c>) against a root dictionary

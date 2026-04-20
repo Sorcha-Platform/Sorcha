@@ -70,7 +70,18 @@
                         </MudText>
                     }
 
-                    @if (wizardPage.Sections is { Count: > 0 })
+                    @if (wizardPage.ReviewExtension is not null)
+                    {
+                        @* Feature 107 — x-review page. Suppress field rendering
+                           entirely and hand over to the review summary
+                           component with the prior pages as the value source. *@
+                        var priorPages = Layout.Pages.Take(_currentPage).ToList();
+                        <ReviewSummaryRenderer Page="@wizardPage"
+                                               PriorPages="@priorPages"
+                                               RuntimeState="ActionRuntimeState.CitizenDraft"
+                                               OnEditSection="HandleReviewEdit" />
+                    }
+                    else if (wizardPage.Sections is { Count: > 0 })
                     {
                         @foreach (var sec in wizardPage.Sections)
                         {
@@ -78,8 +89,10 @@
                         }
                     }
 
-                    @* Catch-all on the last wizard page *@
-                    @if (_currentPage == Layout.Pages.Count - 1 && _orphanFieldControls.Count > 0)
+                    @* Catch-all on the last wizard page (skipped for review pages — they are read-only) *@
+                    @if (wizardPage.ReviewExtension is null &&
+                         _currentPage == Layout.Pages.Count - 1 &&
+                         _orphanFieldControls.Count > 0)
                     {
                         @RenderCatchAll()
                     }
@@ -880,6 +893,22 @@
         if (Layout?.Pages is null) return;
         if (pageIndex < 0 || pageIndex > _currentPage) return; // only allow visited pages
 
+        _currentPage = pageIndex;
+        _showValidationSummary = false;
+        if (OnPageChanged.HasDelegate)
+            await OnPageChanged.InvokeAsync(_currentPage);
+    }
+
+    /// <summary>
+    /// Feature 107 — Edit-X jump from a review card's section. Unlike the
+    /// stepper, the jump can come from any previously-visited page whose
+    /// section is still listed on the review; the review page is always the
+    /// last position in the wizard, so jumping back is always valid.
+    /// </summary>
+    private async Task HandleReviewEdit(int pageIndex)
+    {
+        if (Layout?.Pages is null) return;
+        if (pageIndex < 0 || pageIndex >= Layout.Pages.Count) return;
         _currentPage = pageIndex;
         _showValidationSummary = false;
         if (OnPageChanged.HasDelegate)

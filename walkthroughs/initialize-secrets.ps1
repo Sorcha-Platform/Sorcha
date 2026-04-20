@@ -155,6 +155,12 @@ $secrets = [ordered]@{
         adminPassword = $platformPassword
         adminName     = $platformName
     }
+    "assured-identity" = @{
+        adminEmail      = $platformEmail
+        adminPassword   = $platformPassword
+        adminName       = $platformName
+        DefaultPassword = $platformPassword
+    }
 }
 
 # Write to file
