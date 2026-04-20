@@ -61,7 +61,11 @@
         var propertySchema = SchemaService.GetSchemaForScope(FormContext.DataSchema, Control.Scope);
         if (propertySchema is null) return;
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        // Use the user's local date for the client-side bound so a citizen
+        // near midnight doesn't see "today" as a blocked date because the
+        // UTC clock has rolled forward. The server-side validator remains
+        // authoritative; the picker bound is UX convenience only.
+        var today = DateOnly.FromDateTime(DateTime.Now.Date);
 
         if (DateTimeFieldBoundResolver.TryResolveBound(propertySchema.Value, "formatMinimum", today, out var minBound)
             && minBound is { } min)

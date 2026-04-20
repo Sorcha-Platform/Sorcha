@@ -85,10 +85,8 @@
     border-color: #ffb347;
     color: #ffb347;
 }
-
-.id-card[data-watermark="issued"] .id-card-watermark {
-    display: none; /* issued state renders no watermark */
-}
+/* The Razor template omits the watermark element for `Issued` and `None`,
+   so no corresponding CSS rule is needed here. */
 
 .id-card-body {
     display: flex;

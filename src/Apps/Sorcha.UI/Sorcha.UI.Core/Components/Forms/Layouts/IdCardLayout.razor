@@ -22,7 +22,9 @@
         <div class="id-card-accent-dot"></div>
     </div>
 
-    @if (Config.Watermark != IdCardWatermark.None)
+    @* Issued credentials render no watermark (clean appearance); None is
+       also a no-op. Draft + Pending get the rotated accent badge. *@
+    @if (Config.Watermark is IdCardWatermark.Draft or IdCardWatermark.Pending)
     {
         <div class="id-card-watermark">@Config.Watermark.ToString().ToUpperInvariant()</div>
     }
@@ -91,18 +93,26 @@
     {
         // Portrait rendering: if a tokenImageBase64 value landed in the
         // review context (FileRenderer resize pipeline), surface it as the
-        // card's photo. The exact pointer depends on the field name but
-        // the convention is `<fieldPointer>/tokenImageBase64`.
+        // card's photo. Pointer convention is `<fieldPointer>/tokenImageBase64`.
+        //
+        // v1 limitation: only one portrait field per blueprint is supported.
+        // The lowest-pointer match wins (stable order, not dictionary-iteration
+        // order) so a future two-field blueprint lands deterministically on
+        // the first field rather than whichever the dictionary happened to
+        // yield first. If blueprints ever need multiple portrait slots, have
+        // ReviewSummaryDataSource thread an explicit PortraitPointer on
+        // IdCardLayoutConfig and remove this scan.
         _portraitDataUri = null;
-        foreach (var (key, value) in Config.FieldValues)
+        var match = Config.FieldValues
+            .Where(kvp => kvp.Key.EndsWith("/tokenImageBase64", StringComparison.Ordinal)
+                          && kvp.Value is string s
+                          && !string.IsNullOrEmpty(s))
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp => (string?)kvp.Value)
+            .FirstOrDefault();
+        if (match is not null)
         {
-            if (key.EndsWith("/tokenImageBase64", StringComparison.Ordinal) &&
-                value is string base64 &&
-                !string.IsNullOrEmpty(base64))
-            {
-                _portraitDataUri = $"data:image/jpeg;base64,{base64}";
-                break;
-            }
+            _portraitDataUri = $"data:image/jpeg;base64,{match}";
         }
     }
 

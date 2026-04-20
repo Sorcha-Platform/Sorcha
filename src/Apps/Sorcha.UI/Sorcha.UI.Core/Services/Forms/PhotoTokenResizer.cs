@@ -53,9 +53,10 @@ public sealed record PhotoTokenResult
 /// <c>specs/107-assured-identity-v1/contracts/portrait-claim-format.md</c>.
 /// The quality-stepping policy lives here (pure C#); the actual canvas
 /// operation is delegated to <see cref="IPhotoTokenResizerInterop"/> so unit
-/// tests can mock the JS side.
+/// tests can mock the JS side. The class is <c>sealed</c> — the mocking seam
+/// for tests is the interop interface, not subclassing.
 /// </remarks>
-public class PhotoTokenResizer
+public sealed class PhotoTokenResizer
 {
     private readonly IPhotoTokenResizerInterop _interop;
 
@@ -71,7 +72,7 @@ public class PhotoTokenResizer
     /// <see cref="PhotoTokenTooDetailedException"/> if even the lowest quality
     /// step exceeds the target.
     /// </summary>
-    public virtual async Task<PhotoTokenResult> ResizeAsync(
+    public async Task<PhotoTokenResult> ResizeAsync(
         byte[] sourceBytes,
         ImageTokenSpec spec,
         CancellationToken cancellationToken = default)
