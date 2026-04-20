@@ -614,6 +614,11 @@ public class RegisterServiceClient : IRegisterServiceClient
                 "Getting transactions for instance {InstanceId} from register {RegisterId}",
                 instanceId, registerId);
 
+            // Query endpoints are gated by CanReadTransactions. Without the service
+            // bearer the call falls back to 401 and Tier 3 validator lookup sees an
+            // empty chain, causing VAL_BP_002 on every late-bound participant reuse.
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.GetAsync(
                 $"api/query/instance/{Uri.EscapeDataString(instanceId)}/transactions/{Uri.EscapeDataString(registerId)}",
                 cancellationToken);
