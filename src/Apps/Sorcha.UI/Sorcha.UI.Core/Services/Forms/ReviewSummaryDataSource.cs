@@ -10,9 +10,10 @@ namespace Sorcha.UI.Core.Services.Forms;
 /// Reads prior-page values from the form context and shapes them into an
 /// <see cref="IdCardLayoutConfig"/> the review card can render. Feature 107
 /// Assured Identity v1 (T021). Stateless and reusable across citizen-side,
-/// assessor-side, and wallet-side review renders.
+/// assessor-side, and wallet-side review renders. <c>sealed</c> — tests
+/// instantiate directly; there is no documented extension point.
 /// </summary>
-public class ReviewSummaryDataSource
+public sealed class ReviewSummaryDataSource
 {
     /// <summary>
     /// Builds the config for a single review card. Pulls the set of fields
@@ -20,7 +21,7 @@ public class ReviewSummaryDataSource
     /// from <paramref name="formContext"/> and derives the watermark from
     /// <paramref name="runtimeState"/>.
     /// </summary>
-    public virtual IdCardLayoutConfig BuildConfig(
+    public IdCardLayoutConfig BuildConfig(
         XReviewExtension extension,
         FormContext formContext,
         ActionRuntimeState runtimeState,
