@@ -99,23 +99,23 @@ Including an open participant in `$walletMap` causes `Publish-SorchaBlueprint` t
 
 The error points at the wallet, not at the cause. The cause is your `$walletMap`.
 
-**Correct shape for HaipVerifiedCitizen-style walkthroughs:**
+**Correct shape for citizen-identity walkthroughs (AssuredIdentity Phase 1):**
 
 ```powershell
 # citizen is late-bound — DO NOT add it
 $walletMap = @{
-    assessor = $assessorWallet.Address
-    # citizen is intentionally absent
+    "government-assessor" = $govWallet.Address
+    # "citizen" is intentionally absent — late-bound at runtime
 }
 ```
 
-**Correct shape for credential-bootstrapped flows (HaipDrivingLicence-style):**
+**Correct shape for credential-bootstrapped flows (AssuredIdentity Phase 2 driving licence):**
 
 ```powershell
-# applicant is late-bound by whoever presents a valid VerifiedCitizenCredential
+# citizen is late-bound by whoever presents a valid AssuredIdentityCredential
 $walletMap = @{
-    council = $councilWallet.Address
-    # applicant is intentionally absent
+    "dla-officer" = $dlaWallet.Address
+    # "citizen" is intentionally absent
 }
 ```
 
@@ -331,11 +331,16 @@ walkthroughs/HaipIdentityAttestation/   # Simple — OID4VCI issuance only
 ├── actors/citizen.json                  # Actor def with haip section
 └── wallet/                              # Generated — holder keys + credentials
 
-walkthroughs/HaipDrivingLicence/         # Complex — OID4VP + OID4VCI round-trip
-├── setup.ps1                            # Council org (chains from identity walkthrough)
-├── run.ps1                              # Present identity → receive licence
-├── actors/citizen.json
-└── blueprints/driving-licence.json      # Blueprint with HAIP presentation + issuance
+walkthroughs/AssuredIdentity/            # Feature 107 — canonical citizen identity + licence chain
+├── setup.ps1                            # Gov + DLA orgs, shared register, both blueprints
+├── run.ps1                              # Full Phase 1 + Phase 2 orchestrator
+├── run-phase1-identity.ps1              # AssuredIdentityCredential issuance
+├── run-phase2-licence.ps1               # Driving Licence credential chain (OID4VP + OID4VCI)
+├── run-agents.ps1                       # Unattended gov-assessor + dla-officer rules-mode
+├── run-multi-peer.ps1                   # Cross-peer smoke (non-blocking measurement)
+├── actors/                              # citizen.json + gov-assessor.json + dla-officer.json
+├── blueprints/                          # assured-identity.json + driving-licence.json
+└── wallet/                              # Generated — holder keys + both credentials
 ```
 
 ### Key Setup Patterns for HAIP Walkthroughs
@@ -393,19 +398,24 @@ $presRequest = Invoke-SorchaApi -Method POST `
 
 ### HAIP Walkthrough Chaining
 
-The DrivingLicence walkthrough chains from IdentityAttestation:
+The canonical citizen-identity walkthrough (`AssuredIdentity`) chains the two phases in a single state file, so Phase 2 reads `state.json` for the citizen wallet + HAIP wallet-dir produced by Phase 1 directly:
 
 ```powershell
-# In HaipDrivingLicence/setup.ps1:
-$identityState = Join-Path $identityDir "state.json"
-if (-not (Test-Path $identityState)) {
-    # Run identity attestation inline
-    & (Join-Path $identityDir "setup.ps1") -Profile $Profile
-    & (Join-Path $identityDir "run.ps1")
+# In run-phase2-licence.ps1:
+$state = Get-Content $stateFile -Raw | ConvertFrom-Json
+$walletDir = Join-Path $scriptDir "wallet"
+$identityCredPath = Join-Path $walletDir "credentials/AssuredIdentityCredential.sdjwt"
+if (-not (Test-Path $identityCredPath)) {
+    Write-WtFail "No AssuredIdentityCredential in the wallet. Run run-phase1-identity.ps1 first."
+    exit 1
 }
-$idState = Get-Content -Path $identityState -Raw | ConvertFrom-Json
-# Reuse: $idState.walletDir, $idState.tenantId, etc.
+# The citizen wallet-dir holds the presented credential; sorcha-agent haip
+# present reads it directly.
 ```
+
+### Multi-peer smoke pattern
+
+For cross-peer delivery measurement (Feature 106 register-native path), ship a **non-blocking** smoke harness — runs a full federation, emits findings markdown on every run regardless of outcome, never fails the surrounding process. Reference shape: `AssuredIdentity/run-multi-peer.ps1` + `docker-compose.federation.yml`. Per FR-039 the smoke is measurement tooling, not a gate — exit 0 on every path; the findings document carries the actual status (`pass` / `degraded-pass` / `fail` / `env-failure`).
 
 ### Playwright Screenshot Tests
 
@@ -433,7 +443,7 @@ await orgCard.First.ClickAsync();
 | SelfBuildHouse | 7 | 14 | 2 | Cross-register VCs, credential chains, staged inspections |
 | TradeFinance | 6 | 10 | 2 | Cross-register VCs, dispute loops, 4 orgs |
 | HaipIdentityAttestation | 1 (agent) | N/A | N/A | OID4VCI pre-auth code flow, SD-JWT VC with cnf |
-| HaipDrivingLicence | 1 (agent) | N/A | N/A | OID4VP direct_post + OID4VCI round-trip |
+| AssuredIdentity | 3 (citizen + gov-assessor + dla-officer) | 7 across 2 blueprints | 1 | Feature 107 — canonical citizen identity (5-page wizard, id-card review, optional portrait) + driving licence chain (OID4VP present + OID4VCI issue) + unattended rules-mode agents + cross-peer smoke |
 
 ## Troubleshooting
 
@@ -448,3 +458,18 @@ await orgCard.First.ClickAsync();
 | Agent: "No matching credential" | Credential type mismatch or wallet dir wrong | Check `--wallet-dir` points to correct location and credential type matches exactly |
 | Walkthrough: secrets not found | Missing entry in passwords.json | Add `haip-identity` / `haip-licence` entries to `walkthroughs/.secrets/passwords.json` |
 | Walkthrough: org subdomain taken | Re-running setup without volume reset | Use `docker compose down -v` for clean slate, or use `-Force` flag |
+| Walkthrough: Action N fails 400 for the same participant on every scenario | Late-bound participant reuse hitting VAL_BP_002 via a broken Tier 3 chain lookup (incident 2026-04-20) | Check validator logs for "no prior in-instance binding". Confirm `GET /api/query/instance/{id}/transactions/{registerId}` returns 200 with a non-empty list. If empty, inspect MongoDB: `MetaData.InstanceId` must be non-null on sealed txs. See `n1-deploy` skill → "Validator-pipeline changes — end-to-end probe". |
+| Walkthrough: re-running after n1 reset but setup keeps state from last run | State files (state.json) persist between resets, pointing at deleted registers/users | Before re-running: `find walkthroughs -name state.json -delete`. The script's idempotency only works against state that still exists server-side. |
+
+## Running against n1 (ground-truth verification)
+
+The local `docker-compose` stack is fine for fast iteration, but it shares code paths with tests — a change can pass every unit/integration test yet still break on n1 because of a layer the tests don't cover (DI wiring, registration of endpoints, docket-seal projections, Docker image staleness).
+
+**Ground-truth rule:** A walkthrough that completes all scenarios **on n1.sorcha.dev** is the cheapest full-stack regression test we have. Before claiming a validator-pipeline change is done:
+
+1. Merge the PR so Docker Publish runs.
+2. Pull the affected service images on n1 (`docker compose pull <service> && up -d --force-recreate <service>`).
+3. Delete local `walkthroughs/**/state.json` so setup provisions fresh orgs/registers.
+4. Run the walkthrough against n1 — if it completes, the change holds end-to-end.
+
+If the walkthrough still fails at the same action, read the **register-service access log** first (`docker logs sorcha-register-service --since 3m | grep 'query/'`). An empty-list response on a 200 is a persistence-projection gap, not a missing fix.

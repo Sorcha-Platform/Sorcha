@@ -188,6 +188,13 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 > **Priority:** P3 (Future release)
 > **Estimated Effort:** 120-200h
 > **Goal:** Decentralized multi-validator production network
+>
+> **Cross-node verification status (Feature 106 + 107):** subsumed by the
+> AssuredIdentity cross-peer smoke. Baseline findings live at
+> `walkthroughs/AssuredIdentity/multi-peer-findings.md`; regression checks
+> rerun via `walkthroughs/AssuredIdentity/run-multi-peer.ps1`. Per FR-039
+> the smoke is measurement, not a gate — first operator run on real
+> hardware replaces the committed baseline.
 
 | # | Task | Priority | Effort | Status | Notes |
 |---|------|----------|--------|--------|-------|

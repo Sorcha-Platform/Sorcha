@@ -50,7 +50,7 @@ public class CredentialStatusTests
         var entity = new CredentialEntity
         {
             Id = "urn:uuid:test",
-            Type = "VerifiedCitizenCredential",
+            Type = "AssuredIdentityCredential",
             IssuerDid = "did:sorcha:issuer:gov",
             SubjectDid = "did:sorcha:subject:alice",
             ClaimsJson = "{}",

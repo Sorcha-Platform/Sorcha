@@ -41,7 +41,7 @@ public class CredentialOfferSchemaResolverTests
         ["credentialOffer"] = new JsonObject
         {
             ["credential_offer_uri"] = "openid-credential-offer://?credential_offer=abc",
-            ["credential_type"] = "VerifiedCitizenCredential",
+            ["credential_type"] = "AssuredIdentityCredential",
             ["expires_at"] = "2026-04-15T12:00:00Z",
             ["offer_id"] = "11111111-1111-1111-1111-111111111111"
         }
@@ -55,7 +55,7 @@ public class CredentialOfferSchemaResolverTests
         info.Should().NotBeNull();
         info!.FieldName.Should().Be("credentialOffer");
         info.CredentialOfferUri.Should().Be("openid-credential-offer://?credential_offer=abc");
-        info.CredentialType.Should().Be("VerifiedCitizenCredential");
+        info.CredentialType.Should().Be("AssuredIdentityCredential");
         info.OfferId.Should().Be("11111111-1111-1111-1111-111111111111");
         info.ExpiresAt.Should().NotBeNull();
         info.ExpiresAt!.Value.Year.Should().Be(2026);
@@ -127,7 +127,7 @@ public class CredentialOfferSchemaResolverTests
         {
             ["credentialOffer"] = new JsonObject
             {
-                ["credential_type"] = "VerifiedCitizenCredential"
+                ["credential_type"] = "AssuredIdentityCredential"
                 // no credential_offer_uri
             }
         };

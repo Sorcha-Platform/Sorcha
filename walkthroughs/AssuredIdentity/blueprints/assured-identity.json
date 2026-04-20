@@ -1,7 +1,7 @@
 {
   "id": "assured-identity-v1",
   "title": "Assured Identity",
-  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a government assessor (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered via the Wave 14b claim-card pattern. Feature 107 — replaces the legacy VerifiedCitizenCredential and AssuredPersonCredential blueprints.",
+  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a government assessor (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered via the Wave 14b claim-card pattern. Feature 107 supersedes the earlier Features 103 / 106 demo blueprints.",
   "version": 1,
   "category": "identity",
   "tags": ["assured-identity", "identity", "haip", "oid4vci", "verifiable-credential", "credential-claim", "citizen-application", "core-primitives", "portrait"],

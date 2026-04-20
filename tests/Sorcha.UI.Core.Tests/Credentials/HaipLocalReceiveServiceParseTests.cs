@@ -54,7 +54,7 @@ public class HaipLocalReceiveServiceParseTests
         var offer = JsonDocument.Parse("""
             {
                 "credential_issuer": "https://issuer.example",
-                "credentials": ["VerifiedCitizenCredential"],
+                "credentials": ["AssuredIdentityCredential"],
                 "grants": {
                     "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                         "pre-authorized_code": "abc123-secret"

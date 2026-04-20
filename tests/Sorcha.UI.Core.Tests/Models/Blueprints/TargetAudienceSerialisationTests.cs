@@ -20,7 +20,7 @@ public class TargetAudienceSerialisationTests
 {
     private static CredentialIssuanceConfig SampleConfig(TargetAudience audience) => new()
     {
-        CredentialType = "VerifiedCitizenCredential",
+        CredentialType = "AssuredIdentityCredential",
         ClaimMappings =
         [
             new ClaimMapping { ClaimName = "givenName", SourceField = "/name/givenName" }
@@ -55,7 +55,7 @@ public class TargetAudienceSerialisationTests
     {
         const string Json = /*lang=json,strict*/ """
         {
-          "credentialType": "VerifiedCitizenCredential",
+          "credentialType": "AssuredIdentityCredential",
           "claimMappings": [ { "claimName": "givenName", "sourceField": "/name/givenName" } ],
           "recipientParticipantId": "citizen",
           "targetAudience": "SorchaLocalWallet"
