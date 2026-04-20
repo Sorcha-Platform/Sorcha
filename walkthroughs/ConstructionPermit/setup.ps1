@@ -331,6 +331,7 @@ $register = New-SorchaRegister `
     -OwnerUserId $meridianSession.UserId `
     -OwnerWalletAddress $users["contractor"].WalletAddress `
     -Headers $meridianSession.Headers `
+    -DevMode `
     -Metadata @{ createdBy = "ConstructionPermit/setup.ps1"; multiOrg = "true" }
 
 # ============================================================================

@@ -1406,6 +1406,28 @@ function Get-SorchaCredentialPresentation {
 
     $headers = @{ Authorization = "Bearer $Token" }
 
+    # Feature 106 Wave C: register-native credential delivery lands as
+    # Status=PendingAcceptance. The default /credentials list filters to Active
+    # only, so pending credentials are invisible to the presentation flow until
+    # the holder accepts. Walkthroughs are single-actor-per-role and don't have
+    # a separate "inbox triage" step, so auto-accept pending credentials of the
+    # requested type here before the Active fetch.
+    try {
+        $pending = Invoke-SorchaApi -Method GET `
+            -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/?status=PendingAcceptance" `
+            -Headers $headers
+        foreach ($p in ($pending | Where-Object { $_.type -eq $CredentialType })) {
+            $null = Invoke-SorchaApi -Method PATCH `
+                -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/$($p.id)" `
+                -Body @{ status = "Active" } `
+                -Headers $headers
+        }
+    } catch {
+        # Non-fatal: pending accept is best-effort. If the helper is being used
+        # against a wallet that has no pending credentials, the fetch below will
+        # return the already-active ones and the caller sees no difference.
+    }
+
     $credentials = Invoke-SorchaApi -Method GET `
         -Uri "$WalletUrl/v1/wallets/$WalletAddress/credentials/" `
         -Headers $headers

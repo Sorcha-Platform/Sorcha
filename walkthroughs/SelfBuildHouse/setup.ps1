@@ -242,6 +242,7 @@ $planningRegister = New-SorchaRegister `
     -OwnerUserId $planningOwnerUserId `
     -OwnerWalletAddress $users["planning-officer"].walletAddress `
     -Headers $planningSession.Headers `
+    -DevMode `
     -Metadata @{ createdBy = "SelfBuildHouse/setup.ps1"; registerType = "planning" }
 Write-WtSuccess "  Planning Register: $($planningRegister.RegisterId)"
 
@@ -260,6 +261,7 @@ $buildingRegister = New-SorchaRegister `
     -OwnerUserId $bsOwnerUserId `
     -OwnerWalletAddress $users["building-standards-officer"].walletAddress `
     -Headers $bsSession.Headers `
+    -DevMode `
     -Metadata @{ createdBy = "SelfBuildHouse/setup.ps1"; registerType = "building-standards" }
 Write-WtSuccess "  Building Standards Register: $($buildingRegister.RegisterId)"
 
