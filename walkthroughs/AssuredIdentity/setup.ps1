@@ -267,6 +267,114 @@ $blueprint = Publish-SorchaBlueprint `
 Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
 
 # ============================================================================
+# Step 9: Driver Licensing Authority (DLA) — Feature 107 PR 2 (US2)
+# ============================================================================
+Write-WtStep "Step 9: Create Driver Licensing Authority"
+
+$dlaAdminEmail    = "dla-admin@assured-identity.local"
+$dlaAdminPassword = $secrets.DefaultPassword
+
+Register-SorchaPublicUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $dlaAdminEmail `
+    -Password $dlaAdminPassword `
+    -DisplayName "DLA Admin" | Out-Null
+
+$publicUsersAfterDla = Invoke-SorchaApi -Method GET `
+    -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
+    -Headers $sysAdmin.Headers
+$dlaPublicUser = $publicUsersAfterDla.users | Where-Object { $_.email -eq $dlaAdminEmail } | Select-Object -First 1
+if ($dlaPublicUser) {
+    Confirm-SorchaUserEmail `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $publicOrgId `
+        -UserId $dlaPublicUser.id `
+        -Headers $sysAdmin.Headers
+}
+
+$dlaOrg = New-SorchaOrganization `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Name "Driver Licensing Authority" `
+    -Subdomain "dla-scotland" `
+    -AdminEmail $dlaAdminEmail `
+    -Headers $sysAdmin.Headers `
+    -Description "Issues Driving Licence credentials to citizens holding an AssuredIdentityCredential"
+$dlaOrgId = $dlaOrg.OrganizationId
+Write-WtSuccess "DLA org: $dlaOrgId"
+
+$dlaSession = Connect-SorchaUser `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -Email $dlaAdminEmail `
+    -Password $dlaAdminPassword `
+    -OrganizationId $dlaOrgId
+
+$dlaWallet = New-SorchaWallet `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -Name "Driver Licensing Authority Issuer" `
+    -Headers $dlaSession.Headers `
+    -FetchPublicKey
+Write-WtSuccess "DLA wallet: $($dlaWallet.Address)"
+
+$null = Register-SorchaParticipant `
+    -TenantUrl $sorchaEnv.TenantUrl `
+    -WalletUrl $sorchaEnv.WalletUrl `
+    -OrganizationId $dlaOrgId `
+    -WalletAddress $dlaWallet.Address `
+    -DisplayName "DLA Officer" `
+    -Headers $dlaSession.Headers
+
+# DLA as HAIP issuer too — trust anchor already provisioned for the tenant,
+# enrol the DLA org cert alongside Government of Scotland.
+try {
+    Invoke-SorchaApi -Method POST `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($dlaWallet.Address)/enrol" `
+        -Headers $sysAdmin.Headers `
+        -Body @{
+            orgPublicKeyBase64 = $dlaWallet.PublicKey
+            orgDisplayName     = "Driver Licensing Authority"
+        }
+    Write-WtSuccess "DLA org cert enrolled"
+} catch { Write-WtWarn "DLA enrolment may already exist" }
+
+# Reuse the Assured Identity register — Feature 107 design keeps both
+# credentials on a single canonical register for the walkthrough so the
+# citizen's wallet stays coherent.
+
+try {
+    $null = Publish-SorchaParticipant `
+        -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $dlaOrgId `
+        -RegisterId $register.RegisterId `
+        -ParticipantName "DLA Officer" `
+        -OrganizationName "Driver Licensing Authority" `
+        -WalletAddress $dlaWallet.Address `
+        -PublicKey $dlaWallet.PublicKey `
+        -Headers $dlaSession.Headers
+} catch {
+    Write-WtWarn "DLA participant publish failed: $($_.Exception.Message)"
+}
+
+# ============================================================================
+# Step 10: Publish Driving Licence Blueprint
+# ============================================================================
+Write-WtStep "Step 10: Publish Driving Licence Blueprint"
+
+$licenceWalletMap = @{
+    "dla-officer" = $dlaWallet.Address
+    # "citizen" intentionally absent — late-bound per Feature 103 open-participant contract.
+}
+
+$licenceBlueprint = Publish-SorchaBlueprint `
+    -BlueprintUrl $sorchaEnv.BlueprintUrl `
+    -TemplatePath (Join-Path $scriptDir "blueprints/driving-licence.json") `
+    -WalletMap $licenceWalletMap `
+    -Headers $dlaSession.Headers `
+    -IdPrefix "driving-licence" `
+    -RegisterId $register.RegisterId
+
+Write-WtSuccess "Driving Licence blueprint: $($licenceBlueprint.BlueprintId)"
+
+# ============================================================================
 # Save State
 # ============================================================================
 $state = @{
@@ -284,6 +392,11 @@ $state = @{
     registerId           = $register.RegisterId
     blueprintId          = $blueprint.BlueprintId
     walletDir            = (Join-Path $scriptDir "wallet")
+    # PR 2 additions — DLA org, DLA wallet, Driving Licence blueprint id.
+    dlaOrgId             = $dlaOrgId
+    dlaWalletAddress     = $dlaWallet.Address
+    dlaWalletPublicKey   = $dlaWallet.PublicKey
+    licenceBlueprintId   = $licenceBlueprint.BlueprintId
     roles = @{
         govAssessor = @{
             email          = $govAdminEmail
@@ -296,6 +409,12 @@ $state = @{
             password       = $citizenPassword
             organizationId = $publicOrgId
             walletAddress  = $citizenWallet.Address
+        }
+        dlaOfficer = @{
+            email          = $dlaAdminEmail
+            password       = $dlaAdminPassword
+            organizationId = $dlaOrgId
+            walletAddress  = $dlaWallet.Address
         }
     }
     persona = @{

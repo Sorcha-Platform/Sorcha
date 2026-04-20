@@ -74,11 +74,16 @@
                     {
                         @* Feature 107 — x-review page. Suppress field rendering
                            entirely and hand over to the review summary
-                           component with the prior pages as the value source. *@
+                           component with the prior pages as the value source.
+                           Pass credentialRequirements + credentialIssuanceConfig
+                           so the renderer can switch to stacked-cards mode on
+                           credential-chain actions (PR 2 / FR-026). *@
                         var priorPages = Layout.Pages.Take(_currentPage).ToList();
                         <ReviewSummaryRenderer Page="@wizardPage"
                                                PriorPages="@priorPages"
                                                RuntimeState="ActionRuntimeState.CitizenDraft"
+                                               ActionCredentialRequirements="@Action?.CredentialRequirements"
+                                               ActionCredentialIssuanceConfig="@Action?.CredentialIssuanceConfig"
                                                OnEditSection="HandleReviewEdit" />
                     }
                     else if (wizardPage.Sections is { Count: > 0 })

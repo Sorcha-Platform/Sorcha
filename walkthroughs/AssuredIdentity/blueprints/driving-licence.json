@@ -1,0 +1,252 @@
+{
+  "id": "driving-licence-v1",
+  "title": "Driving Licence",
+  "description": "Feature 107 PR 2 — a citizen who already holds an AssuredIdentityCredential applies for a driving licence. They submit a short two-page wizard (vehicle class + review), the Driver Licensing Authority (DLA) requests the citizen's Assured Identity via HAIP presentation (givenName/familyName/dateOfBirth plus optional portrait), the DLA approves, and a DrivingLicenceCredential is minted with the holder's identity carried forward from the presentation. 10-year expiry.",
+  "version": 1,
+  "category": "licensing",
+  "tags": ["assured-identity", "driving-licence", "haip", "oid4vp", "oid4vci", "verifiable-credential", "credential-chain", "licence-pink", "x-review"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "driving-licence",
+    "title": "Driving Licence",
+    "description": "Four-action credential-chain workflow: citizen submits vehicle-class application, DLA verifies identity via HAIP presentation, DLA issues the licence, citizen claims.",
+    "version": 1,
+    "metadata": {
+      "category": "Licensing & Permits",
+      "complexity": "Standard",
+      "actions": "4",
+      "features": "HAIP, OpenID4VCI, OpenID4VP, Verifiable Credential, Credential Chain, Portrait Carry-Forward, Licence-Pink Theme",
+      "sector": "Government"
+    },
+    "participants": [
+      {
+        "id": "citizen",
+        "name": "Licence Applicant",
+        "organisation": "Public",
+        "description": "Citizen applying for a driving licence — submits vehicle class, presents their Assured Identity, claims the licence credential"
+      },
+      {
+        "id": "dla-officer",
+        "name": "DLA Officer",
+        "organisation": "Driver Licensing Authority",
+        "description": "Verifies the applicant's identity via HAIP presentation and issues the licence credential"
+      }
+    ],
+    "actions": [
+      {
+        "id": 1,
+        "title": "Submit Driving Licence Application",
+        "description": "Citizen selects the vehicle class and reviews the licence-to-be on a DRAFT id-card preview (licence-pink).",
+        "sender": "citizen",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "x-introduction": "Apply for a driving licence. The DLA will request your Assured Identity credential and issue the licence on approval.",
+            "x-pages": [
+              {
+                "title": "Vehicle class",
+                "description": "Which category of vehicle do you want to drive?",
+                "x-sections": [
+                  { "title": "Licence category", "fields": ["vehicleClass", "applicantNotes"] }
+                ]
+              },
+              {
+                "title": "Review your application",
+                "description": "Check the details before submitting. Once the DLA approves, this is what your Driving Licence credential will show.",
+                "x-review": {
+                  "layout": "id-card",
+                  "editable": true,
+                  "header": {
+                    "issuerName": "Driver Licensing Authority",
+                    "credentialName": "Driving Licence",
+                    "colourTheme": "licence-pink"
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "vehicleClass": {
+                "type": "string",
+                "title": "Vehicle class",
+                "enum": ["Car (B)", "Motorcycle (A)", "Lorry (C)", "Bus (D)"]
+              },
+              "applicantNotes": {
+                "type": "string",
+                "title": "Notes",
+                "maxLength": 500
+              }
+            },
+            "required": ["vehicleClass"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] },
+          { "participantAddress": "dla-officer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-dla-verify",
+            "nextActionIds": [2],
+            "isDefault": true,
+            "description": "Application submitted — pending DLA identity verification"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Verify Applicant Identity",
+        "description": "DLA requests the citizen's Assured Identity credential via HAIP presentation. The citizen discloses givenName, familyName, dateOfBirth (and optionally portrait) from their AssuredIdentityCredential.",
+        "sender": "dla-officer",
+        "requiredPriorActions": [1],
+        "credentialRequirements": [
+          {
+            "type": "AssuredIdentityCredential",
+            "presentationSource": "HaipExternalWallet",
+            "requiredClaims": [
+              { "claimName": "givenName" },
+              { "claimName": "familyName" },
+              { "claimName": "dateOfBirth" }
+            ],
+            "revocationCheckPolicy": "FailClosed",
+            "description": "Government-issued Assured Identity credential. Portrait (if the citizen captured one at identity time) is optional and carried forward into the licence when disclosed."
+          }
+        ],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "verificationNotes": {
+                "type": "string",
+                "title": "Verification notes",
+                "maxLength": 500
+              }
+            }
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "dla-officer", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "to-issue",
+            "nextActionIds": [3],
+            "isDefault": true,
+            "description": "Identity verified — proceed to licence issuance"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Issue Driving Licence",
+        "description": "DLA mints the DrivingLicenceCredential with holder identity carried forward from the presented Assured Identity (holderName, holderDateOfBirth, holderPortrait). licence-pink theme.",
+        "sender": "dla-officer",
+        "requiredPriorActions": [2],
+        "credentialIssuanceConfig": {
+          "credentialType": "DrivingLicenceCredential",
+          "targetAudience": "HaipExternalWallet",
+          "recipientParticipantId": "citizen",
+          "claimMappings": [
+            { "claimName": "licenceNumber",     "sourceField": "/licenceNumber" },
+            { "claimName": "vehicleClass",      "sourceField": "/vehicleClass" },
+            { "claimName": "issuedDate",        "sourceField": "/issuedDate" },
+            { "claimName": "expiryDate",        "sourceField": "/expiryDate" },
+            { "claimName": "holderName",        "sourceField": "/holderName" },
+            { "claimName": "holderDateOfBirth", "sourceField": "/holderDateOfBirth" },
+            { "claimName": "holderPortrait",    "sourceField": "/holderPortrait" }
+          ],
+          "disclosable": [
+            "licenceNumber", "vehicleClass", "issuedDate", "expiryDate",
+            "holderName", "holderDateOfBirth", "holderPortrait"
+          ],
+          "expiryDuration": "P10Y"
+        },
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "licenceNumber":     { "type": "string", "title": "Licence number" },
+              "vehicleClass":      { "type": "string", "title": "Vehicle class" },
+              "issuedDate":        { "type": "string", "format": "date", "title": "Issue date" },
+              "expiryDate":        { "type": "string", "format": "date", "title": "Expiry date" },
+              "holderName":        { "type": "string", "title": "Holder full name" },
+              "holderDateOfBirth": { "type": "string", "format": "date", "title": "Holder date of birth" },
+              "holderPortrait":    { "type": "string", "title": "Holder portrait (base64 JPEG token, optional)" }
+            },
+            "required": ["licenceNumber", "vehicleClass", "issuedDate", "expiryDate", "holderName", "holderDateOfBirth"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "dla-officer", "dataPointers": ["/*"] },
+          {
+            "participantAddress": "citizen",
+            "dataPointers": ["/licenceNumber", "/vehicleClass", "/issuedDate", "/expiryDate"]
+          }
+        ],
+        "routes": [
+          {
+            "id": "to-claim",
+            "nextActionIds": [4],
+            "isDefault": true,
+            "description": "Licence minted — hand to the citizen for claim",
+            "outputMapping": {
+              "/haip/credential_offer_uri": "/credentialOffer/credential_offer_uri",
+              "/haip/credential_type":      "/credentialOffer/credential_type",
+              "/haip/expires_at":           "/credentialOffer/expires_at",
+              "/haip/offer_id":             "/credentialOffer/offer_id"
+            }
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Claim your Driving Licence credential",
+        "description": "Your Driving Licence is ready. Click Claim to store it in your Sorcha wallet, or scan the QR code to load it into an external HAIP-compatible wallet.",
+        "sender": "citizen",
+        "requiredPriorActions": [3],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "credentialOffer": {
+                "type": "object",
+                "title": "Credential Offer",
+                "x-credential-offer": true,
+                "properties": {
+                  "credential_offer_uri": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Canonical OpenID4VCI offer URI (openid-credential-offer://...)"
+                  },
+                  "credential_type": { "type": "string" },
+                  "expires_at": { "type": "string", "format": "date-time" },
+                  "offer_id": { "type": "string" }
+                },
+                "required": ["credential_offer_uri"]
+              },
+              "claimed_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["credentialOffer"]
+          }
+        ],
+        "rejectionConfig": {
+          "targetActionId": 0,
+          "isTerminal": true,
+          "requireReason": false
+        },
+        "disclosures": [
+          { "participantAddress": "citizen", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "claimed-terminal",
+            "nextActionIds": [],
+            "isDefault": true,
+            "description": "Licence claimed — workflow complete"
+          }
+        ]
+      }
+    ]
+  }
+}
