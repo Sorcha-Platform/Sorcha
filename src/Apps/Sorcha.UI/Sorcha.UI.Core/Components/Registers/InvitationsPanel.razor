@@ -141,6 +141,7 @@
 
     private List<InvitationSummary> _invitations = [];
     private bool _isLoading;
+    private bool _hasLoaded;
     private string? _error;
     private int _tabIndex;
     private int _totalPending;
@@ -160,7 +161,9 @@
     private async Task OnExpandedChanged(bool expanded)
     {
         await ExpandedChanged.InvokeAsync(expanded);
-        if (expanded && _invitations.Count == 0 && _error is null && !_isLoading)
+        // Load only on the first expand. A successful load that returned zero rows
+        // sets _hasLoaded so collapse + re-expand doesn't re-fetch pointlessly.
+        if (expanded && !_hasLoaded && !_isLoading)
         {
             await LoadAsync();
         }
@@ -193,8 +196,15 @@
         {
             var page = await InvitationClient.ListAsync(_orgId, DirectionFilter);
             _invitations = page.Invitations.ToList();
-            _totalPending = _invitations.Count(i =>
-                string.Equals(i.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+            // Badge count reflects the total across both directions, not the filtered
+            // tab. Only refresh it when we loaded the "all" view; on a filtered tab the
+            // previously cached value is kept so the badge doesn't under-report.
+            if (string.Equals(DirectionFilter, "all", StringComparison.Ordinal))
+            {
+                _totalPending = _invitations.Count(i =>
+                    string.Equals(i.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+            }
+            _hasLoaded = true;
         }
         catch (InvitationApiException ex)
         {

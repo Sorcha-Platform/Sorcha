@@ -103,7 +103,7 @@
     <DialogActions>
         @if (_result is null)
         {
-            <MudButton OnClick="Close" data-testid="invite-cancel">Cancel</MudButton>
+            <MudButton OnClick="Cancel" data-testid="invite-cancel">Cancel</MudButton>
             <MudButton Color="Color.Primary"
                        Variant="Variant.Filled"
                        OnClick="SubmitAsync"
@@ -144,7 +144,8 @@
     // A validated-orgs directory picker is future work — see US10 discussion.
     // did:sorcha:org:{walletAddress}  where walletAddress starts with ws1q / ws11q / ws12q etc.
     private static readonly System.Text.RegularExpressions.Regex DidRegex =
-        new(@"^did:sorcha:org:ws[0-9]+[a-z0-9]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        new(@"^did:sorcha:org:ws[0-9]+[a-z0-9]+$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private string MagicLink
     {
@@ -221,5 +222,6 @@
         Snackbar.Add("Magic link copied to clipboard", Severity.Success);
     }
 
+    private void Cancel() => MudDialog.Cancel();
     private void Close() => MudDialog.Close(DialogResult.Ok(_result));
 }

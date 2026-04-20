@@ -22,7 +22,7 @@ namespace Sorcha.ServiceClients.Tests.Invitation;
 /// must round-trip snake_case DTOs with the Tenant Service endpoints and surface 4xx
 /// responses as <see cref="InvitationApiException"/> carrying the server's error message.
 /// </summary>
-public class RegisterRegisterInvitationServiceClientTests
+public class RegisterInvitationServiceClientTests
 {
     private static readonly Guid OrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string InvitationId = "inv-abc-123";
@@ -63,6 +63,54 @@ public class RegisterRegisterInvitationServiceClientTests
 
         result.InvitationId.Should().Be("inv-abc-123");
         result.InvitationToken.Should().Be("base64url-token");
+    }
+
+    [Fact]
+    public async Task AcceptAsync_HappyPath_ReturnsSubscriptionSummary()
+    {
+        const string body = """
+            {
+              "subscription_id": "88888888-8888-8888-8888-888888888888",
+              "register_id": "aebf26362e079087571ac0932d4db973",
+              "register_name": "Shared Register",
+              "source_org_did": "did:sorcha:org:ws1qsource",
+              "source_org_name": "Cairngorm",
+              "subscription_status": "Active",
+              "accepted_at": "2026-04-20T10:00:00Z"
+            }
+            """;
+        HttpRequestMessage? captured = null;
+        var client = Build(HttpStatusCode.OK, body, req => captured = req);
+
+        var result = await client.AcceptAsync(OrgId, new AcceptInvitationRequest
+        {
+            InvitationToken = "token-xyz",
+        });
+
+        captured!.Method.Should().Be(HttpMethod.Post);
+        captured.RequestUri!.AbsolutePath
+            .Should().Be($"/api/organizations/{OrgId}/register-invitations/accept");
+        var sentBody = await captured.Content!.ReadAsStringAsync();
+        sentBody.Should().Contain("\"invitation_token\":\"token-xyz\"");
+
+        result.SubscriptionStatus.Should().Be("Active");
+        result.RegisterName.Should().Be("Shared Register");
+        result.SourceOrgName.Should().Be("Cairngorm");
+    }
+
+    [Fact]
+    public async Task ListAsync_EmptyArray_ParsesCleanly()
+    {
+        // Exercises the "no invitations" wire shape that the server returns when the org
+        // has never sent or received one. Keeps the null-coalescence fallback in the
+        // client in the tested path rather than dead code.
+        const string body = """{ "invitations": [], "total_count": 0 }""";
+        var client = Build(HttpStatusCode.OK, body);
+
+        var result = await client.ListAsync(OrgId);
+
+        result.TotalCount.Should().Be(0);
+        result.Invitations.Should().BeEmpty();
     }
 
     [Fact]
