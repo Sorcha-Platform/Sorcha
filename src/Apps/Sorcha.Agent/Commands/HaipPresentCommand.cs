@@ -80,12 +80,19 @@ public class HaipPresentCommand : Command
 
             using var httpClient = new HttpClient();
 
-            // Step 3: Fetch the request object
+            // Step 3: Fetch the request object. Per RFC 9101 §4 the verifier
+            // returns a signed JWT with content-type
+            // application/oauth-authz-req+jwt. The claims live in the JWT
+            // payload, so decode it rather than parsing the raw response as
+            // JSON. Signature verification is the verifier's job on
+            // direct_post — we only need the payload to build the
+            // presentation. Feature 107 PR 2 fix.
             Console.WriteLine($"[haip present] Fetching request object from {requestUri}");
             JsonElement requestObject;
             try
             {
-                requestObject = await httpClient.GetFromJsonAsync<JsonElement>(requestUri, ct);
+                var responseText = await httpClient.GetStringAsync(requestUri, ct);
+                requestObject = ParseRequestObjectPayload(responseText);
             }
             catch (Exception ex)
             {
@@ -165,5 +172,47 @@ public class HaipPresentCommand : Command
             Console.Error.WriteLine($"[ERROR] Unexpected error: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Parses the verifier's RFC 9101 §4 request-object response. The
+    /// response may be either a signed JWT (starts with <c>eyJ</c> —
+    /// <c>application/oauth-authz-req+jwt</c>) or a bare JSON object
+    /// (legacy callers). Returns the payload as a <see cref="JsonElement"/>
+    /// either way.
+    /// </summary>
+    private static JsonElement ParseRequestObjectPayload(string responseText)
+    {
+        var trimmed = responseText.Trim();
+        if (trimmed.Length > 0 && trimmed[0] == '{')
+        {
+            // Bare JSON object.
+            return JsonSerializer.Deserialize<JsonElement>(trimmed);
+        }
+
+        // JWT — extract the payload (middle segment). The verifier signs
+        // the request object; the agent only needs the claims to build its
+        // presentation, so we trust the verifier and skip signature check
+        // (the presentation POST goes back to the same verifier, which
+        // recomputes the binding).
+        var parts = trimmed.Split('.');
+        if (parts.Length < 2)
+        {
+            throw new InvalidOperationException(
+                "Request object is neither a JSON body nor a JWT — cannot parse.");
+        }
+        var payloadBytes = Base64UrlDecode(parts[1]);
+        return JsonSerializer.Deserialize<JsonElement>(payloadBytes);
+    }
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        var padded = input.Replace('-', '+').Replace('_', '/');
+        switch (padded.Length % 4)
+        {
+            case 2: padded += "=="; break;
+            case 3: padded += "="; break;
+        }
+        return Convert.FromBase64String(padded);
     }
 }
