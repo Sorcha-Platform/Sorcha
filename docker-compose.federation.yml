@@ -1,0 +1,356 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Sorcha Contributors
+#
+# Feature 107 PR 4 — two-peer federation compose for the AssuredIdentity
+# cross-peer smoke test (US4). Overlays the base docker-compose.yml with a
+# second full Sorcha stack (peer-b) on the same Docker host.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.federation.yml up -d
+#
+# First-iteration status: published as measurement tooling per FR-039
+# (non-blocking). Initial operator runs refine service wiring + port
+# conflicts; findings captured in walkthroughs/AssuredIdentity/multi-peer-findings.md.
+
+x-otel-env-b: &otel-env-b
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  OTEL_SERVICE_NAME: sorcha-service-b
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=docker-federation-b
+
+x-jwt-env-b: &jwt-env-b
+  JwtSettings__InstallationName: ${INSTALLATION_NAME_B:-localhost-b}
+  JwtSettings__SigningKey: ${JWT_SIGNING_KEY:-c29yY2hhLWRvY2tlci1kZXYta2V5LTIwMjUtbWluLTI1Ni1iaXRzLXNlY3VyZQ==}
+
+services:
+  # ---------------- Peer B databases (independent state) ----------------
+
+  redis-b:
+    image: redis:8-alpine
+    container_name: sorcha-redis-b
+    restart: unless-stopped
+    ports:
+      - "${REDIS_B_PORT:-16380}:6379"
+    volumes:
+      - redis-b-data:/data
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres-b:
+    image: postgres:17-alpine
+    container_name: sorcha-postgres-b
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_B_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: sorcha
+      POSTGRES_PASSWORD: sorcha_dev_password
+      POSTGRES_DB: sorcha
+    volumes:
+      - postgres-b-data:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sorcha"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mongodb-b:
+    image: mongo:8
+    container_name: sorcha-mongodb-b
+    restart: unless-stopped
+    ports:
+      - "${MONGODB_B_PORT:-27018}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: sorcha
+      MONGO_INITDB_ROOT_PASSWORD: sorcha_dev_password
+    volumes:
+      - mongodb-b-data:/data/db
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--username", "sorcha", "--password", "sorcha_dev_password", "--authenticationDatabase", "admin", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------- Peer B services (peer-scoped state) ----------------
+  # Each service below mirrors its peer-a twin with b-suffixed names and
+  # points at the peer-b database trio so no state is shared.
+
+  peer-service-b:
+    image: sorchadev/peer-service:latest
+    container_name: sorcha-peer-service-b
+    restart: unless-stopped
+    ports:
+      - "${PEER_B_GRPC_PORT:-50052}:5000"
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: peer-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ConnectionStrings__PeerDb: Host=postgres-b;Database=sorcha_peer;Username=sorcha;Password=sorcha_dev_password
+      MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb-b:27017
+      MongoDB__DatabaseName: sorcha_system_register
+      ServiceAuth__ClientId: service-peer-b
+      ServiceAuth__ClientSecret: peer-service-b-secret
+      ServiceAuth__Scopes: "registers:write registers:read"
+      ServiceClients__TenantService__Address: http://tenant-service-b:8080
+      ServiceClients__RegisterService__Address: http://register-service-b:8080
+      PeerService__NodeId: "peer-b.sorcha.local"
+      PeerService__PublicAddress: "peer-service-b:5000"
+      PeerService__Port: "5000"
+      PeerService__EnableTls: "false"
+      # Seed peer-a so the two peers discover each other.
+      PeerService__SeedNodes__SeedNodes__0__NodeId: "peer-a.sorcha.local"
+      PeerService__SeedNodes__SeedNodes__0__Hostname: "peer-service"
+      PeerService__SeedNodes__SeedNodes__0__Port: "5000"
+      PeerService__SeedNodes__SeedNodes__0__EnableTls: "false"
+    depends_on:
+      redis-b:
+        condition: service_healthy
+      mongodb-b:
+        condition: service_healthy
+      postgres-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  tenant-service-b:
+    image: sorchadev/tenant-service:latest
+    container_name: sorcha-tenant-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: tenant-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ConnectionStrings__TenantDb: Host=postgres-b;Database=sorcha_tenant;Username=sorcha;Password=sorcha_dev_password
+    depends_on:
+      redis-b:
+        condition: service_healthy
+      postgres-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  register-service-b:
+    image: sorchadev/register-service:latest
+    container_name: sorcha-register-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: register-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb-b:27017
+      MongoDB__DatabaseName: sorcha_register
+      ServiceClients__PeerService__Address: http://peer-service-b:8080
+      ServiceClients__TenantService__Address: http://tenant-service-b:8080
+      ServiceClients__ValidatorService__Address: http://validator-service-b:8080
+    depends_on:
+      redis-b:
+        condition: service_healthy
+      mongodb-b:
+        condition: service_healthy
+      tenant-service-b:
+        condition: service_started
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  validator-service-b:
+    image: sorchadev/validator-service:latest
+    container_name: sorcha-validator-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: validator-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ServiceClients__WalletService__Address: http://wallet-service-b:8080
+      ServiceClients__RegisterService__Address: http://register-service-b:8080
+    depends_on:
+      redis-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  wallet-service-b:
+    image: sorchadev/wallet-service:latest
+    container_name: sorcha-wallet-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: wallet-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ConnectionStrings__WalletDb: Host=postgres-b;Database=sorcha_wallet;Username=sorcha;Password=sorcha_dev_password
+    volumes:
+      - wallet-encryption-keys-b:/home/app/.sorcha/wallet-keys
+    depends_on:
+      redis-b:
+        condition: service_healthy
+      postgres-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  blueprint-service-b:
+    image: sorchadev/blueprint-service:latest
+    container_name: sorcha-blueprint-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: blueprint-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ConnectionStrings__BlueprintDb: Host=postgres-b;Database=sorcha_blueprint;Username=sorcha;Password=sorcha_dev_password
+      MongoDB__ConnectionString: mongodb://sorcha:sorcha_dev_password@mongodb-b:27017
+      MongoDB__DatabaseName: sorcha_blueprint
+      ServiceClients__RegisterService__Address: http://register-service-b:8080
+      ServiceClients__WalletService__Address: http://wallet-service-b:8080
+      ServiceClients__TenantService__Address: http://tenant-service-b:8080
+      ServiceClients__ValidatorService__Address: http://validator-service-b:8080
+      ServiceClients__HaipService__Address: http://haip-service-b:8080
+    depends_on:
+      redis-b:
+        condition: service_healthy
+      postgres-b:
+        condition: service_healthy
+      mongodb-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  haip-service-b:
+    image: sorchadev/haip-service:latest
+    container_name: sorcha-haip-service-b
+    restart: unless-stopped
+    environment:
+      <<: [*otel-env-b, *jwt-env-b]
+      OTEL_SERVICE_NAME: haip-service-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Redis: redis-b:6379
+      ServiceClients__WalletService__Address: http://wallet-service-b:8080
+      ServiceClients__TenantService__Address: http://tenant-service-b:8080
+    depends_on:
+      redis-b:
+        condition: service_healthy
+    networks:
+      - sorcha-network
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api-gateway-b:
+    image: sorchadev/api-gateway:latest
+    container_name: sorcha-api-gateway-b
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_B_PORT:-8081}:80"
+    environment:
+      <<: *otel-env-b
+      OTEL_SERVICE_NAME: api-gateway-b
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:80
+      Yarp__Clusters__tenant__Destinations__dest1__Address: http://tenant-service-b:8080/
+      Yarp__Clusters__blueprint__Destinations__dest1__Address: http://blueprint-service-b:8080/
+      Yarp__Clusters__register__Destinations__dest1__Address: http://register-service-b:8080/
+      Yarp__Clusters__wallet__Destinations__dest1__Address: http://wallet-service-b:8080/
+      Yarp__Clusters__validator__Destinations__dest1__Address: http://validator-service-b:8080/
+      Yarp__Clusters__peer__Destinations__dest1__Address: http://peer-service-b:8080/
+      Yarp__Clusters__haip__Destinations__dest1__Address: http://haip-service-b:8080/
+    depends_on:
+      tenant-service-b:
+        condition: service_started
+      blueprint-service-b:
+        condition: service_started
+      register-service-b:
+        condition: service_started
+      wallet-service-b:
+        condition: service_started
+      peer-service-b:
+        condition: service_started
+      haip-service-b:
+        condition: service_started
+      validator-service-b:
+        condition: service_started
+    networks:
+      - sorcha-network
+
+  # ---------------- Peer A — override Peer:Seeds to include peer-b ----------------
+  # The base peer-service points at the Azure router (n0) by default. In the
+  # federation setup we override its seed list to include peer-b so the two
+  # local peers discover each other directly.
+
+  peer-service:
+    environment:
+      PeerService__SeedNodes__SeedNodes__1__NodeId: "peer-b.sorcha.local"
+      PeerService__SeedNodes__SeedNodes__1__Hostname: "peer-service-b"
+      PeerService__SeedNodes__SeedNodes__1__Port: "5000"
+      PeerService__SeedNodes__SeedNodes__1__EnableTls: "false"
+
+volumes:
+  redis-b-data:
+  postgres-b-data:
+  mongodb-b-data:
+  wallet-encryption-keys-b:

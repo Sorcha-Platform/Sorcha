@@ -236,6 +236,12 @@ walkthroughs/**/state.json
 walkthroughs/PerformanceBenchmark/results/*.json
 walkthroughs/PerformanceBenchmark/results/*.md
 walkthroughs/PerformanceBenchmark/results/*.csv
+
+# AssuredIdentity multi-peer smoke per-run findings (Feature 107 PR 4).
+# The singular walkthroughs/AssuredIdentity/multi-peer-findings.md is
+# the committed known-good baseline; the directory holds rolling per-run
+# timestamped reports that shouldn't pollute the repo.
+walkthroughs/AssuredIdentity/multi-peer-findings/
 tests/Sorcha.Performance.Tests/performance-reports/
 
 # Generated API specs (export with: npm run postman:export)
