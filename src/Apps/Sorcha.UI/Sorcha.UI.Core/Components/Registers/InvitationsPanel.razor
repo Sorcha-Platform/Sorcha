@@ -1,0 +1,264 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using Sorcha.ServiceClients.Invitation
+
+@inject IRegisterInvitationServiceClient InvitationClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudExpansionPanel MaxHeight="480"
+                   Expanded="@Expanded"
+                   ExpandedChanged="OnExpandedChanged"
+                   data-testid="invitations-panel">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.MailOutline" />
+            <MudText Typo="Typo.h6">Register Invitations</MudText>
+            @if (_totalPending > 0)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                    @_totalPending pending
+                </MudChip>
+            }
+        </MudStack>
+    </TitleContent>
+    <ChildContent>
+        <MudStack Spacing="3">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true"
+                         ActivePanelIndex="_tabIndex"
+                         ActivePanelIndexChanged="OnTabChanged">
+                    <MudTabPanel Text="All" />
+                    <MudTabPanel Text="Sent" />
+                    <MudTabPanel Text="Received" />
+                </MudTabs>
+                <MudStack Row="true" Spacing="1">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   Size="Size.Small"
+                                   OnClick="LoadAsync"
+                                   Disabled="_isLoading"
+                                   aria-label="Refresh invitations" />
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.MarkEmailRead"
+                               OnClick="OpenAcceptDialogAsync"
+                               data-testid="invitations-accept-button">
+                        Accept invitation
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+
+            @if (_isLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" data-testid="invitations-error">
+                    @_error
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                               OnClick="LoadAsync" Class="ml-2">Retry</MudButton>
+                </MudAlert>
+            }
+            else if (_invitations.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="py-4">
+                    No invitations in this view.
+                </MudText>
+            }
+            else
+            {
+                <MudTable Items="@_invitations" Dense="true" Hover="true" Striped="true"
+                          data-testid="invitations-table">
+                    <HeaderContent>
+                        <MudTh>Register</MudTh>
+                        <MudTh>Direction</MudTh>
+                        <MudTh>Counterparty</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Expires</MudTh>
+                        <MudTh Style="width:1%">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Register">
+                            <MudText Typo="Typo.body2">@(context.RegisterName ?? context.RegisterId)</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Direction">
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@(context.Direction == "sent" ? Color.Info : Color.Secondary)"
+                                     Variant="Variant.Outlined">
+                                @context.Direction
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Counterparty">
+                            <MudText Typo="Typo.caption">
+                                @(context.Direction == "sent"
+                                    ? (context.TargetOrgName ?? context.TargetOrgDid)
+                                    : (context.SourceOrgName ?? context.SourceOrgDid))
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@StatusColour(context.Status)">
+                                @context.Status
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Expires">@context.ExpiresAt.ToString("yyyy-MM-dd")</MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (context.Direction == "sent"
+                                 && string.Equals(context.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <MudStack Row="true" Spacing="1">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                                   Size="Size.Small"
+                                                   Color="Color.Error"
+                                                   OnClick="@(() => RevokeAsync(context))"
+                                                   Disabled="_busyInvitationId == context.InvitationId"
+                                                   aria-label="Revoke invitation" />
+                                </MudStack>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudStack>
+    </ChildContent>
+</MudExpansionPanel>
+
+@code {
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
+
+    /// <summary>
+    /// Raised after the user accepts an invitation — the parent Registers page uses this
+    /// to refresh its subscribed-register list.
+    /// </summary>
+    [Parameter] public EventCallback OnSubscriptionChanged { get; set; }
+
+    private List<InvitationSummary> _invitations = [];
+    private bool _isLoading;
+    private string? _error;
+    private int _tabIndex;
+    private int _totalPending;
+    private string? _busyInvitationId;
+    private Guid _orgId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        Guid.TryParse(authState.User.FindFirst("org_id")?.Value, out _orgId);
+        if (Expanded)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task OnExpandedChanged(bool expanded)
+    {
+        await ExpandedChanged.InvokeAsync(expanded);
+        if (expanded && _invitations.Count == 0 && _error is null && !_isLoading)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task OnTabChanged(int index)
+    {
+        _tabIndex = index;
+        await LoadAsync();
+    }
+
+    private string DirectionFilter => _tabIndex switch
+    {
+        1 => "sent",
+        2 => "received",
+        _ => "all",
+    };
+
+    private async Task LoadAsync()
+    {
+        if (_orgId == Guid.Empty)
+        {
+            _error = "Could not determine your organisation.";
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            var page = await InvitationClient.ListAsync(_orgId, DirectionFilter);
+            _invitations = page.Invitations.ToList();
+            _totalPending = _invitations.Count(i =>
+                string.Equals(i.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (InvitationApiException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load invitations: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenAcceptDialogAsync()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AcceptInvitationDialog>("Accept Invitation", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: InvitationAcceptedResponse })
+        {
+            await LoadAsync();
+            await OnSubscriptionChanged.InvokeAsync();
+        }
+    }
+
+    private async Task RevokeAsync(InvitationSummary invitation)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Revoke invitation?",
+            $"The token for {invitation.TargetOrgName ?? invitation.TargetOrgDid} will stop working immediately. This cannot be undone.",
+            yesText: "Revoke",
+            cancelText: "Cancel");
+
+        if (confirmed != true) return;
+
+        _busyInvitationId = invitation.InvitationId;
+        try
+        {
+            await InvitationClient.RevokeAsync(_orgId, invitation.InvitationId);
+            Snackbar.Add("Invitation revoked", Severity.Success);
+            await LoadAsync();
+        }
+        catch (InvitationApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Unexpected error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busyInvitationId = null;
+        }
+    }
+
+    private static Color StatusColour(string status) => status?.ToLowerInvariant() switch
+    {
+        "pending" => Color.Warning,
+        "accepted" => Color.Success,
+        "revoked" => Color.Default,
+        "expired" => Color.Default,
+        _ => Color.Default,
+    };
+}

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -703,6 +704,19 @@ public static class ServiceCollectionExtensions
             var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
             var logger = sp.GetRequiredService<ILogger<InvitationClientService>>();
             return new InvitationClientService(httpClient, logger);
+        });
+
+        // Register invitation client (private-register invitation envelopes — US10).
+        // Uses the same bearer-attaching handler so calls reach the Tenant Service
+        // as the signed-in user (endpoint is RequireAdministrator-gated).
+        services.AddScoped<Sorcha.ServiceClients.Invitation.IRegisterInvitationServiceClient>(sp =>
+        {
+            var handler = sp.GetRequiredService<AuthenticatedHttpMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri(baseAddress) };
+            var config = sp.GetRequiredService<IConfiguration>();
+            var logger = sp.GetRequiredService<ILogger<Sorcha.ServiceClients.Invitation.RegisterInvitationServiceClient>>();
+            return new Sorcha.ServiceClients.Invitation.RegisterInvitationServiceClient(httpClient, config, logger);
         });
 
         // Domain Restriction Client Service (054 - authenticated)
