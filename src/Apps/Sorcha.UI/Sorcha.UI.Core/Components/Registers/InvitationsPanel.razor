@@ -107,7 +107,7 @@
                                 @context.Status
                             </MudChip>
                         </MudTd>
-                        <MudTd DataLabel="Expires">@context.ExpiresAt.ToString("yyyy-MM-dd")</MudTd>
+                        <MudTd DataLabel="Expires">@context.ExpiresAt.UtcDateTime.ToString("yyyy-MM-dd") UTC</MudTd>
                         <MudTd DataLabel="Actions">
                             @if (context.Direction == "sent"
                                  && string.Equals(context.Status, "Pending", StringComparison.OrdinalIgnoreCase))
@@ -248,6 +248,13 @@
             await InvitationClient.RevokeAsync(_orgId, invitation.InvitationId);
             Snackbar.Add("Invitation revoked", Severity.Success);
             await LoadAsync();
+            // Badge tracks the cross-tab pending count. After a mutation we need a fresh
+            // "all" snapshot — otherwise the chip stays at the pre-revoke value until the
+            // user manually switches to the All tab.
+            if (!string.Equals(DirectionFilter, "all", StringComparison.Ordinal))
+            {
+                await RefreshBadgeAsync();
+            }
         }
         catch (InvitationApiException ex)
         {
@@ -260,6 +267,21 @@
         finally
         {
             _busyInvitationId = null;
+        }
+    }
+
+    private async Task RefreshBadgeAsync()
+    {
+        try
+        {
+            var all = await InvitationClient.ListAsync(_orgId, "all");
+            _totalPending = all.Invitations.Count(i =>
+                string.Equals(i.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            // Badge refresh is best-effort; the snackbar from the mutation already
+            // tells the user the operation succeeded.
         }
     }
 

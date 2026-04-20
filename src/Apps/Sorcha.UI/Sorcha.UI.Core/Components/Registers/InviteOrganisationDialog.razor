@@ -143,9 +143,11 @@
     // Raw-DID input per the product decision: v1 asks admins to paste the target org DID.
     // A validated-orgs directory picker is future work — see US10 discussion.
     // did:sorcha:org:{walletAddress}  where walletAddress starts with ws1q / ws11q / ws12q etc.
+    // Sorcha DIDs are Bech32 — canonically lowercase. Reject mixed-case client-side so
+    // the user gets a clear error before the server round-trip rejects it anyway.
     private static readonly System.Text.RegularExpressions.Regex DidRegex =
         new(@"^did:sorcha:org:ws[0-9]+[a-z0-9]+$",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+            System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private string MagicLink
     {
@@ -211,15 +213,29 @@
     private async Task CopyTokenAsync()
     {
         if (_result is null) return;
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _result.InvitationToken);
-        Snackbar.Add("Token copied to clipboard", Severity.Success);
+        await CopyToClipboardAsync(_result.InvitationToken, "Token copied to clipboard");
     }
 
     private async Task CopyLinkAsync()
     {
         if (_result is null) return;
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", MagicLink);
-        Snackbar.Add("Magic link copied to clipboard", Severity.Success);
+        await CopyToClipboardAsync(MagicLink, "Magic link copied to clipboard");
+    }
+
+    // navigator.clipboard throws when the page isn't served over HTTPS or the user denies
+    // the permission prompt. Silently failing leaves the admin thinking the token was
+    // copied when it wasn't — surface the failure with instructions to copy manually.
+    private async Task CopyToClipboardAsync(string value, string successMessage)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Snackbar.Add(successMessage, Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Clipboard unavailable — select the field above and copy manually.", Severity.Warning);
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

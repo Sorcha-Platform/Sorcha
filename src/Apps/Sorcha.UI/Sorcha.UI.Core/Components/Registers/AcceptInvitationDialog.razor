@@ -158,7 +158,7 @@
             _submitError = ex.StatusCode switch
             {
                 HttpStatusCode.Conflict => "Your organisation is already subscribed to this register.",
-                HttpStatusCode.BadRequest => ex.Message,
+                HttpStatusCode.BadRequest => $"The invitation token is invalid or expired: {ex.Message}",
                 _ => ex.Message,
             };
         }
