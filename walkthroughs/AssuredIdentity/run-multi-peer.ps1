@@ -107,7 +107,9 @@ if (-not $SkipComposeUp) {
         $outcome = "env-failure"
         $anomalies += "docker compose up failed with exit code $LASTEXITCODE"
         Write-Findings
-        exit 1
+        # FR-039 — smoke is measurement, never blocks the surrounding
+        # process. Findings doc carries the env-failure status.
+        exit 0
     }
     $timings["compose-up"] = "{0:mm\:ss}" -f ((Get-Date) - $stepStart)
 }
