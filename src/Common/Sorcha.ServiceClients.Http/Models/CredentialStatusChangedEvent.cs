@@ -25,7 +25,7 @@ public sealed record CredentialStatusChangedEvent
     /// <summary>Unique credential identifier (URN / DID URI).</summary>
     public required string CredentialId { get; init; }
 
-    /// <summary>Credential type — e.g. <c>VerifiedCitizenCredential</c>.</summary>
+    /// <summary>Credential type — e.g. <c>AssuredIdentityCredential</c>.</summary>
     public required string CredentialType { get; init; }
 
     /// <summary>Status immediately before the transition.</summary>

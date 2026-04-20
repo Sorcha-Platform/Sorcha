@@ -113,10 +113,10 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 
 1. **Participants targeted by a starting action MUST have `walletAddress` null** in the published blueprint. Do not pre-fill the wallet at publish time. The strict-equality check at `ActionExecutionService.cs:196-216` only fires when `walletAddress` is set, so a baked-in wallet *defeats* late binding and rejects every real submitter.
 2. **All other participants** (case officers, assessors, internal roles) should have a known `walletAddress` at publish time — they are not open.
-3. **Credential-bootstrapped flows** (e.g. "Driving Licence" requires a `VerifiedCitizenCredential` to start) belong on the starting action's `credentialRequirements`, not on a new flag. The runtime gates the open submission on credential possession before binding the participant.
+3. **Credential-bootstrapped flows** (e.g. "Driving Licence" requires a `AssuredIdentityCredential` to start) belong on the starting action's `credentialRequirements`, not on a new flag. The runtime gates the open submission on credential possession before binding the participant.
 4. **Once bound, the binding is canonical for that instance.** Subsequent actions resolve disclosures, recipients, and credential issuance targets via `instance.ParticipantWallets[participantId]`, not via the blueprint's null wallet.
 
-### Open citizen application (Verified Citizen pattern)
+### Open citizen application (Assured Identity Phase 1 pattern)
 
 ```jsonc
 {
@@ -142,7 +142,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 }
 ```
 
-### Credential-bootstrapped application (Driving Licence pattern)
+### Credential-bootstrapped application (Driving Licence pattern — Assured Identity Phase 2)
 
 ```jsonc
 {
@@ -157,7 +157,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
       "sender": "applicant",
       "credentialRequirements": [
         {
-          "type": "VerifiedCitizenCredential",
+          "type": "AssuredIdentityCredential",
           "presentationSource": "HaipExternalWallet",
           "requiredClaims": [ { "claimName": "givenName" }, { "claimName": "dateOfBirth" } ]
         }
@@ -168,7 +168,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 }
 ```
 
-The applicant doesn't authenticate as a pre-existing identity; they prove they hold a VerifiedCitizenCredential and *that* fact binds them as the applicant. The HAIP presentation pipeline runs before the late-bind block.
+The applicant doesn't authenticate as a pre-existing identity; they prove they hold a AssuredIdentityCredential and *that* fact binds them as the applicant. The HAIP presentation pipeline runs before the late-bind block.
 
 ### Common foot-guns
 

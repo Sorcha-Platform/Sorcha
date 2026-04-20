@@ -50,7 +50,7 @@ public class InboundCredentialDetectorShapeTests
     {
       "/credential": {
         "credentialId": "urn:uuid:feature-106-round-trip-test-1",
-        "credentialType": "VerifiedCitizenCredential",
+        "credentialType": "AssuredIdentityCredential",
         "issuerDid": "did:sorcha:org:ws11qgovernment",
         "issuerOrgName": "Government Identity Authority",
         "subjectDid": "did:sorcha:wallet:ws11qcitizen",
@@ -88,7 +88,7 @@ public class InboundCredentialDetectorShapeTests
 
         extract.Should().NotBeNull();
         extract!.CredentialId.Should().Be("urn:uuid:feature-106-round-trip-test-1");
-        extract.CredentialType.Should().Be("VerifiedCitizenCredential");
+        extract.CredentialType.Should().Be("AssuredIdentityCredential");
         extract.IssuerDid.Should().Be("did:sorcha:org:ws11qgovernment");
         extract.IssuerOrgName.Should().Be("Government Identity Authority");
         extract.RawToken.Should().Be("eyJhbGciOiJFZERTQSJ9.test.token");
@@ -113,7 +113,7 @@ public class InboundCredentialDetectorShapeTests
         {
           "credential": {
             "credentialId": "urn:uuid:bare-key-test",
-            "credentialType": "VerifiedCitizenCredential",
+            "credentialType": "AssuredIdentityCredential",
             "issuerDid": "did:sorcha:org:ws11qgovernment",
             "rawToken": "eyJ.bare.token",
             "issuedAt": "2026-04-15T10:30:00+00:00"
@@ -140,7 +140,7 @@ public class InboundCredentialDetectorShapeTests
         const string MalformedJson = /*lang=json,strict*/ """
         {
           "/credential": {
-            "credentialType": "VerifiedCitizenCredential",
+            "credentialType": "AssuredIdentityCredential",
             "issuerDid": "did:sorcha:org:ws11qgovernment"
           }
         }
@@ -175,7 +175,7 @@ public class InboundCredentialDetectorShapeTests
         "ws11qcitizen": {
           "/credential": {
             "credentialId": "urn:uuid:feature-106-devmode-test-1",
-            "credentialType": "VerifiedCitizenCredential",
+            "credentialType": "AssuredIdentityCredential",
             "issuerDid": "did:sorcha:org:ws11qgovernment",
             "issuerOrgName": "Government Identity Authority",
             "subjectDid": "did:sorcha:wallet:ws11qcitizen",

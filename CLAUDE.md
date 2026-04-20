@@ -662,6 +662,31 @@ Credential-bootstrapped flows (e.g. Driving Licence requiring a Verified Citizen
 
 Runtime source: `ValidationEngine.cs:1027` (validator skips strict wallet check for starting actions), `ActionExecutionService.cs:196-216` (strict check fires only when `WalletAddress` non-null), `ActionExecutionService.cs:309-332` (late-bind block, persisted via `IInstanceStore.UpdateAsync`). Authoritative documentation: `.claude/skills/blueprint-builder/SKILL.md` → "Open Participants & Late Binding" section. Feature design: `specs/103-verified-citizen-v2/`.
 
+### 10. Review Summary (`x-review`) — Feature 107
+
+Mark a wizard page as a read-only summary of the form's prior pages. The renderer draws a stylised credential id-card previewing what the citizen will receive once issued. The same component renders the assessor's pending-review screen and the issued credential's wallet detail view — one component, three states, with the watermark (`Draft` / `Pending` / `Issued` / `None`) derived from the hosting action's runtime state.
+
+```jsonc
+{
+  "title": "Review your details",
+  "x-review": {
+    "layout": "id-card",                  // v1 only; passport-page / tabular / receipt reserved
+    "editable": true,                     // Generates Edit-X per section
+    "header": {
+      "issuerName": "Government of Scotland",
+      "credentialName": "Assured Identity",
+      "colourTheme": "identity-navy"     // v1: identity-navy | licence-pink
+    }
+  }
+}
+```
+
+**Stacked-cards variant** fires automatically when the hosting action declares both `credentialRequirements` and `credentialIssuanceConfig` — the renderer draws two id-cards on the review page (presented identity above with a ✓ Verified chip, credential-to-be below with a Pending watermark).
+
+**Portrait capture** rides the same renderer via two extensions on `x-file`: `capture: "user"` requests the front-facing camera on mobile; `embedAs: "image-token-jpeg-240x320"` triggers the client-side resizer, producing a base64 JPEG token at `{fieldPointer}/tokenImageBase64` alongside the chunked full-resolution original. Server-side gate in `ActionExecutionService.BuildClaimsFromMappings` enforces ≤27KB base64; oversize → claim omitted with `WARN_CRED_PORTRAIT_OVERSIZE_001`, credential still issues.
+
+Runtime source: `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/ReviewSummaryRenderer.razor`, `IdCardLayout.razor`, `SchemaLayoutParser.cs`. Authoritative documentation: `.claude/skills/blueprint-builder/SKILL.md` → `x-review` + `x-file.capture`/`embedAs` sections. Contract: `specs/107-assured-identity-v1/contracts/x-review-extension.md`.
+
 ---
 
 ## Key Documentation
@@ -794,6 +819,7 @@ Interactive demos and test scripts are in `walkthroughs/`:
 | `WalletVerification/` | ✅ | Multi-algorithm crypto (ED25519/P-256/RSA) |
 | `ConstructionPermit/` | ✅ | 4-org, 5-participant, encrypted workflows, routing, rejection, VCs |
 | `SelfBuildHouse/` | ✅ | 6-org, 2-register, cross-register VCs, credential chains |
+| `AssuredIdentity/` | ✅ | Feature 107 — canonical citizen identity (5-page wizard + id-card review + optional portrait) + driving licence credential chain + unattended assessor agents + cross-peer smoke |
 | `DistributedRegister/` | ✅ | Cross-machine P2P replication |
 | `PerformanceBenchmark/` | ✅ | TPS, latency, concurrency benchmarks |
 

@@ -52,7 +52,7 @@ public class InboundCredentialDetectorDevModeTests
         "ws11qcitizen": {
           "/credential": {
             "credentialId": "urn:uuid:feature-106-devmode-test-1",
-            "credentialType": "VerifiedCitizenCredential",
+            "credentialType": "AssuredIdentityCredential",
             "issuerDid": "did:sorcha:org:ws11qgovernment",
             "issuerOrgName": "Government Identity Authority",
             "subjectDid": "did:sorcha:wallet:ws11qcitizen",
@@ -166,7 +166,7 @@ public class InboundCredentialDetectorDevModeTests
             .ReturnsAsync(new CredentialEntity
             {
                 Id = "urn:uuid:feature-106-devmode-test-1",
-                Type = "VerifiedCitizenCredential",
+                Type = "AssuredIdentityCredential",
                 IssuerDid = "did:sorcha:org:ws11qgovernment",
                 SubjectDid = "did:sorcha:wallet:ws11qcitizen",
                 ClaimsJson = "{}",

@@ -66,10 +66,9 @@ Credential issuance and verification with external HAIP wallets via OpenID4VCI/O
 
 | Walkthrough | What It Tests |
 |-------------|--------------|
-| [HaipVerifiedCitizen](./HaipVerifiedCitizen/) | Government issues a VerifiedCitizenCredential to a citizen via the HAIP OID4VCI pre-authorized code flow. Tests trust anchor provisioning, org cert enrolment, credential offer creation, pre-auth code exchange, JWT proof of possession, SD-JWT VC issuance with cnf holder key binding and nested address disclosure. Uses `sorcha-agent haip receive`. |
-| [HaipDrivingLicence](./HaipDrivingLicence/) | Council verifies the citizen's identity credential via OID4VP direct_post, then issues a driving licence credential via OID4VCI. Tests the full HAIP round-trip: present credential with KB-JWT and selective disclosure → verify → issue new credential. Chains from HaipVerifiedCitizen. Uses `sorcha-agent haip present` and `haip receive`. |
+| [AssuredIdentity](./AssuredIdentity/) | **Feature 107 — canonical citizen-identity workflow.** Government issues an AssuredIdentityCredential to a public-org citizen via a polished 5-page wizard (name + DOB, address, contact, optional portrait, id-card review). DLA consumes the credential in Phase 2 via HAIP OpenID4VP presentation and issues a DrivingLicenceCredential with the holder's identity carried forward. Also ships rules-mode sorcha-agent configs (`gov-assessor`, `dla-officer`) for unattended runs, and a cross-peer smoke harness (`run-multi-peer.ps1` + `docker-compose.federation.yml`) that measures register-native delivery latency across two peers. Replaces the earlier `HaipVerifiedCitizen` + `HaipDrivingLicence` walkthroughs. |
 
-**Playwright screenshot tests:** `tests/Sorcha.UI.E2E.Tests/Docker/HaipWalkthroughScreenshotTests.cs` captures UI state after the HAIP walkthroughs run — admin, issuer, and citizen views of credentials, wallets, organisations, and presentation requests. Run the HAIP walkthroughs first, then execute the screenshot tests against the Docker stack.
+**Playwright screenshot tests:** `tests/Sorcha.UI.E2E.Tests/Docker/HaipWalkthroughScreenshotTests.cs` captures UI state after the citizen-identity walkthrough runs — admin, issuer, and citizen views of credentials, wallets, organisations, and presentation requests. Run the AssuredIdentity walkthrough first, then execute the screenshot tests against the Docker stack.
 
 ### Advanced
 
@@ -135,7 +134,7 @@ See `src/Apps/Sorcha.Agent/` for the agent CLI tool and `walkthroughs/Constructi
 
 ## Open Participants & Late Binding (Feature 103)
 
-Citizen-facing walkthroughs (e.g. `HaipVerifiedCitizen`, `HaipDrivingLicence`)
+Citizen-facing walkthroughs (e.g. `AssuredIdentity`)
 use the **open starting action** pattern: the first authenticated wallet
 to submit becomes the bound applicant for the life of the instance.
 This is the right pattern for any flow where the citizen / applicant is
@@ -303,18 +302,17 @@ walkthroughs/
 │
 ├── SelfBuildHouse/                    # Multi-Org — 6 orgs, 2 registers, VCs
 │
-├── HaipVerifiedCitizen/           # HAIP — OID4VCI identity credential
-│   ├── setup.ps1
-│   ├── run.ps1
-│   ├── actors/citizen.json
-│   ├── wallet/                        # Holder key + credentials
-│   └── state.json
-│
-├── HaipDrivingLicence/                # HAIP — OID4VP present + OID4VCI licence
-│   ├── setup.ps1
-│   ├── run.ps1
-│   ├── actors/citizen.json
-│   ├── blueprints/driving-licence.json
+├── AssuredIdentity/                    # Feature 107 — canonical citizen identity + driving licence chain
+│   ├── setup.ps1                       # Provisions Gov, DLA, citizen
+│   ├── run.ps1                         # Full Phase 1 + Phase 2 orchestrator
+│   ├── run-phase1-identity.ps1         # AssuredIdentityCredential issuance
+│   ├── run-phase2-licence.ps1          # Driving Licence credential chain
+│   ├── run-agents.ps1                  # Unattended gov-assessor + dla-officer
+│   ├── run-multi-peer.ps1              # Cross-peer smoke (FR-039 — non-blocking)
+│   ├── actors/                         # citizen + gov-assessor + dla-officer
+│   ├── blueprints/                     # assured-identity.json + driving-licence.json
+│   ├── wallet/                         # Holder key + both credentials
+│   ├── multi-peer-findings.md          # Cross-peer smoke baseline
 │   └── state.json
 │
 ├── DistributedRegister/               # Advanced — P2P replication
