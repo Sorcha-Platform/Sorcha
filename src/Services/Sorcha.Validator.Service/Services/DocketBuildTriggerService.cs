@@ -589,7 +589,16 @@ public class DocketBuildTriggerService : BackgroundService
                             RegisterId = t.RegisterId,
                             BlueprintId = t.BlueprintId,
                             ActionId = uint.TryParse(t.ActionId, out var actionId) ? actionId : null,
-                            TransactionType = txType
+                            TransactionType = txType,
+                            // Carry InstanceId through from the in-memory submission so the
+                            // Validator's Tier 3 chain-derived participant binding can walk
+                            // in-instance transactions on the register. Prior to this, sealed
+                            // txs were persisted with InstanceId=null and every Tier 3 lookup
+                            // returned an empty list.
+                            InstanceId = t.Metadata.TryGetValue("instanceId", out var iid)
+                                         && !string.IsNullOrWhiteSpace(iid)
+                                ? iid
+                                : null,
                         }
                     };
                 }).ToList(),
