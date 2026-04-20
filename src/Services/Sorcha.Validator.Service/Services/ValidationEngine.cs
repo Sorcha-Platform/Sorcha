@@ -1111,11 +1111,15 @@ public class ValidationEngine : IValidationEngine
                             {
                                 // SEC-AUDIT 4.8: no Tier 1/2 record AND no Tier 3 chain
                                 // binding — nothing on-ledger authorises this submitter.
+                                // NB: if ResolveChainBoundWalletAsync logged a prior
+                                // warning (transient register-service failure), the error
+                                // message hint below flags the degraded-query case so an
+                                // operator can correlate the two logs.
                                 _logger.LogWarning(
                                     "Participant {ParticipantId} has no wallet, no published record, and no prior in-instance binding on register {RegisterId} — rejecting transaction for action {ActionId}",
                                     action.Sender, transaction.RegisterId, actionIdInt);
                                 errors.Add(CreateError("VAL_BP_002",
-                                    $"Cannot verify sender authorization: participant '{action.Sender}' has no wallet address and no published record on register '{transaction.RegisterId}'",
+                                    $"Cannot verify sender authorization: participant '{action.Sender}' has no wallet address, no published record on register '{transaction.RegisterId}', and no prior in-instance binding. (Chain lookup degraded? See preceding validator warnings.)",
                                     ValidationErrorCategory.Permission, "Signatures"));
                             }
                         }
@@ -1996,10 +2000,10 @@ public class ValidationEngine : IValidationEngine
             .ThenBy(t => t.TxId, StringComparer.Ordinal)
             .FirstOrDefault(t =>
             {
-                // Widen the comparison so a uint ActionId >= int.MaxValue never
-                // accidentally matches a negative blueprint Id.
+                // `a.Id >= 0` guard makes the cast intent obvious to readers: a uint
+                // ActionId >= int.MaxValue must never match a negative blueprint Id.
                 var action = blueprint.Actions.FirstOrDefault(a =>
-                    (uint)a.Id == t.MetaData!.ActionId!.Value);
+                    a.Id >= 0 && (uint)a.Id == t.MetaData!.ActionId!.Value);
                 return action != null
                     && string.Equals(action.Sender, participantId, StringComparison.OrdinalIgnoreCase);
             });
