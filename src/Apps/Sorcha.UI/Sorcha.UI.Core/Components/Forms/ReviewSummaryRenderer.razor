@@ -72,7 +72,7 @@ else
                     {
                         @foreach (var field in sec.Fields)
                         {
-                            var pointer = field.StartsWith('/') ? field : "/" + field;
+                            var pointer = ReviewSummaryDataSource.PointerFromFieldName(field);
                             var value = FormContext?.FormData.GetValueOrDefault(pointer)?.ToString() ?? "—";
                             <MudListItem T="string">@field: @value</MudListItem>
                         }

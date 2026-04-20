@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -49,10 +50,15 @@ public static class DateTimeFieldBoundResolver
         if (propertySchema.ValueKind != JsonValueKind.Object)
             return false;
 
-        // Defensive — TryResolveBound executes once per render; unknown bound
-        // names are silently ignored so the UI doesn't throw on schema typos.
-        if (boundName is not "formatMinimum" and not "formatMaximum")
-            return false;
+        // Contract: callers pass the literal strings "formatMinimum" /
+        // "formatMaximum". A Debug.Assert surfaces caller-side typos as a
+        // test-visible failure rather than a silent no-op on a production
+        // build — which matters because a silent no-op would un-bound the
+        // picker and let the citizen pick a forbidden date with no
+        // client-side signal.
+        Debug.Assert(
+            boundName is "formatMinimum" or "formatMaximum",
+            $"Unknown boundName '{boundName}' — expected 'formatMinimum' or 'formatMaximum'.");
 
         if (!propertySchema.TryGetProperty(boundName, out var boundElement))
             return false;

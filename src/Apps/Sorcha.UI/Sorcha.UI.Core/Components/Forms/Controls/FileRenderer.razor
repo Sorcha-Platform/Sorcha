@@ -74,11 +74,41 @@
     private string? _acceptAttribute;
     private bool _showPortraitTips;
 
-    private const long MaxFileSize = 40L * 1024 * 1024; // 40 MB platform ceiling
+    // Platform ceiling — acts as the fallback when the schema doesn't
+    // declare an explicit `x-file.maxSizePerFile`. The per-field limit is
+    // preferred because it bounds the WASM buffer for camera capture on
+    // low-memory mobile devices (40 MB is feasible to OOM a phone when
+    // the citizen takes a high-resolution photo).
+    private const long PlatformMaxFileSize = 40L * 1024 * 1024;
 
     protected override void OnParametersSet()
     {
         ResolveFileExtension();
+    }
+
+    /// <summary>
+    /// Effective upload stream limit, honouring the schema's declared
+    /// <c>x-file.maxSizePerFile</c> when present and falling back to the
+    /// platform ceiling when it isn't. Returns bytes.
+    /// </summary>
+    private long ResolveMaxFileSize()
+    {
+        if (_fileExtension is null || string.IsNullOrWhiteSpace(_fileExtension.MaxSizePerFile))
+            return PlatformMaxFileSize;
+
+        try
+        {
+            var declared = FileSchemaExtension.ParseMaxSizeBytes(_fileExtension.MaxSizePerFile);
+            // Clamp defensively so a blueprint can never request a larger
+            // buffer than the platform tolerates.
+            return Math.Min(declared, PlatformMaxFileSize);
+        }
+        catch (ArgumentException)
+        {
+            // Malformed string — caught at publish time upstream. Fall back
+            // to the platform ceiling so the field still functions.
+            return PlatformMaxFileSize;
+        }
     }
 
     private void ResolveFileExtension()
@@ -112,7 +142,7 @@
         try
         {
             var scope = Control.Scope;
-            using var stream = file.OpenReadStream(MaxFileSize);
+            using var stream = file.OpenReadStream(ResolveMaxFileSize());
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             var sourceBytes = ms.ToArray();

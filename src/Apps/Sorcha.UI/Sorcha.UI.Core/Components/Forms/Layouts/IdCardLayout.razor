@@ -1,6 +1,7 @@
 @* SPDX-License-Identifier: MIT *@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
+@using System.Text
 @using Sorcha.Blueprint.Models
 @using Sorcha.UI.Core.Models.Forms
 
@@ -148,7 +149,7 @@
         if (string.IsNullOrEmpty(leaf)) return pointer;
 
         // camelCase → "Camel case"
-        var chars = new System.Text.StringBuilder();
+        var chars = new StringBuilder();
         for (var i = 0; i < leaf.Length; i++)
         {
             var c = leaf[i];

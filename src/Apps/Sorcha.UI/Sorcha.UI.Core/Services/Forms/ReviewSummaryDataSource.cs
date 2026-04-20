@@ -86,8 +86,10 @@ public sealed class ReviewSummaryDataSource
     /// Pointer (<c>"/givenName"</c>). This helper bridges the two.
     /// Already-pointer-shaped names pass through unchanged so nested
     /// section-scoped fields (<c>"/address/line1"</c>) also work.
+    /// Internal so <c>ReviewSummaryRenderer</c> can share the exact same
+    /// normalisation in its tabular-fallback path.
     /// </summary>
-    private static string PointerFromFieldName(string fieldName)
+    internal static string PointerFromFieldName(string fieldName)
     {
         if (string.IsNullOrEmpty(fieldName)) return "/";
         return fieldName.StartsWith('/') ? fieldName : "/" + fieldName;

@@ -1648,8 +1648,10 @@ public class ActionExecutionService : IActionExecutionService
     /// <summary>
     /// Bound from <c>specs/107-assured-identity-v1/contracts/portrait-claim-format.md</c>:
     /// a 240×320 JPEG at the token spec's 20KB raw target produces ~27KB
-    /// when base64-encoded (raw × 1.37). The gate applies to the
-    /// base64-encoded length, which is what actually ships in the SD-JWT.
+    /// when base64-encoded (raw × 4/3 ≈ 1.333, plus up to two padding chars
+    /// and occasional line breaks — call it ~27KB to keep a small headroom).
+    /// The gate applies to the base64-encoded length, which is what actually
+    /// ships in the SD-JWT.
     /// </summary>
     private const int PortraitTokenMaxBase64Chars = 27_000;
 
