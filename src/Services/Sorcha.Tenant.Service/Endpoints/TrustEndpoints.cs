@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Mvc;
+using Sorcha.ServiceDefaults;
 using Sorcha.Tenant.Service.Trust;
 
 namespace Sorcha.Tenant.Service.Endpoints;
@@ -85,6 +86,10 @@ public static class TrustEndpoints
                 "this endpoint during chain validation.")
             .Produces(StatusCodes.Status200OK, contentType: "application/pkix-crl")
             .Produces(StatusCodes.Status404NotFound)
+            // Public but rate-limited (SEC-002): the CRL is embedded as a CDP URL in every
+            // org cert so any verifier may fetch it. The Api policy keeps abusive clients
+            // off the CA signing path.
+            .RequireRateLimiting(RateLimitPolicies.Api)
             .AllowAnonymous();
     }
 

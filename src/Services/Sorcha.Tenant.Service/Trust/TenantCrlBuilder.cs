@@ -26,19 +26,33 @@ public static class TenantCrlBuilder
     /// <param name="revokedEntries">Serial-hex + revocation time pairs.</param>
     /// <param name="crlNumber">Monotonic CRL version — must strictly increase across publications.</param>
     /// <param name="validityHours">Hours until <c>nextUpdate</c>. Default 24.</param>
+    /// <param name="algorithm">Signing algorithm identifier from the tenant trust config (e.g. "ES256"). Only ES256 is supported today.</param>
     /// <returns>DER-encoded CRL bytes plus the effective <c>nextUpdate</c>.</returns>
+    /// <exception cref="NotSupportedException">Thrown when <paramref name="algorithm"/> is not ES256 — RSA and EdDSA are deferred until keys are managed under PKCS#8 with an explicit discriminator.</exception>
     public static (byte[] CrlDer, DateTimeOffset NextUpdate) Build(
         byte[] rootCertDer,
         byte[] rootPrivateKey,
         IEnumerable<(string SerialHex, DateTimeOffset RevokedAt)> revokedEntries,
         long crlNumber,
-        int validityHours = 24)
+        int validityHours = 24,
+        string algorithm = "ES256")
     {
         ArgumentNullException.ThrowIfNull(rootCertDer);
         ArgumentNullException.ThrowIfNull(rootPrivateKey);
         ArgumentNullException.ThrowIfNull(revokedEntries);
         if (validityHours < 1)
             throw new ArgumentOutOfRangeException(nameof(validityHours));
+
+        // Guard the latent runtime crash flagged on PR #316: raw ImportECPrivateKey
+        // silently throws CryptographicException when a tenant CA is provisioned with
+        // RSA (or a future EdDSA). Fail loudly at the callsite instead so operators
+        // see a clear "not supported" error at config time, not a cryptic stack later.
+        if (!string.Equals(algorithm, "ES256", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                $"CRL signing for algorithm '{algorithm}' is not yet implemented. " +
+                "Only ES256 (NIST P-256) is supported today; see spec 096 persistent-storage follow-up for RSA / EdDSA.");
+        }
 
         using var rootCert = X509CertificateLoader.LoadCertificate(rootCertDer);
         using var rootEcdsa = ECDsa.Create();

@@ -243,7 +243,7 @@ public class InternalCaTrustProvider : ITrustProvider
 
         var crlNumber = _crlCounters.AddOrUpdate(tenantId, 1, (_, prev) => prev + 1);
         var (crlDer, nextUpdate) = TenantCrlBuilder.Build(
-            rootCa.CertificateDer, rootPrivateKey, revoked, crlNumber, _crlRefreshHours);
+            rootCa.CertificateDer, rootPrivateKey, revoked, crlNumber, _crlRefreshHours, rootCa.Algorithm);
 
         var crl = new TenantCrl
         {

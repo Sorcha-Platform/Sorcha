@@ -1548,20 +1548,16 @@ app.MapPost("/api/registers/{registerId}/blueprints/publish", async (
         }
     }
 
-    // Publish to system register (global catalog) — idempotent: skip if already exists
-    var blueprintElement = System.Text.Json.JsonDocument.Parse(request.BlueprintJson).RootElement;
-    long systemVersion = 0;
+    // Per-register blueprint publish — intentionally does NOT propagate to the System
+    // Register (issue #297). The SSR is a curated catalog for blueprints marked as
+    // system (e.g. `join-private-register-v1`) and those are published directly via
+    // SystemRegisterBootstrapper / the POST /api/system-register/blueprints endpoint.
+    // Walkthrough and tenant-owned blueprints stay on their target register only.
+    //
+    // We still probe the SSR read-only so the response carries a meaningful `version`
+    // for system-catalogued blueprints; walkthrough blueprints return version 1.
     var existingEntry = await systemRegister.GetBlueprintAsync(request.BlueprintId);
-    if (existingEntry is null)
-    {
-        var entry = await systemRegister.PublishBlueprintAsync(
-            request.BlueprintId, blueprintElement, request.PublishedBy);
-        systemVersion = entry.Version;
-    }
-    else
-    {
-        systemVersion = existingEntry.Version;
-    }
+    long systemVersion = existingEntry?.Version ?? 1;
 
     // Submit a Control transaction to the validator for validation and docket creation.
     // All transactions must go through the validator — never write directly to the register.
