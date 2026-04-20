@@ -1,0 +1,61 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@page "/accept-invitation"
+@using Microsoft.AspNetCore.Authorization
+@using Sorcha.ServiceClients.Invitation
+@using Sorcha.UI.Core.Components.Registers
+@attribute [Authorize(Roles = "Administrator,SystemAdmin")]
+
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+
+<PageTitle>Accept Invitation - Sorcha</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="py-8">
+    <MudPaper Elevation="2" Class="pa-6 text-center">
+        <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Size="Size.Large" Color="Color.Primary" />
+        <MudText Typo="Typo.h5" Class="mt-4">Accept Invitation</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+            @if (_token is null)
+            {
+                <text>No invitation token in the URL. Paste one manually from the Registers page.</text>
+            }
+            else
+            {
+                <text>Review the invitation details and accept to join the register.</text>
+            }
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string? _token;
+    private bool _opened;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _opened) return;
+
+        // Parse ?token=... from the URI. Avoid Microsoft.AspNetCore.WebUtilities (not
+        // referenced in the WASM Client project) and use the plain .NET parser.
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var parsed = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        _token = parsed["token"];
+
+        if (string.IsNullOrWhiteSpace(_token)) return;
+
+        _opened = true;
+        var parameters = new DialogParameters<AcceptInvitationDialog>
+        {
+            { x => x.InitialToken, _token }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AcceptInvitationDialog>("Accept Invitation", parameters, options);
+        var result = await dialog.Result;
+
+        // Whether accepted or cancelled, return the user to the Registers page.
+        // The panel there picks up the new subscription on its next load.
+        Navigation.NavigateTo("/registers");
+    }
+}

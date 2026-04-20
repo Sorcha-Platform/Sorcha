@@ -1,0 +1,177 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@using Sorcha.ServiceClients.Invitation
+
+@inject IRegisterInvitationServiceClient InvitationClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Class="mr-2" />
+            Accept Invitation
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            @if (_result is null)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Paste the invitation token shared with your organisation. Accepting
+                    creates an Invited subscription to the register and cannot be undone —
+                    an accepted invitation's nonce is consumed.
+                </MudText>
+
+                <MudTextField T="string"
+                              Label="Invitation token"
+                              @bind-Value="_token"
+                              Placeholder="eyJ2IjoxLCJzaWciOiIuLi4iLCJlbmMiOi..."
+                              Required="true"
+                              Lines="4"
+                              Variant="Variant.Outlined"
+                              Error="_tokenError is not null"
+                              ErrorText="@_tokenError"
+                              data-testid="accept-token-field" />
+
+                @if (_submitError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" data-testid="accept-submit-error">
+                        @_submitError
+                    </MudAlert>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Success" data-testid="accept-success">
+                    Accepted. Your organisation is now subscribed to the register.
+                </MudAlert>
+
+                <MudSimpleTable Dense="true" Bordered="false" Striped="false">
+                    <tbody>
+                        <tr>
+                            <td><MudText Typo="Typo.caption" Color="Color.Secondary">Register</MudText></td>
+                            <td><strong>@(_result.RegisterName ?? _result.RegisterId)</strong></td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.caption" Color="Color.Secondary">Invited by</MudText></td>
+                            <td>@(_result.SourceOrgName ?? _result.SourceOrgDid)</td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.caption" Color="Color.Secondary">Subscription</MudText></td>
+                            <td>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                                    @_result.SubscriptionStatus
+                                </MudChip>
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (_result is null)
+        {
+            <MudButton OnClick="Cancel" data-testid="accept-cancel">Cancel</MudButton>
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       OnClick="SubmitAsync"
+                       Disabled="_isSubmitting"
+                       data-testid="accept-submit">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Accept
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       OnClick="Close"
+                       data-testid="accept-done">
+                Done
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// Optional pre-populated token — set by the magic-link handler page so the dialog opens
+    /// with the token already pasted. Manual dialog openings leave this null.
+    /// </summary>
+    [Parameter] public string? InitialToken { get; set; }
+
+    private string _token = string.Empty;
+    private string? _tokenError;
+    private string? _submitError;
+    private bool _isSubmitting;
+    private InvitationAcceptedResponse? _result;
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrWhiteSpace(InitialToken))
+        {
+            _token = InitialToken.Trim();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitError = null;
+        _tokenError = null;
+
+        if (string.IsNullOrWhiteSpace(_token))
+        {
+            _tokenError = "Paste the invitation token.";
+            return;
+        }
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var orgClaim = authState.User.FindFirst("org_id")?.Value;
+        if (!Guid.TryParse(orgClaim, out var orgId))
+        {
+            _submitError = "Current organisation could not be identified. Sign in again or switch organisation.";
+            return;
+        }
+
+        _isSubmitting = true;
+        try
+        {
+            _result = await InvitationClient.AcceptAsync(orgId, new AcceptInvitationRequest
+            {
+                InvitationToken = _token.Trim(),
+            });
+            Snackbar.Add($"Joined register {_result.RegisterName ?? _result.RegisterId}", Severity.Success);
+        }
+        catch (InvitationApiException ex)
+        {
+            _submitError = ex.StatusCode switch
+            {
+                HttpStatusCode.Conflict => "Your organisation is already subscribed to this register.",
+                HttpStatusCode.BadRequest => $"The invitation token is invalid or expired: {ex.Message}",
+                _ => ex.Message,
+            };
+        }
+        catch (Exception ex)
+        {
+            _submitError = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Close() => MudDialog.Close(DialogResult.Ok(_result));
+}

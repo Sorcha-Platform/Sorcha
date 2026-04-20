@@ -64,6 +64,16 @@
         </MudStack>
     </MudStack>
 
+    @* Invitations panel — visible to all admins; collapsed by default to stay out of the way. *@
+    @if (_isAdmin)
+    {
+        <MudExpansionPanels Elevation="0" Class="mb-3">
+            <InvitationsPanel Expanded="@_invitationsExpanded"
+                              ExpandedChanged="@(e => _invitationsExpanded = e)"
+                              OnSubscriptionChanged="RefreshRegistersAsync" />
+        </MudExpansionPanels>
+    }
+
     @* Search and filter bar *@
     @if (!_isLoading && _registers.Count > 0)
     {
@@ -220,6 +230,16 @@
                                         </MudStack>
                                     }
                                     <RegisterStatusBadge Status="@register.Status" />
+                                    @if (_isAdmin && string.Equals(subscriptionType, "Owner", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.GroupAdd"
+                                                       Size="Size.Small"
+                                                       Color="Color.Primary"
+                                                       OnClick="@(() => OpenInviteDialog(register))"
+                                                       OnClick:stopPropagation="true"
+                                                       Title="Invite organisation to this register"
+                                                       data-testid="invite-organisation-button" />
+                                    }
                                     @if (_isAdmin && !string.Equals(subscriptionType, "Owner", StringComparison.OrdinalIgnoreCase))
                                     {
                                         <MudIconButton Icon="@Icons.Material.Filled.LinkOff"
@@ -246,6 +266,7 @@
     private bool _isLoading = true;
     private string? _errorMessage;
     private bool _isAdmin;
+    private bool _invitationsExpanded;
     private Guid _orgId;
     private RegisterFilterState _filterState = new();
 
@@ -411,6 +432,28 @@
     private void NavigateToRegister(RegisterViewModel register)
     {
         Navigation.NavigateTo($"registers/{register.Id}");
+    }
+
+    private async Task OpenInviteDialog(RegisterViewModel register)
+    {
+        var parameters = new DialogParameters<InviteOrganisationDialog>
+        {
+            { x => x.Register, register }
+        };
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+        var dialog = await DialogService.ShowAsync<InviteOrganisationDialog>(
+            $"Invite organisation — {register.Name}", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: Sorcha.ServiceClients.Invitation.InvitationCreatedResponse })
+        {
+            // Reveal the invitations panel so the newly-sent invitation is visible.
+            _invitationsExpanded = true;
+        }
     }
 
     private async Task OpenCreateRegisterDialog()

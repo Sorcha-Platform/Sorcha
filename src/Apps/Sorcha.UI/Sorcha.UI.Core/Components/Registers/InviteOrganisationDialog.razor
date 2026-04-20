@@ -1,0 +1,243 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using System.Net
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using Sorcha.ServiceClients.Invitation
+@using Sorcha.UI.Core.Models.Registers
+
+@inject IRegisterInvitationServiceClient InvitationClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.GroupAdd" Class="mr-2" />
+            Invite Organisation
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Generate a cryptographic invitation token for another organisation to join
+                the register <strong>@Register?.Name</strong>. Share the token or magic link
+                with the target organisation over any channel — they accept it inside their
+                own Sorcha tenant.
+            </MudText>
+
+            @if (_result is null)
+            {
+                <MudTextField T="string"
+                              Label="Target organisation DID"
+                              @bind-Value="_targetDid"
+                              Placeholder="did:sorcha:org:ws1q..."
+                              Required="true"
+                              Error="_didError is not null"
+                              ErrorText="@_didError"
+                              data-testid="invite-target-did" />
+
+                <MudNumericField T="int"
+                                 Label="Expires in (days)"
+                                 @bind-Value="_expiresInDays"
+                                 Min="1"
+                                 Max="90"
+                                 HelperText="Recipients must accept before this window closes." />
+
+                @if (_submitError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" data-testid="invite-submit-error">
+                        @_submitError
+                    </MudAlert>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Success" data-testid="invite-success">
+                    Invitation created. Share either the token or the magic link with the
+                    target organisation.
+                </MudAlert>
+
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2">Token</MudText>
+                    <MudTextField T="string"
+                                  Value="@_result.InvitationToken"
+                                  ReadOnly="true"
+                                  Lines="3"
+                                  Variant="Variant.Outlined"
+                                  data-testid="invite-token-field" />
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.ContentCopy"
+                               OnClick="CopyTokenAsync"
+                               data-testid="invite-copy-token">
+                        Copy token
+                    </MudButton>
+                </MudStack>
+
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2">Magic link</MudText>
+                    <MudTextField T="string"
+                                  Value="@MagicLink"
+                                  ReadOnly="true"
+                                  Variant="Variant.Outlined"
+                                  data-testid="invite-magic-link-field" />
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Link"
+                               OnClick="CopyLinkAsync"
+                               data-testid="invite-copy-link">
+                        Copy link
+                    </MudButton>
+                </MudStack>
+
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Expires @_result.ExpiresAt.ToString("yyyy-MM-dd HH:mm") UTC
+                </MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (_result is null)
+        {
+            <MudButton OnClick="Cancel" data-testid="invite-cancel">Cancel</MudButton>
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       OnClick="SubmitAsync"
+                       Disabled="_isSubmitting"
+                       data-testid="invite-submit">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Generate invitation
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       OnClick="Close"
+                       data-testid="invite-done">
+                Done
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public RegisterViewModel? Register { get; set; }
+
+    private string _targetDid = string.Empty;
+    private int _expiresInDays = 7;
+    private string? _didError;
+    private string? _submitError;
+    private bool _isSubmitting;
+    private InvitationCreatedResponse? _result;
+
+    // Raw-DID input per the product decision: v1 asks admins to paste the target org DID.
+    // A validated-orgs directory picker is future work — see US10 discussion.
+    // did:sorcha:org:{walletAddress}  where walletAddress starts with ws1q / ws11q / ws12q etc.
+    // Sorcha DIDs are Bech32 — canonically lowercase. Reject mixed-case client-side so
+    // the user gets a clear error before the server round-trip rejects it anyway.
+    private static readonly System.Text.RegularExpressions.Regex DidRegex =
+        new(@"^did:sorcha:org:ws[0-9]+[a-z0-9]+$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private string MagicLink
+    {
+        get
+        {
+            if (_result is null) return string.Empty;
+            // Uri.EscapeDataString keeps the base64url token safe as a query parameter.
+            var basePath = Navigation.BaseUri.TrimEnd('/');
+            return $"{basePath}/accept-invitation?token={Uri.EscapeDataString(_result.InvitationToken)}";
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitError = null;
+        _didError = null;
+
+        if (string.IsNullOrWhiteSpace(_targetDid) || !DidRegex.IsMatch(_targetDid.Trim()))
+        {
+            _didError = "Enter the target organisation's DID (did:sorcha:org:{walletAddress}).";
+            return;
+        }
+        if (Register is null || string.IsNullOrWhiteSpace(Register.Id))
+        {
+            _submitError = "No register selected.";
+            return;
+        }
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var orgClaim = authState.User.FindFirst("org_id")?.Value;
+        if (!Guid.TryParse(orgClaim, out var orgId))
+        {
+            _submitError = "Current organisation could not be identified. Sign in again or switch organisation.";
+            return;
+        }
+
+        _isSubmitting = true;
+        try
+        {
+            _result = await InvitationClient.CreateAsync(orgId, new CreateInvitationRequest
+            {
+                RegisterId = Register.Id,
+                TargetOrgDid = _targetDid.Trim(),
+                ExpiresInDays = _expiresInDays,
+            });
+        }
+        catch (InvitationApiException ex)
+        {
+            _submitError = ex.StatusCode == HttpStatusCode.TooManyRequests
+                ? "Rate limit reached — try again in an hour."
+                : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _submitError = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private async Task CopyTokenAsync()
+    {
+        if (_result is null) return;
+        await CopyToClipboardAsync(_result.InvitationToken, "Token copied to clipboard");
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        if (_result is null) return;
+        await CopyToClipboardAsync(MagicLink, "Magic link copied to clipboard");
+    }
+
+    // navigator.clipboard throws when the page isn't served over HTTPS or the user denies
+    // the permission prompt. Silently failing leaves the admin thinking the token was
+    // copied when it wasn't — surface the failure with instructions to copy manually.
+    private async Task CopyToClipboardAsync(string value, string successMessage)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            Snackbar.Add(successMessage, Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Clipboard unavailable — select the field above and copy manually.", Severity.Warning);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Close() => MudDialog.Close(DialogResult.Ok(_result));
+}
