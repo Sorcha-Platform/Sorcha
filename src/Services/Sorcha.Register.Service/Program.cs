@@ -1218,6 +1218,34 @@ queryGroup.MapGet("/previous/{prevTxId}/transactions", async (
 .Produces(StatusCodes.Status400BadRequest)
 .Produces(StatusCodes.Status401Unauthorized);
 
+// <summary>
+// Query transactions by workflow instance ID. Used by the Validator's Tier 3
+// chain-derived participant binding (PR #324) to find the earliest prior in-instance
+// tx for a participant role. Ordered by TimeStamp ascending so the caller can
+// short-circuit on the first match.
+// </summary>
+queryGroup.MapGet("/instance/{instanceId}/transactions/{registerId}", async (
+    TransactionManager manager,
+    string instanceId,
+    string registerId) =>
+{
+    if (string.IsNullOrWhiteSpace(instanceId))
+        return Results.BadRequest(new { error = "instanceId is required" });
+    if (string.IsNullOrWhiteSpace(registerId))
+        return Results.BadRequest(new { error = "registerId is required" });
+
+    var txs = (await manager.GetTransactionsByInstanceAsync(registerId, instanceId))
+        .OrderBy(t => t.TimeStamp)
+        .ToList();
+    return Results.Ok(txs);
+})
+.WithName("GetTransactionsByInstanceId")
+.WithSummary("Query transactions by workflow instance ID")
+.WithDescription("Returns all transactions for a workflow instance on the given register, ordered by timestamp. Powers the Validator's chain-derived participant binding.")
+.Produces<List<Sorcha.Register.Models.TransactionModel>>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status401Unauthorized);
+
 // ===========================
 // Docket Management API
 // ===========================
