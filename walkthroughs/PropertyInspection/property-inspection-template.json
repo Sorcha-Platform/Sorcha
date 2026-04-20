@@ -466,7 +466,7 @@
             { "claimName": "jobReference", "sourceField": "/instanceReference" },
             { "claimName": "propertyAddress", "sourceField": "/propertyAddress" },
             { "claimName": "category", "sourceField": "/category" },
-            { "claimName": "completionDate", "sourceField": "/completionDate" },
+            { "claimName": "completionDate", "sourceField": "/targetCompletionDate" },
             { "claimName": "satisfactionRating", "sourceField": "/rating" },
             { "claimName": "contractorName", "sourceField": "/assignedOperativeName" }
           ],
