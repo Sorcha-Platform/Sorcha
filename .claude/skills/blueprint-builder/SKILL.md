@@ -168,7 +168,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 }
 ```
 
-The applicant doesn't authenticate as a pre-existing identity; they prove they hold a AssuredIdentityCredential and *that* fact binds them as the applicant. The HAIP presentation pipeline runs before the late-bind block.
+The applicant doesn't authenticate as a pre-existing identity; they prove they hold an AssuredIdentityCredential and *that* fact binds them as the applicant. The HAIP presentation pipeline runs before the late-bind block.
 
 ### Common foot-guns
 
