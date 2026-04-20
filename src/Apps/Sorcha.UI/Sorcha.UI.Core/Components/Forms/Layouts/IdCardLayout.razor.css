@@ -1,0 +1,203 @@
+/* SPDX-License-Identifier: MIT */
+/* Copyright (c) 2026 Sorcha Contributors */
+/* Feature 107 Assured Identity v1 — id-card layout styling. */
+
+.id-card {
+    position: relative;
+    border-radius: 16px;
+    padding: 24px;
+    color: #fff;
+    background: linear-gradient(135deg,
+        var(--card-bg-start),
+        var(--card-bg-mid) 50%,
+        var(--card-bg-end));
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    overflow: hidden;
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.id-card[data-theme="identity-navy"] {
+    --card-bg-start: #0b2545;
+    --card-bg-mid: #13315c;
+    --card-bg-end: #1b4b7a;
+    --card-accent: #d4a017;
+    --card-label: #a8c5e6;
+}
+
+.id-card[data-theme="licence-pink"] {
+    --card-bg-start: #6d1b3c;
+    --card-bg-mid: #8e2350;
+    --card-bg-end: #ad2c63;
+    --card-accent: #ffe5b4;
+    --card-label: #f5c2d6;
+}
+
+.id-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.id-card-issuer {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--card-label);
+}
+
+.id-card-credential-name {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.id-card-accent-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--card-accent);
+    box-shadow: 0 0 12px var(--card-accent);
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.id-card-watermark {
+    position: absolute;
+    top: 88px;
+    right: 24px;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 2px solid var(--card-accent);
+    color: var(--card-accent);
+    letter-spacing: 2px;
+    transform: rotate(-6deg);
+    opacity: 0.82;
+    pointer-events: none;
+}
+
+.id-card[data-watermark="pending"] .id-card-watermark {
+    border-color: #ffb347;
+    color: #ffb347;
+}
+/* The Razor template omits the watermark element for `Issued` and `None`,
+   so no corresponding CSS rule is needed here. */
+
+.id-card-body {
+    display: flex;
+    gap: 24px;
+}
+
+.id-card-portrait {
+    width: 160px;
+    min-width: 160px;
+    height: 210px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.id-card-portrait img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.id-card-portrait-placeholder {
+    color: var(--card-label);
+    opacity: 0.6;
+}
+
+.id-card-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.id-card-section {
+    margin-bottom: 18px;
+}
+
+.id-card-section:last-child {
+    margin-bottom: 0;
+}
+
+.id-card-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+}
+
+.id-card-section-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--card-label);
+    font-weight: 600;
+}
+
+.id-card-section ::deep .mud-button {
+    color: #fff !important;
+    text-transform: none;
+}
+
+.id-card-fields {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin: 0;
+}
+
+.id-card-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.id-card-field dt {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--card-label);
+    margin: 0;
+}
+
+.id-card-field dd {
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 0;
+    word-break: break-word;
+}
+
+.id-card-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 540px) {
+    .id-card-body {
+        flex-direction: column;
+    }
+
+    .id-card-portrait {
+        width: 100%;
+        max-width: 240px;
+        height: 320px;
+        margin: 0 auto;
+    }
+}

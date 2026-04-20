@@ -2,13 +2,30 @@
 @* Copyright (c) 2026 Sorcha Contributors *@
 
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Logging
 @using Sorcha.Blueprint.Models
 @using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Forms
+
+@inject IFormSchemaService SchemaService
+@inject PhotoTokenResizer TokenResizer
+@inject ILogger<FileRenderer> Logger
 
 <MudStack Spacing="1">
     <MudText Typo="Typo.body2">@Control.Title</MudText>
 
-    <InputFile OnChange="OnFileSelected" disabled="@(IsDisabled || FormContext?.IsReadOnly == true)" />
+    <InputFile OnChange="OnFileSelected"
+               disabled="@(IsDisabled || FormContext?.IsReadOnly == true)"
+               capture="@_captureAttribute"
+               accept="@_acceptAttribute" />
+
+    @if (_resizeInProgress)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <MudText Typo="Typo.body2">Preparing portrait token…</MudText>
+        </MudStack>
+    }
 
     @if (_selectedFile is not null)
     {
@@ -20,6 +37,25 @@
                            OnClick="RemoveFile" />
         </MudStack>
     }
+
+    @if (!string.IsNullOrEmpty(_resizeWarning))
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true">@_resizeWarning</MudAlert>
+    }
+
+    @if (_showPortraitTips)
+    {
+        <MudPaper Class="pa-3 mt-2" Elevation="0" Outlined="true">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Photo tips (ICAO guidance)</MudText>
+            <MudList T="string" Dense="true" DisablePadding="true">
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Check">Plain light background</MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Check">Face centred, filling 70–80% of the frame</MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Check">Neutral expression, eyes open, looking at camera</MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Check">No sunglasses or head covering (except religious)</MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Check">Even lighting, no shadows on face</MudListItem>
+            </MudList>
+        </MudPaper>
+    }
 </MudStack>
 
 @code {
@@ -29,26 +65,94 @@
 
     private FileAttachmentInfo? _selectedFile;
     private string _fileDisplayText = string.Empty;
-    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB default
+    private bool _resizeInProgress;
+    private string? _resizeWarning;
+
+    // Parsed x-file extension for this field (Feature 107 additions).
+    private FileSchemaExtension? _fileExtension;
+    private string? _captureAttribute;
+    private string? _acceptAttribute;
+    private bool _showPortraitTips;
+
+    // Platform ceiling — acts as the fallback when the schema doesn't
+    // declare an explicit `x-file.maxSizePerFile`. The per-field limit is
+    // preferred because it bounds the WASM buffer for camera capture on
+    // low-memory mobile devices (40 MB is feasible to OOM a phone when
+    // the citizen takes a high-resolution photo).
+    private const long PlatformMaxFileSize = 40L * 1024 * 1024;
+
+    protected override void OnParametersSet()
+    {
+        ResolveFileExtension();
+    }
+
+    /// <summary>
+    /// Effective upload stream limit, honouring the schema's declared
+    /// <c>x-file.maxSizePerFile</c> when present and falling back to the
+    /// platform ceiling when it isn't. Returns bytes.
+    /// </summary>
+    private long ResolveMaxFileSize()
+    {
+        if (_fileExtension is null || string.IsNullOrWhiteSpace(_fileExtension.MaxSizePerFile))
+            return PlatformMaxFileSize;
+
+        try
+        {
+            var declared = FileSchemaExtension.ParseMaxSizeBytes(_fileExtension.MaxSizePerFile);
+            // Clamp defensively so a blueprint can never request a larger
+            // buffer than the platform tolerates.
+            return Math.Min(declared, PlatformMaxFileSize);
+        }
+        catch (ArgumentException)
+        {
+            // Malformed string — caught at publish time upstream. Fall back
+            // to the platform ceiling so the field still functions.
+            return PlatformMaxFileSize;
+        }
+    }
+
+    private void ResolveFileExtension()
+    {
+        _fileExtension = null;
+        _captureAttribute = null;
+        _acceptAttribute = null;
+        _showPortraitTips = false;
+
+        if (FormContext?.DataSchema is null) return;
+
+        var propertySchema = SchemaService.GetSchemaForScope(FormContext.DataSchema, Control.Scope);
+        if (propertySchema is null) return;
+
+        if (FileSchemaExtension.TryParseFromSchema(propertySchema.Value, out var ext) && ext is not null)
+        {
+            _fileExtension = ext;
+            _captureAttribute = FileFieldCaptureHelper.GetCaptureAttribute(ext);
+            _acceptAttribute = ext.Accept.Length > 0 ? string.Join(",", ext.Accept) : null;
+            _showPortraitTips = FileFieldCaptureHelper.ShouldResizeForEmbed(ext);
+        }
+    }
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         var file = e.File;
         if (file is null) return;
 
+        _resizeWarning = null;
+
         try
         {
             var scope = Control.Scope;
-            using var stream = file.OpenReadStream(MaxFileSize);
+            using var stream = file.OpenReadStream(ResolveMaxFileSize());
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
+            var sourceBytes = ms.ToArray();
 
             _selectedFile = new FileAttachmentInfo
             {
                 FileName = file.Name,
                 ContentType = file.ContentType,
                 Size = file.Size,
-                Content = ms.ToArray(),
+                Content = sourceBytes,
                 Scope = scope
             };
 
@@ -58,10 +162,55 @@
             FormContext?.FileAttachments.RemoveAll(a => a.Scope == scope);
             FormContext?.FileAttachments.Add(_selectedFile);
             FormContext?.SetValue(scope, file.Name);
+
+            // Feature 107 — when the field declares `embedAs`, produce the
+            // token-image alongside the original so the action payload carries
+            // both. The token is the claim value; the original is the
+            // assessor-visible evidence.
+            if (FileFieldCaptureHelper.ShouldResizeForEmbed(_fileExtension))
+            {
+                await ProducePortraitTokenAsync(scope, sourceBytes);
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "File selection failed for scope {Scope}", Control.Scope);
             _selectedFile = null;
+        }
+    }
+
+    private async Task ProducePortraitTokenAsync(string fieldScope, byte[] sourceBytes)
+    {
+        _resizeInProgress = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await TokenResizer.ResizeAsync(
+                sourceBytes,
+                ImageTokenSpec.ImageTokenJpeg240x320);
+
+            // Store the token next to the original on the form context at a
+            // stable sibling pointer so the claim mapping can reference it:
+            //   <fieldScope>/tokenImageBase64
+            var tokenScope = $"{fieldScope}/tokenImageBase64";
+            FormContext?.SetValue(tokenScope, result.Base64);
+        }
+        catch (PhotoTokenTooDetailedException ex)
+        {
+            _resizeWarning = "The photo is too detailed to fit the credential's portrait slot. " +
+                             "Try a plainer background, or skip the photo — you'll still get a credential without it.";
+            Logger.LogInformation(ex, "Portrait resize floor reached for scope {Scope}", fieldScope);
+        }
+        catch (Exception ex)
+        {
+            _resizeWarning = "Could not process the photo for embedding. The credential will be issued without a portrait.";
+            Logger.LogWarning(ex, "Unexpected portrait resize failure for scope {Scope}", fieldScope);
+        }
+        finally
+        {
+            _resizeInProgress = false;
+            StateHasChanged();
         }
     }
 
@@ -72,8 +221,10 @@
             var scope = Control.Scope;
             FormContext?.FileAttachments.RemoveAll(a => a.Scope == scope);
             FormContext?.SetValue(scope, null);
+            FormContext?.SetValue($"{scope}/tokenImageBase64", null);
             _selectedFile = null;
             _fileDisplayText = string.Empty;
+            _resizeWarning = null;
         }
     }
 

@@ -1,0 +1,84 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@using Sorcha.Blueprint.Models
+@using Sorcha.UI.Core.Components.Forms.Layouts
+@using Sorcha.UI.Core.Models.Forms
+@using Sorcha.UI.Core.Services.Forms
+
+@inject ReviewSummaryDataSource DataSource
+
+@* Feature 107 Assured Identity v1 — renders a wizard review page using the
+   parsed x-review extension. Dispatches by layout variant; v1 implements
+   id-card only, other variants fall back to a minimal tabular render. *@
+
+@if (Page.ReviewExtension is null)
+{
+    @* Caller error — the dispatcher should not route non-review pages here. *@
+    <MudAlert Severity="Severity.Warning">No x-review extension on this page.</MudAlert>
+}
+else if (FormContext is null)
+{
+    <MudAlert Severity="Severity.Info">Loading review…</MudAlert>
+}
+else if (!ReviewSummaryDispatch.IsImplemented(Page.ReviewExtension.Layout))
+{
+    @* Reserved variants (passport-page / tabular / receipt) — minimal fallback. *@
+    <MudAlert Severity="Severity.Info" Class="mb-3">
+        Review layout <b>@Page.ReviewExtension.Layout</b> is not implemented yet — showing a plain summary.
+    </MudAlert>
+    @RenderMinimalSummary()
+}
+else
+{
+    var config = DataSource.BuildConfig(Page.ReviewExtension, FormContext, RuntimeState, PriorPages);
+    <IdCardLayout Config="@config"
+                  OnEditSection="HandleEdit"
+                  FooterActions="FooterActions" />
+}
+
+@code {
+    [CascadingParameter] public FormContext? FormContext { get; set; }
+
+    [Parameter, EditorRequired] public required BlueprintPageDefinition Page { get; set; }
+
+    [Parameter, EditorRequired] public required IReadOnlyList<BlueprintPageDefinition> PriorPages { get; set; }
+
+    [Parameter] public ActionRuntimeState RuntimeState { get; set; } = ActionRuntimeState.CitizenDraft;
+
+    [Parameter] public EventCallback<int> OnEditSection { get; set; }
+
+    [Parameter] public RenderFragment? FooterActions { get; set; }
+
+    private async Task HandleEdit(int pageIndex)
+    {
+        if (OnEditSection.HasDelegate)
+        {
+            await OnEditSection.InvokeAsync(pageIndex);
+        }
+    }
+
+    private RenderFragment RenderMinimalSummary() => __builder =>
+    {
+        // Tabular fallback for unimplemented layout variants.
+        for (var i = 0; i < PriorPages.Count; i++)
+        {
+            var priorPage = PriorPages[i];
+            if (priorPage.Sections is not { Count: > 0 }) continue;
+            <MudPaper Class="pa-3 mb-2" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.subtitle2">@priorPage.Title</MudText>
+                <MudList T="string" Dense="true" DisablePadding="true">
+                    @foreach (var sec in priorPage.Sections)
+                    {
+                        @foreach (var field in sec.Fields)
+                        {
+                            var pointer = ReviewSummaryDataSource.PointerFromFieldName(field);
+                            var value = FormContext?.FormData.GetValueOrDefault(pointer)?.ToString() ?? "—";
+                            <MudListItem T="string">@field: @value</MudListItem>
+                        }
+                    }
+                </MudList>
+            </MudPaper>
+        }
+    };
+}

@@ -163,17 +163,115 @@ public static class SchemaLayoutParser
             var layout = NormaliseLayout(rawLayout, ValidPageLayouts, DefaultPageLayout);
 
             var pageSections = TryParseSections(pageElement);
+            var reviewExtension = TryParseReviewExtension(pageElement);
 
             pages.Add(new BlueprintPageDefinition
             {
                 Title = title,
                 Description = description,
                 Layout = layout,
-                Sections = pageSections
+                Sections = pageSections,
+                ReviewExtension = reviewExtension
             });
         }
 
         return pages.Count > 0 ? pages : null;
+    }
+
+    private static readonly Dictionary<string, XReviewLayoutVariant> LayoutVariantMap =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["id-card"] = XReviewLayoutVariant.IdCard,
+            ["passport-page"] = XReviewLayoutVariant.PassportPage,
+            ["tabular"] = XReviewLayoutVariant.Tabular,
+            ["receipt"] = XReviewLayoutVariant.Receipt
+        };
+
+    private static readonly Dictionary<string, XReviewColourTheme> ColourThemeMap =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["identity-navy"] = XReviewColourTheme.IdentityNavy,
+            ["licence-pink"] = XReviewColourTheme.LicencePink
+        };
+
+    /// <summary>
+    /// Parses the <c>x-review</c> extension on a wizard page. Returns null
+    /// when the extension is absent or when required header fields are
+    /// missing; unknown <c>layout</c> values fall back to <c>id-card</c> so
+    /// the renderer always has something to draw. Publish-time surfacing of
+    /// the fallback (warning <c>WARN_BP_REVIEW_001</c>) is the validator
+    /// service's job — this parser is the lexical layer only. Feature 107
+    /// Assured Identity v1.
+    /// </summary>
+    private static XReviewExtension? TryParseReviewExtension(JsonElement pageElement)
+    {
+        if (!pageElement.TryGetProperty("x-review", out var reviewEl) ||
+            reviewEl.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (!reviewEl.TryGetProperty("header", out var headerEl) ||
+            headerEl.ValueKind != JsonValueKind.Object)
+            return null;
+
+        string? issuerName = null;
+        if (headerEl.TryGetProperty("issuerName", out var issuerEl) &&
+            issuerEl.ValueKind == JsonValueKind.String)
+        {
+            var candidate = issuerEl.GetString();
+            if (!string.IsNullOrWhiteSpace(candidate)) issuerName = candidate;
+        }
+
+        string? credentialName = null;
+        if (headerEl.TryGetProperty("credentialName", out var credEl) &&
+            credEl.ValueKind == JsonValueKind.String)
+        {
+            var candidate = credEl.GetString();
+            if (!string.IsNullOrWhiteSpace(candidate)) credentialName = candidate;
+        }
+
+        // Required header fields absent → drop the extension. Renderer
+        // renders the page as a plain (empty) form page.
+        if (issuerName is null || credentialName is null) return null;
+
+        var layout = XReviewLayoutVariant.IdCard;
+        if (reviewEl.TryGetProperty("layout", out var layoutEl) &&
+            layoutEl.ValueKind == JsonValueKind.String &&
+            layoutEl.GetString() is { } layoutRaw &&
+            LayoutVariantMap.TryGetValue(layoutRaw, out var parsedLayout))
+        {
+            layout = parsedLayout;
+        }
+        // else: unknown or absent — fall back to IdCard (v1 only implemented
+        // variant). Validator emits WARN_BP_REVIEW_001 when the raw value is
+        // present but unrecognised.
+
+        var editable = true;
+        if (reviewEl.TryGetProperty("editable", out var editableEl) &&
+            editableEl.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            editable = editableEl.GetBoolean();
+        }
+
+        var colourTheme = XReviewColourTheme.IdentityNavy;
+        if (headerEl.TryGetProperty("colourTheme", out var themeEl) &&
+            themeEl.ValueKind == JsonValueKind.String &&
+            themeEl.GetString() is { } themeRaw &&
+            ColourThemeMap.TryGetValue(themeRaw, out var parsedTheme))
+        {
+            colourTheme = parsedTheme;
+        }
+
+        return new XReviewExtension
+        {
+            Layout = layout,
+            Editable = editable,
+            Header = new XReviewHeader
+            {
+                IssuerName = issuerName,
+                CredentialName = credentialName,
+                ColourTheme = colourTheme
+            }
+        };
     }
 
     private static List<BlueprintSectionDefinition>? TryParseSections(JsonElement parent)
