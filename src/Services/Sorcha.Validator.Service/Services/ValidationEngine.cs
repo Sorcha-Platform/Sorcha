@@ -1933,23 +1933,15 @@ public class ValidationEngine : IValidationEngine
         return null;
     }
 
-    /// <summary>
-    /// Tier 3 sender-authorisation fallback. Walks the in-instance transaction chain on the
-    /// register, finds the earliest prior transaction whose action <c>Sender</c> matches
-    /// <paramref name="participantId"/>, and returns that transaction's signing wallet.
-    /// </summary>
+    /// <summary>Tier 3 sender-authorisation fallback — derives a late-binding from the earliest prior in-instance transaction signed for the same participant role.</summary>
     /// <remarks>
-    /// <para>
-    /// This is the on-ledger derivation of the late-binding contract: once an open
-    /// participant is bound by a signed action, the signature IS the proof. Any later
-    /// transaction purporting to act as the same participant must re-sign with the same
-    /// wallet (FR-004 immutable binding).
-    /// </para>
-    /// <para>
-    /// Returns null when no in-instance history exists for this participant (cold start)
-    /// or when the transaction has no instance id in metadata. Either case keeps the
-    /// existing fail-closed VAL_BP_002 path.
-    /// </para>
+    /// Trust invariant: <c>TransactionModel.SenderWallet</c> on a sealed transaction is
+    /// populated by the validator at docket-sealing time (see
+    /// <c>DocketSerializer.GetSenderWallet</c>) from the Wallet Service's verified
+    /// <c>Signature.SignedBy</c>. Any transaction that reaches the chain-walk below has
+    /// already passed signature verification and (for non-starting actions) Tier 1/2 sender
+    /// checks, so <c>SenderWallet</c> is the cryptographically-bound wallet, not
+    /// submitter-supplied metadata.
     /// </remarks>
     private async Task<string?> ResolveChainBoundWalletAsync(
         Transaction currentTx,
@@ -1969,7 +1961,10 @@ public class ValidationEngine : IValidationEngine
             priorTxs = await _registerClient.GetTransactionsByInstanceIdAsync(
                 currentTx.RegisterId, instanceId, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException
+                                      or TaskCanceledException
+                                      or TimeoutException
+                                      or IOException)
         {
             _logger.LogWarning(ex,
                 "Chain-binding lookup failed for instance {InstanceId} on register {RegisterId} — treating as no binding",

@@ -154,7 +154,7 @@ public class ValidationEngineChainBindingTests
         // VAL_BP_002 from SEC-AUDIT 4.8 still fires.
         _registerClientMock.Setup(r => r.GetTransactionsByInstanceIdAsync(
                 RegisterId, InstanceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TransactionModel>());
+            .ReturnsAsync([]);
 
         _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
             .Returns(BoundWallet);
@@ -184,6 +184,76 @@ public class ValidationEngineChainBindingTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "Tier 3 must not call the register when no instance id is available");
+    }
+
+    [Fact]
+    public async Task Tier3_RegisterClientThrows_FallsThroughToVAL_BP_002_NotSilentPass()
+    {
+        // Security-relevant: a transient network blip in the chain-walk must NOT silently
+        // admit a transaction that no Tier 1/2 record authorises. The catch returns null;
+        // the caller falls through to the existing fail-closed VAL_BP_002.
+        _registerClientMock.Setup(r => r.GetTransactionsByInstanceIdAsync(
+                RegisterId, InstanceId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("register-service unreachable"));
+
+        _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
+            .Returns(BoundWallet);
+
+        var tx = BuildAction6Tx(senderWallet: BoundWallet);
+
+        var result = await _engine.ValidateBlueprintConformanceAsync(tx);
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_002");
+    }
+
+    [Fact]
+    public async Task Tier3_ParticipantRoleFilter_DoesNotLeakBindingAcrossParticipants()
+    {
+        // Participant A has prior history; participant B (also on the blueprint) has not
+        // yet acted. A Tier 3 resolution for participant B must not accidentally return
+        // participant A's wallet just because they share an instance.
+        //
+        // Here the current tx is Action 6 for procurement-mgr (B), but the only prior
+        // in-instance tx is for sales-mgr (A). Tier 3 must find no match and fall through.
+        var blueprint = new BlueprintModel
+        {
+            Id = BlueprintId,
+            Title = "Two open participants",
+            Participants =
+            [
+                new ParticipantModel { Id = ProcurementMgr, Name = "Procurement Manager" },
+                new ParticipantModel { Id = "sales-mgr", Name = "Sales Manager" },
+            ],
+            Actions =
+            [
+                new ActionModel
+                {
+                    Id = 1, Title = "Start", Sender = "sales-mgr", IsStartingAction = true,
+                    Routes = [new RouteModel { NextActionIds = [6] }]
+                },
+                new ActionModel { Id = 6, Title = "Approve", Sender = ProcurementMgr }
+            ]
+        };
+        _blueprintCacheMock.Setup(c => c.GetBlueprintAsync(BlueprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(blueprint);
+
+        _registerClientMock.Setup(r => r.GetTransactionsByInstanceIdAsync(
+                RegisterId, InstanceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                // Prior history exists — but for a DIFFERENT participant.
+                BuildPriorTx(actionId: 1, senderWallet: "ws11q-sales-bound", timestamp: DateTime.UtcNow.AddMinutes(-5))
+            ]);
+
+        _walletUtilitiesMock.Setup(w => w.PublicKeyToWallet(It.IsAny<byte[]>(), It.IsAny<byte>()))
+            .Returns(BoundWallet);
+
+        var tx = BuildAction6Tx(senderWallet: BoundWallet);
+
+        var result = await _engine.ValidateBlueprintConformanceAsync(tx);
+
+        result.Errors.Should().Contain(e => e.Code == "VAL_BP_002",
+            "procurement-mgr has no prior in-instance tx of their own — sales-mgr's binding must not leak");
     }
 
     // ---------------- helpers ----------------
