@@ -190,11 +190,13 @@ public class HaipPresentCommand : Command
             return JsonSerializer.Deserialize<JsonElement>(trimmed);
         }
 
-        // JWT — extract the payload (middle segment). The verifier signs
-        // the request object; the agent only needs the claims to build its
-        // presentation, so we trust the verifier and skip signature check
-        // (the presentation POST goes back to the same verifier, which
-        // recomputes the binding).
+        // JWT — extract the payload (middle segment).
+        // TODO(SEC): tracked in issue #344 — agent should verify the JWT
+        // signature against the verifier's JWKS per RFC 9101 §4 before
+        // acting on its claims. Today the agent is a demo/test tool
+        // against trusted localhost verifiers only; any production use
+        // must fetch jwks_uri from the verifier's well-known config and
+        // validate the signature before reaching this point.
         var parts = trimmed.Split('.');
         if (parts.Length < 2)
         {
