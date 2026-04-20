@@ -425,6 +425,21 @@ foreach ($sid in $scenariosToRun) {
 
         Write-WtInfo "  Fetching credentials from sales-mgr wallet ($salesMgrWallet)..."
         try {
+            # Feature 106 Wave C: register-native credential delivery persists as
+            # Status=PendingAcceptance. The holder (sales-mgr) must accept before it
+            # becomes Active and usable for presentation. Do that here.
+            $pending = Invoke-SorchaApi -Method GET `
+                -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials?status=PendingAcceptance" `
+                -Headers $credHeaders
+
+            foreach ($p in ($pending | Where-Object { $_.type -eq "VerifiedInvoiceCredential" })) {
+                Write-WtInfo "  Accepting pending credential $($p.id)..."
+                $null = Invoke-SorchaApi -Method PATCH `
+                    -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials/$($p.id)" `
+                    -Body @{ status = "Active" } `
+                    -Headers $credHeaders
+            }
+
             $creds = Invoke-SorchaApi -Method GET `
                 -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials" `
                 -Headers $credHeaders
