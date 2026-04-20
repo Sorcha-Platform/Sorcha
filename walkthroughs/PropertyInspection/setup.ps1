@@ -95,6 +95,7 @@ $register = New-SorchaRegister `
     -OwnerUserId $housingSession.UserId `
     -OwnerWalletAddress $housingRole.walletAddress `
     -Headers $housingSession.Headers `
+    -DevMode `
     -Metadata @{ createdBy = "PropertyInspection walkthrough" }
 
 Write-WtInfo "Register → $($register.RegisterId)"
