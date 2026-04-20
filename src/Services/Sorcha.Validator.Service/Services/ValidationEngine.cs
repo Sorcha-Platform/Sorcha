@@ -1080,14 +1080,44 @@ public class ValidationEngine : IValidationEngine
                         }
                         else
                         {
-                            // SEC-AUDIT 4.8: Fail hard when participant cannot be resolved
-                            // rather than silently skipping sender authorization
-                            _logger.LogWarning(
-                                "Participant {ParticipantId} has no wallet and no published record on register {RegisterId} — rejecting transaction for action {ActionId}",
-                                action.Sender, transaction.RegisterId, actionIdInt);
-                            errors.Add(CreateError("VAL_BP_002",
-                                $"Cannot verify sender authorization: participant '{action.Sender}' has no wallet address and no published record on register '{transaction.RegisterId}'",
-                                ValidationErrorCategory.Permission, "Signatures"));
+                            // Tier 3: chain-derived late-binding. Before failing hard, walk
+                            // the in-instance transaction chain. If an earlier tx in this
+                            // instance was signed for the same participant role, its signing
+                            // wallet IS the late-binding — authoritative because it's
+                            // on-ledger and signed. This keeps "open participant" blueprints
+                            // (public citizen, applicant, procurement-mgr on its own flow)
+                            // working without an auto-publish side-effect on late-bind.
+                            var chainWallet = await ResolveChainBoundWalletAsync(
+                                transaction, action.Sender, blueprint, ct);
+
+                            if (chainWallet != null)
+                            {
+                                if (string.Equals(chainWallet, derivedWallet, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _logger.LogDebug(
+                                        "Participant {ParticipantId} chain-bound to wallet {Wallet} from prior in-instance tx — matches current signer",
+                                        action.Sender, derivedWallet);
+                                }
+                                else
+                                {
+                                    // Immutable-binding violation (FR-004): a prior in-instance tx
+                                    // bound this participant role to a different wallet.
+                                    errors.Add(CreateError("VAL_BP_002",
+                                        $"Signer wallet {derivedWallet} does not match chain-derived binding {chainWallet} for participant '{action.Sender}' (late-bound on an earlier action in this instance)",
+                                        ValidationErrorCategory.Permission, "Signatures"));
+                                }
+                            }
+                            else
+                            {
+                                // SEC-AUDIT 4.8: no Tier 1/2 record AND no Tier 3 chain
+                                // binding — nothing on-ledger authorises this submitter.
+                                _logger.LogWarning(
+                                    "Participant {ParticipantId} has no wallet, no published record, and no prior in-instance binding on register {RegisterId} — rejecting transaction for action {ActionId}",
+                                    action.Sender, transaction.RegisterId, actionIdInt);
+                                errors.Add(CreateError("VAL_BP_002",
+                                    $"Cannot verify sender authorization: participant '{action.Sender}' has no wallet address and no published record on register '{transaction.RegisterId}'",
+                                    ValidationErrorCategory.Permission, "Signatures"));
+                            }
                         }
                     }
                 }
@@ -1903,4 +1933,67 @@ public class ValidationEngine : IValidationEngine
         return null;
     }
 
+    /// <summary>
+    /// Tier 3 sender-authorisation fallback. Walks the in-instance transaction chain on the
+    /// register, finds the earliest prior transaction whose action <c>Sender</c> matches
+    /// <paramref name="participantId"/>, and returns that transaction's signing wallet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the on-ledger derivation of the late-binding contract: once an open
+    /// participant is bound by a signed action, the signature IS the proof. Any later
+    /// transaction purporting to act as the same participant must re-sign with the same
+    /// wallet (FR-004 immutable binding).
+    /// </para>
+    /// <para>
+    /// Returns null when no in-instance history exists for this participant (cold start)
+    /// or when the transaction has no instance id in metadata. Either case keeps the
+    /// existing fail-closed VAL_BP_002 path.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> ResolveChainBoundWalletAsync(
+        Transaction currentTx,
+        string participantId,
+        BlueprintModel blueprint,
+        CancellationToken ct)
+    {
+        if (!currentTx.Metadata.TryGetValue("instanceId", out var instanceId)
+            || string.IsNullOrWhiteSpace(instanceId))
+        {
+            return null;
+        }
+
+        List<Sorcha.Register.Models.TransactionModel> priorTxs;
+        try
+        {
+            priorTxs = await _registerClient.GetTransactionsByInstanceIdAsync(
+                currentTx.RegisterId, instanceId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Chain-binding lookup failed for instance {InstanceId} on register {RegisterId} — treating as no binding",
+                instanceId, currentTx.RegisterId);
+            return null;
+        }
+
+        if (priorTxs.Count == 0)
+        {
+            return null;
+        }
+
+        // Oldest first — the earliest matching tx is the binding authority.
+        var match = priorTxs
+            .Where(t => !string.Equals(t.TxId, currentTx.TransactionId, StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.MetaData?.ActionId is not null)
+            .OrderBy(t => t.TimeStamp)
+            .FirstOrDefault(t =>
+            {
+                var action = blueprint.Actions.FirstOrDefault(a => a.Id == (int)t.MetaData!.ActionId!.Value);
+                return action != null
+                    && string.Equals(action.Sender, participantId, StringComparison.OrdinalIgnoreCase);
+            });
+
+        return !string.IsNullOrWhiteSpace(match?.SenderWallet) ? match.SenderWallet : null;
+    }
 }
