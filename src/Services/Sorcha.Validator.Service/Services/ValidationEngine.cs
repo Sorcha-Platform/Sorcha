@@ -1961,6 +1961,13 @@ public class ValidationEngine : IValidationEngine
             priorTxs = await _registerClient.GetTransactionsByInstanceIdAsync(
                 currentTx.RegisterId, instanceId, ct);
         }
+        // Deliberate caller cancellation (shutdown, request timeout) must propagate —
+        // falling through to VAL_BP_002 on a cancelled request would mislead callers
+        // into thinking the chain authoritatively lacked a binding.
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex) when (ex is HttpRequestException
                                       or TaskCanceledException
                                       or TimeoutException
@@ -1977,14 +1984,22 @@ public class ValidationEngine : IValidationEngine
             return null;
         }
 
-        // Oldest first — the earliest matching tx is the binding authority.
+        // Oldest first — the earliest matching tx is the binding authority. TxId
+        // secondary sort is a deterministic tie-breaker for equal TimeStamps.
+        // TODO: Tier 3 currently fetches all in-instance txs. For long-running instances
+        // (100+ actions) a purpose-built "first tx by participant role" register query
+        // would let the DB short-circuit. Fine at MVD scale; revisit when workflows grow.
         var match = priorTxs
             .Where(t => !string.Equals(t.TxId, currentTx.TransactionId, StringComparison.OrdinalIgnoreCase))
             .Where(t => t.MetaData?.ActionId is not null)
             .OrderBy(t => t.TimeStamp)
+            .ThenBy(t => t.TxId, StringComparer.Ordinal)
             .FirstOrDefault(t =>
             {
-                var action = blueprint.Actions.FirstOrDefault(a => a.Id == (int)t.MetaData!.ActionId!.Value);
+                // Widen the comparison so a uint ActionId >= int.MaxValue never
+                // accidentally matches a negative blueprint Id.
+                var action = blueprint.Actions.FirstOrDefault(a =>
+                    (uint)a.Id == t.MetaData!.ActionId!.Value);
                 return action != null
                     && string.Equals(action.Sender, participantId, StringComparison.OrdinalIgnoreCase);
             });
