@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text.Json;
+
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Register;
 using ProtoSyncState = Sorcha.Peer.Service.Protos.SyncState;
 
@@ -31,6 +36,10 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
     /// Polling interval for the SubscribeToRegister live stream.
     /// </summary>
     private static readonly TimeSpan LivePollInterval = TimeSpan.FromSeconds(2);
+
+    // Canonical JSON options live in Sorcha.Register.Models so every service that
+    // serialises register-scoped payloads agrees on the byte shape. Do NOT construct
+    // a local copy — see RegisterSerializationOptions for why.
 
     public RegisterSyncGrpcService(
         RegisterCache registerCache,
@@ -104,6 +113,9 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 
     /// <summary>
     /// Streams transactions from the local cache matching the requested transaction IDs.
+    /// Falls back to the co-located Register Service when the peer-service cache has
+    /// no entry for the register — the cache is populated on replication, so registers
+    /// this node owns (sealed locally, never replicated) are never in it.
     /// </summary>
     public override async Task PullDocketTransactions(
         Protos.DocketTransactionRequest request,
@@ -117,10 +129,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var cacheEntry = _registerCache.Get(request.RegisterId);
         if (cacheEntry == null)
         {
-            _logger.LogDebug("Register {RegisterId} not found in cache", request.RegisterId);
-            throw new RpcException(new Status(
-                StatusCode.NotFound,
-                $"Register '{request.RegisterId}' not found in local cache"));
+            _logger.LogInformation(
+                "Register {RegisterId} not in cache, falling back to Register Service for {Count} transaction IDs",
+                request.RegisterId, request.TransactionIds.Count);
+
+            await PullDocketTransactionsFromRegisterServiceAsync(
+                request, responseStream, context.CancellationToken);
+            return;
         }
 
         var streamed = 0;
@@ -157,6 +172,145 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         _logger.LogDebug(
             "PullDocketTransactions completed for register {RegisterId}: streamed {Streamed}, not found {NotFound}",
             request.RegisterId, streamed, notFound);
+    }
+
+    /// <summary>
+    /// Serves PullDocketTransactions by reading transactions from the local Register
+    /// Service. Used when the register is not in the peer-service's in-memory cache
+    /// (typically because this node owns the register and never replicated it).
+    /// </summary>
+    private async Task PullDocketTransactionsFromRegisterServiceAsync(
+        Protos.DocketTransactionRequest request,
+        IServerStreamWriter<Protos.TransactionEntry> responseStream,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+        // Short-circuit if the register genuinely doesn't exist anywhere — the caller
+        // will see an empty stream and move on to its next sync cycle instead of
+        // surfacing an RpcException that the background loop treats as transient.
+        // A transient failure here (Register Service blip) also returns empty rather
+        // than escalating to the subscriber; the next sync cycle retries.
+        Sorcha.Register.Models.Register? register;
+        try
+        {
+            register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
+        }
+        // Genuine caller cancellation (gRPC deadline, server shutdown) must propagate —
+        // `when IsCancellationRequested` ensures we re-throw instead of masking it as
+        // transient. Every other exception (transient HTTP, JSON parse, DI scope
+        // weirdness) is contained so the fallback doesn't escalate to the subscriber's
+        // retry loop as an RpcException, which the loop treats as a permanent error.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Register Service failure looking up {RegisterId} — streaming empty response",
+                request.RegisterId);
+            return;
+        }
+
+        if (register == null)
+        {
+            _logger.LogInformation(
+                "Register {RegisterId} unknown to Register Service — streaming empty response",
+                request.RegisterId);
+            return;
+        }
+
+        // TODO(perf): per-tx HTTP round-trips are N+1 for large dockets. When
+        // IRegisterServiceClient gains a batch endpoint, switch to that here.
+        var streamed = 0;
+        var notFound = 0;
+        var transientErrors = 0;
+
+        foreach (var txId in request.TransactionIds)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            TransactionModel? tx;
+            try
+            {
+                tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
+            }
+            // Same split as the outer lookup: genuine caller cancellation re-throws,
+            // everything else is logged and the loop continues so a single bad fetch
+            // doesn't abort the whole batch. Subscriber's next sync cycle retries.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Transient Register Service fetch failure for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                transientErrors++;
+                continue;
+            }
+            catch (TaskCanceledException ex)
+            {
+                // Reached only when !IsCancellationRequested (guarded above) — an
+                // HTTP-level timeout rather than a caller-driven cancellation.
+                _logger.LogWarning(
+                    ex,
+                    "Register Service fetch timed out for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                transientErrors++;
+                continue;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Unexpected Register Service fetch error for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                transientErrors++;
+                continue;
+            }
+
+            if (tx == null)
+            {
+                notFound++;
+                continue;
+            }
+
+            // The cache-hit path streams the raw transaction bytes pre-computed during
+            // replication ingest. Here we don't have pre-computed bytes, so serialise
+            // using the same canonical options Register Service uses (camelCase +
+            // UnsafeRelaxedJsonEscaping) so the wire shape matches what a subscriber
+            // would have seen via direct sync — and hash the streamed bytes to match
+            // the subscriber's SHA-256 integrity check in RegisterReplicationService.
+            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx, RegisterSerializationOptions.Canonical);
+            var checksum = Convert.ToHexString(SHA256.HashData(txJson)).ToLowerInvariant();
+
+            // tx.TimeStamp is always UTC at the DB layer. The single-arg DateTimeOffset
+            // ctor respects Kind; the two-arg form would silently treat an ever-non-UTC
+            // value as UTC and drift by the local offset.
+            var entry = new Protos.TransactionEntry
+            {
+                TransactionId = tx.TxId,
+                RegisterId = tx.RegisterId,
+                TransactionData = ByteString.CopyFrom(txJson),
+                Checksum = checksum,
+                CreatedAt = new DateTimeOffset(
+                    DateTime.SpecifyKind(tx.TimeStamp, DateTimeKind.Utc)).ToUnixTimeMilliseconds()
+            };
+
+            await responseStream.WriteAsync(entry, cancellationToken);
+            streamed++;
+        }
+
+        _logger.LogInformation(
+            "PullDocketTransactions from Register Service completed for {RegisterId}: streamed {Streamed}, not found {NotFound}, transient errors {TransientErrors}",
+            request.RegisterId, streamed, notFound, transientErrors);
     }
 
     /// <summary>
@@ -345,6 +499,12 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var height = await registerClient.GetRegisterHeightAsync(request.RegisterId, cancellationToken);
         if (height < 0)
         {
+            // NOTE: this throws NotFound while PullDocketTransactionsFromRegisterServiceAsync
+            // returns an empty stream for the same condition. The asymmetry is intentional —
+            // the chain-pull contract is entered by the subscriber only after it has
+            // confirmed the register exists, so a NotFound here is a bug worth surfacing,
+            // whereas the tx-pull fallback is entered speculatively per-docket and must
+            // tolerate empty responses without escalating to the subscriber's retry loop.
             throw new RpcException(new Status(
                 StatusCode.NotFound,
                 $"Register '{request.RegisterId}' not found in Register Service"));

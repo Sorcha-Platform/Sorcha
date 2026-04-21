@@ -37,7 +37,11 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     private readonly IBloomFilterRebuilder _bloomFilterRebuilder;
 
     private readonly TimeSpan _pendingExpirationTime = TimeSpan.FromMinutes(5);
-    private readonly JsonSerializerOptions _canonicalJsonOptions;
+
+    // Shared canonical JSON options live in Sorcha.Register.Models so every service
+    // that serialises register-scoped payloads agrees on the byte shape.
+    private static readonly JsonSerializerOptions _canonicalJsonOptions =
+        RegisterSerializationOptions.Canonical;
 
     public RegisterCreationOrchestrator(
         ILogger<RegisterCreationOrchestrator> logger,
@@ -65,17 +69,6 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
         _tenantSubscriptionClient = tenantSubscriptionClient ?? throw new ArgumentNullException(nameof(tenantSubscriptionClient));
         _bloomFilterRebuilder = bloomFilterRebuilder ?? throw new ArgumentNullException(nameof(bloomFilterRebuilder));
-
-        // Configure JSON serialization for canonical form
-        // UnsafeRelaxedJsonEscaping ensures characters like '+' in DateTimeOffset and base64
-        // are NOT escaped to \u002B — critical for deterministic hash computation.
-        _canonicalJsonOptions = new JsonSerializerOptions
-        {
-            WriteIndented = false,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        };
     }
 
     /// <summary>
