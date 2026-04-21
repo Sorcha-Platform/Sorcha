@@ -3,18 +3,16 @@
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using Moq;
 using Polly;
 using Serilog;
 using Sorcha.Tenant.Service.Data;
 using Sorcha.Tenant.Service.IntegrationTests.Configuration;
-using StackExchange.Redis;
+using Sorcha.Testing;
 using Testcontainers.PostgreSql;
 
 namespace Sorcha.Tenant.Service.IntegrationTests.Fixtures;
@@ -24,7 +22,7 @@ namespace Sorcha.Tenant.Service.IntegrationTests.Fixtures;
 /// Supports both InMemory database (fast, default) and PostgreSQL via Testcontainers (realistic).
 /// Set environment variable TEST_DATABASE_MODE=PostgreSQL to use Testcontainers.
 /// </summary>
-public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class TenantServiceWebApplicationFactory : SorchaWebApplicationFactory<Program>
 {
     private readonly string _databaseName;
     private PostgreSqlContainer? _postgresContainer;
@@ -35,13 +33,15 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
 
     public TenantServiceWebApplicationFactory()
     {
-        // Use a unique database name per factory instance for isolation
+        // Unique database name per factory instance for isolation
         _databaseName = $"TenantServiceIntegrationTests_{Guid.NewGuid()}";
     }
 
+    protected override RedisMockMode RedisMockMode => RedisMockMode.Stub;
+
     /// <summary>
     /// Ensures the PostgreSQL container is started before configuration.
-    /// Called synchronously from ConfigureWebHost.
+    /// Called synchronously from ConfigureHostBuilder.
     /// </summary>
     private void EnsureContainerStarted()
     {
@@ -53,7 +53,6 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
             if (_containerInitialized)
                 return;
 
-            // Start PostgreSQL Testcontainer synchronously
             _postgresContainer = new PostgreSqlBuilder()
                 .WithDatabase(_databaseName)
                 .WithUsername("sorcha_test")
@@ -73,21 +72,7 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
         }
     }
 
-    /// <summary>
-    /// Initializes the test infrastructure (starts PostgreSQL container if needed).
-    /// Called automatically by xUnit before any tests run.
-    /// </summary>
-    public ValueTask InitializeAsync()
-    {
-        // Container is already started in ConfigureWebHost, nothing more to do
-        return ValueTask.CompletedTask;
-    }
-
-    /// <summary>
-    /// Cleans up test infrastructure (stops PostgreSQL container if needed).
-    /// Called automatically by xUnit after all tests complete.
-    /// </summary>
-    public new async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (_postgresContainer != null)
         {
@@ -104,175 +89,132 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
         return base.CreateHost(builder);
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    protected override void ConfigureHostBuilder(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
-
-        // Ensure PostgreSQL container is started before configuration (if needed)
+        // Ensure PostgreSQL container is started before any configuration reads
+        // its connection string.
         EnsureContainerStarted();
+    }
 
-        // Configure connection string and JWT settings for tests
-        builder.ConfigureAppConfiguration((context, config) =>
+    protected override void ConfigureTestConfiguration(
+        WebHostBuilderContext context,
+        IConfigurationBuilder configuration)
+    {
+        var testConfig = new Dictionary<string, string?>
         {
-            var testConfig = new Dictionary<string, string?>
-            {
-                // JWT Settings for TokenService
-                ["JwtSettings:Issuer"] = "https://test.sorcha.io",
-                ["JwtSettings:Audiences:0"] = "https://test-api.sorcha.io",
-                ["JwtSettings:SigningKey"] = "test-signing-key-for-integration-tests-minimum-32-characters-required",
-                ["JwtSettings:AccessTokenLifetimeMinutes"] = "60",
-                ["JwtSettings:RefreshTokenLifetimeHours"] = "24",
-                ["JwtSettings:ServiceTokenLifetimeHours"] = "8",
-                ["JwtSettings:ClockSkewMinutes"] = "5",
-                ["JwtSettings:ValidateIssuer"] = "false",
-                ["JwtSettings:ValidateAudience"] = "false",
-                ["JwtSettings:ValidateIssuerSigningKey"] = "false",
-                ["JwtSettings:ValidateLifetime"] = "false"
-            };
-
             // Clear Redis connection string to prevent health check failure (we use a mock)
-            // Use empty string, not null, to properly override appsettings.json values
-            testConfig["Redis:ConnectionString"] = "";
+            ["Redis:ConnectionString"] = "",
+        };
 
-            if (TestConfiguration.UsePostgreSQL)
-            {
-                // Use PostgreSQL Testcontainer connection string
-                testConfig["ConnectionStrings:TenantDatabase"] = _connectionString;
-            }
-            else
-            {
-                // Clear connection string to force InMemory database usage
-                // Use empty string, not null, to properly override appsettings.json values
-                testConfig["ConnectionStrings:TenantDatabase"] = "";
-            }
-
-            config.AddInMemoryCollection(testConfig);
-        });
-
-        builder.ConfigureServices(services =>
+        if (TestConfiguration.UsePostgreSQL)
         {
-            // Remove existing DbContext registrations for both InMemory and PostgreSQL modes
-            var dbContextDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<TenantDbContext>));
-            if (dbContextDescriptor != null)
-                services.Remove(dbContextDescriptor);
+            testConfig["ConnectionStrings:TenantDatabase"] = _connectionString;
+        }
+        else
+        {
+            // Empty string (not null) forces InMemory database usage
+            testConfig["ConnectionStrings:TenantDatabase"] = "";
+        }
 
-            var genericDbContextOptionsDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions));
-            if (genericDbContextOptionsDescriptor != null)
-                services.Remove(genericDbContextOptionsDescriptor);
+        configuration.AddInMemoryCollection(testConfig);
+    }
 
-            services.RemoveAll<TenantDbContext>();
+    protected override void ConfigureAuthentication(IServiceCollection services)
+    {
+        // Tenant keeps its own handler because it round-trips real JWTs
+        // and defaults to seeded admin/member user IDs from TestDataSeeder.
+        services.RemoveAll<IAuthenticationService>();
+        services.RemoveAll<IAuthenticationHandlerProvider>();
+        services.RemoveAll<IAuthenticationSchemeProvider>();
 
-            var efServiceTypes = services.Where(d =>
-                d.ServiceType.FullName?.StartsWith("Microsoft.EntityFrameworkCore") == true ||
-                d.ImplementationType?.FullName?.StartsWith("Npgsql") == true).ToList();
-            foreach (var efService in efServiceTypes)
-                services.Remove(efService);
-
-            if (TestConfiguration.UseInMemory)
-            {
-                // Configure InMemory database using AddDbContext for proper EF Core service registration
-                services.AddDbContext<TenantDbContext>((serviceProvider, options) =>
-                {
-                    options.UseInMemoryDatabase(_databaseName);
-                    options.EnableSensitiveDataLogging();
-                    options.EnableDetailedErrors();
-                });
-
-                Console.WriteLine($"[TEST] Configured InMemory DbContext with database name: {_databaseName}");
-            }
-            else if (TestConfiguration.UsePostgreSQL)
-            {
-                // Configure PostgreSQL with Testcontainers connection string
-                services.AddDbContext<TenantDbContext>((serviceProvider, options) =>
-                {
-                    options.UseNpgsql(_connectionString, npgsqlOptions =>
-                    {
-                        npgsqlOptions.EnableRetryOnFailure(
-                            maxRetryCount: 3,
-                            maxRetryDelay: TimeSpan.FromSeconds(5),
-                            errorCodesToAdd: null);
-                    });
-                    options.EnableSensitiveDataLogging();
-                    options.EnableDetailedErrors();
-                });
-
-                Console.WriteLine($"[TEST] Configured DbContext with connection string: {_connectionString}");
-            }
-
-            // Remove the DatabaseInitializerHostedService to prevent default seed data
-            // that conflicts with our test data (e.g., "Sorcha Local" org vs "Test Organization")
-            var databaseInitializerDescriptor = services.SingleOrDefault(d =>
-                d.ImplementationType == typeof(DatabaseInitializerHostedService));
-            if (databaseInitializerDescriptor != null)
-                services.Remove(databaseInitializerDescriptor);
-
-            // Also remove the DatabaseInitializer itself
-            services.RemoveAll<DatabaseInitializer>();
-
-            // Reconfigure health checks to use simple checks instead of PostgreSQL/Redis
-            // Remove any existing health check registrations and add a simple "always healthy" check
-            var healthCheckBuilderDescriptors = services.Where(d =>
-                d.ServiceType.FullName?.Contains("HealthCheck") == true).ToList();
-            foreach (var descriptor in healthCheckBuilderDescriptors)
-                services.Remove(descriptor);
-
-            // Add simple health checks that always pass
-            services.AddHealthChecks()
-                .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), ["live"]);
-
-            // Remove Redis connection and use a mock for testing
-            services.RemoveAll<IConnectionMultiplexer>();
-            services.RemoveAll<IAsyncPolicy>();
-
-            // Register a null policy for circuit breaker (no-op in tests)
-            services.AddSingleton<IAsyncPolicy>(Policy.NoOpAsync());
-
-            // Create a mock Redis connection multiplexer using Moq
-            var mockDatabase = new Mock<IDatabase>();
-            mockDatabase.Setup(d => d.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(true);
-            mockDatabase.Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(RedisValue.Null);
-            mockDatabase.Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(true);
-            mockDatabase.Setup(d => d.SetAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(true);
-            mockDatabase.Setup(d => d.SetContainsAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(false);
-
-            var mockMultiplexer = new Mock<IConnectionMultiplexer>();
-            mockMultiplexer.Setup(m => m.IsConnected).Returns(true);
-            mockMultiplexer.Setup(m => m.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
-                .Returns(mockDatabase.Object);
-
-            services.AddSingleton(mockMultiplexer.Object);
-
-            // Remove all existing authentication schemes and handlers
-            services.RemoveAll<IAuthenticationService>();
-            services.RemoveAll<IAuthenticationHandlerProvider>();
-            services.RemoveAll<IAuthenticationSchemeProvider>();
-
-            // Add test authentication as the default scheme
-            services.AddAuthentication(options =>
+        services
+            .AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
                 options.DefaultScheme = TestAuthHandler.SchemeName;
             })
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
-        });
+    }
+
+    protected override void ConfigureTestServices(IServiceCollection services)
+    {
+        // Remove existing DbContext registrations (both InMemory and PostgreSQL modes).
+        var dbContextDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<TenantDbContext>));
+        if (dbContextDescriptor != null)
+            services.Remove(dbContextDescriptor);
+
+        var genericDbContextOptionsDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions));
+        if (genericDbContextOptionsDescriptor != null)
+            services.Remove(genericDbContextOptionsDescriptor);
+
+        services.RemoveAll<TenantDbContext>();
+
+        var efServiceTypes = services.Where(d =>
+            d.ServiceType.FullName?.StartsWith("Microsoft.EntityFrameworkCore") == true ||
+            d.ImplementationType?.FullName?.StartsWith("Npgsql") == true).ToList();
+        foreach (var efService in efServiceTypes)
+            services.Remove(efService);
+
+        if (TestConfiguration.UseInMemory)
+        {
+            services.AddDbContext<TenantDbContext>((_, options) =>
+            {
+                options.UseInMemoryDatabase(_databaseName);
+                options.EnableSensitiveDataLogging();
+                options.EnableDetailedErrors();
+            });
+
+            Console.WriteLine($"[TEST] Configured InMemory DbContext with database name: {_databaseName}");
+        }
+        else if (TestConfiguration.UsePostgreSQL)
+        {
+            services.AddDbContext<TenantDbContext>((_, options) =>
+            {
+                options.UseNpgsql(_connectionString, npgsqlOptions =>
+                {
+                    npgsqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(5),
+                        errorCodesToAdd: null);
+                });
+                options.EnableSensitiveDataLogging();
+                options.EnableDetailedErrors();
+            });
+
+            Console.WriteLine($"[TEST] Configured DbContext with connection string: {_connectionString}");
+        }
+
+        // Remove DatabaseInitializerHostedService to prevent default seed data
+        // that conflicts with our test data (e.g., "Sorcha Local" org vs "Test Organization").
+        var databaseInitializerDescriptor = services.SingleOrDefault(d =>
+            d.ImplementationType == typeof(DatabaseInitializerHostedService));
+        if (databaseInitializerDescriptor != null)
+            services.Remove(databaseInitializerDescriptor);
+
+        services.RemoveAll<DatabaseInitializer>();
+
+        // Reconfigure health checks to always-pass.
+        var healthCheckBuilderDescriptors = services.Where(d =>
+            d.ServiceType.FullName?.Contains("HealthCheck") == true).ToList();
+        foreach (var descriptor in healthCheckBuilderDescriptors)
+            services.Remove(descriptor);
+
+        services.AddHealthChecks()
+            .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy(), ["live"]);
+
+        // Register a no-op circuit breaker policy in place of production Polly.
+        services.RemoveAll<IAsyncPolicy>();
+        services.AddSingleton<IAsyncPolicy>(Policy.NoOpAsync());
     }
 
     /// <summary>
-    /// Ensures the database is seeded with test data.
-    /// Call this method after creating the factory to seed the database.
-    /// Thread-safe for use in parallel test execution.
+    /// Ensures the database is seeded with test data. Thread-safe.
     /// </summary>
     public async Task EnsureSeededAsync()
     {
         if (_seeded) return;
 
-        // Run migrations if using PostgreSQL
         if (TestConfiguration.UsePostgreSQL)
         {
             await using var scope = Services.CreateAsyncScope();
@@ -280,41 +222,21 @@ public class TenantServiceWebApplicationFactory : WebApplicationFactory<Program>
             await context.Database.MigrateAsync();
         }
 
-        // Seed test data
         await TestDataSeeder.SeedAsync(Services);
         _seeded = true;
     }
 
     /// <summary>
-    /// Creates an HttpClient configured for a regular authenticated user.
-    /// Uses the seeded test member user.
-    /// </summary>
-    public HttpClient CreateAuthenticatedClient()
-    {
-        var client = CreateClient();
-        client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token");
-        return client;
-    }
-
-    /// <summary>
     /// Creates an HttpClient configured for an administrator user.
-    /// Uses the seeded test admin user.
+    /// Uses the seeded test admin user ID for claim provenance.
     /// </summary>
-    public HttpClient CreateAdminClient()
+    public new HttpClient CreateAdminClient()
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token");
         client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
         client.DefaultRequestHeaders.Add("X-Test-User-Id", TestDataSeeder.TestAdminUserId.ToString());
         return client;
-    }
-
-    /// <summary>
-    /// Creates an HttpClient with no authentication headers.
-    /// </summary>
-    public HttpClient CreateUnauthenticatedClient()
-    {
-        return CreateClient();
     }
 
     /// <summary>

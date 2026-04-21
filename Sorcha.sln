@@ -233,6 +233,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.AddressLookup", "src
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.AddressLookup.Tests", "tests\Sorcha.AddressLookup.Tests\Sorcha.AddressLookup.Tests.csproj", "{20866764-BADB-4E57-8B07-4BB054907CF9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sorcha.Testing", "tests\Sorcha.Testing\Sorcha.Testing.csproj", "{C38F01AC-081A-48EF-ACAD-86983D113016}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1251,6 +1253,18 @@ Global
 		{20866764-BADB-4E57-8B07-4BB054907CF9}.Release|x64.Build.0 = Release|Any CPU
 		{20866764-BADB-4E57-8B07-4BB054907CF9}.Release|x86.ActiveCfg = Release|Any CPU
 		{20866764-BADB-4E57-8B07-4BB054907CF9}.Release|x86.Build.0 = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|x64.Build.0 = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Debug|x86.Build.0 = Debug|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|x64.ActiveCfg = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|x64.Build.0 = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|x86.ActiveCfg = Release|Any CPU
+		{C38F01AC-081A-48EF-ACAD-86983D113016}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1346,5 +1360,6 @@ Global
 		{9EAA07DB-3A90-4E66-88A7-4893C9EE462D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{EA507D9C-94FD-4B5B-A433-F9DB6D5F8A0E} = {881589EE-639B-0A35-DBCE-5D94E4FC90C0}
 		{20866764-BADB-4E57-8B07-4BB054907CF9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{C38F01AC-081A-48EF-ACAD-86983D113016} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

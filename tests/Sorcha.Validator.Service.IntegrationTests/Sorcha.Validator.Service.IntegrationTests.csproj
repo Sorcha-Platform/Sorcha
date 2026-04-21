@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Sorcha.Validator.Service\Sorcha.Validator.Service.csproj" />
     <ProjectReference Include="..\..\src\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
+    <ProjectReference Include="..\Sorcha.Testing\Sorcha.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
