@@ -91,4 +91,15 @@ public class Register
     /// document after Feature 108 persists the new enum-name form.
     /// </remarks>
     public RegisterSyncState? SyncState { get; set; }
+
+    /// <summary>
+    /// Control record stashed at register creation time so local-relationship derivation
+    /// can resolve the roster before the genesis docket is sealed. Denormalised from the
+    /// authoritative copy that lives in the genesis transaction payload (docket 0).
+    /// Once docket 0 is sealed the local-relationship service prefers the docket-sourced
+    /// control record; this stash is the pre-seal fallback that breaks the validator-
+    /// enrolment chicken-and-egg for freshly-created local registers.
+    /// Null on legacy records and on registers synced from a peer.
+    /// </summary>
+    public RegisterControlRecord? InitialControlRecord { get; set; }
 }

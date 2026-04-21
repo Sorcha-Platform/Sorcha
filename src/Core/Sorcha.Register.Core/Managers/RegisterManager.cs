@@ -51,6 +51,7 @@ public class RegisterManager
         bool devMode = false,
         RegisterPurpose purpose = RegisterPurpose.General,
         RegisterSyncState? syncState = null,
+        Models.RegisterControlRecord? initialControlRecord = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -72,6 +73,7 @@ public class RegisterManager
             Purpose = purpose,
             DevMode = devMode,
             SyncState = syncState,
+            InitialControlRecord = initialControlRecord,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

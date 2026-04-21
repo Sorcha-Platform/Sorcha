@@ -13,7 +13,7 @@ namespace Sorcha.Validator.Service.Services;
 /// Feature 108. Seeds <see cref="IRegisterMonitoringRegistry"/> at startup and on every
 /// <c>register:relationship-changed</c> Redis event by querying Register.Service for the
 /// list of registers whose roster includes this validator's docket-signing public key.
-/// A 5-minute safety poll reconciles against missed events.
+/// A 30-second safety poll reconciles against missed events.
 /// </summary>
 /// <remarks>
 /// Replaces the side-effect enrolment that previously happened inside
@@ -23,7 +23,7 @@ namespace Sorcha.Validator.Service.Services;
 /// </remarks>
 public sealed class RegisterMonitoringBootstrap : BackgroundService
 {
-    private static readonly TimeSpan SafetyPollInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan SafetyPollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;

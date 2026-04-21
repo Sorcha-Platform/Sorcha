@@ -98,42 +98,60 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
         LocalIdentitySnapshot identity,
         CancellationToken cancellationToken)
     {
-        // Read genesis docket and find its Control transaction.
+        // Primary path: read genesis docket and find its Control transaction.
         var genesis = await _repository.GetDocketAsync(registerId, 0, cancellationToken);
-        if (genesis is null)
+        if (genesis is not null)
         {
-            _logger?.LogDebug(
-                "Cannot derive relationship for register {RegisterId}: genesis docket not present locally",
-                registerId);
-            return null;
-        }
+            var genesisTxs = await _repository.GetTransactionsByDocketAsync(registerId, 0, cancellationToken);
+            var docketControlRecord = TryExtractControlRecord(registerId, genesisTxs);
+            if (docketControlRecord is null)
+            {
+                // No control record — legacy register. Fall back to None (subscriber).
+                return new RegisterLocalRelationship(
+                    RegisterId: registerId,
+                    Roles: RegisterRoleSet.None,
+                    ControlRecordVersion: 0,
+                    DerivedAt: DateTimeOffset.UtcNow);
+            }
 
-        var genesisTxs = await _repository.GetTransactionsByDocketAsync(registerId, 0, cancellationToken);
-        var controlRecord = TryExtractControlRecord(registerId, genesisTxs);
-        if (controlRecord is null)
-        {
-            // No control record — legacy register. Fall back to None (subscriber).
+            var docketRoles = DeriveRoles(docketControlRecord, identity);
+            var docketVersion = (int)(genesis.Id);
+
+            _logger?.LogDebug(
+                "Derived relationship for register {RegisterId}: {Roles} (controlRecordVersion={Version}, source=docket)",
+                registerId, docketRoles, docketVersion);
+
             return new RegisterLocalRelationship(
                 RegisterId: registerId,
-                Roles: RegisterRoleSet.None,
+                Roles: docketRoles,
+                ControlRecordVersion: docketVersion,
+                DerivedAt: DateTimeOffset.UtcNow);
+        }
+
+        // Pre-seal fallback: genesis docket not yet written, but the register row may carry
+        // the stashed InitialControlRecord from FinalizeAsync. This lets the validator enrol
+        // for monitoring before docket 0 exists and breaks the bootstrap deadlock where
+        // the validator can't seal the genesis docket without first seeing a control record,
+        // which can't exist without the genesis docket being sealed.
+        var registerRow = await _repository.GetRegisterAsync(registerId, cancellationToken);
+        if (registerRow?.InitialControlRecord is not null)
+        {
+            var stashRoles = DeriveRoles(registerRow.InitialControlRecord, identity);
+            _logger?.LogDebug(
+                "Derived relationship for register {RegisterId}: {Roles} (controlRecordVersion=0, source=stash)",
+                registerId, stashRoles);
+
+            return new RegisterLocalRelationship(
+                RegisterId: registerId,
+                Roles: stashRoles,
                 ControlRecordVersion: 0,
                 DerivedAt: DateTimeOffset.UtcNow);
         }
 
-        var roles = DeriveRoles(controlRecord, identity);
-        var version = (int)(genesis.Id);
-
-        var result = new RegisterLocalRelationship(
-            RegisterId: registerId,
-            Roles: roles,
-            ControlRecordVersion: version,
-            DerivedAt: DateTimeOffset.UtcNow);
-
         _logger?.LogDebug(
-            "Derived relationship for register {RegisterId}: {Roles} (controlRecordVersion={Version})",
-            registerId, roles, version);
-
-        return result;
+            "Cannot derive relationship for register {RegisterId}: genesis docket not present locally and no stash available",
+            registerId);
+        return null;
     }
 
     private RegisterControlRecord? TryExtractControlRecord(

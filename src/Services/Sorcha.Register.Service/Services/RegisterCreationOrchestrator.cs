@@ -35,6 +35,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
     private readonly IPeerServiceClient _peerClient;
     private readonly ITenantSubscriptionClient _tenantSubscriptionClient;
     private readonly IBloomFilterRebuilder _bloomFilterRebuilder;
+    private readonly RelationshipChangeNotifier _relationshipNotifier;
 
     private readonly TimeSpan _pendingExpirationTime = TimeSpan.FromMinutes(5);
 
@@ -55,7 +56,8 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         IPendingRegistrationStore pendingStore,
         IPeerServiceClient peerClient,
         ITenantSubscriptionClient tenantSubscriptionClient,
-        IBloomFilterRebuilder bloomFilterRebuilder)
+        IBloomFilterRebuilder bloomFilterRebuilder,
+        RelationshipChangeNotifier relationshipNotifier)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _registerManager = registerManager ?? throw new ArgumentNullException(nameof(registerManager));
@@ -69,6 +71,7 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         _peerClient = peerClient ?? throw new ArgumentNullException(nameof(peerClient));
         _tenantSubscriptionClient = tenantSubscriptionClient ?? throw new ArgumentNullException(nameof(tenantSubscriptionClient));
         _bloomFilterRebuilder = bloomFilterRebuilder ?? throw new ArgumentNullException(nameof(bloomFilterRebuilder));
+        _relationshipNotifier = relationshipNotifier ?? throw new ArgumentNullException(nameof(relationshipNotifier));
     }
 
     /// <summary>
@@ -442,7 +445,10 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             genesisTransaction.TxId);
 
         // Only persist register AFTER genesis succeeds (atomic guarantee)
-        // Use the register ID from the pending registration (established during initiation)
+        // Use the register ID from the pending registration (established during initiation).
+        // Stash the control record so local-relationship derivation can resolve the roster
+        // before the genesis docket is sealed — this is what lets the validator enrol for
+        // monitoring and then seal the genesis tx that's waiting in its pool.
         var register = await _registerManager.CreateRegisterAsync(
             controlRecord.Name,
             advertise: pending.Advertise,
@@ -451,9 +457,17 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
             description: controlRecord.Description,
             devMode: pending.DevMode,
             purpose: pending.Purpose,
+            initialControlRecord: controlRecord,
             cancellationToken: cancellationToken);
 
         _logger.LogInformation("Created register {RegisterId} in database after genesis success", register.Id);
+
+        // Fire relationship-changed event so the local validator enrols for monitoring
+        // without waiting for the next 30-second safety poll. The validator's
+        // RegisterMonitoringBootstrap will re-reconcile, find this register via the
+        // stashed control record, and start sealing the genesis tx waiting in its pool.
+        // Fire-and-forget — Redis publish failure is non-fatal, the safety poll covers it.
+        _ = Task.Run(() => _relationshipNotifier.PublishIfChangedAsync(register.Id));
 
         // Set register Online after successful creation
         // SignalR notifications (RegisterStatusChanged, RegisterCreated) handled by RegisterEventBridgeService
