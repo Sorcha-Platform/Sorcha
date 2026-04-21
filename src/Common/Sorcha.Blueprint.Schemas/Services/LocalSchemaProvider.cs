@@ -129,25 +129,31 @@ public class LocalSchemaProvider : IExternalSchemaProvider, IDisposable
                 try
                 {
                     var json = File.ReadAllText(file);
-                    var schemaFile = JsonSerializer.Deserialize<SchemaFileFormat>(json, CaseInsensitiveJson);
 
-                    if (schemaFile is null || string.IsNullOrWhiteSpace(schemaFile.Identifier)
-                                           || string.IsNullOrWhiteSpace(schemaFile.Title))
+                    // Two on-disk shapes share this tree: (1) Sorcha envelope files
+                    // with top-level identifier/title/category/schema, and (2) raw
+                    // JSON Schema documents (sorcha-core/*.json) with $id at the
+                    // top level, also consumed by CoreSchemaSeedService for $ref
+                    // resolution. Sniff which we have before deserialising so the
+                    // raw-schema files surface in the library listing instead of
+                    // being silently dropped as "invalid".
+                    using var probe = JsonDocument.Parse(json);
+                    var root = probe.RootElement;
+
+                    if (root.TryGetProperty("identifier", out _))
                     {
-                        _logger.LogWarning("Skipping invalid schema file {File}", Path.GetFileName(file));
-                        continue;
+                        var result = TryBuildEnvelopeResult(json, file);
+                        if (result is not null) results.Add(result);
                     }
-
-                    var content = BuildContent(schemaFile);
-                    var sectorTags = BuildSectorTags(schemaFile);
-
-                    results.Add(new ExternalSchemaResult(
-                        Name: schemaFile.Title,
-                        Description: schemaFile.Description ?? $"Sorcha standard schema: {schemaFile.Title}",
-                        Url: $"urn:sorcha:schema:{schemaFile.Identifier}",
-                        Provider: ProviderName,
-                        Content: content,
-                        SectorTags: sectorTags));
+                    else if (root.TryGetProperty("$id", out _))
+                    {
+                        var result = TryBuildRawSchemaResult(json, file);
+                        if (result is not null) results.Add(result);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Skipping invalid schema file {File} (no identifier or $id)", Path.GetFileName(file));
+                    }
                 }
                 catch (JsonException ex)
                 {
@@ -195,6 +201,66 @@ public class LocalSchemaProvider : IExternalSchemaProvider, IDisposable
 
         // Fallback to base directory path
         return baseDirCandidate;
+    }
+
+    private ExternalSchemaResult? TryBuildEnvelopeResult(string json, string filePath)
+    {
+        var schemaFile = JsonSerializer.Deserialize<SchemaFileFormat>(json, CaseInsensitiveJson);
+
+        if (schemaFile is null || string.IsNullOrWhiteSpace(schemaFile.Identifier)
+                               || string.IsNullOrWhiteSpace(schemaFile.Title))
+        {
+            _logger.LogWarning("Skipping invalid envelope schema file {File}", Path.GetFileName(filePath));
+            return null;
+        }
+
+        return new ExternalSchemaResult(
+            Name: schemaFile.Title,
+            Description: schemaFile.Description ?? $"Sorcha standard schema: {schemaFile.Title}",
+            Url: $"urn:sorcha:schema:{schemaFile.Identifier}",
+            Provider: ProviderName,
+            Content: BuildContent(schemaFile),
+            SectorTags: BuildSectorTags(schemaFile));
+    }
+
+    /// <summary>
+    /// Builds a library entry for a raw JSON Schema document (e.g. the
+    /// <c>blueprints/schemas/sorcha-core/*.json</c> identity primitives that
+    /// <see cref="Sorcha.Blueprint.Schemas.Services"/>' sibling
+    /// <c>CoreSchemaSeedService</c> consumes for <c>$ref</c> resolution).
+    /// Derives identity from <c>$id</c>/<c>title</c> and tags the entry with
+    /// the <c>core</c> sector so it surfaces under the "Sorcha Core Primitives"
+    /// chip in the Schema Library.
+    /// </summary>
+    private ExternalSchemaResult? TryBuildRawSchemaResult(string json, string filePath)
+    {
+        // Parse once into a long-lived JsonDocument we can hand to the result.
+        // The outer `probe` in BuildCatalog is a `using` that gets disposed
+        // before we return, so we parse a fresh document here.
+        var content = JsonDocument.Parse(json);
+        var root = content.RootElement;
+
+        var id = root.TryGetProperty("$id", out var idElement) ? idElement.GetString() : null;
+        var title = root.TryGetProperty("title", out var titleElement) ? titleElement.GetString() : null;
+
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
+        {
+            _logger.LogWarning("Skipping raw schema file {File} (missing $id or title)", Path.GetFileName(filePath));
+            content.Dispose();
+            return null;
+        }
+
+        var description = root.TryGetProperty("description", out var descElement)
+            ? descElement.GetString()
+            : null;
+
+        return new ExternalSchemaResult(
+            Name: title,
+            Description: description ?? $"Sorcha core primitive: {title}",
+            Url: id,
+            Provider: ProviderName,
+            Content: content,
+            SectorTags: ["core"]);
     }
 
     private static JsonDocument BuildContent(SchemaFileFormat file)

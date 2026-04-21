@@ -283,11 +283,104 @@ public class LocalSchemaProviderTests : IDisposable
         catalog.Should().Contain(r => r.Name == "UK Address");
         catalog.Should().Contain(r => r.Name == "Personal Identity");
 
+        // Raw-JSON-Schema core primitives must also surface in the library so
+        // the "Sorcha Core Primitives" sector chip is non-empty — see fix for
+        // the two-pipelines-sharing-a-tree regression.
+        catalog.Should().Contain(r => r.Name == "Personal Name");
+        catalog.Should().Contain(r => r.Name == "Postal Address");
+        catalog.Should().Contain(r => r.Name == "Date of Birth");
+
+        catalog.Where(r => r.SectorTags is not null && r.SectorTags.Contains("core"))
+               .Should().HaveCountGreaterThan(0,
+                   "sorcha-core/*.json primitives must be tagged with the 'core' sector");
+
         // All entries should have content
         catalog.Should().OnlyContain(r => r.Content != null);
 
         // All entries should have the provider name
         catalog.Should().OnlyContain(r => r.Provider == "Sorcha Local");
+    }
+
+    [Fact]
+    public async Task GetCatalogAsync_RawJsonSchemaFile_LoadsAsCorePrimitive()
+    {
+        WriteRawJsonSchemaFile(
+            category: "sorcha-core",
+            fileName: "PersonName.v1.json",
+            id: "https://schemas.sorcha.dev/core/PersonName/v1",
+            title: "Personal Name",
+            description: "A person's name decomposed into given, middle, family, and full forms.");
+
+        var provider = new LocalSchemaProvider(_tempDir, _logger.Object);
+        var catalog = (await provider.GetCatalogAsync()).ToList();
+
+        var entry = catalog.Single();
+        entry.Name.Should().Be("Personal Name");
+        entry.Url.Should().Be("https://schemas.sorcha.dev/core/PersonName/v1");
+        entry.Description.Should().Contain("given, middle, family");
+        entry.SectorTags.Should().Contain("core");
+        entry.Provider.Should().Be("Sorcha Local");
+    }
+
+    [Fact]
+    public async Task GetCatalogAsync_RawJsonSchemaMissingTitle_IsSkipped()
+    {
+        var dir = Path.Combine(_tempDir, "sorcha-core");
+        Directory.CreateDirectory(dir);
+
+        // Raw JSON Schema with $id but no title — should be skipped, not crash.
+        File.WriteAllText(Path.Combine(dir, "bad.json"),
+            """{ "$id": "https://example.com/x", "type": "object" }""");
+
+        var provider = new LocalSchemaProvider(_tempDir, _logger.Object);
+        var catalog = (await provider.GetCatalogAsync()).ToList();
+
+        catalog.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetCatalogAsync_MixedFormats_BothSurfaceInCatalog()
+    {
+        // Envelope format (existing path)
+        WriteSchemaFile("people-identity", "uk-address", "UK Address",
+            "Standard UK postal address", "people-identity", ["address", "uk"]);
+
+        // Raw JSON Schema format (new path)
+        WriteRawJsonSchemaFile(
+            category: "sorcha-core",
+            fileName: "EmailAddress.v1.json",
+            id: "https://schemas.sorcha.dev/core/EmailAddress/v1",
+            title: "Email Address",
+            description: "A single email address.");
+
+        var provider = new LocalSchemaProvider(_tempDir, _logger.Object);
+        var catalog = (await provider.GetCatalogAsync()).ToList();
+
+        catalog.Should().HaveCount(2);
+        catalog.Should().Contain(r => r.Name == "UK Address" && r.SectorTags!.Contains("people-identity"));
+        catalog.Should().Contain(r => r.Name == "Email Address" && r.SectorTags!.Contains("core"));
+    }
+
+    private void WriteRawJsonSchemaFile(string category, string fileName, string id, string title, string description)
+    {
+        var dir = Path.Combine(_tempDir, category);
+        Directory.CreateDirectory(dir);
+
+        var schema = new Dictionary<string, object>
+        {
+            ["$id"] = id,
+            ["$schema"] = "https://json-schema.org/draft/2020-12/schema",
+            ["type"] = "object",
+            ["title"] = title,
+            ["description"] = description,
+            ["properties"] = new Dictionary<string, object>
+            {
+                ["sample"] = new Dictionary<string, object> { ["type"] = "string" }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(schema, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(Path.Combine(dir, fileName), json);
     }
 
     private void WriteSchemaFile(
