@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.Register.Models;
 using Sorcha.ServiceClients.Register;
 using ProtoSyncState = Sorcha.Peer.Service.Protos.SyncState;
 
@@ -104,6 +105,9 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 
     /// <summary>
     /// Streams transactions from the local cache matching the requested transaction IDs.
+    /// Falls back to the co-located Register Service when the peer-service cache has
+    /// no entry for the register — the cache is populated on replication, so registers
+    /// this node owns (sealed locally, never replicated) are never in it.
     /// </summary>
     public override async Task PullDocketTransactions(
         Protos.DocketTransactionRequest request,
@@ -117,10 +121,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var cacheEntry = _registerCache.Get(request.RegisterId);
         if (cacheEntry == null)
         {
-            _logger.LogDebug("Register {RegisterId} not found in cache", request.RegisterId);
-            throw new RpcException(new Status(
-                StatusCode.NotFound,
-                $"Register '{request.RegisterId}' not found in local cache"));
+            _logger.LogInformation(
+                "Register {RegisterId} not in cache, falling back to Register Service for {Count} transaction IDs",
+                request.RegisterId, request.TransactionIds.Count);
+
+            await PullDocketTransactionsFromRegisterServiceAsync(
+                request, responseStream, context.CancellationToken);
+            return;
         }
 
         var streamed = 0;
@@ -156,6 +163,86 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 
         _logger.LogDebug(
             "PullDocketTransactions completed for register {RegisterId}: streamed {Streamed}, not found {NotFound}",
+            request.RegisterId, streamed, notFound);
+    }
+
+    /// <summary>
+    /// Serves PullDocketTransactions by reading transactions from the local Register
+    /// Service. Used when the register is not in the peer-service's in-memory cache
+    /// (typically because this node owns the register and never replicated it).
+    /// </summary>
+    private async Task PullDocketTransactionsFromRegisterServiceAsync(
+        Protos.DocketTransactionRequest request,
+        IServerStreamWriter<Protos.TransactionEntry> responseStream,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+
+        // Short-circuit if the register genuinely doesn't exist anywhere — the caller
+        // will see an empty stream and move on to its next sync cycle instead of
+        // surfacing an RpcException that the background loop treats as transient.
+        var register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
+        if (register == null)
+        {
+            _logger.LogInformation(
+                "Register {RegisterId} unknown to Register Service — streaming empty response",
+                request.RegisterId);
+            return;
+        }
+
+        var streamed = 0;
+        var notFound = 0;
+
+        foreach (var txId in request.TransactionIds)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            TransactionModel? tx;
+            try
+            {
+                tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Register Service fetch failed for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                notFound++;
+                continue;
+            }
+
+            if (tx == null)
+            {
+                notFound++;
+                continue;
+            }
+
+            // The cache-hit path streams the raw transaction bytes pre-computed during
+            // replication ingest. Here we don't have pre-computed bytes, so serialize
+            // the canonical JSON-LD shape and hash it to match the subscriber's
+            // SHA-256 integrity check in RegisterReplicationService.
+            var txJson = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(tx);
+            var checksum = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(txJson)).ToLowerInvariant();
+
+            var entry = new Protos.TransactionEntry
+            {
+                TransactionId = tx.TxId,
+                RegisterId = tx.RegisterId,
+                TransactionData = ByteString.CopyFrom(txJson),
+                Checksum = checksum,
+                CreatedAt = new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero).ToUnixTimeMilliseconds()
+            };
+
+            await responseStream.WriteAsync(entry, cancellationToken);
+            streamed++;
+        }
+
+        _logger.LogInformation(
+            "PullDocketTransactions from Register Service completed for {RegisterId}: streamed {Streamed}, not found {NotFound}",
             request.RegisterId, streamed, notFound);
     }
 
