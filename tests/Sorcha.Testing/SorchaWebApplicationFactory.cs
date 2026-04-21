@@ -55,6 +55,16 @@ public abstract class SorchaWebApplicationFactory<TEntryPoint>
     }
 
     /// <summary>
+    /// Installs the authentication scheme used by the factory. Override to
+    /// wire in a service-specific handler (e.g. one that accepts real JWT
+    /// tokens) instead of the shared <see cref="TestAuthHandler"/>.
+    /// </summary>
+    protected virtual void ConfigureAuthentication(IServiceCollection services)
+    {
+        services.AddTestAuthentication(ConfigureTestAuth);
+    }
+
+    /// <summary>
     /// Hook called before <see cref="ConfigureWebHost"/> wires anything up.
     /// Use for `builder.UseSetting(...)` values that must be visible during
     /// the host-builder phase (i.e. before <see cref="ConfigureAppConfiguration"/>
@@ -78,7 +88,7 @@ public abstract class SorchaWebApplicationFactory<TEntryPoint>
 
         builder.ConfigureServices(services =>
         {
-            services.AddTestAuthentication(ConfigureTestAuth);
+            ConfigureAuthentication(services);
 
             if (RedisMockMode != RedisMockMode.None)
             {
