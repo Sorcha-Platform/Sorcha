@@ -1,0 +1,100 @@
+{
+  "id": "ping-pong-n1",
+  "title": "Ping-Pong (cross-machine)",
+  "description": "Two-org ping-pong over the peer network. The n1-hosted Pong Corp owns the public register and starts the exchange; local-hosted Ping Labs replies. Register ownership sits on the public node so the NAT'd peer pulls towards it.",
+  "version": 1,
+  "category": "demo",
+  "tags": ["demo", "two-party", "looping", "cross-machine", "p2p"],
+  "author": "Sorcha Team",
+  "published": true,
+  "template": {
+    "id": "ping-pong-n1",
+    "title": "Ping-Pong (cross-machine)",
+    "description": "Pong Corp (n1) starts, Ping Labs (local) replies, repeat. The starting action sits on the register-owning node so pulls happen in the NAT-friendly direction.",
+    "version": 1,
+    "metadata": {
+      "category": "demo",
+      "author": "Sorcha Team",
+      "hasCycles": "true"
+    },
+    "participants": [
+      {
+        "id": "pong",
+        "name": "Pong",
+        "organisation": "Pong Corp",
+        "description": "n1-side participant (register owner). Starts each round."
+      },
+      {
+        "id": "ping",
+        "name": "Ping",
+        "organisation": "Ping Labs",
+        "description": "Local-side participant. Replies after pulling the transaction from n1."
+      }
+    ],
+    "actions": [
+      {
+        "id": 0,
+        "title": "Pong",
+        "description": "Pong Corp (n1) sends a counter-incrementing message to Ping Labs.",
+        "sender": "pong",
+        "isStartingAction": true,
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string", "minLength": 1, "title": "Message" },
+              "counter": { "type": "integer", "minimum": 1, "title": "Round counter" },
+              "fromHost": { "type": "string", "title": "Origin host" }
+            },
+            "required": ["message", "counter"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "pong", "dataPointers": ["/*"] },
+          { "participantAddress": "ping", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "pong-to-ping",
+            "nextActionIds": [1],
+            "isDefault": true,
+            "description": "Forward to Ping Labs on the NAT'd node"
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "title": "Ping",
+        "description": "Ping Labs (local) replies to Pong Corp, optionally bouncing back for another round.",
+        "sender": "ping",
+        "requiredPriorActions": [0],
+        "dataSchemas": [
+          {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string", "minLength": 1, "title": "Message" },
+              "counter": { "type": "integer", "minimum": 1, "title": "Round counter" },
+              "fromHost": { "type": "string", "title": "Origin host" }
+            },
+            "required": ["message", "counter"]
+          }
+        ],
+        "disclosures": [
+          { "participantAddress": "pong", "dataPointers": ["/*"] },
+          { "participantAddress": "ping", "dataPointers": ["/*"] }
+        ],
+        "routes": [
+          {
+            "id": "ping-to-pong",
+            "nextActionIds": [0],
+            "isDefault": true,
+            "description": "Loop back to Pong Corp for another round"
+          }
+        ]
+      }
+    ]
+  },
+  "parameterSchema": null,
+  "defaultParameters": null,
+  "examples": []
+}

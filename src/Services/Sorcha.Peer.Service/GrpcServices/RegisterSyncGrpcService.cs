@@ -570,6 +570,8 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         IServerStreamWriter<Protos.LiveTransactionEvent> responseStream,
         CancellationToken cancellationToken)
     {
+        // Scope lives for the entire stream lifetime on purpose — creating one
+        // scope-per-poll would churn HTTP handlers and DI lookups every 2 seconds.
         using var scope = _scopeFactory.CreateScope();
         var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
         var localPeerId = _configuration.ResolvedPeerId;
@@ -649,6 +651,12 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
 
                 if (docket == null) break;
 
+                // Atomic per-docket delivery: if any transaction fetch fails, bail
+                // out of both loops and leave nextDocket pointing at this docket so
+                // the next poll cycle retries the entire docket. Delivering a partial
+                // docket would fail the subscriber's hash/Merkle check downstream.
+                var docketFailed = false;
+
                 foreach (var txStub in docket.Transactions)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
@@ -667,12 +675,20 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                     {
                         _logger.LogWarning(
                             ex,
-                            "Register Service tx fetch failed for {TxId} on register {RegisterId}",
-                            txStub.TxId, request.RegisterId);
-                        continue;
+                            "Register Service tx fetch failed for {TxId} on register {RegisterId} — will retry full docket {DocketNumber} on next poll",
+                            txStub.TxId, request.RegisterId, nextDocket);
+                        docketFailed = true;
+                        break;
                     }
 
-                    if (tx == null) continue;
+                    if (tx == null)
+                    {
+                        _logger.LogWarning(
+                            "Register Service returned null for tx {TxId} on register {RegisterId} — will retry full docket {DocketNumber} on next poll",
+                            txStub.TxId, request.RegisterId, nextDocket);
+                        docketFailed = true;
+                        break;
+                    }
 
                     var txJson = JsonSerializer.SerializeToUtf8Bytes(
                         tx, RegisterSerializationOptions.Canonical);
@@ -681,7 +697,9 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                     var evt = new Protos.LiveTransactionEvent
                     {
                         TransactionId = tx.TxId,
-                        RegisterId = tx.RegisterId,
+                        // Use request.RegisterId defensively — GetTransactionAsync's
+                        // DTO occasionally comes back with an empty RegisterId.
+                        RegisterId = request.RegisterId,
                         Version = nextDocket,
                         TransactionData = ByteString.CopyFrom(txJson),
                         Checksum = checksum,
@@ -693,6 +711,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                     await responseStream.WriteAsync(evt, cancellationToken);
                 }
 
+                if (docketFailed) break;
                 nextDocket++;
             }
 
