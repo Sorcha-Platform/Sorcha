@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.ComponentModel.DataAnnotations;
 using FluentAssertions;
+using Sorcha.UI.Core.Models.Chat;
 using Sorcha.UI.Core.Services.Designer;
 using Xunit;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
@@ -64,7 +64,7 @@ public class DesignerContextTests
     {
         var (ctx, count) = CreateTracked();
 
-        ctx.ApplyAiUpdate(NewBlueprint(), new ValidationResult("ok"), editedActionId: "3");
+        ctx.ApplyAiUpdate(NewBlueprint(), new ValidationResult { IsValid = true }, editedActionId: "3");
 
         ctx.ActiveActionId.Should().Be("3");
         ctx.IsDirty.Should().BeTrue();
@@ -180,7 +180,7 @@ public class DesignerContextTests
     {
         var (ctx, count) = CreateTracked();
 
-        ctx.UpdateValidation(new ValidationResult("x"));
+        ctx.UpdateValidation(new ValidationResult { IsValid = false });
 
         ctx.Validation.Should().NotBeNull();
         count().Should().Be(1);
@@ -197,7 +197,7 @@ public class DesignerContextTests
         ctx.ApplyAiUpdate(NewBlueprint(), null, "1");                          // 2
         ctx.SetActiveActionManual("2");                                        // 3
         ctx.FollowAi();                                                        // 4
-        ctx.UpdateValidation(new ValidationResult("v"));                       // 5
+        ctx.UpdateValidation(new ValidationResult { IsValid = true });                       // 5
         ctx.MarkClean();                                                       // 6 (was dirty from ApplyAiUpdate)
         ctx.MarkDirty();                                                       // 7
 

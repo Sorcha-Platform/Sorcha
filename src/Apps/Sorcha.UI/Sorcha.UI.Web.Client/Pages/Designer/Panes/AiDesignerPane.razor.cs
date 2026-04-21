@@ -152,10 +152,7 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
         InvokeAsync(() =>
         {
             // TODO(T033): hub event payload does not yet carry the edited action id.
-            // Also: DesignerContext.Validation is System.ComponentModel.DataAnnotations.ValidationResult
-            // (distinct from the Chat-layer type returned by the hub); pass null until the
-            // foundation is reconciled in a follow-up. ApplyAiUpdate tolerates null by design.
-            Context.ApplyAiUpdate(blueprint, val: null, editedActionId: null);
+            Context.ApplyAiUpdate(blueprint, validation, editedActionId: null);
             StateHasChanged();
         });
     }

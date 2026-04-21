@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sorcha Hero Animation — Design Playground</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e0e0e0; }
+
+        .controls {
+            position: fixed; top: 0; right: 0; z-index: 100;
+            background: rgba(10,10,15,0.95); border-left: 1px solid #1a1a2e;
+            border-bottom: 1px solid #1a1a2e; padding: 16px 20px;
+            width: 320px; max-height: 100vh; overflow-y: auto;
+            font-size: 13px;
+        }
+        .controls h3 { color: #7c8aff; margin-bottom: 12px; font-size: 14px; }
+        .controls label { display: block; margin: 8px 0 4px; color: #999; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .controls input[type="range"] { width: 100%; accent-color: #7c8aff; }
+        .controls select { width: 100%; background: #1a1a2e; color: #e0e0e0; border: 1px solid #2a2a4e; padding: 6px 8px; border-radius: 4px; }
+        .controls .val { float: right; color: #7c8aff; font-weight: 600; }
+        .controls hr { border: none; border-top: 1px solid #1a1a2e; margin: 12px 0; }
+        .controls .preset-btn {
+            display: inline-block; padding: 6px 12px; margin: 4px 4px 4px 0;
+            background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 4px;
+            color: #ccc; cursor: pointer; font-size: 12px; transition: all 0.2s;
+        }
+        .preset-btn:hover { background: #2a2a4e; color: #7c8aff; border-color: #7c8aff; }
+        .preset-btn.active { background: #7c8aff; color: #0a0a0f; border-color: #7c8aff; }
+
+        /* Hero mock */
+        .hero-mock {
+            position: relative; width: calc(100% - 320px); min-height: 100vh;
+            overflow: hidden;
+        }
+        .hero-mock canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        .hero-content-mock {
+            position: relative; z-index: 2; padding: 120px 60px 80px;
+            max-width: 700px;
+        }
+        .hero-badge-mock {
+            display: inline-block; padding: 6px 16px; border-radius: 20px;
+            background: rgba(124,138,255,0.1); border: 1px solid rgba(124,138,255,0.3);
+            color: #7c8aff; font-size: 13px; font-weight: 500; margin-bottom: 24px;
+        }
+        .hero-title-mock {
+            font-size: 48px; font-weight: 800; line-height: 1.1; margin-bottom: 20px;
+            color: #fff;
+        }
+        .hero-title-mock span { color: #7c8aff; }
+        .hero-subtitle-mock {
+            font-size: 18px; line-height: 1.6; color: #999; margin-bottom: 32px;
+            max-width: 560px;
+        }
+        .hero-stats-mock {
+            display: flex; gap: 32px; margin-top: 40px;
+        }
+        .stat-mock .stat-val { font-size: 24px; font-weight: 700; color: #fff; }
+        .stat-mock .stat-lbl { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Gradient overlays to blend animation */
+        .hero-mock::after {
+            content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+            background: linear-gradient(to top, #0a0a0f, transparent);
+            z-index: 1; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero-mock">
+    <canvas id="gridCanvas"></canvas>
+    <div class="hero-content-mock">
+        <div class="hero-badge-mock">Open-Source Trust Infrastructure</div>
+        <h1 class="hero-title-mock">
+            Trust infrastructure for the<br>
+            <span>multi-party world.</span>
+        </h1>
+        <p class="hero-subtitle-mock">
+            Open-source cryptographic proof that your workflows happened,
+            your data is intact, and every participant can verify it.
+        </p>
+        <div class="hero-stats-mock">
+            <div class="stat-mock"><div class="stat-val">8</div><div class="stat-lbl">Microservices</div></div>
+            <div class="stat-mock"><div class="stat-val">3000+</div><div class="stat-lbl">Tests</div></div>
+            <div class="stat-mock"><div class="stat-val">PQC</div><div class="stat-lbl">Quantum-Safe</div></div>
+            <div class="stat-mock"><div class="stat-val">MIT</div><div class="stat-lbl">Licensed</div></div>
+        </div>
+    </div>
+</div>
+
+<div class="controls">
+    <h3>Hero Animation Playground</h3>
+
+    <label>Preset</label>
+    <div>
+        <button class="preset-btn active" onclick="applyPreset('subtle')">A: Subtle</button>
+        <button class="preset-btn" onclick="applyPreset('vivid')">B: Vivid</button>
+        <button class="preset-btn" onclick="applyPreset('dense')">C: Dense</button>
+    </div>
+
+    <hr>
+    <label>Grid Spacing <span class="val" id="vGrid">50</span>px</label>
+    <input type="range" id="gridSpacing" min="30" max="100" value="50" oninput="updateVal('vGrid',this.value);restart()">
+
+    <label>Grid Opacity <span class="val" id="vGridOp">0.06</span></label>
+    <input type="range" id="gridOpacity" min="1" max="20" value="6" oninput="updateVal('vGridOp',(this.value/100).toFixed(2));restart()">
+
+    <label>Grid Color</label>
+    <select id="gridColor" onchange="restart()">
+        <option value="#7c8aff">Blue (brand)</option>
+        <option value="#4a5568">Grey</option>
+        <option value="#38b2ac">Teal</option>
+        <option value="#9f7aea">Purple</option>
+    </select>
+
+    <hr>
+    <label>Peer Nodes <span class="val" id="vPeers">5</span></label>
+    <input type="range" id="peerCount" min="2" max="12" value="5" oninput="updateVal('vPeers',this.value);restart()">
+
+    <label>Node Size <span class="val" id="vNodeSz">10</span>px</label>
+    <input type="range" id="nodeSize" min="6" max="20" value="10" oninput="updateVal('vNodeSz',this.value);restart()">
+
+    <label>Node Glow Radius <span class="val" id="vGlow">20</span>px</label>
+    <input type="range" id="nodeGlow" min="0" max="60" value="20" oninput="updateVal('vGlow',this.value);restart()">
+
+    <label>Node Pulse</label>
+    <select id="nodePulse" onchange="restart()">
+        <option value="gentle">Gentle breathe</option>
+        <option value="none">None (static)</option>
+        <option value="strong">Strong pulse</option>
+    </select>
+
+    <hr>
+    <label>TX Speed <span class="val" id="vSpeed">2</span>px/frame</label>
+    <input type="range" id="txSpeed" min="1" max="6" value="2" oninput="updateVal('vSpeed',this.value);restart()">
+
+    <label>TX Size <span class="val" id="vTxSz">4</span>px</label>
+    <input type="range" id="txSize" min="2" max="8" value="4" oninput="updateVal('vTxSz',this.value);restart()">
+
+    <label>TX Max Train Length <span class="val" id="vTrain">6</span></label>
+    <input type="range" id="txTrain" min="2" max="10" value="6" oninput="updateVal('vTrain',this.value);restart()">
+
+    <label>TX Spawn Rate <span class="val" id="vRate">60</span> frames</label>
+    <input type="range" id="txRate" min="20" max="180" value="60" oninput="updateVal('vRate',this.value);restart()">
+
+    <label>TX Trail</label>
+    <select id="txTrail" onchange="restart()">
+        <option value="fade">Fade trail</option>
+        <option value="none">No trail</option>
+        <option value="solid">Solid trail</option>
+    </select>
+
+    <hr>
+    <label>Drift Speed <span class="val" id="vDrift">0.3</span>px/frame</label>
+    <input type="range" id="driftSpeed" min="0" max="20" value="3" oninput="updateVal('vDrift',(this.value/10).toFixed(1))">
+
+    <label>Background</label>
+    <select id="bgStyle" onchange="restart()">
+        <option value="dark">Dark (#0a0a0f)</option>
+        <option value="gradient">Dark gradient</option>
+        <option value="navy">Navy (#0d1117)</option>
+    </select>
+</div>
+
+<script>
+function updateVal(id, v) { document.getElementById(id).textContent = v; }
+
+const presets = {
+    subtle: { gridSpacing:50, gridOpacity:6, gridColor:'#7c8aff', peerCount:5, nodeSize:10, nodeGlow:20, nodePulse:'gentle', txSpeed:2, txSize:4, txTrain:6, txRate:60, txTrail:'fade', driftSpeed:3, bgStyle:'dark' },
+    vivid:  { gridSpacing:40, gridOpacity:10, gridColor:'#7c8aff', peerCount:7, nodeSize:12, nodeGlow:40, nodePulse:'strong', txSpeed:3, txSize:5, txTrain:6, txRate:40, txTrail:'fade', driftSpeed:5, bgStyle:'gradient' },
+    dense:  { gridSpacing:35, gridOpacity:8, gridColor:'#4a5568', peerCount:10, nodeSize:8, nodeGlow:15, nodePulse:'gentle', txSpeed:2, txSize:3, txTrain:8, txRate:30, txTrail:'solid', driftSpeed:2, bgStyle:'navy' },
+};
+
+function applyPreset(name) {
+    const p = presets[name];
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    Object.entries(p).forEach(([k,v]) => {
+        const el = document.getElementById(k);
+        if (el) { el.value = v; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); }
+    });
+    restart();
+}
+
+// ============================================================
+// CANVAS ANIMATION
+// ============================================================
+const canvas = document.getElementById('gridCanvas');
+const ctx = canvas.getContext('2d');
+let animId, peers = [], txTrains = [], frame = 0;
+let scrollOffset = 0; // parallax drift
+
+function cfg() {
+    return {
+        spacing: +document.getElementById('gridSpacing').value,
+        gridOp: +document.getElementById('gridOpacity').value / 100,
+        color: document.getElementById('gridColor').value,
+        peerCount: +document.getElementById('peerCount').value,
+        nodeSize: +document.getElementById('nodeSize').value,
+        glow: +document.getElementById('nodeGlow').value,
+        pulse: document.getElementById('nodePulse').value,
+        speed: +document.getElementById('txSpeed').value,
+        txSz: +document.getElementById('txSize').value,
+        maxTrain: +document.getElementById('txTrain').value,
+        rate: +document.getElementById('txRate').value,
+        trail: document.getElementById('txTrail').value,
+        drift: +document.getElementById('driftSpeed').value / 10,
+        bg: document.getElementById('bgStyle').value,
+    };
+}
+
+function hexToRgb(hex) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return {r,g,b};
+}
+
+function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * devicePixelRatio;
+    canvas.height = rect.height * devicePixelRatio;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+
+function initPeers(c) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const sp = c.spacing;
+    // Snap peers to grid intersections, spread across canvas
+    const cols = Math.floor(w / sp);
+    const rows = Math.floor(h / sp);
+    peers = [];
+    for (let i = 0; i < c.peerCount; i++) {
+        const col = Math.floor(Math.random() * (cols - 2)) + 1;
+        const row = Math.floor(Math.random() * (rows - 2)) + 1;
+        peers.push({ x: col * sp, y: row * sp, col, row, phase: Math.random() * Math.PI * 2 });
+    }
+    // Sort left to right for routing
+    peers.sort((a, b) => a.x - b.x || a.y - b.y);
+    txTrains = [];
+}
+
+function drawGrid(c) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const sp = c.spacing;
+    const rgb = hexToRgb(c.color);
+    // Grid offset wraps so lines tile seamlessly
+    const ox = -(scrollOffset % sp);
+
+    ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${c.gridOp})`;
+    ctx.lineWidth = 1;
+
+    // Vertical lines (shifted by scroll)
+    for (let x = ox; x < w + sp; x += sp) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    // Horizontal lines (static — only X drifts)
+    for (let y = sp; y < h; y += sp) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    // Grid intersection dots
+    ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${c.gridOp * 1.5})`;
+    for (let x = ox; x < w + sp; x += sp) {
+        for (let y = sp; y < h; y += sp) {
+            ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+}
+
+function peerScreenX(p) { return p.x - scrollOffset; }
+
+function drawPeers(c) {
+    const rgb = hexToRgb(c.color);
+    peers.forEach(p => {
+        const sx = peerScreenX(p);
+        let scale = 1;
+        if (c.pulse === 'gentle') scale = 1 + Math.sin(frame * 0.03 + p.phase) * 0.15;
+        if (c.pulse === 'strong') scale = 1 + Math.sin(frame * 0.06 + p.phase) * 0.3;
+        const sz = c.nodeSize * scale;
+
+        // Glow
+        if (c.glow > 0) {
+            const grad = ctx.createRadialGradient(sx, p.y, sz/2, sx, p.y, c.glow * scale);
+            grad.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.2)`);
+            grad.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(sx - c.glow, p.y - c.glow, c.glow*2, c.glow*2);
+        }
+
+        // Node (square)
+        ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},0.7)`;
+        ctx.fillRect(sx - sz/2, p.y - sz/2, sz, sz);
+
+        // Border
+        ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},0.9)`;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(sx - sz/2, p.y - sz/2, sz, sz);
+    });
+}
+
+function recyclePeers(c) {
+    const w = canvas.width / devicePixelRatio;
+    const sp = c.spacing;
+    const rows = Math.floor((canvas.height / devicePixelRatio) / sp);
+    const margin = sp * 2; // buffer beyond right edge
+
+    for (let i = peers.length - 1; i >= 0; i--) {
+        const sx = peerScreenX(peers[i]);
+        if (sx < -sp) {
+            // This peer scrolled off the left — respawn on the right
+            const rightEdgeWorld = scrollOffset + w + margin;
+            const col = Math.ceil(rightEdgeWorld / sp) + Math.floor(Math.random() * 3);
+            const row = Math.floor(Math.random() * (rows - 2)) + 1;
+            peers[i] = { x: col * sp, y: row * sp, col, row, phase: Math.random() * Math.PI * 2 };
+        }
+    }
+    // Keep sorted left-to-right for routing
+    peers.sort((a, b) => a.x - b.x || a.y - b.y);
+}
+
+// Build a path along grid lines from peer A to peer B
+function buildRoute(from, to, sp) {
+    const path = [{ x: from.x, y: from.y }];
+    let cx = from.x, cy = from.y;
+    const tx = to.x, ty = to.y;
+
+    // Move right, occasionally changing row at junctions
+    while (cx < tx) {
+        // Decide: move right or change row?
+        if (cy !== ty && Math.random() < 0.4) {
+            // Move vertically toward target
+            const step = cy < ty ? sp : -sp;
+            cy += step;
+            path.push({ x: cx, y: cy });
+        } else {
+            cx += sp;
+            path.push({ x: cx, y: cy });
+        }
+        if (path.length > 50) break; // safety
+    }
+    // Final vertical alignment if needed
+    while (cy !== ty && path.length < 60) {
+        const step = cy < ty ? sp : -sp;
+        cy += step;
+        path.push({ x: cx, y: cy });
+    }
+    return path;
+}
+
+function spawnTrain(c) {
+    if (peers.length < 2) return;
+    const w = canvas.width / devicePixelRatio;
+    // Only pick visible peers (on screen)
+    const visible = peers.filter(p => {
+        const sx = peerScreenX(p);
+        return sx > 0 && sx < w;
+    });
+    if (visible.length < 2) return;
+
+    const srcIdx = Math.floor(Math.random() * (visible.length - 1));
+    const tgtIdx = srcIdx + 1 + Math.floor(Math.random() * (visible.length - srcIdx - 1));
+    const src = visible[srcIdx], tgt = visible[tgtIdx];
+
+    const route = buildRoute(src, tgt, c.spacing);
+    const trainLen = 1 + Math.floor(Math.random() * 2);
+
+    txTrains.push({
+        route,
+        pos: 0,
+        blocks: trainLen,
+        maxBlocks: c.maxTrain,
+        speed: c.speed,
+        age: 0,
+    });
+}
+
+function updateAndDrawTrains(c) {
+    const rgb = hexToRgb(c.color);
+    const toRemove = [];
+
+    txTrains.forEach((train, idx) => {
+        train.age++;
+        // Advance position
+        train.pos += train.speed;
+
+        // Total route length in segments
+        const totalSegs = train.route.length - 1;
+        const segLen = c.spacing;
+        const totalLen = totalSegs * segLen;
+        const headDist = train.pos;
+
+        if (headDist > totalLen + c.txSz * train.blocks * 2) {
+            // Train has fully exited
+            toRemove.push(idx);
+            return;
+        }
+
+        // Grow the train as it travels (add a block every ~spacing pixels)
+        const growInterval = c.spacing * 1.5;
+        const expectedBlocks = Math.min(c.maxTrain, 1 + Math.floor(headDist / growInterval));
+        if (train.blocks < expectedBlocks) train.blocks = expectedBlocks;
+        // Reset when max reached and past midpoint
+        if (train.blocks >= c.maxTrain && headDist > totalLen * 0.6) {
+            train.blocks = 1 + Math.floor(Math.random() * 2);
+        }
+
+        // Draw each block in the train
+        for (let b = 0; b < train.blocks; b++) {
+            const blockDist = headDist - b * (c.txSz + 2);
+            if (blockDist < 0) continue;
+
+            // Find position on route
+            const segIdx = Math.min(Math.floor(blockDist / segLen), totalSegs - 1);
+            const segProgress = (blockDist - segIdx * segLen) / segLen;
+            if (segIdx < 0 || segIdx >= train.route.length - 1) continue;
+
+            const p1 = train.route[segIdx];
+            const p2 = train.route[segIdx + 1];
+            const bx = p1.x + (p2.x - p1.x) * Math.min(segProgress, 1) - scrollOffset;
+            const by = p1.y + (p2.y - p1.y) * Math.min(segProgress, 1);
+
+            // Opacity: head is brightest, tail fades
+            const alpha = b === 0 ? 0.9 : Math.max(0.2, 0.8 - b * 0.12);
+
+            // Trail
+            if (c.trail === 'fade' && b === 0) {
+                const grad = ctx.createRadialGradient(bx, by, 0, bx, by, c.txSz * 3);
+                grad.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.15)`);
+                grad.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(bx - c.txSz*3, by - c.txSz*3, c.txSz*6, c.txSz*6);
+            }
+
+            // Block (small square)
+            ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+            const half = c.txSz / 2;
+            ctx.fillRect(bx - half, by - half, c.txSz, c.txSz);
+
+            // Solid trail line
+            if (c.trail === 'solid' && b > 0) {
+                const prevDist = headDist - (b-1) * (c.txSz + 2);
+                const prevSeg = Math.min(Math.floor(prevDist / segLen), totalSegs - 1);
+                const prevProg = (prevDist - prevSeg * segLen) / segLen;
+                if (prevSeg >= 0 && prevSeg < train.route.length - 1) {
+                    const pp1 = train.route[prevSeg], pp2 = train.route[prevSeg+1];
+                    const px = pp1.x + (pp2.x - pp1.x) * Math.min(prevProg,1) - scrollOffset;
+                    const py = pp1.y + (pp2.y - pp1.y) * Math.min(prevProg,1);
+                    ctx.strokeStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha * 0.4})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(bx, by); ctx.stroke();
+                }
+            }
+        }
+    });
+
+    // Remove finished trains
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+        txTrains.splice(toRemove[i], 1);
+    }
+}
+
+function drawBg(c) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    if (c.bg === 'dark') {
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 0, w, h);
+    } else if (c.bg === 'gradient') {
+        const grad = ctx.createLinearGradient(0, 0, w, h);
+        grad.addColorStop(0, '#0a0a1a');
+        grad.addColorStop(0.5, '#0d1025');
+        grad.addColorStop(1, '#0a0a0f');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+    } else if (c.bg === 'navy') {
+        ctx.fillStyle = '#0d1117';
+        ctx.fillRect(0, 0, w, h);
+    }
+}
+
+function animate() {
+    const c = cfg();
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+
+    // Advance parallax drift
+    scrollOffset += c.drift;
+
+    // Recycle peers that scrolled off the left edge
+    recyclePeers(c);
+
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    drawBg(c);
+    drawGrid(c);
+    drawPeers(c);
+
+    // Spawn new trains periodically
+    if (frame % c.rate === 0) spawnTrain(c);
+
+    updateAndDrawTrains(c);
+
+    frame++;
+    animId = requestAnimationFrame(animate);
+}
+
+function restart() {
+    cancelAnimationFrame(animId);
+    frame = 0;
+    scrollOffset = 0;
+    resize();
+    initPeers(cfg());
+    animate();
+}
+
+window.addEventListener('resize', () => { resize(); initPeers(cfg()); });
+restart();
+</script>
+</body>
+</html>

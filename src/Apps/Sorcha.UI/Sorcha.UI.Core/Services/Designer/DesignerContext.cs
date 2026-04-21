@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
-using System.ComponentModel.DataAnnotations;
+using Sorcha.UI.Core.Models.Chat;
 using BlueprintModel = Sorcha.Blueprint.Models.Blueprint;
 
 namespace Sorcha.UI.Core.Services.Designer;
