@@ -139,7 +139,7 @@ components:
         isAuditor:     { type: boolean }
         isDesigner:    { type: boolean }
         isValidator:   { type: boolean }
-        isSubscriber:  { type: boolean, description: "True when none of the attestation roles match." }
+        isSubscriber:  { type: boolean, description: "True when the node has no sealing or governance authority for this register (i.e. not Owner, Admin, or Validator). Auditor-only / Designer-only nodes also report IsSubscriber=true because they can neither seal nor change governance." }
 
     RegisterSyncState:
       type: string

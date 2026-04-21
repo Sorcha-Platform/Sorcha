@@ -873,6 +873,23 @@ public class ActionExecutionService : IActionExecutionService
                 $"Validator rejected transaction {transaction.TxId}: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out");
         }
 
+        // Surface local-validator rejections even when a peer accepted. The concurrent peer
+        // path doesn't mask a structural rejection (schema violation, sequence-number mismatch,
+        // double-spend) — operators need to see these so they can intervene. We don't throw
+        // here because the accepting peer (typically the register owner) will also re-run
+        // validation under the same rules; if they accept, the tx is genuinely admissible.
+        if (!validatorResult.Success)
+        {
+            _logger.LogWarning(
+                "Local validator rejected transaction {TxId} for register {RegisterId}: [{ErrorCode}] {ErrorMessage}. " +
+                "Continuing because peer fan-out accepted on {AcceptedCount}/{TargetCount} peer(s)" +
+                "{LocallyOwnedNote}",
+                transaction.TxId, instance.RegisterId,
+                validatorResult.ErrorCode, validatorResult.ErrorMessage,
+                distributeResult.AcceptedCount, distributeResult.TargetPeerCount,
+                distributeResult.LocallyOwned ? " (locally-owned register, no fan-out attempted)" : string.Empty);
+        }
+
         _logger.LogDebug(
             "Transaction {TxId} submitted: validator={ValidatorSuccess}, peers accepted={PeersAccepted}/{PeersAttempted}, locallyOwned={LocallyOwned}",
             transaction.TxId, validatorResult.Success,
@@ -2223,9 +2240,10 @@ public class ActionExecutionService : IActionExecutionService
 
     /// <summary>
     /// Feature 108. Serialises the signed submission and hands it to the local Peer.Service
-    /// fan-out endpoint. Fire-and-forget-ish — any error is swallowed and returns a
-    /// no-target-no-accepted result; the concurrent validator call is sufficient on its own
-    /// when the local node owns the register.
+    /// fan-out endpoint. Errors are logged at <c>Warning</c> (so subscriber-only nodes, which
+    /// depend on fan-out reaching the owner, see a clear diagnostic) and surface as a
+    /// no-target-no-accepted result. The concurrent validator call is sufficient on its own
+    /// when the local node owns the register or is on the roster.
     /// </summary>
     private async Task<DistributeTransactionResult> DistributeSubmissionAsync(
         string registerId,
@@ -2245,8 +2263,10 @@ public class ActionExecutionService : IActionExecutionService
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Feature 108 — peer-service fan-out errored for register {RegisterId}; falling back to validator-only",
-                registerId);
+                "Feature 108 — peer-service fan-out errored for register {RegisterId} transaction {TxId}; " +
+                "falling back to validator-only. Subscriber nodes depend on this path to reach the owner — " +
+                "investigate if this repeats.",
+                registerId, submission.TransactionId);
             return new DistributeTransactionResult(0, 0, LocallyOwned: false);
         }
     }

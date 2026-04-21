@@ -20,8 +20,10 @@ namespace Sorcha.Validator.Service.Services;
 /// </remarks>
 public sealed class ValidatorKeyProvider : IValidatorKeyProvider
 {
-    // 32-byte sentinel — "sorcha:validator-key-probe" SHA-256'd offline, inlined here to
-    // keep the probe deterministic and self-contained.
+    // 32-byte sentinel payload — the UTF-8 bytes of "sorcha:validator-key-probe" (26 bytes)
+    // zero-padded to 32 bytes so Wallet.Service treats it as a pre-hashed payload. The exact
+    // content is not cryptographically significant — we only need deterministic bytes to sign,
+    // then discard the signature and keep the returned PublicKey.
     private static readonly byte[] SentinelHash =
     [
         0x73, 0x6f, 0x72, 0x63, 0x68, 0x61, 0x3a, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72,

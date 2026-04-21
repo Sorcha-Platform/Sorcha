@@ -36,6 +36,11 @@ public sealed record RegisterLocalRelationship(
     /// <summary>True when the node's validator public key is on the control record's roster.</summary>
     public bool IsValidator => Roles.HasFlag(RegisterRoleSet.Validator);
 
-    /// <summary>True when no role matched — the node is a plain subscriber.</summary>
-    public bool IsSubscriber => Roles == RegisterRoleSet.None;
+    /// <summary>
+    /// True when the node has no sealing or governance authority for this register —
+    /// i.e. it is not an Owner, Admin, or Validator. Auditor-only and Designer-only nodes
+    /// also report <c>IsSubscriber == true</c> because they can neither seal dockets nor
+    /// change governance; operationally they behave as read-only subscribers.
+    /// </summary>
+    public bool IsSubscriber => !IsOwner && !IsAdmin && !IsValidator;
 }

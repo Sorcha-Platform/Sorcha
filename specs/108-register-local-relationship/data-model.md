@@ -74,7 +74,7 @@ public sealed record RegisterLocalRelationship(
     public bool IsAuditor     => Roles.HasFlag(RegisterRoleSet.Auditor);
     public bool IsDesigner    => Roles.HasFlag(RegisterRoleSet.Designer);
     public bool IsValidator   => Roles.HasFlag(RegisterRoleSet.Validator);
-    public bool IsSubscriber  => Roles == RegisterRoleSet.None || (!IsOwner && !IsAdmin && !IsValidator);
+    public bool IsSubscriber  => !IsOwner && !IsAdmin && !IsValidator;     // no sealing or governance authority
 }
 
 [Flags]
