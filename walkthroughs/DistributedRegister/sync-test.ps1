@@ -3,24 +3,28 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # P2P Register Sync — Multi-Node Integration Test
-# Tests the full P2P register sync flow: streaming relay, advertisement
+# Tests the full P2P register sync flow: peer self-introduction, advertisement
 # discovery, subscription, docket finalization, and live streaming.
 #
 # Prerequisites:
 #   1. Run setup.ps1 on LOCAL machine first
 #   2. Both machines running Sorcha Docker stack
-#   3. PeerRouter (n0.sorcha.dev) deployed with PEERROUTER__ENABLE_RELAY=true
-#   4. Both peers configured with n0.sorcha.dev as seed node
+#   3. Local peer configured with the remote as a seed (SEED_PEER_* in .env)
+#      — peers self-introduce at bootstrap; the legacy n0.sorcha.dev PeerRouter
+#      relay is no longer required.
 #
 # Usage:
 #   pwsh walkthroughs/DistributedRegister/sync-test.ps1 -RemoteHost 192.168.51.9
-#   pwsh walkthroughs/DistributedRegister/sync-test.ps1 -RemoteHost 192.168.51.9 -PeerRouterHost n0.sorcha.dev
 #   pwsh walkthroughs/DistributedRegister/sync-test.ps1 -RemoteHost 192.168.51.9 -Phase 4   # start from phase 4
 
 param(
     [Parameter(Mandatory = $false)]
     [string]$RemoteHost = "192.168.51.9",
 
+    # Legacy PeerRouter relay parameters — only consumed by the Phase 1 / Phase 6
+    # router-restart tests below. Peers self-introduce at bootstrap so the relay is
+    # no longer required for normal sync; leave these in for back-compat with any
+    # operator who still has a router deployed.
     [string]$PeerRouterHost = "n0.sorcha.dev",
 
     [int]$PeerRouterHttpPort = 8080,

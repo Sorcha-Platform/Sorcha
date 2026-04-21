@@ -401,8 +401,11 @@ public class PeerConnectionPool : IAsyncDisposable
 
     /// <summary>
     /// Registers this node with a remote peer using the existing gRPC channel.
-    /// Called after reconnection to ensure the remote peer's routing table
-    /// includes us (required after heartbeat rejection / timeout eviction).
+    /// Called from <see cref="BootstrapFromSeedNodesAsync"/> on initial connect and
+    /// from <see cref="ReconnectDisconnectedSeedNodesAsync"/> after a drop, to ensure
+    /// the remote peer's routing table includes us. Without this, the remote silently
+    /// drops our heartbeat advertisements (RegisterAdvertisementService treats us as
+    /// an unknown peer).
     /// </summary>
     protected internal virtual async Task RegisterWithRemotePeerAsync(string peerId, CancellationToken cancellationToken)
     {
