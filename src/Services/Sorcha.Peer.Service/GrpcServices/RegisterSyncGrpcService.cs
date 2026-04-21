@@ -330,10 +330,13 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var cacheEntry = _registerCache.Get(request.RegisterId);
         if (cacheEntry == null)
         {
-            _logger.LogDebug("Register {RegisterId} not found in cache", request.RegisterId);
-            throw new RpcException(new Status(
-                StatusCode.NotFound,
-                $"Register '{request.RegisterId}' not found in local cache"));
+            _logger.LogInformation(
+                "Register {RegisterId} not in cache for live subscription, polling Register Service",
+                request.RegisterId);
+
+            await SubscribeToRegisterFromRegisterServiceAsync(
+                request, responseStream, context.CancellationToken);
+            return;
         }
 
         var localPeerId = _configuration.ResolvedPeerId;
@@ -548,5 +551,182 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         _logger.LogInformation(
             "PullDocketChain from Register Service completed for {RegisterId}: streamed {Count} dockets (height={Height})",
             request.RegisterId, streamed, height);
+    }
+
+    /// <summary>
+    /// Serves <see cref="SubscribeToRegister"/> by polling the local Register Service
+    /// for new dockets. Used when the register is not in the peer-service's in-memory
+    /// cache (this node owns the register; new dockets get written to Register Service
+    /// by the validator but nothing populates the peer-service cache).
+    /// </summary>
+    /// <remarks>
+    /// Polls at <see cref="LivePollInterval"/> — same cadence the cache-hit path uses
+    /// to scan for new transactions — and streams every transaction on each newly
+    /// discovered docket with the canonical byte shape so the subscriber's integrity
+    /// check matches.
+    /// </remarks>
+    private async Task SubscribeToRegisterFromRegisterServiceAsync(
+        Protos.RegisterSubscriptionRequest request,
+        IServerStreamWriter<Protos.LiveTransactionEvent> responseStream,
+        CancellationToken cancellationToken)
+    {
+        // Scope lives for the entire stream lifetime on purpose — creating one
+        // scope-per-poll would churn HTTP handlers and DI lookups every 2 seconds.
+        using var scope = _scopeFactory.CreateScope();
+        var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+        var localPeerId = _configuration.ResolvedPeerId;
+
+        // Short-circuit if the register genuinely doesn't exist anywhere.
+        Sorcha.Register.Models.Register? register;
+        try
+        {
+            register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Register Service failure for live-subscription lookup of {RegisterId} — ending stream",
+                request.RegisterId);
+            return;
+        }
+
+        if (register == null)
+        {
+            _logger.LogInformation(
+                "Register {RegisterId} unknown to Register Service — ending live stream",
+                request.RegisterId);
+            return;
+        }
+
+        // Walk dockets from request.FromVersion upward. Each loop we re-query the
+        // height; new dockets appear as the owner's validator seals them.
+        var nextDocket = request.FromVersion + 1;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            long height;
+            try
+            {
+                height = await registerClient.GetRegisterHeightAsync(request.RegisterId, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Register Service height lookup failed for {RegisterId} — will retry on next poll",
+                    request.RegisterId);
+                height = nextDocket - 1;
+            }
+
+            // height is a COUNT (1 means docket at index 0 exists), so the last
+            // finalised docket number is height - 1.
+            while (nextDocket < height && !cancellationToken.IsCancellationRequested)
+            {
+                Sorcha.ServiceClients.Register.DocketModel? docket;
+                try
+                {
+                    docket = await registerClient.ReadDocketAsync(request.RegisterId, nextDocket, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Register Service docket read failed for {RegisterId} docket {DocketNumber} — retrying on next poll",
+                        request.RegisterId, nextDocket);
+                    break;
+                }
+
+                if (docket == null) break;
+
+                // Atomic per-docket delivery: if any transaction fetch fails, bail
+                // out of both loops and leave nextDocket pointing at this docket so
+                // the next poll cycle retries the entire docket. Delivering a partial
+                // docket would fail the subscriber's hash/Merkle check downstream.
+                var docketFailed = false;
+
+                foreach (var txStub in docket.Transactions)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    TransactionModel? tx;
+                    try
+                    {
+                        tx = await registerClient.GetTransactionAsync(
+                            request.RegisterId, txStub.TxId, cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "Register Service tx fetch failed for {TxId} on register {RegisterId} — will retry full docket {DocketNumber} on next poll",
+                            txStub.TxId, request.RegisterId, nextDocket);
+                        docketFailed = true;
+                        break;
+                    }
+
+                    if (tx == null)
+                    {
+                        _logger.LogWarning(
+                            "Register Service returned null for tx {TxId} on register {RegisterId} — will retry full docket {DocketNumber} on next poll",
+                            txStub.TxId, request.RegisterId, nextDocket);
+                        docketFailed = true;
+                        break;
+                    }
+
+                    var txJson = JsonSerializer.SerializeToUtf8Bytes(
+                        tx, RegisterSerializationOptions.Canonical);
+                    var checksum = Convert.ToHexString(SHA256.HashData(txJson)).ToLowerInvariant();
+
+                    var evt = new Protos.LiveTransactionEvent
+                    {
+                        TransactionId = tx.TxId,
+                        // Use request.RegisterId defensively — GetTransactionAsync's
+                        // DTO occasionally comes back with an empty RegisterId.
+                        RegisterId = request.RegisterId,
+                        Version = nextDocket,
+                        TransactionData = ByteString.CopyFrom(txJson),
+                        Checksum = checksum,
+                        SenderPeerId = localPeerId,
+                        Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        EventType = Protos.LiveEventType.Transaction
+                    };
+
+                    await responseStream.WriteAsync(evt, cancellationToken);
+                }
+
+                if (docketFailed) break;
+                nextDocket++;
+            }
+
+            try
+            {
+                await Task.Delay(LivePollInterval, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+
+        _logger.LogDebug(
+            "SubscribeToRegister fallback stream ended for register {RegisterId} (peer {PeerId}) at docket {NextDocket}",
+            request.RegisterId, request.PeerId, nextDocket);
     }
 }
