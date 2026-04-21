@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.ServiceClients.Wallet;
 
@@ -27,7 +28,7 @@ public sealed class ValidatorKeyProvider : IValidatorKeyProvider
         0x2d, 0x6b, 0x65, 0x79, 0x2d, 0x70, 0x72, 0x6f, 0x62, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     ];
 
-    private readonly IWalletServiceClient _walletClient;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ISystemWalletProvider _systemWallet;
     private readonly ILogger<ValidatorKeyProvider> _logger;
 
@@ -35,11 +36,11 @@ public sealed class ValidatorKeyProvider : IValidatorKeyProvider
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public ValidatorKeyProvider(
-        IWalletServiceClient walletClient,
+        IServiceScopeFactory scopeFactory,
         ISystemWalletProvider systemWallet,
         ILogger<ValidatorKeyProvider> logger)
     {
-        _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _systemWallet = systemWallet ?? throw new ArgumentNullException(nameof(systemWallet));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -63,7 +64,9 @@ public sealed class ValidatorKeyProvider : IValidatorKeyProvider
 
             try
             {
-                var result = await _walletClient.SignTransactionAsync(
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var walletClient = scope.ServiceProvider.GetRequiredService<IWalletServiceClient>();
+                var result = await walletClient.SignTransactionAsync(
                     walletAddress,
                     SentinelHash,
                     derivationPath: "sorcha:docket-signing",

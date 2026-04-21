@@ -36,9 +36,19 @@ Infrastructure steps 1–7 all pass:
 6. Each side publishes its own participant identity on the register — both transactions land where they were submitted.
 7. Pong Corp creates a blueprint instance on n1.
 
-## What stops the round-trip today — two related findings
+## Feature 108 progress (2026-04-21)
 
-The runner executes action 0 on n1 successfully, but the round-trip currently halts there. Two real platform gaps surface:
+Feature 108 ("register-local-relationship", branch `108-register-local-relationship`) lands the platform-level fix for the reverse-direction gap:
+
+- Forward-direction roster extraction (originally PR #357) is intact — dockets replicate and finalize end-to-end.
+- `Validator.Service` now enrols from the on-chain roster via `RegisterMonitoringBootstrap`; the old `/validate` side-effect enrolment is removed. Subscribers never try to seal, eliminating the fork risk.
+- `ActionExecutionService` fans submissions concurrently to local validator **and** peer distribution. The peer route reuses the existing outbound gRPC channel and the new `TransactionDistribution.SubmitTransaction` RPC to hand a signed submission to the owner.
+
+The one remaining blocker for PingPongN1 PASS is the `InstanceMirrorReconstructor` pathway: action 0 executes on n1, docket 3 seals on n1, but the instance is not materialising on local's Blueprint.Service from the replicated transactions. This is independent of Finding B — it's a forward-direction instance-materialisation issue (the mirror listens for `docket:confirmed` events but seemingly doesn't populate the instance from the action's payload).
+
+## What stops the round-trip today — historical findings (A resolved, B resolved)
+
+The runner executes action 0 on n1 successfully, but the round-trip currently halts there. Two real platform gaps surfaced historically:
 
 ### Finding A — Register owner's peer-service cache is empty for its own register
 
