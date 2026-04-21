@@ -38,7 +38,7 @@ dotnet restore && dotnet build && dotnet test
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Runtime | .NET 10 / C# 13 | LTS runtime with latest features |
+| Runtime | .NET 10 / C# 14 | LTS runtime with latest features |
 | Orchestration | .NET Aspire 13+ | Service discovery, health checks, telemetry |
 | API | Minimal APIs + Scalar | REST endpoints with OpenAPI docs |
 | Real-time | SignalR + Redis | WebSocket notifications |
@@ -891,7 +891,7 @@ When working on tasks involving these technologies, invoke the corresponding ski
 | yarp | Configures YARP reverse proxy for API gateway routing |
 | mongodb | Configures MongoDB document storage and query operations |
 | aspire | Configures .NET Aspire orchestration, service discovery, and telemetry |
-| dotnet | Manages .NET 10 runtime, C# 13 syntax, and project configuration |
+| dotnet | Manages .NET 10 runtime, C# 14 syntax, and project configuration |
 | blazor | Builds Blazor WASM components for admin and main UI applications |
 | fluent-assertions | Creates readable test assertions with FluentAssertions library |
 | grpc | Defines gRPC services for peer-to-peer network communication |

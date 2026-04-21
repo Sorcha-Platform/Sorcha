@@ -3,7 +3,6 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
-    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -12,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Sorcha.Wallet.Core\Sorcha.Wallet.Core.csproj" />
     <ProjectReference Include="..\..\src\Services\Sorcha.Wallet.Service\Sorcha.Wallet.Service.csproj" />
+    <ProjectReference Include="..\Sorcha.Testing\Sorcha.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
