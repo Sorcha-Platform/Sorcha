@@ -18,6 +18,12 @@ service TransactionDistribution {
 
   // Stream large transaction in chunks
   rpc StreamTransaction(TransactionRequest) returns (stream TransactionChunk);
+
+  // Feature 108 — forward a full signed TransactionSubmission to a peer that can seal it.
+  // Used by NAT'd subscribers to hand the submission to their register's owner over the
+  // existing outbound gRPC channel. Receiver places the submission in its local mempool;
+  // it will be sealed iff the receiver is on the roster.
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
 }
 
 // Notification of a new transaction
@@ -59,4 +65,20 @@ message TransactionChunk {
   int32 chunk_index = 2;
   int32 total_chunks = 3;
   bytes chunk_data = 4;
+}
+
+// Feature 108 — SubmitTransaction request/response.
+message SubmitTransactionRequest {
+  string register_id = 1;
+  // JSON-encoded TransactionSubmission bytes (opaque to peer-service; the receiving
+  // Validator.Service deserialises via its normal /api/v1/transactions/validate path).
+  bytes submission_json = 2;
+  string origin_peer_id = 3;
+  int64 submitted_at_unix_ms = 4;
+}
+
+message SubmitTransactionResponse {
+  bool accepted = 1;
+  string reject_reason = 2;
+  bool receiver_is_validator = 3;
 }

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Google.Protobuf;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Sorcha.Peer.Service.Communication;
+using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Protos;
 
@@ -20,19 +22,97 @@ public class TransactionDistributionService
     private readonly TransactionQueueManager _queueManager;
     private readonly GossipProtocolEngine _gossipEngine;
     private readonly RelayCommunicationService _relayCommunication;
+    private readonly PeerConnectionPool? _peerConnectionPool;
+    private readonly string _localPeerId;
 
     public TransactionDistributionService(
         ILogger<TransactionDistributionService> logger,
         IOptions<PeerServiceConfiguration> configuration,
         TransactionQueueManager queueManager,
         GossipProtocolEngine gossipEngine,
-        RelayCommunicationService relayCommunication)
+        RelayCommunicationService relayCommunication,
+        PeerConnectionPool? peerConnectionPool = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
         _queueManager = queueManager ?? throw new ArgumentNullException(nameof(queueManager));
         _gossipEngine = gossipEngine ?? throw new ArgumentNullException(nameof(gossipEngine));
         _relayCommunication = relayCommunication ?? throw new ArgumentNullException(nameof(relayCommunication));
+        _peerConnectionPool = peerConnectionPool;
+        _localPeerId = _configuration.ResolvedPeerId ?? "unknown";
+    }
+
+    /// <summary>
+    /// Feature 108. Forwards a fully-signed transaction submission (JSON-encoded) to all
+    /// connected peers that hold this register — typically the owner (for NAT'd subscribers)
+    /// or validator peers. Returns counts of targets attempted vs accepted.
+    /// No-op with <c>LocallyOwned == true</c> when the local node has no active channels
+    /// for this register (i.e., we own it or have no source peers connected).
+    /// </summary>
+    public async Task<(int TargetCount, int AcceptedCount, bool LocallyOwned)> ForwardSubmissionAsync(
+        string registerId,
+        byte[] submissionJson,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(submissionJson);
+
+        if (_peerConnectionPool is null)
+            return (0, 0, LocallyOwned: true);
+
+        var channels = _peerConnectionPool.GetChannelsForRegister(registerId);
+        if (channels.Count == 0)
+        {
+            _logger.LogDebug(
+                "ForwardSubmissionAsync: no active channels for register {RegisterId} — treating as locally owned (no fan-out required)",
+                registerId);
+            return (0, 0, LocallyOwned: true);
+        }
+
+        var submittedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var accepted = 0;
+
+        foreach (var (peerId, channel) in channels)
+        {
+            try
+            {
+                var client = new TransactionDistribution.TransactionDistributionClient(channel);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(_configuration.Communication.ConnectionTimeout));
+
+                var response = await client.SubmitTransactionAsync(
+                    new SubmitTransactionRequest
+                    {
+                        RegisterId = registerId,
+                        SubmissionJson = ByteString.CopyFrom(submissionJson),
+                        OriginPeerId = _localPeerId,
+                        SubmittedAtUnixMs = submittedAt
+                    },
+                    cancellationToken: cts.Token);
+
+                if (response.Accepted)
+                {
+                    accepted++;
+                    _logger.LogInformation(
+                        "Forwarded submission for register {RegisterId} to peer {PeerId} — accepted",
+                        registerId, peerId);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Forwarded submission for register {RegisterId} to peer {PeerId} — rejected: {Reason}",
+                        registerId, peerId, response.RejectReason);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Error forwarding submission for register {RegisterId} to peer {PeerId}",
+                    registerId, peerId);
+            }
+        }
+
+        return (channels.Count, accepted, LocallyOwned: false);
     }
 
     /// <summary>

@@ -11,6 +11,7 @@ using Sorcha.Peer.Service.Connection;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Distribution;
+using Sorcha.Peer.Service.Endpoints;
 using Sorcha.Peer.Service.Extensions;
 using Sorcha.Peer.Service.Monitoring;
 using Sorcha.Peer.Service.Network;
@@ -242,6 +243,9 @@ app.MapGrpcService<RegisterSyncGrpcService>();
 app.MapGrpcService<TransactionDistributionGrpcService>();
 app.MapGrpcService<DocketSyncGrpcService>();
 app.MapGrpcService<PeerCommunicationServiceImpl>();
+
+// Feature 108 — REST fan-out endpoint.
+app.MapDistributeEndpoints();
 
 // Enable gRPC reflection for development
 if (app.Environment.IsDevelopment())
