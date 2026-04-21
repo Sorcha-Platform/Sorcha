@@ -210,6 +210,17 @@ public class RegisterSyncGrpcServiceFallbackTests
             Entries.Add(message);
             return Task.CompletedTask;
         }
+
+        // Explicit CancellationToken overload — the default interface method in gRPC
+        // 2.36+ delegates to the single-arg version, but pinning the behaviour here
+        // documents what the production code actually calls and keeps us honest if
+        // gRPC's contract ever changes.
+        public Task WriteAsync(T message, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Entries.Add(message);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestServerCallContext : ServerCallContext

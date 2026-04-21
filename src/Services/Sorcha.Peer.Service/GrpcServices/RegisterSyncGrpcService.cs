@@ -186,7 +186,22 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         // Short-circuit if the register genuinely doesn't exist anywhere — the caller
         // will see an empty stream and move on to its next sync cycle instead of
         // surfacing an RpcException that the background loop treats as transient.
-        var register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
+        // A transient failure here (Register Service blip) also returns empty rather
+        // than escalating to the subscriber; the next sync cycle retries.
+        Sorcha.Register.Models.Register? register;
+        try
+        {
+            register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Transient Register Service failure looking up {RegisterId} — streaming empty response",
+                request.RegisterId);
+            return;
+        }
+
         if (register == null)
         {
             _logger.LogInformation(
@@ -195,8 +210,11 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             return;
         }
 
+        // TODO(perf): per-tx HTTP round-trips are N+1 for large dockets. When
+        // IRegisterServiceClient gains a batch endpoint, switch to that here.
         var streamed = 0;
         var notFound = 0;
+        var transientErrors = 0;
 
         foreach (var txId in request.TransactionIds)
         {
@@ -210,13 +228,14 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
-                // Transient — surface at Warning and count separately from genuinely
-                // missing transactions so the subscriber's next sync cycle retries.
+                // Transient — the subscriber's next sync cycle will re-request. Tracked
+                // separately from genuinely-missing so the completion log doesn't
+                // conflate "doesn't exist" with "couldn't reach Register Service".
                 _logger.LogWarning(
                     ex,
                     "Transient Register Service fetch failure for tx {TransactionId} on register {RegisterId}",
                     txId, request.RegisterId);
-                notFound++;
+                transientErrors++;
                 continue;
             }
             catch (Exception ex)
@@ -225,7 +244,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                     ex,
                     "Unexpected Register Service fetch error for tx {TransactionId} on register {RegisterId}",
                     txId, request.RegisterId);
-                notFound++;
+                transientErrors++;
                 continue;
             }
 
@@ -260,8 +279,8 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         }
 
         _logger.LogInformation(
-            "PullDocketTransactions from Register Service completed for {RegisterId}: streamed {Streamed}, not found {NotFound}",
-            request.RegisterId, streamed, notFound);
+            "PullDocketTransactions from Register Service completed for {RegisterId}: streamed {Streamed}, not found {NotFound}, transient errors {TransientErrors}",
+            request.RegisterId, streamed, notFound, transientErrors);
     }
 
     /// <summary>
