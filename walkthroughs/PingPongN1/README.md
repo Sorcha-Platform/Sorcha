@@ -111,3 +111,13 @@ This also closes half of Finding A — subscribers would no longer need to pull 
 ```
 
 PASS is gated on the two findings above being fixed. The runner is intentionally strict — it verifies each specific transaction id cross-visibly rather than just counting transactions, so a future fix to either gap will flip rounds to green without any script changes.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | PASS — infra + every round-trip green |
+| `1`  | FAIL — an infra step (1–7) errored |
+| `2`  | PARTIAL — infra green but at least one finding (expected until A/B are fixed) |
+
+CI runners can treat `2` as a warning/neutral rather than a pass, so a regression in the infra portion still goes red while the known replication gaps don't falsely green the job.

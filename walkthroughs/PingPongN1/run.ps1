@@ -118,7 +118,7 @@ Step "Step 2: Pong Corp creates public register on n1" {
 # ============================================================================
 # Step 3: Local (Ping Labs) discovers advertisement + subscribes
 # ============================================================================
-Step "Step 3: Local discovers advertisement + Ping Labs subscribes (FullReplica)" {
+Step "Step 3: Local discovers advertisement + Ping Labs subscribes (Public)" {
     $ok = Wait-Until -TimeoutSec 120 -PollSec 5 -Description "register advertisement on local" {
         $available = Invoke-RestMethod `
             -Uri "$($state.local.gatewayUrl)/api/registers/available" `
@@ -235,8 +235,11 @@ for ($round = 1; $round -le $Rounds; $round++) {
         Write-WtSuccess "Round ${round}: action 0 sent on n1 (tx=$pongTx)"
     } catch {
         Write-WtFail "Round ${round}: action 0 rejected on n1 — $($_.Exception.Message)"
+        $findings += "Round ${round}: action 0 rejected on n1"
         $roundResults += $roundState
-        break
+        # Skip the rest of this round but keep probing later rounds so a transient
+        # failure doesn't silently mask regressions in rounds 2+.
+        continue
     }
 
     if ($pongTx) {
@@ -254,8 +257,10 @@ for ($round = 1; $round -le $Rounds; $round++) {
     }
 
     # Wait for the instance mirror to materialise on local so Ping Labs can
-    # execute action 1 without a CreateInstance call it can't authorise.
-    $mirrorReady = Wait-Until -TimeoutSec 60 -PollSec 5 -Description "instance mirror on local" {
+    # execute action 1 without a CreateInstance call it can't authorise. Uses the
+    # same budget as the tx replication wait so a slow replication doesn't get
+    # mis-reported as a mirror-reconstructor failure.
+    $mirrorReady = Wait-Until -TimeoutSec $ReplicationTimeoutSec -PollSec 5 -Description "instance mirror on local" {
         try {
             $inst = Invoke-RestMethod `
                 -Uri "$($state.local.blueprintUrl)/instances/$($instance.id)" `
@@ -268,7 +273,7 @@ for ($round = 1; $round -le $Rounds; $round++) {
         Write-WtWarn "Round ${round}: instance mirror not ready on local — skipping action 1"
         $findings += "Round ${round}: InstanceMirrorReconstructor did not materialise instance $($instance.id) on local"
         $roundResults += $roundState
-        break
+        continue
     }
 
     # --- Ping Labs (local) replies (action 1) ---
@@ -290,7 +295,7 @@ for ($round = 1; $round -le $Rounds; $round++) {
         Write-WtWarn "Round ${round}: action 1 rejected on local — $($_.Exception.Message.Split([Environment]::NewLine)[0])"
         $findings += "Round ${round}: action 1 rejected — $($_.Exception.Message.Split([Environment]::NewLine)[0])"
         $roundResults += $roundState
-        break
+        continue
     }
 
     if ($pingTx) {
@@ -348,7 +353,9 @@ if ($stepsFailed -eq 0 -and $findings.Count -eq 0) {
     exit 0
 } elseif ($stepsFailed -eq 0) {
     Write-Host "  RESULT: PARTIAL (infra PASS, see findings)" -ForegroundColor Yellow
-    exit 0
+    # Exit 2 distinguishes "known-gap PARTIAL" from "PASS" (0) and "infra-FAIL" (1)
+    # so a CI runner can treat this as a neutral/warning signal rather than a pass.
+    exit 2
 } else {
     Write-Host "  RESULT: FAIL" -ForegroundColor Red
     exit 1
