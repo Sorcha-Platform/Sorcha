@@ -205,6 +205,8 @@ public class RegisterServiceClient : IRegisterServiceClient
                 "Reading docket {DocketNumber} from register {RegisterId}",
                 docketNumber, registerId);
 
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.GetAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/dockets/{docketNumber}",
                 cancellationToken);
