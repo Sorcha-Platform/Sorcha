@@ -1,14 +1,14 @@
 ---
 name: dotnet
 description: |
-  Manages .NET 10 runtime, C# 13 syntax, and project configuration
+  Manages .NET 10 runtime, C# 14 syntax, and project configuration
   Use when: configuring projects, using modern C# features, setting up service defaults, working with DI patterns
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash, mcp__context7__resolve-library-id, mcp__context7__query-docs
 ---
 
-# .NET 10 / C# 13 Skill
+# .NET 10 / C# 14 Skill
 
-This codebase uses .NET 10 (LTS) with C# 13, configured with strict nullable reference types, implicit usings, and XML documentation. All services follow the same project configuration patterns and share infrastructure through `Sorcha.ServiceDefaults`.
+This codebase uses .NET 10 (LTS) with C# 14, configured with strict nullable reference types, implicit usings, and XML documentation. All services follow the same project configuration patterns and share infrastructure through `Sorcha.ServiceDefaults`.
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ global using Sorcha.MyProject.Domain;  // Project-specific
 
 ## See Also
 
-- [patterns](references/patterns.md) - C# 13 features and code patterns
+- [patterns](references/patterns.md) - C# 14 features and code patterns
 - [workflows](references/workflows.md) - Build, test, and deployment workflows
 
 ## Related Skills
@@ -104,7 +104,7 @@ global using Sorcha.MyProject.Domain;  // Project-specific
 **Library ID:** `/websites/learn_microsoft_en-us_dotnet` _(high reputation, 42K+ snippets)_
 
 **Recommended Queries:**
-- "C# 13 new features primary constructors"
+- "C# 14 new features primary constructors"
 - "collection expressions syntax"
 - "required members properties"
 - "nullable reference types"

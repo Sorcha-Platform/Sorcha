@@ -1,14 +1,14 @@
-# .NET 10 / C# 13 Patterns Reference
+# .NET 10 / C# 14 Patterns Reference
 
 ## Contents
-- C# 13 Language Features
+- C# 14 Language Features
 - Project Configuration
 - Dependency Injection Patterns
 - Common Anti-Patterns
 
 ---
 
-## C# 13 Language Features
+## C# 14 Language Features
 
 ### Primary Constructors
 
