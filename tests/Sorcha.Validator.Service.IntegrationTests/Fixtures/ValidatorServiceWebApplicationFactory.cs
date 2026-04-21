@@ -2,10 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using System.Collections.Concurrent;
+using System.Security.Claims;
 using Grpc.Net.Client;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -18,8 +16,8 @@ using Sorcha.ServiceClients.Blueprint;
 using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Wallet;
-using Sorcha.Validator.Service.Services;
-using StackExchange.Redis;
+using Sorcha.Testing;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Sorcha.Validator.Service.IntegrationTests.Fixtures;
 
@@ -27,38 +25,16 @@ namespace Sorcha.Validator.Service.IntegrationTests.Fixtures;
 /// Custom WebApplicationFactory for Validator Service integration tests.
 /// Uses mock external services for isolated testing.
 /// </summary>
-public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class ValidatorServiceWebApplicationFactory : SorchaWebApplicationFactory<Program>
 {
     private readonly ConcurrentDictionary<string, object> _testData = new();
 
-    /// <summary>
-    /// Mock for the Register Service client
-    /// </summary>
     public Mock<IRegisterServiceClient> RegisterClientMock { get; private set; } = null!;
-
-    /// <summary>
-    /// Mock for the Blueprint Service client
-    /// </summary>
     public Mock<IBlueprintServiceClient> BlueprintClientMock { get; private set; } = null!;
-
-    /// <summary>
-    /// Mock for the Peer Service client
-    /// </summary>
     public Mock<IPeerServiceClient> PeerClientMock { get; private set; } = null!;
-
-    /// <summary>
-    /// Mock for the Wallet Service client
-    /// </summary>
     public Mock<IWalletServiceClient> WalletClientMock { get; private set; } = null!;
 
-    /// <summary>
-    /// In-memory transaction storage for tests
-    /// </summary>
     public ConcurrentDictionary<string, List<TransactionModel>> TransactionStore { get; } = new();
-
-    /// <summary>
-    /// In-memory docket storage for tests
-    /// </summary>
     public ConcurrentDictionary<string, List<DocketModel>> DocketStore { get; } = new();
 
     /// <summary>
@@ -67,9 +43,7 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
     /// </summary>
     public bool IsAvailable { get; private set; }
 
-    /// <summary>
-    /// Reason the infrastructure is unavailable, for skip messages.
-    /// </summary>
+    /// <summary>Reason the infrastructure is unavailable, for skip messages.</summary>
     public string? UnavailableReason { get; private set; }
 
     public ValidatorServiceWebApplicationFactory()
@@ -77,7 +51,9 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
         InitializeMocks();
     }
 
-    public ValueTask InitializeAsync()
+    protected override RedisMockMode RedisMockMode => RedisMockMode.Stateful;
+
+    public override ValueTask InitializeAsync()
     {
         // Eagerly verify the host can be created; if not, mark as unavailable
         try
@@ -105,118 +81,95 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
         }
     }
 
-    public new async ValueTask DisposeAsync()
+    protected override void ConfigureTestConfiguration(
+        WebHostBuilderContext context,
+        IConfigurationBuilder configuration)
     {
-        await base.DisposeAsync();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            // Validator Configuration
+            ["Validator:ValidatorId"] = "test-validator-id",
+            ["Validator:SystemWalletAddress"] = "test-system-wallet",
+
+            // Consensus Configuration
+            ["Consensus:MinSignatures"] = "1",
+            ["Consensus:MaxSignatures"] = "10",
+            ["Consensus:Timeout"] = "00:00:30",
+
+            // MemPool Configuration
+            ["MemPool:MaxSize"] = "1000",
+            ["MemPool:CleanupInterval"] = "00:01:00",
+
+            // DocketBuild Configuration
+            ["DocketBuild:TimeThreshold"] = "00:00:10",
+            ["DocketBuild:SizeThreshold"] = "50",
+            ["DocketBuild:MaxTransactionsPerDocket"] = "100",
+            ["DocketBuild:AllowEmptyDockets"] = "false",
+
+            // WalletService Configuration
+            ["WalletService:Endpoint"] = "http://localhost:5001",
+
+            // Genesis Config Cache
+            ["GenesisConfigCache:KeyPrefix"] = "test:genesis:",
+            ["GenesisConfigCache:DefaultTtl"] = "00:30:00",
+            ["GenesisConfigCache:EnableLocalCache"] = "true",
+
+            // Validator Registry
+            ["ValidatorRegistry:KeyPrefix"] = "test:validators:",
+            ["ValidatorRegistry:CacheTtl"] = "00:05:00",
+
+            // MongoDB (mocked, but config must parse)
+            ["RegisterStorage:MongoDB:ConnectionString"] = "mongodb://localhost:27017",
+            ["RegisterStorage:MongoDB:DatabaseName"] = "sorcha_test",
+        });
     }
 
-    protected override IHost CreateHost(IHostBuilder builder)
+    protected override void ConfigureTestAuth(TestAuthHandlerOptions options)
     {
-        return base.CreateHost(builder);
+        options.DefaultClaims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, "test-validator-id"),
+            new(ClaimTypes.Name, "Test Validator"),
+            new(ClaimTypes.Email, "validator@sorcha.io"),
+            new("organization_id", "test-org-id"),
+            new("org_id", "test-org-id"),
+            new("validator_id", "test-validator-id"),
+            new("wallet_address", "test-wallet-address"),
+            new("token_type", "service"),
+        };
+        options.DefaultRole = "Validator";
+        options.HeaderClaimMappings = new List<(string, string)>
+        {
+            ("X-Test-Validator-Id", "validator_id"),
+            ("X-Test-Register-Id", "register_id"),
+        };
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    protected override void ConfigureTestServices(IServiceCollection services)
     {
-        builder.UseEnvironment("Testing");
+        // Remove gRPC channel and use mocks for service clients
+        services.RemoveAll<GrpcChannel>();
 
-        builder.ConfigureAppConfiguration((context, config) =>
-        {
-            var testConfig = new Dictionary<string, string?>
-            {
-                // JWT Settings
-                ["JwtSettings:Issuer"] = "https://test.sorcha.io",
-                ["JwtSettings:Audiences:0"] = "https://test-api.sorcha.io",
-                ["JwtSettings:SigningKey"] = "test-signing-key-for-integration-tests-minimum-32-characters-required",
-                ["JwtSettings:ValidateIssuer"] = "false",
-                ["JwtSettings:ValidateAudience"] = "false",
-                ["JwtSettings:ValidateIssuerSigningKey"] = "false",
-                ["JwtSettings:ValidateLifetime"] = "false",
+        services.RemoveAll<IRegisterServiceClient>();
+        services.AddScoped(_ => RegisterClientMock.Object);
 
-                // Validator Configuration
-                ["Validator:ValidatorId"] = "test-validator-id",
-                ["Validator:SystemWalletAddress"] = "test-system-wallet",
+        services.RemoveAll<IBlueprintServiceClient>();
+        services.AddScoped(_ => BlueprintClientMock.Object);
 
-                // Consensus Configuration
-                ["Consensus:MinSignatures"] = "1",
-                ["Consensus:MaxSignatures"] = "10",
-                ["Consensus:Timeout"] = "00:00:30",
+        services.RemoveAll<IPeerServiceClient>();
+        services.AddScoped(_ => PeerClientMock.Object);
 
-                // MemPool Configuration
-                ["MemPool:MaxSize"] = "1000",
-                ["MemPool:CleanupInterval"] = "00:01:00",
+        services.RemoveAll<IWalletServiceClient>();
+        services.AddScoped(_ => WalletClientMock.Object);
 
-                // DocketBuild Configuration
-                ["DocketBuild:TimeThreshold"] = "00:00:10",
-                ["DocketBuild:SizeThreshold"] = "50",
-                ["DocketBuild:MaxTransactionsPerDocket"] = "100",
-                ["DocketBuild:AllowEmptyDockets"] = "false",
+        // Mock MongoDB so no real connection is required.
+        services.RemoveAll<IMongoClient>();
+        services.AddSingleton(new Mock<IMongoClient>().Object);
+        services.RemoveAll<IReadOnlyRegisterRepository>();
+        services.AddSingleton(new Mock<IReadOnlyRegisterRepository>().Object);
 
-                // WalletService Configuration
-                ["WalletService:Endpoint"] = "http://localhost:5001",
-
-                // Genesis Config Cache
-                ["GenesisConfigCache:KeyPrefix"] = "test:genesis:",
-                ["GenesisConfigCache:DefaultTtl"] = "00:30:00",
-                ["GenesisConfigCache:EnableLocalCache"] = "true",
-
-                // Validator Registry
-                ["ValidatorRegistry:KeyPrefix"] = "test:validators:",
-                ["ValidatorRegistry:CacheTtl"] = "00:05:00",
-
-                // MongoDB (mocked, but config must parse)
-                ["RegisterStorage:MongoDB:ConnectionString"] = "mongodb://localhost:27017",
-                ["RegisterStorage:MongoDB:DatabaseName"] = "sorcha_test"
-            };
-
-            config.AddInMemoryCollection(testConfig);
-        });
-
-        builder.ConfigureServices(services =>
-        {
-            // Remove Redis and use mock
-            services.RemoveAll<IConnectionMultiplexer>();
-            var mockMultiplexer = CreateMockRedis();
-            services.AddSingleton(mockMultiplexer);
-
-            // Remove gRPC channel and use mock
-            services.RemoveAll<GrpcChannel>();
-
-            // Replace service clients with mocks
-            services.RemoveAll<IRegisterServiceClient>();
-            services.AddScoped(_ => RegisterClientMock.Object);
-
-            services.RemoveAll<IBlueprintServiceClient>();
-            services.AddScoped(_ => BlueprintClientMock.Object);
-
-            services.RemoveAll<IPeerServiceClient>();
-            services.AddScoped(_ => PeerClientMock.Object);
-
-            services.RemoveAll<IWalletServiceClient>();
-            services.AddScoped(_ => WalletClientMock.Object);
-
-            // Replace MongoDB with mocks to avoid requiring a real MongoDB connection
-            services.RemoveAll<IMongoClient>();
-            services.AddSingleton(new Mock<IMongoClient>().Object);
-            services.RemoveAll<IReadOnlyRegisterRepository>();
-            services.AddSingleton(new Mock<IReadOnlyRegisterRepository>().Object);
-
-            // Remove all existing authentication
-            services.RemoveAll<IAuthenticationService>();
-            services.RemoveAll<IAuthenticationHandlerProvider>();
-            services.RemoveAll<IAuthenticationSchemeProvider>();
-
-            // Add test authentication
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
-                options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
-                options.DefaultScheme = TestAuthHandler.SchemeName;
-            })
-            .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
-
-            // Remove hosted services that might cause issues in tests
-            services.RemoveAll<IHostedService>();
-        });
+        // Remove hosted services that might cause issues in tests.
+        services.RemoveAll<IHostedService>();
     }
 
     private void InitializeMocks()
@@ -231,7 +184,6 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
 
     private void SetupDefaultMockBehavior()
     {
-        // Register client defaults
         RegisterClientMock
             .Setup(r => r.GetRegisterAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string registerId, CancellationToken _) => new Sorcha.Register.Models.Register
@@ -239,7 +191,7 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
                 Id = registerId,
                 Name = $"Test Register {registerId}",
                 CreatedAt = DateTime.UtcNow,
-                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online
+                Status = Sorcha.Register.Models.Enums.RegisterStatus.Online,
             });
 
         RegisterClientMock
@@ -252,7 +204,7 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
                     Transactions = transactions.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
                     Page = page,
                     PageSize = pageSize,
-                    Total = transactions.Count
+                    Total = transactions.Count,
                 };
             });
 
@@ -273,7 +225,6 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
                 return true;
             });
 
-        // Blueprint client defaults - returns JSON string
         BlueprintClientMock
             .Setup(b => b.GetBlueprintAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string blueprintId, CancellationToken _) =>
@@ -283,7 +234,6 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
             .Setup(b => b.ValidatePayloadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        // Peer client defaults
         PeerClientMock
             .Setup(p => p.QueryValidatorsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Sorcha.ServiceClients.Peer.ValidatorInfo>
@@ -293,8 +243,8 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
                     ValidatorId = "test-validator-id",
                     GrpcEndpoint = "http://localhost:7004",
                     ReputationScore = 1.0,
-                    IsActive = true
-                }
+                    IsActive = true,
+                },
             });
 
         PeerClientMock
@@ -305,7 +255,6 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
             .Setup(p => p.BroadcastConfirmedDocketAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        // Wallet client defaults
         WalletClientMock
             .Setup(w => w.SignDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string walletAddress, string data, CancellationToken _) => new WalletSignResult
@@ -313,7 +262,7 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
                 Signature = System.Text.Encoding.UTF8.GetBytes("test-signature"),
                 PublicKey = System.Text.Encoding.UTF8.GetBytes(walletAddress),
                 SignedBy = walletAddress,
-                Algorithm = "ED25519"
+                Algorithm = "ED25519",
             });
 
         WalletClientMock
@@ -321,97 +270,7 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
             .ReturnsAsync("test-system-wallet");
     }
 
-    private IConnectionMultiplexer CreateMockRedis()
-    {
-        var mockDatabase = new Mock<IDatabase>();
-
-        // String operations
-        var stringStore = new ConcurrentDictionary<string, RedisValue>();
-
-        mockDatabase
-            .Setup(d => d.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, RedisValue value, TimeSpan? _, When _, CommandFlags _) =>
-            {
-                stringStore[key.ToString()] = value;
-                return true;
-            });
-
-        mockDatabase
-            .Setup(d => d.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, CommandFlags _) =>
-                stringStore.TryGetValue(key.ToString(), out var value) ? value : RedisValue.Null);
-
-        mockDatabase
-            .Setup(d => d.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, CommandFlags flags) =>
-            {
-                return stringStore.TryRemove(key.ToString(), out RedisValue _);
-            });
-
-        mockDatabase
-            .Setup(d => d.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, CommandFlags _) => stringStore.ContainsKey(key.ToString()));
-
-        // Set operations
-        var setStore = new ConcurrentDictionary<string, HashSet<RedisValue>>();
-
-        mockDatabase
-            .Setup(d => d.SetAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, RedisValue value, CommandFlags _) =>
-            {
-                var set = setStore.GetOrAdd(key.ToString(), _ => new HashSet<RedisValue>());
-                return set.Add(value);
-            });
-
-        mockDatabase
-            .Setup(d => d.SetContainsAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, RedisValue value, CommandFlags _) =>
-            {
-                return setStore.TryGetValue(key.ToString(), out var set) && set.Contains(value);
-            });
-
-        mockDatabase
-            .Setup(d => d.SetMembersAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, CommandFlags _) =>
-                setStore.TryGetValue(key.ToString(), out var set)
-                    ? set.ToArray()
-                    : Array.Empty<RedisValue>());
-
-        // Sorted set operations
-        var sortedSetStore = new ConcurrentDictionary<string, SortedDictionary<double, RedisValue>>();
-
-        mockDatabase
-            .Setup(d => d.SortedSetAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<double>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync((RedisKey key, RedisValue value, double score, When _, CommandFlags _) =>
-            {
-                var sortedSet = sortedSetStore.GetOrAdd(key.ToString(), _ => new SortedDictionary<double, RedisValue>());
-                sortedSet[score] = value;
-                return true;
-            });
-
-        // Pub/Sub
-        var mockSubscriber = new Mock<ISubscriber>();
-        mockSubscriber
-            .Setup(s => s.SubscribeAsync(It.IsAny<RedisChannel>(), It.IsAny<Action<RedisChannel, RedisValue>>(), It.IsAny<CommandFlags>()))
-            .Returns(Task.CompletedTask);
-
-        mockDatabase
-            .Setup(d => d.PublishAsync(It.IsAny<RedisChannel>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(0);
-
-        // Multiplexer
-        var mockMultiplexer = new Mock<IConnectionMultiplexer>();
-        mockMultiplexer.Setup(m => m.IsConnected).Returns(true);
-        mockMultiplexer.Setup(m => m.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(mockDatabase.Object);
-        mockMultiplexer.Setup(m => m.GetSubscriber(It.IsAny<object>())).Returns(mockSubscriber.Object);
-
-        return mockMultiplexer.Object;
-    }
-
-    /// <summary>
-    /// Creates an HttpClient configured for a validator.
-    /// Skips the test if infrastructure is unavailable.
-    /// </summary>
+    /// <summary>Creates an HttpClient configured for a validator.</summary>
     public HttpClient CreateValidatorClient()
     {
         SkipIfUnavailable();
@@ -420,52 +279,37 @@ public class ValidatorServiceWebApplicationFactory : WebApplicationFactory<Progr
         return client;
     }
 
-    /// <summary>
-    /// Creates an HttpClient configured for an administrator.
-    /// Skips the test if infrastructure is unavailable.
-    /// </summary>
-    public HttpClient CreateAdminClient()
+    /// <summary>Creates an HttpClient configured for an administrator.</summary>
+    public new HttpClient CreateAdminClient()
     {
         SkipIfUnavailable();
-        var client = CreateClient();
-        client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token");
-        client.DefaultRequestHeaders.Add("X-Test-Role", "Administrator");
-        return client;
+        return base.CreateAdminClient();
     }
 
-    /// <summary>
-    /// Creates an HttpClient with no authentication headers.
-    /// Skips the test if infrastructure is unavailable.
-    /// </summary>
-    public HttpClient CreateUnauthenticatedClient()
+    /// <summary>Creates an HttpClient with no authentication headers.</summary>
+    public new HttpClient CreateUnauthenticatedClient()
     {
         SkipIfUnavailable();
-        return CreateClient();
+        return base.CreateUnauthenticatedClient();
     }
 
-    /// <summary>
-    /// Seeds test data for a register.
-    /// </summary>
+    /// <summary>Seeds test data for a register.</summary>
     public void SeedRegisterData(string registerId, List<TransactionModel>? transactions = null, List<DocketModel>? dockets = null)
     {
         if (transactions != null)
         {
             TransactionStore[registerId] = transactions;
         }
-
         if (dockets != null)
         {
             DocketStore[registerId] = dockets;
         }
     }
 
-    /// <summary>
-    /// Clears all test data. Safe to call when infrastructure is unavailable.
-    /// </summary>
+    /// <summary>Clears all test data. Safe to call when infrastructure is unavailable.</summary>
     public void ClearTestData()
     {
         if (!IsAvailable) return;
-
         TransactionStore.Clear();
         DocketStore.Clear();
         _testData.Clear();
