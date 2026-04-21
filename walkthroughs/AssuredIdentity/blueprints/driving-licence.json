@@ -1,7 +1,7 @@
 {
   "id": "driving-licence-v1",
   "title": "Driving Licence",
-  "description": "Feature 107 PR 2 — a citizen who already holds an AssuredIdentityCredential applies for a driving licence. They submit a short two-page wizard (vehicle class + review), the Driver Licensing Authority (DLA) requests the citizen's Assured Identity via HAIP presentation (givenName/familyName/dateOfBirth plus optional portrait), the DLA approves, and a DrivingLicenceCredential is minted with the holder's identity carried forward from the presentation. 10-year expiry.",
+  "description": "Feature 107 PR 2 — a citizen who already holds an AssuredIdentityCredential applies for a driving licence. They submit a short two-page wizard (vehicle class + review), Acme Licensing Co. requests the citizen's Assured Identity via HAIP presentation (givenName/familyName/dateOfBirth plus optional portrait), the licensing officer approves, and a DrivingLicenceCredential is minted with the holder's identity carried forward from the presentation. 10-year expiry.",
   "version": 1,
   "category": "licensing",
   "tags": ["assured-identity", "driving-licence", "haip", "oid4vp", "oid4vci", "verifiable-credential", "credential-chain", "licence-pink", "x-review"],
@@ -10,14 +10,14 @@
   "template": {
     "id": "driving-licence",
     "title": "Driving Licence",
-    "description": "Four-action credential-chain workflow: citizen submits vehicle-class application, DLA verifies identity via HAIP presentation, DLA issues the licence, citizen claims.",
+    "description": "Four-action credential-chain workflow: citizen submits vehicle-class application, licensing officer verifies identity via HAIP presentation, licensing officer issues the licence, citizen claims.",
     "version": 1,
     "metadata": {
       "category": "Licensing & Permits",
       "complexity": "Standard",
       "actions": "4",
       "features": "HAIP, OpenID4VCI, OpenID4VP, Verifiable Credential, Credential Chain, Portrait Carry-Forward, Licence-Pink Theme",
-      "sector": "Government"
+      "sector": "Licensing"
     },
     "participants": [
       {
@@ -27,9 +27,9 @@
         "description": "Citizen applying for a driving licence — submits vehicle class, presents their Assured Identity, claims the licence credential"
       },
       {
-        "id": "dla-officer",
-        "name": "DLA Officer",
-        "organisation": "Driver Licensing Authority",
+        "id": "licensing-officer",
+        "name": "Licensing Officer",
+        "organisation": "Acme Licensing Co.",
         "description": "Verifies the applicant's identity via HAIP presentation and issues the licence credential"
       }
     ],
@@ -43,7 +43,7 @@
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Apply for a driving licence. The DLA will request your Assured Identity credential and issue the licence on approval.",
+            "x-introduction": "Apply for a driving licence. Acme Licensing Co. will request your Assured Identity credential and issue the licence on approval.",
             "x-pages": [
               {
                 "title": "Vehicle class",
@@ -54,12 +54,12 @@
               },
               {
                 "title": "Review your application",
-                "description": "Check the details before submitting. Once the DLA approves, this is what your Driving Licence credential will show.",
+                "description": "Check the details before submitting. Once the licensing officer approves, this is what your Driving Licence credential will show.",
                 "x-review": {
                   "layout": "id-card",
                   "editable": true,
                   "header": {
-                    "issuerName": "Driver Licensing Authority",
+                    "issuerName": "Acme Licensing Co.",
                     "credentialName": "Driving Licence",
                     "colourTheme": "licence-pink"
                   }
@@ -83,22 +83,22 @@
         ],
         "disclosures": [
           { "participantAddress": "citizen", "dataPointers": ["/*"] },
-          { "participantAddress": "dla-officer", "dataPointers": ["/*"] }
+          { "participantAddress": "licensing-officer", "dataPointers": ["/*"] }
         ],
         "routes": [
           {
-            "id": "to-dla-verify",
+            "id": "to-licensing-verify",
             "nextActionIds": [2],
             "isDefault": true,
-            "description": "Application submitted — pending DLA identity verification"
+            "description": "Application submitted — pending licensing identity verification"
           }
         ]
       },
       {
         "id": 2,
         "title": "Verify Applicant Identity",
-        "description": "DLA requests the citizen's Assured Identity credential via HAIP presentation. The citizen discloses givenName, familyName, dateOfBirth (and optionally portrait) from their AssuredIdentityCredential.",
-        "sender": "dla-officer",
+        "description": "Acme Licensing Co. requests the citizen's Assured Identity credential via HAIP presentation. The citizen discloses givenName, familyName, dateOfBirth (and optionally portrait) from their AssuredIdentityCredential.",
+        "sender": "licensing-officer",
         "requiredPriorActions": [1],
         "credentialRequirements": [
           {
@@ -110,7 +110,7 @@
               { "claimName": "dateOfBirth" }
             ],
             "revocationCheckPolicy": "FailClosed",
-            "description": "Government-issued Assured Identity credential. Portrait (if the citizen captured one at identity time) is optional and carried forward into the licence when disclosed."
+            "description": "Assured Identity credential issued by Acme Verification Co. Portrait (if the citizen captured one at identity time) is optional and carried forward into the licence when disclosed."
           }
         ],
         "dataSchemas": [
@@ -126,7 +126,7 @@
           }
         ],
         "disclosures": [
-          { "participantAddress": "dla-officer", "dataPointers": ["/*"] }
+          { "participantAddress": "licensing-officer", "dataPointers": ["/*"] }
         ],
         "routes": [
           {
@@ -140,8 +140,8 @@
       {
         "id": 3,
         "title": "Issue Driving Licence",
-        "description": "DLA mints the DrivingLicenceCredential with holder identity carried forward from the presented Assured Identity (holderName, holderDateOfBirth, holderPortrait). licence-pink theme.",
-        "sender": "dla-officer",
+        "description": "Acme Licensing Co. mints the DrivingLicenceCredential with holder identity carried forward from the presented Assured Identity (holderName, holderDateOfBirth, holderPortrait). licence-pink theme.",
+        "sender": "licensing-officer",
         "requiredPriorActions": [2],
         "credentialIssuanceConfig": {
           "credentialType": "DrivingLicenceCredential",
@@ -178,7 +178,7 @@
           }
         ],
         "disclosures": [
-          { "participantAddress": "dla-officer", "dataPointers": ["/*"] },
+          { "participantAddress": "licensing-officer", "dataPointers": ["/*"] },
           {
             "participantAddress": "citizen",
             "dataPointers": ["/licenceNumber", "/vehicleClass", "/issuedDate", "/expiryDate"]

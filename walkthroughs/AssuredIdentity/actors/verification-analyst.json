@@ -1,0 +1,35 @@
+{
+  "actor": {
+    "name": "verification-analyst",
+    "description": "Feature 107 PR 3 — unattended Acme Verification Co. verification analyst. Picks up pending identity applications from its inbox and auto-approves them, producing the AssuredIdentityCredential offer that the citizen claims. A human opening the analyst UI during the pending window still sees the standard approve/reject review screen (FR-030); the agent simply gets there first. External-validator-API and AI-mode variants are a shape-stable extension per FR-029."
+  },
+  "connection": {
+    "gatewayUrl": "http://localhost",
+    "registerId": "{{registerId}}",
+    "credentials": {
+      "email": "{{roles.verificationAnalyst.email}}",
+      "password": "$env:VERIFICATION_ANALYST_PASSWORD",
+      "organizationId": "{{roles.verificationAnalyst.organizationId}}"
+    },
+    "walletAddress": "{{roles.verificationAnalyst.walletAddress}}"
+  },
+  "inbox": {
+    "signalR": { "enabled": true },
+    "polling": { "enabled": true, "intervalSeconds": 10 }
+  },
+  "mode": "rules",
+  "rules": [
+    {
+      "actionName": "Verify Assured Identity Application",
+      "decision": "approve",
+      "payload": {
+        "decision": "approved",
+        "verificationNotes": "Auto-approved by the verification-analyst demo agent. Fields checked: persona-filled name, DOB, email, structured address (and portrait when present). v1.1 will swap this rules-mode decision for an external identity-validator callout — shape-stable, no blueprint change."
+      }
+    }
+  ],
+  "logging": {
+    "level": "Information",
+    "actionLog": "./logs/verification-analyst-actions.jsonl"
+  }
+}

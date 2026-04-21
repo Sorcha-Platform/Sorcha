@@ -122,7 +122,7 @@ Sorcha blueprints define multi-participant workflows as JSON documents. Each blu
 {
   "participants": [
     { "id": "citizen", "name": "Citizen", "organisation": "Public" }       // walletAddress OMITTED
-    { "id": "assessor", "name": "Government Assessor", "walletAddress": "ws1..." }
+    { "id": "analyst", "name": "Verification Analyst", "walletAddress": "ws1..." }
   ],
   "actions": [
     {

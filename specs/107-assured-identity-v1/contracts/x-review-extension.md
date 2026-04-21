@@ -23,7 +23,7 @@ Placement: as a sibling extension on a `type: object` page within a blueprint's 
         "layout": "id-card",
         "editable": true,
         "header": {
-          "issuerName": "Government of Scotland",
+          "issuerName": "Acme Verification Co.",
           "credentialName": "Assured Identity",
           "colourTheme": "identity-navy"
         }
@@ -119,7 +119,7 @@ Footer actions come from the hosting action's `routes` (existing blueprint patte
 
 ## Two-card stacked variant
 
-For credential-chain workflows (e.g. DLA review of presented identity + licence-to-be), a single `x-review` extension on a single page can produce two stacked cards. The renderer detects this when the page also declares a `credentialRequirements` block (presented credential) AND a `credentialIssuanceConfig` block (credential-to-be):
+For credential-chain workflows (e.g. licensing review of presented identity + licence-to-be), a single `x-review` extension on a single page can produce two stacked cards. The renderer detects this when the page also declares a `credentialRequirements` block (presented credential) AND a `credentialIssuanceConfig` block (credential-to-be):
 
 - Top card: presented credential (claims pulled from the verified presentation context, withheld claims rendered as faded "— — —" with explanatory caption)
 - Bottom card: credential-to-be (claims pulled from the action payload + the action's `credentialIssuanceConfig.claimMappings`)

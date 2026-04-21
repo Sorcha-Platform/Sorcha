@@ -13,7 +13,7 @@ A blueprint author selects register-native delivery by setting `targetAudience: 
 {
   "id": 2,
   "title": "Review and issue credential",
-  "sender": "government-assessor",
+  "sender": "verification-analyst",
   "requiredPriorActions": [1],
   "dataSchemas": [
     {
@@ -38,7 +38,7 @@ A blueprint author selects register-native delivery by setting `targetAudience: 
     "disclosable": ["givenName", "familyName", "dateOfBirth", "email"]
   },
   "disclosures": [
-    { "participantAddress": "government-assessor", "dataPointers": ["/*"] },
+    { "participantAddress": "verification-analyst", "dataPointers": ["/*"] },
     { "participantAddress": "citizen", "dataPointers": ["/credential"] }
   ],
   "routes": [
@@ -134,7 +134,7 @@ When `ActionExecutionService.ExecuteAsync` processes an action whose `credential
 
 6. Calls `IEncryptionPipelineService.EncryptDisclosedPayloadsAsync` with the disclosure group. This returns an `EncryptedPayloadGroup` wrapping the credential payload with a per-recipient X25519 wrap + XChaCha20-Poly1305 AEAD.
 
-7. Merges the encrypted group into the action's `Disclosures` under the `/credential` pointer. The rest of the action's disclosures (e.g. the government-assessor's full view of `/verificationDecision` and `/reviewerNotes`) remain unchanged.
+7. Merges the encrypted group into the action's `Disclosures` under the `/credential` pointer. The rest of the action's disclosures (e.g. the verification-analyst's full view of `/verificationDecision` and `/reviewerNotes`) remain unchanged.
 
 8. Proceeds with the normal execute path: transaction construction, validator submission, docket confirmation, route evaluation, next-action resolution.
 

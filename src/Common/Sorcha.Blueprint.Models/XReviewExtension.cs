@@ -42,7 +42,7 @@ public sealed record XReviewExtension
 public sealed record XReviewHeader
 {
     /// <summary>
-    /// Issuer organisation display name, e.g. "Government of Scotland".
+    /// Issuer organisation display name, e.g. "Acme Verification Co.".
     /// </summary>
     public required string IssuerName { get; init; }
 

@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Sorcha Contributors
 #
 # AssuredIdentity — Setup
-# Feature 107. Creates the Government of Scotland issuing organisation,
+# Feature 107. Creates the Acme Verification Co. issuing organisation,
 # provisions its trust anchor + HAIP issuer enrolment, creates the citizen
 # public-org account, and publishes the AssuredIdentity blueprint.
 # Idempotent — safe to run multiple times.
@@ -57,15 +57,15 @@ Invoke-SorchaApi -Method PUT `
     -Headers $sysAdmin.Headers
 Write-WtInfo "Public org enabled"
 
-$govAdminEmail    = "gov-admin@assured-identity.local"
-$govAdminPassword = $secrets.DefaultPassword
+$verificationAdminEmail    = "verification-admin@assured-identity.local"
+$verificationAdminPassword = $secrets.DefaultPassword
 
 Register-SorchaPublicUser `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $govAdminEmail `
-    -Password $govAdminPassword `
-    -DisplayName "Government Admin" | Out-Null
-Write-WtInfo "gov-admin registered: $govAdminEmail"
+    -Email $verificationAdminEmail `
+    -Password $verificationAdminPassword `
+    -DisplayName "Verification Admin" | Out-Null
+Write-WtInfo "verification-admin registered: $verificationAdminEmail"
 
 $citizenEmail    = "alex.macleod@assured-identity.local"
 $citizenPassword = $secrets.DefaultPassword
@@ -86,7 +86,7 @@ $publicUsers = Invoke-SorchaApi -Method GET `
     -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
     -Headers $sysAdmin.Headers
 
-foreach ($email in @($govAdminEmail, $citizenEmail)) {
+foreach ($email in @($verificationAdminEmail, $citizenEmail)) {
     $user = $publicUsers.users | Where-Object { $_.email -eq $email } | Select-Object -First 1
     if ($user) {
         Confirm-SorchaUserEmail `
@@ -99,47 +99,47 @@ foreach ($email in @($govAdminEmail, $citizenEmail)) {
 }
 
 # ============================================================================
-# Step 4: Create Government of Scotland Org
+# Step 4: Create Acme Verification Co. Org
 # ============================================================================
-Write-WtStep "Step 4: Create Government of Scotland"
+Write-WtStep "Step 4: Create Acme Verification Co."
 
-$govOrg = New-SorchaOrganization `
+$verificationOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Name "Government of Scotland" `
-    -Subdomain "gov-scotland" `
-    -AdminEmail $govAdminEmail `
+    -Name "Acme Verification Co." `
+    -Subdomain "acme-verification" `
+    -AdminEmail $verificationAdminEmail `
     -Headers $sysAdmin.Headers `
     -Description "Issues Assured Identity credentials to citizens"
 
-$govOrgId = $govOrg.OrganizationId
-Write-WtSuccess "Government org: $govOrgId"
+$verificationOrgId = $verificationOrg.OrganizationId
+Write-WtSuccess "Verification org: $verificationOrgId"
 
 # ============================================================================
-# Step 5: Government Admin — Login, Wallet, Participant
+# Step 5: Verification Admin — Login, Wallet, Participant
 # ============================================================================
-Write-WtStep "Step 5: Government Admin — Login, Wallet, Participant"
+Write-WtStep "Step 5: Verification Admin — Login, Wallet, Participant"
 
-$govSession = Connect-SorchaUser `
+$verificationSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $govAdminEmail `
-    -Password $govAdminPassword `
-    -OrganizationId $govOrgId
+    -Email $verificationAdminEmail `
+    -Password $verificationAdminPassword `
+    -OrganizationId $verificationOrgId
 
-$govWallet = New-SorchaWallet `
+$verificationWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Government of Scotland Issuer" `
-    -Headers $govSession.Headers `
+    -Name "Acme Verification Co. Issuer" `
+    -Headers $verificationSession.Headers `
     -FetchPublicKey
-Write-WtSuccess "Government wallet: $($govWallet.Address)"
+Write-WtSuccess "Verification wallet: $($verificationWallet.Address)"
 
 $null = Register-SorchaParticipant `
     -TenantUrl $sorchaEnv.TenantUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -OrganizationId $govOrgId `
-    -WalletAddress $govWallet.Address `
-    -DisplayName "Government Assessor" `
-    -Headers $govSession.Headers
-Write-WtInfo "Government assessor participant registered"
+    -OrganizationId $verificationOrgId `
+    -WalletAddress $verificationWallet.Address `
+    -DisplayName "Verification Analyst" `
+    -Headers $verificationSession.Headers
+Write-WtInfo "Verification analyst participant registered"
 
 # ============================================================================
 # Step 5b: Citizen — Login, Wallet, Participant
@@ -185,11 +185,11 @@ try {
 
 try {
     Invoke-SorchaApi -Method POST `
-        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($govWallet.Address)/enrol" `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($verificationWallet.Address)/enrol" `
         -Headers $sysAdmin.Headers `
         -Body @{
-            orgPublicKeyBase64 = $govWallet.PublicKey
-            orgDisplayName     = "Government of Scotland"
+            orgPublicKeyBase64 = $verificationWallet.PublicKey
+            orgDisplayName     = "Acme Verification Co."
         }
     Write-WtSuccess "Org cert enrolled"
 } catch { Write-WtWarn "Enrolment may already exist" }
@@ -207,10 +207,10 @@ $register = New-SorchaRegister `
     -WalletUrl $sorchaEnv.WalletUrl `
     -Name "Assured Identity Register" `
     -Description "Register for Feature 107 Assured Identity workflows" `
-    -TenantId $govOrgId `
-    -OwnerUserId $govSession.UserId `
-    -OwnerWalletAddress $govWallet.Address `
-    -Headers $govSession.Headers `
+    -TenantId $verificationOrgId `
+    -OwnerUserId $verificationSession.UserId `
+    -OwnerWalletAddress $verificationWallet.Address `
+    -Headers $verificationSession.Headers `
     -TenantUrl $sorchaEnv.TenantUrl `
     -DevMode
 Write-WtSuccess "Register: $($register.RegisterId)"
@@ -218,15 +218,15 @@ Write-WtSuccess "Register: $($register.RegisterId)"
 try {
     $null = Publish-SorchaParticipant `
         -TenantUrl $sorchaEnv.TenantUrl `
-        -OrganizationId $govOrgId `
+        -OrganizationId $verificationOrgId `
         -RegisterId $register.RegisterId `
-        -ParticipantName "Government Assessor" `
-        -OrganizationName "Government of Scotland" `
-        -WalletAddress $govWallet.Address `
-        -PublicKey $govWallet.PublicKey `
-        -Headers $govSession.Headers
+        -ParticipantName "Verification Analyst" `
+        -OrganizationName "Acme Verification Co." `
+        -WalletAddress $verificationWallet.Address `
+        -PublicKey $verificationWallet.PublicKey `
+        -Headers $verificationSession.Headers
 } catch {
-    Write-WtWarn "Government participant publish failed: $($_.Exception.Message)"
+    Write-WtWarn "Verification analyst participant publish failed: $($_.Exception.Message)"
 }
 
 try {
@@ -252,7 +252,7 @@ Write-WtStep "Step 8: Publish Blueprint"
 # Action 1 as the bound citizen for that instance.
 # See: .claude/skills/blueprint-builder/SKILL.md — "Open Participants & Late Binding"
 $walletMap = @{
-    "government-assessor" = $govWallet.Address
+    "verification-analyst" = $verificationWallet.Address
     # "citizen" is intentionally absent — late-bound at runtime.
 }
 
@@ -260,81 +260,81 @@ $blueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $sorchaEnv.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "blueprints/assured-identity.json") `
     -WalletMap $walletMap `
-    -Headers $govSession.Headers `
+    -Headers $verificationSession.Headers `
     -IdPrefix "assured-identity" `
     -RegisterId $register.RegisterId
 
 Write-WtSuccess "Blueprint: $($blueprint.BlueprintId)"
 
 # ============================================================================
-# Step 9: Driver Licensing Authority (DLA) — Feature 107 PR 2 (US2)
+# Step 9: Acme Licensing Co. — Feature 107 PR 2 (US2)
 # ============================================================================
-Write-WtStep "Step 9: Create Driver Licensing Authority"
+Write-WtStep "Step 9: Create Acme Licensing Co."
 
-$dlaAdminEmail    = "dla-admin@assured-identity.local"
-$dlaAdminPassword = $secrets.DefaultPassword
+$licensingAdminEmail    = "licensing-admin@assured-identity.local"
+$licensingAdminPassword = $secrets.DefaultPassword
 
 Register-SorchaPublicUser `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $dlaAdminEmail `
-    -Password $dlaAdminPassword `
-    -DisplayName "DLA Admin" | Out-Null
+    -Email $licensingAdminEmail `
+    -Password $licensingAdminPassword `
+    -DisplayName "Licensing Admin" | Out-Null
 
-$publicUsersAfterDla = Invoke-SorchaApi -Method GET `
+$publicUsersAfterLicensing = Invoke-SorchaApi -Method GET `
     -Uri "$($sorchaEnv.TenantUrl)/organizations/$publicOrgId/users?includeInactive=true" `
     -Headers $sysAdmin.Headers
-$dlaPublicUser = $publicUsersAfterDla.users | Where-Object { $_.email -eq $dlaAdminEmail } | Select-Object -First 1
-if ($dlaPublicUser) {
+$licensingPublicUser = $publicUsersAfterLicensing.users | Where-Object { $_.email -eq $licensingAdminEmail } | Select-Object -First 1
+if ($licensingPublicUser) {
     Confirm-SorchaUserEmail `
         -TenantUrl $sorchaEnv.TenantUrl `
         -OrganizationId $publicOrgId `
-        -UserId $dlaPublicUser.id `
+        -UserId $licensingPublicUser.id `
         -Headers $sysAdmin.Headers
 }
 
-$dlaOrg = New-SorchaOrganization `
+$licensingOrg = New-SorchaOrganization `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Name "Driver Licensing Authority" `
-    -Subdomain "dla-scotland" `
-    -AdminEmail $dlaAdminEmail `
+    -Name "Acme Licensing Co." `
+    -Subdomain "acme-licensing" `
+    -AdminEmail $licensingAdminEmail `
     -Headers $sysAdmin.Headers `
     -Description "Issues Driving Licence credentials to citizens holding an AssuredIdentityCredential"
-$dlaOrgId = $dlaOrg.OrganizationId
-Write-WtSuccess "DLA org: $dlaOrgId"
+$licensingOrgId = $licensingOrg.OrganizationId
+Write-WtSuccess "Licensing org: $licensingOrgId"
 
-$dlaSession = Connect-SorchaUser `
+$licensingSession = Connect-SorchaUser `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Email $dlaAdminEmail `
-    -Password $dlaAdminPassword `
-    -OrganizationId $dlaOrgId
+    -Email $licensingAdminEmail `
+    -Password $licensingAdminPassword `
+    -OrganizationId $licensingOrgId
 
-$dlaWallet = New-SorchaWallet `
+$licensingWallet = New-SorchaWallet `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -Name "Driver Licensing Authority Issuer" `
-    -Headers $dlaSession.Headers `
+    -Name "Acme Licensing Co. Issuer" `
+    -Headers $licensingSession.Headers `
     -FetchPublicKey
-Write-WtSuccess "DLA wallet: $($dlaWallet.Address)"
+Write-WtSuccess "Licensing wallet: $($licensingWallet.Address)"
 
 $null = Register-SorchaParticipant `
     -TenantUrl $sorchaEnv.TenantUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
-    -OrganizationId $dlaOrgId `
-    -WalletAddress $dlaWallet.Address `
-    -DisplayName "DLA Officer" `
-    -Headers $dlaSession.Headers
+    -OrganizationId $licensingOrgId `
+    -WalletAddress $licensingWallet.Address `
+    -DisplayName "Licensing Officer" `
+    -Headers $licensingSession.Headers
 
-# DLA as HAIP issuer too — trust anchor already provisioned for the tenant,
-# enrol the DLA org cert alongside Government of Scotland.
+# Licensing org as HAIP issuer too — trust anchor already provisioned for the tenant,
+# enrol the licensing org cert alongside Acme Verification Co.
 try {
     Invoke-SorchaApi -Method POST `
-        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($dlaWallet.Address)/enrol" `
+        -Uri "$($sorchaEnv.GatewayUrl)/api/v1/trust/tenants/$tenantId/orgs/$($licensingWallet.Address)/enrol" `
         -Headers $sysAdmin.Headers `
         -Body @{
-            orgPublicKeyBase64 = $dlaWallet.PublicKey
-            orgDisplayName     = "Driver Licensing Authority"
+            orgPublicKeyBase64 = $licensingWallet.PublicKey
+            orgDisplayName     = "Acme Licensing Co."
         }
-    Write-WtSuccess "DLA org cert enrolled"
-} catch { Write-WtWarn "DLA enrolment may already exist" }
+    Write-WtSuccess "Licensing org cert enrolled"
+} catch { Write-WtWarn "Licensing enrolment may already exist" }
 
 # Reuse the Assured Identity register — Feature 107 design keeps both
 # credentials on a single canonical register for the walkthrough so the
@@ -343,15 +343,15 @@ try {
 try {
     $null = Publish-SorchaParticipant `
         -TenantUrl $sorchaEnv.TenantUrl `
-        -OrganizationId $dlaOrgId `
+        -OrganizationId $licensingOrgId `
         -RegisterId $register.RegisterId `
-        -ParticipantName "DLA Officer" `
-        -OrganizationName "Driver Licensing Authority" `
-        -WalletAddress $dlaWallet.Address `
-        -PublicKey $dlaWallet.PublicKey `
-        -Headers $dlaSession.Headers
+        -ParticipantName "Licensing Officer" `
+        -OrganizationName "Acme Licensing Co." `
+        -WalletAddress $licensingWallet.Address `
+        -PublicKey $licensingWallet.PublicKey `
+        -Headers $licensingSession.Headers
 } catch {
-    Write-WtWarn "DLA participant publish failed: $($_.Exception.Message)"
+    Write-WtWarn "Licensing participant publish failed: $($_.Exception.Message)"
 }
 
 # ============================================================================
@@ -360,7 +360,7 @@ try {
 Write-WtStep "Step 10: Publish Driving Licence Blueprint"
 
 $licenceWalletMap = @{
-    "dla-officer" = $dlaWallet.Address
+    "licensing-officer" = $licensingWallet.Address
     # "citizen" intentionally absent — late-bound per Feature 103 open-participant contract.
 }
 
@@ -368,7 +368,7 @@ $licenceBlueprint = Publish-SorchaBlueprint `
     -BlueprintUrl $sorchaEnv.BlueprintUrl `
     -TemplatePath (Join-Path $scriptDir "blueprints/driving-licence.json") `
     -WalletMap $licenceWalletMap `
-    -Headers $dlaSession.Headers `
+    -Headers $licensingSession.Headers `
     -IdPrefix "driving-licence" `
     -RegisterId $register.RegisterId
 
@@ -378,31 +378,31 @@ Write-WtSuccess "Driving Licence blueprint: $($licenceBlueprint.BlueprintId)"
 # Save State
 # ============================================================================
 $state = @{
-    tenantUrl            = $sorchaEnv.TenantUrl
-    blueprintUrl         = $sorchaEnv.BlueprintUrl
-    walletUrl            = $sorchaEnv.WalletUrl
-    registerUrl          = $sorchaEnv.RegisterUrl
-    gatewayUrl           = $sorchaEnv.GatewayUrl
-    tenantId             = $tenantId
-    govOrgId             = $govOrgId
-    govWalletAddress     = $govWallet.Address
-    govWalletPublicKey   = $govWallet.PublicKey
-    publicOrgId          = $publicOrgId
-    citizenWalletAddress = $citizenWallet.Address
-    registerId           = $register.RegisterId
-    blueprintId          = $blueprint.BlueprintId
-    walletDir            = (Join-Path $scriptDir "wallet")
-    # PR 2 additions — DLA org, DLA wallet, Driving Licence blueprint id.
-    dlaOrgId             = $dlaOrgId
-    dlaWalletAddress     = $dlaWallet.Address
-    dlaWalletPublicKey   = $dlaWallet.PublicKey
-    licenceBlueprintId   = $licenceBlueprint.BlueprintId
+    tenantUrl                 = $sorchaEnv.TenantUrl
+    blueprintUrl              = $sorchaEnv.BlueprintUrl
+    walletUrl                 = $sorchaEnv.WalletUrl
+    registerUrl               = $sorchaEnv.RegisterUrl
+    gatewayUrl                = $sorchaEnv.GatewayUrl
+    tenantId                  = $tenantId
+    verificationOrgId         = $verificationOrgId
+    verificationWalletAddress = $verificationWallet.Address
+    verificationWalletPublicKey = $verificationWallet.PublicKey
+    publicOrgId               = $publicOrgId
+    citizenWalletAddress      = $citizenWallet.Address
+    registerId                = $register.RegisterId
+    blueprintId               = $blueprint.BlueprintId
+    walletDir                 = (Join-Path $scriptDir "wallet")
+    # PR 2 additions — licensing org, licensing wallet, Driving Licence blueprint id.
+    licensingOrgId            = $licensingOrgId
+    licensingWalletAddress    = $licensingWallet.Address
+    licensingWalletPublicKey  = $licensingWallet.PublicKey
+    licenceBlueprintId        = $licenceBlueprint.BlueprintId
     roles = @{
-        govAssessor = @{
-            email          = $govAdminEmail
-            password       = $govAdminPassword
-            organizationId = $govOrgId
-            walletAddress  = $govWallet.Address
+        verificationAnalyst = @{
+            email          = $verificationAdminEmail
+            password       = $verificationAdminPassword
+            organizationId = $verificationOrgId
+            walletAddress  = $verificationWallet.Address
         }
         citizen = @{
             email          = $citizenEmail
@@ -410,11 +410,11 @@ $state = @{
             organizationId = $publicOrgId
             walletAddress  = $citizenWallet.Address
         }
-        dlaOfficer = @{
-            email          = $dlaAdminEmail
-            password       = $dlaAdminPassword
-            organizationId = $dlaOrgId
-            walletAddress  = $dlaWallet.Address
+        licensingOfficer = @{
+            email          = $licensingAdminEmail
+            password       = $licensingAdminPassword
+            organizationId = $licensingOrgId
+            walletAddress  = $licensingWallet.Address
         }
     }
     persona = @{

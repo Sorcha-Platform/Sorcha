@@ -66,9 +66,9 @@ $state = Get-Content walkthroughs/HaipVerifiedCitizen/state.json -Raw | ConvertF
 
 $assessor = Connect-SorchaUser `
   -TenantUrl $state.tenantUrl `
-  -Email $state.roles.govAssessor.email `
-  -Password $state.roles.govAssessor.password `
-  -OrganizationId $state.roles.govAssessor.organizationId
+  -Email $state.roles.verificationAnalyst.email `
+  -Password $state.roles.verificationAnalyst.password `
+  -OrganizationId $state.roles.verificationAnalyst.organizationId
 
 # List open instances to find yours
 $instances = Invoke-SorchaApi -Method GET `
@@ -83,7 +83,7 @@ Invoke-SorchaAction `
   -InstanceId $instanceId `
   -ActionId '2' `
   -BlueprintId $state.blueprintId `
-  -SenderWallet $state.govWalletAddress `
+  -SenderWallet $state.verificationWalletAddress `
   -RegisterId $state.registerId `
   -Token $assessor.Token `
   -PayloadData @{

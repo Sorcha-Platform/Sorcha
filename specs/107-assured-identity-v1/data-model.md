@@ -50,7 +50,7 @@ The address is disclosed or withheld as a unit in v1. Sub-field selective disclo
 
 ### DrivingLicenceCredential
 
-Issued by the Driver Licensing Authority (DLA) after verification of a presented `AssuredIdentityCredential`.
+Issued by Acme Licensing Co. after verification of a presented `AssuredIdentityCredential`.
 
 | Claim | Type | Required | Selectively disclosable | Source on issue |
 |---|---|---|---|---|
@@ -62,7 +62,7 @@ Issued by the Driver Licensing Authority (DLA) after verification of a presented
 | `holderDateOfBirth` | string | Yes | Yes | Carried forward from presented Assured Identity claim `dateOfBirth` |
 | `holderPortrait` | string (base64 JPEG, ≤20KB) | No | Yes | Carried forward from presented Assured Identity `portrait` claim (if the citizen elected to disclose it) |
 
-**Issuer**: `did:sorcha:org:<wallet-of-dla-org>`.
+**Issuer**: `did:sorcha:org:<wallet-of-licensing-org>`.
 **Expiry**: 10 years (`P10Y` on the credential).
 **Format**: SD-JWT VC.
 **Key binding**: Holder's wallet key (same wallet that presented the Assured Identity).
@@ -84,7 +84,7 @@ A new blueprint schema extension marking a wizard page as a read-only review sum
 | `layout` | enum: `id-card` \| `passport-page` \| `tabular` \| `receipt` | Yes | v1 implements only `id-card`; other values are reserved enum placeholders. Unknown values surface as a publish-time warning, renderer falls back to tabular minimal rendering. |
 | `editable` | bool | No (default `true`) | When `true`, the renderer generates Edit-X buttons per section. When `false`, the review page is pure display (useful for issued-credential detail views). |
 | `header` | object | Yes | Card header config |
-| `header.issuerName` | string | Yes | e.g. "Government of Scotland" |
+| `header.issuerName` | string | Yes | e.g. "Acme Verification Co." |
 | `header.credentialName` | string | Yes | e.g. "Assured Identity" |
 | `header.colourTheme` | enum: `identity-navy` \| `licence-pink` \| custom | No (default `identity-navy`) | Drives the CSS custom-property set on the card root |
 

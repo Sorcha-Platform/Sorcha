@@ -2,12 +2,12 @@
 .SYNOPSIS
     Launches autonomous actor agents for the AssuredIdentity walkthrough.
 .DESCRIPTION
-    Starts gov-assessor and dla-officer agents in background, each in rules
+    Starts verification-analyst and licensing-officer agents in background, each in rules
     mode, so the citizen-side run scripts can drive the workflow end-to-end
-    without a human at the assessor UI. Feature 107 PR 3 (US3).
+    without a human at the analyst UI. Feature 107 PR 3 (US3).
 
-    gov-assessor auto-approves the identity application (Phase 1 Action 2).
-    dla-officer auto-issues the driving licence (Phase 2 Action 3). The
+    verification-analyst auto-approves the identity application (Phase 1 Action 2).
+    licensing-officer auto-issues the driving licence (Phase 2 Action 3). The
     verification step (Phase 2 Action 2) remains script-driven because it
     creates the HAIP presentation request the citizen must respond to —
     see README for the scope rationale.
@@ -53,24 +53,24 @@ if (-not $AgentBinary) {
 # ---------- Env vars ----------
 # Passwords for each agent's JWT-bearer login. Pull from the state file so
 # we don't hard-code anything; state.json is gitignored.
-[Environment]::SetEnvironmentVariable("GOV_ASSESSOR_PASSWORD", $state.roles.govAssessor.password)
-[Environment]::SetEnvironmentVariable("DLA_OFFICER_PASSWORD",  $state.roles.dlaOfficer.password)
-[Environment]::SetEnvironmentVariable("CITIZEN_PASSWORD",      $state.roles.citizen.password)
+[Environment]::SetEnvironmentVariable("VERIFICATION_ANALYST_PASSWORD", $state.roles.verificationAnalyst.password)
+[Environment]::SetEnvironmentVariable("LICENSING_OFFICER_PASSWORD",    $state.roles.licensingOfficer.password)
+[Environment]::SetEnvironmentVariable("CITIZEN_PASSWORD",              $state.roles.citizen.password)
 
-# Licence details for the dla-officer rule. Expiry = issue + 10 years per
+# Licence details for the licensing-officer rule. Expiry = issue + 10 years per
 # the Feature 107 PR 2 blueprint contract.
 $issued = (Get-Date).ToString("yyyy-MM-dd")
 $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
-[Environment]::SetEnvironmentVariable("DLA_ISSUED_DATE",    $issued)
-[Environment]::SetEnvironmentVariable("DLA_EXPIRY_DATE",    $expiry)
+[Environment]::SetEnvironmentVariable("LICENCE_ISSUED_DATE", $issued)
+[Environment]::SetEnvironmentVariable("LICENCE_EXPIRY_DATE", $expiry)
 # Zero-padded 5-digit serial so every licence has the same format
 # regardless of Get-Random's output magnitude.
-[Environment]::SetEnvironmentVariable("DLA_LICENCE_NUMBER", ("DL-SC-{0:D5}" -f (Get-Random -Maximum 100000)))
+[Environment]::SetEnvironmentVariable("LICENCE_NUMBER", ("DL-ACME-{0:D5}" -f (Get-Random -Maximum 100000)))
 
 # ---------- Agents ----------
 $actors = @(
-    @{ File = "gov-assessor.json"; Name = "gov-assessor" }
-    @{ File = "dla-officer.json";  Name = "dla-officer"  }
+    @{ File = "verification-analyst.json"; Name = "verification-analyst" }
+    @{ File = "licensing-officer.json";    Name = "licensing-officer"    }
 )
 
 Write-Host "`n=== AssuredIdentity Agent Launcher ===" -ForegroundColor Cyan
@@ -141,8 +141,8 @@ foreach ($p in $processes) {
 }
 
 # ---------- Cleanup ----------
-foreach ($v in @("GOV_ASSESSOR_PASSWORD", "DLA_OFFICER_PASSWORD", "CITIZEN_PASSWORD",
-                 "DLA_ISSUED_DATE", "DLA_EXPIRY_DATE", "DLA_LICENCE_NUMBER")) {
+foreach ($v in @("VERIFICATION_ANALYST_PASSWORD", "LICENSING_OFFICER_PASSWORD", "CITIZEN_PASSWORD",
+                 "LICENCE_ISSUED_DATE", "LICENCE_EXPIRY_DATE", "LICENCE_NUMBER")) {
     [Environment]::SetEnvironmentVariable($v, $null)
 }
 
