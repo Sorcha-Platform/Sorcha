@@ -120,25 +120,13 @@ public sealed class RegisterMonitoringBootstrap : BackgroundService
             return false;
         }
 
-        // DIAG (F108 bootstrap probe — remove once fix confirmed): log the validator
-        // pubkey we're sending so it can be compared against the roster entry stored
-        // on the register's InitialControlRecord.
-        _logger.LogInformation(
-            "DIAG reconcile: sending validator pubkey base64={Key} ({Bytes} bytes)",
-            Convert.ToBase64String(key), key.Length);
-
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
 
             var rosterRegisters = await registerClient.GetMyValidatedRegistersAsync(key, ct);
-            // DIAG: what did the endpoint return?
-            var rosterList = rosterRegisters.ToList();
-            _logger.LogInformation(
-                "DIAG reconcile: my-validated-registers returned {Count} register(s): [{Ids}]",
-                rosterList.Count, string.Join(",", rosterList));
-            var desired = new HashSet<string>(rosterList, StringComparer.Ordinal);
+            var desired = new HashSet<string>(rosterRegisters, StringComparer.Ordinal);
             var current = _registry.GetAll().ToHashSet(StringComparer.Ordinal);
 
             // Add newly-rostered.

@@ -207,6 +207,7 @@ Register genesis control records include a `validators` field declaring authoriz
 - **ValidatorKeyCache**: Multi-key roster per register; `IsAuthorizedSigner(registerId, publicKey)` checks Active + Rotated keys
 - **Governance**: `AddValidator`, `RemoveValidator`, `RotateValidatorKey` operation types on the existing governance proposal endpoint
 - **External roster (FR-014)**: Register creation accepts optional external validator list for future System Register (087)
+- **Shared-wallet contract**: Register.Service (`SystemWalletSigning:ValidatorId`) and Validator.Service (`Validator:ValidatorId`) MUST be configured with the same identifier on a given node. Both call `IWalletServiceClient.CreateOrRetrieveSystemWalletAsync` with that string; wallets are keyed by it. Register.Service uses the resulting wallet to populate the `sorcha:docket-signing` pubkey on new registers' rosters; Validator.Service uses it to sign dockets. Divergent IDs → different derived keys → validator never matches its own roster entry → dockets never seal. In docker-compose this is `local-validator`.
 
 ---
 
