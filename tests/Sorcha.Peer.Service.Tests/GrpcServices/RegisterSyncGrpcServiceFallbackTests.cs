@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http;
 using System.Security.Cryptography;
 
 using Grpc.Core;
@@ -105,6 +106,90 @@ public class RegisterSyncGrpcServiceFallbackTests
         await sut.PullDocketTransactions(request, writer, new TestServerCallContext());
 
         writer.Entries.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PullDocketTransactions_TransientErrorOnGetRegister_StreamsEmpty()
+    {
+        // A transient HTTP failure at the outer GetRegisterAsync call must NOT
+        // surface as an RpcException to the subscriber — the subscriber's sync loop
+        // treats those as fatal and stalls. Instead we stream an empty response and
+        // the next sync cycle retries.
+        var client = new Mock<IRegisterServiceClient>();
+        client.Setup(c => c.GetRegisterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("register-service unreachable"));
+
+        var writer = new RecordingServerStreamWriter<TransactionEntry>();
+        var sut = BuildSut(client.Object);
+
+        var request = new DocketTransactionRequest { RegisterId = RegisterId, PeerId = "peer-probe" };
+        request.TransactionIds.Add("tx-anything");
+
+        await sut.PullDocketTransactions(request, writer, new TestServerCallContext());
+
+        writer.Entries.Should().BeEmpty();
+        client.Verify(c => c.GetTransactionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PullDocketTransactions_TransientErrorOnOneTx_ContinuesWithOthers()
+    {
+        // A transient failure fetching one transaction must not abort the whole
+        // batch. The subscriber should still receive the healthy ones so it can
+        // make partial progress.
+        var tx1 = BuildTx("tx-1", senderWallet: "ws11qalpha");
+        var tx3 = BuildTx("tx-3", senderWallet: "ws11qgamma");
+
+        var client = new Mock<IRegisterServiceClient>();
+        client.Setup(c => c.GetRegisterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register { Id = RegisterId, Name = "test" });
+        client.Setup(c => c.GetTransactionAsync(RegisterId, "tx-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tx1);
+        client.Setup(c => c.GetTransactionAsync(RegisterId, "tx-2", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("read timeout"));
+        client.Setup(c => c.GetTransactionAsync(RegisterId, "tx-3", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tx3);
+
+        var writer = new RecordingServerStreamWriter<TransactionEntry>();
+        var sut = BuildSut(client.Object);
+
+        var request = new DocketTransactionRequest { RegisterId = RegisterId, PeerId = "peer-probe" };
+        request.TransactionIds.AddRange(new[] { "tx-1", "tx-2", "tx-3" });
+
+        await sut.PullDocketTransactions(request, writer, new TestServerCallContext());
+
+        writer.Entries.Select(e => e.TransactionId).Should().BeEquivalentTo(new[] { "tx-1", "tx-3" },
+            "tx-2 was transient-dropped but the surrounding fetches still completed");
+    }
+
+    [Fact]
+    public async Task PullDocketTransactions_UsesCamelCaseCanonicalJson()
+    {
+        // The wire shape must match Register Service's camelCase canonical
+        // serialisation so a transaction served via this fallback is byte-identical
+        // to one served via direct sync on another node.
+        var tx = BuildTx("tx-shape", senderWallet: "ws11qshape");
+
+        var client = new Mock<IRegisterServiceClient>();
+        client.Setup(c => c.GetRegisterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register { Id = RegisterId, Name = "test" });
+        client.Setup(c => c.GetTransactionAsync(RegisterId, tx.TxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tx);
+
+        var writer = new RecordingServerStreamWriter<TransactionEntry>();
+        var sut = BuildSut(client.Object);
+
+        var request = new DocketTransactionRequest { RegisterId = RegisterId, PeerId = "peer-probe" };
+        request.TransactionIds.Add(tx.TxId);
+
+        await sut.PullDocketTransactions(request, writer, new TestServerCallContext());
+
+        var entry = writer.Entries.Should().ContainSingle().Subject;
+        var json = System.Text.Encoding.UTF8.GetString(entry.TransactionData.ToByteArray());
+
+        // camelCase marker: "senderWallet" not "SenderWallet".
+        json.Should().Contain("\"senderWallet\":\"ws11qshape\"");
+        json.Should().NotContain("\"SenderWallet\"", "canonical form is camelCase");
     }
 
     // -----------------------------------------------------------------------

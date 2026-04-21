@@ -37,6 +37,21 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
     /// </summary>
     private static readonly TimeSpan LivePollInterval = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Canonical JSON options that match Register Service's serialisation
+    /// (<c>RegisterCreationOrchestrator._canonicalJsonOptions</c>). Aligning on the
+    /// same wire format means a transaction served via the repository fallback is
+    /// byte-identical to one served via the cache on another node, so a third peer
+    /// re-serving this payload doesn't surface a case-sensitivity mismatch.
+    /// </summary>
+    private static readonly JsonSerializerOptions CanonicalTransactionJsonOptions = new()
+    {
+        WriteIndented = false,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     public RegisterSyncGrpcService(
         RegisterCache registerCache,
         RegisterSyncBackgroundService syncBackgroundService,
@@ -193,11 +208,24 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         {
             register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        // Guard `when !IsCancellationRequested` so a genuine cancellation (gRPC
+        // deadline, server shutdown) propagates cleanly instead of being swallowed
+        // as a transient HTTP failure. TaskCanceledException derives from
+        // OperationCanceledException so the naive `is TaskCanceledException`
+        // pattern masks both.
+        catch (HttpRequestException ex)
         {
             _logger.LogWarning(
                 ex,
                 "Transient Register Service failure looking up {RegisterId} — streaming empty response",
+                request.RegisterId);
+            return;
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                ex,
+                "Register Service lookup for {RegisterId} timed out — streaming empty response",
                 request.RegisterId);
             return;
         }
@@ -226,7 +254,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             {
                 tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            catch (HttpRequestException ex)
             {
                 // Transient — the subscriber's next sync cycle will re-request. Tracked
                 // separately from genuinely-missing so the completion log doesn't
@@ -234,6 +262,17 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                 _logger.LogWarning(
                     ex,
                     "Transient Register Service fetch failure for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                transientErrors++;
+                continue;
+            }
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // HTTP timeout — behaves the same as HttpRequestException. The
+                // `when` guard lets a genuine caller cancellation propagate.
+                _logger.LogWarning(
+                    ex,
+                    "Register Service fetch timed out for tx {TransactionId} on register {RegisterId}",
                     txId, request.RegisterId);
                 transientErrors++;
                 continue;
@@ -255,10 +294,12 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             }
 
             // The cache-hit path streams the raw transaction bytes pre-computed during
-            // replication ingest. Here we don't have pre-computed bytes, so serialize
-            // the canonical JSON-LD shape and hash it to match the subscriber's
-            // SHA-256 integrity check in RegisterReplicationService.
-            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx);
+            // replication ingest. Here we don't have pre-computed bytes, so serialise
+            // using the same canonical options Register Service uses (camelCase +
+            // UnsafeRelaxedJsonEscaping) so the wire shape matches what a subscriber
+            // would have seen via direct sync — and hash the streamed bytes to match
+            // the subscriber's SHA-256 integrity check in RegisterReplicationService.
+            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx, CanonicalTransactionJsonOptions);
             var checksum = Convert.ToHexString(SHA256.HashData(txJson)).ToLowerInvariant();
 
             // tx.TimeStamp is always UTC at the DB layer. The single-arg DateTimeOffset
@@ -469,6 +510,12 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         var height = await registerClient.GetRegisterHeightAsync(request.RegisterId, cancellationToken);
         if (height < 0)
         {
+            // NOTE: this throws NotFound while PullDocketTransactionsFromRegisterServiceAsync
+            // returns an empty stream for the same condition. The asymmetry is intentional —
+            // the chain-pull contract is entered by the subscriber only after it has
+            // confirmed the register exists, so a NotFound here is a bug worth surfacing,
+            // whereas the tx-pull fallback is entered speculatively per-docket and must
+            // tolerate empty responses without escalating to the subscriber's retry loop.
             throw new RpcException(new Status(
                 StatusCode.NotFound,
                 $"Register '{request.RegisterId}' not found in Register Service"));
