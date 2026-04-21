@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text.Json;
+
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
@@ -204,11 +208,22 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             {
                 tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
+                // Transient — surface at Warning and count separately from genuinely
+                // missing transactions so the subscriber's next sync cycle retries.
                 _logger.LogWarning(
                     ex,
-                    "Register Service fetch failed for tx {TransactionId} on register {RegisterId}",
+                    "Transient Register Service fetch failure for tx {TransactionId} on register {RegisterId}",
+                    txId, request.RegisterId);
+                notFound++;
+                continue;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Unexpected Register Service fetch error for tx {TransactionId} on register {RegisterId}",
                     txId, request.RegisterId);
                 notFound++;
                 continue;
@@ -224,17 +239,20 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             // replication ingest. Here we don't have pre-computed bytes, so serialize
             // the canonical JSON-LD shape and hash it to match the subscriber's
             // SHA-256 integrity check in RegisterReplicationService.
-            var txJson = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(tx);
-            var checksum = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(txJson)).ToLowerInvariant();
+            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx);
+            var checksum = Convert.ToHexString(SHA256.HashData(txJson)).ToLowerInvariant();
 
+            // tx.TimeStamp is always UTC at the DB layer. The single-arg DateTimeOffset
+            // ctor respects Kind; the two-arg form would silently treat an ever-non-UTC
+            // value as UTC and drift by the local offset.
             var entry = new Protos.TransactionEntry
             {
                 TransactionId = tx.TxId,
                 RegisterId = tx.RegisterId,
                 TransactionData = ByteString.CopyFrom(txJson),
                 Checksum = checksum,
-                CreatedAt = new DateTimeOffset(tx.TimeStamp, TimeSpan.Zero).ToUnixTimeMilliseconds()
+                CreatedAt = new DateTimeOffset(
+                    DateTime.SpecifyKind(tx.TimeStamp, DateTimeKind.Utc)).ToUnixTimeMilliseconds()
             };
 
             await responseStream.WriteAsync(entry, cancellationToken);

@@ -149,11 +149,9 @@ public class RegisterSyncGrpcServiceFallbackTests
             }
         });
 
-        // PullDocketTransactions doesn't touch the background service, so we don't need
-        // a real instance. Passing null! is explicit about that scope.
         // PullDocketTransactions does not touch the background service, but the SUT
-        // ctor null-checks it. Build a minimum-viable bg service just to pass the
-        // guard — its loop never runs because we never ExecuteAsync.
+        // ctor null-checks it — build a minimum-viable instance just to pass the
+        // guard. Its loop never runs because we never call ExecuteAsync.
         var peerList = new PeerListManager(NullLogger<PeerListManager>.Instance, config);
         var loggerFactory = new NullLoggerFactory();
         var connectionPool = new PeerConnectionPool(
