@@ -150,10 +150,10 @@ Web app (microservices backend + Blazor WASM frontend):
 ### Implementation for User Story 3
 
 - [ ] T043 [P] [US3] Author `walkthroughs/AssuredIdentity/actors/citizen.json`. HAIP wallet-dir at `walkthroughs/AssuredIdentity/wallet/`. Polling mode with SignalR fallback. No rules — citizen actor is interactive (driven by `run-phase1-identity.ps1` and `run-phase2-licence.ps1` directly), this config is for `sorcha-agent validate` and reference only.
-- [ ] T044 [P] [US3] Author `walkthroughs/AssuredIdentity/actors/gov-assessor.json`. Rules-mode. Single rule that approves the "Verify Assured Identity Application" action (action name from blueprint), with payload `{ "decision": "approved", "verificationNotes": "Auto-approved by demo agent" }`. SignalR + polling enabled. Logging to `walkthroughs/AssuredIdentity/logs/gov-assessor-actions.jsonl`.
-- [ ] T045 [P] [US3] Author `walkthroughs/AssuredIdentity/actors/dla-officer.json`. Rules-mode. Two rules: one approves the verification action (action 2); one approves the issuance action (action 3) with payload generating the licence number, dates, holder name. SignalR + polling enabled. Logging.
-- [ ] T046 [US3] Update `walkthroughs/AssuredIdentity/run.ps1`, `run-phase1-identity.ps1`, and `run-phase2-licence.ps1` to start `sorcha-agent` background processes for the gov-assessor and dla-officer actors before submitting actions, and to clean them up on exit (success or failure). Use the same pattern as `walkthroughs/ConstructionPermit/run-agents.ps1` for process management. Pass passwords via env vars from `state.json`.
-- [ ] T047 [US3] Run `walkthroughs/AssuredIdentity/run.ps1` end-to-end with NO human in the loop. Verify: both credentials issued within the SC-008 budget (assessor approval ≤ 30s after submission); no script-level state ferrying needed between phases; the citizen actor's wallet-dir contains both credentials at the end. Confirm a developer can still open the gov-assessor UI during the pending window and see the standard review screen (the agent simply gets there first).
+- [ ] T044 [P] [US3] Author `walkthroughs/AssuredIdentity/actors/verification-analyst.json`. Rules-mode. Single rule that approves the "Verify Assured Identity Application" action (action name from blueprint), with payload `{ "decision": "approved", "verificationNotes": "Auto-approved by demo agent" }`. SignalR + polling enabled. Logging to `walkthroughs/AssuredIdentity/logs/verification-analyst-actions.jsonl`.
+- [ ] T045 [P] [US3] Author `walkthroughs/AssuredIdentity/actors/licensing-officer.json`. Rules-mode. Two rules: one approves the verification action (action 2); one approves the issuance action (action 3) with payload generating the licence number, dates, holder name. SignalR + polling enabled. Logging.
+- [ ] T046 [US3] Update `walkthroughs/AssuredIdentity/run.ps1`, `run-phase1-identity.ps1`, and `run-phase2-licence.ps1` to start `sorcha-agent` background processes for the verification-analyst and licensing-officer actors before submitting actions, and to clean them up on exit (success or failure). Use the same pattern as `walkthroughs/ConstructionPermit/run-agents.ps1` for process management. Pass passwords via env vars from `state.json`.
+- [ ] T047 [US3] Run `walkthroughs/AssuredIdentity/run.ps1` end-to-end with NO human in the loop. Verify: both credentials issued within the SC-008 budget (analyst approval ≤ 30s after submission); no script-level state ferrying needed between phases; the citizen actor's wallet-dir contains both credentials at the end. Confirm a developer can still open the verification-analyst UI during the pending window and see the standard review screen (the agent simply gets there first).
 
 **Checkpoint**: User Story 3 is fully functional and shippable as PR 3. The walkthrough is demo-runnable without any human intervention. The agent-based design preserves the seam for future AI-mode and external-API-mode integrations.
 
@@ -282,8 +282,8 @@ T020 src/Common/Sorcha.Blueprint.Models/SchemaLayoutParser.cs
 ```bash
 # All three actor JSON files in parallel:
 T043 walkthroughs/AssuredIdentity/actors/citizen.json
-T044 walkthroughs/AssuredIdentity/actors/gov-assessor.json
-T045 walkthroughs/AssuredIdentity/actors/dla-officer.json
+T044 walkthroughs/AssuredIdentity/actors/verification-analyst.json
+T045 walkthroughs/AssuredIdentity/actors/licensing-officer.json
 ```
 
 ### Example: Polish wave (after Phase 7)

@@ -141,8 +141,8 @@ walkthroughs/
 │   │   └── driving-licence.json                              # Replaces HaipDrivingLicence/blueprints/driving-licence.json
 │   ├── actors/
 │   │   ├── citizen.json                                      # Filesystem HAIP wallet-dir; receives + presents
-│   │   ├── gov-assessor.json                                 # Rules-mode, approves identity
-│   │   └── dla-officer.json                                  # Rules-mode, approves licence
+│   │   ├── verification-analyst.json                         # Rules-mode, approves identity
+│   │   └── licensing-officer.json                            # Rules-mode, approves licence
 │   ├── data/
 │   │   └── sample-portrait.jpg                               # ICAO-compliant test photo
 │   └── multi-peer-findings.md                                # Produced per run of run-multi-peer.ps1 (gitignored; one committed baseline)

@@ -104,7 +104,7 @@ The error points at the wallet, not at the cause. The cause is your `$walletMap`
 ```powershell
 # citizen is late-bound — DO NOT add it
 $walletMap = @{
-    "government-assessor" = $govWallet.Address
+    "verification-analyst" = $verificationWallet.Address
     # "citizen" is intentionally absent — late-bound at runtime
 }
 ```
@@ -114,7 +114,7 @@ $walletMap = @{
 ```powershell
 # citizen is late-bound by whoever presents a valid AssuredIdentityCredential
 $walletMap = @{
-    "dla-officer" = $dlaWallet.Address
+    "licensing-officer" = $licensingWallet.Address
     # "citizen" is intentionally absent
 }
 ```
@@ -336,9 +336,9 @@ walkthroughs/AssuredIdentity/            # Feature 107 — canonical citizen ide
 ├── run.ps1                              # Full Phase 1 + Phase 2 orchestrator
 ├── run-phase1-identity.ps1              # AssuredIdentityCredential issuance
 ├── run-phase2-licence.ps1               # Driving Licence credential chain (OID4VP + OID4VCI)
-├── run-agents.ps1                       # Unattended gov-assessor + dla-officer rules-mode
+├── run-agents.ps1                       # Unattended verification-analyst + licensing-officer rules-mode
 ├── run-multi-peer.ps1                   # Cross-peer smoke (non-blocking measurement)
-├── actors/                              # citizen.json + gov-assessor.json + dla-officer.json
+├── actors/                              # citizen.json + verification-analyst.json + licensing-officer.json
 ├── blueprints/                          # assured-identity.json + driving-licence.json
 └── wallet/                              # Generated — holder keys + both credentials
 ```
@@ -443,7 +443,7 @@ await orgCard.First.ClickAsync();
 | SelfBuildHouse | 7 | 14 | 2 | Cross-register VCs, credential chains, staged inspections |
 | TradeFinance | 6 | 10 | 2 | Cross-register VCs, dispute loops, 4 orgs |
 | HaipIdentityAttestation | 1 (agent) | N/A | N/A | OID4VCI pre-auth code flow, SD-JWT VC with cnf |
-| AssuredIdentity | 3 (citizen + gov-assessor + dla-officer) | 7 across 2 blueprints | 1 | Feature 107 — canonical citizen identity (5-page wizard, id-card review, optional portrait) + driving licence chain (OID4VP present + OID4VCI issue) + unattended rules-mode agents + cross-peer smoke |
+| AssuredIdentity | 3 (citizen + verification-analyst + licensing-officer) | 7 across 2 blueprints | 1 | Feature 107 — canonical citizen identity (5-page wizard, id-card review, optional portrait) + driving licence chain (OID4VP present + OID4VCI issue) + unattended rules-mode agents + cross-peer smoke |
 
 ## Troubleshooting
 

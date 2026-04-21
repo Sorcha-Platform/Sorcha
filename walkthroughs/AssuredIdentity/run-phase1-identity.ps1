@@ -4,7 +4,7 @@
 #
 # AssuredIdentity — Phase 1 (Identity issuance)
 # Feature 107. Creates the blueprint instance, submits the citizen's Assured
-# Identity application (Action 1), the government assessor approves (Action 2),
+# Identity application (Action 1), the verification analyst approves (Action 2),
 # and the citizen claims the AssuredIdentityCredential into their external
 # HAIP wallet via sorcha-agent haip receive.
 
@@ -30,7 +30,7 @@ $walletDir = Join-Path $scriptDir "wallet"
 # ============================================================================
 # Step 1: Authenticate both roles
 # ============================================================================
-Write-WtStep "Step 1: Authenticate Citizen and Government Assessor"
+Write-WtStep "Step 1: Authenticate Citizen and Verification Analyst"
 
 $citizenSession = Connect-SorchaUser `
     -TenantUrl $state.tenantUrl `
@@ -39,12 +39,12 @@ $citizenSession = Connect-SorchaUser `
     -OrganizationId $state.roles.citizen.organizationId
 Write-WtSuccess "Authenticated as citizen ($($state.roles.citizen.email))"
 
-$assessorSession = Connect-SorchaUser `
+$analystSession = Connect-SorchaUser `
     -TenantUrl $state.tenantUrl `
-    -Email $state.roles.govAssessor.email `
-    -Password $state.roles.govAssessor.password `
-    -OrganizationId $state.roles.govAssessor.organizationId
-Write-WtSuccess "Authenticated as government-assessor"
+    -Email $state.roles.verificationAnalyst.email `
+    -Password $state.roles.verificationAnalyst.password `
+    -OrganizationId $state.roles.verificationAnalyst.organizationId
+Write-WtSuccess "Authenticated as verification-analyst"
 
 # ============================================================================
 # Step 2: Create Blueprint Instance (citizen-owned)
@@ -128,18 +128,18 @@ $null = Invoke-SorchaAction `
     -PayloadData $payloadData
 
 # ============================================================================
-# Step 4: Government Assessor approves Action 2
+# Step 4: Verification Analyst approves Action 2
 # ============================================================================
-Write-WtStep "Step 4: Gov Assessor verifies application (Action 2)"
+Write-WtStep "Step 4: Verification Analyst verifies application (Action 2)"
 
 $actionResponse = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `
     -ActionId "2" `
     -BlueprintId $state.blueprintId `
-    -SenderWallet $state.govWalletAddress `
+    -SenderWallet $state.verificationWalletAddress `
     -RegisterId $state.registerId `
-    -Token $assessorSession.Token `
+    -Token $analystSession.Token `
     -PayloadData @{
         decision          = "approved"
         verificationNotes = "Identity verified against submitted persona."

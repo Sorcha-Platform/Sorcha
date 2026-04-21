@@ -22,7 +22,7 @@ public class ReviewSummaryDataSourceTests
         Editable = true,
         Header = new XReviewHeader
         {
-            IssuerName = "Government of Scotland",
+            IssuerName = "Acme Verification Co.",
             CredentialName = "Assured Identity",
             ColourTheme = XReviewColourTheme.IdentityNavy
         }
@@ -64,7 +64,7 @@ public class ReviewSummaryDataSourceTests
 
         var cfg = sut.BuildConfig(CitizenReview(), ContextWithValues(), ActionRuntimeState.CitizenDraft, AssuredIdentityPages());
 
-        cfg.IssuerName.Should().Be("Government of Scotland");
+        cfg.IssuerName.Should().Be("Acme Verification Co.");
         cfg.CredentialName.Should().Be("Assured Identity");
         cfg.ColourTheme.Should().Be(XReviewColourTheme.IdentityNavy);
         cfg.Editable.Should().BeTrue();

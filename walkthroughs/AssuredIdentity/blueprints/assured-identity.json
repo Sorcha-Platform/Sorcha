@@ -1,7 +1,7 @@
 {
   "id": "assured-identity-v1",
   "title": "Assured Identity",
-  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a government assessor (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered via the Wave 14b claim-card pattern. Feature 107 supersedes the earlier Features 103 / 106 demo blueprints.",
+  "description": "Single canonical citizen-identity workflow. A public-org citizen submits a short 5-page wizard (name + DOB, address, contact, optional photo, review), a verification analyst (or background sorcha-agent) approves, and the AssuredIdentityCredential is delivered via the Wave 14b claim-card pattern. Feature 107 supersedes the earlier Features 103 / 106 demo blueprints.",
   "version": 1,
   "category": "identity",
   "tags": ["assured-identity", "identity", "haip", "oid4vci", "verifiable-credential", "credential-claim", "citizen-application", "core-primitives", "portrait"],
@@ -10,14 +10,14 @@
   "template": {
     "id": "assured-identity",
     "title": "Assured Identity",
-    "description": "Citizen submits identity details (including an optional portrait), government assessor reviews and issues an AssuredIdentityCredential, and the citizen claims the credential via a Wave 14b claim-card action.",
+    "description": "Citizen submits identity details (including an optional portrait), a verification analyst reviews and issues an AssuredIdentityCredential, and the citizen claims the credential via a Wave 14b claim-card action.",
     "version": 1,
     "metadata": {
       "category": "Identity & Credentials",
       "complexity": "Simple",
       "actions": "3",
       "features": "HAIP, OpenID4VCI, Verifiable Credential, Portrait Claim, Citizen Claim Action, Core Primitives, x-review, x-file",
-      "sector": "Government"
+      "sector": "Identity & Trust"
     },
     "participants": [
       {
@@ -27,9 +27,9 @@
         "description": "Submits an Assured Identity application and claims the credential into their Sorcha wallet or an external HAIP wallet"
       },
       {
-        "id": "government-assessor",
-        "name": "Government Assessor",
-        "organisation": "Government of Scotland",
+        "id": "verification-analyst",
+        "name": "Verification Analyst",
+        "organisation": "Acme Verification Co.",
         "description": "Reviews citizen identity applications and approves issuance of the AssuredIdentityCredential"
       }
     ],
@@ -37,13 +37,13 @@
       {
         "id": 1,
         "title": "Submit Assured Identity Application",
-        "description": "Citizen submits their personal details (and optionally a portrait photo) so a government assessor can verify their identity. Fields are sourced from the Sorcha core primitive library for consistency with every other citizen-facing service. The final page renders the details as a DRAFT ID card so the citizen sees exactly what they'll receive once issued.",
+        "description": "Citizen submits their personal details (and optionally a portrait photo) so a verification analyst can verify their identity. Fields are sourced from the Sorcha core primitive library for consistency with every other citizen-facing service. The final page renders the details as a DRAFT ID card so the citizen sees exactly what they'll receive once issued.",
         "sender": "citizen",
         "isStartingAction": true,
         "dataSchemas": [
           {
             "type": "object",
-            "x-introduction": "Submit your details so a government assessor can issue your Assured Identity credential. Your persona profile (if you have one) will prefill the form.",
+            "x-introduction": "Submit your details so a verification analyst can issue your Assured Identity credential. Your persona profile (if you have one) will prefill the form.",
             "x-pages": [
               {
                 "title": "About you",
@@ -76,12 +76,12 @@
               },
               {
                 "title": "Review your details",
-                "description": "Check your answers. You can edit any section before submitting. Once the government assessor approves, this is what your Assured Identity credential will show.",
+                "description": "Check your answers. You can edit any section before submitting. Once the verification analyst approves, this is what your Assured Identity credential will show.",
                 "x-review": {
                   "layout": "id-card",
                   "editable": true,
                   "header": {
-                    "issuerName": "Government of Scotland",
+                    "issuerName": "Acme Verification Co.",
                     "credentialName": "Assured Identity",
                     "colourTheme": "identity-navy"
                   }
@@ -112,22 +112,22 @@
         ],
         "disclosures": [
           { "participantAddress": "citizen", "dataPointers": ["/*"] },
-          { "participantAddress": "government-assessor", "dataPointers": ["/*"] }
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] }
         ],
         "routes": [
           {
             "id": "to-review",
             "nextActionIds": [2],
             "isDefault": true,
-            "description": "Application submitted — pending assessor review"
+            "description": "Application submitted — pending analyst review"
           }
         ]
       },
       {
         "id": 2,
         "title": "Verify Assured Identity Application",
-        "description": "Government assessor reviews the citizen's submission and approves or rejects it. On approval the AssuredIdentityCredential is minted and routed to the citizen's Claim Credential action via OutputMapping.",
-        "sender": "government-assessor",
+        "description": "Verification analyst reviews the citizen's submission and approves or rejects it. On approval the AssuredIdentityCredential is minted and routed to the citizen's Claim Credential action via OutputMapping.",
+        "sender": "verification-analyst",
         "requiredPriorActions": [1],
         "dataSchemas": [
           {
@@ -178,7 +178,7 @@
           ]
         },
         "disclosures": [
-          { "participantAddress": "government-assessor", "dataPointers": ["/*"] },
+          { "participantAddress": "verification-analyst", "dataPointers": ["/*"] },
           { "participantAddress": "citizen", "dataPointers": ["/decision", "/verificationNotes"] }
         ],
         "routes": [

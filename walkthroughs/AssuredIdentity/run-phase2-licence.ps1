@@ -4,7 +4,7 @@
 #
 # AssuredIdentity — Phase 2 (Driving Licence chain)
 # Feature 107 PR 2 (US2). Citizen submits a driving-licence application,
-# the DLA verifies the citizen's presented AssuredIdentityCredential via
+# Acme Licensing Co. verifies the citizen's presented AssuredIdentityCredential via
 # HAIP OpenID4VP, then issues a DrivingLicenceCredential carrying the
 # holder's identity forward from the presentation.
 #
@@ -38,9 +38,9 @@ if (-not (Test-Path $identityCredPath)) {
 $agentProject = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "src/Apps/Sorcha.Agent"
 
 # ============================================================================
-# Step 1: Authenticate Citizen and DLA Officer
+# Step 1: Authenticate Citizen and Licensing Officer
 # ============================================================================
-Write-WtStep "Step 1: Authenticate Citizen and DLA Officer"
+Write-WtStep "Step 1: Authenticate Citizen and Licensing Officer"
 
 $citizenSession = Connect-SorchaUser `
     -TenantUrl $state.tenantUrl `
@@ -49,12 +49,12 @@ $citizenSession = Connect-SorchaUser `
     -OrganizationId $state.roles.citizen.organizationId
 Write-WtSuccess "Authenticated as citizen"
 
-$dlaSession = Connect-SorchaUser `
+$licensingSession = Connect-SorchaUser `
     -TenantUrl $state.tenantUrl `
-    -Email $state.roles.dlaOfficer.email `
-    -Password $state.roles.dlaOfficer.password `
-    -OrganizationId $state.roles.dlaOfficer.organizationId
-Write-WtSuccess "Authenticated as DLA officer"
+    -Email $state.roles.licensingOfficer.email `
+    -Password $state.roles.licensingOfficer.password `
+    -OrganizationId $state.roles.licensingOfficer.organizationId
+Write-WtSuccess "Authenticated as licensing officer"
 
 # ============================================================================
 # Step 2: Citizen creates the Driving Licence Blueprint instance
@@ -95,18 +95,18 @@ $null = Invoke-SorchaAction `
     }
 
 # ============================================================================
-# Step 4: DLA verifies identity (Action 2 — HAIP presentation request)
+# Step 4: Licensing officer verifies identity (Action 2 — HAIP presentation request)
 # ============================================================================
-Write-WtStep "Step 4: DLA verifies applicant identity (Action 2)"
+Write-WtStep "Step 4: Licensing officer verifies applicant identity (Action 2)"
 
 $verifyResponse = Invoke-SorchaAction `
     -BlueprintUrl $state.blueprintUrl `
     -InstanceId $instanceId `
     -ActionId "2" `
     -BlueprintId $state.licenceBlueprintId `
-    -SenderWallet $state.dlaWalletAddress `
+    -SenderWallet $state.licensingWalletAddress `
     -RegisterId $state.registerId `
-    -Token $dlaSession.Token `
+    -Token $licensingSession.Token `
     -PayloadData @{ verificationNotes = "Assured Identity presentation requested via HAIP" }
 
 if ($ShowJson) { $verifyResponse | ConvertTo-Json -Depth 5 | Write-Host }
@@ -156,7 +156,7 @@ $ready = $false
 while ($waited -lt $maxWait) {
     $inst = Invoke-SorchaApi -Method GET `
         -Uri "$($state.blueprintUrl)/instances/$instanceId" `
-        -Headers $dlaSession.Headers
+        -Headers $licensingSession.Headers
     if ($inst.currentActionIds -contains 3) {
         $ready = $true
         break
@@ -171,22 +171,22 @@ if (-not $ready) {
 }
 
 # ============================================================================
-# Step 7: DLA issues Driving Licence (Action 3 — credential mint)
+# Step 7: Licensing officer issues Driving Licence (Action 3 — credential mint)
 # ============================================================================
-# Walkthrough-level carry-forward: the DLA officer's submission payload
+# Walkthrough-level carry-forward: the licensing officer's submission payload
 # includes holderName / holderDateOfBirth / holderPortrait drawn from the
 # citizen's persona state (which is the source of truth the citizen just
 # presented from their AssuredIdentityCredential). The claim mappings on
 # the blueprint reference these payload fields directly — see follow-up
 # issue #338 for proper server-side /presentedClaims/ plumbing.
-Write-WtStep "Step 7: DLA issues Driving Licence (Action 3)"
+Write-WtStep "Step 7: Licensing officer issues Driving Licence (Action 3)"
 
 $today = (Get-Date).ToString("yyyy-MM-dd")
 $expiry = (Get-Date).AddYears(10).ToString("yyyy-MM-dd")
 
 $persona = $state.persona
 $licenceData = @{
-    licenceNumber     = "DL-SC-$(Get-Random -Maximum 99999)"
+    licenceNumber     = "DL-ACME-$(Get-Random -Maximum 99999)"
     vehicleClass      = "Car (B)"
     issuedDate        = $today
     expiryDate        = $expiry
@@ -196,7 +196,7 @@ $licenceData = @{
 
 # Portrait carry-forward — optional. When -IncludePortrait was passed on
 # Phase 1, the Assured Identity token is at $persona.portraitTokenBase64.
-# The DLA reads the citizen's wallet-dir directly in a real browser
+# The licensing officer reads the citizen's wallet-dir directly in a real browser
 # integration; here the walkthrough stashed it into persona state for
 # script-level simplicity.
 if ($IncludePortrait -and $state.persona.portraitTokenBase64) {
@@ -209,9 +209,9 @@ $licenceResponse = Invoke-SorchaAction `
     -InstanceId $instanceId `
     -ActionId "3" `
     -BlueprintId $state.licenceBlueprintId `
-    -SenderWallet $state.dlaWalletAddress `
+    -SenderWallet $state.licensingWalletAddress `
     -RegisterId $state.registerId `
-    -Token $dlaSession.Token `
+    -Token $licensingSession.Token `
     -PayloadData $licenceData
 
 if ($ShowJson) { $licenceResponse | ConvertTo-Json -Depth 5 | Write-Host }

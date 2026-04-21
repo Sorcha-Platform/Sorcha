@@ -37,7 +37,7 @@ public class XReviewExtensionParserTests
                         "layout": "id-card",
                         "editable": true,
                         "header": {
-                            "issuerName": "Government of Scotland",
+                            "issuerName": "Acme Verification Co.",
                             "credentialName": "Assured Identity",
                             "colourTheme": "identity-navy"
                         }
@@ -60,7 +60,7 @@ public class XReviewExtensionParserTests
         reviewPage.ReviewExtension.Should().NotBeNull();
         reviewPage.ReviewExtension!.Layout.Should().Be(XReviewLayoutVariant.IdCard);
         reviewPage.ReviewExtension.Editable.Should().BeTrue();
-        reviewPage.ReviewExtension.Header.IssuerName.Should().Be("Government of Scotland");
+        reviewPage.ReviewExtension.Header.IssuerName.Should().Be("Acme Verification Co.");
         reviewPage.ReviewExtension.Header.CredentialName.Should().Be("Assured Identity");
         reviewPage.ReviewExtension.Header.ColourTheme.Should().Be(XReviewColourTheme.IdentityNavy);
     }

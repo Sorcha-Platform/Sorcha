@@ -397,7 +397,7 @@ Citizen-facing services accept a walk-in public user as the applicant without re
 ```powershell
 # CORRECT shape for citizen-facing walkthroughs:
 $walletMap = @{
-    "government-assessor" = $assessorWallet.Address
+    "verification-analyst" = $analystWallet.Address
     # "citizen" is intentionally absent — late-bound at runtime
 }
 ```
@@ -419,7 +419,7 @@ Mark a wizard page as a read-only summary of the form's prior pages. The rendere
     "layout": "id-card",                  // v1 only; passport-page / tabular / receipt reserved
     "editable": true,                     // Generates Edit-X per section
     "header": {
-      "issuerName": "Government of Scotland",
+      "issuerName": "Acme Verification Co.",
       "credentialName": "Assured Identity",
       "colourTheme": "identity-navy"     // v1: identity-navy | licence-pink
     }

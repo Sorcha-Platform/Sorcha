@@ -147,7 +147,7 @@ A member of the public lands on the Verified Citizen application, signs up for a
 ### Key Entities
 
 - **Citizen** — A member of the public who interacts with one or more Sorcha-built citizen-facing services. Identified by a wallet under the public organization. Has a persona profile that stores reusable identity attributes for autofill.
-- **Government Assessor** — A staff role within an issuing organization who reviews citizen applications and approves credential issuance.
+- **Verification Analyst** — A staff role within an issuing organization who reviews citizen applications and approves credential issuance.
 - **Service Designer** — A human or AI assistant who authors service definitions (blueprints). May reference shared identity primitives.
 - **Service Definition** — A multi-step workflow definition that declares its participants, its actions, and the data each step collects. May reference identity primitives.
 - **Service Instance** — A single citizen's run through a service definition. Carries the binding from each participant role to a specific identity (the bound applicant being the most important for citizen-facing services).

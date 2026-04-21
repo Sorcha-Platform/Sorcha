@@ -149,7 +149,7 @@ else
 
         return new IdCardLayoutConfig
         {
-            IssuerName = requirement.AcceptedIssuers?.FirstOrDefault() ?? "Government of Scotland",
+            IssuerName = requirement.AcceptedIssuers?.FirstOrDefault() ?? "Acme Verification Co.",
             CredentialName = requirement.Type ?? "Assured Identity",
             ColourTheme = XReviewColourTheme.IdentityNavy,
             Watermark = IdCardWatermark.Issued,
