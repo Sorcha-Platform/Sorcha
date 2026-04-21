@@ -76,12 +76,19 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
         byte[]? validatorPublicKeyOverride = null,
         CancellationToken cancellationToken = default)
     {
-        var registers = await _repository.GetRegistersAsync(cancellationToken);
+        var registers = (await _repository.GetRegistersAsync(cancellationToken)).ToList();
         var identity = await _identityProvider.GetAsync(cancellationToken);
         if (validatorPublicKeyOverride is { Length: > 0 })
         {
             identity = identity with { ValidatorPublicKey = validatorPublicKeyOverride };
         }
+
+        // DIAG (F108 bootstrap probe — remove once fix confirmed)
+        _logger?.LogInformation(
+            "DIAG DeriveAllAsync: {RegisterCount} register(s) in repository; override={HasOverride}, walletAddresses={WalletCount}",
+            registers.Count,
+            validatorPublicKeyOverride is { Length: > 0 },
+            identity.WalletAddresses.Count);
 
         var results = new List<RegisterLocalRelationship>();
         foreach (var register in registers)
@@ -90,6 +97,12 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
             if (derived is not null)
                 results.Add(derived);
         }
+
+        // DIAG: how many relationships came back with IsValidator=true?
+        var validatorCount = results.Count(r => r.IsValidator);
+        _logger?.LogInformation(
+            "DIAG DeriveAllAsync: {NonNullCount} non-null relationship(s), {ValidatorCount} with IsValidator=true",
+            results.Count, validatorCount);
         return results;
     }
 
@@ -134,11 +147,18 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
         // the validator can't seal the genesis docket without first seeing a control record,
         // which can't exist without the genesis docket being sealed.
         var registerRow = await _repository.GetRegisterAsync(registerId, cancellationToken);
+        // DIAG (F108 bootstrap probe — remove once fix confirmed)
+        _logger?.LogInformation(
+            "DIAG ComputeAsync stash path for {RegisterId}: registerRowFound={RowFound}, InitialControlRecord={HasStash}, rosterEntries={RosterCount}",
+            registerId,
+            registerRow is not null,
+            registerRow?.InitialControlRecord is not null,
+            registerRow?.InitialControlRecord?.Validators?.Validators.Count ?? 0);
         if (registerRow?.InitialControlRecord is not null)
         {
             var stashRoles = DeriveRoles(registerRow.InitialControlRecord, identity);
-            _logger?.LogDebug(
-                "Derived relationship for register {RegisterId}: {Roles} (controlRecordVersion=0, source=stash)",
+            _logger?.LogInformation(
+                "DIAG ComputeAsync stash path for {RegisterId}: derived roles={Roles} (source=stash)",
                 registerId, stashRoles);
 
             return new RegisterLocalRelationship(
@@ -186,7 +206,7 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
         return null;
     }
 
-    private static RegisterRoleSet DeriveRoles(RegisterControlRecord controlRecord, LocalIdentitySnapshot identity)
+    private RegisterRoleSet DeriveRoles(RegisterControlRecord controlRecord, LocalIdentitySnapshot identity)
     {
         var roles = RegisterRoleSet.None;
 
@@ -212,6 +232,11 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
         if (identity.ValidatorPublicKey is { Length: > 0 } validatorKey &&
             controlRecord.Validators is { } roster)
         {
+            // DIAG (F108 bootstrap probe — remove once fix confirmed)
+            var overrideB64 = Convert.ToBase64String(validatorKey);
+            _logger?.LogInformation(
+                "DIAG DeriveRoles roster compare: override={Override} ({Bytes}B) vs {EntryCount} roster entries",
+                overrideB64, validatorKey.Length, roster.Validators.Count);
             foreach (var entry in roster.Validators)
             {
                 if (string.IsNullOrEmpty(entry.PublicKey)) continue;
@@ -223,15 +248,29 @@ public sealed class RegisterLocalRelationshipService : IRegisterLocalRelationshi
                 }
                 catch (FormatException)
                 {
+                    _logger?.LogInformation(
+                        "DIAG DeriveRoles: roster entry PublicKey={Key} failed base64 decode",
+                        entry.PublicKey);
                     continue;
                 }
 
-                if (entryKey.AsSpan().SequenceEqual(validatorKey))
+                var match = entryKey.AsSpan().SequenceEqual(validatorKey);
+                _logger?.LogInformation(
+                    "DIAG DeriveRoles: entry PublicKey={Entry} ({EntryBytes}B) match={Match}",
+                    entry.PublicKey, entryKey.Length, match);
+                if (match)
                 {
                     roles |= RegisterRoleSet.Validator;
                     break;
                 }
             }
+        }
+        else
+        {
+            _logger?.LogInformation(
+                "DIAG DeriveRoles: skipping validator match — identityKey={HasKey}, roster={HasRoster}",
+                identity.ValidatorPublicKey is { Length: > 0 },
+                controlRecord.Validators is not null);
         }
 
         return roles;
