@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Sorcha.Register.Service\Sorcha.Register.Service.csproj" />
+    <ProjectReference Include="..\Sorcha.Testing\Sorcha.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
