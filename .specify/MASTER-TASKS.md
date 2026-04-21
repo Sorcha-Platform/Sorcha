@@ -3,8 +3,8 @@
 > **Archived phases:** See [MASTER-TASKS-ARCHIVE.md](MASTER-TASKS-ARCHIVE.md) for all completed features and phases.
 > **Deferred research:** See [tasks/deferred-tasks.md](tasks/deferred-tasks.md) for long-term research items (TRUST-1 to TRUST-10, governance enhancements, advanced features).
 
-**Version:** 7.9
-**Last Updated:** 2026-04-05
+**Version:** 7.10
+**Last Updated:** 2026-04-21
 **Status:** MVD Complete — Preparing for First Release
 **Related:** [MASTER-PLAN.md](MASTER-PLAN.md) | [development-status.md](../docs/reference/development-status.md)
 
@@ -18,8 +18,8 @@ The Sorcha platform is **100% MVD feature-complete**. All core features (045-053
 
 This document now tracks **remaining work for the first production release**, organized by development theme.
 
-**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications)
-**Remaining:** 65 tasks across 7 themes (TRUST-3/4/5 completed in Feature 079)
+**Completed (archived):** 523 tasks across 13 features/phases + 82 tasks from Feature 054 + 51 tasks from Feature 055 + 81 tasks from Feature 058 + 38 tasks from Feature 060 + Feature 062 (Pending Action Notifications) + Feature 063 (AI Blueprint Builder)
+**Remaining:** 57 tasks across 8 themes (TRUST-3/4/5 completed in Feature 079; GAP-011 AI Builder completed in Feature 063)
 **Deferred (post-release):** 43 research/future items in [deferred-tasks.md](tasks/deferred-tasks.md)
 
 ---
@@ -101,7 +101,8 @@ This document now tracks **remaining work for the first production release**, or
 |---|------|----------|--------|--------|-------|
 | GAP-009 | Client-side SignalR integration (BP-5.8) | P2 | 8h | 📋 | Blazor WASM SignalR client wiring |
 | GAP-010 | RecoverKeySetAsync implementation (CRYPT-1) | P2 | 6h | 📋 | Currently stubbed — returns "not yet implemented" |
-| GAP-011 | AI Blueprint Builder Enhancement (063) | P2 | 40h | 🚧 | Schema library (26 schemas), 5 new AI tools, VC/DPP support, consultative prompt, chat UI fixes |
+| GAP-011 | AI Blueprint Builder Enhancement (063) | P2 | 40h | ✅ | Feature 063 shipped (PR #85) — schema library (25+ schemas across 7 categories), 5 AI tools (`use_standard_schema`, `search_schemas`, `search_templates`, `require_credential`, `issue_credential`), consultative conversation flow, DPP via composable credential chain, chat UI fixed-bottom input + auto-scroll. 40/41 tasks done; only T041 US6 regression E2E deferred (see GAP-011b). |
+| GAP-011b | AI chat designer US6 regression E2E — fixed-bottom input after 50+ messages | P3 | 3h | 📋 | Follow-up to GAP-011. Auth/load/SignalR/toolbar/input-area already covered by `ChatDesignerPageTests` + `ChatHubTests` (20 tests). Missing: send-message round-trip, input-pinned-to-bottom assertion after many messages, console-error gate. Needs a call on how to drive the AI leg (real Anthropic key in Docker vs. mocked `IChatService` vs. DOM-synthetic messages) before implementation. |
 | GAP-012 | Invitation expiration background job — mark expired invitations | P2 | 4h | 📋 | Scheduled task to update Pending → Expired where expires_at < now |
 | GAP-013 | Invitation org name resolution in list responses | P2 | 2h | 📋 | ListAsync currently returns null for target/source org names |
 | GAP-014 | Register invitation integration tests (Tenant → Wallet → Register) | P2 | 8h | 📋 | End-to-end crypto verification against real Wallet Service |
@@ -255,13 +256,13 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 |-------|----------|-------|--------|-------|
 | 1. Security Hardening | P0 | 8 (3 ✅, 5 remaining) | 80-100h | Release blocker — SEC-012 CodeQL fixes done |
 | 2. Production Infrastructure | P1 | 10 (1 ✅, 9 remaining) | 80-120h | Deployment readiness |
-| 3. Deferred Feature Gaps | P1-P2 | 16 (3 ✅, 13 remaining) | 58-78h | Close MVD gaps — GAP-005/018/019 done (075, 077) |
+| 3. Deferred Feature Gaps | P1-P2 | 17 (4 ✅, 13 remaining) | 21-41h | Close MVD gaps — GAP-005/011/018/019 done (075, 063, 077); GAP-011b E2E spun out as 3h P3 |
 | 4. Trust & Verification | P2 | 5 | 120-160h | Trust hardening |
 | 5. Authentication & Identity | P1-P3 | 11 (3 ✅, 8 remaining) | 50-80h | Enterprise identity — OIDC, org admin, social login done (054); passkey/WebAuthn done (055); platform org topology done (058) |
 | 6. P2P Network & Consensus | P3 | 9 (1 ✅, 8 remaining) | 120-200h | Decentralization — relay comms done (060) |
 | 7. Public User Experience | P1 | 6 (1 ✅, 5 remaining) | 40-60h | Role model, register scoping, public UX |
 | 8. Mobile App Prerequisites | P1 | 8 (3 ✅, 1 ❌, 4 remaining) | 60-80h | Package portability, device inputs, white-label branding — Feature 084 done (MOB-002/003/004), MOB-001 eliminated |
-| **Total** | | **72** (14 ✅, 1 ❌, 57 remaining) | **598-858h** | |
+| **Total** | | **73** (15 ✅, 1 ❌, 57 remaining) | **561-821h** | |
 
 ### Completed Features (not in themes above)
 
@@ -290,6 +291,6 @@ These are the **Tier 1** trust improvements identified in the transaction archit
 
 ---
 
-**Version:** 7.9
-**Last Updated:** 2026-04-05
+**Version:** 7.10
+**Last Updated:** 2026-04-21
 **Document Owner:** Sorcha Architecture Team
