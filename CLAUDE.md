@@ -76,6 +76,8 @@ dotnet restore && dotnet build && dotnet test
 | Peer | 70% | 5002 / 7002 | P2P network, gRPC |
 | API Gateway | 95% | 80 / 7082 | YARP reverse proxy |
 
+**Designer UI:** `/designer/blueprint` is the canonical route (replaces legacy `/designer` and `/designer/chat`).
+
 Full project tree: `docs/reference/project-structure.md`. Architecture diagrams: `docs/reference/architecture.md`.
 
 ---

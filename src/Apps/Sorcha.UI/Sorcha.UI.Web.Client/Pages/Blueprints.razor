@@ -121,11 +121,11 @@
                                                Size="Size.Small" OnClick="() => ViewBlueprint(blueprint)"
                                                title="View Diagram" />
                                 <MudButton Color="Color.Primary" Variant="Variant.Text" Size="Size.Small"
-                                           Href="@($"designer?id={blueprint.Id}")"
+                                           Href="@($"designer/blueprint/{blueprint.Id}?tab=diagram")"
                                            StartIcon="@Icons.Material.Filled.Edit"
                                            title="Open in Visual Designer">Visual</MudButton>
                                 <MudButton Color="Color.Secondary" Variant="Variant.Text" Size="Size.Small"
-                                           Href="@($"designer/chat?id={blueprint.Id}")"
+                                           Href="@($"designer/blueprint/{blueprint.Id}?tab=ai")"
                                            StartIcon="@Icons.Material.Filled.SmartToy"
                                            title="Open in AI Chat Designer">AI</MudButton>
                                 @if (blueprint.Status == "draft")

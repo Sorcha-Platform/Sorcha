@@ -1,0 +1,26 @@
+.diagram-pane {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100%;
+    width: 100%;
+    min-height: 0;
+}
+
+.diagram-pane-toolbar {
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+.diagram-pane-canvas {
+    position: relative;
+    overflow: hidden;
+    background: #fafafa;
+    min-height: 0;
+}
+
+.diagram-pane-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+}

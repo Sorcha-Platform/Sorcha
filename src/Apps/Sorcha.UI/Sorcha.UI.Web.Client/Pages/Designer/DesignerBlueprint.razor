@@ -1,0 +1,33 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell
+@page "/designer/blueprint"
+@page "/designer/blueprint/{BlueprintId}"
+@rendermode @(new InteractiveWebAssemblyRenderMode(prerender: false))
+@attribute [Authorize(Roles = "Administrator,SystemAdmin,Designer")]
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@inject NavigationManager Navigation
+@inject DesignerContext Context
+@implements IDisposable
+
+<div class="designer-shell">
+    <DesignerToolbar />
+    <MudTabs Elevation="0"
+             KeepPanelsAlive="true"
+             ActivePanelIndex="@((int)_activeTab)"
+             ActivePanelIndexChanged="OnTabChanged">
+        <MudTabPanel Text="AI">
+            <AiDesignerPane />
+        </MudTabPanel>
+        <MudTabPanel Text="Diagram" Disabled="@(Context.Blueprint == null)">
+            <DiagramPane />
+        </MudTabPanel>
+        <MudTabPanel Text="Preview" Disabled="@(Context.Blueprint == null || Context.Blueprint.Actions is null || Context.Blueprint.Actions.Count == 0)">
+            <FormPreviewPane />
+        </MudTabPanel>
+    </MudTabs>
+</div>

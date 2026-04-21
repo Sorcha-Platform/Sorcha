@@ -47,6 +47,9 @@ builder.Services.AddScoped<PasskeyInteropService>();
 // Add navigation state service for passing objects between page navigations (Feature 091)
 builder.Services.AddScoped<NavigationStateService>();
 
+// Add Designer shell shared context (Feature 109 — AI Designer unified shell)
+builder.Services.AddScoped<Sorcha.UI.Core.Services.Designer.DesignerContext>();
+
 // Add schema library service with caching
 // All schemas (local defaults, external, remote) are served through the unified
 // schema index API — the client only needs the Blueprint Service repository.
