@@ -37,20 +37,9 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
     /// </summary>
     private static readonly TimeSpan LivePollInterval = TimeSpan.FromSeconds(2);
 
-    /// <summary>
-    /// Canonical JSON options that match Register Service's serialisation
-    /// (<c>RegisterCreationOrchestrator._canonicalJsonOptions</c>). Aligning on the
-    /// same wire format means a transaction served via the repository fallback is
-    /// byte-identical to one served via the cache on another node, so a third peer
-    /// re-serving this payload doesn't surface a case-sensitivity mismatch.
-    /// </summary>
-    private static readonly JsonSerializerOptions CanonicalTransactionJsonOptions = new()
-    {
-        WriteIndented = false,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    // Canonical JSON options live in Sorcha.Register.Models so every service that
+    // serialises register-scoped payloads agrees on the byte shape. Do NOT construct
+    // a local copy — see RegisterSerializationOptions for why.
 
     public RegisterSyncGrpcService(
         RegisterCache registerCache,
@@ -208,24 +197,20 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
         {
             register = await registerClient.GetRegisterAsync(request.RegisterId, cancellationToken);
         }
-        // Guard `when !IsCancellationRequested` so a genuine cancellation (gRPC
-        // deadline, server shutdown) propagates cleanly instead of being swallowed
-        // as a transient HTTP failure. TaskCanceledException derives from
-        // OperationCanceledException so the naive `is TaskCanceledException`
-        // pattern masks both.
-        catch (HttpRequestException ex)
+        // Genuine caller cancellation (gRPC deadline, server shutdown) must propagate —
+        // `when IsCancellationRequested` ensures we re-throw instead of masking it as
+        // transient. Every other exception (transient HTTP, JSON parse, DI scope
+        // weirdness) is contained so the fallback doesn't escalate to the subscriber's
+        // retry loop as an RpcException, which the loop treats as a permanent error.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(
-                ex,
-                "Transient Register Service failure looking up {RegisterId} — streaming empty response",
-                request.RegisterId);
-            return;
+            throw;
         }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Register Service lookup for {RegisterId} timed out — streaming empty response",
+                "Register Service failure looking up {RegisterId} — streaming empty response",
                 request.RegisterId);
             return;
         }
@@ -254,11 +239,15 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             {
                 tx = await registerClient.GetTransactionAsync(request.RegisterId, txId, cancellationToken);
             }
+            // Same split as the outer lookup: genuine caller cancellation re-throws,
+            // everything else is logged and the loop continues so a single bad fetch
+            // doesn't abort the whole batch. Subscriber's next sync cycle retries.
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (HttpRequestException ex)
             {
-                // Transient — the subscriber's next sync cycle will re-request. Tracked
-                // separately from genuinely-missing so the completion log doesn't
-                // conflate "doesn't exist" with "couldn't reach Register Service".
                 _logger.LogWarning(
                     ex,
                     "Transient Register Service fetch failure for tx {TransactionId} on register {RegisterId}",
@@ -266,10 +255,10 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
                 transientErrors++;
                 continue;
             }
-            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            catch (TaskCanceledException ex)
             {
-                // HTTP timeout — behaves the same as HttpRequestException. The
-                // `when` guard lets a genuine caller cancellation propagate.
+                // Reached only when !IsCancellationRequested (guarded above) — an
+                // HTTP-level timeout rather than a caller-driven cancellation.
                 _logger.LogWarning(
                     ex,
                     "Register Service fetch timed out for tx {TransactionId} on register {RegisterId}",
@@ -299,7 +288,7 @@ public class RegisterSyncGrpcService : Protos.RegisterSync.RegisterSyncBase
             // UnsafeRelaxedJsonEscaping) so the wire shape matches what a subscriber
             // would have seen via direct sync — and hash the streamed bytes to match
             // the subscriber's SHA-256 integrity check in RegisterReplicationService.
-            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx, CanonicalTransactionJsonOptions);
+            var txJson = JsonSerializer.SerializeToUtf8Bytes(tx, RegisterSerializationOptions.Canonical);
             var checksum = Convert.ToHexString(SHA256.HashData(txJson)).ToLowerInvariant();
 
             // tx.TimeStamp is always UTC at the DB layer. The single-arg DateTimeOffset
