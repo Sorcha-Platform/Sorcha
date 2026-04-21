@@ -251,6 +251,7 @@ public class PeerHeartbeatBackgroundService : BackgroundService
         Description = string.IsNullOrEmpty(ad.Description) ? null : ad.Description,
         SyncState = ConvertFromProtoSyncState(ad.SyncState),
         LatestVersion = ad.LatestVersion,
+        LatestDocketVersion = ad.LatestDocketVersion,
         IsPublic = ad.IsPublic
     };
 

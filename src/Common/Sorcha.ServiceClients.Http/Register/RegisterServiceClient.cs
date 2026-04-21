@@ -6,6 +6,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.LocalRelationship;
+using Sorcha.Register.Models.Observations;
 using Sorcha.ServiceClients.Auth;
 using Sorcha.ServiceClients.Helpers;
 
@@ -204,6 +206,8 @@ public class RegisterServiceClient : IRegisterServiceClient
             _logger.LogDebug(
                 "Reading docket {DocketNumber} from register {RegisterId}",
                 docketNumber, registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
 
             var response = await _httpClient.GetAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/dockets/{docketNumber}",
@@ -1576,4 +1580,170 @@ public class RegisterServiceClient : IRegisterServiceClient
         public DateTimeOffset TimeStamp { get; init; }
         public string? Votes { get; init; }
     }
+
+    // =========================================================================
+    // Feature 108 — Local relationship + sync state + observation intake
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task ReportPeerHeightAsync(
+        PeerHeightObservation observation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/internal/registers/{Uri.EscapeDataString(observation.RegisterId)}/peer-height-observation",
+                observation,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to report peer height observation for register {RegisterId}: {StatusCode}",
+                    observation.RegisterId, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Error reporting peer height observation for register {RegisterId}",
+                observation.RegisterId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ReportValidatorSealingAsync(
+        ValidatorSealingObservation observation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/internal/registers/{Uri.EscapeDataString(observation.RegisterId)}/validator-observation",
+                observation,
+                JsonOptions,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Failed to report validator sealing observation for register {RegisterId}: {StatusCode}",
+                    observation.RegisterId, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Error reporting validator sealing observation for register {RegisterId}",
+                observation.RegisterId);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RegisterLocalRelationship?> GetLocalRelationshipAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/local-relationship",
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetLocalRelationshipAsync failed for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterLocalRelationship>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get local relationship for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<RegisterSyncStateView?> GetSyncStateAsync(
+        string registerId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+            var response = await _httpClient.GetAsync(
+                $"api/registers/{Uri.EscapeDataString(registerId)}/sync-state",
+                cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetSyncStateAsync failed for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<RegisterSyncStateView>(JsonOptions, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Failed to get sync state for register {RegisterId}", registerId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+        byte[] validatorPublicKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(validatorPublicKey);
+        if (validatorPublicKey.Length == 0)
+            throw new ArgumentException("Validator public key cannot be empty.", nameof(validatorPublicKey));
+
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/internal/my-validated-registers");
+            request.Headers.Add("X-Validator-Public-Key", Convert.ToBase64String(validatorPublicKey));
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "GetMyValidatedRegistersAsync failed: {StatusCode}", response.StatusCode);
+                return Array.Empty<string>();
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<MyValidatedRegistersResponse>(JsonOptions, cancellationToken);
+            return payload?.RegisterIds ?? Array.Empty<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to enumerate validated registers for local validator key");
+            return Array.Empty<string>();
+        }
+    }
+
+    private sealed record MyValidatedRegistersResponse(IReadOnlyList<string> RegisterIds);
 }

@@ -267,7 +267,7 @@ public class RegisterService : IRegisterService
             IsFullReplica = register.IsFullReplica,
             CreatedAt = register.CreatedAt,
             UpdatedAt = register.UpdatedAt,
-            SyncState = register.SyncState,
+            SyncState = register.SyncState?.ToString(),
             DevMode = register.DevMode
         };
     }

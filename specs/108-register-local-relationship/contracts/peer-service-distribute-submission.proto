@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sorcha Contributors
+//
+// Peer-to-peer submission forwarding contract (Feature 108).
+//
+// Extends the existing TransactionDistribution gRPC service with a SubmitTransaction
+// unary RPC. Used by a subscriber to hand a fully-signed TransactionSubmission to
+// one of its source peers for validation. The receiver, if it is the validator for
+// the register, places the submission in its local mempool and the normal sealing
+// pipeline takes over.
+//
+// Transport: existing peer-to-peer gRPC channel (H/2 + TLS), same auth as pulls.
+
+syntax = "proto3";
+
+package sorcha.peer.distribution.v2;
+
+option csharp_namespace = "Sorcha.Peer.Service.Protos";
+
+import "google/protobuf/timestamp.proto";
+
+// Extension to the existing TransactionDistribution service.
+service TransactionDistributionV2 {
+  // Forwards a fully-signed submission to the receiving peer. The receiver's
+  // Validator.Service will seal it iff the receiver is on the register's roster
+  // (otherwise the submission is accepted into the mempool for onward gossip but
+  // will not be sealed by this receiver).
+  rpc SubmitTransaction (SubmitTransactionRequest) returns (SubmitTransactionResponse);
+}
+
+message SubmitTransactionRequest {
+  // 32-character hex string identifying the target register.
+  string register_id = 1;
+
+  // The fully-signed transaction submission. This is the same wire shape that
+  // Blueprint.Service hands to /api/v1/transactions/validate locally — JSON-encoded
+  // TransactionSubmission bytes carried as opaque payload to keep this contract
+  // insulated from TransactionSubmission schema drift.
+  bytes submission_json = 2;
+
+  // Identity of the peer originating the forward (for traceability and loop
+  // detection in any future multi-hop gossip).
+  string origin_peer_id = 3;
+
+  // When the originator accepted the user's submission.
+  google.protobuf.Timestamp submitted_at = 4;
+}
+
+message SubmitTransactionResponse {
+  // True if the receiver successfully placed the submission in its local mempool.
+  // Does NOT imply the transaction has been sealed — that happens asynchronously
+  // if the receiver is on the roster, and the originator verifies by polling its
+  // own Register.Service for the tx with a DocketNumber (existing behaviour).
+  bool accepted = 1;
+
+  // Populated when accepted == false.
+  string reject_reason = 2;
+
+  // Receiver's derived relationship (informational — helpful for debugging;
+  // subscribers calling a supposed-owner and getting "IsValidator == false" back
+  // is a signal that routing is broken).
+  ReceiverRoleSnapshot receiver_role = 3;
+}
+
+message ReceiverRoleSnapshot {
+  bool is_owner     = 1;
+  bool is_validator = 2;
+}

@@ -9,6 +9,7 @@ using Sorcha.Cryptography.Enums;
 using Sorcha.Cryptography.Interfaces;
 using Sorcha.Cryptography.Utilities;
 using Sorcha.Peer.Service.Models;
+using Sorcha.Register.Models.Enums;
 using Sorcha.ServiceClients.Register;
 
 namespace Sorcha.Peer.Service.Replication;
@@ -256,6 +257,10 @@ public class DocketFinalizationService
 
         if (genesisDocket != null)
         {
+            _logger.LogDebug(
+                "Strategy 1 (cached genesis docket) attempt for register {RegisterId}: docket 0 present, Data.Length={Length}",
+                registerId, genesisDocket.Data?.Length ?? 0);
+
             if (TryExtractValidatorRosterFromDocket(registerId, genesisDocket))
                 return;
 
@@ -263,51 +268,144 @@ public class DocketFinalizationService
             _validatorKeyCache.ExtractFromGenesisDocket(registerId, genesisDocket.Data);
             if (_validatorKeyCache.HasKey(registerId))
                 return;
+
+            _logger.LogDebug(
+                "Strategy 1 did not yield a validator roster for register {RegisterId}; falling through to Register Service",
+                registerId);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Strategy 1 skipped for register {RegisterId}: no cached genesis docket",
+                registerId);
         }
 
-        // Strategy 2: Read genesis transaction from Register Service (for locally-owned registers).
+        // Strategy 2: Read genesis transaction from Register Service (for locally-owned registers
+        // AND for replicated registers whose genesis has already been finalised locally).
+        await TryExtractValidatorRosterFromRegisterServiceAsync(registerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the genesis docket + transactions from the local Register Service and attempts to extract
+    /// a validator roster from the Control transaction's payload. Instrumented so each fall-through
+    /// condition is logged — the round-trip shape of replicated Control transactions (camelCase JSON
+    /// in → Mongo (MongoTransactionDocument binary) → TransactionModel JSON out) can drop fields
+    /// silently, and this log is the single source of truth for which step failed.
+    /// </summary>
+    private async Task TryExtractValidatorRosterFromRegisterServiceAsync(
+        string registerId,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
 
-            // Get the genesis transaction directly — it contains the control record payload
             var genesis = await registerClient.ReadDocketAsync(registerId, 0, cancellationToken);
-            if (genesis?.Transactions.Count > 0)
+
+            if (genesis is null)
             {
-                // Find the Control transaction in the genesis docket (don't assume index 0)
-                foreach (var txStub in genesis.Transactions)
+                _logger.LogWarning(
+                    "Strategy 2 fell through for register {RegisterId}: Register Service ReadDocketAsync(0) returned null — docket 0 has not been finalised locally yet",
+                    registerId);
+                return;
+            }
+
+            if (genesis.Transactions is null || genesis.Transactions.Count == 0)
+            {
+                _logger.LogWarning(
+                    "Strategy 2 fell through for register {RegisterId}: genesis docket has no transaction stubs (Transactions null or empty)",
+                    registerId);
+                return;
+            }
+
+            int txIndex = -1;
+            foreach (var txStub in genesis.Transactions)
+            {
+                txIndex++;
+
+                var tx = await registerClient.GetTransactionAsync(
+                    registerId, txStub.TxId, cancellationToken);
+
+                if (tx is null)
                 {
-                    var tx = await registerClient.GetTransactionAsync(
-                        registerId, txStub.TxId, cancellationToken);
-
-                    // Only process Control transactions (MetaData.TransactionType == 0)
-                    if (tx?.MetaData?.TransactionType != 0) continue;
-                    if (tx.Payloads?.Length == 0) continue;
-
-                    var payloadData = tx.Payloads[0].Data;
-                    if (string.IsNullOrEmpty(payloadData)) continue;
-
-                    var controlRecordBytes = DecodeBase64Url(payloadData);
-                    if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
-                    {
-                        _logger.LogInformation(
-                            "Extracted validator roster from Register Service genesis transaction for register {RegisterId}",
-                            registerId);
-                        return;
-                    }
+                    _logger.LogWarning(
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: GetTransactionAsync returned null",
+                        txIndex, txStub.TxId, registerId);
+                    continue;
                 }
+
+                if (tx.MetaData is null)
+                {
+                    _logger.LogWarning(
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: MetaData is null — " +
+                        "likely a round-trip shape failure (camelCase wire → Mongo → TransactionModel deserialise lost MetaData). " +
+                        "SenderWallet='{Sender}', PayloadCount={PayloadCount}",
+                        txIndex, tx.TxId, registerId, tx.SenderWallet, tx.PayloadCount);
+                    continue;
+                }
+
+                if (tx.MetaData.TransactionType != TransactionType.Control)
+                {
+                    _logger.LogDebug(
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: skipped — TransactionType={Type} (not Control)",
+                        txIndex, tx.TxId, registerId, tx.MetaData.TransactionType);
+                    continue;
+                }
+
+                if (tx.Payloads is null || tx.Payloads.Length == 0)
+                {
+                    _logger.LogWarning(
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: Control tx has no payloads (Payloads {State})",
+                        txIndex, tx.TxId, registerId, tx.Payloads is null ? "null" : "empty");
+                    continue;
+                }
+
+                var payloadData = tx.Payloads[0].Data;
+                if (string.IsNullOrEmpty(payloadData))
+                {
+                    _logger.LogWarning(
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: Control tx Payloads[0].Data is empty",
+                        txIndex, tx.TxId, registerId);
+                    continue;
+                }
+
+                byte[] controlRecordBytes;
+                try
+                {
+                    controlRecordBytes = DecodeBase64Url(payloadData);
+                }
+                catch (FormatException ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: Base64Url decode of Payloads[0].Data failed (length={Length})",
+                        txIndex, tx.TxId, registerId, payloadData.Length);
+                    continue;
+                }
+
+                if (_validatorKeyCache.ExtractFromControlRecord(registerId, controlRecordBytes))
+                {
+                    _logger.LogInformation(
+                        "Strategy 2 succeeded for register {RegisterId}: extracted validator roster from Control tx {TxId} (tx index {Index})",
+                        registerId, tx.TxId, txIndex);
+                    return;
+                }
+
+                _logger.LogWarning(
+                    "Strategy 2 tx[{Index}] ({TxId}) for register {RegisterId}: ExtractFromControlRecord returned false — " +
+                    "payload decoded to {ByteCount} bytes but did not contain a valid validators roster",
+                    txIndex, tx.TxId, registerId, controlRecordBytes.Length);
             }
 
             _logger.LogWarning(
-                "Could not extract validator roster from Register Service for register {RegisterId}",
-                registerId);
+                "Strategy 2 fell through for register {RegisterId}: iterated {Count} genesis transaction(s), none yielded a validator roster (see per-tx diagnostics above)",
+                registerId, genesis.Transactions.Count);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Failed to retrieve genesis transaction from Register Service for register {RegisterId}",
-                registerId);
+                "Strategy 2 errored for register {RegisterId}: {Message}",
+                registerId, ex.Message);
         }
     }
 

@@ -164,10 +164,17 @@ builder.Services.AddSingleton(sp =>
 // - Thread-safe implementation with SemaphoreSlim
 builder.Services.AddSingleton<IWalletIntegrationService, WalletIntegrationService>();
 
+// Feature 108 — validator key resolution + roster-driven monitoring enrolment
+builder.Services.AddSingleton<Sorcha.Validator.Service.Services.IValidatorKeyProvider,
+    Sorcha.Validator.Service.Services.ValidatorKeyProvider>();
+
 // Add background services
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.SystemWalletInitializer>();
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.MemPoolCleanupService>();
 builder.Services.AddHostedService<Sorcha.Validator.Service.Services.DocketBuildTriggerService>();
+
+// Feature 108 — roster-driven monitoring bootstrap
+builder.Services.AddHostedService<Sorcha.Validator.Service.Services.RegisterMonitoringBootstrap>();
 
 // Add metrics support services (VAL-9.45)
 // PendingDocketStore and ExceptionResponseHandler have no deep dependencies.

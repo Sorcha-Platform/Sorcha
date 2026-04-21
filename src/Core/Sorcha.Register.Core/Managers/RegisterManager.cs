@@ -50,7 +50,7 @@ public class RegisterManager
         string? description = null,
         bool devMode = false,
         RegisterPurpose purpose = RegisterPurpose.General,
-        string? syncState = null,
+        RegisterSyncState? syncState = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -177,7 +177,7 @@ public class RegisterManager
     /// <returns>Updated register, or null if not found</returns>
     public virtual async Task<Models.Register?> UpdateSyncStateAsync(
         string registerId,
-        string? syncState,
+        RegisterSyncState? syncState,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
@@ -197,15 +197,17 @@ public class RegisterManager
 
         _logger?.LogInformation(
             "Register {RegisterId} sync state changed: {PreviousState} → {NewState}",
-            registerId, previousSyncState ?? "null", syncState ?? "null");
+            registerId,
+            previousSyncState?.ToString() ?? "null",
+            syncState?.ToString() ?? "null");
 
         await _eventPublisher.PublishAsync(
-            "register:sync-state-changed",
+            RegisterEventChannels.RegisterSyncStateChanged,
             new RegisterSyncStateChangedEvent
             {
                 RegisterId = registerId,
-                SyncState = syncState ?? string.Empty,
-                PreviousSyncState = previousSyncState,
+                SyncState = syncState?.ToString() ?? string.Empty,
+                PreviousSyncState = previousSyncState?.ToString(),
                 ChangedAt = updated.UpdatedAt
             },
             cancellationToken);

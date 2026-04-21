@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
 using Google.Protobuf;
 using Grpc.Core;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Distribution;
 using Sorcha.Peer.Service.Protos;
 using Sorcha.Peer.Service.Replication;
+using Sorcha.ServiceClients.Validator;
 
 namespace Sorcha.Peer.Service.GrpcServices;
 
@@ -20,6 +23,7 @@ public class TransactionDistributionGrpcService : TransactionDistribution.Transa
     private readonly GossipProtocolEngine _gossipEngine;
     private readonly TransactionQueueManager _queueManager;
     private readonly RegisterCache _registerCache;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// Chunk size for streaming large transactions (64 KB).
@@ -30,12 +34,14 @@ public class TransactionDistributionGrpcService : TransactionDistribution.Transa
         ILogger<TransactionDistributionGrpcService> logger,
         GossipProtocolEngine gossipEngine,
         TransactionQueueManager queueManager,
-        RegisterCache registerCache)
+        RegisterCache registerCache,
+        IServiceScopeFactory scopeFactory)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _gossipEngine = gossipEngine ?? throw new ArgumentNullException(nameof(gossipEngine));
         _queueManager = queueManager ?? throw new ArgumentNullException(nameof(queueManager));
         _registerCache = registerCache ?? throw new ArgumentNullException(nameof(registerCache));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
     }
 
     /// <summary>
@@ -231,5 +237,83 @@ public class TransactionDistributionGrpcService : TransactionDistribution.Transa
         _logger.LogDebug(
             "Completed streaming transaction {TxHash} ({Chunks} chunks sent)",
             request.TransactionHash, totalChunks);
+    }
+
+    /// <summary>
+    /// Feature 108. Receives a forwarded signed submission from a NAT'd subscriber peer.
+    /// Deserialises the submission JSON and hands it to the local Validator.Service mempool.
+    /// If this node is on the register's roster, the normal sealing pipeline will produce a
+    /// docket; otherwise the tx sits in the pool for onward gossip.
+    /// </summary>
+    public override async Task<SubmitTransactionResponse> SubmitTransaction(
+        SubmitTransactionRequest request,
+        ServerCallContext context)
+    {
+        if (string.IsNullOrEmpty(request.RegisterId) || request.SubmissionJson.IsEmpty)
+        {
+            return new SubmitTransactionResponse
+            {
+                Accepted = false,
+                RejectReason = "register_id or submission_json missing"
+            };
+        }
+
+        try
+        {
+            TransactionSubmission? submission;
+            try
+            {
+                submission = JsonSerializer.Deserialize<TransactionSubmission>(
+                    request.SubmissionJson.ToByteArray(),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex,
+                    "SubmitTransaction: submission_json failed to deserialise for register {RegisterId}",
+                    request.RegisterId);
+                return new SubmitTransactionResponse
+                {
+                    Accepted = false,
+                    RejectReason = "submission_json not deserialisable"
+                };
+            }
+
+            if (submission is null)
+            {
+                return new SubmitTransactionResponse
+                {
+                    Accepted = false,
+                    RejectReason = "submission_json empty"
+                };
+            }
+
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var validatorClient = scope.ServiceProvider.GetRequiredService<IValidatorServiceClient>();
+
+            var result = await validatorClient.SubmitTransactionAsync(submission, context.CancellationToken);
+
+            _logger.LogInformation(
+                "SubmitTransaction forwarded from peer {Origin} for register {RegisterId} → local validator ({Success})",
+                request.OriginPeerId, request.RegisterId, result.Success);
+
+            return new SubmitTransactionResponse
+            {
+                Accepted = result.Success,
+                RejectReason = result.Success ? string.Empty : $"{result.ErrorCode}: {result.ErrorMessage}",
+                ReceiverIsValidator = true // receiver has its own enrolment path; we don't gate here
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "SubmitTransaction from peer {Origin} for register {RegisterId} errored",
+                request.OriginPeerId, request.RegisterId);
+            return new SubmitTransactionResponse
+            {
+                Accepted = false,
+                RejectReason = ex.Message
+            };
+        }
     }
 }

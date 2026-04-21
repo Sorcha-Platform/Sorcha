@@ -561,4 +561,53 @@ public class PeerServiceClient : IPeerServiceClient, IDisposable
             _disposed = true;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<DistributeTransactionResult> DistributeTransactionAsync(
+        string registerId,
+        byte[] submissionJson,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registerId);
+        ArgumentNullException.ThrowIfNull(submissionJson);
+
+        if (_httpClient is null)
+        {
+            _logger.LogDebug(
+                "DistributeTransactionAsync: HTTP client unavailable — treating as locally-owned no-op for register {RegisterId}",
+                registerId);
+            return new DistributeTransactionResult(0, 0, LocallyOwned: true);
+        }
+
+        try
+        {
+            await SetAuthHeaderAsync(cancellationToken);
+
+            using var content = new System.Net.Http.ByteArrayContent(submissionJson);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
+            var response = await _httpClient.PostAsync(
+                $"api/internal/peer/distribute/{Uri.EscapeDataString(registerId)}",
+                content,
+                cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "DistributeTransactionAsync failed for register {RegisterId}: {StatusCode}",
+                    registerId, response.StatusCode);
+                return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<DistributeTransactionResult>(
+                cancellationToken: cancellationToken);
+            return payload ?? new DistributeTransactionResult(0, 0, LocallyOwned: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "DistributeTransactionAsync errored for register {RegisterId}", registerId);
+            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+        }
+    }
 }

@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using Sorcha.ServiceClients.Participant;
+using Sorcha.ServiceClients.Peer;
 using Sorcha.ServiceClients.Wallet;
 using Sorcha.ServiceClients.Register;
 using Sorcha.ServiceClients.Register.Models;
@@ -44,6 +45,7 @@ public class ActionExecutionService : IActionExecutionService
     private readonly ITransactionBuilderService _transactionBuilder;
     private readonly IRegisterServiceClient _registerClient;
     private readonly IValidatorServiceClient _validatorClient;
+    private readonly IPeerServiceClient? _peerClient;
     private readonly IWalletServiceClient _walletClient;
     private readonly IParticipantServiceClient _participantClient;
     private readonly INotificationService _notificationService;
@@ -91,13 +93,15 @@ public class ActionExecutionService : IActionExecutionService
         Channel<EncryptionWorkItem>? encryptionChannel = null,
         IEncryptionOperationStore? encryptionOperationStore = null,
         IHaipServiceClient? haipClient = null,
-        IInstanceBindingCache? bindingCache = null)
+        IInstanceBindingCache? bindingCache = null,
+        IPeerServiceClient? peerClient = null)
     {
         _actionResolver = actionResolver ?? throw new ArgumentNullException(nameof(actionResolver));
         _stateReconstruction = stateReconstruction ?? throw new ArgumentNullException(nameof(stateReconstruction));
         _transactionBuilder = transactionBuilder ?? throw new ArgumentNullException(nameof(transactionBuilder));
         _registerClient = registerClient ?? throw new ArgumentNullException(nameof(registerClient));
         _validatorClient = validatorClient ?? throw new ArgumentNullException(nameof(validatorClient));
+        _peerClient = peerClient;
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _participantClient = participantClient ?? throw new ArgumentNullException(nameof(participantClient));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
@@ -846,17 +850,50 @@ public class ActionExecutionService : IActionExecutionService
         transaction.SenderWallet = request.SenderWallet;
         transaction.Signature = signResult.Signature;
 
-        // 12. Fetch next sequence number for replay protection (SEC-AUDIT 4.2) and submit
+        // 12. Fetch next sequence number for replay protection (SEC-AUDIT 4.2) and submit.
+        // Feature 108: submit to BOTH the local validator (seals iff this node is on the
+        // roster) AND the peer-service fan-out (forwards to source peers for subscribed
+        // registers — no-op when we own the register locally). No ownership branching here.
         var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
             instance.RegisterId, request.SenderWallet, cancellationToken);
         var submission = transaction.ToTransactionSubmission(signResult, nextSeqNum);
-        var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
 
-        if (!validatorResult.Success)
+        var validatorTask = _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
+        var distributeTask = _peerClient is null
+            ? Task.FromResult(new DistributeTransactionResult(0, 0, LocallyOwned: true))
+            : DistributeSubmissionAsync(instance.RegisterId, submission, cancellationToken);
+
+        await Task.WhenAll(validatorTask, distributeTask);
+        var validatorResult = validatorTask.Result;
+        var distributeResult = distributeTask.Result;
+
+        if (!validatorResult.Success && distributeResult.AcceptedCount == 0 && !distributeResult.LocallyOwned)
         {
             throw new InvalidOperationException(
-                $"Validator rejected transaction {transaction.TxId}: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}");
+                $"Validator rejected transaction {transaction.TxId}: [{validatorResult.ErrorCode}] {validatorResult.ErrorMessage} — and no peer accepted the fan-out");
         }
+
+        // Surface local-validator rejections even when a peer accepted. The concurrent peer
+        // path doesn't mask a structural rejection (schema violation, sequence-number mismatch,
+        // double-spend) — operators need to see these so they can intervene. We don't throw
+        // here because the accepting peer (typically the register owner) will also re-run
+        // validation under the same rules; if they accept, the tx is genuinely admissible.
+        if (!validatorResult.Success)
+        {
+            _logger.LogWarning(
+                "Local validator rejected transaction {TxId} for register {RegisterId}: [{ErrorCode}] {ErrorMessage}. " +
+                "Continuing because peer fan-out accepted on {AcceptedCount}/{TargetCount} peer(s)" +
+                "{LocallyOwnedNote}",
+                transaction.TxId, instance.RegisterId,
+                validatorResult.ErrorCode, validatorResult.ErrorMessage,
+                distributeResult.AcceptedCount, distributeResult.TargetPeerCount,
+                distributeResult.LocallyOwned ? " (locally-owned register, no fan-out attempted)" : string.Empty);
+        }
+
+        _logger.LogDebug(
+            "Transaction {TxId} submitted: validator={ValidatorSuccess}, peers accepted={PeersAccepted}/{PeersAttempted}, locallyOwned={LocallyOwned}",
+            transaction.TxId, validatorResult.Success,
+            distributeResult.AcceptedCount, distributeResult.TargetPeerCount, distributeResult.LocallyOwned);
 
         _logger.LogInformation(
             "Transaction {TxId} submitted to Validator for register {RegisterId}. Waiting for docket confirmation...",
@@ -2199,6 +2236,39 @@ public class ActionExecutionService : IActionExecutionService
         var combined = $"{fieldsPart}\n{valuesPart}";
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(combined));
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Feature 108. Serialises the signed submission and hands it to the local Peer.Service
+    /// fan-out endpoint. Errors are logged at <c>Warning</c> (so subscriber-only nodes, which
+    /// depend on fan-out reaching the owner, see a clear diagnostic) and surface as a
+    /// no-target-no-accepted result. The concurrent validator call is sufficient on its own
+    /// when the local node owns the register or is on the roster.
+    /// </summary>
+    private async Task<DistributeTransactionResult> DistributeSubmissionAsync(
+        string registerId,
+        TransactionSubmission submission,
+        CancellationToken cancellationToken)
+    {
+        if (_peerClient is null)
+            return new DistributeTransactionResult(0, 0, LocallyOwned: true);
+
+        try
+        {
+            var json = JsonSerializer.SerializeToUtf8Bytes(
+                submission,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            return await _peerClient.DistributeTransactionAsync(registerId, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Feature 108 — peer-service fan-out errored for register {RegisterId} transaction {TxId}; " +
+                "falling back to validator-only. Subscriber nodes depend on this path to reach the owner — " +
+                "investigate if this repeats.",
+                registerId, submission.TransactionId);
+            return new DistributeTransactionResult(0, 0, LocallyOwned: false);
+        }
     }
 }
 

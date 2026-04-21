@@ -40,6 +40,13 @@ public static class AuthorizationPolicies
 
     /// <summary>System admin org member with SystemAdmin role required.</summary>
     public const string RequireSystemAdmin = "RequireSystemAdmin";
+
+    /// <summary>
+    /// Service token required for pushing register-state observations into Register.Service
+    /// (peer-height adverts, validator sealing progress). Feature 108. Currently mirrors
+    /// RequireService; kept separate for future scope-based tightening.
+    /// </summary>
+    public const string CanReportRegisterObservation = "CanReportRegisterObservation";
 }
 
 /// <summary>
@@ -140,6 +147,13 @@ public static class AuthorizationPolicyExtensions
                     var isSystemAdmin = context.User.IsInRole("SystemAdmin");
                     return isSystemAdminOrg && isSystemAdmin;
                 }));
+
+            // 9. CanReportRegisterObservation — service token required for Feature 108 observation
+            //    intake endpoints (peer height, validator sealing). Mirrors RequireService today;
+            //    carved out so Register.Service can later require a narrower "observations:write"
+            //    scope without broadening RequireService.
+            options.AddPolicy(AuthorizationPolicies.CanReportRegisterObservation, policy =>
+                policy.RequireClaim(TokenClaimConstants.TokenType, TokenClaimConstants.TokenTypeService));
         });
 
         return services;

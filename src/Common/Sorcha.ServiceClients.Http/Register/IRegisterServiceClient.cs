@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Sorcha.Register.Models;
+using Sorcha.Register.Models.LocalRelationship;
+using Sorcha.Register.Models.Observations;
 
 namespace Sorcha.ServiceClients.Register;
 
@@ -466,6 +468,52 @@ public interface IRegisterServiceClient
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default);
+
+    // =========================================================================
+    // Feature 108 — Local relationship + sync state + observation intake
+    // =========================================================================
+
+    /// <summary>
+    /// Reports a peer-advert height observation to Register.Service for inclusion in the
+    /// sync-state network-height high-water-mark (Feature 108).
+    /// </summary>
+    Task ReportPeerHeightAsync(
+        PeerHeightObservation observation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reports a validator sealing progress observation to Register.Service (Feature 108).
+    /// Rejected by the server if the caller's validator key is not on the register's roster.
+    /// </summary>
+    Task ReportValidatorSealingAsync(
+        ValidatorSealingObservation observation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the local node's derived role set for the register (Feature 108).
+    /// </summary>
+    /// <returns>Relationship record, or null when the register is not held locally.</returns>
+    Task<RegisterLocalRelationship?> GetLocalRelationshipAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the current typed sync state view for the register (Feature 108).
+    /// </summary>
+    /// <returns>Sync-state view, or null when the register is not held locally.</returns>
+    Task<RegisterSyncStateView?> GetSyncStateAsync(
+        string registerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists register IDs on whose roster the caller's validator public key appears (Feature 108).
+    /// Used by Validator.Service at startup and on relationship-change events to seed its
+    /// monitoring enrolment. The public key is passed via the <c>X-Validator-Public-Key</c> header
+    /// by the client implementation.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetMyValidatedRegistersAsync(
+        byte[] validatorPublicKey,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

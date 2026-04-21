@@ -151,8 +151,13 @@ public static class ValidationEndpoints
 
             logger.LogInformation("Transaction {TransactionId} validated and submitted to unverified pool", request.TransactionId);
 
-            // Register for docket building so DocketBuildTriggerService polls this register
-            monitoringRegistry.RegisterForMonitoring(request.RegisterId);
+            // Feature 108 — monitoring enrolment is now roster-driven via RegisterMonitoringBootstrap.
+            // We intentionally do NOT call monitoringRegistry.RegisterForMonitoring(registerId) here
+            // any more. Nodes that are not on the register's validator roster will accept the
+            // transaction into their mempool for onward forwarding, but will not produce dockets.
+            // The `monitoringRegistry` dependency is kept in the endpoint signature because other
+            // code paths may still reference it — it's a no-op in this handler now.
+            _ = monitoringRegistry;
 
             return Results.Ok(new
             {
