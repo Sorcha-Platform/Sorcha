@@ -2,347 +2,184 @@
 
 ## Overview
 
-Sorcha follows a clean, modular architecture with clear separation of concerns. This document defines the official directory structure and placement rules for all projects.
+Sorcha is organised around a four-tier layering (Apps / Services / Core / Common) with a dedicated `tests/` root and top-level support directories for docs, specs, blueprints, walkthroughs, infra, and tooling.
 
-**Last Updated:** 2025-01-12
-**Version:** 2.0.0
+**Last Updated:** 2026-04-21
+**Version:** 3.0.0
 
 ## Directory Structure
 
 ```
 Sorcha/
 ├── src/
-│   ├── Apps/                          # Application layer
-│   │   ├── Sorcha.AppHost             # .NET Aspire orchestration host
-│   │   └── UI/
-│   │       └── Sorcha.Blueprint.Designer.Client  # Blazor WASM UI
-│   ├── Common/                        # Cross-cutting concerns
-│   │   ├── Sorcha.Blueprint.Models    # Domain models and DTOs
-│   │   ├── Sorcha.Cryptography        # Cryptography library
-│   │   └── Sorcha.ServiceDefaults     # Service configuration utilities
-│   ├── Core/                          # Business logic layer
-│   │   ├── Sorcha.Blueprint.Engine    # Blueprint execution engine
-│   │   ├── Sorcha.Blueprint.Fluent    # Fluent API builders
-│   │   └── Sorcha.Blueprint.Schemas   # Schema management
-│   └── Services/                      # Service layer
-│       ├── Sorcha.ApiGateway          # YARP-based API Gateway
-│       ├── Sorcha.Blueprint.Service   # Blueprint REST API
-│       └── Sorcha.Peer.Service        # P2P networking service
-├── tests/                             # All test projects
-│   ├── Sorcha.Blueprint.Engine.Tests
-│   ├── Sorcha.Blueprint.Fluent.Tests
-│   ├── Sorcha.Blueprint.Models.Tests
-│   ├── Sorcha.Blueprint.Schemas.Tests
-│   ├── Sorcha.Cryptography.Tests
-│   ├── Sorcha.Gateway.Integration.Tests
-│   ├── Sorcha.Integration.Tests
-│   ├── Sorcha.Peer.Service.Tests
-│   ├── Sorcha.Performance.Tests
-│   └── Sorcha.UI.E2E.Tests
-├── docs/                              # Documentation
-│   ├── architecture.md
-│   ├── testing.md
-│   ├── project-structure.md           # This file
-│   └── ...
-├── scripts/                           # Build and deployment scripts
-├── infra/                             # Infrastructure as Code
-├── samples/                           # Sample blueprints and examples
-├── .github/                           # GitHub workflows
-└── Sorcha.sln                         # Solution file
-
+│   ├── Apps/                                   # Entry-point applications
+│   │   ├── Sorcha.Agent/                       # Autonomous actor agent CLI
+│   │   ├── Sorcha.AppHost/                     # .NET Aspire orchestration host
+│   │   ├── Sorcha.Cli/                         # Administrative CLI (System.CommandLine + Refit + Spectre.Console)
+│   │   ├── Sorcha.Demo/                        # Demo application
+│   │   ├── Sorcha.McpServer/                   # MCP Server for AI assistants (Claude Desktop, etc.)
+│   │   ├── Sorcha.PeerRouter/                  # Peer routing / federation helper
+│   │   └── Sorcha.UI/                          # Main user-facing UI (Blazor WASM)
+│   │       ├── Sorcha.UI.Core/                 # Shared UI components
+│   │       ├── Sorcha.UI.Web/                  # Web host
+│   │       ├── Sorcha.UI.Web.Client/           # Web client (Blazor WASM)
+│   │       └── tests/                          # UI-scoped test projects
+│   │           ├── Sorcha.UI.Core.Tests/
+│   │           └── Sorcha.UI.Integration.Tests/
+│   ├── Common/                                 # Cross-cutting libraries (no business logic)
+│   │   ├── Sorcha.AddressLookup/               # Postal-address lookup abstractions
+│   │   ├── Sorcha.Blueprint.Models/            # Blueprint domain models + JSON-LD
+│   │   ├── Sorcha.Blueprint.Schemas/           # Schema definitions (shared)
+│   │   ├── Sorcha.Cryptography/                # Multi-algorithm crypto (ED25519, P-256, RSA-4096)
+│   │   ├── Sorcha.Register.Models/             # Register domain models + genesis resources
+│   │   ├── Sorcha.ServiceClients/              # Consolidated HTTP/gRPC clients
+│   │   ├── Sorcha.ServiceClients.Http/         # HTTP REST clients + SignalR (NuGet, mobile-friendly)
+│   │   ├── Sorcha.ServiceDefaults/             # Aspire shared configuration + rate limiting
+│   │   ├── Sorcha.Storage.Abstractions/        # IRepository<T>, IUnitOfWork
+│   │   ├── Sorcha.Storage.EFCore/              # EF Core implementation
+│   │   ├── Sorcha.Storage.InMemory/            # In-memory implementation (testing)
+│   │   ├── Sorcha.Storage.MongoDB/             # MongoDB implementation
+│   │   ├── Sorcha.Storage.Redis/               # Redis caching implementation
+│   │   ├── Sorcha.Tenant.Models/               # Tenant domain models
+│   │   ├── Sorcha.TransactionHandler/          # Transaction building/serialization
+│   │   ├── Sorcha.Validator.Core/              # Enclave-safe validation library
+│   │   └── Sorcha.Wallet.Core/                 # Wallet domain logic
+│   ├── Core/                                   # Business logic
+│   │   ├── Sorcha.Blueprint.Engine/            # Portable execution (WASM-compatible)
+│   │   ├── Sorcha.Blueprint.Fluent/            # Fluent API for blueprint construction
+│   │   ├── Sorcha.Blueprint.Schemas/           # Schema management with caching
+│   │   ├── Sorcha.Blueprint.Schemas.Client/    # Client-side schema facade
+│   │   ├── Sorcha.Register.Core/               # Ledger business logic + LocalRelationship + SyncState
+│   │   ├── Sorcha.Register.Storage/            # Register-specific storage abstractions
+│   │   ├── Sorcha.Register.Storage.InMemory/
+│   │   ├── Sorcha.Register.Storage.MongoDB/
+│   │   ├── Sorcha.Register.Storage.Redis/
+│   │   ├── Sorcha.Wallet.Core/                 # Wallet business logic
+│   │   └── Sorcha.Wallet.Portable/             # Portable wallet: entities, enums, derivation (NuGet)
+│   └── Services/                               # REST / gRPC / background services
+│       ├── Sorcha.ApiGateway/                  # YARP reverse proxy
+│       ├── Sorcha.Blueprint.Service/           # Workflow management + SignalR
+│       ├── Sorcha.Haip.Service/                # HAIP presentation / verified credential gateway
+│       ├── Sorcha.Peer.Service/                # P2P networking (gRPC)
+│       ├── Sorcha.Register.Service/            # Distributed ledger + OData
+│       ├── Sorcha.Tenant.Service/              # Multi-tenant auth, JWT, Participant/Platform Identity
+│       ├── Sorcha.Validator.Service/           # Consensus + chain integrity
+│       └── Sorcha.Wallet.Service/              # Crypto wallet management
+├── tests/                                      # ~47 top-level test projects (plus UI-scoped tests under src/Apps/Sorcha.UI/tests)
+│   ├── Sorcha.Testing/                         # Shared test factory / fixtures
+│   ├── {Project}.Tests/                        # Unit tests
+│   ├── {Project}.IntegrationTests/             # Integration tests (real DB/services)
+│   ├── Sorcha.Performance.Tests/               # Load / TPS benchmarks
+│   ├── Sorcha.TransactionHandler.Benchmarks/   # BenchmarkDotNet benchmarks
+│   └── Sorcha.UI.E2E.Tests/                    # Playwright end-to-end tests
+├── docs/                                       # Documentation
+│   ├── getting-started/
+│   ├── guides/
+│   └── reference/                              # project-structure.md (this file), API-DOCUMENTATION.md, architecture.md, etc.
+├── specs/                                      # Feature specs (speckit)
+├── blueprints/                                 # Canonical blueprint JSON templates
+├── walkthroughs/                               # Interactive demo + test scripts (see walkthroughs/README.md)
+├── scripts/                                    # Build, deploy, and n1 management scripts
+├── infra/                                      # Infrastructure as Code
+├── docker/                                     # Docker build contexts
+├── e2e/                                        # Top-level E2E support
+├── docker-compose*.yml                         # Compose overlays (debug, federation, infrastructure, n1, ports, seed)
+├── Directory.Packages.props                    # Central package version management
+└── Sorcha.sln                                  # Solution file
 ```
 
-## Directory Purposes
+**Counts (2026-04-21):** 7 App projects, 17 Common libraries, 11 Core libraries, 8 Services, ~47 top-level test projects + 2 UI-scoped test projects.
+
+## Layer Purposes
 
 ### src/Apps/
 
-Application layer - orchestration and UI applications.
-
-- **Sorcha.AppHost**: .NET Aspire orchestration host that coordinates all services
-- **UI/**: User interface applications (Blazor WASM, Blazor Server)
-
-**Placement Rule**:
-- Orchestration and hosting projects (AppHost)
-- UI applications that run in the browser or as desktop apps
-- Projects that coordinate multiple services but don't contain business logic
+Entry-point applications: Aspire host, UI, CLIs, and standalone agents. Projects here compose the lower layers but do not themselves ship business logic. The `Sorcha.UI` folder is internally structured as its own solution (`Sorcha.UI.sln`) with host, client, and test projects so UI work can be opened in isolation.
 
 ### src/Common/
 
-Shared libraries used across multiple projects (cross-cutting concerns).
-
-- **Models**: Domain models, DTOs, value objects
-- **Cryptography**: Reusable cryptography library (can be published as NuGet package)
-- **ServiceDefaults**: Shared configuration utilities and extensions
-
-**Placement Rule**: Libraries that:
-- Are used by multiple projects across different layers
-- Contain no business logic (models, utilities, helpers)
-- Could potentially be extracted as standalone NuGet packages
-- Represent cross-cutting concerns
-
-**Examples**:
-- ✅ Domain models (Blueprint, Action, Participant)
-- ✅ Cryptography utilities
-- ✅ Common DTOs and interfaces
-- ✅ Service configuration extensions
-- ❌ Business logic (belongs in Core/)
-- ❌ API endpoints (belongs in Apps/)
+Cross-cutting libraries. Contents: domain models, cryptography, storage abstractions and implementations, consolidated service clients, service defaults (telemetry, rate limiting, auth wiring), transaction handling, and enclave-safe validator core. No upward dependencies on Core / Services / Apps.
 
 ### src/Core/
 
-Core business logic and domain services.
-
-- **Engine**: Blueprint execution engine
-- **Fluent**: Fluent API builders for creating blueprints
-- **Schemas**: Schema management and validation
-
-**Placement Rule**: Libraries that:
-- Contain core business logic
-- Implement domain services
-- Are used by Apps/ layer
-- Should not depend on Apps/ layer (dependency inversion)
-
-**Examples**:
-- ✅ Blueprint execution logic
-- ✅ Fluent builders
-- ✅ Schema validation
-- ✅ Business rules and workflows
-- ❌ Database access (if we add it, goes in Infrastructure/)
-- ❌ External API clients (if we add them, goes in Infrastructure/)
+Domain business logic — execution engines, ledger core, schema management, fluent builders, portable wallet. Depends on Common only.
 
 ### src/Services/
 
-Service layer - REST APIs, gRPC services, and background services.
-
-- **Sorcha.ApiGateway**: YARP-based API Gateway for routing and aggregation
-- **Sorcha.Blueprint.Service**: Blueprint REST API service
-- **Sorcha.Peer.Service**: P2P networking service for decentralized communication
-
-**Placement Rule**: Projects that:
-- Provide HTTP/REST APIs or gRPC services
-- Run as independent services orchestrated by AppHost
-- Could be deployed separately from the main application
-- Implement service interfaces and API endpoints
-
-**Examples**:
-- ✅ REST API services
-- ✅ gRPC services
-- ✅ API Gateways
-- ✅ P2P networking services
-- ✅ Background workers and job processors
-- ❌ Core business logic (belongs in Core/)
-- ❌ UI applications (belongs in Apps/UI/)
+REST, gRPC, and background services. Each service owns its endpoints, mappers, DTOs, and business wiring, delegating domain logic down to Core and infrastructure to Common. Currently 8 services: API Gateway, Blueprint, HAIP, Peer, Register, Tenant, Validator, Wallet.
 
 ### tests/
 
-All test projects following naming convention `{ProjectName}.Tests`.
-
-**Placement Rule**:
-- Unit tests: Test a single project in isolation
-- Integration tests: Test multiple projects together (suffix with `.Integration.Tests`)
-- E2E tests: Test the entire system (suffix with `.E2E.Tests`)
-- Performance tests: Load and performance testing (suffix with `.Performance.Tests`)
+Top-level test root. Naming: `{Project}.Tests` for unit, `{Project}.IntegrationTests` (or `.Integration.Tests`) for integration, `.E2E.Tests` for end-to-end, `.Benchmarks` for BenchmarkDotNet harnesses. `Sorcha.Testing` is a shared test-utilities project consumed by others. UI-scoped test projects live under `src/Apps/Sorcha.UI/tests/` so they travel with the UI solution.
 
 ## Dependency Rules
 
-### Allowed Dependencies
-
-<!-- Original ASCII preserved for reference
-Apps/
-  ↓ (can depend on)
-Core/ + Common/ + Services/
-
-Core/
-  ↓ (can depend on)
-Common/
-
-Services/
-  ↓ (can depend on)
-Core/ + Common/
-
-Common/
-  ↓ (no dependencies on other src/ projects)
-
-Forbidden: Common → Core, Common → Apps, Common → Services, Core → Apps, Core → Services
--->
-
 ```mermaid
 graph TD
-    Apps["Apps/<br/>(AppHost, UI, Designer)"]
-    Services["Services/<br/>(API Gateway, Blueprint, Register,<br/>Wallet, Tenant, Validator, Peer)"]
-    Core["Core/<br/>(Engine, Fluent, Schemas,<br/>Register.Core, Register.Storage)"]
-    Common["Common/<br/>(Models, Cryptography, ServiceClients,<br/>ServiceDefaults, Storage, Validator.Core)"]
-    Tests["Tests/<br/>(30 test projects)"]
+    Apps["Apps/"]
+    Services["Services/"]
+    Core["Core/"]
+    Common["Common/"]
+    Tests["Tests/"]
 
-    Apps -->|"allowed"| Services
-    Apps -->|"allowed"| Core
-    Apps -->|"allowed"| Common
-    Services -->|"allowed"| Core
-    Services -->|"allowed"| Common
-    Core -->|"allowed"| Common
+    Apps -->|allowed| Services
+    Apps -->|allowed| Core
+    Apps -->|allowed| Common
+    Services -->|allowed| Core
+    Services -->|allowed| Common
+    Core -->|allowed| Common
 
-    Tests -.->|"can depend on everything"| Apps
-    Tests -.->|"can depend on everything"| Services
-    Tests -.->|"can depend on everything"| Core
-    Tests -.->|"can depend on everything"| Common
-
-    Common ~~~|" "| NoUp["No upward dependencies"]
-
-    linkStyle 0,1,2,3,4,5 stroke:#388e3c,stroke-width:2px
-    linkStyle 6,7,8,9 stroke:#1565c0,stroke-width:1px,stroke-dasharray:5
+    Tests -.->|can depend on everything| Apps
+    Tests -.->|can depend on everything| Services
+    Tests -.->|can depend on everything| Core
+    Tests -.->|can depend on everything| Common
 
     style Apps fill:#e1f5fe,stroke:#0288d1
     style Services fill:#e8f5e9,stroke:#388e3c
     style Core fill:#f3e5f5,stroke:#7b1fa2
     style Common fill:#fff3e0,stroke:#f57c00
     style Tests fill:#f5f5f5,stroke:#616161
-    style NoUp fill:#ffcdd2,stroke:#c62828
 ```
 
-### Forbidden Dependencies
+**Forbidden:** Common → Core / Services / Apps. Core → Services / Apps. Services → Apps.
 
-- Common/ must NOT depend on Core/, Apps/, or Services/
-- Core/ must NOT depend on Apps/ or Services/
+## Target Framework
 
-## Target Frameworks
-
-### Standard Targets
-
-| Project Type | Target Framework(s) | Reason |
-|--------------|-------------------|---------|
-| Apps/ | `net10.0` | Latest .NET for full framework features |
-| Common/ libraries | `net10.0` | Latest .NET for all libraries |
-| Core/ libraries | `net10.0` | Latest .NET for all libraries |
-| Services/ | `net10.0` | Backend services use latest .NET |
-| Tests | `net10.0` | Match project under test |
-
-### Target Framework Standard
-
-All projects in the Sorcha solution target `net10.0`:
-- Sorcha.Blueprint.Models
-- Sorcha.Blueprint.Fluent
-- Sorcha.Blueprint.Schemas
-- Sorcha.Cryptography
-- All other projects
+All projects target **`net10.0`** (C# 14). Central package management via `Directory.Packages.props` at the repo root.
 
 ## Naming Conventions
 
-### Project Names
+| Layer | Pattern | Examples |
+|-------|---------|----------|
+| Apps | `Sorcha.{Feature}` | `Sorcha.AppHost`, `Sorcha.Cli`, `Sorcha.Agent`, `Sorcha.McpServer` |
+| Services | `Sorcha.{Feature}.Service` or `Sorcha.{Feature}Gateway` | `Sorcha.Register.Service`, `Sorcha.ApiGateway`, `Sorcha.Haip.Service` |
+| Common | `Sorcha.{Feature}` or `Sorcha.{Feature}.{Kind}` | `Sorcha.Cryptography`, `Sorcha.Storage.EFCore`, `Sorcha.ServiceClients.Http` |
+| Core | `Sorcha.{Feature}.{Kind}` | `Sorcha.Blueprint.Engine`, `Sorcha.Register.Core`, `Sorcha.Wallet.Portable` |
+| Tests | `{Project}.Tests` / `{Project}.IntegrationTests` / `{Project}.E2E.Tests` / `{Project}.Benchmarks` | `Sorcha.Register.Core.Tests`, `Sorcha.Wallet.Service.IntegrationTests`, `Sorcha.UI.E2E.Tests` |
 
-- **Apps**: `Sorcha.{Feature}`
-  - Examples: `Sorcha.AppHost`, `Sorcha.Blueprint.Designer.Client`
-- **Services**: `Sorcha.{Feature}.Service` or `Sorcha.{Feature}Gateway`
-  - Examples: `Sorcha.ApiGateway`, `Sorcha.Blueprint.Service`, `Sorcha.Peer.Service`
-- **Common**: `Sorcha.{Feature}`
-  - Examples: `Sorcha.Cryptography`, `Sorcha.ServiceDefaults`, `Sorcha.Blueprint.Models`
-- **Core**: `Sorcha.Blueprint.{Feature}`
-  - Examples: `Sorcha.Blueprint.Engine`, `Sorcha.Blueprint.Fluent`, `Sorcha.Blueprint.Schemas`
+## Adding a New Project
 
-### Test Projects
+1. Choose layer by purpose (entry-point → Apps, domain logic → Core, infrastructure/shared → Common, API/service → Services).
+2. Match naming conventions above.
+3. Target `net10.0`; rely on `Directory.Packages.props` for package versions (no inline `Version=` attributes on `PackageReference`).
+4. Add to the solution: `dotnet sln add src/{Layer}/{Name}/{Name}.csproj`.
+5. Create a matching test project under `tests/` (or under `src/Apps/Sorcha.UI/tests/` for UI-internal tests).
+6. Verify layer dependency rules hold (no upward refs).
+7. Update this file and, if the project adds new endpoints or cross-cutting patterns, update `CLAUDE.md`, `docs/reference/API-DOCUMENTATION.md`, and the relevant skill under `.claude/skills/`.
 
-- **Unit**: `{ProjectName}.Tests`
-  - Example: `Sorcha.Blueprint.Engine.Tests`
-- **Integration**: `Sorcha.{Feature}.Integration.Tests`
-  - Example: `Sorcha.Gateway.Integration.Tests`
-- **E2E**: `Sorcha.{Feature}.E2E.Tests`
-  - Example: `Sorcha.UI.E2E.Tests`
-- **Performance**: `Sorcha.Performance.Tests`
+## Common Mistakes
 
-## Adding New Projects
-
-### Checklist
-
-1. ✅ Choose the correct directory based on purpose:
-   - Entry point/service → `src/Apps/`
-   - Shared library → `src/Common/`
-   - Business logic → `src/Core/`
-   - Background service → `src/Services/`
-
-2. ✅ Follow naming conventions
-
-3. ✅ Set correct target framework:
-   - All projects → `net10.0`
-
-4. ✅ Add to solution file:
-   ```bash
-   dotnet sln add src/{Category}/{ProjectName}/{ProjectName}.csproj
-   ```
-
-5. ✅ Create corresponding test project
-
-6. ✅ Verify dependency rules (no circular dependencies)
-
-7. ✅ Update architecture documentation if needed
-
-## Common Mistakes to Avoid
-
-### ❌ Wrong: Duplicate Projects
-
-```
-src/Services/Sorcha.Peer.Service/
-src/Apps/Services/Sorcha.Peer.Service/   # DUPLICATE - Don't do this!
-```
-
-**Solution**: Keep one in the correct location based on its purpose.
-
-### ❌ Wrong: Mixing Concerns
-
-```
-src/Common/Sorcha.Blueprint.Engine/   # Business logic in Common
-```
-
-**Solution**: Business logic belongs in `src/Core/`.
-
-### ❌ Wrong: Circular Dependencies
-
-```
-Common/ → Core/ → Common/   # Circular!
-```
-
-**Solution**: Common should never depend on Core or Apps.
-
-### ❌ Wrong: Incorrect Target Framework
-
-```xml
-<TargetFramework>net8.0</TargetFramework>   # Outdated!
-```
-
-**Solution**: Use `<TargetFramework>net10.0</TargetFramework>` for all projects.
-
-## Migration Guide
-
-If you need to move a project:
-
-1. **Update project file path** in solution:
-   ```bash
-   dotnet sln remove old/path/Project.csproj
-   dotnet sln add new/path/Project.csproj
-   ```
-
-2. **Move directory**:
-   ```bash
-   git mv old/path/Project new/path/Project
-   ```
-
-3. **Update all project references** that point to the moved project
-
-4. **Update documentation**
-
-5. **Test build**:
-   ```bash
-   dotnet build
-   ```
+- **Business logic in `Common/`** — move to `Core/`. `Common/` is for models, abstractions, and framework-agnostic utilities.
+- **Inline package versions** — central versioning lives in `Directory.Packages.props`; adding `Version=` to a `PackageReference` breaks the build.
+- **Circular refs** — `Common/` never depends on `Core/` / `Services/` / `Apps/`.
+- **Test project in the wrong root** — UI-scoped tests belong under `src/Apps/Sorcha.UI/tests/`; everything else under top-level `tests/`.
+- **Missing `Sorcha.Testing` reference** — integration tests should consume the shared factory rather than rolling their own service bootstraps.
 
 ## Related Documentation
 
-- [Architecture Overview](architecture.md)
-- [Testing Guide](../guides/testing/testing.md)
-- [Getting Started](../getting-started/getting-started.md)
-- [Contributing Guidelines](../../CONTRIBUTING.md)
-
----
-
-**Questions or Issues?**
-- Review this document
-- Check [architecture.md](architecture.md)
-- Ask in GitHub Discussions
+- [`architecture.md`](architecture.md) — Service diagrams and runtime topology
+- [`API-DOCUMENTATION.md`](API-DOCUMENTATION.md) — Full REST / gRPC endpoint reference
+- [`development-status.md`](development-status.md) — Per-service completion status
+- [`../getting-started/`](../getting-started/) — First-run setup
+- [`../../CLAUDE.md`](../../CLAUDE.md) — Development guidelines, critical patterns, AI assistant requirements
+- [`../../.claude/skills/sorcha-architecture/SKILL.md`](../../.claude/skills/sorcha-architecture/SKILL.md) — Feature-specific API references and cross-cutting patterns
