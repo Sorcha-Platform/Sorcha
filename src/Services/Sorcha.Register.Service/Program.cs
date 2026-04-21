@@ -330,7 +330,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
             {
                 RegisterId = request.RegisterId,
                 Action = "subscribe",
-                SyncState = existing.SyncState,
+                SyncState = existing.SyncState?.ToString(),
                 Message = existing.SyncState == null
                     ? "Register exists locally"
                     : $"Register already syncing (state: {existing.SyncState})"
@@ -345,7 +345,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
             isFullReplica: false,
             registerId: request.RegisterId,
             description: request.Description,
-            syncState: "Subscribing");
+            syncState: Sorcha.Register.Models.Enums.RegisterSyncState.Syncing);
 
         // Set initial status to Checking (connecting to source peers)
         await manager.UpdateRegisterStatusAsync(request.RegisterId, RegisterStatus.Checking);
@@ -365,7 +365,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
                 await peerClient.SubscribeToRegisterAsync(registerId, "full-replica");
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var scopedManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
-                await scopedManager.UpdateSyncStateAsync(registerId, "Syncing");
+                await scopedManager.UpdateSyncStateAsync(registerId, Sorcha.Register.Models.Enums.RegisterSyncState.Syncing);
             }
             catch (Exception ex)
             {
@@ -377,7 +377,7 @@ app.MapPost("/api/internal/register-subscriptions", async (
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
                     var scopedManager = scope.ServiceProvider.GetRequiredService<RegisterManager>();
-                    await scopedManager.UpdateSyncStateAsync(registerId, "Error");
+                    await scopedManager.UpdateSyncStateAsync(registerId, Sorcha.Register.Models.Enums.RegisterSyncState.Error);
                 }
                 catch (Exception innerEx)
                 {
@@ -472,16 +472,18 @@ app.MapPost("/api/internal/register-sync-status", async (
         _ => register.Status
     };
 
-    // Update sync state string
-    var syncStateString = report.SyncState switch
+    // Map peer's wire string to the typed RegisterSyncState on the register entity (Feature 108).
+    var mappedSyncState = report.SyncState switch
     {
-        "FullyReplicated" or "Active" => "Synced",
-        _ => report.SyncState
+        "Subscribing" or "Syncing" => Sorcha.Register.Models.Enums.RegisterSyncState.Syncing,
+        "FullyReplicated" or "Active" => Sorcha.Register.Models.Enums.RegisterSyncState.CaughtUp,
+        "Error" => Sorcha.Register.Models.Enums.RegisterSyncState.Error,
+        _ => Sorcha.Register.Models.Enums.RegisterSyncState.Indeterminate
     };
 
-    if (register.SyncState != syncStateString)
+    if (register.SyncState != mappedSyncState)
     {
-        await manager.UpdateSyncStateAsync(report.RegisterId, syncStateString);
+        await manager.UpdateSyncStateAsync(report.RegisterId, mappedSyncState);
     }
 
     if (register.Status != newStatus)
@@ -492,7 +494,7 @@ app.MapPost("/api/internal/register-sync-status", async (
             report.RegisterId, register.Status, newStatus, report.SyncState);
     }
 
-    return Results.Ok(new { registerId = report.RegisterId, status = newStatus.ToString(), syncState = syncStateString });
+    return Results.Ok(new { registerId = report.RegisterId, status = newStatus.ToString(), syncState = mappedSyncState.ToString() });
 })
 .WithName("InternalReportSyncStatus")
 .WithSummary("Internal: Report peer sync status change")

@@ -102,7 +102,37 @@ public interface IPeerServiceClient
         string behavior,
         string details,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Feature 108. Asks the local Peer.Service to fan out a signed transaction submission to
+    /// the peers that can seal it (the register's source peers for subscribed registers; no-op
+    /// for locally-owned registers). This is the owner-agnostic counterpart to
+    /// <c>IValidatorServiceClient.SubmitTransactionAsync</c> — ActionExecutionService calls both
+    /// concurrently and each downstream decides based on its derived relationship.
+    /// </summary>
+    /// <param name="registerId">Register the transaction targets.</param>
+    /// <param name="submissionJson">JSON-encoded <c>TransactionSubmission</c> bytes (opaque to peer-service).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Best-effort distribution result.</returns>
+    Task<DistributeTransactionResult> DistributeTransactionAsync(
+        string registerId,
+        byte[] submissionJson,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Result of a peer-service fan-out for a signed submission (Feature 108).
+/// </summary>
+/// <param name="TargetPeerCount">Number of peers the submission was attempted against.</param>
+/// <param name="AcceptedCount">Number of peers that accepted the submission into their local mempool.</param>
+/// <param name="LocallyOwned">
+/// True when the local node owns the register — no fan-out was attempted.
+/// The caller's concurrent local-validator submission is sufficient in this case.
+/// </param>
+public sealed record DistributeTransactionResult(
+    int TargetPeerCount,
+    int AcceptedCount,
+    bool LocallyOwned);
 
 /// <summary>
 /// Validator information from Peer Service

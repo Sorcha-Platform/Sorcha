@@ -166,6 +166,20 @@ public class MongoRegisterRepository : IRegisterRepository
                 });
             }
 
+            // Feature 108. Register.SyncState migrated from string? to RegisterSyncState?.
+            // The custom serializer reads both the new enum-name form and legacy free-text
+            // values ("Subscribing"/"Syncing"/"Synced"/"Error") and writes the enum name.
+            if (!BsonClassMap.IsClassMapRegistered(typeof(RegisterEntity)))
+            {
+                BsonClassMap.RegisterClassMap<RegisterEntity>(cm =>
+                {
+                    cm.AutoMap();
+                    cm.SetIgnoreExtraElements(true);
+                    cm.GetMemberMap(x => x.SyncState)
+                        .SetSerializer(new RegisterSyncStateBsonSerializer());
+                });
+            }
+
             _classMapRegistered = true;
         }
     }

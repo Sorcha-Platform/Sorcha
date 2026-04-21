@@ -78,12 +78,17 @@ public class Register
     public bool DevMode { get; set; }
 
     /// <summary>
-    /// Replication state for remotely-subscribed registers.
-    /// null = locally created (no sync needed),
-    /// "Subscribing" = stub created, awaiting peer sync,
-    /// "Syncing" = peer replication in progress,
-    /// "Synced" = full replication complete,
-    /// "Error" = sync failed (retryable).
+    /// Replication state for remotely-subscribed registers (Feature 108).
+    /// null = locally created (no sync needed) — semantically Indeterminate at read time;
+    /// <see cref="RegisterSyncState.Indeterminate"/> = subscribed, no evidence yet;
+    /// <see cref="RegisterSyncState.Syncing"/> = pulling dockets;
+    /// <see cref="RegisterSyncState.CaughtUp"/> = local height matches network high-water-mark;
+    /// <see cref="RegisterSyncState.Error"/> = pull pipeline in unrecoverable state.
     /// </summary>
-    public string? SyncState { get; set; }
+    /// <remarks>
+    /// Persisted as the enum name. Legacy string values ("Subscribing"/"Syncing"/"Synced"/"Error")
+    /// are mapped on read by <c>RegisterSyncStateBsonSerializer</c>; first write of a register
+    /// document after Feature 108 persists the new enum-name form.
+    /// </remarks>
+    public RegisterSyncState? SyncState { get; set; }
 }
