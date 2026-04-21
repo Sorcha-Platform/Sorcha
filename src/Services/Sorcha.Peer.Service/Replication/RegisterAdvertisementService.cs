@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sorcha.Peer.Service.Core;
 using Sorcha.Peer.Service.Discovery;
 using Sorcha.Peer.Service.Models;
+using Sorcha.Register.Models.Observations;
+using Sorcha.ServiceClients.Register;
 using System.Collections.Concurrent;
 
 namespace Sorcha.Peer.Service.Replication;
@@ -18,16 +21,19 @@ public class RegisterAdvertisementService
     private readonly ILogger<RegisterAdvertisementService> _logger;
     private readonly PeerListManager _peerListManager;
     private readonly IRedisAdvertisementStore? _store;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly ConcurrentDictionary<string, LocalRegisterAdvertisement> _localAdvertisements = new();
 
     public RegisterAdvertisementService(
         ILogger<RegisterAdvertisementService> logger,
         PeerListManager peerListManager,
-        IRedisAdvertisementStore? store = null)
+        IRedisAdvertisementStore? store = null,
+        IServiceScopeFactory? scopeFactory = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _peerListManager = peerListManager ?? throw new ArgumentNullException(nameof(peerListManager));
         _store = store;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
@@ -232,6 +238,39 @@ public class RegisterAdvertisementService
         _logger.LogDebug(
             "Updated {Count} register advertisements from peer {PeerId}",
             adList.Count, sourcePeerId);
+
+        // Feature 108 — push each advertised height into Register.Service as a
+        // PeerHeightObservation so the sync-state resolver can use it. Fire-and-forget
+        // per advert so a slow Register.Service call never blocks heartbeat ingest.
+        if (_scopeFactory is not null && adList.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var registerClient = scope.ServiceProvider.GetRequiredService<IRegisterServiceClient>();
+                    var now = DateTimeOffset.UtcNow;
+
+                    foreach (var ad in adList)
+                    {
+                        if (ad.LatestDocketVersion <= 0) continue;
+                        await registerClient.ReportPeerHeightAsync(
+                            new PeerHeightObservation(
+                                RegisterId: ad.RegisterId,
+                                SourcePeerId: sourcePeerId,
+                                NetworkHeight: ad.LatestDocketVersion,
+                                ObservedAt: now));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex,
+                        "Feature 108 — failed to push peer-height observations for peer {PeerId}",
+                        sourcePeerId);
+                }
+            });
+        }
     }
 
     /// <summary>
