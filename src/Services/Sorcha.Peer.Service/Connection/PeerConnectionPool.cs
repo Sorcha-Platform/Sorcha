@@ -110,6 +110,14 @@ public class PeerConnectionPool : IAsyncDisposable
                     _logger.LogInformation(
                         "Connected to seed node {NodeId} at {Address}",
                         seed.NodeId, seed.GrpcChannelAddress);
+
+                    // Announce ourselves to the seed so it adds us to its peer table.
+                    // Without this, every advertisement we send via heartbeats is dropped
+                    // by RegisterAdvertisementService.ProcessRemoteAdvertisementsAsync
+                    // because the source peer is "unknown". This was previously only
+                    // invoked on reconnect-after-disconnect, leaving freshly-bootstrapped
+                    // peers invisible to their seeds.
+                    await RegisterWithRemotePeerAsync(seed.NodeId, cancellationToken);
                 }
             }
             catch (Exception ex)
@@ -393,10 +401,13 @@ public class PeerConnectionPool : IAsyncDisposable
 
     /// <summary>
     /// Registers this node with a remote peer using the existing gRPC channel.
-    /// Called after reconnection to ensure the remote peer's routing table
-    /// includes us (required after heartbeat rejection / timeout eviction).
+    /// Called from <see cref="BootstrapFromSeedNodesAsync"/> on initial connect and
+    /// from <see cref="ReconnectDisconnectedSeedNodesAsync"/> after a drop, to ensure
+    /// the remote peer's routing table includes us. Without this, the remote silently
+    /// drops our heartbeat advertisements (RegisterAdvertisementService treats us as
+    /// an unknown peer).
     /// </summary>
-    private async Task RegisterWithRemotePeerAsync(string peerId, CancellationToken cancellationToken)
+    protected internal virtual async Task RegisterWithRemotePeerAsync(string peerId, CancellationToken cancellationToken)
     {
         var channel = GetChannel(peerId);
         if (channel is null)
@@ -415,7 +426,14 @@ public class PeerConnectionPool : IAsyncDisposable
                 {
                     PeerId = _configuration.ResolvedPeerId,
                     NodeName = _configuration.ResolvedPeerId,
-                    Address = _configuration.NetworkAddress.ExternalAddress ?? _configuration.ResolvedPeerId,
+                    // PeerDiscoveryServiceImpl.RegisterPeer rejects empty Address strings,
+                    // and the configured ExternalAddress is often "" (env var unset) rather
+                    // than null, so the bare ?? fall-through fails. Treat both as "no address"
+                    // and fall back to the resolved peer id, which the remote uses purely for
+                    // routing-table identity (it never dials this back over NAT).
+                    Address = string.IsNullOrEmpty(_configuration.NetworkAddress.ExternalAddress)
+                        ? _configuration.ResolvedPeerId
+                        : _configuration.NetworkAddress.ExternalAddress,
                     Port = _configuration.ListenPort,
                     BuildVersion = BuildInfo.Version,
                     SupportedProtocols = { "GrpcStream", "Grpc", "Rest" }
