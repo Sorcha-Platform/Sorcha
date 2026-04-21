@@ -141,7 +141,7 @@ public class RedisCacheStore : ICacheStore, IAsyncDisposable
             }
 
             Interlocked.Increment(ref _hits);
-            return JsonSerializer.Deserialize<T>(result!, _jsonOptions);
+            return JsonSerializer.Deserialize<T>((string)result!, _jsonOptions);
         }
         catch (BrokenCircuitException)
         {

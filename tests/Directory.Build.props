@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <LangVersion>14</LangVersion>
     <NoWarn>$(NoWarn);xUnit1051;CS1591</NoWarn>
   </PropertyGroup>
 </Project>

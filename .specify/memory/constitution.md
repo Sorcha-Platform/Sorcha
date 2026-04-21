@@ -15,7 +15,7 @@ Use .NET 10 built-in OpenAPI (NOT Swagger/Swashbuckle). Use Scalar.AspNetCore fo
 Minimum 80% unit test coverage for core libraries. Target >85% for new code. Use xUnit as primary testing framework. All tests MUST be deterministic and isolated. Integration tests for all service APIs. Follow Arrange-Act-Assert pattern.
 
 ### V. Code Quality
-Follow C# coding conventions. Use async/await for I/O operations. Leverage dependency injection. Target .NET 10 framework with C# 13. Nullable reference types MUST be enabled. No compiler warnings in Release builds.
+Follow C# coding conventions. Use async/await for I/O operations. Leverage dependency injection. Target .NET 10 framework with C# 14. Nullable reference types MUST be enabled. No compiler warnings in Release builds.
 
 ### VI. Blueprint Creation Standards
 Always create blueprints as JSON or YAML documents (primary format). Use JSON-e (JsonE.NET) for runtime variable replacement. Fluent API is ONLY for rare developer scenarios requiring runtime generation. Store blueprint templates as JSON/YAML files, not C# code.
