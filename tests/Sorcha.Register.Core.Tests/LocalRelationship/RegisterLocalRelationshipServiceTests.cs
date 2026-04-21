@@ -107,6 +107,39 @@ public class RegisterLocalRelationshipServiceTests
     }
 
     [Fact]
+    public async Task Derive_NoGenesisDocketButRegisterRowStashesControlRecord_DerivesFromStash()
+    {
+        // Bootstrap fix: before the genesis docket seals we can still enrol the validator
+        // by deriving roles from the stashed InitialControlRecord on the Register row.
+        var record = BuildControlRecord(
+            ownerAddress: LocalWalletAddress,
+            validatorKeys: new[] { LocalValidatorKey });
+
+        var repo = new Mock<IReadOnlyRegisterRepository>();
+        repo.Setup(r => r.GetDocketAsync(RegisterId, 0, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Docket?)null);
+        repo.Setup(r => r.GetRegisterAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sorcha.Register.Models.Register
+            {
+                Id = RegisterId,
+                Name = "Test Register",
+                InitialControlRecord = record
+            });
+
+        var svc = new RegisterLocalRelationshipService(
+            repo.Object,
+            new StaticIdentityProvider(new LocalIdentitySnapshot(new[] { LocalWalletAddress }, LocalValidatorKey)),
+            NullLogger<RegisterLocalRelationshipService>.Instance);
+
+        var rel = await svc.DeriveAsync(RegisterId);
+
+        rel.Should().NotBeNull();
+        rel!.IsOwner.Should().BeTrue();
+        rel.IsValidator.Should().BeTrue();
+        rel.ControlRecordVersion.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Derive_CachesPerRegister_SecondCallDoesNotReReadRepository()
     {
         var record = BuildControlRecord(
