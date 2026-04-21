@@ -3,6 +3,8 @@
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Routing;
+using Microsoft.Extensions.Logging;
+using Sorcha.UI.Core.Services;
 using Sorcha.UI.Core.Services.Designer;
 
 namespace Sorcha.UI.Web.Client.Pages.DesignerShell;
@@ -15,10 +17,14 @@ namespace Sorcha.UI.Web.Client.Pages.DesignerShell;
 public partial class DesignerBlueprint : ComponentBase, IDisposable
 {
     private DesignerTab _activeTab;
+    private string? _loadedBlueprintId;
 
     /// <summary>Optional blueprint identifier taken from the URL (/designer/blueprint/{id}).</summary>
     [Parameter]
     public string? BlueprintId { get; set; }
+
+    [Inject] private IBlueprintApiService BlueprintApi { get; set; } = default!;
+    [Inject] private ILogger<DesignerBlueprint> Logger { get; set; } = default!;
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -29,9 +35,34 @@ public partial class DesignerBlueprint : ComponentBase, IDisposable
     }
 
     /// <inheritdoc />
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        // TODO(T018): if BlueprintId is not null, load via IBlueprintApiService and call Context.SetBlueprint.
+        if (string.IsNullOrEmpty(BlueprintId) || BlueprintId == _loadedBlueprintId)
+        {
+            return;
+        }
+
+        // Only load if the context doesn't already hold this blueprint (e.g. set via
+        // AI session bootstrap). Avoids clobbering an in-progress session.
+        if (Context.Blueprint?.Id == BlueprintId)
+        {
+            _loadedBlueprintId = BlueprintId;
+            return;
+        }
+
+        try
+        {
+            var bp = await BlueprintApi.GetBlueprintDetailAsync(BlueprintId).ConfigureAwait(true);
+            if (bp is not null)
+            {
+                Context.SetBlueprint(bp);
+                _loadedBlueprintId = BlueprintId;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load blueprint {BlueprintId}; leaving Context.Blueprint null.", BlueprintId);
+        }
     }
 
     private void OnContextChanged() => InvokeAsync(StateHasChanged);

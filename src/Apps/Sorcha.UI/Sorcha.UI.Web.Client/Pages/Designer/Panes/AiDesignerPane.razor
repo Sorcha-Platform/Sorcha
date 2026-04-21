@@ -1,0 +1,72 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@using Microsoft.JSInterop
+@using MudBlazor
+@using Sorcha.UI.Core.Models.Chat
+@using Sorcha.UI.Core.Services
+@using Sorcha.UI.Core.Services.Designer
+@using ChatMessageModel = Sorcha.UI.Core.Models.Chat.ChatMessage
+@using BlueprintModel = Sorcha.Blueprint.Models.Blueprint
+@inject IChatHubConnection ChatHub
+@inject DesignerContext Context
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<div class="ai-pane" data-testid="ai-tab-panel">
+    <div class="ai-pane-messages" data-testid="chat-message-list" id="ai-pane-messages">
+        <div class="ai-pane-messages-inner">
+            @foreach (var message in _messages)
+            {
+                <Sorcha.UI.Web.Client.Components.Chat.ChatMessageItem Message="message" />
+            }
+
+            @if (_isProcessing)
+            {
+                <div class="ai-pane-processing">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span class="ml-2">AI is thinking...</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="ai-pane-input" data-testid="chat-input-area">
+        <MudPaper Elevation="2" Class="pa-2">
+            <div class="d-flex align-center gap-2">
+                <MudTextField @bind-Value="_messageInput"
+                              Placeholder="@(IsConnected ? "Describe your workflow..." : "Connecting...")"
+                              Variant="Variant.Outlined"
+                              Lines="2"
+                              Immediate="true"
+                              Disabled="@(!IsConnected || _isProcessing)"
+                              OnKeyDown="@HandleKeyDown"
+                              Class="flex-grow-1"
+                              data-testid="chat-input" />
+
+                @if (_isProcessing)
+                {
+                    <MudButton Color="Color.Warning"
+                               Variant="Variant.Filled"
+                               OnClick="CancelGenerationAsync"
+                               StartIcon="@Icons.Material.Filled.Stop">
+                        Cancel
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Color="Color.Primary"
+                               Variant="Variant.Filled"
+                               OnClick="SendMessageAsync"
+                               Disabled="@(string.IsNullOrWhiteSpace(_messageInput) || !IsConnected)"
+                               StartIcon="@Icons.Material.Filled.Send"
+                               data-testid="chat-send-button">
+                        Send
+                    </MudButton>
+                }
+            </div>
+        </MudPaper>
+    </div>
+</div>

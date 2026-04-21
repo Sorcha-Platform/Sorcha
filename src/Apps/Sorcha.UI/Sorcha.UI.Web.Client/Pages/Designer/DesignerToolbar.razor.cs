@@ -2,6 +2,9 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using MudBlazor;
+using Sorcha.UI.Core.Services;
 
 namespace Sorcha.UI.Web.Client.Pages.DesignerShell;
 
@@ -14,6 +17,11 @@ namespace Sorcha.UI.Web.Client.Pages.DesignerShell;
 public partial class DesignerToolbar : ComponentBase, IDisposable
 {
     private bool _validationPopoverOpen;
+    private bool _saving;
+
+    [Inject] private IBlueprintApiService BlueprintApi { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private ILogger<DesignerToolbar> Logger { get; set; } = default!;
 
     /// <summary>Inline-edit binding for the blueprint title; marks the context dirty on change.</summary>
     private string BlueprintTitle
@@ -30,7 +38,7 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
         }
     }
 
-    private bool CanSave => Context.Blueprint != null && Context.IsDirty;
+    private bool CanSave => Context.Blueprint != null && Context.IsDirty && !_saving;
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -45,14 +53,57 @@ public partial class DesignerToolbar : ComponentBase, IDisposable
         BlueprintTitle = newValue;
     }
 
-    private void OnSaveClicked()
+    private async Task OnSaveClicked()
     {
-        // TODO(T018): wire save via IBlueprintApiService.SaveAsync and call Context.MarkClean().
+        if (Context.Blueprint is null || _saving)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            Context.Blueprint.UpdatedAt = DateTimeOffset.UtcNow;
+
+            Sorcha.UI.Core.Models.Blueprints.BlueprintListItemViewModel? result;
+            if (string.IsNullOrEmpty(Context.Blueprint.Id))
+            {
+                result = await BlueprintApi.SaveBlueprintAsync(Context.Blueprint).ConfigureAwait(true);
+                if (result is not null)
+                {
+                    Context.Blueprint.Id = result.Id;
+                }
+            }
+            else
+            {
+                result = await BlueprintApi.UpdateBlueprintAsync(Context.Blueprint.Id, Context.Blueprint).ConfigureAwait(true);
+            }
+
+            if (result is not null)
+            {
+                Context.MarkClean();
+                Snackbar.Add($"Blueprint '{Context.Blueprint.Title}' saved successfully", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Save failed — please try again", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save blueprint");
+            Snackbar.Add($"Error saving blueprint: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     private void OnLoadClicked()
     {
-        // TODO(T018): wire load dialog and call Context.SetBlueprint(...).
+        // TODO(US1 follow-up): open LoadBlueprintDialog and call Context.SetBlueprint(...).
+        Snackbar.Add("Load dialog wiring is scheduled for a follow-up PR", Severity.Info);
     }
 
     /// <inheritdoc />

@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using MudBlazor
 @using Sorcha.UI.Core.Services.Designer
+@using Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
 @inject NavigationManager Navigation
 @inject DesignerContext Context
 @implements IDisposable
@@ -20,10 +21,10 @@
              ActivePanelIndex="@((int)_activeTab)"
              ActivePanelIndexChanged="OnTabChanged">
         <MudTabPanel Text="AI">
-            <div class="designer-tab-ai-placeholder pa-4">AI pane — coming in T016</div>
+            <AiDesignerPane />
         </MudTabPanel>
         <MudTabPanel Text="Diagram" Disabled="@(Context.Blueprint == null)">
-            <div class="designer-tab-diagram-placeholder pa-4">Diagram pane — coming in T017</div>
+            <DiagramPane />
         </MudTabPanel>
         <MudTabPanel Text="Preview" Disabled="true">
             <div class="designer-tab-preview-placeholder pa-4">Preview pane — coming in US2</div>

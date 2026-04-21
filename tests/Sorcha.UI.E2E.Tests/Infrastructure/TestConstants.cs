@@ -129,6 +129,7 @@ public static class TestConstants
     {
         public const string Dashboard = $"{AppBase}/dashboard";
         public const string Designer = $"{AppBase}/designer";
+        public const string DesignerBlueprint = $"{AppBase}/designer/blueprint";
         public const string Blueprints = $"{AppBase}/blueprints";
         public const string Templates = $"{AppBase}/templates";
         public const string Schemas = $"{AppBase}/schemas";

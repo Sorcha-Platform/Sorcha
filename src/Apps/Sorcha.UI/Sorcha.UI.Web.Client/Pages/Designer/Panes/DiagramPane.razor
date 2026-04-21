@@ -1,0 +1,53 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@using Blazor.Diagrams
+@using Blazor.Diagrams.Core.Geometry
+@using Blazor.Diagrams.Core.Models
+@using Blazor.Diagrams.Options
+@using Blazor.Diagrams.Components
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Designer
+@using Sorcha.UI.Core.Models.Designer
+@using Sorcha.UI.Core.Services.Designer
+@using Sorcha.Blueprint.Models
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+@inject DesignerContext Context
+@implements IDisposable
+
+<div class="diagram-pane" data-testid="diagram-tab-panel">
+    <MudToolBar DisableGutters="true" Class="diagram-pane-toolbar pa-2">
+        <MudButton Color="Color.Primary"
+                   Size="MudBlazor.Size.Small"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="AddAction"
+                   Disabled="@(Context.Blueprint is null)"
+                   data-testid="diagram-add-action">
+            Add Action
+        </MudButton>
+        <MudSpacer />
+    </MudToolBar>
+
+    <div class="diagram-pane-canvas">
+        @if (Context.Blueprint is null)
+        {
+            <div class="diagram-pane-empty pa-8">
+                <MudText Typo="Typo.body1" Class="mud-text-secondary">
+                    No blueprint loaded. Use the AI pane to create one, or load an existing blueprint via the toolbar.
+                </MudText>
+            </div>
+        }
+        else if (_diagram is not null)
+        {
+            <CascadingValue Value="_diagram" IsFixed="true">
+                <DiagramCanvas></DiagramCanvas>
+            </CascadingValue>
+        }
+        else
+        {
+            <MudText>Loading diagram...</MudText>
+        }
+    </div>
+</div>
