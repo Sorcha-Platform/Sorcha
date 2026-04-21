@@ -28,4 +28,12 @@ public class TestAuthHandlerOptions : AuthenticationSchemeOptions
     /// </summary>
     public IList<(string Header, string ClaimType)> HeaderClaimMappings { get; set; }
         = new List<(string, string)>();
+
+    /// <summary>
+    /// When true (default), requests without an Authorization header return
+    /// AuthenticateResult.NoResult() so endpoints allowing anonymous access
+    /// still work. When false, the handler issues a ticket for every request.
+    /// Useful for test projects whose helpers don't set bearer tokens.
+    /// </summary>
+    public bool RequireAuthorizationHeader { get; set; } = true;
 }

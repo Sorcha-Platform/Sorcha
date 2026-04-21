@@ -74,6 +74,15 @@ public abstract class SorchaWebApplicationFactory<TEntryPoint>
     {
     }
 
+    /// <summary>
+    /// When true (default), the shared JWT appsettings block from
+    /// <see cref="TestConfigurationDefaults.Jwt"/> is applied before
+    /// <see cref="ConfigureTestConfiguration"/> runs. Override to false for
+    /// projects whose Program.cs reads JwtSettings eagerly and breaks when a
+    /// non-empty issuer is supplied with unsigned/test tokens.
+    /// </summary>
+    protected virtual bool ApplyDefaultJwtConfig => true;
+
     protected sealed override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -82,7 +91,10 @@ public abstract class SorchaWebApplicationFactory<TEntryPoint>
 
         builder.ConfigureAppConfiguration((context, config) =>
         {
-            config.AddInMemoryCollection(TestConfigurationDefaults.Jwt);
+            if (ApplyDefaultJwtConfig)
+            {
+                config.AddInMemoryCollection(TestConfigurationDefaults.Jwt);
+            }
             ConfigureTestConfiguration(context, config);
         });
 
