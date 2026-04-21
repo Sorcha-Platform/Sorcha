@@ -1,0 +1,50 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell
+@using MudBlazor
+@using Sorcha.UI.Core.Services.Designer
+@inject DesignerContext Context
+@implements IDisposable
+
+<MudToolBar DisableGutters="true" Class="designer-toolbar">
+    <MudTextField T="string"
+                  Value="@BlueprintTitle"
+                  ValueChanged="@OnTitleChanged"
+                  Placeholder="Untitled blueprint"
+                  Disabled="@(Context.Blueprint == null)"
+                  Margin="Margin.Dense"
+                  Variant="Variant.Text"
+                  Immediate="true" />
+
+    @if (Context.IsDirty)
+    {
+        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-2">Unsaved</MudChip>
+    }
+
+    <MudSpacer />
+
+    <MudButton StartIcon="@Icons.Material.Filled.FolderOpen"
+               Variant="Variant.Text"
+               OnClick="OnLoadClicked">Load</MudButton>
+
+    <MudButton StartIcon="@Icons.Material.Filled.Save"
+               Variant="Variant.Text"
+               Color="Color.Primary"
+               Disabled="@(!CanSave)"
+               OnClick="OnSaveClicked">Save</MudButton>
+
+    <MudMenu Icon="@Icons.Material.Filled.Download" Dense="true">
+        <MudMenuItem>Export JSON</MudMenuItem>
+        <MudMenuItem>Export YAML</MudMenuItem>
+    </MudMenu>
+
+    <MudIconButton Icon="@Icons.Material.Filled.Checklist"
+                   OnClick="@(() => _validationPopoverOpen = !_validationPopoverOpen)" />
+
+    <MudPopover Open="@_validationPopoverOpen" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        <div class="pa-3">
+            <MudText Typo="Typo.body2">Validation details — wired in a later task.</MudText>
+        </div>
+    </MudPopover>
+</MudToolBar>
