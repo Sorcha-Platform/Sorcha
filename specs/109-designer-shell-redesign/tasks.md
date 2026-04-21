@@ -117,24 +117,24 @@ description: "Dependency-ordered tasks for AI Designer Unified Shell (Feature 10
 
 ### Form renderer preview mode
 
-- [ ] T030 [US2] Add `[Parameter] public bool PreviewMode { get; set; } = false;` to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` + `.razor.cs`; when `true`, the submit button is rendered but disabled with tooltip "Preview — submission disabled", and submit click handlers are suppressed; fields remain interactable so the designer can see conditional logic fire; no other renderer behaviour changes (additive parameter, default false preserves all existing callers)
+- [x] T030 [US2] Add `[Parameter] public bool PreviewMode { get; set; } = false;` to `src/Apps/Sorcha.UI/Sorcha.UI.Core/Components/Forms/SorchaFormRenderer.razor` + `.razor.cs`; when `true`, the submit button is rendered but disabled with tooltip "Preview — submission disabled", and submit click handlers are suppressed; fields remain interactable so the designer can see conditional logic fire; no other renderer behaviour changes (additive parameter, default false preserves all existing callers)
 
 ### Preview pane
 
-- [ ] T031 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/FormPreviewPane.razor` + `.razor.cs` — two-row grid, row 1 pager chrome `[◀] Action N of M [▼ jump] [▶]  [🔗 Follow AI toggle]` plus sub-row showing `"As {ParticipantName} · {ActionTitle}"`, row 2 hosts `SorchaFormRenderer` with `PreviewMode="true"` bound to `Context.Blueprint.Actions.Single(a => a.Id == Context.ActiveActionId).Schema / FormLayout`; Prev/Next/jump write via `Context.SetActiveActionManual`; Follow AI toggle calls `Context.FollowAi()`; keyboard handlers `[` / `]` call `PreviewPagerLogic.Previous` / `.Next` when pane has focus; empty states per spec FR-022 (no blueprint / zero actions); depends on T030 and T008
-- [ ] T032 [US2] Wire `FormPreviewPane` into the third tab in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/DesignerBlueprint.razor` — replace the US1 placeholder; tab `Disabled="@(Context.Blueprint == null || Context.Blueprint.Actions.Count == 0)"` (depends on T031, T018)
+- [x] T031 [US2] Create `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/FormPreviewPane.razor` + `.razor.cs` — two-row grid, row 1 pager chrome `[◀] Action N of M [▼ jump] [▶]  [🔗 Follow AI toggle]` plus sub-row showing `"As {ParticipantName} · {ActionTitle}"`, row 2 hosts `SorchaFormRenderer` with `PreviewMode="true"` bound to `Context.Blueprint.Actions.Single(a => a.Id == Context.ActiveActionId).Schema / FormLayout`; Prev/Next/jump write via `Context.SetActiveActionManual`; Follow AI toggle calls `Context.FollowAi()`; keyboard handlers `[` / `]` call `PreviewPagerLogic.Previous` / `.Next` when pane has focus; empty states per spec FR-022 (no blueprint / zero actions); depends on T030 and T008
+- [x] T032 [US2] Wire `FormPreviewPane` into the third tab in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/DesignerBlueprint.razor` — replace the US1 placeholder; tab `Disabled="@(Context.Blueprint == null || Context.Blueprint.Actions.Count == 0)"` (depends on T031, T018)
 
 ### Integration with AI pane cursor logic
 
-- [ ] T033 [US2] Refine `AiDesignerPane`'s hub handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor.cs` to extract the edited action ID from `OnBlueprintUpdated` payloads (inspect the blueprint diff, or read a hint field from the hub event if available) and pass it as `editedActionId` to `Context.ApplyAiUpdate(bp, val, editedActionId)`; depends on T016, T008
-- [ ] T034 [US2] Ensure the Diagram pane's node-click also writes `Context.SetActiveActionManual(nodeActionId)` (may already be done in T017; verify and expand if needed) so clicking a node in Diagram then switching to Preview lands on that action
+- [x] T033 [US2] Refine `AiDesignerPane`'s hub handler in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/Designer/Panes/AiDesignerPane.razor.cs` to extract the edited action ID from `OnBlueprintUpdated` payloads (inspect the blueprint diff, or read a hint field from the hub event if available) and pass it as `editedActionId` to `Context.ApplyAiUpdate(bp, val, editedActionId)`; depends on T016, T008
+- [x] T034 [US2] Ensure the Diagram pane's node-click also writes `Context.SetActiveActionManual(nodeActionId)` (may already be done in T017; verify and expand if needed) so clicking a node in Diagram then switching to Preview lands on that action
 
 ### E2E tests for US2
 
-- [ ] T035 [P] [US2] Add `DesignerShell_PreviewRenders_SingleActionForm` to `tests/Sorcha.UI.E2E.Tests/Docker/DesignerShellTests.cs` — load fixture blueprint with 3 actions, open Preview tab, assert the rendered form contains Action 1's field names and the submit button is present but disabled
-- [ ] T036 [P] [US2] Add `DesignerShell_PreviewPager_StepsThroughActions` — click Next twice, assert renderer shows Action 3; jump dropdown changes selection; press `]` key to move forward; press `[` to move back
-- [ ] T037 [P] [US2] Add `DesignerShell_PreviewFollowAiToggle_AutoCursor` — inject synthetic AI update for Action 2 (auto-cursor active), assert Preview shows Action 2; click Next (manual override engaged); inject another AI update for Action 3, assert Preview stays on the manual selection; click Follow AI, assert cursor jumps to Action 3
-- [ ] T038 [P] [US2] Add `DesignerShell_DiagramEdit_VisibleInOtherPanes` — edit an action title in the Diagram canvas, switch to Preview, assert pager shows the new title in the sub-row
+- [x] T035 [P] [US2] Add `DesignerShell_PreviewRenders_SingleActionForm` to `tests/Sorcha.UI.E2E.Tests/Docker/DesignerShellTests.cs` — load fixture blueprint with 3 actions, open Preview tab, assert the rendered form contains Action 1's field names and the submit button is present but disabled
+- [x] T036 [P] [US2] Add `DesignerShell_PreviewPager_StepsThroughActions` — click Next twice, assert renderer shows Action 3; jump dropdown changes selection; press `]` key to move forward; press `[` to move back
+- [x] T037 [P] [US2] Add `DesignerShell_PreviewFollowAiToggle_AutoCursor` — inject synthetic AI update for Action 2 (auto-cursor active), assert Preview shows Action 2; click Next (manual override engaged); inject another AI update for Action 3, assert Preview stays on the manual selection; click Follow AI, assert cursor jumps to Action 3
+- [x] T038 [P] [US2] Add `DesignerShell_DiagramEdit_VisibleInOtherPanes` — edit an action title in the Diagram canvas, switch to Preview, assert pager shows the new title in the sub-row
 
 **Checkpoint**: User Stories 1 AND 2 both fully functional. Preview tab works with auto-cursor and manual controls.
 
@@ -148,13 +148,13 @@ description: "Dependency-ordered tasks for AI Designer Unified Shell (Feature 10
 
 ### Shim correctness
 
-- [ ] T039 [US3] Audit the redirect shims from T019 and T020 for each URL shape: `/designer/chat` → `/designer/blueprint?tab=ai`, `/designer/chat/{id}` → `/designer/blueprint/{id}?tab=ai`, `/designer` → `/designer/blueprint?tab=diagram`; fix any missing query params, wrong tab default, or lost blueprint ID in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` and `Designer.razor`
+- [x] T039 [US3] Audit the redirect shims from T019 and T020 for each URL shape: `/designer/chat` → `/designer/blueprint?tab=ai`, `/designer/chat/{id}` → `/designer/blueprint/{id}?tab=ai`, `/designer` → `/designer/blueprint?tab=diagram`; fix any missing query params, wrong tab default, or lost blueprint ID in `src/Apps/Sorcha.UI/Sorcha.UI.Web.Client/Pages/BlueprintChat.razor` and `Designer.razor`
 
 ### E2E tests for US3
 
-- [ ] T040 [P] [US3] Add `DesignerShell_LegacyChatRoute_Redirects` to `tests/Sorcha.UI.E2E.Tests/Docker/DesignerShellTests.cs` — navigate to `/designer/chat`, assert final URL is `/designer/blueprint?tab=ai` and AI tab is active
-- [ ] T041 [P] [US3] Add `DesignerShell_LegacyChatWithIdRoute_Redirects` — navigate to `/designer/chat/{id}` using a fixture blueprint ID, assert final URL is `/designer/blueprint/{id}?tab=ai` AND that the named blueprint loaded
-- [ ] T042 [P] [US3] Add `DesignerShell_LegacyDesignerRoute_Redirects` — navigate to `/designer`, assert final URL is `/designer/blueprint?tab=diagram` and Diagram tab is active
+- [x] T040 [P] [US3] Add `DesignerShell_LegacyChatRoute_Redirects` to `tests/Sorcha.UI.E2E.Tests/Docker/DesignerShellTests.cs` — navigate to `/designer/chat`, assert final URL is `/designer/blueprint?tab=ai` and AI tab is active
+- [x] T041 [P] [US3] Add `DesignerShell_LegacyChatWithIdRoute_Redirects` — navigate to `/designer/chat/{id}` using a fixture blueprint ID, assert final URL is `/designer/blueprint/{id}?tab=ai` AND that the named blueprint loaded
+- [x] T042 [P] [US3] Add `DesignerShell_LegacyDesignerRoute_Redirects` — navigate to `/designer`, assert final URL is `/designer/blueprint?tab=diagram` and Diagram tab is active
 
 **Checkpoint**: All three user stories are independently functional. Legacy bookmarks keep working.
 
@@ -164,13 +164,13 @@ description: "Dependency-ordered tasks for AI Designer Unified Shell (Feature 10
 
 **Purpose**: Final grooming before PR.
 
-- [ ] T043 [P] Run the full designer unit-test filter: `dotnet test tests/Sorcha.UI.Core.Tests/Sorcha.UI.Core.Tests.csproj --filter "FullyQualifiedName~Services.Designer" --no-build -nologo` — assert ~30 tests pass with 0 failed and 0 skipped
-- [ ] T044 [P] Run the full designer E2E suite: `dotnet test tests/Sorcha.UI.E2E.Tests/Sorcha.UI.E2E.Tests.csproj --filter "FullyQualifiedName~DesignerShell" --no-build -nologo` — assert all tasks T024–T028, T035–T038, T040–T042 pass
-- [ ] T045 [P] Full solution build warning check: `dotnet build Sorcha.sln -nologo 2>&1 | tail -3` — assert warning count is comparable to master baseline (no new warnings from this feature)
-- [ ] T046 [P] Walk `specs/109-designer-shell-redesign/quickstart.md` end-to-end in a clean Docker environment — confirm every step from §4 through §6 lands where described
-- [ ] T047 Close GAP-011b in `.specify/MASTER-TASKS.md` — flip the status cell to ✅ with a note pointing at PR and T025
-- [ ] T048 Grep sweep: `grep -rn "BlueprintPreview\|designer/chat\|/designer\\b" src/ --include="*.razor" --include="*.cs"` — verify only the two redirect shims (`BlueprintChat.razor`, `Designer.razor`) still reference the legacy paths, and that `BlueprintPreview.razor` has no remaining references anywhere
-- [ ] T049 Update `CLAUDE.md` under the "Key Services" / "Architecture" section to mention the new `/designer/blueprint` canonical route — one-line insertion, no architectural rewrite
+- [x] T043 [P] Run the full designer unit-test filter: `dotnet test tests/Sorcha.UI.Core.Tests/Sorcha.UI.Core.Tests.csproj --filter "FullyQualifiedName~Services.Designer" --no-build -nologo` — assert ~30 tests pass with 0 failed and 0 skipped
+- [x] T044 [P] Run the full designer E2E suite: `dotnet test tests/Sorcha.UI.E2E.Tests/Sorcha.UI.E2E.Tests.csproj --filter "FullyQualifiedName~DesignerShell" --no-build -nologo` — assert all tasks T024–T028, T035–T038, T040–T042 pass
+- [x] T045 [P] Full solution build warning check: `dotnet build Sorcha.sln -nologo 2>&1 | tail -3` — assert warning count is comparable to master baseline (no new warnings from this feature)
+- [x] T046 [P] Walk `specs/109-designer-shell-redesign/quickstart.md` end-to-end in a clean Docker environment — confirm every step from §4 through §6 lands where described
+- [x] T047 Close GAP-011b in `.specify/MASTER-TASKS.md` — flip the status cell to ✅ with a note pointing at PR and T025
+- [x] T048 Grep sweep: `grep -rn "BlueprintPreview\|designer/chat\|/designer\\b" src/ --include="*.razor" --include="*.cs"` — verify only the two redirect shims (`BlueprintChat.razor`, `Designer.razor`) still reference the legacy paths, and that `BlueprintPreview.razor` has no remaining references anywhere
+- [x] T049 Update `CLAUDE.md` under the "Key Services" / "Architecture" section to mention the new `/designer/blueprint` canonical route — one-line insertion, no architectural rewrite
 
 ---
 

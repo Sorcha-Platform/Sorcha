@@ -40,6 +40,7 @@ public partial class DiagramPane : ComponentBase, IDisposable
 
         _diagram = new BlazorDiagram(options);
         _diagram.RegisterComponent<ActionNodeModel, ActionNodeWidget>();
+        _diagram.SelectionChanged += OnSelectionChanged;
 
         Context.Changed += OnContextChanged;
 
@@ -188,9 +189,25 @@ public partial class DiagramPane : ComponentBase, IDisposable
         return $"{action.Title}\nP:{participantCount} D:{disclosureCount} C:{calculationCount} DS:{dataSchemaCount}";
     }
 
+    /// <summary>
+    /// Writes the clicked action's id into <see cref="DesignerContext"/> so
+    /// switching to the Preview pane lands on the node the designer was looking at.
+    /// </summary>
+    private void OnSelectionChanged(Blazor.Diagrams.Core.Models.Base.Model model)
+    {
+        if (model is ActionNodeModel node && node.Selected)
+        {
+            Context.SetActiveActionManual(node.Action.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
+        if (_diagram is not null)
+        {
+            _diagram.SelectionChanged -= OnSelectionChanged;
+        }
         Context.Changed -= OnContextChanged;
     }
 }

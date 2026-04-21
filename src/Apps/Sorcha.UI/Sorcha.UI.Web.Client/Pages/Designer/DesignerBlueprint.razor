@@ -26,8 +26,8 @@
         <MudTabPanel Text="Diagram" Disabled="@(Context.Blueprint == null)">
             <DiagramPane />
         </MudTabPanel>
-        <MudTabPanel Text="Preview" Disabled="true">
-            <div class="designer-tab-preview-placeholder pa-4">Preview pane — coming in US2</div>
+        <MudTabPanel Text="Preview" Disabled="@(Context.Blueprint == null || Context.Blueprint.Actions is null || Context.Blueprint.Actions.Count == 0)">
+            <FormPreviewPane />
         </MudTabPanel>
     </MudTabs>
 </div>

@@ -189,16 +189,19 @@
                         }
                         else
                         {
-                            <MudButton OnClick="HandleSubmit"
-                                       Color="Color.Primary"
-                                       Variant="Variant.Filled"
-                                       Disabled="_isSubmitting">
-                                @if (_isSubmitting)
-                                {
-                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                                }
-                                Submit
-                            </MudButton>
+                            <MudTooltip Text="@(PreviewMode ? "Preview — submission disabled" : null)" Placement="Placement.Top">
+                                <MudButton OnClick="HandleSubmit"
+                                           Color="Color.Primary"
+                                           Variant="Variant.Filled"
+                                           Disabled="@(_isSubmitting || PreviewMode)"
+                                           data-testid="preview-submit-btn">
+                                    @if (_isSubmitting)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                    }
+                                    Submit
+                                </MudButton>
+                            </MudTooltip>
                         }
                     </MudStack>
                 </MudStack>
@@ -304,6 +307,17 @@
     /// analytics. The renderer owns the canonical current-page state.
     /// </summary>
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    /// <summary>
+    /// Feature 109 — when <c>true</c>, the renderer is in designer-preview mode:
+    /// the submit button is rendered but disabled (tooltip: "Preview — submission
+    /// disabled") and the submit handler early-returns before validation /
+    /// <see cref="OnSubmit"/> is invoked. All other behaviour — fields remain
+    /// interactable, conditional logic fires, validation highlights still show —
+    /// is preserved so designers can audit the form as-built. Additive parameter
+    /// with default <c>false</c>; existing callers are unaffected.
+    /// </summary>
+    [Parameter] public bool PreviewMode { get; set; } = false;
 
     private FormContext _formContext = new();
     private Control? _formControl;
@@ -1013,6 +1027,13 @@
 
     private async Task HandleSubmit()
     {
+        // Feature 109 — designer-preview mode short-circuits submission before
+        // any side effects (validation UI flash, persona fills, OnSubmit).
+        if (PreviewMode)
+        {
+            return;
+        }
+
         _showValidationSummary = true;
 
         // Validate

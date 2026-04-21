@@ -1,0 +1,103 @@
+@* SPDX-License-Identifier: MIT *@
+@* Copyright (c) 2026 Sorcha Contributors *@
+
+@namespace Sorcha.UI.Web.Client.Pages.DesignerShell.Panes
+@using MudBlazor
+@using Sorcha.UI.Core.Components.Forms
+@using Sorcha.UI.Core.Services.Designer
+@using BlueprintAction = Sorcha.Blueprint.Models.Action
+@inject DesignerContext Context
+@implements IDisposable
+
+<div class="form-preview-pane"
+     data-testid="preview-tab-panel"
+     tabindex="0"
+     @onkeydown="HandleKeyDown"
+     @onkeydown:preventDefault="@_preventDefaultOnKey">
+
+    @{
+        var actions = GetActions();
+        var current = GetCurrentAction(actions);
+        var index = current is null ? -1 : actions.FindIndex(a => a.Id == current.Id);
+    }
+
+    <div class="form-preview-pager pa-2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                           Color="Color.Default"
+                           Size="MudBlazor.Size.Small"
+                           Disabled="@(!CanGoPrevious(actions, current))"
+                           OnClick="HandlePrevious"
+                           data-testid="preview-prev-btn"
+                           aria-label="Previous action" />
+
+            <MudText Typo="Typo.body2" Class="form-preview-pager-count">
+                @if (current is not null)
+                {
+                    @($"Action {index + 1} of {actions.Count}")
+                }
+                else
+                {
+                    @("No actions")
+                }
+            </MudText>
+
+            <MudSelect T="string"
+                       Value="@(current?.Id.ToString())"
+                       ValueChanged="HandleJump"
+                       Dense="true"
+                       Variant="Variant.Outlined"
+                       Disabled="@(actions.Count == 0)"
+                       Margin="Margin.Dense"
+                       Class="form-preview-pager-jump"
+                       data-testid="preview-jump-select">
+                @for (var i = 0; i < actions.Count; i++)
+                {
+                    var a = actions[i];
+                    var label = $"{i + 1} · {a.Title} — {ParticipantNameFor(a.Sender)}";
+                    <MudSelectItem T="string" Value="@a.Id.ToString()">@label</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowForward"
+                           Color="Color.Default"
+                           Size="MudBlazor.Size.Small"
+                           Disabled="@(!CanGoNext(actions, current))"
+                           OnClick="HandleNext"
+                           data-testid="preview-next-btn"
+                           aria-label="Next action" />
+
+            <MudSpacer />
+
+            <MudSwitch T="bool"
+                       Value="@(!Context.IsManualCursor)"
+                       ValueChanged="HandleFollowAiChanged"
+                       Color="Color.Primary"
+                       Label="Follow AI"
+                       data-testid="preview-follow-ai-toggle" />
+        </MudStack>
+
+        @if (current is not null)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="form-preview-pager-subtitle">
+                As @ParticipantNameFor(current.Sender) · @current.Title
+            </MudText>
+        }
+    </div>
+
+    <div class="form-preview-body pa-3" data-testid="preview-form-renderer">
+        @if (current is null)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">
+                No actions yet — ask the AI to add an action, or draw one in Diagram.
+            </MudAlert>
+        }
+        else
+        {
+            <SorchaFormRenderer Action="@current"
+                                PreviewMode="true"
+                                ParticipantAddress="@current.Sender"
+                                SigningWalletAddress="@string.Empty" />
+        }
+    </div>
+</div>

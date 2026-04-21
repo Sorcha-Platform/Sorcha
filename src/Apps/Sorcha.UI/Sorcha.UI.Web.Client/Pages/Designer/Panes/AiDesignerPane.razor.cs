@@ -151,10 +151,66 @@ public partial class AiDesignerPane : ComponentBase, IAsyncDisposable
     {
         InvokeAsync(() =>
         {
-            // TODO(T033): hub event payload does not yet carry the edited action id.
-            Context.ApplyAiUpdate(blueprint, validation, editedActionId: null);
+            var editedId = TryExtractEditedActionId(Context.Blueprint, blueprint);
+            // TODO: the hub payload still does not carry an explicit edited-action
+            // id — we fall back to a JSON-diff heuristic (see TryExtractEditedActionId).
+            // When the hub event grows an explicit field, drop the heuristic.
+            Context.ApplyAiUpdate(blueprint, validation, editedActionId: editedId);
             StateHasChanged();
         });
+    }
+
+    /// <summary>
+    /// Best-effort detection of which action the AI most recently edited. Compares
+    /// the incoming blueprint to the prior snapshot by serialising each matched-ID
+    /// pair to JSON and returning the first ID whose serialised form differs. If
+    /// no prior blueprint exists, no differences are found, or the incoming
+    /// blueprint has no actions, returns <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// Heuristic — the hub event does not yet carry the edited-action id directly.
+    /// Good enough for the auto-cursor UX: a single tool call typically mutates one
+    /// action, and if it mutates several we still land on the first-by-id changed
+    /// action which is at worst a near-miss. Replace once the hub grows an explicit
+    /// <c>editedActionId</c> field.
+    /// </remarks>
+    private static string? TryExtractEditedActionId(BlueprintModel? previous, BlueprintModel current)
+    {
+        if (current?.Actions is null || current.Actions.Count == 0)
+        {
+            return null;
+        }
+        if (previous?.Actions is null || previous.Actions.Count == 0)
+        {
+            // No baseline to diff against — caller's IsManualCursor state decides
+            // whether ActiveActionId moves; returning null keeps the current cursor.
+            return null;
+        }
+
+        var previousById = previous.Actions.ToDictionary(a => a.Id, a => a);
+        foreach (var candidate in current.Actions)
+        {
+            if (!previousById.TryGetValue(candidate.Id, out var before))
+            {
+                // New action — almost certainly what the AI just added.
+                return candidate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            try
+            {
+                var beforeJson = System.Text.Json.JsonSerializer.Serialize(before);
+                var afterJson = System.Text.Json.JsonSerializer.Serialize(candidate);
+                if (!string.Equals(beforeJson, afterJson, StringComparison.Ordinal))
+                {
+                    return candidate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+            catch
+            {
+                // Serialisation failure → skip this pair. Worst case we fall through
+                // and return null, keeping the current cursor.
+            }
+        }
+        return null;
     }
 
     private void HandleMessageComplete(string messageId)
