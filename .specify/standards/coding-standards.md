@@ -16,7 +16,7 @@ This document defines the coding standards and conventions for the Sorcha projec
 
 ### Target Framework & Language Version
 - **Framework**: .NET 10 (net10.0)
-- **Language**: C# 13
+- **Language**: C# 14
 - **Nullable Reference Types**: ENABLED (mandatory)
 - **Implicit Usings**: ENABLED
 
