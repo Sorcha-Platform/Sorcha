@@ -127,6 +127,26 @@ builder.Services.AddScoped<RegisterManager>();
 builder.Services.AddScoped<TransactionManager>();
 builder.Services.AddScoped<QueryManager>();
 
+// Feature 108 — local relationship, observation intake, sync-state resolver.
+builder.Services.Configure<Sorcha.Register.Core.LocalRelationship.LocalIdentityOptions>(
+    builder.Configuration.GetSection("LocalIdentity"));
+builder.Services.Configure<Sorcha.Register.Core.SyncState.RegisterSyncStateOptions>(
+    builder.Configuration.GetSection("RegisterSyncState"));
+builder.Services.AddSingleton<
+    Sorcha.Register.Core.LocalRelationship.ILocalIdentityProvider,
+    Sorcha.Register.Core.LocalRelationship.ConfiguredLocalIdentityProvider>();
+builder.Services.AddSingleton<
+    Sorcha.Register.Core.LocalRelationship.IRegisterLocalRelationshipService,
+    Sorcha.Register.Core.LocalRelationship.RegisterLocalRelationshipService>();
+builder.Services.AddSingleton<
+    Sorcha.Register.Core.Observations.IObservationStore,
+    Sorcha.Register.Core.Observations.ObservationStore>();
+builder.Services.AddSingleton<
+    Sorcha.Register.Core.SyncState.IRegisterSyncStateResolver,
+    Sorcha.Register.Core.SyncState.RegisterSyncStateResolver>();
+builder.Services.AddSingleton<Sorcha.Register.Service.Services.RelationshipChangeNotifier>();
+builder.Services.AddHostedService<Sorcha.Register.Service.BackgroundServices.ObservationStorePruner>();
+
 // Register creation orchestration
 builder.Services.AddScoped<IRegisterCreationOrchestrator, RegisterCreationOrchestrator>();
 
@@ -271,6 +291,10 @@ app.MapRegisterPolicyEndpoints();
 
 // Feature 048: Map validator query endpoints (US3)
 app.MapValidatorQueryEndpoints();
+
+// Feature 108: local relationship + sync-state + my-validated-registers endpoints
+app.MapRelationshipEndpoints();
+app.MapObservationEndpoints();
 
 // T027-T042: Inclusion proofs, revocation, verification bundles
 app.MapVerificationEndpoints();
@@ -1345,6 +1369,7 @@ docketsGroup.MapPost("/", async (
     Sorcha.Register.Core.Events.IEventPublisher eventPublisher,
     Sorcha.Register.Service.Services.Interfaces.IInboundTransactionRouter transactionRouter,
     Sorcha.Register.Core.Managers.RegisterManager registerManager,
+    Sorcha.Register.Service.Services.RelationshipChangeNotifier relationshipNotifier,
     ILogger<Program> logger,
     string registerId,
     WriteDocketRequest request) =>
@@ -1499,6 +1524,14 @@ docketsGroup.MapPost("/", async (
                     "Failed to publish event/route notification for tx {TxId} in docket {DocketNumber}",
                     tx.TxId, request.DocketNumber);
             }
+        }
+
+        // Feature 108 — if this docket contains a Control transaction, invalidate the
+        // local-relationship cache and publish a register:relationship-changed event.
+        var hasControlTx = request.Transactions.Any(t => t.MetaData?.TransactionType == TransactionType.Control);
+        if (hasControlTx)
+        {
+            _ = Task.Run(() => relationshipNotifier.PublishIfChangedAsync(registerId));
         }
 
         // Publish docket confirmed event
