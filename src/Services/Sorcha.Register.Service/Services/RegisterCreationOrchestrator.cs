@@ -302,6 +302,13 @@ public class RegisterCreationOrchestrator : IRegisterCreationOrchestrator
         // Populate validator roster (FR-001, FR-014)
         // If an external roster is provided (future System Register, FR-014), use it.
         // Otherwise, derive the local validator's docket-signing key from the system wallet.
+        //
+        // Contract (Feature 108): the wallet we sign-under here is the one identified by
+        // SystemWalletSigning:ValidatorId, which MUST match Validator:ValidatorId on the
+        // validator service of this node. Both services then derive the same
+        // sorcha:docket-signing key from the same underlying wallet, and the validator
+        // recognises the roster entry as its own. See SystemWalletSigningOptions.ValidatorId
+        // and ValidatorConfiguration.ValidatorId for the contract.
         if (controlRecord.Validators == null)
         {
             // TODO: Replace with IWalletServiceClient.GetDerivedPublicKeyAsync() when available.

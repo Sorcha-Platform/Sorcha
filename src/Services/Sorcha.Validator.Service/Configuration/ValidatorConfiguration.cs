@@ -9,8 +9,23 @@ namespace Sorcha.Validator.Service.Configuration;
 public class ValidatorConfiguration
 {
     /// <summary>
-    /// Unique identifier for this validator instance
+    /// Identifier for this node's local-validator system wallet. Passed verbatim to
+    /// <c>IWalletServiceClient.CreateOrRetrieveSystemWalletAsync</c> by both
+    /// <see cref="Services.SystemWalletInitializer"/> (at startup) and
+    /// <see cref="Services.DocketBuilder"/> (on first docket seal).
     /// </summary>
+    /// <remarks>
+    /// Feature 108 roster-extraction contract: Register.Service populates a newly-created
+    /// register's validator roster with the <c>sorcha:docket-signing</c> pubkey derived
+    /// under the wallet identified by <c>SystemWalletSigning:ValidatorId</c> in its own
+    /// config. Validator.Service later signs dockets with the key derived under the
+    /// wallet identified by this property. If the two IDs diverge, the roster entry
+    /// won't match the signing key, validator roster matching fails, and docket sealing
+    /// never starts for any locally-created register.
+    /// MUST match <c>SystemWalletSigning:ValidatorId</c> on Register.Service (same node
+    /// → same value). Defaults to a random GUID for tests; production/docker environments
+    /// should set this explicitly.
+    /// </remarks>
     public string ValidatorId { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>

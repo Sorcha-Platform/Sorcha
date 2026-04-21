@@ -257,8 +257,15 @@ services:
       ServiceClients__PeerService__Address: http://sorcha-peer-service:5000
       ServiceClients__PeerService__HttpAddress: http://sorcha-peer-service:8080
       ServiceClients__PeerService__GrpcAddress: http://sorcha-peer-service:5000
-      # System wallet signing (for blueprint publish, governance Control TXs)
-      SystemWalletSigning__ValidatorId: docker-register-1
+      # System wallet signing (for blueprint publish, governance Control TXs).
+      # MUST match Validator__ValidatorId on validator-service — see note on that
+      # setting below. Both services hit Wallet.Service's CreateOrRetrieveSystemWallet
+      # with this identifier; when Register.Service builds a new register's validator
+      # roster (Feature 108), it derives the docket-signing key under the SAME wallet
+      # that Validator.Service will later sign dockets with. Divergent values leave
+      # every locally-created register with a roster the validator doesn't match,
+      # so docket sealing never starts.
+      SystemWalletSigning__ValidatorId: local-validator
       # Service-to-service auth for Wallet Service calls
       ServiceAuth__ClientId: register-service
       ServiceAuth__ClientSecret: register-service-secret
@@ -425,8 +432,13 @@ services:
       ServiceAuth__ClientId: validator-service
       ServiceAuth__ClientSecret: validator-service-secret
       ServiceAuth__Scopes: "registers:write registers:read blueprints:read"
-      # Validator configuration
-      Validator__ValidatorId: docker-validator-1
+      # Validator configuration.
+      # Shared identifier for this node's local-validator system wallet.
+      # MUST match register-service's SystemWalletSigning__ValidatorId — see note
+      # there. Feature 108: the validator's docket-signing key (derived under this
+      # wallet via "sorcha:docket-signing") is what Register.Service puts on a
+      # new register's roster, so both services must derive under the same wallet.
+      Validator__ValidatorId: local-validator
       # SystemWalletAddress left empty - wallet created automatically on startup
       Validator__SystemWalletAddress: ""
       # Service client configuration for inter-service communication
