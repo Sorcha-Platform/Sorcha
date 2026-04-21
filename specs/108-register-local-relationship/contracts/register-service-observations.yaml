@@ -1,0 +1,120 @@
+openapi: 3.1.0
+info:
+  title: Register.Service — Observation Intake (Feature 108)
+  version: 0.1.0
+  description: |
+    Internal service-to-service endpoints Register.Service exposes so that
+    Peer.Service and Validator.Service can feed it the observations it composes
+    into sync-state and relationship views. These are NOT public endpoints; all
+    calls require service-to-service JWT with the `CanReportRegisterObservation`
+    policy.
+
+servers:
+  - url: http://register-service
+    description: In-cluster service address
+
+paths:
+  /api/internal/registers/{registerId}/peer-height-observation:
+    post:
+      operationId: ReportPeerHeightObservation
+      summary: Record that a peer has claimed a network height for this register.
+      description: |
+        Called by Peer.Service on every advert ingest. Register.Service upserts
+        the observation keyed by `sourcePeerId` for this register. Observations
+        older than the staleness window are discarded by the sync-state resolver.
+      security:
+        - serviceJwt: [CanReportRegisterObservation]
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 32 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerHeightObservation'
+            example:
+              sourcePeerId: "n1.sorcha.dev"
+              networkHeight: 42
+              observedAt: "2026-04-21T10:43:04Z"
+      responses:
+        '202': { description: Observation accepted. }
+        '400': { description: Validation failed (negative height, timestamp skew, etc.). }
+        '401': { description: Missing or invalid service JWT. }
+        '403': { description: JWT lacks CanReportRegisterObservation scope. }
+        '404': { description: Register not known locally. }
+
+  /api/internal/registers/{registerId}/validator-observation:
+    post:
+      operationId: ReportValidatorSealingObservation
+      summary: Record the local validator's sealing progress for this register.
+      description: |
+        Called by Validator.Service on docket seal and (throttled to 1 Hz) on
+        mempool-depth change. Overwrites the single slot per register. Ignored
+        (with 403) if the caller's validator key is not on the register's roster.
+      security:
+        - serviceJwt: [CanReportRegisterObservation]
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 32 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatorSealingObservation'
+            example:
+              lastSealedHeight: 42
+              mempoolDepth: 3
+              observedAt: "2026-04-21T10:43:04Z"
+      responses:
+        '202': { description: Observation accepted. }
+        '400': { description: Validation failed. }
+        '401': { description: Missing or invalid service JWT. }
+        '403': { description: Caller's validator key is not on the roster for this register. }
+        '404': { description: Register not known locally. }
+
+components:
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    PeerHeightObservation:
+      type: object
+      required: [sourcePeerId, networkHeight, observedAt]
+      properties:
+        sourcePeerId:
+          type: string
+          description: Peer identity claiming this height (typically the gRPC hostname).
+          maxLength: 255
+        networkHeight:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Network-height value this peer is advertising for the register.
+        observedAt:
+          type: string
+          format: date-time
+          description: When Peer.Service received this advert. Must be within ±5 minutes of server clock.
+
+    ValidatorSealingObservation:
+      type: object
+      required: [lastSealedHeight, mempoolDepth, observedAt]
+      properties:
+        lastSealedHeight:
+          type: integer
+          format: int64
+          minimum: 0
+        mempoolDepth:
+          type: integer
+          minimum: 0
+        observedAt:
+          type: string
+          format: date-time

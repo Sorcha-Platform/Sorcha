@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: Register.Service — Local Relationship & Sync State (Feature 108)
+  version: 0.1.0
+  description: |
+    Read endpoints exposing per-register derived state: local role set (owner,
+    validator, subscriber, etc.) and sync lifecycle. Plus one internal endpoint
+    Validator.Service uses to discover which registers its key validates for.
+
+servers:
+  - url: http://register-service
+
+paths:
+  /api/registers/{registerId}/local-relationship:
+    get:
+      operationId: GetRegisterLocalRelationship
+      summary: Report this node's derived role set for a register.
+      description: |
+        Returns the local-installation's role set on the register, derived from
+        the latest control record. Cached; recomputed on control-transaction seal.
+      security:
+        - serviceJwt: [CanReadTransactions]
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 32 }
+      responses:
+        '200':
+          description: Relationship derived.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterLocalRelationship' }
+              example:
+                registerId: "7c4ebed1dc2b444f87782e58b424e8d3"
+                roles: ["Owner", "Validator"]
+                controlRecordVersion: 0
+                derivedAt: "2026-04-21T10:35:00Z"
+                isOwner: true
+                isValidator: true
+                isSubscriber: false
+        '401': { description: Missing or invalid JWT. }
+        '404': { description: Register not known locally. }
+
+  /api/registers/{registerId}/sync-state:
+    get:
+      operationId: GetRegisterSyncState
+      summary: Report the node's sync state for a register, with the inputs that derived it.
+      security:
+        - serviceJwt: [CanReadTransactions]
+      parameters:
+        - name: registerId
+          in: path
+          required: true
+          schema: { type: string, minLength: 32, maxLength: 32 }
+      responses:
+        '200':
+          description: Sync state derived.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RegisterSyncStateView' }
+              example:
+                registerId: "7c4ebed1dc2b444f87782e58b424e8d3"
+                state: "CaughtUp"
+                localHeight: 42
+                networkHeightHighWaterMark: 42
+                distinctPeerObservers: 1
+                lastAdvertAt: "2026-04-21T10:42:59Z"
+                singlePeerMode: true
+                lastErrorMessage: null
+                validatorSnapshot:
+                  lastSealedHeight: 42
+                  mempoolDepth: 0
+                  observedAt: "2026-04-21T10:43:00Z"
+        '401': { description: Missing or invalid JWT. }
+        '404': { description: Register not known locally. }
+
+  /api/internal/my-validated-registers:
+    get:
+      operationId: GetMyValidatedRegisters
+      summary: List registers whose roster includes the caller's validator key.
+      description: |
+        Called by Validator.Service at startup and on every `register:relationship-changed`
+        event. Register.Service matches the caller-supplied public key against each
+        register's latest control-record roster.
+      security:
+        - serviceJwt: [CanReadTransactions]
+      parameters:
+        - name: X-Validator-Public-Key
+          in: header
+          required: true
+          description: Base64 of the validator's public signing key.
+          schema: { type: string, format: byte }
+      responses:
+        '200':
+          description: List of register IDs this key validates for.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [registerIds]
+                properties:
+                  registerIds:
+                    type: array
+                    items: { type: string }
+              example:
+                registerIds:
+                  - "7c4ebed1dc2b444f87782e58b424e8d3"
+                  - "9aaf87b1a1c54b559554a90d4a293127"
+        '400': { description: Missing or malformed X-Validator-Public-Key header. }
+        '401': { description: Missing or invalid JWT. }
+
+components:
+  securitySchemes:
+    serviceJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRole:
+      type: string
+      enum: [Owner, Admin, Auditor, Designer, Validator]
+
+    RegisterLocalRelationship:
+      type: object
+      required: [registerId, roles, controlRecordVersion, derivedAt, isSubscriber]
+      properties:
+        registerId: { type: string }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/RegisterRole' }
+        controlRecordVersion:
+          type: integer
+          description: Docket number of the control transaction this was derived from.
+        derivedAt: { type: string, format: date-time }
+        isOwner:       { type: boolean }
+        isAdmin:       { type: boolean }
+        isAuditor:     { type: boolean }
+        isDesigner:    { type: boolean }
+        isValidator:   { type: boolean }
+        isSubscriber:  { type: boolean, description: "True when none of the attestation roles match." }
+
+    RegisterSyncState:
+      type: string
+      enum: [Indeterminate, Syncing, CaughtUp, Error]
+
+    RegisterSyncStateView:
+      type: object
+      required: [registerId, state, localHeight, distinctPeerObservers, singlePeerMode]
+      properties:
+        registerId:                 { type: string }
+        state:                      { $ref: '#/components/schemas/RegisterSyncState' }
+        localHeight:                { type: integer, format: int64 }
+        networkHeightHighWaterMark: { type: integer, format: int64, nullable: true }
+        distinctPeerObservers:      { type: integer }
+        lastAdvertAt:               { type: string, format: date-time, nullable: true }
+        singlePeerMode:             { type: boolean }
+        lastErrorMessage:           { type: string, nullable: true }
+        validatorSnapshot:
+          nullable: true
+          type: object
+          required: [lastSealedHeight, mempoolDepth, observedAt]
+          properties:
+            lastSealedHeight: { type: integer, format: int64 }
+            mempoolDepth:     { type: integer }
+            observedAt:       { type: string, format: date-time }
