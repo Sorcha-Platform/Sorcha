@@ -35,12 +35,7 @@
       "mcp__plugin_chrome-devtools-mcp_chrome-devtools__get_network_request",
       "mcp__plugin_chrome-devtools-mcp_chrome-devtools__new_page",
       "mcp__plugin_chrome-devtools-mcp_chrome-devtools__type_text",
-      "mcp__MCP_DOCKER__get_azure_bestpractices",
-      "PowerShell(Test-NetConnection *)",
-      "PowerShell($body = \"grant_type=password&username=admin@sorcha.local&password=$\\([uri]::EscapeDataString\\('Dev_Pass_2025!'\\)\\)&client_id=sorcha-cli\"; $r = Invoke-RestMethod -Uri http://localhost/api/service-auth/token -Method Post -ContentType 'application/x-www-form-urlencoded' -Body $body; Write-Host \"token_len=$\\($r.access_token.Length\\)\"; $h=@{Authorization=\"Bearer $\\($r.access_token\\)\"}; $peers = Invoke-RestMethod -Uri http://localhost/api/peers -Headers $h; Write-Host \"peers=$\\($peers.Count\\)\"; $peers | ForEach-Object { Write-Host \"  $\\($_.nodeId\\)  status=$\\($_.connectionStatus\\)  adverts=$\\($_.advertisedRegisters.Count\\)\" }; $c = Invoke-RestMethod -Uri http://localhost/api/peers/connected -Headers $h; Write-Host \"connected=$\\($c.connectedPeerCount\\)\"; $env:SORCHA_LOCAL_TOKEN = $r.access_token)",
-      "PowerShell($h=@{Authorization=\"Bearer $env:SORCHA_LOCAL_TOKEN\"}; $peers = Invoke-RestMethod -Uri http://localhost/api/peers -Headers $h; $peers | ConvertTo-Json -Depth 5)",
-      "PowerShell($body = \"grant_type=password&username=admin@sorcha.local&password=$\\([uri]::EscapeDataString\\('Dev_Pass_2025!'\\)\\)&client_id=sorcha-cli\"; $tok = \\(Invoke-RestMethod -Uri http://localhost/api/service-auth/token -Method Post -ContentType 'application/x-www-form-urlencoded' -Body $body\\).access_token; $h=@{Authorization=\"Bearer $tok\"}; \\(Invoke-RestMethod -Uri http://localhost/api/peers -Headers $h\\) | ConvertTo-Json -Depth 6)",
-      "PowerShell($body = \"grant_type=password&username=admin@sorcha.local&password=$\\([uri]::EscapeDataString\\('Dev_Pass_2025!'\\)\\)&client_id=sorcha-cli\"; $tok = \\(Invoke-RestMethod -Uri http://localhost/api/service-auth/token -Method Post -ContentType 'application/x-www-form-urlencoded' -Body $body\\).access_token; $h=@{Authorization=\"Bearer $tok\"; 'Content-Type'='application/json'}; $me = Invoke-RestMethod -Uri http://localhost/api/auth/me -Headers $h; Write-Host \"org_id=$\\($me.organizationId\\) user_id=$\\($me.userId\\)\"; $env:LOCAL_TOK=$tok; $env:LOCAL_ORG=$me.organizationId; $env:LOCAL_USER=$me.userId)"
+      "mcp__MCP_DOCKER__get_azure_bestpractices"
     ],
     "deny": [],
     "ask": []
