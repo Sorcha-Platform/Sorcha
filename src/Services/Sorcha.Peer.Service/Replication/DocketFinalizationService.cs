@@ -627,7 +627,13 @@ public class DocketFinalizationService
                 // Deserialize the full transaction from cached data
                 try
                 {
-                    var txModel = JsonSerializer.Deserialize<Sorcha.Register.Models.TransactionModel>(cachedTx.Data);
+                    // Bytes were serialised using RegisterSerializationOptions.Canonical
+                    // (camelCase). Deserialising with default options is case-sensitive
+                    // so fields like SenderWallet silently default to empty, which wipes
+                    // the transaction's signature and participant routing downstream.
+                    var txModel = JsonSerializer.Deserialize<Sorcha.Register.Models.TransactionModel>(
+                        cachedTx.Data,
+                        Sorcha.Register.Models.RegisterSerializationOptions.Canonical);
                     if (txModel != null)
                     {
                         txModel.RegisterId = registerId;
