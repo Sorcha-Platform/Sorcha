@@ -12,6 +12,12 @@ namespace Sorcha.Agent.Persona;
 /// Loads and validates a persona definition JSON file.
 /// Surfaces all errors (schema, token, variable) at load time — FR-010 / FR-014.
 /// </summary>
+/// <remarks>
+/// Variable resolution is delegated to <see cref="VariableResolver"/>, which handles both
+/// <c>$env:NAME</c> (environment variables) and <c>{{key}}</c> (state.json flattened keys)
+/// — the same contract that actor configs use. This is the pre-existing type in
+/// <c>Sorcha.Agent.Configuration</c>; no new resolver is introduced by this feature.
+/// </remarks>
 public static class PersonaDefinitionLoader
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -40,15 +46,20 @@ public static class PersonaDefinitionLoader
             foreach (var u in resolution.UnresolvedVariables)
                 errors.Add($"Unresolved variable: {u}");
 
+        JsonDocument? doc;
+        try { doc = JsonDocument.Parse(resolution.ResolvedJson); }
+        catch (JsonException ex) { return PersonaLoadResult.Failure([$"Invalid JSON: {ex.Message}"]); }
+        using (doc)
+        {
+            var schemaErrors = new PersonaSchemaValidator().Validate(doc.RootElement);
+            errors.AddRange(schemaErrors);
+        }
+
         JsonNode? root;
         try { root = JsonNode.Parse(resolution.ResolvedJson); }
         catch (JsonException ex) { return PersonaLoadResult.Failure([$"Invalid JSON: {ex.Message}"]); }
         if (root is null)
             return PersonaLoadResult.Failure(["Persona file is empty"]);
-
-        var schemaErrors = new PersonaSchemaValidator().Validate(
-            JsonDocument.Parse(root.ToJsonString()).RootElement);
-        errors.AddRange(schemaErrors);
 
         if (root["payloadTemplate"] is JsonNode template)
         {
@@ -86,6 +97,12 @@ public static class PersonaDefinitionLoader
             yield return "target must include actionName or actionIndex";
         if (def.Target.ActionIndex is int idx && idx < 0)
             yield return "target.actionIndex must be >= 0";
+        // v1 note: action-name → index resolution (blueprint fetch) is deferred to a
+        // follow-up feature. Until then, a persona declared with only actionName cannot
+        // be submitted, so we reject at load time rather than crash at first fire.
+        if (def.Target.ActionName is not null && def.Target.ActionIndex is null)
+            yield return "target.actionName is not yet supported in v1 — set target.actionIndex instead "
+                       + "(action-name lookup will land in a follow-up feature)";
 
         switch (def.Trigger)
         {

@@ -59,8 +59,17 @@ public sealed class PersonaHost
         try
         {
             await _loop.RunAsync(cancellationToken);
-            _logger.LogInformation("Persona {PersonaName} completed after {Iterations} iteration(s)",
-                _definition.Name, _loop.CompletedIterations);
+            if (_loop.CompletedIterations == 0)
+            {
+                _logger.LogWarning(
+                    "Persona {PersonaName} exited without any successful submissions — check earlier log lines for the failure reason",
+                    _definition.Name);
+            }
+            else
+            {
+                _logger.LogInformation("Persona {PersonaName} completed after {Iterations} iteration(s)",
+                    _definition.Name, _loop.CompletedIterations);
+            }
         }
         catch (OperationCanceledException)
         {

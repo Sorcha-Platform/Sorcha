@@ -19,10 +19,10 @@ public sealed partial class PayloadTokenResolver : IPayloadTokenResolver
 
     public JsonObject Resolve(JsonNode template, PersonaFireContext ctx)
     {
-        var errors = ValidateTokens(template);
-        if (errors.Count > 0)
-            throw new InvalidOperationException("Invalid persona payload template: " + string.Join("; ", errors));
-
+        // Invariant: tokens were already validated at load time via ValidateTokens.
+        // Re-running validation on every fire would make recurring personas O(template)
+        // per tick for no benefit. Malformed tokens surfaced here indicate a loader bug
+        // and will throw when EvaluateTokenTyped encounters them.
         var clone = JsonNode.Parse(template.ToJsonString())!;
         ResolveNode(clone, ctx);
         return clone.AsObject();

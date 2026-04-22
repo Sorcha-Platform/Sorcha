@@ -57,6 +57,9 @@ public sealed class PersonaSubmitter : IPersonaSubmitter
                 "PersonaTarget.ActionIndex must be resolved before submission (use PersonaTargetResolver).");
 
         var endpoint = $"/api/instances/{persona.Target.InstanceId}/actions/{actionIndex}/execute";
+        // Body shape matches Sorcha.Agent.Execution.ActionExecutor verbatim, including the
+        // string-typed actionId (Blueprint Service accepts the string form — see
+        // src/Apps/Sorcha.Agent/Execution/ActionExecutor.cs line ~80).
         var body = new
         {
             blueprintId = persona.Target.BlueprintId,

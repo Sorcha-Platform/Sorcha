@@ -47,8 +47,6 @@ public sealed class OnceTriggerLoop : IPersonaLoop
             await Task.Delay(TimeSpan.FromSeconds(_trigger.DelaySeconds), _timeProvider, cancellationToken);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-
         var ctx = new PersonaFireContext
         {
             Iteration = 1,
@@ -74,8 +72,11 @@ public sealed class OnceTriggerLoop : IPersonaLoop
                     _definition.Name, result.DurationMs);
                 break;
             case PersonaSubmissionOutcome.TransientFailure:
-                _logger.LogWarning(
-                    "Persona {PersonaName} fire #1 -> TransientFailure: {Error} — once-trigger does not retry",
+                // Once-trigger does not retry. For walkthrough/demo contexts a startup 429 or 503
+                // that silently produces 0 submissions is confusing, so this is logged at Error
+                // level (not Warning) to surface loudly alongside hard failures.
+                _logger.LogError(
+                    "Persona {PersonaName} fire #1 -> TransientFailure: {Error} — once-trigger does not retry; walkthrough will not progress without manual intervention",
                     _definition.Name, result.Error);
                 break;
             case PersonaSubmissionOutcome.HardFailure:
