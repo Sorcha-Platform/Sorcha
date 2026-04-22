@@ -20,7 +20,7 @@ Sorcha lets organizations define structured workflows — called **blueprints** 
 | **Multi-Tenant Identity** | JWT authentication with OAuth2 client credentials, participant identity registry, and wallet address linking |
 | **Peer Network** | gRPC-based P2P topology for register replication across nodes |
 | **Real-Time Notifications** | SignalR hubs for live action notifications, inbound transaction alerts, and workflow state changes |
-| **AI Integration** | MCP Server for AI assistant interaction + AI-assisted blueprint design |
+| **AI Integration** | MCP Server for AI assistant interaction + AI-assisted blueprint design with unified chat / diagram / preview shell |
 
 ### The DAD Security Model
 
@@ -56,6 +56,7 @@ docker-compose up -d          # Start all services
 | Service | URL | Description |
 |---------|-----|-------------|
 | **Sorcha UI** | http://localhost/app | Main application interface |
+| **Blueprint Designer** | http://localhost/app/designer/blueprint | Unified designer — AI / Diagram / Preview tabs |
 | **API Gateway** | http://localhost/ | REST API entry point |
 | **API Documentation** | http://localhost/scalar/ | Interactive Scalar API docs |
 | **Health Check** | http://localhost/api/health | Aggregated service health |
