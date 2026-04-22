@@ -102,13 +102,16 @@ For detailed implementation status, see the individual section files:
 ## Recent Completions
 
 ### 2026-04-22
-- **110-Agent-Persona-Mode (MVP)** (Feature 110 User Story 1 shipped via PR #371)
+- **110-Agent-Persona-Mode** (Feature 110 User Stories 1-4 shipped via PRs #371, #372, #373, #374)
   - Adds an optional "persona" loop to `Sorcha.Agent` that fires workflow-starting actions on agent launch, unblocking the TradeFinance walkthrough (which hung because action 1 had no prior transaction to populate any inbox).
-  - New `Persona/` namespace: `PersonaDefinition`, `OnceTriggerLoop`, `PayloadTokenResolver` (typed-vs-interpolated `${now|uuid|counter|random.*}`), `PersonaSchemaValidator` (embedded JSON Schema, JsonSchema.Net), `PersonaDefinitionLoader`, `PersonaSubmitter` (thin wrapper over the same `/api/instances/{id}/actions/{i}/execute` path `ActionExecutor` uses).
+  - `Persona/` namespace: `PersonaDefinition`, `OnceTriggerLoop`, `IntervalTriggerLoop`, `PayloadTokenResolver` (typed-vs-interpolated `${now|uuid|counter|random.*}`), `PersonaSchemaValidator` (embedded JSON Schema), `PersonaDefinitionLoader` (JSONC-tolerant — comments + trailing commas), `PersonaSubmitter` (thin wrapper over the same `/api/instances/{id}/actions/{i}/execute` path `ActionExecutor` uses).
   - `ActorDefinition` gains an optional `PersonaFile` field; when null, behaviour is byte-identical to pre-feature (regression test enforced).
-  - `RunCommand` launches `PersonaHost` as a peer task alongside the existing inbox loop; shared `CancellationToken` gives clean shutdown with a 5-second grace window.
-  - 28 new xUnit tests; 89/89 passing; zero warnings.
-  - Scope: `once` trigger only. `interval` trigger + recurring scenario data (User Story 2), coexistence proof (US3), and ConstructionPermit parity (US4) are staged for follow-up PRs.
+  - `RunCommand` launches `PersonaHost` as a peer task alongside the existing inbox loop; shared `CancellationToken` gives clean shutdown within ≤1 s (SC-004, regression test covers it).
+  - `interval` trigger supports `everySeconds`/`everyMinutes`, `maxIterations`, `until`; transient failures keep the counter pinned; 3 consecutive hard failures trip an exit.
+  - Coexistence proven: persona loop and reactive inbox loop share one `HttpClient` + `CancellationToken` without blocking each other (both orderings covered).
+  - Ships three persona files: `procurement-mgr-kickoff.persona.json` (TradeFinance kickoff), `invoice-generator.persona.json` (scenario data generation, 20 × 30 s), `contractor-kickoff.persona.json` (ConstructionPermit parity — SC-002).
+  - 106/106 tests passing in `Sorcha.Agent.Tests`; zero warnings in feature code.
+  - Deferred: T029 live-run validation (operator-verified), T037 reactive-latency benchmark (better suited to live walkthrough than unit suite), AuditLogger wire-through (GAP-021).
 
 ### 2026-04-04
 - **084-Mobile-Package-Infrastructure** (Feature 084 complete)

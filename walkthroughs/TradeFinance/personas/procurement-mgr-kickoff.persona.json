@@ -1,15 +1,29 @@
+// Persona: one-shot kickoff for the TradeFinance procurement-to-pay walkthrough.
+// Fires the starting action so the scenario self-initiates (SC-001).
+// See specs/110-agent-persona-mode/quickstart.md for field reference.
 {
   "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+
+  // Human-readable name; appears in agent logs.
   "name": "procurement-mgr-kickoff",
+
+  // What to submit. blueprintId is resolved from state.json; instanceId
+  // comes from the setup script's env var; actionIndex 0 = first action.
   "target": {
     "blueprintId": "{{blueprints.procurement-to-pay.id}}",
     "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
     "actionIndex": 0
   },
+
+  // 'once' fires a single submission after delaySeconds (default 0). Use
+  // this for scenario kickoff; use 'interval' for recurring data seeding.
   "trigger": {
     "kind": "once",
     "delaySeconds": 2
   },
+
+  // Body of the submission. Static for kickoff — no ${random.*} tokens
+  // needed because we want a deterministic, realistic-looking purchase order.
   "payloadTemplate": {
     "poReference": "PO-CAIRN-2026-00142",
     "projectName": "Aviemore Heights Phase 2",

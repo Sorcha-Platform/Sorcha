@@ -1,16 +1,33 @@
+// Persona: recurring invoice generator for TradeFinance scenario data.
+// Hand-edit the numbers below to tune the simulation without recompiling.
+// See specs/110-agent-persona-mode/quickstart.md for field reference.
 {
   "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+
+  // Human-readable name; appears in agent logs for every fire.
   "name": "invoice-generator",
+
+  // What to submit. blueprintId is auto-filled from state.json; instanceId
+  // comes from the setup script's env var; actionIndex selects the action
+  // position in the blueprint (0 = first).
   "target": {
     "blueprintId": "{{blueprints.procurement-to-pay.id}}",
     "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
     "actionIndex": 4
   },
+
+  // When to fire. 'interval' fires every everySeconds up to maxIterations,
+  // or until the 'until' timestamp passes (omit 'until' to cap only on
+  // iteration count). Use 'startDelaySeconds' to wait before the first fire.
   "trigger": {
     "kind": "interval",
     "everySeconds": 30,
     "maxIterations": 20
   },
+
+  // Body of each submission. ${counter} and ${uuid} vary per fire; ${now}
+  // resolves to the fire's UTC timestamp; ${random.*} tokens are re-evaluated
+  // every iteration so the register gets realistic-looking variety.
   "payloadTemplate": {
     "invoiceNumber": "INV-${counter}",
     "invoiceId":     "${uuid}",

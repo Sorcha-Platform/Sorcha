@@ -30,6 +30,15 @@ public static class PersonaDefinitionLoader
         AllowTrailingCommas = true
     };
 
+    // Must match JsonOptions for the up-front JsonDocument/JsonNode.Parse calls —
+    // without these flags the loader rejects JSONC-style `//` comments that we
+    // ship for human tuning (Feature 110 T040).
+    private static readonly JsonDocumentOptions DocOptions = new()
+    {
+        CommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+
     public static PersonaLoadResult Load(string personaFilePath, string? statePath = null)
     {
         if (!File.Exists(personaFilePath))
@@ -48,7 +57,7 @@ public static class PersonaDefinitionLoader
                 errors.Add($"Unresolved variable: {u}");
 
         JsonDocument? doc;
-        try { doc = JsonDocument.Parse(resolution.ResolvedJson); }
+        try { doc = JsonDocument.Parse(resolution.ResolvedJson, DocOptions); }
         catch (JsonException ex) { return PersonaLoadResult.Failure([$"Invalid JSON: {ex.Message}"]); }
         using (doc)
         {
@@ -57,7 +66,7 @@ public static class PersonaDefinitionLoader
         }
 
         JsonNode? root;
-        try { root = JsonNode.Parse(resolution.ResolvedJson); }
+        try { root = JsonNode.Parse(resolution.ResolvedJson, documentOptions: DocOptions); }
         catch (JsonException ex) { return PersonaLoadResult.Failure([$"Invalid JSON: {ex.Message}"]); }
         if (root is null)
             return PersonaLoadResult.Failure(["Persona file is empty"]);

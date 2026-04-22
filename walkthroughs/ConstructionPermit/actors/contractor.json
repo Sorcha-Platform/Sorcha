@@ -13,6 +13,7 @@
     },
     "walletAddress": "{{roles.contractor.walletAddress}}"
   },
+  "personaFile": "../personas/contractor-kickoff.persona.json",
   "inbox": {
     "signalR": { "enabled": true },
     "polling": { "enabled": true, "intervalSeconds": 30 }
