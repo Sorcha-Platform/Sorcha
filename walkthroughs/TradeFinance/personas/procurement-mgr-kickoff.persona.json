@@ -8,11 +8,13 @@
   "name": "procurement-mgr-kickoff",
 
   // What to submit. blueprintId is resolved from state.json; instanceId
-  // comes from the setup script's env var; actionIndex 0 = first action.
+  // comes from the setup script's env var; actionIndex is the Blueprint
+  // Service's action.id (1-based in published blueprints, NOT a 0-based
+  // array position). Action 1 = "Raise Purchase Order".
   "target": {
     "blueprintId": "{{blueprints.procurement-to-pay.id}}",
     "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
-    "actionIndex": 0
+    "actionIndex": 1
   },
 
   // 'once' fires a single submission after delaySeconds (default 0). Use
