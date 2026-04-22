@@ -8,12 +8,13 @@
   "name": "invoice-generator",
 
   // What to submit. blueprintId is auto-filled from state.json; instanceId
-  // comes from the setup script's env var; actionIndex selects the action
-  // position in the blueprint (0 = first).
+  // comes from the setup script's env var; actionIndex is the Blueprint
+  // Service's action.id (1-based in published blueprints). Action 5 =
+  // "Raise Invoice".
   "target": {
     "blueprintId": "{{blueprints.procurement-to-pay.id}}",
     "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
-    "actionIndex": 4
+    "actionIndex": 5
   },
 
   // When to fire. 'interval' fires every everySeconds up to maxIterations,

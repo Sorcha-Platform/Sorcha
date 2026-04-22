@@ -9,11 +9,13 @@
   "name": "contractor-kickoff",
 
   // blueprintId is resolved from state.json (top-level key);
-  // instanceId is exposed by run-agents.ps1 before launch.
+  // instanceId is exposed by run-agents.ps1 before launch;
+  // actionIndex is the Blueprint Service's action.id (1-based).
+  // Action 1 = "Submit Application".
   "target": {
     "blueprintId": "{{blueprintId}}",
     "instanceId":  "$env:CP_PERMIT_INSTANCE_ID",
-    "actionIndex": 0
+    "actionIndex": 1
   },
 
   // 'once' fires a single submission after delaySeconds.

@@ -28,7 +28,7 @@ All types live in `Sorcha.Agent.Persona` (new namespace) unless noted. Records u
 | `BlueprintId` | `string` | Yes | ID of the blueprint whose starting action is being submitted. Supports `{{blueprints.<key>.id}}` placeholder via existing `VariableResolver`. |
 | `InstanceId` | `string` | Yes | ID of the pre-created instance (created by `run-agents.ps1`). Supports `{{instances.<key>.id}}` placeholder. |
 | `ActionName` | `string` | Yes, unless `ActionIndex` | Human name of the action within the blueprint. |
-| `ActionIndex` | `int?` | Yes, unless `ActionName` | Zero-based position of the action in the blueprint. Either name or index; if both, index wins and a load-time warning is logged. |
+| `ActionIndex` | `int?` | Yes, unless `ActionName` | Blueprint action id (1-based in published blueprints — matches the action's `id` field). The value is sent verbatim as the Blueprint Service's action id; the name `ActionIndex` is historical. Either name or index; if both, index wins and a load-time warning is logged. |
 
 **Validation rules**: exactly one of `ActionName`/`ActionIndex` required.
 

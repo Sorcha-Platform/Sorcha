@@ -32,7 +32,7 @@
         "actionIndex": {
           "type": "integer",
           "minimum": 0,
-          "description": "Zero-based index of the target action in the blueprint."
+          "description": "Blueprint action id (the 'id' field on an action, 1-based in published blueprints — so the starting action is usually 1, not 0). The value is sent verbatim as the Blueprint Service's action id; the name 'actionIndex' is historical. Values that don't exist in the blueprint produce a clean 400 at submit time."
         }
       }
     },
@@ -107,7 +107,7 @@
       "target": {
         "blueprintId": "{{blueprints.procurement-to-pay.id}}",
         "instanceId": "{{instances.procurement-to-pay.id}}",
-        "actionIndex": 0
+        "actionIndex": 1
       },
       "trigger": { "kind": "once", "delaySeconds": 2 },
       "payloadTemplate": {
@@ -121,7 +121,7 @@
       "target": {
         "blueprintId": "{{blueprints.invoice.id}}",
         "instanceId": "{{instances.invoice.id}}",
-        "actionIndex": 4
+        "actionIndex": 5
       },
       "trigger": {
         "kind": "interval",
