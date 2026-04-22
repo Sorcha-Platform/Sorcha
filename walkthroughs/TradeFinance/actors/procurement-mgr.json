@@ -17,6 +17,7 @@
     "signalR": { "enabled": true },
     "polling": { "enabled": true, "intervalSeconds": 20 }
   },
+  "personaFile": "../personas/procurement-mgr-kickoff.persona.json",
   "mode": "rules",
   "rules": [
     {

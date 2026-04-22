@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sorcha.dev/schemas/agent-persona/v1.json",
+  "title": "Sorcha Agent Persona v1",
+  "description": "Declarative non-reactive behaviour for a Sorcha agent. Referenced from an actor config via the 'personaFile' field.",
+  "type": "object",
+  "required": ["name", "target", "trigger", "payloadTemplate"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable persona label; appears in logs and audit entries."
+    },
+    "target": {
+      "type": "object",
+      "required": ["blueprintId", "instanceId"],
+      "additionalProperties": false,
+      "properties": {
+        "blueprintId": {
+          "type": "string",
+          "description": "Blueprint whose starting action will be submitted. Supports {{placeholders}} resolved from state.json."
+        },
+        "instanceId": {
+          "type": "string",
+          "description": "Pre-created blueprint instance ID. Supports {{placeholders}} resolved from state.json."
+        },
+        "actionName": {
+          "type": "string",
+          "description": "Human name of the target action within the blueprint. Mutually exclusive with actionIndex."
+        },
+        "actionIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based index of the target action. Mutually exclusive with actionName."
+        }
+      },
+      "oneOf": [
+        { "required": ["actionName"] },
+        { "required": ["actionIndex"] }
+      ]
+    },
+    "trigger": {
+      "oneOf": [
+        { "$ref": "#/$defs/onceTrigger" },
+        { "$ref": "#/$defs/intervalTrigger" }
+      ]
+    },
+    "payloadTemplate": {
+      "type": "object",
+      "description": "JSON template submitted at each fire. String values may contain ${token} substitutions; a string that is exactly '${token}' is replaced by the token's typed result (integer, decimal, or array element) rather than a stringified form."
+    }
+  },
+  "$defs": {
+    "onceTrigger": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "once" },
+        "delaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Optional delay between agent start and the single fire."
+        }
+      }
+    },
+    "intervalTrigger": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "interval" },
+        "everySeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Interval between fires in seconds. Mutually exclusive with everyMinutes."
+        },
+        "everyMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Interval between fires in minutes. Mutually exclusive with everySeconds."
+        },
+        "startDelaySeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Optional delay before the first fire."
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Stop after N successful fires. Optional."
+        },
+        "until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Stop at this wall-clock timestamp (ISO 8601). Optional."
+        }
+      },
+      "oneOf": [
+        { "required": ["everySeconds"] },
+        { "required": ["everyMinutes"] }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "name": "procurement-mgr-kickoff",
+      "target": {
+        "blueprintId": "{{blueprints.procurement-to-pay.id}}",
+        "instanceId": "{{instances.procurement-to-pay.id}}",
+        "actionName": "Raise Purchase Order"
+      },
+      "trigger": { "kind": "once", "delaySeconds": 2 },
+      "payloadTemplate": {
+        "poReference": "PO-CAIRN-2026-00142",
+        "projectName": "Aviemore Heights Phase 2",
+        "siteAddress": "Plot 7-12, Craig na Gower Avenue, Aviemore, PH22 1RW"
+      }
+    },
+    {
+      "name": "invoice-generator",
+      "target": {
+        "blueprintId": "{{blueprints.invoice.id}}",
+        "instanceId": "{{instances.invoice.id}}",
+        "actionName": "Raise Invoice"
+      },
+      "trigger": {
+        "kind": "interval",
+        "everySeconds": 30,
+        "maxIterations": 20
+      },
+      "payloadTemplate": {
+        "invoiceNumber": "INV-${counter}",
+        "invoiceId": "${uuid}",
+        "issuedAt": "${now}",
+        "amount": "${random.decimal(100, 9999, 2)}",
+        "currency": "${random.choice([\"EUR\",\"GBP\",\"USD\"])}"
+      }
+    }
+  ]
+}

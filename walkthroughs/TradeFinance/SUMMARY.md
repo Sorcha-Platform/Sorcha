@@ -120,4 +120,17 @@ pwsh walkthroughs/TradeFinance/run.ps1 -Scenario all -DisableDevMode -VerifyFLE
 
 ---
 
+## Persona-driven kickoff (Feature 110)
+
+`run-agents.ps1` launches six reactive agents. The **procurement-mgr** agent ships with a
+one-shot persona (`personas/procurement-mgr-kickoff.persona.json`) that fires two seconds
+after startup, submits action 1 ("Raise Purchase Order") against the pre-created
+procurement-to-pay instance, and exits. Downstream agents then pick up the workflow through
+their reactive inbox loops as normal.
+
+To disable persona-driven kickoff and submit the first action manually instead, remove the
+`"personaFile"` line from `actors/procurement-mgr.json`.
+
+---
+
 *This walkthrough targets the Digital Trust Centre of Excellence Innovation Challenge 2: Digitising SME Trade Finance.*
