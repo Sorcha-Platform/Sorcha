@@ -126,11 +126,6 @@ public static class PersonaDefinitionLoader
                 if (interval.EverySeconds is int s && s <= 0) yield return "trigger.everySeconds must be > 0";
                 if (interval.EveryMinutes is int m && m <= 0) yield return "trigger.everyMinutes must be > 0";
                 if (interval.MaxIterations is int mi && mi <= 0) yield return "trigger.maxIterations must be > 0";
-                // v1 scope: only the 'once' trigger is implemented. Interval triggers are
-                // permitted by the schema (future-proofing) but rejected at load time so
-                // authors hit the error before the agent starts, not mid-run (FR-014).
-                // TODO(US2): drop this yield when IntervalTriggerLoop lands.
-                yield return "interval triggers are not yet supported in v1 (planned for Feature 110 US2 — use 'once' for now)";
                 break;
         }
     }

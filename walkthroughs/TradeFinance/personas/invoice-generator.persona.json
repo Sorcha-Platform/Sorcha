@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+  "name": "invoice-generator",
+  "target": {
+    "blueprintId": "{{blueprints.procurement-to-pay.id}}",
+    "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
+    "actionIndex": 4
+  },
+  "trigger": {
+    "kind": "interval",
+    "everySeconds": 30,
+    "maxIterations": 20
+  },
+  "payloadTemplate": {
+    "invoiceNumber": "INV-${counter}",
+    "invoiceId":     "${uuid}",
+    "issuedAt":      "${now}",
+    "amount":        "${random.decimal(100, 9999, 2)}",
+    "currency":      "${random.choice([\"EUR\",\"GBP\",\"USD\"])}"
+  }
+}

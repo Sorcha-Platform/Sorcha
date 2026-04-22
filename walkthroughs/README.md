@@ -331,6 +331,17 @@ walkthroughs/
 6. Add entry to `run-all.ps1` walkthroughs array
 7. Update this README
 
+## Persona-driven agents (Feature 110)
+
+Agents support **personas** — JSON files that let an agent initiate a workflow rather than only react. A persona declares a trigger (`once` or `interval`), a target (blueprint + instance + action), and a payload template. Personas live in `personas/` next to the walkthrough's `actors/` folder and are referenced via `"personaFile": "../personas/<name>.persona.json"` on the actor config.
+
+- **One-shot kickoff**: a `once` trigger fires a starting action on agent launch. TradeFinance uses `procurement-mgr-kickoff.persona.json` so `run-agents.ps1` produces a Raise-PO submission with no manual step. Downstream agents pick up the flow reactively.
+- **Scenario data generation**: an `interval` trigger with `maxIterations` (and optional `until` timestamp) fires a varied payload repeatedly. `walkthroughs/TradeFinance/personas/invoice-generator.persona.json` is an example that generates 20 invoices with randomised amounts and currencies.
+
+Payload tokens, resolved per fire: `${now}`, `${uuid}`, `${counter}`, `${random.int(min, max)}`, `${random.decimal(min, max, precision)}`, `${random.choice([…])}`. A string that is *exactly* `"${token}"` preserves typed JSON (number, string); embedded tokens like `"INV-${counter}"` produce string interpolation.
+
+See [`specs/110-agent-persona-mode/quickstart.md`](../specs/110-agent-persona-mode/quickstart.md) for the complete guide, schema, and troubleshooting.
+
 ### config.json Template
 
 ```json
