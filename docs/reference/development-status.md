@@ -111,7 +111,8 @@ For detailed implementation status, see the individual section files:
   - Coexistence proven: persona loop and reactive inbox loop share one `HttpClient` + `CancellationToken` without blocking each other (both orderings covered).
   - Ships three persona files: `procurement-mgr-kickoff.persona.json` (TradeFinance kickoff), `invoice-generator.persona.json` (scenario data generation, 20 × 30 s), `contractor-kickoff.persona.json` (ConstructionPermit parity — SC-002).
   - 106/106 tests passing in `Sorcha.Agent.Tests`; zero warnings in feature code.
-  - Deferred: T029 live-run validation (operator-verified), T037 reactive-latency benchmark (better suited to live walkthrough than unit suite), AuditLogger wire-through (GAP-021).
+  - Persona fires land in the agent `*.jsonl` audit stream alongside reactive decisions (research R-007) — decision label `persona-fire`, synthetic `ActionId` `persona:{name}#{counter}`. Operators have a single greppable audit file capturing both agent behaviours.
+  - Deferred (operator-run only): T029/T043/T050 live walkthrough validation, T037 reactive-latency benchmark, T042 `$schema` stable URL.
 
 ### 2026-04-04
 - **084-Mobile-Package-Infrastructure** (Feature 084 complete)
