@@ -165,7 +165,9 @@ public class RunCommand : Command
                 listeners.ToArray());
 
             // Persona loop — optional; runs alongside reactive inbox loop when a persona file is declared.
-            // Launched BEFORE entering the inbox loop so its delaySeconds countdown starts immediately.
+            // Launched BEFORE entering the inbox loop so its delaySeconds countdown starts immediately,
+            // and so the two loops share the same cancellationToken — Ctrl+C unwinds both within the
+            // ≤ 1 s budget validated by PersonaShutdownTests (Feature 110 T039, SC-004).
             if (!string.IsNullOrWhiteSpace(definition.PersonaFile))
             {
                 var personaPath = Path.IsPathRooted(definition.PersonaFile)
