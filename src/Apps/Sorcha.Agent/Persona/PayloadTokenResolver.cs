@@ -166,6 +166,10 @@ public sealed partial class PayloadTokenResolver : IPayloadTokenResolver
     }
 
     // Splits "1, 2, 3" or "1, 2, [\"a\", \"b\"]" — recognises [...] as one chunk.
+    // Known limitation: does not honour quoted strings containing unescaped commas.
+    // Not hit by the current token vocabulary (int/decimal args are numeric; random.choice
+    // passes its whole [...] as one chunk so inner commas are handled by JSON parsing).
+    // Revisit if/when a token accepts a bare quoted-string list at the top level.
     private static List<string> SplitArgs(string? argsText, string name)
     {
         if (string.IsNullOrWhiteSpace(argsText))

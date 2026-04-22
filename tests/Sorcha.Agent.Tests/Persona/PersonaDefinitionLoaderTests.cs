@@ -133,8 +133,10 @@ public class PersonaDefinitionLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Load_ActionNameOnly_RejectedWithHelpfulMessage()
+    public void Load_ActionNameOnly_RejectedAtLoadTime()
     {
+        // v1 requires actionIndex. actionName is an additional property the schema
+        // does not allow; the validator surfaces the failure before semantics run.
         var path = WritePersona("""
             {
               "name": "bad",
@@ -146,7 +148,6 @@ public class PersonaDefinitionLoaderTests : IDisposable
 
         var result = PersonaDefinitionLoader.Load(path);
         result.IsSuccess.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.Contains("actionName") && e.Contains("actionIndex"));
     }
 
     [Fact]

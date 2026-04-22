@@ -120,6 +120,8 @@ public class PersonaSubmitterTests
         handler.LastRequest!.RequestUri!.PathAndQuery.Should()
             .Be("/api/instances/inst-1/actions/0/execute");
         handler.LastRequest.Headers.Authorization!.Parameter.Should().Be("test-token");
+        // Blueprint Service requires both headers carry the same JWT (see PersonaSubmitter).
+        handler.LastRequest.Headers.GetValues("X-Delegation-Token").Should().ContainSingle().Which.Should().Be("test-token");
         handler.LastRequestBody.Should().Contain("\"amount\":42");
         handler.LastRequestBody.Should().Contain("\"senderWallet\":\"wallet-1\"");
         handler.LastRequestBody.Should().Contain("\"registerAddress\":\"register-1\"");

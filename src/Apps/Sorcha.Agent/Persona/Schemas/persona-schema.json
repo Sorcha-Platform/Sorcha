@@ -18,7 +18,7 @@
     },
     "target": {
       "type": "object",
-      "required": ["blueprintId", "instanceId"],
+      "required": ["blueprintId", "instanceId", "actionIndex"],
       "additionalProperties": false,
       "properties": {
         "blueprintId": {
@@ -29,20 +29,12 @@
           "type": "string",
           "description": "Pre-created blueprint instance ID. Supports {{placeholders}} resolved from state.json."
         },
-        "actionName": {
-          "type": "string",
-          "description": "Human name of the target action within the blueprint. Mutually exclusive with actionIndex. NOT YET SUPPORTED in v1 — the loader rejects actionName-only targets; set actionIndex instead. Name→index lookup is planned for a follow-up feature."
-        },
         "actionIndex": {
           "type": "integer",
           "minimum": 0,
-          "description": "Zero-based index of the target action. Mutually exclusive with actionName."
+          "description": "Zero-based index of the target action in the blueprint."
         }
-      },
-      "oneOf": [
-        { "required": ["actionName"] },
-        { "required": ["actionIndex"] }
-      ]
+      }
     },
     "trigger": {
       "oneOf": [

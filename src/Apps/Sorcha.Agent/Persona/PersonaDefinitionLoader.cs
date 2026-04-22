@@ -129,6 +129,7 @@ public static class PersonaDefinitionLoader
                 // v1 scope: only the 'once' trigger is implemented. Interval triggers are
                 // permitted by the schema (future-proofing) but rejected at load time so
                 // authors hit the error before the agent starts, not mid-run (FR-014).
+                // TODO(US2): drop this yield when IntervalTriggerLoop lands.
                 yield return "interval triggers are not yet supported in v1 (planned for Feature 110 US2 — use 'once' for now)";
                 break;
         }

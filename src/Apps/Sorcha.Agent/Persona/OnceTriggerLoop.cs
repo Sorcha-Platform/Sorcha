@@ -66,7 +66,7 @@ public sealed class OnceTriggerLoop : IPersonaLoop
         switch (result.Outcome)
         {
             case PersonaSubmissionOutcome.Submitted:
-                _completed = 1;
+                _completed++;
                 _logger.LogInformation(
                     "Persona {PersonaName} fire #1 -> Submitted ({DurationMs} ms)",
                     _definition.Name, result.DurationMs);

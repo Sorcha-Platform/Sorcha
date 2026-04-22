@@ -26,7 +26,7 @@ public class PersonaSchemaValidatorTests
     private const string ValidInterval = """
         {
           "name": "invoice-gen",
-          "target": { "blueprintId": "bp-1", "instanceId": "inst-1", "actionName": "Raise Invoice" },
+          "target": { "blueprintId": "bp-1", "instanceId": "inst-1", "actionIndex": 3 },
           "trigger": { "kind": "interval", "everySeconds": 30, "maxIterations": 20 },
           "payloadTemplate": { "amount": "${random.int(1,100)}" }
         }
