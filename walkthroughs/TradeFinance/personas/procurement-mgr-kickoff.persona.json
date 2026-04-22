@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+  "name": "procurement-mgr-kickoff",
+  "target": {
+    "blueprintId": "{{blueprints.procurement-to-pay.id}}",
+    "instanceId":  "$env:TRADE_PROC_INSTANCE_ID",
+    "actionIndex": 0
+  },
+  "trigger": {
+    "kind": "once",
+    "delaySeconds": 2
+  },
+  "payloadTemplate": {
+    "poReference": "PO-CAIRN-2026-00142",
+    "projectName": "Aviemore Heights Phase 2",
+    "siteAddress": "Plot 7-12, Craig na Gower Avenue, Aviemore, PH22 1RW",
+    "lineItems": [
+      { "description": "Structural Timber C24 (47x200mm)", "quantity": 500, "unit": "linear metres", "unitPrice": 8.50 },
+      { "description": "OSB/3 Structural Board (18mm)", "quantity": 120, "unit": "sheets", "unitPrice": 32.00 },
+      { "description": "Joist Hangers & Connectors (mixed)", "quantity": 10, "unit": "boxes", "unitPrice": 45.00 }
+    ],
+    "deliveryAddress": "Aviemore Heights Phase 2, Craig na Gower Avenue, Aviemore PH22 1RW",
+    "paymentTerms": "Net 30",
+    "requiredDeliveryDate": "2026-04-15"
+  }
+}

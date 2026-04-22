@@ -19,6 +19,12 @@ public record ActorDefinition
     public AiConfig? Ai { get; init; }
     public ResilienceConfig? Resilience { get; init; }
     public LoggingConfig? Logging { get; init; }
+
+    /// <summary>
+    /// Optional path (relative to the actor config file) to a persona definition JSON file.
+    /// When set, the agent runs a persona loop alongside its reactive inbox loop.
+    /// </summary>
+    public string? PersonaFile { get; init; }
 }
 
 /// <summary>

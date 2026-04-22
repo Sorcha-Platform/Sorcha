@@ -57,6 +57,40 @@ public class ActorDefinitionLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_ConfigWithoutPersonaFile_PreservesNullPersonaFile()
+    {
+        // Regression: existing actor configs (pre-Feature 110) must load unchanged.
+        var path = WriteConfig(ValidActorJson);
+        var result = ActorDefinitionLoader.Load(path);
+        result.IsSuccess.Should().BeTrue();
+        result.Definition!.PersonaFile.Should().BeNull();
+    }
+
+    [Fact]
+    public void Load_ConfigWithPersonaFile_CapturesRelativePath()
+    {
+        var json = """
+            {
+              "actor": { "name": "test-actor" },
+              "connection": {
+                "gatewayUrl": "http://localhost",
+                "registerId": "reg-1",
+                "credentials": { "email": "test@example.com", "password": "pass", "organizationId": "org-1" },
+                "walletAddress": "wallet-1"
+              },
+              "inbox": { "polling": { "enabled": true, "intervalSeconds": 30 } },
+              "mode": "rules",
+              "rules": [ { "actionName": "Submit", "decision": "approve", "payload": {} } ],
+              "personaFile": "../personas/test.persona.json"
+            }
+            """;
+        var path = WriteConfig(json);
+        var result = ActorDefinitionLoader.Load(path);
+        result.IsSuccess.Should().BeTrue();
+        result.Definition!.PersonaFile.Should().Be("../personas/test.persona.json");
+    }
+
+    [Fact]
     public void Load_MissingFile_ReturnsFailure()
     {
         var result = ActorDefinitionLoader.Load("/nonexistent/actor.json");

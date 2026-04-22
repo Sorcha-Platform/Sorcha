@@ -246,7 +246,25 @@ Hooks that execute before payload submission, e.g. file uploads:
 - **File Upload Pre-Actions** — Chunked encrypted file submission (up to 40MB)
 - **Resilient Execution** — Polly retry/circuit-breaker, SignalR auto-reconnect, JWT auto-refresh
 - **Audit Logging** — JSONL append-only trail of all decisions and submissions
+- **Persona Mode** — Optional autonomous initiator loop alongside reactive inbox (Feature 110)
 - **Cross-Platform** — Runs on Windows, macOS, and Linux
+
+## Persona Mode
+
+A **persona** is an optional JSON file that lets an agent initiate a workflow instead of only reacting to its inbox. Enabled by adding a `personaFile` field to the actor definition:
+
+```jsonc
+{
+  "actor": { "name": "procurement-mgr", ... },
+  "personaFile": "../personas/procurement-mgr-kickoff.persona.json",
+  "mode": "rules",
+  "rules": [ ... ]
+}
+```
+
+The persona file declares a trigger (`once` in v1), a target (blueprint + instance + action index), and a payload template with substitution tokens (`${now}`, `${uuid}`, `${counter}`, `${random.int|decimal|choice}`). The persona loop runs alongside the reactive inbox loop using the same wallet, auth, and HTTP client — agents without `personaFile` are unaffected.
+
+Typical use is unblocking multi-agent walkthroughs that would otherwise hang because the first action has no prior transaction to populate any agent's inbox. See [`specs/110-agent-persona-mode/quickstart.md`](../../../specs/110-agent-persona-mode/quickstart.md) for the full guide.
 
 ## Exit Codes
 

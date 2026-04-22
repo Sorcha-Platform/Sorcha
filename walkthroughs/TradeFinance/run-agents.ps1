@@ -107,6 +107,11 @@ if (-not $financeInstance -or -not $financeInstance.id) {
 }
 Write-Host "  Finance instance: $($financeInstance.id)" -ForegroundColor Cyan
 
+# --- Expose Instance IDs to Personas (Feature 110) ---
+# Personas resolve $env:*_INSTANCE_ID placeholders at agent-load time.
+[Environment]::SetEnvironmentVariable("TRADE_PROC_INSTANCE_ID", $procInstance.id)
+[Environment]::SetEnvironmentVariable("TRADE_FINANCE_INSTANCE_ID", $financeInstance.id)
+
 # --- Set Password Environment Variables ---
 $rolePasswords = @{
     "PROCUREMENT_MGR_PASSWORD"   = "procurement-mgr"
@@ -202,6 +207,8 @@ foreach ($p in $processes) {
 foreach ($entry in $rolePasswords.GetEnumerator()) {
     [Environment]::SetEnvironmentVariable($entry.Key, $null)
 }
+[Environment]::SetEnvironmentVariable("TRADE_PROC_INSTANCE_ID", $null)
+[Environment]::SetEnvironmentVariable("TRADE_FINANCE_INSTANCE_ID", $null)
 
 if ($allExited) {
     Write-Host "`nAll agents completed." -ForegroundColor Green

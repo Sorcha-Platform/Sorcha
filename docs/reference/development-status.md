@@ -101,6 +101,15 @@ For detailed implementation status, see the individual section files:
 
 ## Recent Completions
 
+### 2026-04-22
+- **110-Agent-Persona-Mode (MVP)** (Feature 110 User Story 1 shipped via PR #371)
+  - Adds an optional "persona" loop to `Sorcha.Agent` that fires workflow-starting actions on agent launch, unblocking the TradeFinance walkthrough (which hung because action 1 had no prior transaction to populate any inbox).
+  - New `Persona/` namespace: `PersonaDefinition`, `OnceTriggerLoop`, `PayloadTokenResolver` (typed-vs-interpolated `${now|uuid|counter|random.*}`), `PersonaSchemaValidator` (embedded JSON Schema, JsonSchema.Net), `PersonaDefinitionLoader`, `PersonaSubmitter` (thin wrapper over the same `/api/instances/{id}/actions/{i}/execute` path `ActionExecutor` uses).
+  - `ActorDefinition` gains an optional `PersonaFile` field; when null, behaviour is byte-identical to pre-feature (regression test enforced).
+  - `RunCommand` launches `PersonaHost` as a peer task alongside the existing inbox loop; shared `CancellationToken` gives clean shutdown with a 5-second grace window.
+  - 28 new xUnit tests; 89/89 passing; zero warnings.
+  - Scope: `once` trigger only. `interval` trigger + recurring scenario data (User Story 2), coexistence proof (US3), and ConstructionPermit parity (US4) are staged for follow-up PRs.
+
 ### 2026-04-04
 - **084-Mobile-Package-Infrastructure** (Feature 084 complete)
   - Extracted `Sorcha.Wallet.Portable` from Wallet.Core: entities, enums, service interfaces, derivation path builder -- zero EF Core/Npgsql dependencies

@@ -8,6 +8,7 @@ using Sorcha.Agent.Configuration;
 using Sorcha.Agent.Decision;
 using Sorcha.Agent.Execution;
 using Sorcha.Agent.Inbox;
+using Sorcha.Agent.Persona;
 
 namespace Sorcha.Agent.Commands;
 
@@ -68,6 +69,7 @@ public class RunCommand : Command
         var sw = Stopwatch.StartNew();
         var actionsProcessed = 0;
         var errors = 0;
+        Task? personaTask = null;
 
         try
         {
@@ -162,6 +164,42 @@ public class RunCommand : Command
                 loggerFactory.CreateLogger<CompositeInboxListener>(),
                 listeners.ToArray());
 
+            // Persona loop — optional; runs alongside reactive inbox loop when a persona file is declared.
+            // Launched BEFORE entering the inbox loop so its delaySeconds countdown starts immediately.
+            if (!string.IsNullOrWhiteSpace(definition.PersonaFile))
+            {
+                var personaPath = Path.IsPathRooted(definition.PersonaFile)
+                    ? definition.PersonaFile
+                    : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configPath) ?? ".", definition.PersonaFile));
+
+                var personaLoad = PersonaDefinitionLoader.Load(personaPath, statePath);
+                if (!personaLoad.IsSuccess)
+                {
+                    foreach (var error in personaLoad.Errors)
+                        Console.Error.WriteLine($"  Persona error: {error}");
+                    return ExitCodes.ConfigurationError;
+                }
+
+                var personaSubmitter = new PersonaSubmitter(
+                    httpClient, authService,
+                    definition.Connection.WalletAddress,
+                    definition.Connection.RegisterId,
+                    loggerFactory.CreateLogger<PersonaSubmitter>());
+
+                var personaHost = new PersonaHost(
+                    personaLoad.Definition!,
+                    personaSubmitter,
+                    new PayloadTokenResolver(),
+                    new RandomSource(),
+                    TimeProvider.System,
+                    loggerFactory);
+
+                // Don't wrap in Task.Run — personaHost.RunAsync is already async and the wrapper
+                // would box OperationCanceledException as AggregateException on the shutdown join.
+                personaTask = personaHost.RunAsync(cancellationToken);
+                if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Persona \"{personaLoad.Definition!.Name}\" loaded");
+            }
+
             if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Actor \"{actorName}\" started");
 
             // Main loop
@@ -221,6 +259,22 @@ public class RunCommand : Command
         {
             Console.Error.WriteLine($"Fatal error: {ex.Message}");
             return ExitCodes.GeneralError;
+        }
+        finally
+        {
+            if (personaTask is not null)
+            {
+                try
+                {
+                    await personaTask.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+                }
+                catch (OperationCanceledException) { /* persona cancelled — expected on shutdown */ }
+                catch (TimeoutException) { /* persona didn't finish in grace window — non-fatal */ }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  Persona task terminated unexpectedly: {ex.Message}");
+                }
+            }
         }
 
         if (!quiet)
