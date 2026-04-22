@@ -101,8 +101,9 @@ public static class PersonaDefinitionLoader
         // follow-up feature. Until then, a persona declared with only actionName cannot
         // be submitted, so we reject at load time rather than crash at first fire.
         if (def.Target.ActionName is not null && def.Target.ActionIndex is null)
-            yield return "target.actionName is not yet supported in v1 — set target.actionIndex instead "
-                       + "(action-name lookup will land in a follow-up feature)";
+            yield return $"target.actionName=\"{def.Target.ActionName}\" is not yet supported in v1 — set "
+                       + "target.actionIndex to the zero-based position of that action in the blueprint "
+                       + "(e.g. actionIndex: 0 for the starting action). Action-name lookup will land in a follow-up feature.";
 
         switch (def.Trigger)
         {
@@ -115,6 +116,10 @@ public static class PersonaDefinitionLoader
                 if (interval.EverySeconds is int s && s <= 0) yield return "trigger.everySeconds must be > 0";
                 if (interval.EveryMinutes is int m && m <= 0) yield return "trigger.everyMinutes must be > 0";
                 if (interval.MaxIterations is int mi && mi <= 0) yield return "trigger.maxIterations must be > 0";
+                // v1 scope: only the 'once' trigger is implemented. Interval triggers are
+                // permitted by the schema (future-proofing) but rejected at load time so
+                // authors hit the error before the agent starts, not mid-run (FR-014).
+                yield return "interval triggers are not yet supported in v1 (planned for Feature 110 US2 — use 'once' for now)";
                 break;
         }
     }

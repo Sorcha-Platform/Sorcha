@@ -262,8 +262,16 @@ public class RunCommand : Command
         {
             if (personaTask is not null)
             {
-                try { await personaTask.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None); }
-                catch { /* persona shutdown best-effort */ }
+                try
+                {
+                    await personaTask.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+                }
+                catch (OperationCanceledException) { /* persona cancelled — expected on shutdown */ }
+                catch (TimeoutException) { /* persona didn't finish in grace window — non-fatal */ }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"  Persona task terminated unexpectedly: {ex.Message}");
+                }
             }
         }
 

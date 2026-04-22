@@ -51,8 +51,10 @@ public class PersonaDefinitionLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Load_ValidIntervalTrigger_ReturnsSuccess()
+    public void Load_IntervalTrigger_RejectedInV1()
     {
+        // Interval triggers are permitted by the schema (future-proofing) but rejected
+        // at load time in v1 so authors see the limit before the agent starts (FR-014).
         var path = WritePersona("""
             {
               "name": "gen",
@@ -63,11 +65,8 @@ public class PersonaDefinitionLoaderTests : IDisposable
             """);
 
         var result = PersonaDefinitionLoader.Load(path);
-        result.IsSuccess.Should().BeTrue();
-        var interval = result.Definition!.Trigger.Should().BeOfType<IntervalTrigger>().Subject;
-        interval.EverySeconds.Should().Be(30);
-        interval.MaxIterations.Should().Be(5);
-        interval.IntervalSeconds.Should().Be(30);
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("interval triggers are not yet supported"));
     }
 
     [Fact]

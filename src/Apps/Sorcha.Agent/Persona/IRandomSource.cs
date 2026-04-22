@@ -41,6 +41,10 @@ public sealed class RandomSource : IRandomSource
         if (precision < 0)
             throw new ArgumentException("precision must be >= 0");
 
+        // Deliberate double→decimal cast: NextDouble() is the only uniform-random source on
+        // System.Random. The loss of precision is masked by the subsequent Math.Round to the
+        // author-declared scale, and values here feed demo/scenario payloads — not crypto or
+        // accounting. If a future use needs full-decimal entropy, wrap a crypto RNG instead.
         var range = maxInclusive - minInclusive;
         var sample = (decimal)_random.NextDouble();
         var value = minInclusive + (range * sample);

@@ -8,7 +8,11 @@ namespace Sorcha.Agent.Tests.Persona;
 
 public class PersonaSchemaValidatorTests
 {
-    private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+    private static JsonElement Parse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
 
     private const string ValidOnce = """
         {
