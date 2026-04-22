@@ -12,11 +12,10 @@ namespace Sorcha.Agent.Persona;
 /// </summary>
 public sealed class PersonaHost
 {
-    // Feature 110 v1 note: the AuditLogger integration described in research.md R-007
-    // is deferred — persona fires are observable via structured ILogger output but do
-    // not currently land in the agent's *.jsonl audit stream alongside reactive
-    // decisions. To be wired in by the follow-up US2 / Phase 7 work (tracked on
-    // GAP-021 in MASTER-TASKS.md).
+    // Feature 110 note: the AuditLogger integration described in research.md R-007
+    // is deferred — persona fires are observable via structured ILogger output but
+    // do not currently land in the agent's *.jsonl audit stream alongside reactive
+    // decisions. Tracked on GAP-021 in MASTER-TASKS.md for a follow-up.
     private readonly PersonaDefinition _definition;
     private readonly IPersonaSubmitter _submitter;
     private readonly IPayloadTokenResolver _resolver;
@@ -52,12 +51,9 @@ public sealed class PersonaHost
             OnceTrigger once => new OnceTriggerLoop(
                 _definition, once, _submitter, _resolver, _random, _timeProvider,
                 _loggerFactory.CreateLogger<OnceTriggerLoop>()),
-            // Unreachable in v1: PersonaDefinitionLoader.ValidateSemantics rejects interval
-            // triggers at load time. Defence-in-depth guard in case a future change removes
-            // that check without landing the real IntervalTriggerLoop wiring. TODO(US2): replace.
-            IntervalTrigger _ =>
-                throw new NotSupportedException(
-                    "Interval triggers are planned for Feature 110 User Story 2 — not implemented in this MVP."),
+            IntervalTrigger interval => new IntervalTriggerLoop(
+                _definition, interval, _submitter, _resolver, _random, _timeProvider,
+                _loggerFactory.CreateLogger<IntervalTriggerLoop>()),
             _ => throw new NotSupportedException($"Trigger kind '{_definition.Trigger.GetType().Name}' not supported")
         };
 

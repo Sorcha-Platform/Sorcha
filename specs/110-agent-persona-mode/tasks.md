@@ -115,15 +115,15 @@ description: "Executable task list for feature 110-agent-persona-mode"
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T030 [P] [US2] Unit tests in `tests/Sorcha.Agent.Tests/Persona/IntervalTriggerLoopTests.cs` covering: fires `maxIterations` times when only that is set; stops at `until` when only that is set; stops at whichever hits first when both set; `startDelaySeconds` honoured; TransientFailure does NOT increment counter (FR-015); three consecutive HardFailures exit the loop with Error log; cancellation mid-interval exits immediately; uses fake `TimeProvider` for determinism
-- [ ] T031 [P] [US2] Integration test in `tests/Sorcha.Agent.Tests/Persona/PersonaHostIntervalIntegrationTests.cs` asserts exactly `maxIterations` POSTs with distinct `${counter}` / `${random.decimal}` values visible in the mock handler's captured request bodies
+- [x] T030 [P] [US2] Unit tests in `tests/Sorcha.Agent.Tests/Persona/IntervalTriggerLoopTests.cs` covering: fires `maxIterations` times when only that is set; stops at `until` when only that is set; stops at whichever hits first when both set; `startDelaySeconds` honoured; TransientFailure does NOT increment counter (FR-015); three consecutive HardFailures exit the loop with Error log; cancellation mid-interval exits immediately; uses fake `TimeProvider` for determinism
+- [x] T031 [P] [US2] Integration test in `tests/Sorcha.Agent.Tests/Persona/PersonaHostIntervalIntegrationTests.cs` asserts exactly `maxIterations` POSTs with distinct `${counter}` / `${random.decimal}` values visible in the mock handler's captured request bodies
 
 ### Implementation for User Story 2
 
-- [ ] T032 [US2] Create `src/Apps/Sorcha.Agent/Persona/IntervalTriggerLoop.cs` implementing `IPersonaLoop` — honours `StartDelaySeconds`, `EverySeconds`/`EveryMinutes`, `MaxIterations`, `Until`; tracks iteration counter; increments only on Submitted; three-strike rule on HardFailure per research.md R-006; uses injected `TimeProvider` for all waits (depends on T019, T010, T017)
-- [ ] T033 [US2] Extend `PersonaHost` dispatcher (from T020) to route `IntervalTrigger` to `IntervalTriggerLoop`
-- [ ] T034 [P] [US2] Create a demonstration persona file `walkthroughs/TradeFinance/personas/invoice-generator.persona.json` matching the recurring example in quickstart.md §4 (20 iterations, 30s interval, varying amounts and currencies)
-- [ ] T035 [P] [US2] Add a "Scenario data generation" section to `walkthroughs/README.md` describing how to attach `invoice-generator.persona.json` to an otherwise-unused agent config for demo data seeding
+- [x] T032 [US2] Create `src/Apps/Sorcha.Agent/Persona/IntervalTriggerLoop.cs` implementing `IPersonaLoop` — honours `StartDelaySeconds`, `EverySeconds`/`EveryMinutes`, `MaxIterations`, `Until`; tracks iteration counter; increments only on Submitted; three-strike rule on HardFailure per research.md R-006; uses injected `TimeProvider` for all waits (depends on T019, T010, T017)
+- [x] T033 [US2] Extend `PersonaHost` dispatcher (from T020) to route `IntervalTrigger` to `IntervalTriggerLoop`
+- [x] T034 [P] [US2] Create a demonstration persona file `walkthroughs/TradeFinance/personas/invoice-generator.persona.json` matching the recurring example in quickstart.md §4 (20 iterations, 30s interval, varying amounts and currencies)
+- [x] T035 [P] [US2] Add a "Scenario data generation" section to `walkthroughs/README.md` describing how to attach `invoice-generator.persona.json` to an otherwise-unused agent config for demo data seeding
 
 **Checkpoint**: Recurring persona mechanism works end-to-end. SC-003 satisfied. Feature is functionally complete for scenario authoring.
 
