@@ -3,6 +3,7 @@
 
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using Sorcha.Agent.Execution;
 
 namespace Sorcha.Agent.Persona;
 
@@ -22,6 +23,7 @@ public sealed class IntervalTriggerLoop : IPersonaLoop
     private readonly IRandomSource _random;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<IntervalTriggerLoop> _logger;
+    private readonly AuditLogger? _auditLogger;
     private int _completed;
 
     public IntervalTriggerLoop(
@@ -31,7 +33,8 @@ public sealed class IntervalTriggerLoop : IPersonaLoop
         IPayloadTokenResolver resolver,
         IRandomSource random,
         TimeProvider timeProvider,
-        ILogger<IntervalTriggerLoop> logger)
+        ILogger<IntervalTriggerLoop> logger,
+        AuditLogger? auditLogger = null)
     {
         _definition = definition;
         _trigger = trigger;
@@ -40,6 +43,7 @@ public sealed class IntervalTriggerLoop : IPersonaLoop
         _random = random;
         _timeProvider = timeProvider;
         _logger = logger;
+        _auditLogger = auditLogger;
     }
 
     public int CompletedIterations => _completed;
@@ -103,6 +107,7 @@ public sealed class IntervalTriggerLoop : IPersonaLoop
                 _definition.Name, counter, _definition.Target.BlueprintId);
 
             var result = await _submitter.SubmitAsync(_definition, payload, cancellationToken);
+            await PersonaAudit.WriteAsync(_auditLogger, _definition.Name, counter, result, _timeProvider, cancellationToken);
 
             switch (result.Outcome)
             {

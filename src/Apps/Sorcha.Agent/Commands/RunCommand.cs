@@ -194,7 +194,8 @@ public class RunCommand : Command
                     new PayloadTokenResolver(),
                     new RandomSource(),
                     TimeProvider.System,
-                    loggerFactory);
+                    loggerFactory,
+                    auditLogger);
 
                 // Don't wrap in Task.Run — personaHost.RunAsync is already async and the wrapper
                 // would box OperationCanceledException as AggregateException on the shutdown join.

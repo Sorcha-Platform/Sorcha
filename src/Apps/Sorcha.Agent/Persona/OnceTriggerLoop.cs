@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Logging;
+using Sorcha.Agent.Execution;
 
 namespace Sorcha.Agent.Persona;
 
@@ -18,6 +19,7 @@ public sealed class OnceTriggerLoop : IPersonaLoop
     private readonly IRandomSource _random;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<OnceTriggerLoop> _logger;
+    private readonly AuditLogger? _auditLogger;
     // volatile: CompletedIterations may be polled from a different task than RunAsync.
     private volatile int _completed;
 
@@ -28,7 +30,8 @@ public sealed class OnceTriggerLoop : IPersonaLoop
         IPayloadTokenResolver resolver,
         IRandomSource random,
         TimeProvider timeProvider,
-        ILogger<OnceTriggerLoop> logger)
+        ILogger<OnceTriggerLoop> logger,
+        AuditLogger? auditLogger = null)
     {
         _definition = definition;
         _trigger = trigger;
@@ -37,6 +40,7 @@ public sealed class OnceTriggerLoop : IPersonaLoop
         _random = random;
         _timeProvider = timeProvider;
         _logger = logger;
+        _auditLogger = auditLogger;
     }
 
     public int CompletedIterations => _completed;
@@ -63,6 +67,7 @@ public sealed class OnceTriggerLoop : IPersonaLoop
             _definition.Target.ActionName ?? $"(index {_definition.Target.ActionIndex})");
 
         var result = await _submitter.SubmitAsync(_definition, payload, cancellationToken);
+        await PersonaAudit.WriteAsync(_auditLogger, _definition.Name, counter: 1, result, _timeProvider, cancellationToken);
 
         switch (result.Outcome)
         {

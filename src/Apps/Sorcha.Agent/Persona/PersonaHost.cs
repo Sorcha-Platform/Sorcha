@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.Extensions.Logging;
+using Sorcha.Agent.Execution;
 
 namespace Sorcha.Agent.Persona;
 
@@ -12,10 +13,9 @@ namespace Sorcha.Agent.Persona;
 /// </summary>
 public sealed class PersonaHost
 {
-    // Feature 110 note: the AuditLogger integration described in research.md R-007
-    // is deferred — persona fires are observable via structured ILogger output but
-    // do not currently land in the agent's *.jsonl audit stream alongside reactive
-    // decisions. Tracked on GAP-021 in MASTER-TASKS.md for a follow-up.
+    // research.md R-007: persona fires land in the agent's *.jsonl audit stream
+    // alongside reactive decisions via the same AuditLogger instance RunCommand
+    // uses for ActionExecutor. See PersonaAudit for the shape mapping.
     private readonly PersonaDefinition _definition;
     private readonly IPersonaSubmitter _submitter;
     private readonly IPayloadTokenResolver _resolver;
@@ -23,6 +23,7 @@ public sealed class PersonaHost
     private readonly TimeProvider _timeProvider;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<PersonaHost> _logger;
+    private readonly AuditLogger? _auditLogger;
     private IPersonaLoop? _loop;
 
     public PersonaHost(
@@ -31,7 +32,8 @@ public sealed class PersonaHost
         IPayloadTokenResolver resolver,
         IRandomSource random,
         TimeProvider timeProvider,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        AuditLogger? auditLogger = null)
     {
         _definition = definition;
         _submitter = submitter;
@@ -40,6 +42,7 @@ public sealed class PersonaHost
         _timeProvider = timeProvider;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<PersonaHost>();
+        _auditLogger = auditLogger;
     }
 
     public int CompletedIterations => _loop?.CompletedIterations ?? 0;
@@ -50,10 +53,10 @@ public sealed class PersonaHost
         {
             OnceTrigger once => new OnceTriggerLoop(
                 _definition, once, _submitter, _resolver, _random, _timeProvider,
-                _loggerFactory.CreateLogger<OnceTriggerLoop>()),
+                _loggerFactory.CreateLogger<OnceTriggerLoop>(), _auditLogger),
             IntervalTrigger interval => new IntervalTriggerLoop(
                 _definition, interval, _submitter, _resolver, _random, _timeProvider,
-                _loggerFactory.CreateLogger<IntervalTriggerLoop>()),
+                _loggerFactory.CreateLogger<IntervalTriggerLoop>(), _auditLogger),
             _ => throw new NotSupportedException($"Trigger kind '{_definition.Trigger.GetType().Name}' not supported")
         };
 
