@@ -7,6 +7,10 @@
   "required": ["name", "target", "trigger", "payloadTemplate"],
   "additionalProperties": false,
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor IntelliSense. Ignored at runtime."
+    },
     "name": {
       "type": "string",
       "minLength": 1,
@@ -27,7 +31,7 @@
         },
         "actionName": {
           "type": "string",
-          "description": "Human name of the target action within the blueprint. Mutually exclusive with actionIndex."
+          "description": "Human name of the target action within the blueprint. Mutually exclusive with actionIndex. NOT YET SUPPORTED in v1 — the loader rejects actionName-only targets; set actionIndex instead. Name→index lookup is planned for a follow-up feature."
         },
         "actionIndex": {
           "type": "integer",

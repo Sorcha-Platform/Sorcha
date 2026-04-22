@@ -66,7 +66,8 @@ public class OnceTriggerLoopTests
             new PayloadTokenResolver(), new StubRandom(), TimeProvider.System,
             NullLogger<OnceTriggerLoop>.Instance);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        // 500ms grace so slow CI runners don't flake against a 60-second inner delay.
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
         var act = async () => await loop.RunAsync(cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();

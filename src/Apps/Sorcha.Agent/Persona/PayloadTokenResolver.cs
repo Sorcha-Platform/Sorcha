@@ -23,7 +23,8 @@ public sealed partial class PayloadTokenResolver : IPayloadTokenResolver
         // Re-running validation on every fire would make recurring personas O(template)
         // per tick for no benefit. Malformed tokens surfaced here indicate a loader bug
         // and will throw when EvaluateTokenTyped encounters them.
-        var clone = JsonNode.Parse(template.ToJsonString())!;
+        // DeepClone avoids a string round-trip on every fire — important for interval triggers.
+        var clone = template.DeepClone();
         ResolveNode(clone, ctx);
         return clone.AsObject();
     }

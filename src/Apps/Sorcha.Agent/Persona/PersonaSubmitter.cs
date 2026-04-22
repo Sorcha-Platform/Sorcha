@@ -78,6 +78,9 @@ public sealed class PersonaSubmitter : IPersonaSubmitter
                 Content = JsonContent.Create(body)
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            // Mirrors ActionExecutor's contract with the Blueprint Service: the service expects
+            // both Authorization and X-Delegation-Token carrying the same JWT so it can attribute
+            // the action to the originating wallet. Don't drop one without updating the other.
             request.Headers.Add("X-Delegation-Token", token);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -92,13 +95,14 @@ public sealed class PersonaSubmitter : IPersonaSubmitter
             }
 
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var truncatedBody = Truncate(errorBody, 500);
             var outcome = IsTransient(response.StatusCode)
                 ? PersonaSubmissionOutcome.TransientFailure
                 : PersonaSubmissionOutcome.HardFailure;
             _logger.LogWarning(
                 "Persona {PersonaName} submission failed: {Status} {Body} (classified {Outcome})",
-                persona.Name, (int)response.StatusCode, errorBody, outcome);
-            return new PersonaSubmissionResult(outcome, sw.ElapsedMilliseconds, $"{(int)response.StatusCode}: {errorBody}");
+                persona.Name, (int)response.StatusCode, truncatedBody, outcome);
+            return new PersonaSubmissionResult(outcome, sw.ElapsedMilliseconds, $"{(int)response.StatusCode}: {truncatedBody}");
         }
         catch (HttpRequestException ex)
         {
@@ -117,4 +121,7 @@ public sealed class PersonaSubmitter : IPersonaSubmitter
         code == HttpStatusCode.RequestTimeout
         || code == HttpStatusCode.TooManyRequests
         || (int)code >= 500;
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "… [truncated]";
 }

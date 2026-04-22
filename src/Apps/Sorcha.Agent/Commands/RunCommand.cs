@@ -194,7 +194,9 @@ public class RunCommand : Command
                     TimeProvider.System,
                     loggerFactory);
 
-                personaTask = Task.Run(() => personaHost.RunAsync(cancellationToken), cancellationToken);
+                // Don't wrap in Task.Run — personaHost.RunAsync is already async and the wrapper
+                // would box OperationCanceledException as AggregateException on the shutdown join.
+                personaTask = personaHost.RunAsync(cancellationToken);
                 if (!quiet) Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Persona \"{personaLoad.Definition!.Name}\" loaded");
             }
 

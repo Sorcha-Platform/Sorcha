@@ -95,6 +95,61 @@ public class PersonaDefinitionLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_PersonaFileWithDollarSchemaKey_Accepted()
+    {
+        // Regression: $schema is an IDE-IntelliSense hint. The root schema declares
+        // additionalProperties: false, so $schema must be explicitly permitted.
+        var path = WritePersona("""
+            {
+              "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+              "name": "ok",
+              "target": { "blueprintId": "bp-1", "instanceId": "inst-1", "actionIndex": 0 },
+              "trigger": { "kind": "once" },
+              "payloadTemplate": { "x": 1 }
+            }
+            """);
+
+        var result = PersonaDefinitionLoader.Load(path);
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Load_InstanceIdWithSlash_Rejected()
+    {
+        // Regression: env-var-sourced IDs can contain path separators that would
+        // silently rewrite the submission endpoint. Must be caught at load time.
+        var path = WritePersona("""
+            {
+              "name": "bad",
+              "target": { "blueprintId": "bp-1", "instanceId": "../other-instance/execute?x=", "actionIndex": 0 },
+              "trigger": { "kind": "once" },
+              "payloadTemplate": {}
+            }
+            """);
+
+        var result = PersonaDefinitionLoader.Load(path);
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("instanceId") && e.Contains("disallowed characters"));
+    }
+
+    [Fact]
+    public void Load_ActionNameOnly_RejectedWithHelpfulMessage()
+    {
+        var path = WritePersona("""
+            {
+              "name": "bad",
+              "target": { "blueprintId": "bp-1", "instanceId": "inst-1", "actionName": "Raise PO" },
+              "trigger": { "kind": "once" },
+              "payloadTemplate": {}
+            }
+            """);
+
+        var result = PersonaDefinitionLoader.Load(path);
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.Contains("actionName") && e.Contains("actionIndex"));
+    }
+
+    [Fact]
     public void Load_SchemaViolation_ReturnsFailure()
     {
         var path = WritePersona("""

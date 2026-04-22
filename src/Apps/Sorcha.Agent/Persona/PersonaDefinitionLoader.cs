@@ -4,6 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Sorcha.Agent.Configuration;
 
 namespace Sorcha.Agent.Persona;
@@ -88,11 +89,20 @@ public static class PersonaDefinitionLoader
         return PersonaLoadResult.Ok(definition);
     }
 
+    // Accepts alphanumerics, dashes, underscores, dots, and colons — the character set
+    // the Blueprint Service emits for IDs. Rejects path separators and URL-meaningful
+    // characters to prevent env-var-sourced values from rewriting the request endpoint.
+    private static readonly Regex SafeIdPattern = new(@"^[A-Za-z0-9._:-]{1,128}$", RegexOptions.Compiled);
+
     private static IEnumerable<string> ValidateSemantics(PersonaDefinition def)
     {
         if (string.IsNullOrWhiteSpace(def.Name)) yield return "name is required";
         if (string.IsNullOrWhiteSpace(def.Target.BlueprintId)) yield return "target.blueprintId is required";
+        else if (!SafeIdPattern.IsMatch(def.Target.BlueprintId))
+            yield return $"target.blueprintId=\"{def.Target.BlueprintId}\" contains disallowed characters (must match {SafeIdPattern})";
         if (string.IsNullOrWhiteSpace(def.Target.InstanceId)) yield return "target.instanceId is required";
+        else if (!SafeIdPattern.IsMatch(def.Target.InstanceId))
+            yield return $"target.instanceId=\"{def.Target.InstanceId}\" contains disallowed characters (must match {SafeIdPattern})";
         if (def.Target.ActionName is null && def.Target.ActionIndex is null)
             yield return "target must include actionName or actionIndex";
         if (def.Target.ActionIndex is int idx && idx < 0)
@@ -131,9 +141,9 @@ public static class PersonaDefinitionLoader
 public record PersonaLoadResult
 {
     public PersonaDefinition? Definition { get; init; }
-    public List<string> Errors { get; init; } = [];
+    public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public bool IsSuccess => Errors.Count == 0 && Definition is not null;
 
     public static PersonaLoadResult Ok(PersonaDefinition definition) => new() { Definition = definition };
-    public static PersonaLoadResult Failure(List<string> errors) => new() { Errors = errors };
+    public static PersonaLoadResult Failure(IReadOnlyList<string> errors) => new() { Errors = errors };
 }
