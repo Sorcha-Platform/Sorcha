@@ -24,6 +24,11 @@ param(
 $ErrorActionPreference = "Stop"
 $walkthroughDir = $PSScriptRoot
 $actorsDir = Join-Path $walkthroughDir "actors"
+$modulePath = Join-Path $walkthroughDir ".." "modules" "SorchaWalkthrough" "SorchaWalkthrough.psm1"
+
+if (Test-Path $modulePath) {
+    Import-Module $modulePath -Force
+}
 
 # Resolve state.json
 if (-not $StatePath) {
@@ -72,6 +77,41 @@ foreach ($actor in $actors) {
     } else {
         Write-Warning "No password found for $($actor.PasswordKey) in state.json"
     }
+}
+
+# --- Create a permit instance + expose its ID to the contractor persona ---
+# The contractor actor has a personaFile (Feature 110) that fires the starting
+# "Submit Application" action at launch. The persona resolves
+# $env:CP_PERMIT_INSTANCE_ID at load time; if the var is empty the persona
+# fails to load and the agent exits with ConfigurationError.
+if (Get-Command -Name Invoke-SorchaApi -ErrorAction SilentlyContinue) {
+    try {
+        $sorchaEnv = Initialize-SorchaEnvironment -Profile $Profile -SkipHealthCheck
+        $contractorRole = $state.roles.contractor
+        $login = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
+            -Email $contractorRole.email -Password $contractorRole.password `
+            -OrganizationId $contractorRole.organizationId
+        $hdr = @{ Authorization = "Bearer $($login.Token)" }
+
+        Write-Host "  Creating permit instance..."
+        $permitInstance = Invoke-SorchaApi -Method POST `
+            -Uri "$($sorchaEnv.BlueprintUrl)/instances/" -Headers $hdr -Body @{
+                blueprintId = $state.blueprintId
+                registerId  = $state.registerId
+                tenantId    = $contractorRole.organizationId
+                metadata    = @{ source = "agent-walkthrough"; scenario = "persona-kickoff" }
+            }
+        if ($permitInstance -and $permitInstance.id) {
+            [Environment]::SetEnvironmentVariable("CP_PERMIT_INSTANCE_ID", $permitInstance.id)
+            Write-Host "  Permit instance: $($permitInstance.id)" -ForegroundColor Cyan
+        } else {
+            Write-Warning "Failed to create permit instance — contractor persona will fail to load."
+        }
+    } catch {
+        Write-Warning "Could not create permit instance for persona kickoff: $_"
+    }
+} else {
+    Write-Warning "SorchaWalkthrough module not available — skipping permit instance creation. Contractor persona will fail to load unless CP_PERMIT_INSTANCE_ID is set externally."
 }
 
 # Launch agents

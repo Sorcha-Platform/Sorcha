@@ -1,0 +1,38 @@
+// Persona: one-shot kickoff for the ConstructionPermit walkthrough.
+// Fires the starting "Submit Application" action so the contractor
+// self-initiates the permit flow (Feature 110 SC-002 — mechanism
+// generalises beyond TradeFinance). See specs/110-agent-persona-mode/
+// quickstart.md for field reference.
+{
+  "$schema": "../../../specs/110-agent-persona-mode/contracts/persona-schema.json",
+
+  "name": "contractor-kickoff",
+
+  // blueprintId is resolved from state.json (top-level key);
+  // instanceId is exposed by run-agents.ps1 before launch.
+  "target": {
+    "blueprintId": "{{blueprintId}}",
+    "instanceId":  "$env:CP_PERMIT_INSTANCE_ID",
+    "actionIndex": 0
+  },
+
+  // 'once' fires a single submission after delaySeconds.
+  "trigger": {
+    "kind": "once",
+    "delaySeconds": 2
+  },
+
+  // Payload must satisfy the "Submit Application" dataSchema:
+  // projectName (3-200), siteAddress (5-500), buildingType enum,
+  // estimatedValue >= 10000, grossFloorArea >= 10, storeys 1-100,
+  // existingStructure boolean.
+  "payloadTemplate": {
+    "projectName": "Carronbridge Heights",
+    "siteAddress": "14 Waterfront Lane, Carronbridge, SC1 4WL",
+    "buildingType": "residential",
+    "estimatedValue": 500000,
+    "grossFloorArea": 800,
+    "storeys": 3,
+    "existingStructure": false
+  }
+}

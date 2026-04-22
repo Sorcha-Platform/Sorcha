@@ -152,6 +152,33 @@ public class PersonaDefinitionLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_JsoncCommentsAndTrailingCommas_AreTolerated()
+    {
+        // Regression test for Feature 110 T040: human tuning files ship with
+        // // line comments and trailing commas. Before this fix, the up-front
+        // JsonDocument.Parse / JsonNode.Parse calls used default options and
+        // rejected both.
+        var path = WritePersona("""
+            // Persona with JSONC-style comments.
+            {
+              "name": "kickoff-jsonc",
+              "target": {
+                "blueprintId": "bp-1",
+                "instanceId": "inst-1", // trailing comment on a field
+                "actionIndex": 0,
+              },
+              "trigger": { "kind": "once", "delaySeconds": 1, },
+              "payloadTemplate": { "k": "v" }
+            }
+            """);
+
+        var result = PersonaDefinitionLoader.Load(path);
+
+        result.IsSuccess.Should().BeTrue(because: string.Join("; ", result.Errors));
+        result.Definition!.Name.Should().Be("kickoff-jsonc");
+    }
+
+    [Fact]
     public void Load_SchemaViolation_ReturnsFailure()
     {
         var path = WritePersona("""
