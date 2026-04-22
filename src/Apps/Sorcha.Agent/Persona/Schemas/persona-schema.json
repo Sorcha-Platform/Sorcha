@@ -107,7 +107,7 @@
       "target": {
         "blueprintId": "{{blueprints.procurement-to-pay.id}}",
         "instanceId": "{{instances.procurement-to-pay.id}}",
-        "actionName": "Raise Purchase Order"
+        "actionIndex": 0
       },
       "trigger": { "kind": "once", "delaySeconds": 2 },
       "payloadTemplate": {
@@ -121,7 +121,7 @@
       "target": {
         "blueprintId": "{{blueprints.invoice.id}}",
         "instanceId": "{{instances.invoice.id}}",
-        "actionName": "Raise Invoice"
+        "actionIndex": 4
       },
       "trigger": {
         "kind": "interval",

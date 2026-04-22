@@ -18,7 +18,8 @@ public sealed class OnceTriggerLoop : IPersonaLoop
     private readonly IRandomSource _random;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<OnceTriggerLoop> _logger;
-    private int _completed;
+    // volatile: CompletedIterations may be polled from a different task than RunAsync.
+    private volatile int _completed;
 
     public OnceTriggerLoop(
         PersonaDefinition definition,

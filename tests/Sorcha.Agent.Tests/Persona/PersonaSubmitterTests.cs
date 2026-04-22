@@ -96,6 +96,22 @@ public class PersonaSubmitterTests
     }
 
     [Fact]
+    public async Task SubmitAsync_RequestTimeout_ReturnsTransientFailure()
+    {
+        // Simulates HttpClient.Timeout expiring: TaskCanceledException thrown when the
+        // caller's CancellationToken is NOT cancelled. Matches the classification branch
+        // in PersonaSubmitter.SubmitAsync.
+        var handler = new StubHandler { ThrowThis = new TaskCanceledException("timeout") };
+        var submitter = MakeSubmitter(handler);
+
+        var result = await submitter.SubmitAsync(MakeDefinition(),
+            new JsonObject(), CancellationToken.None);
+
+        result.Outcome.Should().Be(PersonaSubmissionOutcome.TransientFailure);
+        result.Error.Should().Contain("timed out");
+    }
+
+    [Fact]
     public async Task SubmitAsync_NetworkError_ReturnsTransientFailure()
     {
         var handler = new StubHandler { ThrowThis = new HttpRequestException("boom") };
