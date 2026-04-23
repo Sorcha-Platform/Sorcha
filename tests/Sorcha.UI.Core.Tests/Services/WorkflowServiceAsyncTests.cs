@@ -109,12 +109,15 @@ public class WorkflowServiceAsyncTests : IDisposable
     }
 
     [Fact]
-    public async Task SubmitActionExecuteAsync_ServerError_ReturnsNull()
+    public async Task SubmitActionExecuteAsync_ServerError_ReturnsErrorResult()
     {
         SetupResponse(HttpStatusCode.InternalServerError);
 
         var result = await _service.SubmitActionExecuteAsync(CreateRequest());
 
-        result.Should().BeNull();
+        result.Should().NotBeNull();
+        result!.ErrorStatusCode.Should().Be((int)HttpStatusCode.InternalServerError);
+        result.InstanceId.Should().Be("inst-001");
+        result.TransactionId.Should().BeNullOrEmpty();
     }
 }
