@@ -339,6 +339,37 @@ public static class TransactionBuilderServiceExtensions
         // PayloadHash = TxId — same canonical bytes, same hash
         var payloadHash = txId;
 
+        // Rejection recipients: the rejector (so the rejection is visible in their
+        // own wallet context) and the route-back target participant (who needs to
+        // re-attempt the target action). Populating RecipientsWallets is load-bearing:
+        // without it, InboundTransactionRouter can't notify the wallets on docket seal
+        // and StateReconstructionService has no WalletAccess entry to attribute the
+        // transaction against — leaving a hole in the chain walk that causes the
+        // next submission to pick a stale PreviousTransactionId and trip VAL_CHAIN_FORK.
+        var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (instance.ParticipantWallets != null)
+        {
+            if (!string.IsNullOrEmpty(action.Sender)
+                && instance.ParticipantWallets.TryGetValue(action.Sender, out var senderWallet)
+                && !string.IsNullOrEmpty(senderWallet))
+            {
+                recipients.Add(senderWallet);
+            }
+
+            var targetActionId = action.RejectionConfig?.TargetActionId;
+            if (targetActionId.HasValue)
+            {
+                var targetAction = blueprint.Actions?.FirstOrDefault(a => a.Id == targetActionId.Value);
+                var targetParticipantId = action.RejectionConfig?.TargetParticipantId ?? targetAction?.Sender;
+                if (!string.IsNullOrEmpty(targetParticipantId)
+                    && instance.ParticipantWallets.TryGetValue(targetParticipantId, out var targetWallet)
+                    && !string.IsNullOrEmpty(targetWallet))
+                {
+                    recipients.Add(targetWallet);
+                }
+            }
+        }
+
         return Task.FromResult(new BuiltTransaction
         {
             TransactionData = transactionData,
@@ -346,7 +377,8 @@ public static class TransactionBuilderServiceExtensions
             PayloadHash = payloadHash,
             TransactionType = "rejection",
             RegisterId = instance.RegisterId,
-            Metadata = metadata
+            Metadata = metadata,
+            RecipientsWallets = recipients.ToList()
         });
     }
 }

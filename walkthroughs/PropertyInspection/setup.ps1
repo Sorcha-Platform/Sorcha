@@ -89,7 +89,7 @@ $register = New-SorchaRegister `
     -RegisterUrl $sorchaEnv.RegisterUrl `
     -WalletUrl $sorchaEnv.WalletUrl `
     -TenantUrl $sorchaEnv.TenantUrl `
-    -Name "Strathcarron Property Services Register" `
+    -Name "Strathcarron Property Register" `
     -Description "Council property inspection and repair workflow register" `
     -TenantId $housingRole.organizationId `
     -OwnerUserId $housingSession.UserId `
@@ -112,13 +112,13 @@ $contractorSession = Connect-SorchaUser -TenantUrl $sorchaEnv.TenantUrl `
 New-SorchaRegisterSubscription -TenantUrl $sorchaEnv.TenantUrl `
     -OrganizationId $contractorRole.organizationId `
     -RegisterId $register.RegisterId `
-    -RegisterName "Strathcarron Property Services Register" `
+    -RegisterName "Strathcarron Property Register" `
     -SubscriptionType "Public" -Headers $contractorSession.Headers | Out-Null
 
 # Public org subscription (for tenant)
 Add-SorchaPublicOrgSubscription -TenantUrl $sorchaEnv.TenantUrl `
     -RegisterId $register.RegisterId `
-    -RegisterName "Strathcarron Property Services Register" `
+    -RegisterName "Strathcarron Property Register" `
     -SysAdminHeaders $sysAdmin.Headers `
     -SysAdminEmail $councilState.sysAdmin.email | Out-Null
 

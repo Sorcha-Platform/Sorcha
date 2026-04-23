@@ -139,6 +139,28 @@ $secrets = [ordered]@{
         # First-org admin alias (Highland Construction is the bootstrap org, doubles as platform admin)
         highlandAdminEmail     = $platformEmail
         highlandAdminPassword  = $platformPassword
+        # Per-role credentials (self-build-house setup.ps1 expects these keys)
+        selfBuilderEmail           = "self-builder@citizen.local"
+        selfBuilderPassword        = "Dev_Pass_2025!"
+        selfBuilderName            = "Self-Builder"
+        planningEmail              = "planning@highland-planning.local"
+        planningPassword           = "Dev_Pass_2025!"
+        planningName               = "Planning Officer"
+        buildingStandardsEmail     = "standards@highland-bs.local"
+        buildingStandardsPassword  = "Dev_Pass_2025!"
+        buildingStandardsName      = "Building Standards Officer"
+        buildingInspectorEmail     = "inspector@highland-bs.local"
+        buildingInspectorPassword  = "Dev_Pass_2025!"
+        buildingInspectorName      = "Building Inspector"
+        utilitiesEmail             = "consultations@scottish-water.local"
+        utilitiesPassword          = "Dev_Pass_2025!"
+        utilitiesName              = "Scottish Water Consultations Team"
+        structuralEmail            = "engineer@macgregor-structural.local"
+        structuralPassword         = "Dev_Pass_2025!"
+        structuralName             = "MacGregor Structural Engineers"
+        ecologistEmail             = "surveys@glen-ecology.local"
+        ecologistPassword          = "Dev_Pass_2025!"
+        ecologistName              = "Glen Ecology Surveys"
     }
     "trade-finance" = @{
         adminEmail    = $platformEmail
@@ -160,6 +182,48 @@ $secrets = [ordered]@{
         adminPassword   = $platformPassword
         adminName       = $platformName
         DefaultPassword = $platformPassword
+    }
+    "council" = @{
+        sysAdminEmail               = $platformEmail
+        sysAdminPassword            = $platformPassword
+        planningOfficerEmail        = "planning@strathcarron.local"
+        planningOfficerPassword     = "Dev_Pass_2025!"
+        planningOfficerName         = "Planning Officer"
+        contractorEmail             = "contractor@stoniebridge.local"
+        contractorPassword          = "Dev_Pass_2025!"
+        contractorName              = "Contractor"
+        structuralEmail             = "engineer@murchison.local"
+        structuralPassword          = "Dev_Pass_2025!"
+        structuralName              = "Structural Engineer"
+        ecologistEmail              = "surveys@heatherbank.local"
+        ecologistPassword           = "Dev_Pass_2025!"
+        ecologistName               = "Ecologist"
+        utilitiesEmail              = "consultations@caledonian-water.local"
+        utilitiesPassword           = "Dev_Pass_2025!"
+        utilitiesName               = "Utilities Officer"
+        buildingStandardsEmail      = "standards@strathcarron.local"
+        buildingStandardsPassword   = "Dev_Pass_2025!"
+        buildingStandardsName       = "Building Standards Officer"
+        buildingInspectorEmail      = "inspector@strathcarron.local"
+        buildingInspectorPassword   = "Dev_Pass_2025!"
+        buildingInspectorName       = "Building Inspector"
+        buildingControlEmail        = "control@strathcarron.local"
+        buildingControlPassword     = "Dev_Pass_2025!"
+        buildingControlName         = "Building Control"
+        housingOfficerEmail         = "housing@strathcarron.local"
+        housingOfficerPassword      = "Dev_Pass_2025!"
+        housingOfficerName          = "Housing Officer"
+    }
+    "property-inspection" = @{
+        tenantAEmail    = "tenant-a@citizen.local"
+        tenantAPassword = "Dev_Pass_2025!"
+        tenantAName     = "Tenant A"
+        tenantBEmail    = "tenant-b@citizen.local"
+        tenantBPassword = "Dev_Pass_2025!"
+        tenantBName     = "Tenant B"
+        tenantCEmail    = "tenant-c@citizen.local"
+        tenantCPassword = "Dev_Pass_2025!"
+        tenantCName     = "Tenant C"
     }
 }
 

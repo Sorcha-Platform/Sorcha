@@ -89,6 +89,15 @@ public class StateReconstructionService : IStateReconstructionService
 
         foreach (var tx in transactions.OrderBy(t => t.TimeStamp))
         {
+            // Track the chain head on every instance tx — including rejections and
+            // actions whose data isn't required for the current step. The chain head
+            // is a linkage concern, distinct from the "what data do I need" filter
+            // below. If we only advanced prev on required-action txs, a rejection
+            // (whose actionId is the rejected action, often not in requiredActionIds
+            // for the route-back target) would leave prev stale, and the next
+            // submission would trip VAL_CHAIN_FORK on a non-unique previousTxId.
+            previousTransactionId = tx.TxId;
+
             // Extract action ID from transaction metadata
             var txActionId = ExtractActionIdFromTransaction(tx);
             if (txActionId == null)
@@ -96,7 +105,7 @@ public class StateReconstructionService : IStateReconstructionService
                 continue;
             }
 
-            // Only process if this action is required
+            // Only accumulate state from prior actions whose data is required
             if (!requiredActionIds.Contains(txActionId.Value))
             {
                 continue;
@@ -110,9 +119,6 @@ public class StateReconstructionService : IStateReconstructionService
             {
                 actionData[txActionId.Value.ToString()] = decryptedData.Value;
             }
-
-            // Track the latest transaction for chaining
-            previousTransactionId = tx.TxId;
 
             // Track branch states if present
             var branchId = ExtractBranchIdFromTransaction(tx);
