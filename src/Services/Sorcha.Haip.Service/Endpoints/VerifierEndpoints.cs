@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Sorcha Contributors
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using Sorcha.Haip.Service.Models;
 using Sorcha.Haip.Service.Services;
 
@@ -28,7 +29,7 @@ public static class VerifierEndpoints
                 "Returns the Authorization Request URI for QR code rendering.")
             .Produces<object>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
-            .AllowAnonymous(); // Internal service-to-service: Blueprint Service calls directly
+            .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
 
         // Public — wallet fetches the signed Request Object
         app.MapGet("/api/v1/verifier/requests/{requestId:guid}/request-object", GetRequestObject)
@@ -64,7 +65,7 @@ public static class VerifierEndpoints
             .WithSummary("Get verification result (service-to-service)")
             .Produces<VerificationResult>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound)
-            .AllowAnonymous(); // Internal service-to-service: UI polls via API Gateway
+            .RequireAuthorization(AuthorizationPolicies.RequireService); // SEC-013
     }
 
     private static async Task<IResult> CreatePresentationRequest(
