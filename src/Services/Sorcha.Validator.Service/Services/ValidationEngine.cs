@@ -833,14 +833,32 @@ public class ValidationEngine : IValidationEngine
                         || previousTx.MetaData.TransactionType == Sorcha.Register.Models.Enums.TransactionType.Control;
                     if (!isControlTx)
                     {
+                        // Fetch up to 50 existing successors so we can distinguish an
+                        // idempotent resubmission (same TxId already present) from a
+                        // genuine fork (different TxId with the same parent). Without
+                        // this dedup, a retry after a transient confirmation failure
+                        // gets a spurious VAL_CHAIN_FORK even though the canonical
+                        // transaction bytes are identical.
                         var existingSuccessors = await _registerClient.GetTransactionsByPrevTxIdAsync(
-                            transaction.RegisterId, previousTxId, 1, 1, ct);
+                            transaction.RegisterId, previousTxId, 1, 50, ct);
 
                         if (existingSuccessors.Total > 0)
                         {
-                            errors.Add(CreateError("VAL_CHAIN_FORK",
-                                $"Fork detected: {existingSuccessors.Total} existing transaction(s) already reference previous transaction '{previousTxId}' in register '{transaction.RegisterId}'",
-                                ValidationErrorCategory.Chain, "PreviousTransactionId"));
+                            var isIdempotentResubmission = existingSuccessors.Transactions?.Any(t =>
+                                string.Equals(t.TxId, transaction.TransactionId, StringComparison.OrdinalIgnoreCase)) == true;
+
+                            if (!isIdempotentResubmission)
+                            {
+                                errors.Add(CreateError("VAL_CHAIN_FORK",
+                                    $"Fork detected: {existingSuccessors.Total} existing transaction(s) already reference previous transaction '{previousTxId}' in register '{transaction.RegisterId}'",
+                                    ValidationErrorCategory.Chain, "PreviousTransactionId"));
+                            }
+                            else
+                            {
+                                _logger.LogInformation(
+                                    "Idempotent resubmission of transaction {TxId} against previous {PrevTxId} in register {RegisterId} — already present, skipping fork error",
+                                    transaction.TransactionId, previousTxId, transaction.RegisterId);
+                            }
                         }
                     }
                 }

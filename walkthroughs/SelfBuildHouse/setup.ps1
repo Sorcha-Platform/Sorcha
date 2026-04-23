@@ -146,14 +146,15 @@ foreach ($def in $orgDefs) {
 $orgs["public"] = $publicOrgId
 
 # ============================================================================
-# Step 6: Add Team Members (non-admin users) to Their Target Orgs
+# Step 6: Reconcile User -> Org Membership (admins + team members)
 # ============================================================================
-Write-WtStep "Step 6: Add Team Members"
+Write-WtStep "Step 6: Reconcile User -> Org Membership"
 
-# Non-admin, non-citizen users need to be added to their target private org by
-# the sysadmin. Today that's just the building-inspector sharing Strathcarron BS.
-$teamMembers = $userDefs | Where-Object { -not $_.isOrgAdmin -and -not $_.isCitizen }
-foreach ($u in $teamMembers) {
+# Idempotency guard: on re-runs, orgs already exist so New-SorchaOrganization
+# returns the existing id without re-binding the admin email. Ensure every
+# non-citizen user is a member of their target org, regardless of admin/team.
+$nonCitizenUsers = $userDefs | Where-Object { -not $_.isCitizen }
+foreach ($u in $nonCitizenUsers) {
     $orgId = $orgs[$u.org]
     Get-OrCreateUser `
         -TenantUrl $env.TenantUrl `
@@ -252,10 +253,10 @@ $bsSession = $sessionCache["$($users['building-standards-officer'].email)|$($use
 $bsOfficerJwt = Decode-SorchaJwt -Token $bsSession.Token
 $bsOwnerUserId = $bsOfficerJwt.sub
 
-Write-WtInfo "  Creating Strathcarron Building Standards Register..."
+Write-WtInfo "  Creating Strathcarron Warrants Register..."
 $buildingRegister = New-SorchaRegister `
     -RegisterUrl $env.RegisterUrl -WalletUrl $env.WalletUrl -TenantUrl $env.TenantUrl `
-    -Name "Strathcarron Building Standards Register" `
+    -Name "Strathcarron Warrants Register" `
     -Description "Building warrants, staged inspections, and completion certificates for the Strathcarron Council area" `
     -TenantId $users["building-standards-officer"].organizationId `
     -OwnerUserId $bsOwnerUserId `
@@ -301,7 +302,7 @@ foreach ($orgKey in $privateOrgKeys) {
                 -TenantUrl $env.TenantUrl `
                 -OrganizationId $orgId `
                 -RegisterId $buildingRegister.RegisterId `
-                -RegisterName "Strathcarron Building Standards Register" `
+                -RegisterName "Strathcarron Warrants Register" `
                 -SubscriptionType "Public" `
                 -Headers $sysAdmin.Headers
         } catch {

@@ -987,7 +987,7 @@
         "rejectionConfig": {
           "targetActionId": 5,
           "requireReason": true,
-          "isTerminal": false
+          "isTerminal": true
         },
         "disclosures": [
           {

@@ -109,15 +109,26 @@ foreach ($def in $orgDefs) {
     Write-WtInfo "  $($def.name) → $($result.OrganizationId)"
 }
 
-# ── Step 4: Add team members to Strathcarron Council ──────────────
-Write-WtStep "Adding team members to Strathcarron Council"
-$strathcarronId = $orgs["strathcarron"]
-foreach ($u in $teamMemberDefs) {
+# ── Step 4: Reconcile user-org membership (admins + team members) ──
+# Idempotency: on re-runs, orgs already exist, so New-SorchaOrganization
+# returns the existing id without re-binding the admin email. Ensure every
+# user is a member of their target org regardless of admin-vs-team role.
+Write-WtStep "Reconciling user-org membership"
+foreach ($u in $orgAdminDefs) {
+    $orgId = $orgs[$u.orgSubdomain]
     Get-OrCreateUser -TenantUrl $sorchaEnv.TenantUrl `
-        -OrganizationId $strathcarronId `
+        -OrganizationId $orgId `
         -Email $u.email -DisplayName $u.name `
         -Headers $sysAdmin.Headers -Roles @("Administrator", "Consumer") | Out-Null
-    Write-WtInfo "  $($u.name) added to Strathcarron Council"
+    Write-WtInfo "  $($u.name) ensured in $($u.orgSubdomain)"
+}
+foreach ($u in $teamMemberDefs) {
+    $orgId = $orgs[$u.orgSubdomain]
+    Get-OrCreateUser -TenantUrl $sorchaEnv.TenantUrl `
+        -OrganizationId $orgId `
+        -Email $u.email -DisplayName $u.name `
+        -Headers $sysAdmin.Headers -Roles @("Administrator", "Consumer") | Out-Null
+    Write-WtInfo "  $($u.name) ensured in $($u.orgSubdomain)"
 }
 
 # ── Step 5: Login as each user, create wallets, register participants ─
