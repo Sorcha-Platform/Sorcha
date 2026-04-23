@@ -93,6 +93,15 @@ public class Blueprint : IEquatable<Blueprint>
     public string? OrganizationId { get; set; }
 
     /// <summary>
+    /// Optional Timebound Presentation Lifecycle configuration (Feature 111).
+    /// When null, platform defaults apply: abandonment records off, outcome detail
+    /// level derived from register visibility, validity window 600 seconds.
+    /// </summary>
+    [JsonPropertyName("presentationConfig")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BlueprintPresentationConfig? PresentationConfig { get; set; }
+
+    /// <summary>
     /// Semantic major version number (structural changes increment this).
     /// Use VersionMajor.VersionMinor for display (e.g., "v2.1").
     /// </summary>

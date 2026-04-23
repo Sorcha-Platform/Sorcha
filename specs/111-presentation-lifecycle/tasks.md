@@ -27,10 +27,10 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 **Purpose**: New project scaffolding and solution wiring.
 
-- [ ] T001 Create new project `src/Common/Sorcha.PresentationLifecycle.Abstractions/Sorcha.PresentationLifecycle.Abstractions.csproj` targeting `net10.0` with nullable enabled, SPDX license header, matching other `Sorcha.Common.*` projects
-- [ ] T002 [P] Add `<ProjectReference>` to the new abstractions project from `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj` and `src/Services/Sorcha.Haip.Service/Sorcha.Haip.Service.csproj`
-- [ ] T003 Add the new project to `Sorcha.sln` with `dotnet sln Sorcha.sln add src/Common/Sorcha.PresentationLifecycle.Abstractions/Sorcha.PresentationLifecycle.Abstractions.csproj`
-- [ ] T004 [P] Add `src/Common/Sorcha.PresentationLifecycle.Abstractions/README.md` describing the consumer-agnostic purpose of the project (two short paragraphs — what it is, why it's separate from Blueprint Service)
+- [X] T001 Create new project `src/Common/Sorcha.PresentationLifecycle.Abstractions/Sorcha.PresentationLifecycle.Abstractions.csproj` targeting `net10.0` with nullable enabled, SPDX license header, matching other `Sorcha.Common.*` projects
+- [X] T002 [P] Add `<ProjectReference>` to the new abstractions project from `src/Services/Sorcha.Blueprint.Service/Sorcha.Blueprint.Service.csproj` and `src/Services/Sorcha.Haip.Service/Sorcha.Haip.Service.csproj`
+- [X] T003 Add the new project to `Sorcha.sln` with `dotnet sln Sorcha.sln add src/Common/Sorcha.PresentationLifecycle.Abstractions/Sorcha.PresentationLifecycle.Abstractions.csproj`
+- [X] T004 [P] Add `src/Common/Sorcha.PresentationLifecycle.Abstractions/README.md` describing the consumer-agnostic purpose of the project (two short paragraphs — what it is, why it's separate from Blueprint Service)
 
 ---
 
@@ -40,22 +40,22 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Add `PresentationInitiated`, `PresentationOutcome`, `PresentationAbandoned` values to `src/Common/Sorcha.Register.Models/Enums/TransactionType.cs`
-- [ ] T006 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationOutcomeKind.cs` (enum: Success, Decline) with XML docs
-- [ ] T007 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationDeclineReason.cs` (enum: ExpiredCredential, WrongIssuer, Revoked, SchemaMismatch, SignatureInvalid, ActionNoLongerAvailable, VerifierError) with XML docs
-- [ ] T008 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationInitiationContext.cs` record with PresentationRequestId, InstanceId, ActionId, RegisterId, BlueprintId, SubmitterWallet, RequirementsDigest, InitiatedAt
-- [ ] T009 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationOutcome.cs` record with Kind, VerifiedClaims, Reason, VerifierDiagnostics, PresentationSubmissionHash
-- [ ] T010 Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/IPresentationConsumer.cs` interface with ConsumerName property + VerifyAsync method per `contracts/consumer-contract.md`
-- [ ] T011 [P] Create `src/Common/Sorcha.Blueprint.Models/BlueprintPresentationConfig.cs` record with RecordAbandonment, OutcomeDetailLevel, PresentationValidityWindowSeconds + OutcomeDetailLevel enum (Minimal, Verbose)
-- [ ] T012 Add optional `PresentationConfig` property to `src/Common/Sorcha.Blueprint.Models/Blueprint.cs` referencing the new record
+- [X] T005 Add `PresentationInitiated`, `PresentationOutcome`, `PresentationAbandoned` values to `src/Common/Sorcha.Register.Models/Enums/TransactionType.cs`
+- [X] T006 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationOutcomeKind.cs` (enum: Success, Decline) with XML docs
+- [X] T007 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationDeclineReason.cs` (enum: ExpiredCredential, WrongIssuer, Revoked, SchemaMismatch, SignatureInvalid, ActionNoLongerAvailable, VerifierError) with XML docs
+- [X] T008 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationInitiationContext.cs` record with PresentationRequestId, InstanceId, ActionId, RegisterId, BlueprintId, SubmitterWallet, RequirementsDigest, InitiatedAt
+- [X] T009 [P] Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/PresentationOutcome.cs` record with Kind, VerifiedClaims, Reason, VerifierDiagnostics, PresentationSubmissionHash
+- [X] T010 Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/IPresentationConsumer.cs` interface with ConsumerName property + VerifyAsync method per `contracts/consumer-contract.md`
+- [X] T011 [P] Create `src/Common/Sorcha.Blueprint.Models/BlueprintPresentationConfig.cs` record with RecordAbandonment, OutcomeDetailLevel, PresentationValidityWindowSeconds + OutcomeDetailLevel enum (Minimal, Verbose)
+- [X] T012 Add optional `PresentationConfig` property to `src/Common/Sorcha.Blueprint.Models/Blueprint.cs` referencing the new record
 - [ ] T013 Update JSON schema validation in `src/Core/Sorcha.Blueprint.Core/` (search for existing `blueprint.schema.json` consumers) to accept the new `presentationConfig` root field; ensure validation rejects unknown values for `outcomeDetailLevel`
-- [ ] T014 Extend `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs` with three new extension methods: `BuildPresentationInitiatedAsync`, `BuildPresentationOutcomeAsync`, `BuildPresentationAbandonedAsync` — signatures derived from `data-model.md` §1.1-§1.3; mirror the existing `BuildRejectionTransactionAsync` pattern including `RecipientsWallets` population
-- [ ] T015 [P] Create `src/Services/Sorcha.Blueprint.Service/Services/Storage/IPendingPresentationStore.cs` interface with `StoreAsync`, `GetAsync`, `DeleteAsync`, `TryClaimOutcomeSentinelAsync`, `GetOutcomeSentinelAsync`, `SetAbandonedSentinelAsync` methods
-- [ ] T016 Create `src/Services/Sorcha.Blueprint.Service/Services/Storage/RedisPendingPresentationStore.cs` implementing IPendingPresentationStore against StackExchange.Redis (keys per data-model.md §2)
-- [ ] T017 [P] Create `src/Services/Sorcha.Blueprint.Service/Services/Storage/IPresentationRateLimiter.cs` and `RedisPresentationRateLimiter.cs` implementing per-wallet-per-register sliding-window quota via INCR + TTL
-- [ ] T018 [P] Create `src/Services/Sorcha.Blueprint.Service/Configuration/PresentationLifecycleOptions.cs` with DefaultValidityWindowSeconds (600), RateLimit (Threshold, WindowSeconds), SweeperIntervalSeconds (30), SweeperLeaderLockTtlSeconds (60)
+- [X] T014 Extend `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs` with three new extension methods: `BuildPresentationInitiatedAsync`, `BuildPresentationOutcomeAsync`, `BuildPresentationAbandonedAsync` — signatures derived from `data-model.md` §1.1-§1.3; mirror the existing `BuildRejectionTransactionAsync` pattern including `RecipientsWallets` population
+- [X] T015 [P] Create `IPendingPresentationStore` interface at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/IPendingPresentationStore.cs` (namespace `Sorcha.Blueprint.Service.Storage.Presentations` to avoid collision with root `Storage` ns)
+- [X] T016 Create `RedisPendingPresentationStore` at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/RedisPendingPresentationStore.cs`
+- [X] T017 [P] Create `IPresentationRateLimiter` + `RedisPresentationRateLimiter` at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/` — per-wallet-per-register sliding-window via INCR + TTL
+- [X] T018 [P] Create `src/Services/Sorcha.Blueprint.Service/Configuration/PresentationLifecycleOptions.cs`
 - [ ] T019 Register `IPendingPresentationStore`, `IPresentationRateLimiter`, `PresentationLifecycleOptions` in `src/Services/Sorcha.Blueprint.Service/Program.cs` DI container with options binding from `"PresentationLifecycle"` configuration section
-- [ ] T020 [P] Create `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IPresentationLifecycleService.cs` with `InitiateAsync`, `HandleOutcomeAsync`, `HandleAbandonmentAsync` methods — consumes `IPresentationConsumer` via DI
+- [X] T020 [P] Create `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IPresentationLifecycleService.cs` with `InitiateAsync`, `HandleOutcomeAsync`, `HandleAbandonmentAsync` methods — consumes `IPresentationConsumer` via DI
 - [ ] T021 Add `docker-compose.yml` + `docker-compose.n1.yml` environment variables block for `PresentationLifecycle__*` configuration (default values from T018)
 
 **Checkpoint**: Foundation ready. US1 and US2 can now be implemented — in parallel if staffed; sequentially if solo.

@@ -381,6 +381,194 @@ public static class TransactionBuilderServiceExtensions
             RecipientsWallets = recipients.ToList()
         });
     }
+
+    /// <summary>
+    /// Builds a presentation-initiated transaction (Feature 111). Carries the submitter
+    /// wallet, action reference, requirements digest, and presentation request id, but
+    /// NO credential data — nothing has been presented at this point.
+    /// </summary>
+    public static Task<BuiltTransaction> BuildPresentationInitiatedAsync(
+        this ITransactionBuilderService service,
+        BlueprintModel blueprint,
+        Instance instance,
+        ActionModel action,
+        Guid presentationRequestId,
+        string consumerName,
+        byte[] requirementsDigest,
+        int validityWindowSeconds,
+        string submitterWallet,
+        string? previousTransactionId,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["blueprintId"] = blueprint.Id,
+            ["actionId"] = action.Id,
+            ["instanceId"] = instance.Id,
+            ["previousTxId"] = previousTransactionId ?? "",
+            ["presentationRequestId"] = presentationRequestId.ToString(),
+            ["consumerName"] = consumerName
+        };
+
+        var transactionPayload = new
+        {
+            type = "presentation-initiated",
+            blueprintId = blueprint.Id,
+            actionId = action.Id,
+            instanceId = instance.Id,
+            previousTxId = previousTransactionId,
+            presentationRequestId,
+            consumerName,
+            submitterWallet,
+            requirementsDigest = Convert.ToHexString(requirementsDigest).ToLowerInvariant(),
+            validityWindowSeconds,
+            timestamp = DateTimeOffset.UtcNow
+        };
+
+        var transactionData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(transactionPayload, CanonicalJsonOptions);
+        var txId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(transactionData)).ToLowerInvariant();
+
+        return Task.FromResult(new BuiltTransaction
+        {
+            TransactionData = transactionData,
+            TxId = txId,
+            PayloadHash = txId,
+            TransactionType = "presentation-initiated",
+            RegisterId = instance.RegisterId,
+            Metadata = metadata,
+            RecipientsWallets = new List<string> { submitterWallet }
+        });
+    }
+
+    /// <summary>
+    /// Builds a presentation-outcome transaction (Feature 111). On success, carries
+    /// verified claims + presentationSubmissionHash; on decline, carries the reason
+    /// code and (when verbose) verifier diagnostics.
+    /// </summary>
+    public static Task<BuiltTransaction> BuildPresentationOutcomeAsync(
+        this ITransactionBuilderService service,
+        BlueprintModel blueprint,
+        Instance instance,
+        ActionModel action,
+        Guid presentationRequestId,
+        string consumerName,
+        string submitterWallet,
+        string outcomeKind,                                // "success" | "decline"
+        IReadOnlyDictionary<string, object>? verifiedClaims,
+        string? declineReason,
+        IReadOnlyDictionary<string, object>? verifierDiagnostics,
+        string? presentationSubmissionHash,
+        IReadOnlyDictionary<string, object>? actionPayload, // non-credential fields carried from the original attempt
+        string? previousTransactionId,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["blueprintId"] = blueprint.Id,
+            ["actionId"] = action.Id,
+            ["instanceId"] = instance.Id,
+            ["previousTxId"] = previousTransactionId ?? "",
+            ["presentationRequestId"] = presentationRequestId.ToString(),
+            ["consumerName"] = consumerName,
+            ["outcomeKind"] = outcomeKind
+        };
+
+        var transactionPayload = new Dictionary<string, object?>
+        {
+            ["type"] = "presentation-outcome",
+            ["kind"] = outcomeKind,
+            ["blueprintId"] = blueprint.Id,
+            ["actionId"] = action.Id,
+            ["instanceId"] = instance.Id,
+            ["previousTxId"] = previousTransactionId,
+            ["presentationRequestId"] = presentationRequestId,
+            ["consumerName"] = consumerName,
+            ["submitterWallet"] = submitterWallet,
+            ["timestamp"] = DateTimeOffset.UtcNow
+        };
+
+        if (string.Equals(outcomeKind, "success", StringComparison.OrdinalIgnoreCase))
+        {
+            transactionPayload["verifiedClaims"] = verifiedClaims;
+            transactionPayload["presentationSubmissionHash"] = presentationSubmissionHash;
+            if (actionPayload is not null) transactionPayload["actionPayload"] = actionPayload;
+        }
+        else
+        {
+            transactionPayload["reason"] = declineReason;
+            if (verifierDiagnostics is not null) transactionPayload["verifierDiagnostics"] = verifierDiagnostics;
+        }
+
+        var transactionData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(transactionPayload, CanonicalJsonOptions);
+        var txId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(transactionData)).ToLowerInvariant();
+
+        return Task.FromResult(new BuiltTransaction
+        {
+            TransactionData = transactionData,
+            TxId = txId,
+            PayloadHash = txId,
+            TransactionType = "presentation-outcome",
+            RegisterId = instance.RegisterId,
+            Metadata = metadata,
+            RecipientsWallets = new List<string> { submitterWallet }
+        });
+    }
+
+    /// <summary>
+    /// Builds a presentation-abandoned transaction (Feature 111). Carries only the
+    /// presentation request id and abandonment timestamp. Only written when the
+    /// blueprint opts in via recordAbandonment = true.
+    /// </summary>
+    public static Task<BuiltTransaction> BuildPresentationAbandonedAsync(
+        this ITransactionBuilderService service,
+        BlueprintModel blueprint,
+        Instance instance,
+        ActionModel action,
+        Guid presentationRequestId,
+        string consumerName,
+        string submitterWallet,
+        int validityWindowSeconds,
+        string? previousTransactionId,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["blueprintId"] = blueprint.Id,
+            ["actionId"] = action.Id,
+            ["instanceId"] = instance.Id,
+            ["previousTxId"] = previousTransactionId ?? "",
+            ["presentationRequestId"] = presentationRequestId.ToString(),
+            ["consumerName"] = consumerName
+        };
+
+        var transactionPayload = new
+        {
+            type = "presentation-abandoned",
+            blueprintId = blueprint.Id,
+            actionId = action.Id,
+            instanceId = instance.Id,
+            previousTxId = previousTransactionId,
+            presentationRequestId,
+            consumerName,
+            submitterWallet,
+            validityWindowSeconds,
+            abandonedAt = DateTimeOffset.UtcNow
+        };
+
+        var transactionData = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(transactionPayload, CanonicalJsonOptions);
+        var txId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(transactionData)).ToLowerInvariant();
+
+        return Task.FromResult(new BuiltTransaction
+        {
+            TransactionData = transactionData,
+            TxId = txId,
+            PayloadHash = txId,
+            TransactionType = "presentation-abandoned",
+            RegisterId = instance.RegisterId,
+            Metadata = metadata,
+            RecipientsWallets = new List<string> { submitterWallet }
+        });
+    }
 }
 
 /// <summary>
@@ -476,12 +664,21 @@ public class BuiltTransaction
             Metadata = new Dictionary<string, string>
             {
                 ["instanceId"] = Metadata.GetValueOrDefault("instanceId")?.ToString() ?? string.Empty,
-                ["Type"] = string.Equals(TransactionType, "rejection", StringComparison.OrdinalIgnoreCase)
-                    ? "Rejection"
-                    : "Action"
+                ["Type"] = MapTransactionTypeName(TransactionType)
             }
         };
     }
+
+    // Maps the internal TransactionType string to the TransactionType enum name
+    // used by DocketBuildTriggerService.Enum.TryParse on the validator side.
+    private static string MapTransactionTypeName(string transactionType) => transactionType switch
+    {
+        "rejection" => "Rejection",
+        "presentation-initiated" => "PresentationInitiated",
+        "presentation-outcome" => "PresentationOutcome",
+        "presentation-abandoned" => "PresentationAbandoned",
+        _ => "Action"
+    };
 
     /// <summary>
     /// Converts to a TransactionModel for submission to the Register Service

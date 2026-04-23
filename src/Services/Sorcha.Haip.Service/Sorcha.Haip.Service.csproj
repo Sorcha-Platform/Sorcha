@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.Cryptography\Sorcha.Cryptography.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Blueprint.Models\Sorcha.Blueprint.Models.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Tenant.Models\Sorcha.Tenant.Models.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.PresentationLifecycle.Abstractions\Sorcha.PresentationLifecycle.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

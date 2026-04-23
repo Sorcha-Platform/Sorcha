@@ -34,6 +34,7 @@
     <ProjectReference Include="..\..\Common\Sorcha.ServiceClients\Sorcha.ServiceClients.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Storage.Abstractions\Sorcha.Storage.Abstractions.csproj" />
     <ProjectReference Include="..\..\Common\Sorcha.Storage.InMemory\Sorcha.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\..\Common\Sorcha.PresentationLifecycle.Abstractions\Sorcha.PresentationLifecycle.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>
