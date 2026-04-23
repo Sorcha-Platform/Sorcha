@@ -259,6 +259,8 @@ public class RegisterServiceClient : IRegisterServiceClient
         {
             _logger.LogDebug("Reading latest docket from register {RegisterId}", registerId);
 
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.GetAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/dockets/latest",
                 cancellationToken);
@@ -460,6 +462,8 @@ public class RegisterServiceClient : IRegisterServiceClient
                 "Getting transactions from register {RegisterId} ($skip={Skip}, $top={Top})",
                 registerId, skip, pageSize);
 
+            await SetAuthHeaderAsync(cancellationToken);
+
             var response = await _httpClient.GetAsync(
                 $"api/registers/{Uri.EscapeDataString(registerId)}/transactions?$skip={skip}&$top={pageSize}&$count=true",
                 cancellationToken);
@@ -499,6 +503,8 @@ public class RegisterServiceClient : IRegisterServiceClient
             _logger.LogDebug(
                 "Getting transactions for wallet {WalletAddress} from register {RegisterId}",
                 walletAddress, registerId);
+
+            await SetAuthHeaderAsync(cancellationToken);
 
             var response = await _httpClient.GetAsync(
                 $"api/query/wallet/{Uri.EscapeDataString(walletAddress)}/transactions/{Uri.EscapeDataString(registerId)}?$skip={(page - 1) * pageSize}&$top={pageSize}",
@@ -1023,6 +1029,8 @@ public class RegisterServiceClient : IRegisterServiceClient
                 Advertise = true,
                 IsFullReplica = true
             };
+
+            await SetAuthHeaderAsync(cancellationToken);
 
             var response = await _httpClient.PostAsJsonAsync(
                 "api/registers",
