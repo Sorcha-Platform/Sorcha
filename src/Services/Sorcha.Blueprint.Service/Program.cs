@@ -161,6 +161,8 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPe
     Sorcha.Blueprint.Service.Storage.Presentations.RedisPendingPresentationStore>();
 builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPresentationRateLimiter,
     Sorcha.Blueprint.Service.Storage.Presentations.RedisPresentationRateLimiter>();
+builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationLifecycleService,
+    Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleService>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
 // Hot-path lookup for Instance.ParticipantWallets during action execution.
@@ -615,6 +617,12 @@ app.MapActionEndpoints();
 
 // Map file chunk submission endpoints (Feature 085 — Stored Data Transactions)
 app.MapFileChunkEndpoints();
+
+// Feature 111 — Timebound Presentation Lifecycle endpoints.
+var presentationGroup = app.MapGroup("/api/presentations")
+    .WithTags("Presentations")
+    .RequireAuthorization();
+presentationGroup.MapPresentationEndpoints();
 
 // ===========================
 // Template Endpoints
@@ -1838,7 +1846,21 @@ instancesGroup.MapPost("/{instanceId}/actions/{actionId}/execute", async (
             delegationToken,
             context.User);
 
+        // Feature 111: awaiting presentation = 202 Accepted (action not yet complete).
+        if (response.AwaitingPresentation)
+        {
+            return Results.Accepted($"/api/presentations/{response.PresentationRequest?.RequestId}/status", response);
+        }
+
         return Results.Ok(response);
+    }
+    catch (Sorcha.Blueprint.Service.Services.Implementation.PresentationRateLimitedException ex)
+    {
+        if (ex.RetryAfter is { } retry)
+        {
+            context.Response.Headers["Retry-After"] = ((int)Math.Ceiling(retry.TotalSeconds)).ToString();
+        }
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status429TooManyRequests);
     }
     catch (UnauthorizedAccessException ex)
     {
