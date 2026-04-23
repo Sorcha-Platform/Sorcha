@@ -84,7 +84,7 @@ Full project tree: `docs/reference/project-structure.md`. Architecture diagrams:
 
 ## Feature API References
 
-Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), and ownership-agnostic submission / derived relationship (108) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
+Feature-specific endpoint tables, domain models, and cross-cutting patterns for Participant Identity, Register Invitations, Trust Hardening (079), Stored Data / file attachments (085), Validator Roster (086), Org Key Derivation (083), Platform Org Topology, Consumer Persona (092), System Register Genesis (099), Open Participants / late binding (103), `x-review` / credential id-cards (107), ownership-agnostic submission / derived relationship (108), and Timebound Presentation Lifecycle (111) are consolidated in the **`sorcha-architecture`** skill (`.claude/skills/sorcha-architecture/SKILL.md`). Load it when touching any of those features — it carries what used to live inline here.
 
 Full REST/gRPC reference: `docs/reference/API-DOCUMENTATION.md`.
 

@@ -196,8 +196,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 - [ ] T072 [P] Add `.WithSummary()` and `.WithDescription()` to every new endpoint in `PresentationEndpoints.cs` per Constitution Principle III
 - [ ] T073 [P] Add XML `/// <summary>` docs to every public type in `Sorcha.PresentationLifecycle.Abstractions` (zero-warning build requirement)
 - [ ] T074 [P] Update `docs/reference/API-DOCUMENTATION.md` with the three new endpoints (`/execute` semantics change + `/api/presentations/{id}/status` + `/api/presentations/callbacks/{consumerName}`)
-- [ ] T075 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` — new section "Feature 111 Timebound Presentation Lifecycle" summarising the three-event model and consumer pattern
-- [ ] T076 [P] Update `CLAUDE.md` Feature API References paragraph to include Feature 111
+- [X] T075 [P] Update `.claude/skills/sorcha-architecture/SKILL.md` — new section "Feature 111 Timebound Presentation Lifecycle" summarising the three-event model and consumer pattern
+- [X] T076 [P] Update `CLAUDE.md` Feature API References paragraph to include Feature 111
 - [ ] T077 Mark `SEC-014` in `.specify/MASTER-TASKS.md` as superseded by Feature 111; add a one-line pointer to `specs/111-presentation-lifecycle/`
 - [ ] T078 Create `docs/reference/presentation-lifecycle.md` — developer + auditor guide derived from `specs/111-presentation-lifecycle/quickstart.md` with additional operational notes
 - [ ] T079 Run the AssuredIdentity walkthrough end-to-end against the new lifecycle and verify all three lifecycle transaction types appear in the register query shown in `quickstart.md` §"Running the feature end-to-end locally"
