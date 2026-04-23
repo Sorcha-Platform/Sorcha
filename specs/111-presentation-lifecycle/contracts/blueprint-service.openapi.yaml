@@ -1,0 +1,190 @@
+openapi: 3.1.0
+info:
+  title: Blueprint Service — Presentation Lifecycle endpoints
+  version: 1.0.0
+  description: |
+    Endpoints added/changed in Feature 111 (Timebound Presentation Lifecycle).
+    Only the surface directly touched by this feature is documented here; the full
+    Blueprint Service API is elsewhere.
+
+paths:
+  /api/instances/{instanceId}/actions/{actionId}/execute:
+    post:
+      summary: Execute a blueprint action (existing endpoint, semantics changed for presentation-required actions)
+      description: |
+        Unchanged signature. Behavioural change: when the action has credentialRequirements
+        with PresentationSource == HaipExternalWallet (or any other non-inline consumer) and
+        no presentations are submitted inline, the response is now "awaiting presentation"
+        rather than "action complete". The client receives a QR URI and a presentationRequestId
+        but the instance is NOT advanced until the outcome callback arrives.
+      parameters:
+        - name: instanceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: actionId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionSubmissionRequest'
+      responses:
+        '200':
+          description: Action completed synchronously (no credential-requirement waiting)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActionExecutionResponse' }
+        '202':
+          description: |
+            Presentation-required action accepted; awaiting verifier callback.
+            Body includes QR URI and presentationRequestId.
+            Register now carries a PresentationInitiated transaction.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresentationPendingResponse' }
+        '400': { description: Validation error }
+        '409':
+          description: Action already has a successful PresentationOutcome (duplicate submission)
+        '429':
+          description: Rate limit exceeded (per-wallet-per-register quota)
+
+  /api/presentations/{presentationRequestId}/status:
+    get:
+      summary: Get current lifecycle state of a presentation
+      description: |
+        Client polling endpoint. Returns one of: "initiated" (awaiting callback),
+        "success", "declined", "abandoned", "unknown" (no such request or already
+        cleaned up). Used by UI to display presentation progress and by tests.
+      parameters:
+        - name: presentationRequestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresentationStatusResponse' }
+        '404':
+          description: Unknown presentationRequestId
+
+  /api/presentations/callbacks/{consumerName}:
+    post:
+      summary: Verifier callback relay (internal service-to-service)
+      description: |
+        Consumer services (HAIP Service, future non-HAIP consumers) POST verifier
+        outcomes here. Blueprint Service writes the corresponding PresentationOutcome
+        transaction, resumes the original action if success, and updates Redis sentinel.
+
+        Requires RequireService JWT (same pattern as SEC-011, SEC-013).
+      parameters:
+        - name: consumerName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [haip]
+            description: Must match a registered IPresentationConsumer.ConsumerName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifierCallbackPayload' }
+      responses:
+        '200':
+          description: Outcome written to register (or duplicate, no-op)
+        '202':
+          description: Late outcome after abandonment — both transactions now on register
+        '400': { description: Malformed payload }
+        '401': { description: Missing or invalid service JWT }
+        '404': { description: Unknown presentationRequestId }
+
+components:
+  schemas:
+    ActionSubmissionRequest:
+      type: object
+      required: [senderWallet]
+      properties:
+        senderWallet: { type: string }
+        payload:
+          type: object
+          additionalProperties: true
+          description: Non-credential action fields
+        credentialPresentations:
+          type: array
+          description: Inline credential presentations (skips HAIP flow when populated)
+          items: { type: object }
+
+    ActionExecutionResponse:
+      type: object
+      properties:
+        transactionId: { type: string }
+        instanceId: { type: string, format: uuid }
+        complete: { type: boolean }
+
+    PresentationPendingResponse:
+      type: object
+      required: [presentationRequestId, authorizationRequestUri, status, expiresAt]
+      properties:
+        presentationRequestId: { type: string, format: uuid }
+        authorizationRequestUri:
+          type: string
+          description: openid4vp:// URI for QR code rendering
+        requestUri: { type: string }
+        nonce: { type: string }
+        expiresAt: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [awaiting-presentation]
+        initiatedTransactionId:
+          type: string
+          description: TxId of the PresentationInitiated transaction on the register
+
+    PresentationStatusResponse:
+      type: object
+      required: [presentationRequestId, state]
+      properties:
+        presentationRequestId: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [initiated, success, declined, abandoned, unknown]
+        initiatedAt: { type: string, format: date-time }
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        outcomeTransactionId:
+          type: string
+          nullable: true
+        abandonmentTransactionId:
+          type: string
+          nullable: true
+
+    VerifierCallbackPayload:
+      type: object
+      required: [presentationRequestId, kind]
+      properties:
+        presentationRequestId: { type: string, format: uuid }
+        kind:
+          type: string
+          enum: [success, decline]
+        verifiedClaims:
+          type: object
+          additionalProperties: true
+          description: Required when kind = success; null when kind = decline
+        reason:
+          type: string
+          enum: [expired-credential, wrong-issuer, revoked, schema-mismatch, signature-invalid, action-no-longer-available, verifier-error]
+          description: Required when kind = decline
+        verifierDiagnostics:
+          type: object
+          additionalProperties: true
+          description: Optional; included in outcome transaction only when outcomeDetailLevel = verbose
+        presentationSubmissionHash:
+          type: string
+          description: SHA-256 of the presentation submission for success outcomes
