@@ -48,15 +48,15 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 - [X] T010 Create `src/Common/Sorcha.PresentationLifecycle.Abstractions/IPresentationConsumer.cs` interface with ConsumerName property + VerifyAsync method per `contracts/consumer-contract.md`
 - [X] T011 [P] Create `src/Common/Sorcha.Blueprint.Models/BlueprintPresentationConfig.cs` record with RecordAbandonment, OutcomeDetailLevel, PresentationValidityWindowSeconds + OutcomeDetailLevel enum (Minimal, Verbose)
 - [X] T012 Add optional `PresentationConfig` property to `src/Common/Sorcha.Blueprint.Models/Blueprint.cs` referencing the new record
-- [ ] T013 Update JSON schema validation in `src/Core/Sorcha.Blueprint.Core/` (search for existing `blueprint.schema.json` consumers) to accept the new `presentationConfig` root field; ensure validation rejects unknown values for `outcomeDetailLevel`
+- [X] T013 Update JSON schema validation in `src/Core/Sorcha.Blueprint.Core/` (search for existing `blueprint.schema.json` consumers) to accept the new `presentationConfig` root field; ensure validation rejects unknown values for `outcomeDetailLevel`
 - [X] T014 Extend `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs` with three new extension methods: `BuildPresentationInitiatedAsync`, `BuildPresentationOutcomeAsync`, `BuildPresentationAbandonedAsync` — signatures derived from `data-model.md` §1.1-§1.3; mirror the existing `BuildRejectionTransactionAsync` pattern including `RecipientsWallets` population
 - [X] T015 [P] Create `IPendingPresentationStore` interface at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/IPendingPresentationStore.cs` (namespace `Sorcha.Blueprint.Service.Storage.Presentations` to avoid collision with root `Storage` ns)
 - [X] T016 Create `RedisPendingPresentationStore` at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/RedisPendingPresentationStore.cs`
 - [X] T017 [P] Create `IPresentationRateLimiter` + `RedisPresentationRateLimiter` at `src/Services/Sorcha.Blueprint.Service/Storage/Presentations/` — per-wallet-per-register sliding-window via INCR + TTL
 - [X] T018 [P] Create `src/Services/Sorcha.Blueprint.Service/Configuration/PresentationLifecycleOptions.cs`
-- [ ] T019 Register `IPendingPresentationStore`, `IPresentationRateLimiter`, `PresentationLifecycleOptions` in `src/Services/Sorcha.Blueprint.Service/Program.cs` DI container with options binding from `"PresentationLifecycle"` configuration section
+- [X] T019 Register `IPendingPresentationStore`, `IPresentationRateLimiter`, `PresentationLifecycleOptions` in `src/Services/Sorcha.Blueprint.Service/Program.cs` DI container with options binding from `"PresentationLifecycle"` configuration section
 - [X] T020 [P] Create `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/IPresentationLifecycleService.cs` with `InitiateAsync`, `HandleOutcomeAsync`, `HandleAbandonmentAsync` methods — consumes `IPresentationConsumer` via DI
-- [ ] T021 Add `docker-compose.yml` + `docker-compose.n1.yml` environment variables block for `PresentationLifecycle__*` configuration (default values from T018)
+- [X] T021 Add `docker-compose.yml` + `docker-compose.n1.yml` environment variables block for `PresentationLifecycle__*` configuration (default values from T018)
 
 **Checkpoint**: Foundation ready. US1 and US2 can now be implemented — in parallel if staffed; sequentially if solo.
 

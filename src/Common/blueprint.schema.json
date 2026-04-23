@@ -61,9 +61,37 @@
       "items": {
         "$ref": "#/$defs/action"
       }
+    },
+    "presentationConfig": {
+      "$ref": "#/$defs/presentationConfig",
+      "description": "Optional Timebound Presentation Lifecycle configuration (Feature 111). When omitted, platform defaults apply."
     }
   },
   "$defs": {
+    "presentationConfig": {
+      "type": "object",
+      "description": "Per-blueprint knobs for the three-event presentation lifecycle (initiated / outcome / abandoned).",
+      "additionalProperties": false,
+      "properties": {
+        "recordAbandonment": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, a PresentationAbandoned transaction is written on validity-window expiry with no outcome. Default false."
+        },
+        "outcomeDetailLevel": {
+          "type": "string",
+          "enum": ["minimal", "verbose"],
+          "default": "minimal",
+          "description": "Decline-outcome detail. 'minimal' records the reason code only; 'verbose' adds verifier diagnostics."
+        },
+        "presentationValidityWindowSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600,
+          "description": "Override the deployment-default validity window (typically 600s). Null uses the platform default."
+        }
+      }
+    },
     "participant": {
       "type": "object",
       "required": ["id", "name"],

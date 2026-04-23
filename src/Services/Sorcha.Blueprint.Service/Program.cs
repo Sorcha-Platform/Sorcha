@@ -154,6 +154,14 @@ builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IStateRe
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IActionExecutionService,
     Sorcha.Blueprint.Service.Services.Implementation.ActionExecutionService>();
 
+// Feature 111: Timebound Presentation Lifecycle — Redis-backed transient state and rate limiting.
+builder.Services.Configure<Sorcha.Blueprint.Service.Configuration.PresentationLifecycleOptions>(
+    builder.Configuration.GetSection("PresentationLifecycle"));
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPendingPresentationStore,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisPendingPresentationStore>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPresentationRateLimiter,
+    Sorcha.Blueprint.Service.Storage.Presentations.RedisPresentationRateLimiter>();
+
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
 // Hot-path lookup for Instance.ParticipantWallets during action execution.
 // Contract: specs/103-verified-citizen-v2/contracts/instance-binding-cache.md
