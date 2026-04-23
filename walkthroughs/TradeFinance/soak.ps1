@@ -9,6 +9,7 @@
 
 param(
     [int]$DurationHours = 5,
+    [int]$MaxRuns = 0,                # 0 = unlimited (use DurationHours); >0 = cap iterations
     [int]$MinIntervalSeconds = 180,   # 3 minutes
     [int]$MaxIntervalSeconds = 300,   # 5 minutes
     [switch]$ShowJson
@@ -273,12 +274,17 @@ $runNumber = 0
 $passed = 0
 $failed = 0
 
-Write-WtInfo "Duration: $DurationHours hours (until $($soakEnd.ToString('HH:mm')))"
+if ($MaxRuns -gt 0) {
+    Write-WtInfo "Run cap: $MaxRuns iterations (duration cap also active: $DurationHours h)"
+} else {
+    Write-WtInfo "Duration: $DurationHours hours (until $($soakEnd.ToString('HH:mm')))"
+}
 Write-WtInfo "Interval: ${MinIntervalSeconds}s – ${MaxIntervalSeconds}s between runs"
 Write-WtInfo "Blueprints: $procurementBlueprintId / $financeBlueprintId"
 Write-Host ""
 
 while ((Get-Date) -lt $soakEnd) {
+    if ($MaxRuns -gt 0 -and $runNumber -ge $MaxRuns) { break }
     $runNumber++
     $runStart = Get-Date
     $elapsed = $runStart - $soakStart
@@ -360,6 +366,17 @@ while ((Get-Date) -lt $soakEnd) {
     $credPresentations = @()
 
     try {
+        # Accept any PendingAcceptance VerifiedInvoiceCredentials first (Feature 106 Wave C)
+        $pending = Invoke-SorchaApi -Method GET `
+            -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials?status=PendingAcceptance" `
+            -Headers $credHeaders
+        foreach ($p in ($pending | Where-Object { $_.type -eq "VerifiedInvoiceCredential" })) {
+            $null = Invoke-SorchaApi -Method PATCH `
+                -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials/$($p.id)" `
+                -Body @{ status = "Active" } `
+                -Headers $credHeaders
+        }
+
         $creds = Invoke-SorchaApi -Method GET `
             -Uri "$($env.WalletUrl)/v1/wallets/$salesMgrWallet/credentials" `
             -Headers $credHeaders
@@ -469,8 +486,9 @@ while ((Get-Date) -lt $soakEnd) {
         Write-WtFail "  Run #${runNumber}: FAIL ($([Math]::Round($runDuration.TotalSeconds, 1))s) — passed: $passed, failed: $failed"
     }
 
-    # Wait before next run (skip if time is almost up)
-    if ((Get-Date) -lt $soakEnd.AddMinutes(-5)) {
+    # Wait before next run (skip if time/run cap is almost up)
+    $isLastRun = ($MaxRuns -gt 0 -and $runNumber -ge $MaxRuns)
+    if (-not $isLastRun -and (Get-Date) -lt $soakEnd.AddMinutes(-5)) {
         $waitSecs = Get-Random -Minimum $MinIntervalSeconds -Maximum $MaxIntervalSeconds
         Write-WtInfo "  Next run in ${waitSecs}s ($([Math]::Round($waitSecs / 60, 1))m)..."
         Start-Sleep -Seconds $waitSecs
