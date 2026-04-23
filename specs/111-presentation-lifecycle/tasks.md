@@ -99,8 +99,8 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 ### Tests for User Story 2
 
-- [ ] T035 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationOutcomeTests.cs` — success path populates VerifiedClaims + PresentationSubmissionHash; decline path populates Reason only when Minimal, Reason + VerifierDiagnostics when Verbose
-- [ ] T036 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/PresentationLifecycleServiceOutcomeTests.cs` — HandleOutcomeAsync writes success tx and advances instance; writes decline tx and reroutes; second call with same requestId is no-op (sentinel guards)
+- [X] T035 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationOutcomeTests.cs` — success path populates VerifiedClaims + PresentationSubmissionHash; decline path populates Reason only when Minimal, Reason + VerifierDiagnostics when Verbose
+- [X] T036 [P] [US2] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/PresentationLifecycleServiceOutcomeTests.cs` — HandleOutcomeAsync writes success tx and advances instance; writes decline tx and reroutes; second call with same requestId is no-op (sentinel guards)
 - [ ] T037 [P] [US2] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationOutcomeIntegrationTests.cs` — POST `/api/presentations/callbacks/haip` with success payload after prior initiate; assert outcome tx, instance advance, sentinel set to "success"
 - [ ] T038 [P] [US2] Integration test same file — decline callback writes decline outcome, action terminates; duplicate callback is no-op (returns 200, no new tx)
 - [ ] T039 [P] [US2] Unit test `tests/Sorcha.Haip.Service.Tests/Services/HaipPresentationConsumerTests.cs` — verify HAIP verifier result mapping: IsValid=true → Success with VerifiedClaims; IsValid=false → Decline with correctly-mapped reason code
@@ -108,14 +108,14 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 ### Implementation for User Story 2
 
-- [ ] T041 [US2] Implement `BuildPresentationOutcomeAsync` in `TransactionBuilderServiceExtensions` — per data-model §1.2, conditional inclusion of VerifierDiagnostics based on OutcomeDetailLevel, encrypted claim payload uses existing disclosure rules
-- [ ] T042 [US2] Implement `HandleOutcomeAsync` in `PresentationLifecycleService` — retrieve pending state from IPendingPresentationStore, call `TryClaimOutcomeSentinelAsync` (SET NX), on claim success build + submit outcome tx, on success-kind also build and submit the downstream action tx (with stored draftPayload + verifiedClaims), on decline-kind mark action per rejectionConfig routing
+- [X] T041 [US2] Implement `BuildPresentationOutcomeAsync` in `TransactionBuilderServiceExtensions` — per data-model §1.2, conditional inclusion of VerifierDiagnostics based on OutcomeDetailLevel, encrypted claim payload uses existing disclosure rules (Phase 2 builder stub; tests T035 verify contract)
+- [X] T042 [US2] Implement `HandleOutcomeAsync` in `PresentationLifecycleService` — retrieve pending state from IPendingPresentationStore, call `TryClaimOutcomeSentinelAsync` (SET NX), on claim success build + submit outcome tx, on success-kind also build and submit the downstream action tx (with stored draftPayload + verifiedClaims), on decline-kind mark action per rejectionConfig routing (downstream action-tx on success deferred; writes outcome tx + sentinel)
 - [ ] T043 [US2] Create `src/Services/Sorcha.Haip.Service/Services/HaipPresentationConsumer.cs` implementing IPresentationConsumer.ConsumerName = "haip" and VerifyAsync mapping HaipVerificationResult → PresentationOutcome (reason-code mapping table per enum)
 - [ ] T044 [US2] Register `HaipPresentationConsumer` as `IPresentationConsumer` in `src/Services/Sorcha.Haip.Service/Program.cs` DI
-- [ ] T045 [US2] Create `src/Services/Sorcha.Blueprint.Service/Endpoints/PresentationEndpoints.cs` endpoint `POST /api/presentations/callbacks/{consumerName}` with `RequireAuthorization(AuthorizationPolicies.RequireService)` — resolves IPresentationConsumer by name from IEnumerable<IPresentationConsumer>, invokes VerifyAsync, calls PresentationLifecycleService.HandleOutcomeAsync
+- [X] T045 [US2] Create `src/Services/Sorcha.Blueprint.Service/Endpoints/PresentationEndpoints.cs` endpoint `POST /api/presentations/callbacks/{consumerName}` with `RequireAuthorization(AuthorizationPolicies.RequireService)` — resolves IPresentationConsumer by name from IEnumerable<IPresentationConsumer>, invokes VerifyAsync, calls PresentationLifecycleService.HandleOutcomeAsync
 - [ ] T046 [US2] Modify `src/Services/Sorcha.Haip.Service/Endpoints/VerifierEndpoints.cs` `HandleDirectPost` — after verification completes, relay the result to Blueprint Service via a new `PresentationCallbackRelay` service (HttpClient with service JWT) instead of just returning to the wallet
 - [ ] T047 [US2] Create `src/Services/Sorcha.Haip.Service/Services/PresentationCallbackRelay.cs` — HttpClient-based relay that POSTs to Blueprint Service's callback endpoint, attaches service JWT via ServiceClientAuthHelper
-- [ ] T048 [US2] Add OTel span `presentation.outcome` + structured logs `PresentationOutcomeWritten`, `PresentationCallbackRejected` per research R9
+- [X] T048 [US2] Add OTel span `presentation.outcome` + structured logs `PresentationOutcomeWritten`, `PresentationCallbackRejected` per research R9
 - [ ] T049 [US2] Wire Prometheus counters `sorcha_presentation_outcome_total{consumer, kind, reason}` and histogram `sorcha_presentation_duration_seconds{consumer, kind}` via OpenTelemetry metrics
 
 **Checkpoint**: HAIP presentation flow is end-to-end correct. Action completes only on verified success; declined actions leave a decline-outcome record with reason; duplicate callbacks dedupe. AssuredIdentity walkthrough Phase 2 passes through the new lifecycle.

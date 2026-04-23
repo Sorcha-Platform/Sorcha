@@ -37,6 +37,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
     private readonly IValidatorServiceClient _validatorClient;
     private readonly IHaipServiceClient? _haipClient;
     private readonly IPendingPresentationStore _pendingStore;
+    private readonly IEnumerable<IPresentationConsumer> _consumers;
     private readonly IOptions<PresentationLifecycleOptions> _options;
     private readonly ILogger<PresentationLifecycleService> _logger;
 
@@ -45,6 +46,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         IWalletServiceClient walletClient,
         IValidatorServiceClient validatorClient,
         IPendingPresentationStore pendingStore,
+        IEnumerable<IPresentationConsumer> consumers,
         IOptions<PresentationLifecycleOptions> options,
         ILogger<PresentationLifecycleService> logger,
         IHaipServiceClient? haipClient = null)
@@ -53,6 +55,7 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         _walletClient = walletClient ?? throw new ArgumentNullException(nameof(walletClient));
         _validatorClient = validatorClient ?? throw new ArgumentNullException(nameof(validatorClient));
         _pendingStore = pendingStore ?? throw new ArgumentNullException(nameof(pendingStore));
+        _consumers = consumers ?? throw new ArgumentNullException(nameof(consumers));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _haipClient = haipClient;
@@ -181,15 +184,195 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
             InitiatedTransactionId: built.TxId);
     }
 
-    public Task<PresentationOutcomeResult> HandleOutcomeAsync(
+    public async Task<PresentationOutcomeResult> HandleOutcomeAsync(
         string consumerName,
         Guid presentationRequestId,
         object verifierPayload,
         CancellationToken cancellationToken = default)
     {
-        // US2 scope — implementation lands with phase 4.
-        throw new NotImplementedException(
-            "PresentationLifecycleService.HandleOutcomeAsync arrives with User Story 2 (Feature 111 Phase 4).");
+        ArgumentException.ThrowIfNullOrWhiteSpace(consumerName);
+
+        using var activity = ActivitySource.StartActivity("presentation.outcome");
+        activity?.SetTag("presentation.request_id", presentationRequestId.ToString());
+        activity?.SetTag("consumer", consumerName);
+
+        var pending = await _pendingStore.GetAsync(presentationRequestId, cancellationToken);
+        if (pending is null)
+        {
+            _logger.LogWarning(
+                "PresentationOutcome callback for unknown or expired requestId {RequestId} from consumer {Consumer}",
+                presentationRequestId, consumerName);
+            throw new InvalidOperationException(
+                $"No pending presentation found for requestId {presentationRequestId} (unknown or TTL-expired).");
+        }
+
+        if (!string.Equals(pending.ConsumerName, consumerName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Callback consumer '{consumerName}' does not match pending consumer '{pending.ConsumerName}'.");
+        }
+
+        // Dispatch to the consumer's verifier. The consumer implementation returns a
+        // PresentationOutcome; this service owns transaction writing and routing.
+        var consumer = _consumers.FirstOrDefault(c =>
+            string.Equals(c.ConsumerName, consumerName, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException(
+                $"No IPresentationConsumer registered with name '{consumerName}'.");
+
+        var context = new PresentationInitiationContext(
+            PresentationRequestId: pending.PresentationRequestId,
+            InstanceId: pending.InstanceId,
+            ActionId: pending.ActionId,
+            RegisterId: pending.RegisterId,
+            BlueprintId: pending.BlueprintId,
+            SubmitterWallet: pending.SubmitterWallet,
+            RequirementsDigest: Convert.FromHexString(pending.CredentialRequirementDigestHex),
+            InitiatedAt: pending.CreatedAt);
+
+        var outcome = await consumer.VerifyAsync(context, verifierPayload, cancellationToken);
+
+        // Two-level idempotency guard (research R6):
+        //   - If outcome sentinel is "abandoned" we allow late outcome write → "abandoned+outcome"
+        //   - If outcome sentinel is already "success" or "decline" we dedupe → return idempotent reply
+        //   - Otherwise SET NX "outcome-pending-write" to claim the writer slot.
+        var existingSentinel = await _pendingStore.GetOutcomeSentinelAsync(presentationRequestId, cancellationToken);
+        var isLateAfterAbandonment = string.Equals(existingSentinel, "abandoned", StringComparison.Ordinal);
+
+        if (!isLateAfterAbandonment &&
+            (string.Equals(existingSentinel, "success", StringComparison.Ordinal) ||
+             string.Equals(existingSentinel, "decline", StringComparison.Ordinal) ||
+             string.Equals(existingSentinel, "abandoned+outcome", StringComparison.Ordinal)))
+        {
+            _logger.LogInformation(
+                "Idempotent replay of outcome callback for requestId {RequestId}: sentinel already {Sentinel}",
+                presentationRequestId, existingSentinel);
+            return new PresentationOutcomeResult(
+                Kind: outcome.Kind,
+                OutcomeTransactionId: string.Empty,
+                IsIdempotentReplay: true,
+                IsLateAfterAbandonment: false);
+        }
+
+        if (!isLateAfterAbandonment)
+        {
+            var claimed = await _pendingStore.TryClaimOutcomeSentinelAsync(
+                presentationRequestId, "outcome-pending-write", cancellationToken);
+            if (!claimed)
+            {
+                // Lost the race to a concurrent outcome call; treat as replay.
+                _logger.LogInformation(
+                    "Lost outcome sentinel race for requestId {RequestId}; deduplicated",
+                    presentationRequestId);
+                return new PresentationOutcomeResult(
+                    Kind: outcome.Kind,
+                    OutcomeTransactionId: string.Empty,
+                    IsIdempotentReplay: true,
+                    IsLateAfterAbandonment: false);
+            }
+        }
+
+        // Build the outcome transaction.
+        var outcomeDetailLevel = pending.OutcomeDetailLevel;
+        IReadOnlyDictionary<string, object>? diagnosticsToWrite =
+            string.Equals(outcomeDetailLevel, "verbose", StringComparison.OrdinalIgnoreCase)
+                ? outcome.VerifierDiagnostics
+                : null;
+
+        var draftPayload = DeserializeDraftPayload(pending.DraftPayloadJson);
+
+        // Placeholder blueprint/instance/action — BuildPresentationOutcomeAsync only
+        // reads Id/Title and instance.RegisterId from them, so a lightweight shim
+        // avoids a round-trip to storage for US2. Later stories (US3 retry, US4
+        // abandonment) will materialise a real instance lookup here.
+        var blueprintShim = new BlueprintModel
+        {
+            Id = pending.BlueprintId,
+            Title = "outcome",
+            Description = "outcome-shim",
+            Version = 1,
+            Participants = [],
+            Actions = []
+        };
+        var instanceShim = new Instance
+        {
+            Id = pending.InstanceId.ToString(),
+            BlueprintId = pending.BlueprintId,
+            BlueprintVersion = 1,
+            RegisterId = pending.RegisterId,
+            TenantId = "outcome-shim"
+        };
+        var actionShim = new ActionModel { Id = pending.ActionId, BlueprintId = pending.BlueprintId };
+
+        var built = await _transactionBuilder.BuildPresentationOutcomeAsync(
+            blueprintShim, instanceShim, actionShim,
+            presentationRequestId: presentationRequestId,
+            consumerName: consumerName,
+            submitterWallet: pending.SubmitterWallet,
+            outcomeKind: outcome.Kind == PresentationOutcomeKind.Success ? "success" : "decline",
+            verifiedClaims: outcome.VerifiedClaims,
+            declineReason: outcome.Reason?.ToString(),
+            verifierDiagnostics: diagnosticsToWrite,
+            presentationSubmissionHash: outcome.PresentationSubmissionHash,
+            actionPayload: outcome.Kind == PresentationOutcomeKind.Success ? draftPayload : null,
+            previousTransactionId: null,
+            cancellationToken);
+
+        // Sign + submit.
+        var signResult = await _walletClient.SignTransactionAsync(
+            pending.SubmitterWallet, built.SigningData,
+            derivationPath: null, isPreHashed: false, cancellationToken);
+        built.SenderWallet = pending.SubmitterWallet;
+        built.Signature = signResult.Signature;
+
+        var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
+            pending.RegisterId, pending.SubmitterWallet, cancellationToken);
+        var submission = built.ToTransactionSubmission(signResult, nextSeqNum);
+        var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
+
+        if (!validatorResult.Success)
+        {
+            _logger.LogError(
+                "Validator rejected presentation-outcome transaction {TxId}: [{ErrorCode}] {ErrorMessage}",
+                built.TxId, validatorResult.ErrorCode, validatorResult.ErrorMessage);
+            throw new InvalidOperationException(
+                $"Validator rejected presentation-outcome transaction {built.TxId}: " +
+                $"[{validatorResult.ErrorCode}] {validatorResult.ErrorMessage}");
+        }
+
+        // Mark sentinel with the final kind.
+        var finalSentinel = (isLateAfterAbandonment, outcome.Kind) switch
+        {
+            (true, _) => "abandoned+outcome",
+            (false, PresentationOutcomeKind.Success) => "success",
+            (false, PresentationOutcomeKind.Decline) => "decline",
+            _ => "decline"
+        };
+        await _pendingStore.SetOutcomeSentinelAsync(presentationRequestId, finalSentinel, cancellationToken);
+
+        _logger.LogInformation(
+            "PresentationOutcome tx {TxId} written for requestId {RequestId} kind={Kind} sentinel={Sentinel}",
+            built.TxId, presentationRequestId, outcome.Kind, finalSentinel);
+        activity?.SetTag("outcome.kind", outcome.Kind.ToString());
+        activity?.SetTag("tx.id", built.TxId);
+
+        return new PresentationOutcomeResult(
+            Kind: outcome.Kind,
+            OutcomeTransactionId: built.TxId,
+            IsIdempotentReplay: false,
+            IsLateAfterAbandonment: isLateAfterAbandonment);
+    }
+
+    private static IReadOnlyDictionary<string, object>? DeserializeDraftPayload(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public Task HandleAbandonmentAsync(

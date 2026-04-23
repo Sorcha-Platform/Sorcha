@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sorcha Contributors
 
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
+using Sorcha.Blueprint.Service.Services.Interfaces;
 using Sorcha.Blueprint.Service.Storage.Presentations;
+using Sorcha.ServiceDefaults;
 
 namespace Sorcha.Blueprint.Service.Endpoints;
 
@@ -56,6 +60,38 @@ public static class PresentationEndpoints
                 "Returns the current lifecycle state of a presentation attempt: " +
                 "awaiting-presentation, success, decline, abandoned, abandoned-with-late-outcome, or expired. " +
                 "The register's transaction stream is the authoritative history.");
+
+        app.MapPost("/callbacks/{consumerName}", async (
+                string consumerName,
+                Guid presentationRequestId,
+                [FromBody] JsonElement verifierPayload,
+                IPresentationLifecycleService lifecycle,
+                CancellationToken ct) =>
+            {
+                try
+                {
+                    var result = await lifecycle.HandleOutcomeAsync(
+                        consumerName, presentationRequestId, verifierPayload, ct);
+                    return Results.Ok(new
+                    {
+                        kind = result.Kind.ToString(),
+                        outcomeTransactionId = result.OutcomeTransactionId,
+                        idempotentReplay = result.IsIdempotentReplay,
+                        lateAfterAbandonment = result.IsLateAfterAbandonment
+                    });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
+            })
+            .WithName("PresentationCallback")
+            .WithSummary("Verifier callback for a presentation outcome")
+            .WithDescription(
+                "Called by a registered IPresentationConsumer (e.g. HAIP Service) after " +
+                "verifying a presentation. Writes the PresentationOutcome transaction and " +
+                "advances the action on success. Idempotent by presentationRequestId.")
+            .RequireAuthorization(AuthorizationPolicies.RequireService);
 
         return app;
     }
