@@ -3,6 +3,12 @@ name: NuGet CI — Build & Test
 on:
   pull_request:
     branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Packages.props'
+      - '.github/workflows/nuget-ci.yml'
 
 jobs:
   build-and-test:

@@ -3,10 +3,17 @@ name: CodeQL Security Analysis
 on:
   push:
     branches: [ master ]
+    # No paths filter: we want a security baseline on every master commit.
   pull_request:
     branches: [ master ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Packages.props'
+      - '.github/workflows/codeql.yml'
   schedule:
-    - cron: '0 0 * * 1'  # Run every Monday at midnight
+    - cron: '0 0 * * 1'  # Run every Monday at midnight — catches newly-disclosed CVEs
 
 jobs:
   analyze:
