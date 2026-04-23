@@ -117,6 +117,7 @@ public class WorkflowServiceAsyncTests : IDisposable
 
         result.Should().NotBeNull();
         result!.ErrorStatusCode.Should().Be((int)HttpStatusCode.InternalServerError);
+        result.InstanceId.Should().Be("inst-001");
         result.TransactionId.Should().BeNullOrEmpty();
     }
 }
