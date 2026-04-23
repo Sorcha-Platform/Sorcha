@@ -70,15 +70,15 @@ Paths are absolute from repo root `C:\Projects\Sorcha\`. Single-project layout p
 
 ### Tests for User Story 1
 
-- [ ] T022 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationInitiatedTests.cs` — verify the builder populates TransactionType, presentationRequestId, requirementsDigest (SHA-256 of canonical requirements), RecipientsWallets (submitter wallet), and asserts no credential fields in the payload
-- [ ] T023 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/Storage/RedisPendingPresentationStoreTests.cs` — store, retrieve, TTL expiry, key naming per data-model §2.1
-- [ ] T024 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/Storage/RedisPresentationRateLimiterTests.cs` — below-threshold allows, above-threshold rejects, window resets after TTL, per-wallet-per-register scoping
+- [X] T022 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Services/TransactionBuilderServicePresentationInitiatedTests.cs` — verify the builder populates TransactionType, presentationRequestId, requirementsDigest (SHA-256 of canonical requirements), RecipientsWallets (submitter wallet), and asserts no credential fields in the payload
+- [X] T023 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Storage/Presentations/RedisPendingPresentationStoreTests.cs` — store, retrieve, TTL expiry, key naming per data-model §2.1
+- [X] T024 [P] [US1] Unit test `tests/Sorcha.Blueprint.Service.Tests/Storage/Presentations/RedisPresentationRateLimiterTests.cs` — below-threshold allows, above-threshold rejects, window resets after TTL, per-wallet-per-register scoping
 - [ ] T025 [P] [US1] Integration test `tests/Sorcha.Blueprint.Service.Tests/Integration/PresentationInitiationIntegrationTests.cs` — `POST /api/instances/{id}/actions/{n}/execute` returns 202 with PresentationPendingResponse payload (presentationRequestId, authorizationRequestUri, status=awaiting-presentation, initiatedTransactionId)
 - [ ] T026 [P] [US1] Integration test `RateLimitIntegrationTests.cs` — 11th submission within window from same wallet against same register returns HTTP 429 with no attempt transaction written
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement `BuildPresentationInitiatedAsync` in the `TransactionBuilderServiceExtensions` class inside `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs` — payload per data-model §1.1, RecipientsWallets = [submitterWallet]
+- [X] T027 [US1] Implement `BuildPresentationInitiatedAsync` in the `TransactionBuilderServiceExtensions` class inside `src/Services/Sorcha.Blueprint.Service/Services/Interfaces/ITransactionBuilderService.cs` — payload per data-model §1.1, RecipientsWallets = [submitterWallet] (covered by Phase 2 T014; tests T022 confirm)
 - [ ] T028 [US1] Create `src/Services/Sorcha.Blueprint.Service/Services/Implementation/PresentationLifecycleService.cs` with `InitiateAsync` method that: generates requestId, computes requirementsDigest, stores pending state via IPendingPresentationStore, builds + signs + submits the initiated transaction, waits for confirmation, returns PresentationPendingResponse
 - [ ] T029 [US1] Modify `src/Services/Sorcha.Blueprint.Service/Services/Implementation/ActionExecutionService.cs` step 4c (~line 226) — when `haipRequirement != null && !hasSubmittedPresentations && _haipClient != null`, route through `IPresentationLifecycleService.InitiateAsync` instead of inline `CreatePresentationRequestAsync` + continuing to action-tx build
 - [ ] T030 [US1] Update the execute-endpoint response handler in `src/Services/Sorcha.Blueprint.Service/Program.cs` to return `202 Accepted` with PresentationPendingResponse when the lifecycle service indicates "awaiting presentation"; preserve existing `200 OK` path for non-presentation actions
