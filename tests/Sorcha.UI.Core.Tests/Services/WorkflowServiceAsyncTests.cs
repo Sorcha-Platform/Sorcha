@@ -109,12 +109,18 @@ public class WorkflowServiceAsyncTests : IDisposable
     }
 
     [Fact]
-    public async Task SubmitActionExecuteAsync_ServerError_ReturnsNull()
+    public async Task SubmitActionExecuteAsync_ServerError_ReturnsErrorResult()
     {
         SetupResponse(HttpStatusCode.InternalServerError);
 
         var result = await _service.SubmitActionExecuteAsync(CreateRequest());
 
-        result.Should().BeNull();
+        // Per PR #265: non-success responses surface a populated result with
+        // ErrorMessage/ErrorStatusCode so the UI can show the real reason
+        // (schema, wallet mismatch, credential requirement) instead of a
+        // generic "appears in pending actions" message.
+        result.Should().NotBeNull();
+        result!.ErrorStatusCode.Should().Be((int)HttpStatusCode.InternalServerError);
+        result.TransactionId.Should().BeNullOrEmpty();
     }
 }
