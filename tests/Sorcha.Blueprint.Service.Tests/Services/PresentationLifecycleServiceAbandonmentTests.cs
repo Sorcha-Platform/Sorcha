@@ -129,6 +129,29 @@ public class PresentationLifecycleServiceAbandonmentTests
     }
 
     [Fact]
+    public async Task HandleAbandonmentAsync_ValidatorRejects_RollsBackSentinelClaim()
+    {
+        // Round-2 review bug: on validator rejection, the "abandoned" sentinel
+        // must be rolled back so a later outcome callback isn't misclassified
+        // as late-after-abandonment when no tx was actually written.
+        var id = Guid.NewGuid();
+        _store.Setup(s => s.GetAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Pending(id, recordAbandonment: true));
+        _store.Setup(s => s.GetOutcomeSentinelAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        _store.Setup(s => s.TryClaimOutcomeSentinelAsync(
+                id, It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _validator.Setup(v => v.SubmitTransactionAsync(
+                It.IsAny<TransactionSubmission>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionSubmissionResult { Success = false, ErrorCode = "ERR" });
+
+        await Make().HandleAbandonmentAsync(id, CancellationToken.None);
+
+        _store.Verify(s => s.DeleteOutcomeSentinelAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task HandleAbandonmentAsync_LostSentinelRace_DoesNotWriteTx()
     {
         var id = Guid.NewGuid();

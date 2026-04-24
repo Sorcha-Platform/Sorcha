@@ -168,6 +168,12 @@ public sealed class RedisPendingPresentationStore : IPendingPresentationStore
         await db.StringSetAsync(SentinelKey(presentationRequestId), value, ttl);
     }
 
+    public Task DeleteOutcomeSentinelAsync(Guid presentationRequestId, CancellationToken ct = default)
+    {
+        var db = _redis.GetDatabase();
+        return db.KeyDeleteAsync(SentinelKey(presentationRequestId));
+    }
+
     public async Task<IReadOnlyList<Guid>> ListPendingNearExpiryAsync(TimeSpan withinDuration, int max, CancellationToken ct = default)
     {
         var results = new List<Guid>();

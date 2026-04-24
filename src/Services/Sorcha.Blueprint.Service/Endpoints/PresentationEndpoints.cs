@@ -67,7 +67,7 @@ public static class PresentationEndpoints
                 "scanner; no instance, register, or consumer metadata is included. " +
                 "The register's transaction stream is the authoritative history.");
 
-        app.MapPost("/callbacks/{consumerName}", async (
+        app.MapPost("/callbacks/{consumerName}/{presentationRequestId:guid}", async (
                 string consumerName,
                 Guid presentationRequestId,
                 [FromBody] JsonElement verifierPayload,
@@ -78,13 +78,11 @@ public static class PresentationEndpoints
                 {
                     var result = await lifecycle.HandleOutcomeAsync(
                         consumerName, presentationRequestId, verifierPayload, ct);
-                    return Results.Ok(new
-                    {
-                        kind = result.Kind.ToString(),
-                        outcomeTransactionId = result.OutcomeTransactionId,
-                        idempotentReplay = result.IsIdempotentReplay,
-                        lateAfterAbandonment = result.IsLateAfterAbandonment
-                    });
+                    return Results.Ok(new PresentationCallbackResponse(
+                        Kind: result.Kind.ToString(),
+                        OutcomeTransactionId: result.OutcomeTransactionId,
+                        IdempotentReplay: result.IsIdempotentReplay,
+                        LateAfterAbandonment: result.IsLateAfterAbandonment));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -95,8 +93,9 @@ public static class PresentationEndpoints
             .WithSummary("Verifier callback for a presentation outcome")
             .WithDescription(
                 "Called by a registered IPresentationConsumer (e.g. HAIP Service) after " +
-                "verifying a presentation. Writes the PresentationOutcome transaction and " +
-                "advances the action on success. Idempotent by presentationRequestId.")
+                "verifying a presentation. Writes the PresentationOutcome transaction. " +
+                "Idempotent by presentationRequestId. " +
+                "(Action advancement on success is deferred to US3.)")
             .RequireAuthorization(AuthorizationPolicies.RequireService);
 
         return app;
@@ -114,3 +113,16 @@ public sealed record PresentationStatusResponse
     public required string State { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
 }
+
+/// <summary>
+/// Response shape for <c>POST /api/presentations/callbacks/{consumer}/{id}</c>.
+/// </summary>
+/// <param name="Kind">Outcome kind from the consumer ("Success" / "Decline").</param>
+/// <param name="OutcomeTransactionId">The written outcome transaction id, or empty string on an idempotent replay.</param>
+/// <param name="IdempotentReplay">True when the callback was a duplicate and no new tx was written.</param>
+/// <param name="LateAfterAbandonment">True when the outcome arrived after the abandonment sweeper already wrote a PresentationAbandoned tx.</param>
+public sealed record PresentationCallbackResponse(
+    string Kind,
+    string OutcomeTransactionId,
+    bool IdempotentReplay,
+    bool LateAfterAbandonment);

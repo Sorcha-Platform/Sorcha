@@ -42,7 +42,7 @@ public sealed class PresentationCallbackRelay
     {
         await ServiceClientAuthHelper.SetAuthHeaderAsync(_http, _authClient, _logger, "Haip", ct);
 
-        var path = $"/api/presentations/callbacks/{ConsumerName}?presentationRequestId={presentationRequestId}";
+        var path = $"/api/presentations/callbacks/{ConsumerName}/{presentationRequestId}";
         try
         {
             using var response = await _http.PostAsJsonAsync(path, result, ct);

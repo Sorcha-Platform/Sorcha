@@ -465,7 +465,21 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         if (!validatorResult.Success)
         {
             // Roll back the sentinel claim so a later outcome callback isn't
-            // mistakenly treated as late-after-abandonment when there's no tx.
+            // mistakenly treated as late-after-abandonment when there's no
+            // abandonment tx on the register. Without this, HandleOutcomeAsync
+            // would see sentinel="abandoned" and write "abandoned+outcome"
+            // semantics even though only the outcome tx actually exists.
+            try
+            {
+                await _pendingStore.DeleteOutcomeSentinelAsync(presentationRequestId, cancellationToken);
+            }
+            catch (Exception rollbackEx)
+            {
+                _logger.LogError(rollbackEx,
+                    "Failed to roll back sentinel claim after validator rejection for requestId {RequestId}; " +
+                    "manual intervention may be required if a late outcome arrives",
+                    presentationRequestId);
+            }
             _logger.LogError(
                 "Validator rejected abandonment tx {TxId} for requestId {RequestId}: [{Code}] {Msg}",
                 built.TxId, presentationRequestId, validatorResult.ErrorCode, validatorResult.ErrorMessage);

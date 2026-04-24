@@ -60,6 +60,13 @@ public interface IPendingPresentationStore
         CancellationToken ct = default);
 
     /// <summary>
+    /// Delete the outcome sentinel. Used to roll back a claim when the subsequent
+    /// transaction write failed, so later callers aren't misled by a sentinel
+    /// whose corresponding register transaction never actually landed.
+    /// </summary>
+    Task DeleteOutcomeSentinelAsync(Guid presentationRequestId, CancellationToken ct = default);
+
+    /// <summary>
     /// List keys of pending attempts whose TTL is at or below the given threshold,
     /// for the abandonment sweeper. Callers should treat the set as a snapshot —
     /// entries may have expired by the time the caller acts on them.
