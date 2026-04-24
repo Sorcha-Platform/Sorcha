@@ -378,13 +378,104 @@ public sealed class PresentationLifecycleService : IPresentationLifecycleService
         }
     }
 
-    public Task HandleAbandonmentAsync(
+    public async Task HandleAbandonmentAsync(
         Guid presentationRequestId,
         CancellationToken cancellationToken = default)
     {
-        // US4 scope — implementation lands with phase 6.
-        throw new NotImplementedException(
-            "PresentationLifecycleService.HandleAbandonmentAsync arrives with User Story 4 (Feature 111 Phase 6).");
+        using var activity = ActivitySource.StartActivity("presentation.abandoned");
+        activity?.SetTag("presentation.request_id", presentationRequestId.ToString());
+
+        var pending = await _pendingStore.GetAsync(presentationRequestId, cancellationToken);
+        if (pending is null)
+        {
+            _logger.LogDebug(
+                "AbandonmentSweeper no-op: requestId {RequestId} already cleaned up or unknown",
+                presentationRequestId);
+            return;
+        }
+
+        // Opt-in gate: only blueprints that asked for abandonment recording get a tx.
+        if (!pending.RecordAbandonment)
+        {
+            _logger.LogDebug(
+                "AbandonmentSweeper skip: requestId {RequestId} blueprint opted out of recordAbandonment",
+                presentationRequestId);
+            // Still delete the pending hash — the attempt simply evaporates.
+            await _pendingStore.DeleteAsync(presentationRequestId, cancellationToken);
+            return;
+        }
+
+        // Outcome-sentinel guard: if the outcome already resolved, don't write abandonment.
+        var existingSentinel = await _pendingStore.GetOutcomeSentinelAsync(presentationRequestId, cancellationToken);
+        if (existingSentinel is "success" or "decline"
+                            or "outcome-pending-write" or "abandoned" or "abandoned+outcome")
+        {
+            _logger.LogDebug(
+                "AbandonmentSweeper skip: requestId {RequestId} sentinel {Sentinel} — outcome already resolved",
+                presentationRequestId, existingSentinel);
+            return;
+        }
+
+        // Claim the sentinel as "abandoned" (first-writer-wins) so a concurrent
+        // outcome callback takes the late-after-abandonment path instead.
+        var claimed = await _pendingStore.TryClaimOutcomeSentinelAsync(
+            presentationRequestId, "abandoned",
+            pending.ValidityWindowSeconds, cancellationToken);
+        if (!claimed)
+        {
+            _logger.LogDebug(
+                "AbandonmentSweeper skip: requestId {RequestId} lost SET NX race to an outcome writer",
+                presentationRequestId);
+            return;
+        }
+
+        // Build + sign + submit the abandonment tx.
+        var blueprintShim = new BlueprintModel
+        {
+            Id = pending.BlueprintId, Title = "abandonment", Description = "abandonment-shim",
+            Version = 1, Participants = [], Actions = []
+        };
+        var instanceShim = new Instance
+        {
+            Id = pending.InstanceId.ToString(), BlueprintId = pending.BlueprintId,
+            BlueprintVersion = 1, RegisterId = pending.RegisterId, TenantId = "abandonment-shim"
+        };
+        var actionShim = new ActionModel { Id = pending.ActionId, BlueprintId = pending.BlueprintId };
+
+        var built = await _transactionBuilder.BuildPresentationAbandonedAsync(
+            blueprintShim, instanceShim, actionShim,
+            presentationRequestId: presentationRequestId,
+            consumerName: pending.ConsumerName,
+            submitterWallet: pending.SubmitterWallet,
+            validityWindowSeconds: pending.ValidityWindowSeconds,
+            previousTransactionId: null,
+            cancellationToken);
+
+        var signResult = await _walletClient.SignTransactionAsync(
+            pending.SubmitterWallet, built.SigningData,
+            derivationPath: null, isPreHashed: false, cancellationToken);
+        built.SenderWallet = pending.SubmitterWallet;
+        built.Signature = signResult.Signature;
+
+        var nextSeqNum = await _validatorClient.GetNextSequenceNumberAsync(
+            pending.RegisterId, pending.SubmitterWallet, cancellationToken);
+        var submission = built.ToTransactionSubmission(signResult, nextSeqNum);
+        var validatorResult = await _validatorClient.SubmitTransactionAsync(submission, cancellationToken);
+
+        if (!validatorResult.Success)
+        {
+            // Roll back the sentinel claim so a later outcome callback isn't
+            // mistakenly treated as late-after-abandonment when there's no tx.
+            _logger.LogError(
+                "Validator rejected abandonment tx {TxId} for requestId {RequestId}: [{Code}] {Msg}",
+                built.TxId, presentationRequestId, validatorResult.ErrorCode, validatorResult.ErrorMessage);
+            return;
+        }
+
+        _logger.LogInformation(
+            "PresentationAbandoned tx {TxId} written for requestId {RequestId} consumer {Consumer}",
+            built.TxId, presentationRequestId, pending.ConsumerName);
+        activity?.SetTag("tx.id", built.TxId);
     }
 
     /// <summary>

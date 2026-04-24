@@ -163,6 +163,9 @@ builder.Services.AddSingleton<Sorcha.Blueprint.Service.Storage.Presentations.IPr
     Sorcha.Blueprint.Service.Storage.Presentations.RedisPresentationRateLimiter>();
 builder.Services.AddScoped<Sorcha.Blueprint.Service.Services.Interfaces.IPresentationLifecycleService,
     Sorcha.Blueprint.Service.Services.Implementation.PresentationLifecycleService>();
+builder.Services.AddSingleton<Sorcha.Blueprint.Service.Services.Infrastructure.IClock,
+    Sorcha.Blueprint.Service.Services.Infrastructure.SystemClock>();
+builder.Services.AddHostedService<Sorcha.Blueprint.Service.Services.Implementation.AbandonmentSweeper>();
 
 // Feature 103 US1: Redis read-through cache for per-instance participant bindings.
 // Hot-path lookup for Instance.ParticipantWallets during action execution.
